@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Desecrator Hag",
+    "mana_cost": "{2}{B/G}{B/G}",
+    "type_line": "Creature — Hag",
+    "oracle_text": "When this creature enters, return to your hand the creature card in your graveyard with the greatest power. If two or more cards are tied for greatest power, you choose one of them.",
+    "power": "2",
+    "toughness": "2",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Drop of Honey",
+    "mana_cost": "{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your upkeep, destroy the creature with the least power. It can't be regenerated. If two or more creatures are tied for least power, you choose one of them.\nWhen there are no creatures on the battlefield, sacrifice this enchantment.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Porphyry Nodes",
+    "mana_cost": "{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your upkeep, destroy the creature with the least power. It can't be regenerated. If two or more creatures are tied for least power, you choose one of them.\nWhen there are no creatures on the battlefield, sacrifice this enchantment.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Purging Scythe",
+    "mana_cost": "{5}",
+    "type_line": "Artifact",
+    "oracle_text": "At the beginning of your upkeep, this artifact deals 2 damage to the creature with the least toughness. If two or more creatures are tied for least toughness, you choose one of them.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Wretched Banquet",
+    "mana_cost": "{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Destroy target creature if it has the least power or is tied for least power among creatures on the battlefield.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Strength-Testing Hammer",
+    "mana_cost": "{1}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Whenever equipped creature attacks, roll a six-sided die. That creature gets +X/+0 until end of turn, where X is the result. Then if it has the greatest power or is tied for greatest power among creatures on the battlefield, draw a card.\nEquip {3}",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Freelance Muscle",
+    "mana_cost": "{4}{G}",
+    "type_line": "Creature — Rhino Warrior",
+    "oracle_text": "Whenever this creature attacks or blocks, it gets +X/+X until end of turn, where X is the greatest power and/or toughness among other creatures you control.",
+    "power": "4",
+    "toughness": "4",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Investigator's Journal",
+    "mana_cost": "{2}",
+    "type_line": "Artifact — Book Clue",
+    "oracle_text": "This artifact enters with a number of suspect counters on it equal to the greatest number of creatures a player controls.\n{2}, {T}, Remove a suspect counter from this artifact: Draw a card.\n{2}, Sacrifice this artifact: Draw a card.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Gor Muldrak, Amphinologist",
+    "mana_cost": "{1}{G}{U}",
+    "type_line": "Legendary Creature — Human Scout",
+    "oracle_text": "You and permanents you control have protection from Salamanders.\nAt the beginning of your end step, each player who controls the fewest creatures creates a 4/3 blue Salamander Warrior creature token.",
+    "power": "3",
+    "toughness": "2",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Repay in Kind",
+    "mana_cost": "{5}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Each player's life total becomes the lowest life total among all players.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Dispersal Shield",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Counter target spell if its mana value is less than or equal to the greatest mana value among permanents you control.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Cabal Conditioning",
+    "mana_cost": "{6}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Any number of target players each discard a number of cards equal to the greatest mana value among permanents you control.",
+    "coverage_status": "proposed_complete"
+  }
+]

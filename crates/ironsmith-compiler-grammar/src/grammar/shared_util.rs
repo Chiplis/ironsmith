@@ -3,6 +3,7 @@ pub mod aggregate_constraints;
 pub mod alternative_cost_lines;
 pub mod cast_restriction_lines;
 pub mod count_shapes;
+pub mod fraction_shapes;
 pub mod header_shapes;
 pub mod keyword_cost_lines;
 pub mod keyword_line_facts;

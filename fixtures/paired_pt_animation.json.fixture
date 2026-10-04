@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Woodcaller Automaton",
+    "mana_cost": "{10}",
+    "type_line": "Artifact Creature — Construct",
+    "power": "8",
+    "toughness": "8",
+    "oracle_text": "Prototype {2}{G}{G} — 3/3 (You may cast this spell with different mana cost, color, and size. It keeps its abilities and types.)\nWhen this creature enters, if you cast it, untap target land you control. It becomes a Treefolk creature with haste and base power and toughness equal to this creature's power and toughness. It's still a land."
+  }
+]

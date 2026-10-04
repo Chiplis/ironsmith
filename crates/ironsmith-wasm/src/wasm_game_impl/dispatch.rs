@@ -96,6 +96,7 @@ enum SnapshotJsonError {
     ContinuousDiscovery(ironsmith::static_ability_processor::StaticEffectDiscoveryError),
     JsonEncoding(serde_json::Error),
     PriorityEligibility(ironsmith::effects::ExecutionError),
+    PaymentAnalysis(ironsmith::effects::ExecutionError),
 }
 
 impl std::fmt::Display for SnapshotJsonError {
@@ -103,6 +104,7 @@ impl std::fmt::Display for SnapshotJsonError {
         match self {
             Self::HiddenLibraryEpoch(error) => write!(f, "{error}"),
             Self::ContinuousDiscovery(error) => write!(f, "snapshot refresh failed: {error}"),
+            Self::PaymentAnalysis(error) => write!(f, "payment options incomplete: {error}"),
             Self::JsonEncoding(error) => write!(f, "json encode failed: {error}"),
             Self::PriorityEligibility(error) => write!(f, "priority timing refresh failed: {error}"),
         }
@@ -222,6 +224,7 @@ impl WasmGame {
         self.prepare_snapshot_continuous_state()
             .map_err(SnapshotJsonError::ContinuousDiscovery)?;
         self.refresh_priority_affordability_display().map_err(SnapshotJsonError::PriorityEligibility)?;
+        let mana_payment_view = self.current_mana_payment_view_checked().map_err(SnapshotJsonError::PaymentAnalysis)?;
         self.cached_snapshot = None;
         let pending_cast_stack_id = self
             .priority_state
@@ -234,11 +237,12 @@ impl WasmGame {
         let snapshot_id = self.snapshot_serial;
         let battlefield_transitions =
             battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
-        let mut snap = GameSnapshot::from_game_with_object_view_cache(
+        let disclosure_view = self.payment_disclosure_view();
+        let mut snap = GameSnapshot::from_game_with_object_view_cache_during_action(
             self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
             self.pending_decision.as_ref(),
-            self.current_mana_payment_view(),
+            mana_payment_view,
             self.game_over.as_ref(),
             pending_cast_stack_id,
             self.active_resolving_stack_object.clone(),
@@ -248,7 +252,11 @@ impl WasmGame {
             undo_land_stable_id,
             snapshot_id,
             &self.snapshot_object_view_cache,
+            self.static_library_top_visibility_window(),
         );
+        if let Some(view) = disclosure_view.as_ref() {
+            snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
+        }
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
         serde_json::to_string_pretty(&snap)
@@ -1083,6 +1091,7 @@ impl WasmGame {
             active_resolving_stack_hash: hash_debug_value(&self.active_resolving_stack_object),
             active_viewed_cards_hash: hash_debug_value(&self.active_viewed_cards),
             crypto_requirements_hash: hash_debug_value(&self.last_crypto_requirements),
+            static_library_top_visibility_hash: self.static_library_top_visibility_hash(),
             cancelable,
             undo_land_stable_id,
         }
@@ -1139,10 +1148,10 @@ impl WasmGame {
         self.last_dispatch_perf = Some(perf);
     }
 
-    fn current_mana_payment_view(&self) -> Option<ManaPaymentView> {
+    fn current_mana_payment_view_checked(&self) -> Result<Option<ManaPaymentView>, ironsmith::effects::ExecutionError> {
         let Some(DecisionContext::ManaPayment(context)) = self.pending_decision.as_ref() else {
             self.mana_activation_inventory_cache.borrow_mut().take();
-            return None;
+            return Ok(None);
         };
         // A valid proposal must not wait for speculative alternatives. Those are
         // computed on an isolated runtime after this snapshot reaches the UI.
@@ -1155,9 +1164,10 @@ impl WasmGame {
                 self.game.zone_revisions().all, &self.game.players, &self.game.turn,
             ));
             if cache.as_ref().is_none_or(|(key, _)| *key != inventory_key) {
-                *cache = Some((inventory_key, mana_activation_option_views(&self.game, &inventory_request)));
+                *cache = Some((inventory_key, mana_activation_option_views(&self.game, &inventory_request)?));
             }
         }
+        let manual = if self.defer_mana_options { Vec::new() } else { manual_mana_ability_views(&self.game, &context.request)? };
         let options = if self.defer_mana_options { &[][..] } else { &cache.as_ref().unwrap().1[..] };
         // A cost/effect decision inside a manual mana activation temporarily owns
         // the payment UI. Only reuse the parent's provisional view when it matches.
@@ -1165,13 +1175,13 @@ impl WasmGame {
             .priority_state
             .pending_cast
             .as_ref()
-            .and_then(|pending| mana_payment_view_from_pending_cast(&self.game, pending, options, self.defer_mana_options))
+            .and_then(|pending| mana_payment_view_from_pending_cast(&self.game, pending, options, &manual))
             .or_else(|| {
                 self.priority_state
                     .pending_activation
                     .as_ref()
                     .and_then(|pending| {
-                        mana_payment_view_from_pending_activation(&self.game, pending, options, self.defer_mana_options)
+                        mana_payment_view_from_pending_activation(&self.game, pending, options, &manual)
                     })
             });
         if let Some(mut view) = parent
@@ -1179,11 +1189,16 @@ impl WasmGame {
             && view.plan_id == context.plan.id.to_string()
         {
             view.editor.activation_options_complete = !self.defer_mana_options;
-            return Some(view);
+            return Ok(Some(view));
         }
-        let mut view = mana_payment_view_from_context(&self.game, context, options, self.defer_mana_options);
+        let mut view = mana_payment_view_from_context(&self.game, context, options, &manual);
         view.editor.activation_options_complete = !self.defer_mana_options;
-        Some(view)
+        Ok(Some(view))
+    }
+
+    #[cfg(test)]
+    fn current_mana_payment_view(&self) -> Option<ManaPaymentView> {
+        self.current_mana_payment_view_checked().expect("fixture payment analysis must complete")
     }
 
     fn pending_priority_decision_is_stale(&self) -> bool {
@@ -1487,6 +1502,8 @@ impl WasmGame {
             pending_replay_action: None,
             pending_action_checkpoint: None,
             pending_live_action_root: None,
+            payment_disclosure: None,
+            payment_disclosure_generation: 0,
             pending_live_continuation: None,
             game_over: None,
             perspective: PlayerId::from_index(0),
@@ -1499,6 +1516,7 @@ impl WasmGame {
             priority_epoch_checkpoint: None,
             priority_epoch_has_undoable_action: false,
             priority_epoch_undo_locked_by_mana: false,
+            priority_epoch_undo_locked_by_disclosure: false,
             priority_epoch_undo_land_stable_id: None,
             semantic_threshold: 0.0,
             snapshot_serial: 0,
@@ -2991,6 +3009,9 @@ impl WasmGame {
         let pending_replay_action = self.pending_replay_action.clone();
         let pending_action_checkpoint = self.pending_action_checkpoint.clone();
         let pending_live_action_root = self.pending_live_action_root.clone();
+        let payment_disclosure = self.payment_disclosure.clone();
+        let payment_disclosure_generation = self.payment_disclosure_generation;
+        let priority_epoch_undo_locked_by_disclosure = self.priority_epoch_undo_locked_by_disclosure;
         let pending_live_continuation = self.pending_live_continuation.clone();
         let runner = self.runner.clone();
         let runner_awaiting_priority = self.runner_awaiting_priority;
@@ -3021,6 +3042,9 @@ impl WasmGame {
         self.pending_replay_action = pending_replay_action;
         self.pending_action_checkpoint = pending_action_checkpoint;
         self.pending_live_action_root = pending_live_action_root;
+        self.payment_disclosure = payment_disclosure;
+        self.payment_disclosure_generation = payment_disclosure_generation;
+        self.priority_epoch_undo_locked_by_disclosure = priority_epoch_undo_locked_by_disclosure;
         self.pending_live_continuation = pending_live_continuation;
         self.runner = runner;
         self.runner_awaiting_priority = runner_awaiting_priority;
@@ -3446,7 +3470,8 @@ impl WasmGame {
         let mut request: Option<ironsmith::mana_payment::ManaPaymentRequest> =
             serde_json::from_str(request_json)
                 .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let result = request.as_mut().map(|request| mana_payment_options_view(&self.game, request));
+        let result = request.as_mut().map(|request| mana_payment_options_view(&self.game, request))
+            .transpose().map_err(|error| JsValue::from_str(&format!("payment options incomplete: {error}")))?;
         serde_wasm_bindgen::to_value(&result)
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }
@@ -3468,7 +3493,8 @@ impl WasmGame {
             .map(|p| p.stack_id);
         let cancelable = self.is_cancelable();
         let undo_land_stable_id = self.visible_undo_land_stable_id(cancelable);
-        let mana_payment_view = self.current_mana_payment_view();
+        let mana_payment_view = self.current_mana_payment_view_checked()
+            .map_err(|error| JsValue::from_str(&format!("payment options incomplete: {error}")))?;
         let cache_key = self.snapshot_cache_key(
             pending_cast_stack_id,
             cancelable,
@@ -3497,7 +3523,8 @@ impl WasmGame {
         if let Some(before) = self.pending_crypto_audit_before.take() {
             self.update_crypto_requirements_from(before);
         }
-        let mut snap = GameSnapshot::from_game_with_object_view_cache(
+        let disclosure_view = self.payment_disclosure_view();
+        let mut snap = GameSnapshot::from_game_with_object_view_cache_during_action(
             self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
             self.pending_decision.as_ref(),
@@ -3511,7 +3538,11 @@ impl WasmGame {
             undo_land_stable_id,
             snapshot_id,
             &self.snapshot_object_view_cache,
+            self.static_library_top_visibility_window(),
         );
+        if let Some(view) = disclosure_view.as_ref() {
+            snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
+        }
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         let snapshot_build_ms = build_started_at.elapsed_ms();
         let pending_insert_started_at = PerfTimer::start();
@@ -3798,7 +3829,7 @@ impl WasmGame {
             ));
         }
 
-        self.game.mark_player_lost(player_id);
+        self.game.mark_player_lost(player_id).map_err(|error| JsValue::from_str(&format!("player departure execution incomplete: {error}")))?;
         self.priority_state.player_left_game(&self.game);
 
         let remaining: Vec<_> = self
@@ -4870,6 +4901,7 @@ impl WasmGame {
         if !self.is_cancelable() {
             return Err(JsValue::from_str("current decision cannot be cancelled"));
         }
+        let disclosure_epoch_lock = self.priority_epoch_undo_locked_by_disclosure;
         if let Some(checkpoint) = self.pending_action_checkpoint.as_ref().cloned() {
             self.restore_replay_checkpoint(&checkpoint);
         } else if let Some(checkpoint) = self
@@ -4888,6 +4920,7 @@ impl WasmGame {
         self.pending_live_continuation = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
+        self.priority_epoch_undo_locked_by_disclosure = disclosure_epoch_lock;
         self.priority_epoch_undo_land_stable_id = None;
         self.active_viewed_cards = None;
         self.pending_decision_game = None;
@@ -4904,7 +4937,10 @@ impl WasmGame {
         self.dispatch_advance_until_decision_perfs.clear();
         let prior_decision_game = self.pending_decision_game.clone();
         let prior_decision = self.pending_decision.clone();
-        let result = self.dispatch_routed(command);
+        let decode_started_at = PerfTimer::start();
+        let command: UiCommand = serde_wasm_bindgen::from_value(command)
+            .map_err(|error| JsValue::from_str(&format!("invalid command payload: {error}")))?;
+        let result = self.dispatch_typed_command(command, decode_started_at.elapsed_ms());
         if result.is_err() && self.pending_decision_game.is_none() && self.pending_decision.is_some()
             && hash_debug_value(&self.pending_decision) == hash_debug_value(&prior_decision) {
             self.pending_decision_game = prior_decision_game;
@@ -4913,20 +4949,11 @@ impl WasmGame {
         result
     }
 
-    fn dispatch_routed(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
+    fn dispatch_routed_command(&mut self, command: UiCommand, command_decode_ms: f64) -> Result<JsValue, JsValue> {
         let dispatch_started_at = PerfTimer::start();
         self.last_dispatch_perf = None;
-        if self.pending_priority_decision_is_stale() {
-            self.recompute_stale_priority_decision()?;
-            return Err(JsValue::from_str(
-                "pending priority decision no longer matches the game priority holder",
-            ));
-        }
-        let command_decode_started_at = PerfTimer::start();
-        let command: UiCommand = serde_wasm_bindgen::from_value(command)
-            .map_err(|e| JsValue::from_str(&format!("invalid command payload: {e}")))?;
-        let command_decode_ms = command_decode_started_at.elapsed_ms();
-        // A face-down cast of a hidden hand card carries its public cast kind
+
+        // A face-down cast of a hidden card carries its public cast kind
         // (morph, megamorph, disguise). Record it before the command is
         // replayed so every peer, including those holding only a placeholder
         // that is never opened for the cast, agrees the cast is legal and on
@@ -4939,7 +4966,7 @@ impl WasmGame {
             && self
                 .game
                 .object(spell)
-                .is_some_and(|object| object.zone == Zone::Hand)
+                .is_some_and(|object| !matches!(object.zone, Zone::Battlefield | Zone::Stack))
         {
             self.game.set_hidden_face_down_cast_claim(spell, kind);
         }
@@ -5183,6 +5210,7 @@ impl WasmGame {
                         return self.snapshot();
                     }
 
+                    self.finish_payment_disclosure();
                     // The spell/ability is now committed. Follow-up prompts
                     // produced during resolution must not preserve Undo for
                     // the action that just finished paying its costs.
@@ -5193,6 +5221,7 @@ impl WasmGame {
                 }
                 progress => {
                     self.clear_active_resolving_stack_object();
+                    self.finish_payment_disclosure();
                     if Self::replay_root_starts_undoable_action(&replay.root) {
                         self.priority_epoch_has_undoable_action = true;
                     }
@@ -5284,6 +5313,7 @@ impl WasmGame {
                                 );
                             }
 
+                            self.finish_payment_disclosure();
                             // The spell/ability is now committed. Follow-up prompts
                             // produced during resolution must not preserve Undo for
                             // the action that just finished paying its costs.
@@ -5299,6 +5329,7 @@ impl WasmGame {
                         }
                         progress => {
                             self.clear_active_resolving_stack_object();
+                            self.finish_payment_disclosure();
                             if Self::replay_root_starts_undoable_action(&root) {
                                 self.priority_epoch_has_undoable_action = true;
                             }

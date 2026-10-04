@@ -6,6 +6,7 @@ use ironsmith_compiler_ast::TagRef;
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum ChoiceActionAst {
     ChooseColor,
+    ChooseNumber { min: u32, max: u32 },
     ChooseCardType {
         options: Vec<CardType>,
     },

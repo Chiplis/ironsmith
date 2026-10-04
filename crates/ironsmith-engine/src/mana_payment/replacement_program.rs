@@ -15,13 +15,23 @@ struct CompiledReplacement {
 
 /// An event-local replacement decision, identified by semantic registration or
 /// ability occurrence rather than a transient candidate-list index.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplacementDecision {
     pub key: ReplacementEffectKey,
     pub apply: bool,
     pub player: crate::ids::PlayerId,
     pub source: crate::ids::ObjectId,
     pub before: Vec<crate::mana::ManaSymbol>,
+    pub color: Option<crate::mana::ManaSymbol>,
+}
+impl std::hash::Hash for ReplacementDecision {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        use std::hash::Hash;
+        // Existing deterministic witnesses keep their previous payment IDs.
+        if let Some(color) = self.color { "mana-rewrite-color-v1".hash(state); color.hash(state); }
+        self.key.hash(state); self.apply.hash(state); self.player.hash(state);
+        self.source.hash(state); self.before.hash(state);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -82,7 +92,8 @@ impl CompiledManaReplacements {
             if GameState::filter_reads_tapped_state_or_activation_history(
                 predicate.source_filter,
                 true,
-            ) || effect.replacement.mana_transformation().is_none()
+            ) || (effect.replacement.mana_transformation().is_none()
+                && !effect.replacement.needs_mana_color_choice())
             {
                 return None;
             }
@@ -133,9 +144,28 @@ impl CompiledManaReplacements {
         )
     }
 
-    fn advance(&self, branch: &mut ReplacementBranch, index: usize, apply: bool) -> Option<()> {
+    fn output_choices(&self, game: &GameState, branch: &ReplacementBranch, index: usize)
+        -> Option<Vec<Option<crate::mana::ManaSymbol>>> {
+        let effect = &self.effects[index].effect;
+        if effect.replacement.needs_mana_color_choice() {
+            // A compact payer plan cannot commit another player's choice.
+            // Preserve unknown so the checked/native owner can request it.
+            let crate::replacement::ReplacementAction::RewriteMana { output, .. } = &effect.replacement else { return None; };
+            let outputs = crate::events::mana::mana_rewrite_output_choices(*output, &branch.event, game);
+            let chooser = if matches!(output, ironsmith_core::ManaRewriteOutput::ByBasicLandType(_)) {
+                branch.event.controller
+            } else { effect.controller };
+            if outputs.len() > 1 && game.controlling_player_for(chooser) != game.controlling_player_for(branch.event.player) {
+                return None;
+            }
+            Some(outputs.into_iter().map(Some).collect())
+        } else { effect.replacement.mana_transformation().map(|_| vec![None]) }
+    }
+
+    fn advance(&self, branch: &mut ReplacementBranch, index: usize, apply: bool,
+        color: Option<crate::mana::ManaSymbol>) -> Option<()> {
         let compiled = &self.effects[index];
-        if !apply && !compiled.effect.optional {
+        if !apply && (!compiled.effect.optional || color.is_some()) {
             return None;
         }
         branch.decisions.push(ReplacementDecision {
@@ -144,12 +174,13 @@ impl CompiledManaReplacements {
             player: branch.event.player,
             source: branch.event.source,
             before: branch.event.mana.clone(),
+            color,
         });
         if apply {
             branch.event.mana = compiled
                 .effect
                 .replacement
-                .mana_transformation()?
+                .mana_transformation_with_color(color)?
                 .apply(&branch.event.mana);
             if compiled.once {
                 branch.resources.consumed.push(compiled.key.clone());
@@ -188,12 +219,14 @@ impl CompiledManaReplacements {
             for index in candidates.into_iter().rev() {
                 if self.effects[index].effect.optional {
                     let mut declined = branch.clone();
-                    self.advance(&mut declined, index, false)?;
+                    self.advance(&mut declined, index, false, None)?;
                     pending.push(declined);
                 }
-                let mut applied = branch.clone();
-                self.advance(&mut applied, index, true)?;
-                pending.push(applied);
+                for color in self.output_choices(game, &branch, index)?.into_iter().rev() {
+                    let mut applied = branch.clone();
+                    self.advance(&mut applied, index, true, color)?;
+                    pending.push(applied);
+                }
             }
         }
         Some(complete)
@@ -224,7 +257,8 @@ impl CompiledManaReplacements {
                 .candidates(game, &branch)?
                 .into_iter()
                 .find(|index| self.effects[*index].key == decision.key)?;
-            self.advance(&mut branch, index, decision.apply)?;
+            if decision.apply && !self.output_choices(game, &branch, index)?.contains(&decision.color) { return None; }
+            self.advance(&mut branch, index, decision.apply, decision.color)?;
         }
         if !self.candidates(game, &branch)?.is_empty() {
             return None;
@@ -257,7 +291,9 @@ impl CompiledManaReplacements {
             if self.effects[*index].effect.optional {
                 return None;
             }
-            self.advance(&mut branch, *index, true)?;
+            let choices = self.output_choices(game, &branch, *index)?;
+            let [color] = choices.as_slice() else { return None; };
+            self.advance(&mut branch, *index, true, *color)?;
         }
     }
 }
@@ -522,5 +558,75 @@ mod tests {
                 .deterministic_event(&game, event(source), &mut ReplacementResources::default())
                 .is_none()
         );
+    }
+}
+
+#[cfg(test)]
+mod typed_output_rewrite_tests {
+    use super::*;
+    use crate::mana::ManaSymbol;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::target::ObjectFilter;
+    fn setup(output: ironsmith_core::ManaRewriteOutput, quantity: ironsmith_core::ManaRewriteQuantity)
+        -> (GameState, ManaAddedEvent) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let player = crate::ids::PlayerId(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Dual producer")
+            .card_types(vec![crate::types::CardType::Land])
+            .subtypes(vec![crate::types::Subtype::Plains, crate::types::Subtype::Forest]).build();
+        let source = game.create_object_from_definition(&definition, player, crate::Zone::Battlefield);
+        let rule = ironsmith_core::ManaOutputRewrite {source_filter: ObjectFilter::land(), controller: None,
+            tapped_for_mana: true, input: ironsmith_core::ManaRewriteInput::Any, output, quantity};
+        game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(source, player,
+            crate::events::mana::matchers::ManaRewriteMatcher {rule: rule.clone()},
+            ReplacementAction::RewriteMana {input: rule.input, output, quantity}));
+        let event = ManaAddedEvent::new(source, player, player, vec![ManaSymbol::Green; 2])
+            .with_production_provenance(crate::events::mana::ManaProductionProvenance::TappedSourceForMana);
+        (game, event)
+    }
+    #[test]
+    fn selected_color_is_part_of_the_witness_and_unavailable_colors_fail_replay() {
+        let output = ironsmith_core::ManaRewriteOutput::ByBasicLandType([
+            Some(ManaSymbol::Red), None, None, None, Some(ManaSymbol::Black)]);
+        let (game, event) = setup(output, ironsmith_core::ManaRewriteQuantity::Preserve);
+        let program = CompiledManaReplacements::compile(&game).unwrap();
+        let branches = program.branches(&game, event.clone(), &ReplacementResources::default(), 16).unwrap();
+        assert_eq!(branches.len(), 2);
+        for branch in branches {
+            assert_eq!(branch.decisions.len(), 1, "multiple basic types are one replacement occurrence");
+            let selected = branch.decisions[0].color.unwrap();
+            assert!([ManaSymbol::Red, ManaSymbol::Black].contains(&selected));
+            assert_eq!(branch.event.mana, vec![selected; 2]);
+            assert_eq!(program.replay(&game, event.clone(), &ReplacementResources::default(), &branch.decisions).unwrap().event.mana, branch.event.mana);
+            let mut corrupt = branch.decisions.clone(); corrupt[0].color = Some(ManaSymbol::Blue);
+            assert!(program.replay(&game, event.clone(), &ReplacementResources::default(), &corrupt).is_none());
+        }
+    }
+    #[test]
+    fn exact_rewrite_and_multiplier_preserve_both_noncommuting_orders() {
+        let (mut game, event) = setup(ironsmith_core::ManaRewriteOutput::Symbol(ManaSymbol::Black), ironsmith_core::ManaRewriteQuantity::Exact(1));
+        game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(event.source, event.controller,
+            crate::events::mana::matchers::ManaProducedBySourceMatcher::tapped_source_for_mana(ObjectFilter::land()),
+            ReplacementAction::Modify(crate::replacement::EventModification::Multiply(3))));
+        let program = CompiledManaReplacements::compile(&game).unwrap();
+        let branches = program.branches(&game, event, &ReplacementResources::default(), 16).unwrap();
+        let mut counts: Vec<_> = branches.iter().map(|branch| branch.event.mana.len()).collect(); counts.sort(); counts.dedup();
+        assert_eq!(counts, vec![1, 3]);
+        assert!(branches.iter().all(|branch| branch.event.mana.iter().all(|mana| *mana == ManaSymbol::Black)));
+    }
+    #[test]
+    fn compact_payer_plans_do_not_choose_another_players_replacement_color() {
+        let (game, mut event) = setup(ironsmith_core::ManaRewriteOutput::ChooseColor, ironsmith_core::ManaRewriteQuantity::Preserve);
+        event.player = crate::ids::PlayerId(1);
+        let program = CompiledManaReplacements::compile(&game).unwrap();
+        assert!(program.branches(&game, event, &ReplacementResources::default(), 16).is_none(),
+            "a required external decision is unknown, not an empty set of payable outputs");
+    }
+    #[test]
+    fn selected_output_choices_share_the_existing_exploration_budget() {
+        let (game, event) = setup(ironsmith_core::ManaRewriteOutput::ChooseColor, ironsmith_core::ManaRewriteQuantity::Preserve);
+        let program = CompiledManaReplacements::compile(&game).unwrap();
+        assert!(program.branches(&game, event.clone(), &ReplacementResources::default(), 2).is_none());
+        assert_eq!(program.branches(&game, event, &ReplacementResources::default(), 16).unwrap().len(), 5);
     }
 }

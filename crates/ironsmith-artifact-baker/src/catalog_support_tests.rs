@@ -97,6 +97,9 @@ fn catalog_vizier_reduces_only_matching_counter_placements() {
     let id = game
         .move_object_with_etb_processing_with_dm(entering, Zone::Battlefield, &mut dm)
         .unwrap();
+    assert!(!id.pending);
+    assert!(id.programs.is_empty());
+    let id = id.original.into_result().unwrap();
     assert_eq!(
         game.object(id.new_id)
             .unwrap()

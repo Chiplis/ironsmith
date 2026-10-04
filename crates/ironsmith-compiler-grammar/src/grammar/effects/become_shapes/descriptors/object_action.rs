@@ -127,6 +127,10 @@ pub fn parse_become_simple_descriptor_words(words: &[&str]) -> BecomeSimpleDescr
 }
 
 pub fn parse_become_color_words(words: &[&str]) -> Option<ColorSet> {
+    if words == ["all", "colors"] {
+        return Some(ColorSet::WHITE.union(ColorSet::BLUE).union(ColorSet::BLACK).union(ColorSet::RED).union(ColorSet::GREEN));
+    }
+    if words == ["colorless"] { return Some(ColorSet::COLORLESS); }
     let mut colors = ColorSet::new();
     let mut saw_color = false;
     for word in words {

@@ -433,7 +433,11 @@ fn add_with_etb_inner(
     dm: &mut SelectFirstDecisionMaker,
 ) -> Result<Option<ObjectId>, ironsmith::effects::ExecutionError> {
     let temp = game.create_object_from_definition(definition, player, Zone::Command);
-    let Some(result) = game.move_object_with_etb_processing_with_dm(temp, Zone::Battlefield, dm)? else {
+    let receipt = game.move_object_with_etb_processing_with_dm(temp, Zone::Battlefield, dm)?;
+    if receipt.pending || !receipt.programs.is_empty() {
+        return Err(ironsmith::effects::ExecutionError::InternalError("probe requires a completed entry without added programs".into()));
+    }
+    let Some(result) = receipt.original.into_result() else {
         return Ok(None);
     };
     let entered = result.new_id;

@@ -3,6 +3,19 @@
 use super::*;
 use ironsmith_compiler_ast::TagRef;
 
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct TimedDamageRedirectionAst {
+    pub source_filter: ObjectFilter,
+    pub source_target: Option<TargetAst>,
+    pub protected_target: Option<TargetAst>,
+    pub player_filter: Option<PlayerFilter>,
+    pub object_filter: Option<ObjectFilter>,
+    pub combat_only: bool,
+    pub destination: ironsmith_core::TimedDamageRedirectDestination,
+    pub mode: ironsmith_core::ReplacementApplyMode,
+    pub display: String,
+}
+
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum DamagePreventionActionAst {
     PreventAllCombatDamage {
@@ -63,9 +76,13 @@ pub enum DamagePreventionActionAst {
     PreventAllDamageToTarget {
         target: TargetAst,
         duration: Until,
+        combat_only: bool,
         source_of_your_choice: bool,
         source_choice_shares_activation_mana_color: bool,
         source_target: Option<TargetAst>,
+        /// The same declared source is also protected against incoming damage.
+        protect_source_target: bool,
+        follow_up_effects: Vec<EffectAst>,
     },
     PreventAllDamageToTargetFromSourceFilter {
         target: TargetAst,
@@ -110,5 +127,6 @@ pub enum DamagePreventionActionAst {
         player_filter: PlayerFilter,
         object_filter: ObjectFilter,
         target: TargetAst,
+        scope: Option<TimedDamageRedirectionAst>,
     },
 }

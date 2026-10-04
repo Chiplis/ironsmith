@@ -40,7 +40,11 @@ struct Scope {
     ability: Binding,
     cast_event: Binding,
     amount: Binding,
+    life_gain: Binding,
+    life_loss: Binding,
+    life_controller: Binding,
     die_result: Binding,
+    die_batch: Binding,
     blockers: Binding,
     damaged_player: Binding,
     declared_outcomes: BTreeSet<u64>,
@@ -58,7 +62,11 @@ impl Scope {
             ability: Binding::Absent,
             cast_event: Binding::Absent,
             amount: Binding::Absent,
+            life_gain: Binding::Absent,
+            life_loss: Binding::Absent,
+            life_controller: Binding::Absent,
             die_result: Binding::Absent,
+            die_batch: Binding::Absent,
             blockers: Binding::Absent,
             damaged_player: Binding::Absent,
             declared_outcomes: BTreeSet::new(),
@@ -76,7 +84,11 @@ impl Scope {
         scope.ability = Binding::Unknown;
         scope.cast_event = Binding::Unknown;
         scope.amount = Binding::Unknown;
+        scope.life_gain = Binding::Unknown;
+        scope.life_loss = Binding::Unknown;
+        scope.life_controller = Binding::Unknown;
         scope.die_result = Binding::Unknown;
+        scope.die_batch = Binding::Unknown;
         scope.blockers = Binding::Unknown;
         scope.damaged_player = Binding::Unknown;
         scope.external_outcomes = true;
@@ -92,7 +104,11 @@ impl Scope {
             ability: self.ability.intersect(other.ability),
             cast_event: self.cast_event.intersect(other.cast_event),
             amount: self.amount.intersect(other.amount),
+            life_gain: self.life_gain.intersect(other.life_gain),
+            life_loss: self.life_loss.intersect(other.life_loss),
+            life_controller: self.life_controller.intersect(other.life_controller),
             die_result: self.die_result.intersect(other.die_result),
+            die_batch: self.die_batch.intersect(other.die_batch),
             blockers: self.blockers.intersect(other.blockers),
             damaged_player: self.damaged_player.intersect(other.damaged_player),
             declared_outcomes: self
@@ -298,7 +314,7 @@ impl Auditor {
             // trigger alone does not prove a DamagedPlayer reference invalid.
             "DamagedPlayer" if scope.damaged_player != Binding::Present => self.gap(path, "damage_recipient_dataflow", "DamagedPlayer may come from the triggering event, tagged players, or a prior damage outcome"),
             "ChosenPlayer" | "ChosenNumber" | "TaggedCount" | "LastNotedLifeTotal" | "Defending" | "Attacking" | "TargetPlayerOrControllerOfTarget" => self.gap(path, "persistent_or_choice_context", format!("{name} requires game-state, target, choice, or combat-context validation")),
-            "ManaSpentToCastTriggeringObject" => self.require(path, name, scope.cast_event),
+            "ManaSpentToCastTriggeringObject" | "CasterManaSpentToCastTriggeringObject" => self.require(path, name, scope.cast_event),
             "ThisAbilityResolvedThisTurnCount" => self.require(path, name, scope.ability),
             name if is_pending_value(name) => self.finding(path, "error", "unresolved_compiler_value", format!("Compiler-only {name} reached the executable definition")),
             _ => {}
@@ -315,7 +331,8 @@ impl Auditor {
             | "TriggeringSpellSnowManaOfAnySpellColorSpentToCast"
             | "TriggeringSpellWasKicked"
             | "AnotherOpponentControlsPotentialTarget" => scope.cast_event,
-            "TriggeringObjectWasEnchanted"
+            "TriggeringEventCausedBy"
+            | "TriggeringObjectWasEnchanted"
             | "TriggeringObjectHadCounters"
             | "EvolveEnteringCreatureIsLarger"
             | "TriggeringObjectBecameTappedFirstTimeThisTurn"
@@ -331,6 +348,7 @@ impl Auditor {
             | "TriggeringAttackerBlockers"
             | "TriggeringAbilityIsManaAbility"
             | "YouWonTriggeringClash"
+            | "YouChoseAnotherRingBearer"
             | "TriggeringAbilityManaSpentToActivateAtLeast"
             | "TriggeringObjectEnteredTransformed"
             | "ManaFromSourceSpentOnTriggeringAction" => scope.event,
@@ -346,6 +364,18 @@ impl Auditor {
     fn event_value(&mut self, spec: &Value, path: &str, scope: &Scope) {
         match enum_variant(spec).map(|(name, _)| name) {
             Some("Amount" | "LifeAmount") => self.require(path, "EventValue(Amount)", scope.amount),
+            Some("LifeChange") => {
+                let payload = enum_variant(spec).map(|(_, payload)| payload);
+                match payload.and_then(|value| value.get("gained")).and_then(Value::as_bool) {
+                    Some(true) => self.require(path, "EventValue(LifeGained)", scope.life_gain),
+                    Some(false) => self.require(path, "EventValue(LifeLost)", scope.life_loss),
+                    None => self.gap(path, "life_quantity_direction", "Life quantity has no typed direction"),
+                }
+                if payload.and_then(|value| value.get("for_controller")).and_then(Value::as_bool) == Some(true) {
+                    self.require(path, "EventValue(ControllerLifeChange)", scope.life_controller);
+                }
+            }
+            Some("DieBatchTotal" | "DieResultsAtLeast") => self.require(path, "die batch results", scope.die_batch),
             Some("DieResult") => self.require(path, "EventValue(DieResult)", scope.die_result),
             Some("BlockersBeyondFirst") => {
                 self.require(path, "EventValue(BlockersBeyondFirst)", scope.blockers)
@@ -730,7 +760,7 @@ impl Auditor {
                     self.walk(value, &child(path, key), &mut inner);
                 }
             }
-            "PreventDamageEffect" | "PreventAllDamageToTargetEffect" => {
+            "PreventDamageEffect" | "PreventAllDamageToTargetEffect" | "PreventAllDamageEffect" => {
                 for (key, value) in fields {
                     if metadata(key) {
                         continue;
@@ -860,9 +890,23 @@ impl Auditor {
         let mut scope = Scope::empty();
         scope.event = Binding::Present;
         scope.event_object = Binding::Unknown;
+        let gain = matches!(name, "PlayerGainsLife" | "YouGainLife" | "YouGainLifeCausedBy" | "YouGainLifeDuringTurn")
+            || (name == "LifeChanged" && payload.get("gained").and_then(Value::as_bool) == Some(true));
+        let loss = matches!(name, "PlayerLosesLife" | "PlayerLosesLifeDuringTurn")
+            || (name == "LifeChanged" && payload.get("gained").and_then(Value::as_bool) == Some(false));
+        if gain || loss {
+            scope.life_gain = if gain { Binding::Present } else { Binding::Absent };
+            scope.life_loss = if loss { Binding::Present } else { Binding::Absent };
+            scope.life_controller = if name.starts_with("YouGainLife") || payload.get("player").is_some_and(|player| player == "You") {
+                Binding::Present
+            } else { Binding::Unknown };
+        }
         let mut known = true;
         match name {
-            "PlayerLosesLife"
+            "PlayerGainsLife"
+            | "LifeChanged"
+            | "PlayerLosesLife"
+            | "PlayerPaysLife"
             | "PlayersLoseLifeOneOrMore"
             | "OpponentsEachLoseExactLife"
             | "PlayerLosesLifeDuringTurn"
@@ -892,22 +936,32 @@ impl Auditor {
             | "DealsDamageTo"
             | "DealsCombatDamage"
             | "DealsCombatDamageTo"
-            | "IsDealtDamage"
             | "DealsExactDamageToObjectOrPlayer" => {
                 scope.player = Binding::Unknown;
                 scope.amount = Binding::Present;
                 scope.damaged_player = Binding::Unknown;
                 scope.event_object = Binding::Present;
             }
-            "PlayerRollsResult"
+            "IsDealtDamage" => {
+                scope.amount = Binding::Present;
+                scope.event_object = Binding::Present; // DamageEvent names its source.
+                scope.player = if payload.get("target").is_some_and(|target|
+                    target.get("Player").is_some() || target.get("SpecificPlayer").is_some()
+                        || target == "SourceController" || target == "SourceOwner") {
+                    Binding::Present
+                } else { Binding::Unknown };
+            }
+            "PlayerRollsResultMatching" | "PlayerRollsResult"
             | "PlayerRollsHighestNaturalResult"
             | "PlayerRollsToVisitAttractions" => {
                 scope.player = Binding::Present;
                 scope.die_result = Binding::Present;
                 scope.event_object = Binding::Present;
             }
+            "PlayerRollsNthDie" => { scope.player = Binding::Present; }
             "PlayerRollsDie" => {
                 scope.player = Binding::Present;
+                scope.die_batch = if payload.get("one_or_more").and_then(Value::as_bool) == Some(true) { Binding::Present } else { Binding::Absent };
                 // This trigger also sees planar dice; DieResult rejects those.
                 scope.die_result = Binding::Unknown;
             }
@@ -922,6 +976,7 @@ impl Auditor {
             | "KeywordActionDuringYourTurn"
             | "KeywordActionFromSource"
             | "KeywordActionMatchingObject"
+            | "KeywordActionMatchingObjectOneOrMore"
             | "KeywordActionMatchingObjectDuringYourTurn"
             | "KeywordActionMatchingTaggedObject"
             | "WinsClash"
@@ -929,6 +984,60 @@ impl Auditor {
             | "ClassBecomesLevel" => {
                 scope.player = Binding::Present;
                 scope.amount = Binding::Present;
+            }
+            "PermanentTransforms" | "PermanentTransformsInto" => {
+                scope.event_object = Binding::Present;
+            }
+            "PermanentMutates" | "PlayerTurnsFaceUp" => {
+                // A completed mutation names the permanent and its controller;
+                // active face-up names the exact permanent and acting player.
+                scope.event_object = Binding::Present;
+                scope.player = Binding::Present;
+            }
+            "PlayerAttackDeclaration" | "RingBearerChosen" => { scope.player = Binding::Present; }
+            "BecomesTargetedByAbilitySource" => {
+                scope.player = Binding::Present;
+                scope.event_object = Binding::Present;
+            }
+            "PlayerBecomesMonarch" => {scope.player=Binding::Present;scope.event_object=Binding::Absent;}
+            "PlayerBecomesTargeted" => {
+                // BecomesTargetedEvent::player is the captured source controller;
+                // the player target does not invent an event object.
+                scope.player = Binding::Present;
+                scope.event_object = Binding::Absent;
+            }
+            "CardsMilled" => {
+                scope.player = Binding::Present;
+                scope.amount = Binding::Present;
+                // Hidden replacement destinations cannot expose a card.
+                scope.event_object = Binding::Unknown;
+            }
+            "PhasingChanged" => {
+                scope.event_object = Binding::Present;
+                scope.amount = Binding::Present;
+            }
+            "ControlChanged" => {
+                // The typed matcher requires exact transition/departure
+                // snapshots. Loss clauses do not bind the event's new player.
+                scope.event_object = Binding::Present;
+            }
+            "AttachmentChanged" => {
+                // Both attachment and recipient snapshots are mandatory in
+                // the typed matcher; the recipient is the body event object.
+                scope.event_object = Binding::Present;
+            }
+            "PlayerChangesTapState" => {
+                // The matcher requires an explicit event actor and an origin
+                // snapshot. It supplies 1 per transition; simultaneous queues
+                // sum that amount for a one-or-more event.
+                scope.player = Binding::Present;
+                scope.amount = Binding::Present;
+                scope.event_object = Binding::Present;
+            }
+            "PermanentBecomesUntapped" => {
+                scope.player = Binding::Unknown;
+                scope.amount = Binding::Present;
+                scope.event_object = Binding::Present;
             }
             "BeginningOfUpkeep"
             | "BeginningOfDrawStep"
@@ -970,10 +1079,17 @@ impl Auditor {
                     scope.cast_event = Binding::Present;
                 }
             }
+            "PermanentDestroyed" => {
+                // Successful native matching requires a retained destroyed
+                // permanent snapshot and a completed nonbattlefield result.
+                scope.event_object = Binding::Present;
+            }
             "PlayerDiscardsCard"
             | "PlayerDiscardsCardCausedByController"
             | "YouDrawCard"
             | "Miracle"
+            | "PlayerDrawsCardDuringTurn"
+            | "PlayerDrawsFirstCardInOwnDrawStep"
             | "PlayerDrawsCard"
             | "PlayerDrawsCardNotDuringTurn"
             | "PlayerDrawsCardExceptFirstInDrawStep"
@@ -985,6 +1101,7 @@ impl Auditor {
             }
             "ThisBecomesBlocked"
             | "BecomesBlocked"
+            | "BecomesBlockedOneOrMore"
             | "ThisBecomesBlockedByObject"
             | "BecomesBlockedByObjectWithLesserPower" => {
                 scope.player = Binding::Unknown;
@@ -1012,6 +1129,7 @@ impl Auditor {
             | "AttacksOneOrMoreWithExactTotal"
             | "AttacksOneOrMoreWithAggregate"
             | "AttacksAlone"
+            | "AttacksPlayerAlone"
             | "AttacksYou"
             | "AttacksYouOneOrMore"
             | "ThisBlocks"
@@ -1086,7 +1204,6 @@ impl Auditor {
             | "BecomesTargetedObjectByStackObject"
             | "BecomesTargetedBySourceController"
             | "PlayerOrObjectBecomesTargetedBySourceController"
-            | "PermanentDestroyed"
             | "SourceControllerLosesControl"
             | "Custom" => {
                 known = false;
@@ -1286,6 +1403,8 @@ fn same_scope_effect(kind: &str) -> bool {
             | "SurveilEffect"
             | "FatesealEffect"
             | "DealDamageEffect"
+            | "DealDamageBySourcesEffect"
+            | "DealDamageEachEffect"
             | "DealDistributedDamageEffect"
             | "HealDamageEffect"
             | "PreventDamageEffect"

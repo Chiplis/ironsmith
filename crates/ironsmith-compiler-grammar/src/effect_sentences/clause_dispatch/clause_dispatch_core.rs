@@ -3,6 +3,7 @@ use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::LibraryActionAst;
 use crate::cards::builders::ZoneMoveActionAst;
 
+use crate::diagnostics::TextSpan;
 use crate::recognition::ParseOutcome;
 #[path = "clause_dispatch_core/clause_readings.rs"]
 mod clause_readings;
@@ -82,6 +83,9 @@ fn parse_each_player_with_life_clause(
 pub(super) fn parse_effect_clause_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
+        return Ok(EffectAst::Sequence { effects });
+    }
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
     }
@@ -162,6 +166,7 @@ pub(super) fn parse_effect_clause_unstacked(
             "detain",
             "goad",
             "suspect",
+            "note",
             "end",
         ];
         CardTextError::ParseError(format!(
@@ -558,6 +563,9 @@ pub(super) fn parse_effect_clause_unstacked(
     if let Some(filter) = for_each_subject_filter
         && !choice_applies_to_whole_set
     {
+        if matches!(verb, Verb::Deal) {
+            bind_quantified_damage_actor(&mut effect, span_from_tokens(subject_tokens));
+        }
         effect = EffectAst::ForEach(ForEachEffectAst::ForEachObject {
             filter,
             effects: vec![effect],
@@ -571,6 +579,37 @@ pub(super) fn parse_effect_clause_unstacked(
         });
     }
     Ok(effect)
+}
+
+/// The grammatical actor of "each [object] deals ..." remains the damage
+/// source inside recipient fanout. The superficially similar "for each
+/// [object], this spell deals ..." is parsed through a different scope and
+/// must retain the spell as source. Already explicit damage sources are not
+/// rebound by this helper.
+fn bind_quantified_damage_actor(effect: &mut EffectAst, span: Option<TextSpan>) {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Damage(action),
+        ..
+    }) = effect
+        && let DamageActionAst::DealDamage {
+            amount,
+            target,
+            unpreventable,
+        } = action
+    {
+        *action = DamageActionAst::DealDamageEqualToPower {
+            source: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span),
+            amount: amount.clone(),
+            target: target.clone(),
+            unpreventable: *unpreventable,
+        };
+        return;
+    }
+    crate::model::visit::for_each_nested_effects_mut(effect, false, |effects| {
+        for child in effects {
+            bind_quantified_damage_actor(child, span);
+        }
+    });
 }
 
 pub(super) fn parse_passive_goad_clause(

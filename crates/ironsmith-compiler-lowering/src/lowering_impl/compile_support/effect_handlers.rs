@@ -39,6 +39,7 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::BeginningOfTheEndStep => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(PlayerFilter::Any),
         ),
+        TriggerSpec::EndOfCombat => Ok(ironsmith_core::DelayedTriggerSpec::EndOfCombat),
         TriggerSpec::BeginningOfCombat(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfCombat(player.clone()),
         ),
@@ -172,6 +173,9 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone()))
         }
+        TriggerSpec::ControlChanged(trigger) => Ok(ironsmith_core::DelayedTriggerSpec::ControlChanged(trigger.clone())),
+        TriggerSpec::ThisBecomesUntapped => Ok(ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped { filter: ObjectFilter::source() }),
+        TriggerSpec::PermanentBecomesUntapped { filter, one_or_more: false } => Ok(ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped { filter: filter.clone() }),
         TriggerSpec::PermanentBecomesTapped(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::PermanentBecomesTapped(filter.clone()),
         ),
@@ -234,9 +238,29 @@ pub fn compile_delayed_trigger_spec(
                 filter: filter.clone(),
             })
         }
+        TriggerSpec::YouGainLife => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: PlayerFilter::You, gained: true, during_turn: None,
+        }),
+        TriggerSpec::YouGainLifeDuringTurn(turn) => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: PlayerFilter::You, gained: true, during_turn: Some(turn.clone()),
+        }),
+        TriggerSpec::PlayerGainsLife { player, during_turn } => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: player.clone(), gained: true, during_turn: during_turn.clone(),
+        }),
+        TriggerSpec::PlayerLosesLife(player) => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: player.clone(), gained: false, during_turn: None,
+        }),
+        TriggerSpec::PlayerLosesLifeDuringTurn { player, during_turn } => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: player.clone(), gained: false, during_turn: Some(during_turn.clone()),
+        }),
         TriggerSpec::YouDrawCard => Ok(ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(
             PlayerFilter::You,
         )),
+        TriggerSpec::PlayerDiscardsCard { player, filter, cause_controller, effect_like_only, one_or_more } =>
+            Ok(ironsmith_core::DelayedTriggerSpec::PlayerDiscardsCard {
+                player: player.clone(), filter: filter.clone(), cause_controller: cause_controller.clone(),
+                effect_like_only: *effect_like_only, one_or_more: *one_or_more,
+            }),
         TriggerSpec::PlayerDrawsCard(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(player.clone()),
         ),
@@ -648,6 +672,11 @@ fn resolve_play_or_cast_trigger_references(
                 .map(|trigger| resolve_play_or_cast_trigger_references(trigger, refs))
                 .collect::<Result<Vec<_>, _>>()?,
         ),
+        TriggerSpec::ControlChanged(control) if references_it(&control.filter) => {
+            let mut control = control.clone();
+            control.filter = resolve_it_tag(&control.filter, refs)?;
+            TriggerSpec::ControlChanged(control)
+        }
         TriggerSpec::PlayerPlaysLand { player, filter } if references_it(filter) => {
             TriggerSpec::PlayerPlaysLand {
                 player: player.clone(),
@@ -783,10 +812,31 @@ fn compile_duration_scoped_delayed_trigger(
     let refs = current_reference_env(ctx);
     let mut watched_tag = None;
     let mut watched_filter = None;
-    let mut watch_ability_source = false;
+    fn watches_ability_source(trigger: &TriggerSpec) -> bool {
+        match trigger_without_intro(trigger) {
+            TriggerSpec::ThisBecomesUntapped => true,
+            TriggerSpec::PermanentBecomesUntapped { filter, .. } => filter.source,
+            TriggerSpec::ControlChanged(control) => control.filter.source,
+            TriggerSpec::Either(left, right) => watches_ability_source(left) && watches_ability_source(right),
+            TriggerSpec::AnyOf(branches) => !branches.is_empty() && branches.iter().all(watches_ability_source),
+            _ => false,
+        }
+    }
+    let mut watch_ability_source = watches_ability_source(trigger);
     let mut watch_all_object_targets = false;
 
     let delayed_trigger = match trigger_without_intro(trigger) {
+        TriggerSpec::ControlChanged(control) => {
+            let mut control = control.clone();
+            control.filter = resolve_it_tag(&control.filter, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&control.filter) {
+                watched_tag = Some(tag);
+                watched_filter = Some(control.filter.clone());
+                control.filter.tagged_constraints.clear();
+                control.filter.source = true;
+            }
+            ironsmith_core::DelayedTriggerSpec::ControlChanged(control)
+        }
         TriggerSpec::Attacks(filter) => {
             let resolved = resolve_it_tag(filter, &refs)?;
             if let Some(tag) = watch_tag_from_filter(&resolved) {

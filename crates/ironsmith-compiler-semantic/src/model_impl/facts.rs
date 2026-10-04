@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::effect::EffectId;
-use crate::filter::PlayerFilter;
+use crate::filter::{ObjectFilter, PlayerFilter};
 use crate::tag::TagKey;
 use crate::zone::Zone;
 
@@ -207,6 +207,12 @@ pub struct LoweringFrame {
     pub auto_tag_object_targets: bool,
     pub force_auto_tag_object_targets: bool,
     pub allow_life_event_value: bool,
+    pub allow_excess_damage_event_value: bool,
+    pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
+    pub dice_event_grouped: Option<bool>,
+    pub life_event_binding: Option<std::sync::Arc<crate::trigger_references::LifeEventBinding>>,
+    pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
+    pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
 }
 
@@ -360,6 +366,12 @@ impl EffectLoweringContext {
         self.iterated_player = frame.iterated_player;
         self.iterated_object = frame.iterated_object;
         self.allow_life_event_value = frame.allow_life_event_value;
+        self.allow_excess_damage_event_value = frame.allow_excess_damage_event_value;
+        self.milling_event_filter = frame.milling_event_filter.clone();
+        self.dice_event_grouped = frame.dice_event_grouped;
+        self.life_event_binding = frame.life_event_binding.clone();
+        self.life_amount_producers = frame.life_amount_producers.clone();
+        self.die_result_producers = frame.die_result_producers.clone();
         self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
     }
 

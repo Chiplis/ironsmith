@@ -138,7 +138,9 @@ pub(super) fn read_value_reference_comparison_predicate(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
-    if let Some(predicate) = parse_value_reference_comparison_predicate(predicate_tokens) {
+    if let Some(predicate) = damage_history::parse(predicate_tokens)
+        .or_else(|| parse_value_reference_comparison_predicate(predicate_tokens))
+    {
         return Ok(Some(predicate));
     }
     Ok(None)
@@ -147,6 +149,7 @@ pub(super) fn read_it_demonstrative_value(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
+    if let Some(predicate) = parse_referenced_characteristic_state(predicate_tokens)? { return Ok(Some(predicate)); }
     let demonstrative_reference = demonstrative_reference_kind(predicate_tokens);
     let is_it = demonstrative_reference == Some(DemonstrativeReferenceKind::It);
     if is_it {
@@ -910,6 +913,7 @@ pub(super) const READINGS: &[Reading] = &[
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("triggering-spell-ordinal-predicate")
                 && !input.read_by("triggering-object-source-stat-predicate")
+                && !input.read_by("value-reference-comparison-predicate")
         },
         read: |input| input.outcome(read_demonstrative_or_descriptor(input)),
     },
@@ -925,6 +929,7 @@ pub(super) const READINGS: &[Reading] = &[
             }))
                 && !input.read_by("stack-object-would-destroy-predicate")
                 && !input.read_by("triggering-object-source-stat-predicate")
+                && !input.read_by("value-reference-comparison-predicate")
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("same-name-as-filter-predicate")
                 && !input.read_by("exploited-triggering-object-predicate")
@@ -1163,6 +1168,7 @@ pub(super) const READINGS: &[Reading] = &[
                 && !input.read_by("implicit-subject-and-predicate")
                 && !input.read_by("it-demonstrative-value")
                 && !input.read_by("triggering-object-source-stat-predicate")
+                && !input.read_by("value-reference-comparison-predicate")
         },
         read: |input| input.outcome(read_or_predicate(input)),
     },

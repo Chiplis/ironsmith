@@ -166,3 +166,52 @@ fn two_chosen_sacrifice_arms_remain_one_filter_union_near_miss() {
             .contains(&crate::types::CardType::Artifact)
     );
 }
+
+#[test]
+fn compound_keyword_costs_split_and_preserve_every_required_component() {
+    let blight = parse("{1}{R}, {T}, Blight 1");
+    assert!(matches!(
+        blight.segments.as_slice(),
+        [
+            ActivationCostSegmentCst::Mana(_),
+            ActivationCostSegmentCst::Tap,
+            ActivationCostSegmentCst::Blight { count: 1 },
+        ]
+    ));
+    let life = parse("Pay 1 life, Blight 2");
+    assert!(matches!(
+        life.segments.as_slice(),
+        [
+            ActivationCostSegmentCst::Life(_),
+            ActivationCostSegmentCst::Blight { count: 2 },
+        ]
+    ));
+    let forage = parse("{T}, Forage");
+    assert!(matches!(
+        forage.segments.as_slice(),
+        [
+            ActivationCostSegmentCst::Tap,
+            ActivationCostSegmentCst::Forage
+        ]
+    ));
+    let forage = parse("{2}, Forage, Sacrifice this artifact");
+    assert!(matches!(
+        forage.segments.as_slice(),
+        [
+            ActivationCostSegmentCst::Mana(_),
+            ActivationCostSegmentCst::Forage,
+            ActivationCostSegmentCst::SacrificeSelf { .. }
+        ]
+    ));
+    for raw in [
+        "{T}, Forage two",
+        "Pay 1 life, Blight",
+        "{T}, Blight 1 instead",
+        "{T}, Forage from your hand",
+    ] {
+        assert!(
+            parse_activation_cost_tokens(&lex_line(raw, 0).unwrap()).is_err(),
+            "{raw}"
+        );
+    }
+}

@@ -15,6 +15,12 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// Exact retained result of an instruction or cost that exiles its source.
+/// A changed/prevented action retains its receipt-result/original incarnation;
+/// permission consumers still require that object actually to be in exile.
+/// Never widened to the source's other linked exile objects.
+pub const SOURCE_EXILED_SELF_TAG: &str = "__source_exiled_self__";
+
 /// Runtime tag for only the cards the current resolution exiled with its
 /// source. Filter contexts widen [`SOURCE_EXILED_TAG`] to every linked card,
 /// so "each other card exiled with ~" excludes the just-exiled card through
@@ -25,6 +31,10 @@ pub const SOURCE_EXILED_THIS_RESOLUTION_TAG: &str = "__source_exiled_this_resolu
 /// as it entered ("the number of Goblins it devoured", CR 702.82b). Evaluated
 /// from the source's recorded devour snapshots rather than captured.
 pub const SOURCE_DEVOURED_TAG: &str = "__source_devoured__";
+
+/// Exact creature chosen by one completed Ring-temptation action. This is
+/// event evidence, not a dynamically resolved current-bearer reference.
+pub const RING_BEARER_CHOSEN_TAG: &str = "__ring_bearer_chosen__";
 
 /// Runtime tag, recorded on a token when it is created, for the objects the
 /// creating ability exiled to pay its cost, the ability's source included
@@ -104,6 +114,7 @@ pub const LINKED_TRIGGER_PLAYER_TAG: &str = "__linked_trigger_player__";
 /// that player ..."). Populated from the event when a triggered ability
 /// resolves.
 pub const TRIGGERING_EVENT_CONTROLLER_TAG: &str = "__triggering_event_controller__";
+pub const TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG: &str = "__triggering_event_cause_controller__";
 
 /// The object selected by an authored "the chosen object" choice.
 ///
@@ -147,6 +158,11 @@ pub const SURVEILLED_THIS_TURN_TAG: &str = "__surveilled_this_turn__";
 /// performing the manifest-dread keyword action.
 pub const MANIFEST_DREAD_GRAVEYARD_TAG: &str = "__manifest_dread_graveyard__";
 
+/// The two exact participants of a matched attachment transition. The
+/// recipient is the permanent "that creature/permanent" in its body.
+pub const TRIGGER_ATTACHMENT_TAG: &str = "__trigger_attachment__";
+pub const TRIGGER_ATTACHMENT_RECIPIENT_TAG: &str = "__trigger_attachment_recipient__";
+
 /// The complete set of attackers captured by a group attack trigger.
 pub const ATTACKING_GROUP_TAG: &str = "__attacking_group__";
 
@@ -164,6 +180,16 @@ pub const COMBAT_DAMAGE_GROUP_TAG: &str = "__combat_damage_group__";
 /// values in the triggered ability remain stable after those objects leave
 /// their original zone.
 pub const ZONE_CHANGE_GROUP_TAG: &str = "__zone_change_group__";
+/// Matched objects in one simultaneous tap/untap instruction.
+pub const TAP_STATE_GROUP_TAG: &str = "__tap_state_group__";
+/// Exact participants of one matched simultaneous phasing transition.
+pub const PHASING_GROUP_TAG: &str = "__phasing_group__";
+/// Frozen actor and directly attacked player of one declared attack pair.
+pub const ATTACK_DECLARATION_ACTOR_TAG: &str = "__attack_declaration_actor__";
+pub const ATTACK_DECLARATION_DEFENDER_TAG: &str = "__attack_declaration_defender__";
+/// Live controllers attacking the event's frozen defender when an effect
+/// constructs its filter context (CR 508.6), not the declaration's old actors.
+pub const CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG: &str = "__current_players_attacking_event_defender__";
 
 /// The player who currently holds the initiative designation.
 ///
@@ -191,6 +217,7 @@ pub const CAST_CONTROLLED_OBJECTS_TAG: &str = "__cast_controlled_objects__";
 /// A parse binds each of them once, in the document's symbol scope.
 pub const WELL_KNOWN_TAGS: &[&str] = &[
     SOURCE_EXILED_TAG,
+    SOURCE_EXILED_SELF_TAG,
     SOURCE_EXILED_THIS_RESOLUTION_TAG,
     EXILED_BY_YOU_TAG,
     ZONE_REPLACEMENT_OBJECT_TAG,
@@ -210,6 +237,11 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     ATTACKING_GROUP_TAG,
     COMBAT_DAMAGE_GROUP_TAG,
     ZONE_CHANGE_GROUP_TAG,
+    TAP_STATE_GROUP_TAG,
+    PHASING_GROUP_TAG,
+    ATTACK_DECLARATION_ACTOR_TAG,
+    ATTACK_DECLARATION_DEFENDER_TAG,
+    CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG,
     INITIATIVE_HOLDER_TAG,
     PREVIOUS_ITERATED_OBJECTS_TAG,
     CAST_MODIFIED_CREATURES_TAG,

@@ -233,6 +233,20 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::DealDamageToRecipientsEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::DealDamageEachEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::DealDamageBySourcesEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::DealDamageEffect>(&effect) {
         return Ok(converted);
     }
@@ -760,10 +774,13 @@ where
     if let Some(converted) = clone_direct_effect::<M, crate::effects::FlipEffect>(&effect) {
         return Ok(converted);
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::PreventAllDamageEffect>(&effect)
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::PreventAllDamageEffect<M::Effect>>(&effect)
     {
-        return Ok(converted);
+        let converted = payload
+            .clone()
+            .try_map_effects(|effect| interpret_effect_model::<M, H>(effect, hooks))?;
+        return Ok(Effect::new(converted));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::PreventAllDamageToTargetEffect<M::Effect>>(&effect)
@@ -867,8 +884,8 @@ where
     {
         return Ok(converted);
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::CastTaggedEffect>(&effect) {
-        return Ok(converted);
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::CastTaggedEffect<ironsmith_core::Cost<M::Effect>>>(&effect) {
+        return Ok(Effect::new(payload.clone().try_map_cost(|cost| interpret_core_cost_model::<M, H>(cost, hooks))?));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(&effect)
@@ -1419,13 +1436,7 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RedirectAllDamageThisTurnToTargetEffect>(&effect)
     {
-        return Ok(Effect::new(
-            crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(
-                payload.player_filter.clone(),
-                payload.object_filter.clone(),
-                payload.target.clone(),
-            ),
-        ));
+        return Ok(Effect::new(payload.clone()));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ExecuteWithSourceEffect<M::Effect>>(&effect)
@@ -1465,7 +1476,7 @@ where
             ),
         ));
     }
-    if let Some(payload) = M::downcast_ref::<ironsmith_core::GrantPlayTaggedEffect>(&effect) {
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::GrantPlayTaggedEffect<ironsmith_core::Cost<M::Effect>>>(&effect) {
         let mut grant = crate::effects::GrantPlayTaggedEffect::new(
             payload.tag.clone(),
             payload.player.clone(),
@@ -1483,6 +1494,7 @@ where
             grant = grant.with_filter(filter);
         }
         grant.spell_filter = payload.spell_filter.clone();
+        grant.alternative_cost = payload.alternative_cost.clone().map(|cost| interpret_core_total_cost_model::<M, H>(cost, hooks)).transpose()?;
         if let Some(counter_type) = payload.during_turns_counter_put_on_source {
             grant = grant.during_turns_counter_put_on_source(counter_type);
         }
@@ -1509,9 +1521,12 @@ where
         return Ok(Effect::new(phase_out));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PhaseInEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::PhaseInEffect::with_spec(
-            payload.target.clone(),
-        )));
+        let mut phase_in = crate::effects::PhaseInEffect::with_spec(payload.target.clone());
+        phase_in.simultaneous_phase_out = payload.simultaneous_phase_out.clone();
+        return Ok(Effect::new(phase_in));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::BecomeBlockedEffect>(&effect) {
+        return Ok(Effect::new(payload.clone()));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RemoveFromCombatEffect>(&effect) {
         return Ok(Effect::new(
@@ -1607,7 +1622,7 @@ where
             payload.player.clone(),
             convert_effects(payload.payment.iter().cloned(), hooks)?,
             convert_effects(payload.failure.iter().cloned(), hooks)?,
-        )));
+        ).with_kind(payload.kind)));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::ChooseNewTargetsEffect>(&effect)
@@ -1644,13 +1659,11 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RegisterDrawReplacementEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(
-            crate::effects::RegisterDrawReplacementEffect::new(
-                payload.player.clone(),
-                convert_effects(payload.replacement_effects.iter().cloned(), hooks)?,
-                payload.mode,
-            ),
-        ));
+        let mut registration = crate::effects::RegisterDrawReplacementEffect::new(
+            payload.player.clone(), convert_effects(payload.replacement_effects.iter().cloned(), hooks)?, payload.mode);
+        registration.player_target = payload.player_target.clone();
+        registration.display = payload.display.clone();
+        return Ok(Effect::new(registration));
     }
     if let Some(converted) = clone_direct_effect::<
         M,
@@ -1683,8 +1696,24 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::RegisterManaSpendPermissionEffect>(&effect) {
+        return Ok(converted);
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::RegisterManaRewriteEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RegisterManaReplacementEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterDamageMultiplierEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterDamageAdditionEffect>(&effect)
     {
         return Ok(converted);
     }
@@ -1781,6 +1810,12 @@ where
             payload.target.clone(),
             payload.count.clone(),
         )));
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::RippleEffect>(&effect) {
+        return Ok(converted);
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::ChooseNumberEffect>(&effect) {
+        return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseNumberAtRandomEffect>(&effect) {
         return Ok(Effect::new(
@@ -1966,6 +2001,9 @@ where
         return Ok(Effect::new(crate::effects::SkipTurnEffect::new(
             payload.player.clone(),
         )));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipScheduledEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::SkipScheduledEffect { player: payload.player.clone(), kind: payload.kind, count: payload.count }));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipDrawStepEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SkipDrawStepEffect::new(
@@ -2194,6 +2232,8 @@ where
 
     clone_direct!(
         crate::effects::AmassEffect,
+        crate::effects::CollectEvidenceEffect,
+        crate::effects::EmpowerJaceEffect,
         crate::effects::AmplifyEffect,
         crate::effects::DevourEffect,
         crate::effects::player::MayCastForMiracleCostEffect,

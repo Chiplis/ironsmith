@@ -245,3 +245,17 @@ fn plural_copy_body_preserves_its_source_and_requires_one() {
         BecomeCopySourceShape::Missing
     ));
 }
+
+#[test]
+fn equal_power_toughness_accepts_typed_possessive_self_references_only() {
+    for source in ["this", "this's", "this creature's", "this permanent's", "source"] {
+        let tokens = lex(&format!("equal to {source} power and toughness"));
+        assert!(parse_become_body_surface_shape(&tokens).equal_to_source_power_toughness, "{source}");
+    }
+    for source in ["that creature's", "target creature's", "another creature's", "Opponent's"] {
+        let tokens = lex(&format!("equal to {source} power and toughness"));
+        assert!(!parse_become_body_surface_shape(&tokens).equal_to_source_power_toughness, "{source}");
+    }
+    let tokens = lex("equal to this creature's power and toughness plus one");
+    assert!(!parse_become_body_surface_shape(&tokens).equal_to_source_power_toughness);
+}

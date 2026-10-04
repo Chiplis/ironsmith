@@ -1,0 +1,18 @@
+[
+  {
+    "name": "Werewolf Pack Leader",
+    "oracle_id": "086a911f-9ed4-4260-ae46-58c9333b95f5",
+    "mana_cost": "{G}{G}",
+    "type_line": "Creature — Human Werewolf",
+    "oracle_text": "Pack tactics — Whenever this creature attacks, if you attacked with creatures with total power 6 or greater this combat, draw a card.\n{3}{G}: Until end of turn, this creature has base power and toughness 5/3, gains trample, and isn't a Human.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "name": "Precipitous Drop",
+    "oracle_id": "d60c8cfe-435c-419e-a44b-b47d49d1afef",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nWhen this Aura enters, venture into the dungeon. (Enter the first room or advance to the next room.)\nEnchanted creature gets -2/-2. It gets -5/-5 instead as long as you've completed a dungeon."
+  }
+]

@@ -400,3 +400,50 @@ fn generic_zone_change_destination_controls_the_player_contract() {
             .any(|f| f.path.starts_with("/abilities/1/") && f.severity == "coverage_gap")
     );
 }
+
+#[test]
+fn tap_actor_trigger_binds_only_its_guaranteed_actor_object_and_count() {
+    let actor = json!({"PlayerChangesTapState": {"player": "You", "filter": {}, "tapped": false, "one_or_more": true, "during_untap_step": "You"}});
+    let value = json!({"card": {}, "abilities": [
+        triggered(actor.clone(), vec![loss(json!({"Add": [{"LifeTotal": "IteratedPlayer"}, {"EventValue": "Amount"}]}))]),
+        triggered(json!({"PermanentBecomesUntapped": {"filter": {}, "one_or_more": false}}), vec![loss(json!({"EventValue": "Amount"}))]),
+        triggered(actor, vec![loss(json!({"EventValue": "DieResult"}))]),
+        triggered(json!({"BeginningOfUpkeep": {"player": "Any"}}), vec![loss(json!({"EventValue": "Amount"}))]),
+    ]});
+    let findings = audit(&value);
+    assert_eq!(errors(&findings).len(), 2, "{findings:?}");
+    assert!(
+        errors(&findings)
+            .iter()
+            .all(|finding| finding.path.starts_with("/abilities/2/")
+                || finding.path.starts_with("/abilities/3/"))
+    );
+}
+
+#[test]
+fn attachment_event_does_not_claim_unrelated_event_amounts() {
+    let model = json!({"AttachmentChanged": {"attachment": {}, "recipient": {}, "attached": true}});
+    let value = json!({"card": {}, "abilities": [triggered(model, vec![loss(json!({"EventValue": "Amount"}))])]});
+    assert_eq!(errors(&audit(&value)).len(), 1);
+}
+
+#[test]
+fn caster_specific_mana_value_requires_a_cast_event_scope() {
+    let value=json!({"card": {}, "abilities": [
+        triggered(json!({"SpellCast": {"caster": "You", "filter": null}}), vec![loss(json!("CasterManaSpentToCastTriggeringObject"))]),
+        triggered(json!({"BeginningOfUpkeep": {"player": "Any"}}), vec![loss(json!("CasterManaSpentToCastTriggeringObject"))]),
+    ]});
+    assert_eq!(errors(&audit(&value)).len(),1);
+}
+
+#[test]
+fn permanent_lifecycle_contracts_separate_event_object_from_actor() {
+    for (kind, has_player) in [("PermanentTransforms", false), ("PermanentTransformsInto", false), ("PermanentMutates", true), ("PlayerTurnsFaceUp", true)] {
+        let findings = audit(&json!({"card": {}, "abilities": [triggered(json!({kind: {}}), vec![
+            effect("TagTriggeringObjectEffect", json!({"tag": "triggering"})),
+            loss(json!({"LifeTotal": "IteratedPlayer"})),
+        ])]}));
+        assert_eq!(errors(&findings).len(), usize::from(!has_player), "{kind}: {findings:?}");
+        assert!(!findings.iter().any(|finding| finding.code == "unknown_trigger_contract"), "{findings:?}");
+    }
+}

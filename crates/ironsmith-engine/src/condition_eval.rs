@@ -391,7 +391,7 @@ fn this_spell_was_cast_from_zone(
     if is_uncast_spell_copy(game, source) {
         return false;
     }
-    match &ctx.casting_method {
+    match ctx.casting_method.origin_method() {
         crate::alternative_cast::CastingMethod::GrantedFlashback => zone == Zone::Graveyard,
         crate::alternative_cast::CastingMethod::GrantedEscape { .. } => zone == Zone::Graveyard,
         crate::alternative_cast::CastingMethod::PlayFrom {
@@ -399,7 +399,7 @@ fn this_spell_was_cast_from_zone(
         } => *from_zone == zone,
         crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom {
             zone: from_zone, ..
-        } => *from_zone == zone,
+        } | crate::alternative_cast::CastingMethod::FaceDownPlayFrom { zone: from_zone, .. } => *from_zone == zone,
         // A native alternative (dash, evoke, blitz...) reports the hand, but a
         // commander can use it from the command zone (CR 903.8): the recorded
         // cast origin is authoritative.
@@ -410,6 +410,7 @@ fn this_spell_was_cast_from_zone(
                     .map(|method| method.cast_from_zone())
             })
             .is_some_and(|cast_zone| cast_zone == zone),
+        crate::alternative_cast::CastingMethod::AlternativePrice { .. } => false,
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf
@@ -425,7 +426,8 @@ fn this_spell_was_cast_from_non_hand(
     if is_uncast_spell_copy(game, source) {
         return false;
     }
-    match &ctx.casting_method {
+    match ctx.casting_method.origin_method() {
+        crate::alternative_cast::CastingMethod::AlternativePrice { .. } => false,
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf
@@ -434,7 +436,8 @@ fn this_spell_was_cast_from_non_hand(
         crate::alternative_cast::CastingMethod::GrantedFlashback
         | crate::alternative_cast::CastingMethod::GrantedEscape { .. } => true,
         crate::alternative_cast::CastingMethod::PlayFrom { zone, .. }
-        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => {
+        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. }
+        | crate::alternative_cast::CastingMethod::FaceDownPlayFrom { zone, .. } => {
             *zone != Zone::Hand
         }
         crate::alternative_cast::CastingMethod::Alternative(idx) => recorded_cast_zone(game, source)
@@ -788,16 +791,11 @@ mod tests {
                 game.object(land).expect("triggering land should exist"),
                 &game,
             );
-            let event = TriggerEvent::new_with_provenance(
-                crate::events::ZoneChangeEvent::with_cause(
-                    land,
-                    Zone::Hand,
-                    Zone::Battlefield,
-                    EventCause::effect(),
-                    Some(snapshot),
-                ),
-                ProvNodeId::default(),
+            let mut change = crate::events::ZoneChangeEvent::with_cause(
+                land, Zone::Hand, Zone::Battlefield, EventCause::effect(), Some(snapshot.clone()),
             );
+            change.destination_snapshots = vec![snapshot];
+            let event = TriggerEvent::new_with_provenance(change, ProvNodeId::default());
             let filter = crate::target::ObjectFilter::default().with_subtype(Subtype::Plains);
             let mut ctx = ExecutionContext::new_default(source, alice);
             // Stack construction normally seeds both fields, but wrapper and
@@ -1848,12 +1846,72 @@ fn player_life_compares_to_half_starting(
     inclusive: bool,
 ) -> bool {
     game.player(player).is_some_and(|state| {
-        let doubled_life = state.life.saturating_mul(2);
+        let doubled_life = i64::from(state.life) * 2;
         if inclusive {
-            doubled_life <= state.starting_life
+            doubled_life <= i64::from(state.starting_life)
         } else {
-            doubled_life < state.starting_life
+            doubled_life < i64::from(state.starting_life)
         }
+    })
+}
+
+/// A comparison need not materialize its arithmetic as an i32 effect amount.
+/// Widen the existing arithmetic nodes before comparing (for example a life
+/// difference spanning MIN..MAX, or starting life + 10). Leaves retain their
+/// ordinary typed resolver and all context/choice errors. This is bounded
+/// arithmetic, not an unbounded Value or gameplay-count representation.
+fn resolve_comparison_operand(
+    game: &GameState,
+    value: &Value,
+    ctx: &ExecutionContext,
+) -> Result<i64, ExecutionError> {
+    let overflow = || {
+        ExecutionError::UnresolvableValue(
+            "comparison arithmetic is outside the supported integer range".into(),
+        )
+    };
+    match value.unhinted() {
+        Value::DamageHistory(query) => {
+            crate::effects::helpers::resolve_damage_history_for_comparison(game, query, ctx)
+        }
+
+        Value::Add(left, right) => resolve_comparison_operand(game, left, ctx)?
+            .checked_add(resolve_comparison_operand(game, right, ctx)?)
+            .ok_or_else(overflow),
+        Value::Scaled(inner, multiplier) => resolve_comparison_operand(game, inner, ctx)?
+            .checked_mul(i64::from(*multiplier))
+            .ok_or_else(overflow),
+        Value::Min(left, right) => Ok(resolve_comparison_operand(game, left, ctx)?
+            .min(resolve_comparison_operand(game, right, ctx)?)),
+        Value::HalfRoundedDown(inner) => {
+            Ok(resolve_comparison_operand(game, inner, ctx)?.div_euclid(2))
+        }
+        Value::DividedRoundedDown(inner, divisor) if *divisor != 0 => {
+            resolve_comparison_operand(game, inner, ctx)?
+                .checked_div_euclid(i64::from(*divisor))
+                .ok_or_else(overflow)
+        }
+        _ => resolve_value(game, value, ctx).map(i64::from),
+    }
+}
+
+fn compare_resolved_values(
+    game: &GameState,
+    left: &Value,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+    ctx: &ExecutionContext,
+) -> Result<bool, ExecutionError> {
+    use crate::effect::ValueComparisonOperator as Op;
+    let left = resolve_comparison_operand(game, left, ctx)?;
+    let right = resolve_comparison_operand(game, right, ctx)?;
+    Ok(match operator {
+        Op::GreaterThan => left > right,
+        Op::GreaterThanOrEqual => left >= right,
+        Op::Equal => left == right,
+        Op::LessThan => left < right,
+        Op::LessThanOrEqual => left <= right,
+        Op::NotEqual => left != right,
     })
 }
 
@@ -1930,10 +1988,7 @@ fn evaluate_value_comparison(
         ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
     }
     let compare = |exec: &ExecutionContext| -> Result<bool, ExecutionError> {
-        Ok(operator.evaluate(
-            resolve_value(game, left, exec)?,
-            resolve_value(game, right, exec)?,
-        ))
+        compare_resolved_values(game, left, operator, right, exec)
     };
     match compare(&ctx) {
         Ok(result) => result,
@@ -2145,15 +2200,48 @@ fn triggering_event_object_matches_with_filter_context(
     filter: &crate::target::ObjectFilter,
     filter_ctx: &crate::filter::FilterContext,
 ) -> bool {
-    if let Some(snapshot) = event.snapshot()
-        && filter.matches_snapshot(snapshot, filter_ctx, game)
+    // ETB is a post-transition test. Its ordinary ZoneChange snapshot is
+    // origin LKI, so only the exact completed destination receipt can prove
+    // entry characteristics (including entry counters and static effects).
+    if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>()
+        && change.to == Zone::Battlefield
     {
-        return true;
+        return change.destination_objects().first()
+            .and_then(|id| change.destination_snapshot(*id))
+            .is_some_and(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game));
+    }
+    // Other event snapshots retain their original event frame, notably LTB.
+    if let Some(snapshot) = event.snapshot() {
+        return filter.matches_snapshot(snapshot, filter_ctx, game);
     }
     event
         .object_id()
         .and_then(|id| game.object(id))
         .is_some_and(|object| filter.matches(object, filter_ctx, game))
+}
+
+fn triggering_event_object_matches_at_resolution(
+    game: &GameState,
+    event: &TriggerEvent,
+    filter: &crate::target::ObjectFilter,
+    filter_ctx: &crate::filter::FilterContext,
+) -> bool {
+    let entry = event.downcast::<crate::events::ZoneChangeEvent>().filter(|change| change.to == Zone::Battlefield);
+    let id = entry.and_then(|change| change.destination_objects().first().copied())
+        .or_else(|| event.object_id())
+        .or_else(|| event.snapshot().map(|snapshot| snapshot.object_id));
+    let Some(id) = id else { return false; };
+    if let Some(object) = game.object(id) {
+        // A current predicate rechecks the actual referenced incarnation.
+        // Its earlier successful event snapshot cannot override a failed recheck.
+        return filter.matches(object, filter_ctx, game);
+    }
+    if let Some(departure) = game.turn_store.turn_history.source_departure_snapshot(id) {
+        return filter.matches_snapshot(departure, filter_ctx, game);
+    }
+    let snapshot = if let Some(entry) = entry { entry.destination_snapshot(id) } else { event.snapshot() };
+    snapshot.filter(|snapshot| snapshot.object_id == id)
+        .is_some_and(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game))
 }
 
 fn triggering_event_object_matched_last_known(
@@ -3105,9 +3193,9 @@ pub fn evaluate_condition_with_mode(
     ctx: Option<&ExecutionContext>,
 ) -> Result<bool, ExecutionError> {
     match mode {
-        ConditionEvaluationMode::CastTime { controller, source } => Ok(evaluate_condition_simple(
+        ConditionEvaluationMode::CastTime { controller, source } => evaluate_condition_cast_time_checked(
             game, condition, controller, source,
-        )),
+        ),
         ConditionEvaluationMode::Resolution => {
             let ctx = ctx.ok_or_else(|| {
                 ExecutionError::UnresolvableValue(
@@ -3126,13 +3214,24 @@ pub fn evaluate_condition_cast_time(
     controller: PlayerId,
     source: ObjectId,
 ) -> bool {
-    evaluate_condition_with_mode(
-        game,
-        condition,
-        ConditionEvaluationMode::CastTime { controller, source },
-        None,
-    )
-    .unwrap_or(false)
+    match evaluate_condition_cast_time_checked(game, condition, controller, source) {
+        Ok(value) => value,
+        Err(error) => {
+            // Legacy bool callers run inside the checked legality / real cast
+            // transaction. Preserve unknown until that Result-bearing owner.
+            game.record_token_resource_failure(&error);
+            false
+        }
+    }
+}
+
+/// Checked cast-time state predicates. Standalone callers must not turn an
+/// incomplete continuous world into a completed negative permission answer.
+pub fn evaluate_condition_cast_time_checked(
+    game: &GameState, condition: &Condition, controller: PlayerId, source: ObjectId,
+) -> Result<bool, ExecutionError> {
+    let checked = game.continuous_query_snapshot().map_err(ExecutionError::ContinuousDiscovery)?;
+    evaluate_condition_in_context(&checked, condition, &ConditionContext::cast_time(controller, source))
 }
 
 /// Evaluate a condition during effect resolution.
@@ -3258,20 +3357,6 @@ fn player_has_full_party(game: &GameState, player_id: PlayerId) -> bool {
 /// This simplified version is used during spell casting to evaluate conditions
 /// like `YouControlCommander` before targets are chosen. It handles common
 /// conditions that don't require targets or other context-dependent information.
-fn evaluate_condition_simple(
-    game: &GameState,
-    condition: &Condition,
-    controller: PlayerId,
-    source: ObjectId,
-) -> bool {
-    evaluate_condition_in_context(
-        game,
-        condition,
-        &ConditionContext::cast_time(controller, source),
-    )
-    .unwrap_or(false)
-}
-
 fn resolve_condition_player_simple(
     game: &GameState,
     controller: PlayerId,
@@ -3346,6 +3431,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = crate::target::FilterContext::new(controller)
@@ -3819,6 +3905,8 @@ fn evaluate_condition_in_context(
             .matching_players(game, player)?
             .into_iter()
             .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))),
+        Condition::PlayerWasMonarchAtTurnStart {player} => Ok(ctx.matching_players(game,player)?.into_iter()
+            .any(|player|game.turn_store.turn_history.monarch_at_turn_start==Some(player))),
         Condition::PlayerIsMonarch { player } => Ok(ctx
             .matching_players(game, player)?
             .into_iter()
@@ -4424,9 +4512,8 @@ fn evaluate_condition_in_context(
         }
         Condition::AttachedToSourceMatches(filter) => {
             let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
-            Ok(game
-                .object(shared.source)
-                .and_then(|source| source.attached_to)
+            let retained=ctx.execution().and_then(|execution| execution.source_snapshot.as_ref());
+            Ok(crate::effects::helpers::source_attachment_target_with_lki(game,shared.source,retained)
                 .and_then(|target| target.object_id())
                 .and_then(|id| game.object(id))
                 .is_some_and(|object| filter.matches(object, &filter_ctx, game)))
@@ -4516,7 +4603,7 @@ fn evaluate_condition_in_context(
             if tag.as_str() == "triggering"
                 && let Some(event) = ctx.triggering_event.as_ref()
             {
-                return Ok(triggering_event_object_matches_with_filter_context(
+                return Ok(triggering_event_object_matches_at_resolution(
                     game,
                     event,
                     filter,
@@ -4525,17 +4612,16 @@ fn evaluate_condition_in_context(
             }
             if let Some(tagged) = ctx.get_tagged_all(tag.as_str()) {
                 return Ok(tagged.iter().any(|snapshot| {
-                    let snapshot_matches = filter.matches_snapshot(snapshot, &filter_ctx, game);
-                    let current_id = game
-                        .object(snapshot.object_id)
-                        .map(|object| object.id)
-                        .or_else(|| game.find_object_by_stable_id(snapshot.stable_id));
-                    if let Some(current_id) = current_id
+                    if let Some(current_id) = crate::effects::helpers::resolve_tagged_object_id(game, ctx, snapshot)
                         && let Some(object) = game.object(current_id)
                     {
-                        return filter.matches(object, &filter_ctx, game) || snapshot_matches;
+                        // Current characteristics own an ordinary predicate;
+                        // an earlier successful snapshot cannot override them.
+                        return filter.matches(object, &filter_ctx, game);
                     }
-                    snapshot_matches
+                    let last_known = game.turn_store.turn_history
+                        .source_departure_snapshot(snapshot.object_id).unwrap_or(snapshot);
+                    filter.matches_snapshot(last_known, &filter_ctx, game)
                 }));
             }
 
@@ -4820,6 +4906,11 @@ fn evaluate_condition_in_context(
                 .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) < *limit)
                 .unwrap_or(true))
         }
+        Condition::TriggeringEventCausedBy { controller, effect_like_only } => Ok(shared.triggering_event
+            .and_then(|event| event.cause()).is_some_and(|cause|
+                (!*effect_like_only || (cause.cause_type.is_effect_like() && cause.source.is_some()))
+                    && cause.source_controller.is_some_and(|actor|
+                        crate::filter::player_filter_matches_game(controller, actor, game, &ctx.filter_context(game))))),
         Condition::TriggeringObjectWasEnchanted => Ok(shared
             .triggering_event
             .and_then(|event| event.snapshot())
@@ -4845,6 +4936,7 @@ fn evaluate_condition_in_context(
             .triggering_event
             .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
             .is_some_and(|activation| activation.mana_spent_total >= *amount)),
+        Condition::SourceCaseSolved => Ok(game.is_case_solved(shared.source)),
         Condition::SourceClassLevelAtLeast(level) => {
             Ok(game.class_level(shared.source) >= *level)
         }
@@ -4979,6 +5071,12 @@ fn evaluate_condition_in_context(
                     }
                     crate::ability::ActivationTiming::DuringOpponentsTurn => {
                         !game.is_active_player(ctx.controller)
+                    }
+                    crate::ability::ActivationTiming::AnyTimeByEnchantedCreatureController => {
+                        game.object(ctx.source).and_then(|object| object.attached_to).and_then(|target| target.object_id())
+                            .is_some_and(|host| game.object(host).is_some_and(|object| object.zone == crate::Zone::Battlefield)
+                                && game.current_has_card_type(host, crate::CardType::Creature)
+                                && game.current_controller(host) == Some(ctx.controller))
                     }
                     crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
                         game.is_active_player(ctx.controller)
@@ -5191,15 +5289,22 @@ fn evaluate_condition_in_context(
             count, comparison, ..
         } => {
             if ctx.is_cast_time() {
-                return Ok(false);
+                let crate::static_abilities::AnthemCountExpression::MatchingFilter(filter) = count else { return Ok(false); };
+                if !matches!(filter.zone, None | Some(Zone::Battlefield)) { return Ok(false); }
+                let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+                let exact = game.battlefield.iter().filter(|id| !game.is_phased_out(**id))
+                    .filter_map(|id| game.object(*id))
+                    .filter(|object| filter.matches(object, &filter_ctx, game)).count();
+                let value = crate::events::damage::checked_damage_count(exact as u128, "cast-time battlefield count")?;
+                return Ok(comparison.evaluate(value));
             }
             Ok(
-                comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
+                comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression_checked(
                     count,
                     game,
                     ctx.source,
                     ctx.controller,
-                )),
+                )?),
             )
         }
         Condition::CountParity { count, even, .. } => {
@@ -5207,12 +5312,12 @@ fn evaluate_condition_in_context(
                 return Ok(false);
             }
 
-            let value = crate::static_abilities::resolve_anthem_count_expression(
+            let value = crate::static_abilities::resolve_anthem_count_expression_checked(
                 count,
                 game,
                 ctx.source,
                 ctx.controller,
-            );
+            )?;
             Ok(value % 2 == if *even { 0 } else { 1 })
         }
         Condition::ValueComparison {
@@ -5222,10 +5327,7 @@ fn evaluate_condition_in_context(
         } => {
             if let Some(exec) = ctx.execution() {
                 let compare = |exec: &ExecutionContext| -> Result<bool, ExecutionError> {
-                    Ok(operator.evaluate(
-                        resolve_value(game, left, exec)?,
-                        resolve_value(game, right, exec)?,
-                    ))
+                    compare_resolved_values(game, left, *operator, right, exec)
                 };
                 match compare(exec) {
                     // "unless an opponent has 10 or less life": a quantified
@@ -5442,6 +5544,13 @@ fn evaluate_condition_in_context(
             .get(&shared.controller)
             .map_or(0, |creatures| creatures.len()) as u32
             >= *count),
+        Condition::AttackedWithTotalPowerAtLeastThisCombat(power) => Ok(
+            game.turn.phase == crate::game_state::Phase::Combat
+                && game.turn_store.turn_history.declared_attack_power_in_combat(
+                    game.turn_store.combat_phases_started_this_turn,
+                    shared.controller,
+                ) >= i64::from(*power),
+        ),
         Condition::OpponentLostLifeThisTurn => {
             let filter_ctx = game.filter_context_for(shared.controller, shared.filter_source);
             Ok(filter_ctx.opponents.iter().any(|opponent| {
@@ -5610,7 +5719,15 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => Ok(game
             .player(*player)
             .is_some_and(|p| p.graveyard.len() >= *count)),
+        Condition::YouChoseAnotherRingBearer => Ok(shared.triggering_event
+            .and_then(|event| event.downcast::<crate::events::KeywordActionEvent>())
+            .filter(|event| event.action == crate::events::KeywordActionKind::RingTemptsYou && event.player == shared.controller)
+            .and_then(|event| event.object_tags.get(ironsmith_core::tag::RING_BEARER_CHOSEN_TAG))
+            .is_some_and(|chosen| matches!(chosen.as_slice(), [object] if object.object_id != shared.source))),
         Condition::SourceIsRingBearer { player } => {
+            // The designation survives phasing, but the permanent is treated
+            // as nonexistent for this current-state predicate (CR 702.26b).
+            if game.is_phased_out(shared.source) { return Ok(false); }
             Ok(
                 matching_condition_players_simple(game, shared.controller, player)
                     .into_iter()
@@ -5725,4 +5842,233 @@ fn boast_may_be_activated_an_additional_time(
                     crate::static_abilities::StaticAbilityId::BoastTwiceEachTurn,
                 )
         })
+}
+
+#[cfg(test)]
+mod half_starting_life_boundary_tests {
+    use super::*;
+    #[test]
+    fn half_starting_life_compares_before_rounding_without_saturating_doubling() {
+        let mut game = GameState::new(vec!["Alice".into()], 41);
+        let player = game.players[0].id;
+        for (starting, life, strict, inclusive) in [
+            (41, 20, true, true),
+            (41, 21, false, false),
+            (40, 20, false, true),
+            (i32::MAX, i32::MAX, false, false),
+            (i32::MIN, i32::MIN, true, true),
+            (-3, -2, true, true),
+            (-3, -1, false, false),
+        ] {
+            game.player_mut(player).unwrap().starting_life = starting;
+            game.write_life_total(player, life);
+            assert_eq!(
+                player_life_compares_to_half_starting(&game, player, false),
+                strict
+            );
+            assert_eq!(
+                player_life_compares_to_half_starting(&game, player, true),
+                inclusive
+            );
+        }
+    }
+
+    #[test]
+    fn life_comparisons_widen_intermediates_without_clamping_the_predicate() {
+        use crate::effect::ValueComparisonOperator as Op;
+        let game = GameState::new(vec!["Alice".into()], 20);
+        let ctx = ExecutionContext::new_default(ObjectId::from_raw(999), game.players[0].id);
+        let difference = Value::absolute_difference(Value::Fixed(i32::MIN), Value::Fixed(i32::MAX));
+        assert!(
+            !compare_resolved_values(
+                &game,
+                &difference,
+                Op::LessThanOrEqual,
+                &Value::Fixed(5),
+                &ctx
+            )
+            .unwrap()
+        );
+        let upper_threshold =
+            Value::Add(Box::new(Value::Fixed(i32::MAX)), Box::new(Value::Fixed(10)));
+        assert!(
+            !compare_resolved_values(
+                &game,
+                &Value::Fixed(i32::MAX),
+                Op::GreaterThanOrEqual,
+                &upper_threshold,
+                &ctx
+            )
+            .unwrap()
+        );
+        let negative = Value::HalfRoundedDown(Box::new(Value::Fixed(-3)));
+        assert!(
+            compare_resolved_values(&game, &negative, Op::Equal, &Value::Fixed(-2), &ctx).unwrap()
+        );
+    }
+}
+
+#[cfg(test)]
+mod referenced_characteristic_frame_tests {
+    use super::*;
+    use crate::events::EventCause;
+    use crate::provenance::ProvNodeId;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::ids::CardId;
+    use crate::filter::{FilterContext, ObjectFilter, ObjectFilterExt as _};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::types::CardType;
+    fn creature(game: &mut GameState, player: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), "Characteristic subject")
+            .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1, 1)).build();
+        game.create_object_from_card(&card, player, Zone::Battlefield)
+    }
+    #[test]
+    fn a_current_recheck_cannot_be_satisfied_by_an_earlier_snapshot_or_a_blinked_incarnation() {
+        let mut game = GameState::new(vec!["Alice".into()], 20);
+        let a = PlayerId::from_index(0);
+        let subject = creature(&mut game, a);
+        let before = ObjectSnapshot::from_object_with_calculated_characteristics(game.object(subject).unwrap(), &game);
+        let mut change = crate::events::ZoneChangeEvent::with_cause(subject, Zone::Hand, Zone::Battlefield, EventCause::effect(), Some(before.clone()));
+        change.destination_snapshots = vec![before.clone()];
+        let event = TriggerEvent::new_with_provenance(change, ProvNodeId::default());
+        let filter = ObjectFilter { power: Some(crate::filter::Comparison::Equal(1)), toughness: Some(crate::filter::Comparison::Equal(1)), ..Default::default() };
+        let context = FilterContext::new(a);
+        assert!(triggering_event_object_matches_at_resolution(&game, &event, &filter, &context));
+        game.add_counters(subject, crate::object::CounterType::PlusOnePlusOne, 1).unwrap();
+        game.refresh_continuous_state().unwrap();
+        assert!(triggering_event_object_matches_with_filter_context(&game, &event, &filter, &context), "trigger-time snapshot remains 1/1");
+        assert!(!triggering_event_object_matches_at_resolution(&game, &event, &filter, &context), "current 2/2 fails");
+        let exiled = game.move_object(subject, Zone::Exile, EventCause::effect()).unwrap();
+        assert!(!triggering_event_object_matches_at_resolution(&game, &event, &filter, &context), "departure LKI was 2/2");
+        let returned = game.move_object(exiled, Zone::Battlefield, EventCause::effect()).unwrap();
+        assert_ne!(returned, subject);
+        assert_eq!(game.calculated_power(returned), Some(1));
+        assert!(!triggering_event_object_matches_at_resolution(&game, &event, &filter, &context));
+        assert!(filter.matches_snapshot(&before, &context, &game), "past-tense condition stays at its captured frame");
+    }
+    #[test]
+    fn effective_vs_base_comparison_uses_one_snapshot_for_growth_and_shrinkage() {
+        let mut game = GameState::new(vec!["Alice".into()], 20);
+        let a = PlayerId::from_index(0);
+        let subject = creature(&mut game, a);
+        let mut snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(game.object(subject).unwrap(), &game);
+        let filter = ObjectFilter { power_comparison_to_base: Some(crate::effect::ValueComparisonOperator::NotEqual), ..Default::default() };
+        let context = FilterContext::new(a);
+        for (power, expected) in [(0, true), (1, false), (2, true)] {
+            snapshot.power = Some(power);
+            snapshot.base_power = Some(1);
+            assert_eq!(filter.matches_snapshot(&snapshot, &context, &game), expected);
+        }
+    }
+    #[test]
+    fn attached_aura_controller_comes_from_the_death_snapshot_after_both_objects_leave() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let a = PlayerId::from_index(0); let b = PlayerId::from_index(1);
+        let subject = creature(&mut game, b);
+        let aura_card = CardBuilder::new(CardId::new(), "Captured Aura").card_types(vec![CardType::Enchantment]).subtypes(vec![crate::types::Subtype::Aura]).build();
+        let aura = game.create_object_from_card(&aura_card, a, Zone::Battlefield);
+        assert!(game.attach_object_to_target(aura, crate::object::AttachmentTarget::Object(subject)));
+        let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(game.object(subject).unwrap(), &game);
+        assert_eq!(snapshot.attachment_snapshots.len(), 1);
+        let filter = ObjectFilter { with_attached_object: Some(Box::new(ObjectFilter::default().with_subtype(crate::types::Subtype::Aura).you_control())), ..Default::default() };
+        let context = FilterContext::new(a);
+        game.move_object(subject, Zone::Graveyard, EventCause::effect()).unwrap();
+        if game.object(aura).is_some() { game.move_object(aura, Zone::Graveyard, EventCause::effect()).unwrap(); }
+        assert!(filter.matches_snapshot(&snapshot, &context, &game));
+        assert!(!filter.matches_snapshot(&snapshot, &FilterContext::new(b), &game));
+    }
+}
+
+#[cfg(test)]
+mod tagged_current_and_departure_condition_tests {
+    use super::*;
+    use crate::events::combat::{
+        AttackEventTarget, CreatureAttackedAndUnblockedEvent, CreatureAttackedEvent,
+        CreatureBecameBlockedEvent, CreatureBlockedEvent,
+    };
+    #[test]
+    fn ordinary_tags_use_live_characteristics_or_exact_departure_lki_without_combat_blink_follow() {
+        for kind in 0..4 {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let card = crate::cards::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                "Tagged combatant",
+            )
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(15, 30))
+            .build();
+            let object = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+            let source = game.create_object_from_definition(&card, bob, Zone::Battlefield);
+            let snapshot =
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    game.object(object).unwrap(),
+                    &game,
+                );
+            let event = match kind {
+                0 => TriggerEvent::new_with_provenance(
+                    CreatureAttackedEvent::new(object, AttackEventTarget::Player(bob)),
+                    Default::default(),
+                ),
+                1 => TriggerEvent::new_with_provenance(
+                    CreatureAttackedAndUnblockedEvent::new(object, AttackEventTarget::Player(bob)),
+                    Default::default(),
+                ),
+                2 => TriggerEvent::new_with_provenance(
+                    CreatureBlockedEvent::new(object, source),
+                    Default::default(),
+                ),
+                _ => TriggerEvent::new_with_provenance(
+                    CreatureBecameBlockedEvent::new(object, 1),
+                    Default::default(),
+                ),
+            };
+            let mut ctx = ExecutionContext::new_default(source, bob).with_triggering_event(event);
+            ctx.tag_object("combatant", snapshot);
+            let condition = |power| {
+                let mut filter = crate::target::ObjectFilter::creature();
+                filter.power = Some(crate::filter::Comparison::Equal(power));
+                Condition::TaggedObjectMatches("combatant".into(), filter)
+            };
+            let effect = crate::effect::Effect::pump(
+                -14,
+                0,
+                crate::target::ChooseSpec::SpecificObject(object),
+                crate::effect::Until::EndOfTurn,
+            );
+            crate::effects::execute_effect(
+                &mut game,
+                &effect,
+                &mut ExecutionContext::new_default(source, bob),
+            )
+            .unwrap();
+            assert!(
+                !evaluate_condition_resolution(&game, &condition(15), &ctx).unwrap(),
+                "the old matching tag cannot override current power 1"
+            );
+            assert!(evaluate_condition_resolution(&game, &condition(1), &ctx).unwrap());
+            let exiled = game.move_object_by_game_rule(object, Zone::Exile).unwrap();
+            let returned = game
+                .move_object_by_game_rule(exiled, Zone::Battlefield)
+                .unwrap();
+            ctx.resolution_object_id_floor = Some(game.new_object_id());
+            assert_ne!(returned, object);
+            assert_eq!(game.calculated_power(returned), Some(15));
+            assert!(
+                evaluate_condition_resolution(&game, &condition(1), &ctx).unwrap(),
+                "the exact departed incarnation had power 1, not its earlier tagged 15"
+            );
+            assert!(!evaluate_condition_resolution(&game, &condition(15), &ctx).unwrap());
+            assert_eq!(
+                crate::effects::helpers::resolve_tagged_object_id(
+                    &game,
+                    &ctx,
+                    &ctx.get_tagged_all("combatant").unwrap()[0]
+                ),
+                None
+            );
+        }
+    }
 }

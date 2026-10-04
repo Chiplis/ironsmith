@@ -33,6 +33,12 @@ pub enum BuiltinTokenShape {
     CursedRole,
     Blood,
     Powerstone,
+    Heartwood,
+    Vibranium,
+    Gingerbrute,
+    Mutavault,
+    SpellgorgerWeird,
+    Tarmogoyf,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]

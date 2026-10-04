@@ -31,7 +31,7 @@ pub fn static_ability_zone_defaults(
             Zone::Exile,
             Zone::Command,
         ],
-        Some(ShuffleIntoLibraryFromGraveyard | CountersRemainAcrossZoneChanges) => vec![
+        Some(ShuffleIntoLibraryFromGraveyard | CountersRemainAcrossZoneChanges | SpellManaSpendingRestriction) => vec![
             Zone::Battlefield,
             Zone::Hand,
             Zone::Stack,

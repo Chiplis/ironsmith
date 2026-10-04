@@ -211,6 +211,7 @@ pub fn has_put_one_of_them_into_hand_rest_clause_sentence_lexed(tokens: &[OwnedL
 pub fn has_loses_all_abilities_with_becomes_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
+    if super::ability_loss_templates::parse(tokens).ok().flatten().is_some() { return false; }
     let words = crate::lexer::token_word_refs(tokens);
     let has_loses_all_abilities = (primitives::contains_word(tokens, "lose")
         || primitives::contains_word(tokens, "loses"))

@@ -59,3 +59,29 @@ impl TriggerMatcher for SpellCounteredTrigger {
         event.kind() == EventKind::SpellCountered
     }
 }
+
+#[cfg(test)]
+mod completed_frame_tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::ids::{CardId, PlayerId};
+    use crate::types::CardType;
+    use crate::zone::Zone;
+    #[test]
+    fn complete_counter_frame_keeps_departed_observer_and_excludes_later_arrival() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game(); let a = PlayerId::from_index(0);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Counter observer")
+            .card_types(vec![CardType::Artifact]).with_ability(Ability::triggered(
+                crate::triggers::Trigger::new(SpellCounteredTrigger::new(None, PlayerFilter::Any)),
+                vec![crate::effect::Effect::draw(1)])).build();
+        let old = game.create_object_from_definition(&definition,a,Zone::Battlefield);
+        let before = game.trigger_source_lookback_snapshots();
+        game.move_object_by_effect(old,Zone::Graveyard).unwrap();
+        let later = game.create_object_from_definition(&definition,a,Zone::Battlefield);
+        let event = TriggerEvent::new_with_provenance(SpellCounteredEvent::new(crate::ids::ObjectId::from_raw(999),a,None)
+            .with_complete_source_lookback(),Default::default()).with_lookback_source_snapshots(before);
+        let triggers = crate::triggers::check_triggers(&game,&event);
+        assert_eq!(triggers.len(),1);assert_eq!(triggers[0].source,old);assert_ne!(triggers[0].source,later);
+    }
+}

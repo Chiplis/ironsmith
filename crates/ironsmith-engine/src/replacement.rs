@@ -121,6 +121,9 @@ impl ReplacementEffect {
         if let ReplacementAction::DeclineOptional(key) = &self.replacement {
             return key.clone();
         }
+        if let ReplacementAction::TokenCreationTemplates { choice_parent: Some(key), .. } = &self.replacement {
+            return key.clone();
+        }
         if let Some(id) = self.registration_id {
             return ReplacementEffectKey::Registered(id);
         }
@@ -440,6 +443,16 @@ pub enum ReplacementAction {
         /// Description for the choice prompt.
         description: String,
     },
+    /// General typed damage prevention; append to preserve wire variant ordinals.
+    PreventDamageByRule(ironsmith_core::StaticDamagePreventionAmount),
+    /// Additional actions refer to the proposed damage even when prevention is
+    /// prohibited. Append rather than reinterpreting existing actual-amount actions.
+    PreventDamageThenFromProposedAmount(Vec<Effect>),
+    /// Complete creation templates modify groups inside the same event.
+    TokenCreationTemplates { templates: Vec<Effect>, mode: ironsmith_core::TokenCreationTemplateMode, choose_one: bool, choice_parent: Option<ReplacementEffectKey> },
+    RewriteMana { input: ironsmith_core::ManaRewriteInput, output: ironsmith_core::ManaRewriteOutput,
+        quantity: ironsmith_core::ManaRewriteQuantity },
+    ConvertUnspentMana(crate::mana::ManaSymbol),
 }
 
 
@@ -464,6 +477,10 @@ pub enum EventModification {
 
     /// Reduce to zero (prevent)
     ReduceToZero,
+
+    /// Evaluate a signed bonus using the replacement source and controller.
+    /// Appended to preserve the existing fixed Add schema.
+    AddDynamic(crate::effect::Value),
 }
 
 /// Where to redirect an effect.
@@ -484,6 +501,10 @@ pub enum RedirectTarget {
 
     /// Redirect to the controller of the event source.
     ToSourceController,
+    /// Current object attached to the permanent bearing the replacement.
+    ToAttachedPermanent(ObjectId),
+    /// Current controller of the selected original recipient.
+    ToRecipientController,
 }
 
 /// Which target to redirect in a multi-target event.
@@ -1130,6 +1151,24 @@ impl ReplacementEffect {
         self
     }
 
+    /// Choices within one token replacement share its application identity.
+    /// Register the alternatives with separate selectable IDs, but accepting
+    /// either consumes the same CR 614.5 opportunity as declining it.
+    pub fn token_template_alternatives(&self) -> Vec<Self> {
+        let ReplacementAction::TokenCreationTemplates { templates, mode, choose_one: true, .. } = &self.replacement else {
+            return vec![self.clone()];
+        };
+        let parent = self.application_key();
+        templates.iter().map(|template| {
+            let mut alternative = self.clone();
+            alternative.replacement = ReplacementAction::TokenCreationTemplates {
+                templates: vec![template.clone()], mode: *mode, choose_one: false,
+                choice_parent: Some(parent.clone()),
+            };
+            alternative
+        }).collect()
+    }
+
     /// Build the alternative for declining this same effect. For persistent
     /// effects, derive this from the registered effect so it carries the
     /// registration identity rather than the pre-registration fingerprint.
@@ -1640,9 +1679,22 @@ mod ability_origin_identity_tests {
 // Pure production rewrites are exposed independently of event matching. This
 // does not assert that a replacement matches, or that it is safe to reorder.
 impl ReplacementAction {
+    pub fn needs_mana_color_choice(&self) -> bool {
+        matches!(self, Self::RewriteMana { output: ironsmith_core::ManaRewriteOutput::ChooseColor | ironsmith_core::ManaRewriteOutput::ByBasicLandType(_), .. })
+    }
+    pub fn mana_transformation_with_color(&self, color: Option<crate::mana::ManaSymbol>)
+        -> Option<crate::events::mana::ManaTransformation<'_>> {
+        if let Self::RewriteMana { input, output: ironsmith_core::ManaRewriteOutput::ChooseColor | ironsmith_core::ManaRewriteOutput::ByBasicLandType(_), quantity } = self {
+            let symbol = color.filter(|symbol| ironsmith_core::ManaRewriteInput::Colored.matches(*symbol))?;
+            Some(crate::events::mana::ManaTransformation::Rewrite { input: *input, symbol, quantity: *quantity })
+        } else if color.is_none() { self.mana_transformation() } else { None }
+    }
+
     pub fn mana_transformation(&self) -> Option<crate::events::mana::ManaTransformation<'_>> {
         use crate::events::mana::ManaTransformation;
         match self {
+            Self::RewriteMana { input, output: ironsmith_core::ManaRewriteOutput::Symbol(symbol), quantity } =>
+                Some(ManaTransformation::Rewrite { input: *input, symbol: *symbol, quantity: *quantity }),
             Self::ReplaceMana(symbols) => Some(ManaTransformation::ReplaceTypes(symbols)),
             Self::ReplaceManaExact(symbols) => Some(ManaTransformation::ReplaceExact(symbols)),
             Self::Modify(EventModification::Multiply(factor)) => Some(ManaTransformation::Multiply(*factor)),

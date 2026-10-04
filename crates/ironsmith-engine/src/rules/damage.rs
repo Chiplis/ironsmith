@@ -150,196 +150,33 @@ pub(crate) fn apply_processed_damage_assignment_with_scope(
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
     provenance: crate::provenance::ProvNodeId,
 ) -> Result<AppliedDamageAssignment, crate::effects::ExecutionError> {
-    let checkpoint = game.clone();
-    let result = (|| {
-    let record_damage_ui_event = |game: &mut GameState| {
-        if amount == 0 {
-            return;
+    let checkpoint=game.clone();
+    let controller=source_snapshot.map(|snapshot|snapshot.controller)
+        .or(cause.source_controller).or_else(||game.current_controller(source))
+        .unwrap_or_else(|| match target {crate::events::DamageTarget::Player(player)=>player,crate::events::DamageTarget::Object(id)=>game.current_controller(id).unwrap_or(game.turn.active_player)});
+    let mut ctx=crate::effects::ExecutionContext::new(source,controller,dm).with_cause(cause);
+    ctx.replacement=replacement_scope.clone();ctx.source_snapshot=source_snapshot.cloned();ctx.provenance=provenance;
+    let result=(||{
+        let prepared=prepare_processed_damage_assignment(game,&mut ctx,target,amount,keywords)?;
+        if ctx.decision_maker.awaiting_choice(){return Ok(AppliedDamageAssignment::default());}
+        let mut receipt=commit_prepared_damage_original(game,&mut ctx,prepared)?;
+        if ctx.decision_maker.awaiting_choice(){return Ok(AppliedDamageAssignment::default());}
+        if receipt.completion.is_some(){
+            crate::effects::capture_triggers_before_added_program(game,&ctx,None,
+                receipt.original.consequence_outcome.iter_mut().flat_map(|outcome|outcome.events.iter_mut()))?;
         }
-        let mut stable_ids = Vec::new();
-        if let Some(stable_id) = game.object(source).map(|obj| obj.stable_id) {
-            stable_ids.push(stable_id);
-        }
-        let mut player = None;
-        match target {
-            crate::events::DamageTarget::Player(player_id) => player = Some(player_id),
-            crate::events::DamageTarget::Object(object_id) => {
-                if let Some(stable_id) = game.object(object_id).map(|obj| obj.stable_id) {
-                    stable_ids.push(stable_id);
-                }
-            }
-        }
-        game.record_ui_effect_event(
-            "damage",
-            player,
-            None,
-            stable_ids,
-            Some(i64::from(amount)),
-            None,
-        );
-    };
-    match target {
-        crate::events::DamageTarget::Player(player_id) => {
-            let source_controller = game
-                .object(source)
-                .map(|obj| {
-                    game.current_controller(source)
-                        .unwrap_or_else(|| game.controller_of(obj))
-                })
-                .or(cause.source_controller);
-            if keywords.has_infect {
-                let mut ctx = crate::effects::ExecutionContext::new(source, source_controller.unwrap_or(player_id), dm).with_cause(cause.clone());
-                ctx.replacement = replacement_scope.clone();
-                ctx.source_snapshot = source_snapshot.cloned();
-                ctx.provenance = provenance;
-                let event = crate::events::Event::put_player_counters(player_id, crate::object::CounterType::Poison, amount, cause.clone()).with_provenance(provenance);
-                let consequence_outcome = crate::effects::counters::execute_player_counter_placement(game, &mut ctx, event)?;
-                if dm.awaiting_choice() {
-                    return Ok(AppliedDamageAssignment::default());
-                }
-                record_damage_ui_event(game);
-                return Ok(AppliedDamageAssignment {
-                    applied: true,
-                    life_lost: 0,
-                    consequence_outcome: Some(consequence_outcome),
-                });
-            }
-
-            if game.player(player_id).is_none() {
-                return Ok(AppliedDamageAssignment::default());
-            }
-            // Damage is still dealt even when a replacement/restriction stops the life loss.
-            let consequence_outcome = if game.can_damage_cause_life_loss(player_id) {
-                let controller = source_controller.unwrap_or(player_id);
-                let mut ctx = crate::effects::ExecutionContext::new(source, controller, dm);
-                ctx.cause = cause.clone();
-                ctx.replacement = replacement_scope.clone();
-                ctx.source_snapshot = source_snapshot.cloned();
-                ctx.provenance = provenance;
-                let outcome = crate::effects::life::life_change::execute_life_change(
-                    game,
-                    &mut ctx,
-                    crate::events::Event::life_loss(player_id, amount, true).with_provenance(provenance),
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(AppliedDamageAssignment::default());
-                }
-                Some(outcome)
-            } else {
-                None
-            };
-            let life_lost = consequence_outcome.as_ref().map_or(0, |outcome| {
-                outcome
-                    .events
-                    .iter()
-                    .filter_map(|event| event.downcast::<crate::events::LifeLossEvent>())
-                    .filter(|loss| loss.from_damage)
-                    .fold(0u32, |total, loss| total.saturating_add(loss.amount))
-            });
-            record_damage_ui_event(game);
-            Ok(AppliedDamageAssignment {
-                applied: true,
-                life_lost,
-                consequence_outcome,
-            })
-        }
-        crate::events::DamageTarget::Object(object_id) => {
-            let Some(obj) = game.object(object_id) else {
-                return Ok(AppliedDamageAssignment::default());
-            };
-
-            let current_card_types = game
-                .current_card_types(object_id)
-                .unwrap_or_else(|| obj.card_types.to_vec());
-            let is_creature = current_card_types.contains(&CardType::Creature);
-            let is_planeswalker = current_card_types.contains(&CardType::Planeswalker);
-            let is_battle = current_card_types.contains(&CardType::Battle);
-            if !is_creature && !is_planeswalker && !is_battle {
-                return Ok(AppliedDamageAssignment::default());
-            }
-
-            if is_planeswalker {
-                let source_controller = game
-                    .object(source)
-                    .map(|obj| {
-                        game.current_controller(source)
-                            .unwrap_or_else(|| game.controller_of(obj))
-                    })
-                    .or(cause.source_controller);
-                if let Some((_, event)) = game.remove_counters(
-                    object_id,
-                    crate::CounterType::Loyalty,
-                    amount,
-                    Some(source),
-                    source_controller,
-                ) {
-                    game.queue_trigger_event(event.provenance(), event);
-                }
-            }
-
-            if is_battle {
-                let source_controller = game
-                    .object(source)
-                    .map(|obj| {
-                        game.current_controller(source)
-                            .unwrap_or_else(|| game.controller_of(obj))
-                    })
-                    .or(cause.source_controller);
-                if let Some((_, event)) = game.remove_counters(
-                    object_id,
-                    crate::CounterType::Defense,
-                    amount,
-                    Some(source),
-                    source_controller,
-                ) {
-                    game.queue_trigger_event(event.provenance(), event);
-                }
-            }
-
-            let consequence_outcome = if is_creature && (keywords.has_infect || keywords.has_wither) {
-                let source_controller = game.current_controller(source).or(cause.source_controller);
-                let mut ctx = crate::effects::ExecutionContext::new(
-                    source, source_controller.unwrap_or_else(|| game.controller_of(game.object(object_id).unwrap())), dm,
-                ).with_cause(cause.clone());
-                ctx.replacement = replacement_scope.clone();
-                ctx.source_snapshot = source_snapshot.cloned();
-                ctx.provenance = provenance;
-                let event = crate::events::Event::put_counters(
-                    object_id, crate::CounterType::MinusOneMinusOne, amount, cause.clone(),
-                ).with_provenance(provenance);
-                let outcome = crate::effects::counters::execute_object_counter_placement(game, &mut ctx, event)?;
-                if dm.awaiting_choice() {
-                    return Ok(AppliedDamageAssignment::default());
-                }
-                Some(outcome)
-            } else {
-                if is_creature {
-                    game.mark_damage(object_id, amount);
-                }
-                None
-            };
-
-            if is_creature && amount > 0 && keywords.has_deathtouch {
-                game.mark_deathtouch_damage_since_sba(object_id);
-            }
-
-            record_damage_ui_event(game);
-            Ok(AppliedDamageAssignment {
-                applied: true,
-                life_lost: 0,
-                consequence_outcome,
-            })
-        }
-    }
+        complete_damage_original(game,&mut ctx,receipt)
     })();
-    if result.is_err() || dm.awaiting_choice() {
-        *game = checkpoint;
-        if dm.awaiting_choice() {
-            return Ok(AppliedDamageAssignment::default());
-        }
+    if result.is_err()||ctx.decision_maker.awaiting_choice(){
+        game.restore_execution_checkpoint(checkpoint,result.is_ok()&&ctx.decision_maker.awaiting_choice());
+        if ctx.decision_maker.awaiting_choice(){return Ok(AppliedDamageAssignment::default());}
     }
     result
 }
+
+#[path = "damage_assignment.rs"]
+mod damage_assignment;
+pub(crate) use damage_assignment::{PreparedDamageAssignment,DamageAssignmentReceipt,prepare_processed_damage_assignment,commit_prepared_damage_original,freeze_damage_original,complete_damage_original};
 
 fn build_damage_result(
     target: DamageTarget,
@@ -481,7 +318,7 @@ pub fn is_lethal(
     };
 
     let existing_damage = game.damage_on(creature.id);
-    let effective_toughness = (toughness - existing_damage as i32).max(0) as u32;
+    let effective_toughness = (i64::from(toughness) - i64::from(existing_damage)).max(0) as u32;
     damage >= effective_toughness
 }
 
@@ -527,7 +364,7 @@ pub fn calculate_trample_excess(
                 .or_else(|| blocker.toughness())
             {
                 let existing_damage = game.damage_on(blocker.id);
-                let remaining = (toughness - existing_damage as i32).max(0) as u32;
+                let remaining = (i64::from(toughness) - i64::from(existing_damage)).max(0) as u32;
                 damage_needed += remaining;
             }
         }
@@ -564,7 +401,7 @@ pub fn distribute_trample_damage(
         let lethal = if has_deathtouch {
             1
         } else if let Some(threshold) = lethal_damage_threshold_for_creature(game, blocker) {
-            (threshold - existing_damage as i32).max(0) as u32
+            (i64::from(threshold) - i64::from(existing_damage)).max(0) as u32
         } else {
             0
         };
@@ -691,10 +528,13 @@ mod tests {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: vec![].into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: None,
             snow_mana_spent_to_cast: crate::player::ManaPool::default(),
             temporary_static_ability_grants: crate::object::TemporaryStaticAbilityGrants::new(id),
             x_value: None,

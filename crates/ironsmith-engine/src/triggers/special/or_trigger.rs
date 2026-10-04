@@ -1002,7 +1002,8 @@ impl OrTrigger {
             return None;
         };
 
-        if !object_filter_is_plain_card_type(&tapped.filter, CardType::Artifact)
+        if tapped.one_or_more
+            || !object_filter_is_plain_card_type(&tapped.filter, CardType::Artifact)
             || ability.activator != PlayerFilter::Any
             || !object_filter_is_plain_card_type(&ability.filter, CardType::Artifact)
             || ability.non_mana_only
@@ -1172,8 +1173,10 @@ impl OrTrigger {
 impl OrTrigger {
     /// CR 702.29d: "whenever you cycle or discard a card" triggers only once
     /// when a card is cycled. Cycling always discards the card as part of its
-    /// cost, so the cycle branch is subsumed by an unrestricted sibling
-    /// "you discard a card" branch for the same player.
+    /// cost, so a sibling discard branch for the same player subsumes it.
+    /// The same applies to "another card" when both branches carry the
+    /// identical source exclusion. Other filtered/timed branches retain
+    /// their own matching because their equivalence is not established here.
     fn branch_is_subsumed(&self, index: usize) -> bool {
         use crate::triggers::{KeywordActionTrigger, YouDiscardCardTrigger};
         let Some(cycle) = self.triggers[index].downcast_ref::<KeywordActionTrigger>() else {
@@ -1181,7 +1184,9 @@ impl OrTrigger {
         };
         if cycle.action != crate::events::KeywordActionKind::Cycle
             || cycle.source_must_match
-            || cycle.source_filter.is_some()
+            || cycle.source_filter.as_ref().is_some_and(|filter| {
+                *filter != ObjectFilter::default().other()
+            })
             || cycle.tagged_object_filter.is_some()
             || cycle.during_your_turn
             || cycle.during_your_main_phase
@@ -1194,7 +1199,7 @@ impl OrTrigger {
                     .downcast_ref::<YouDiscardCardTrigger>()
                     .is_some_and(|discard| {
                         discard.player == cycle.player
-                            && discard.filter.is_none()
+                            && discard.filter == cycle.source_filter
                             && discard.cause_controller.is_none()
                             && !discard.effect_like_only
                     })
@@ -1207,6 +1212,27 @@ impl OrTrigger {
             .enumerate()
             .filter(|(index, _)| !self.branch_is_subsumed(*index))
             .map(|(_, trigger)| trigger)
+    }
+}
+
+impl OrTrigger {
+    fn shared_life_change_display(&self) -> Option<String> {
+        let [gain, loss] = self.triggers.as_slice() else { return None; };
+        let loss = loss.downcast_ref::<crate::triggers::PlayerLosesLifeTrigger>()?;
+        if loss.one_or_more || loss.exact_amount.is_some() { return None; }
+        let (player, turn) = if let Some(gain) = gain.downcast_ref::<crate::triggers::YouGainLifeTrigger>() {
+            if gain.cause_filter.is_some() { return None; }
+            (crate::target::PlayerFilter::You, gain.during_turn.clone())
+        } else {
+            let gain = gain.downcast_ref::<crate::triggers::PlayerGainsLifeTrigger>()?;
+            (gain.player.clone(), gain.during_turn.clone())
+        };
+        if player != loss.player || turn != loss.during_turn { return None; }
+        Some(if player == crate::target::PlayerFilter::You {
+            gain.display().replacen("gain life", "gain or lose life", 1)
+        } else {
+            gain.display().replacen("gains life", "gains or loses life", 1)
+        })
     }
 }
 
@@ -1232,6 +1258,15 @@ impl TriggerMatcher for OrTrigger {
             .map(|trigger| trigger.trigger_count_with_context(event, ctx))
             .max()
             .unwrap_or(0)
+    }
+
+    fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        crate::triggers::matcher_trait::alternative_grouping_key(self.active_branches(), event)
+    }
+
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        self.active_branches().filter(|branch| branch.matches(event, ctx))
+            .find_map(|branch| branch.event_value_amount(event, ctx))
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<crate::events::EventKind>> {
@@ -1269,6 +1304,9 @@ impl TriggerMatcher for OrTrigger {
         }
         if self.triggers.len() == 1 {
             return self.triggers[0].display();
+        }
+        if let Some(display) = self.shared_life_change_display() {
+            return display;
         }
         if let Some(display) = self.self_attacks_or_blocks_display() {
             return display;

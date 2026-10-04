@@ -885,26 +885,24 @@ fn parse_passive_sacrifice_by_controller_clause(
 /// Split a conjoined block-permission tail off a pump modifier ("+2/+2 until
 /// end of turn and can block an additional creature this turn"), returning
 /// the pump head and the number of additional blockable attackers.
-fn split_trailing_can_block_additional_tail(
+fn split_trailing_blocking_capacity_tail(
     tokens: &[OwnedLexToken],
-) -> Option<(&[OwnedLexToken], u32)> {
+) -> Option<(&[OwnedLexToken], crate::grammar::blocking_permissions::BlockingCapacity)> {
     for (idx, token) in tokens.iter().enumerate().rev() {
         if token.as_word() != Some("and") {
             continue;
         }
-        let Some(shape) = effect_grammar::clause_pattern_shapes::parse_can_block_additional_tokens(
-            &tokens[idx + 1..],
-        ) else {
+        let Some(shape) = crate::grammar::blocking_permissions::parse_blocking_capacity(&tokens[idx + 1..]) else {
             continue;
         };
-        if !shape.subject_tokens.is_empty() {
+        if !shape.subject_tokens.is_empty() || !shape.this_turn || shape.for_each_tokens.is_some() {
             return None;
         }
         let head = trim_lexed_commas(&tokens[..idx]);
         if head.is_empty() {
             return None;
         }
-        return Some((head, shape.additional));
+        return Some((head, shape.capacity));
     }
     None
 }
@@ -914,10 +912,21 @@ pub(crate) fn parse_get_pump_clause(
     action_tokens: &[OwnedLexToken],
     full_tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    parse_get_pump_clause_with_bound_values(subject_tokens, action_tokens, full_tokens, None)
+}
+
+/// A complete local X/Y binding supplies each component independently. The
+/// ordinary pump grammar still owns subject, condition, and duration.
+pub(crate) fn parse_get_pump_clause_with_bound_values(
+    subject_tokens: &[OwnedLexToken],
+    action_tokens: &[OwnedLexToken],
+    full_tokens: &[OwnedLexToken],
+    bound_values: Option<(Value, Value)>,
+) -> Result<Option<EffectAst>, CardTextError> {
     // "It gets +2/+2 until end of turn and can block an additional creature
     // this turn" (Act of Heroism) — the block permission is its own granted
     // effect on the pump subject, not part of the P/T modifier tail.
-    if let Some((pump_tokens, additional)) = split_trailing_can_block_additional_tail(action_tokens)
+    if let Some((pump_tokens, capacity)) = split_trailing_blocking_capacity_tail(action_tokens)
     {
         let Some(pump) = parse_get_pump_clause(subject_tokens, pump_tokens, full_tokens)? else {
             return Ok(None);
@@ -932,9 +941,12 @@ pub(crate) fn parse_get_pump_clause(
         };
         let grant = EffectAst::subject_verb_grant_abilities_to_target(
             target.clone(),
-            vec![GrantedAbilityAst::CanBlockAdditionalCreatureEachCombat {
-                additional: additional as usize,
-            }],
+            vec![GrantedAbilityAst::StaticAbility(Box::new(crate::cards::builders::StaticAbilityAst::Static(
+                match capacity {
+                    crate::grammar::blocking_permissions::BlockingCapacity::AnyNumber => crate::model::CompilerStaticAbilityCore::can_block_any_number(),
+                    crate::grammar::blocking_permissions::BlockingCapacity::Additional(count) => crate::model::CompilerStaticAbilityCore::can_block_additional_creature_each_combat(count as usize),
+                }
+            )))],
             Until::EndOfTurn,
         );
         return Ok(Some(EffectAst::Sequence {
@@ -1012,9 +1024,14 @@ pub(crate) fn parse_get_pump_clause(
         parser_trace("parse_get_pump_clause:missing-modifier", action_tokens);
         return Ok(None);
     };
-    let Ok((power, toughness)) = parse_pt_modifier_values(mod_token) else {
-        parser_trace("parse_get_pump_clause:modifier-shape-miss", modifier_tail);
-        return Ok(None);
+    let (power, toughness) = if let Some(values) = bound_values {
+        values
+    } else {
+        let Ok(values) = parse_pt_modifier_values(mod_token) else {
+            parser_trace("parse_get_pump_clause:modifier-shape-miss", modifier_tail);
+            return Ok(None);
+        };
+        values
     };
     let mut duration_before_for_each = false;
     let mut count = parse_get_for_each_count_value(modifier_tail)?;

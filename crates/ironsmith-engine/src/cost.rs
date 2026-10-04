@@ -7,6 +7,8 @@
 //! - `TotalCost`: A complete cost (conjunction of Cost components)
 //! - `Cost` (in the `costs` module): Individual cost components (trait objects)
 
+pub(crate) mod prospective_references;
+
 use crate::costs::Cost;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -46,6 +48,19 @@ impl ironsmith_core::CostComponent for Cost {
 
     fn is_sacrifice_self(&self) -> bool {
         self.is_sacrifice_self()
+    }
+
+    fn discard_details(&self) -> Option<(u32, Option<crate::types::CardType>)> {
+        self.discard_details()
+    }
+
+    fn exile_from_graveyard_excludes_source(&self) -> bool {
+        self.effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ExileEffect>())
+            .is_some_and(|exile| {
+                matches!(exile.spec.base(), ChooseSpec::Object(filter)
+                if filter.zone == Some(crate::zone::Zone::Graveyard) && filter.other)
+            })
     }
 
     fn exile_from_hand_details(&self) -> Option<(u32, Option<crate::color::ColorSet>)> {
@@ -193,7 +208,9 @@ impl std::fmt::Display for CostPaymentError {
             CostPaymentError::InsufficientCardsToReveal => {
                 f.write_str("Not enough cards in hand to reveal")
             }
-            CostPaymentError::ExecutionFailed(error) => write!(f, "Replacement during payment failed: {error}"),
+            CostPaymentError::ExecutionFailed(error) => {
+                write!(f, "Replacement during payment failed: {error}")
+            }
             CostPaymentError::Other(message) => f.write_str(message),
         }
     }
@@ -354,6 +371,12 @@ pub(crate) fn effect_consumed_choice_tag(
             .then(|| filter_consumed_tag(&sacrifice.filter).cloned())
             .flatten();
     }
+    if let Some(discard) = consumer.downcast_ref::<crate::effects::DiscardEffect>() {
+        return discard.card_filter.as_ref().and_then(filter_consumed_tag).cloned();
+    }
+    if let Some(reveal) = consumer.downcast_ref::<crate::effects::RevealTaggedEffect>() {
+        return Some(reveal.tag.clone());
+    }
     if let Some(exile) = consumer.downcast_ref::<crate::effects::ExileEffect>() {
         return spec_consumed_tag(&exile.spec).cloned();
     }
@@ -368,6 +391,9 @@ pub(crate) fn effect_consumed_choice_tag(
     }
     if let Some(tap) = consumer.downcast_ref::<crate::effects::TapEffect>() {
         return spec_consumed_tag(&tap.target).cloned();
+    }
+    if let Some(untap) = consumer.downcast_ref::<crate::effects::UntapEffect>() {
+        return spec_consumed_tag(&untap.target).cloned();
     }
     consumer
         .0
@@ -418,19 +444,23 @@ pub(crate) fn tagged_choice_pair_is_payable(
     let consumer = &components[idx + 1];
     // "{T}, Tap two untapped creatures you control": the source is tapped by
     // its own {T} component, so it can't also be one of the chosen untapped
-    // creatures (Harmonized Trio).
-    let taps_chosen = consumer.effect_ref().is_some_and(|effect| {
+    // creatures (Harmonized Trio). Likewise {Q} consumes its tapped state
+    // before a separate written untap cost (Crackleburr).
+    let state_change = consumer.effect_ref().and_then(|effect| {
         let mut effect = effect;
         while let Some(inner) = effect.transparent_child_effect() {
             effect = inner;
         }
-        effect.downcast_ref::<crate::effects::TapEffect>().is_some()
+        if effect.downcast_ref::<crate::effects::TapEffect>().is_some() { Some(true) }
+        else if effect.downcast_ref::<crate::effects::UntapEffect>().is_some() { Some(false) }
+        else { None }
     });
-    if taps_chosen
-        && choose.filter.untapped
-        && !choose.filter.other
-        && components.iter().any(Cost::requires_tap)
-    {
+    let source_state_reserved = match state_change {
+        Some(true) => choose.filter.untapped && components.iter().any(Cost::requires_tap),
+        Some(false) => choose.filter.tapped && components.iter().any(Cost::requires_untap),
+        None => false,
+    };
+    if source_state_reserved && !choose.filter.other {
         let mut choose = choose.clone();
         choose.filter.other = true;
         choose_cost = Cost::validated_effect(crate::effect::Effect::new(choose));
@@ -456,10 +486,7 @@ pub(crate) fn tagged_choice_pair_is_payable(
 /// artifacts/creatures to help pay) pays the branch the caster announced
 /// (`OptionalCostsPaid::branch_choice`), defaulting to its first, all-mana
 /// branch; mana and non-mana steps must read the same branch.
-pub(crate) fn optional_cost_payment_branch(
-    cost: &TotalCost,
-    branch: Option<usize>,
-) -> &TotalCost {
+pub(crate) fn optional_cost_payment_branch(cost: &TotalCost, branch: Option<usize>) -> &TotalCost {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(_) => cost,
         ironsmith_core::TotalCostKind::OneOf(branches) => branches

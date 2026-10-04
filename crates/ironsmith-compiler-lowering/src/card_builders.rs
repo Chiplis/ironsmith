@@ -171,6 +171,13 @@ impl CardDefinitionBuilder {
         self
     }
 
+    /// Preserve the catalog distinction between a transforming DFC and a
+    /// modal linked pair. Transform layout alone does not permit casting the back.
+    pub fn transforming_dfc(mut self, transforming: bool) -> Self {
+        self.card_builder = self.card_builder.transforming_dfc(transforming);
+        self
+    }
+
     pub fn has_fuse(mut self) -> Self {
         self.has_fuse = true;
         self
@@ -664,6 +671,19 @@ impl CardDefinitionBuilder {
                 crate::target::ChooseSpec::Source,
             )],
         ))
+    }
+
+    pub fn increment(self) -> Self {
+        let mut ability = crate::ability::Ability::triggered(
+            crate::triggers::Trigger::spell_cast(None, crate::target::PlayerFilter::You),
+            vec![crate::effect::Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne, 1, crate::target::ChooseSpec::Source,
+            )],
+        );
+        if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
+            triggered.intervening_if = Some(crate::ConditionExpr::increment());
+        }
+        self.with_ability(ability)
     }
 
     pub fn evolve(self) -> Self {
@@ -1476,11 +1496,9 @@ impl CardDefinitionBuilder {
                 trigger: crate::triggers::Trigger::beginning_of_upkeep(
                     crate::target::PlayerFilter::You,
                 ),
-                effects: vec![crate::effect::Effect::unless_action(
-                    vec![crate::effect::Effect::sacrifice_source()],
-                    payment_effects,
-                    crate::target::PlayerFilter::You,
-                )]
+                effects: vec![crate::effect::Effect::new(crate::effects::CumulativeUpkeepEffect::echo(
+                    crate::target::PlayerFilter::You, payment_effects, vec![crate::effect::Effect::sacrifice_source()],
+                ))]
                 .into(),
                 choices: vec![],
                 intervening_if: Some(
@@ -1971,6 +1989,20 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    pub fn job_select(self) -> Self {
+        let created_tag = crate::tag::CompilerReferenceTag::JobSelectCreated.bind();
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(),
+            vec![
+                crate::effect::Effect::create_tokens(Self::job_select_hero_token(), 1)
+                    .tag(created_tag.clone()),
+                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
+                    created_tag.key.clone(),
+                )),
+            ],
+        ))
+    }
+
     pub fn living_weapon(self) -> Self {
         let created_tag = crate::tag::CompilerReferenceTag::LivingWeaponCreated.bind();
         self.with_ability(crate::ability::Ability::triggered(
@@ -1994,7 +2026,7 @@ impl CardDefinitionBuilder {
             crate::triggers::Trigger::this_attacks(),
             vec![crate::effect::Effect::for_players(
                 opponent_other_than_defending,
-                vec![crate::effect::Effect::may(vec![
+                vec![crate::effect::Effect::may_player(crate::target::PlayerFilter::You, vec![
                     crate::effect::Effect::new(
                         crate::effects::CreateTokenCopyEffect::new(
                             crate::target::ChooseSpec::Source,
@@ -2227,6 +2259,13 @@ impl CardDefinitionBuilder {
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
+    }
+
+    pub fn ripple(self, amount: u32) -> Self {
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::you_cast_this_spell(),
+            vec![crate::effect::Effect::new(crate::effects::RippleEffect { amount })],
+        ).in_zones(vec![crate::zone::Zone::Stack]))
     }
 
     pub fn graft(self, amount: u32) -> Self {
@@ -2517,6 +2556,15 @@ impl CardDefinitionBuilder {
             .subtypes(vec![Subtype::Rebel])
             .color_indicator(ColorSet::RED)
             .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    fn job_select_hero_token() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Hero")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Hero])
+            .power_toughness(PowerToughness::fixed(1, 1))
             .build()
     }
 

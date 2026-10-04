@@ -1613,6 +1613,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       }));
 
     assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
+    if ((message.openings || []).length > 0) {
+      // Authenticate and retain a valid disclosure before any speculative
+      // payment/requirements execution can fail. The sender hint is not authority.
+      await servicesRef.current.pinVerifiedPaymentEnvelope(actionIntent, message.openings,
+        { actionIntent, audit: { shuffleProofs: message.shuffleProofs || [] } });
+    }
 	    const localSeat = resolveLocalCryptoPlayerIndex();
 	    let previewedRequirements = filterCryptoRequirementsForCommand(
 	      command,
@@ -1862,6 +1868,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           actionIntent: actionIntent ? cloneMultiplayerPayload(actionIntent) : null,
           createdAt: requestedAtMs,
         });
+        if ((options.paymentDisclosure?.required || options.paymentDisclosure?.active)
+          && (options.openings || []).length > 0) {
+          servicesRef.current.pinPaymentDisclosureIntent(actionIntent, {
+            openings: options.openings, evidence: { actionIntent },
+          });
+        }
         const requestPayload = {
           type: "crypto_material_request",
           protocolVersion: PROTOCOL_VERSION,
@@ -1876,6 +1888,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           shuffleProofs: cloneMultiplayerPayload(options.shuffleProofs || []),
           rngReveals: cloneMultiplayerPayload(options.rngReveals || []),
           openings: cloneMultiplayerPayload(options.openings || []),
+          paymentDisclosure: Boolean(options.paymentDisclosure?.required || options.paymentDisclosure?.active),
           ...(command ? { command: cloneMultiplayerPayload(command) } : {}),
           ...(actionIntent ? { actionIntent: cloneMultiplayerPayload(actionIntent) } : {}),
         };
@@ -4559,6 +4572,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       lastAppliedSequence: nextSequence,
       submittingAction: false,
     }));
+    servicesRef.current.acceptPaymentDisclosure?.(message.audit?.matchId || currentAuditMatchId(), nextSequence);
     servicesRef.current.notifyProtocolActionHead?.();
     await captureLocalRuntimeRecoveryIfDue(nextSequence);
     if (isMatchDisputed(multiplayerRef.current)) {
@@ -4747,6 +4761,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	    ziffleHandRevealKeyRef.current = snapshot.ziffleHandRevealKey;
 	    ziffleHandRevealQuickKeyRef.current = snapshot.ziffleHandRevealQuickKey || "";
     restoreSequencedActionCryptoRefs(snapshot.crypto);
+    // Lossless rollback restores cost state, but cannot erase material already
+    // published for a pinned payment. Reverify/reopen that same envelope and
+    // retain its exact retry command before exposing the recovered UI.
+    await servicesRef.current.restorePaymentDisclosureAtHead?.({
+      sequence: Number(snapshot.lastAppliedSequence || 0) + 1, prevStateHash: snapshot.auditStateHash,
+    });
     const restoredState = currentGame && typeof currentGame.uiState === "function"
       ? await currentGame.uiState()
       : cloneMultiplayerPayload(snapshot.state);

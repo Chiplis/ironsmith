@@ -573,7 +573,7 @@ pub fn aura_grant_probe() {
     assert!(
         game.attach_object_to_target(ffav, crate::object::AttachmentTarget::Object(bob_creature))
     );
-    game.set_monarch(Some(alice));
+    game.set_monarch(Some(alice)).expect("checked designation/departure fixture");
     game.tap(bob_creature);
     game.turn.active_player = bob;
     game.turn.phase = crate::game_state::Phase::Beginning;

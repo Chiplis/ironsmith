@@ -110,7 +110,7 @@ fn u062_vanguard_setup_is_transactional_and_owned_cards_leave_with_their_player(
     ])
     .expect("valid Vanguard setup");
     let bob_card = game.vanguard_card(bob).expect("Bob vanguard");
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
     assert!(game.vanguard_card(bob).is_none());
     assert!(game.object(bob_card).is_none());
     assert!(game.vanguard_card(alice).is_some());

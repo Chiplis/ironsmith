@@ -1,3 +1,4 @@
+use crate::effect::Value;
 use super::*;
 
 pub fn parse_if_result_predicate_tokens(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
@@ -42,6 +43,31 @@ pub fn parse_if_result_predicate_lexed_tokens(
         return Some(IfResultPredicate::Value(
             crate::effect::Comparison::GreaterThan(0),
         ));
+    }
+    // A bounded cardinal comparison over the actual discard result, including
+    // zero discarded cards. Keep its action and threshold for the consequent's
+    // "difference", rather than inferring a count from the player's new hand.
+    {
+        let words = normalized
+            .iter()
+            .map(OwnedLexToken::parser_text)
+            .collect::<Vec<_>>();
+        if let Some(tail) = words.strip_prefix(&["fewer", "than"])
+            && let Some((count, used)) = crate::util::parse_value_expr_words(tail)
+            && let Value::Fixed(count) = count
+            && count > 0
+            && tail[used..] == ["cards", "were", "discarded", "this", "way"]
+        {
+            let mut surface = PriorEffectResultSurface::new(
+                PriorEffectAction::Discarded,
+                crate::target::ObjectFilter::default(),
+                PriorEffectResultActor::Passive,
+                PriorEffectResultQuantifier::OneOrMore,
+            );
+            surface.required_count = Some(count as u32);
+            surface.negated = true;
+            return Some(IfResultPredicate::PriorEffectResult(surface));
+        }
     }
     let direct_surface = parse_direct_prior_effect_result_surface(tokens);
     // A passive, unfiltered negated result such as "no counters were removed
@@ -304,9 +330,20 @@ pub fn parse_if_result_predicate_lexed_tokens(
     {
         return Some(IfResultPredicate::DiesThisWay);
     }
+    if matches_phrase(
+        &normalized,
+        &["excess", "damage", "was", "dealt", "this", "way"],
+    ) || matches_phrase(
+        &normalized,
+        &["excess", "damage", "is", "dealt", "this", "way"],
+    ) {
+        return Some(IfResultPredicate::ExcessDamageDealt);
+    }
     if (starts_with_phrase(&normalized, &["excess", "damage", "was", "dealt", "to"])
         || starts_with_phrase(&normalized, &["excess", "damage", "is", "dealt", "to"]))
-        && has_phrase(&normalized, &["creature"])
+        && (has_phrase(&normalized, &["creature"])
+            || has_phrase(&normalized, &["permanent"])
+            || has_phrase(&normalized, &["planeswalker"]))
         && ends_with_phrase(&normalized, &["this", "way"])
     {
         return Some(IfResultPredicate::ExcessDamageDealt);

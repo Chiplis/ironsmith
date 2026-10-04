@@ -2042,11 +2042,11 @@ fn multiplayer_leave_game_applies_800_4a_in_order_without_owned_object_zone_chan
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
     game.turn_store.extra_turns.extend([charlie, alice]);
-    game.set_monarch(Some(alice));
+    game.set_monarch(Some(alice)).expect("checked designation/departure fixture");
     game.set_initiative(Some(alice));
     game.effect_store.pending_trigger_events.clear();
 
-    assert!(game.mark_player_lost(alice));
+    assert!(game.mark_player_lost(alice).expect("checked designation/departure fixture"));
 
     assert!(game.object(owned_permanent).is_none());
     assert!(game.object(owned_hand_card).is_none());
@@ -2095,7 +2095,7 @@ fn multiplayer_leave_game_active_turn_continues_without_an_active_player() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    assert!(game.leave_game(alice));
+    assert!(game.leave_game(alice).expect("checked designation/departure fixture"));
 
     assert_eq!(
         game.turn.active_player, alice,
@@ -2185,7 +2185,7 @@ fn multiplayer_leave_game_clamps_next_turn_ability_grants_to_the_would_be_bounda
         &flash,
     ));
 
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
     assert!(
         game.effect_store.grant_registry.card_has_granted_ability(
             &game,
@@ -2245,12 +2245,12 @@ fn multiplayer_leave_game_800_4i_k_m_preserves_lki_and_expires_at_would_be_turn(
     ));
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
-    game.set_monarch(Some(bob));
+    game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
     game.set_initiative(Some(bob));
     game.refresh_continuous_state();
     assert_eq!(game.calculated_power(target), Some(4));
 
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
 
     assert_eq!(game.player(bob).map(|player| player.life), Some(7));
     assert_eq!(
@@ -2288,7 +2288,7 @@ fn multiplayer_leave_game_800_4i_freezes_player_information_before_owned_objects
     let second = game.create_object_from_card(&card, bob, Zone::Hand);
     game.player_mut(bob).expect("Bob").life = 7;
 
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
 
     assert!(game.object(first).is_none());
     assert!(game.object(second).is_none());
@@ -2355,7 +2355,7 @@ fn multiplayer_leave_game_800_4i_retains_actions_and_expires_last_turn_at_would_
     game.next_turn();
     assert_eq!(game.turn.active_player, charlie);
 
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
     assert_eq!(
         game.action_history_for_player(bob)
             .filter(|record| {
@@ -2440,7 +2440,7 @@ fn multiplayer_leave_game_800_4c_exiles_when_default_controller_already_left() {
     game.player_mut(alice).expect("Alice").has_left_game = true;
     assert_eq!(game.current_controller(permanent), Some(bob));
 
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
 
     let exiled = game
         .find_object_by_stable_id(stable_id)
@@ -2471,7 +2471,7 @@ fn multiplayer_leave_game_routes_800_4g_h_choices_and_rejects_800_4f_costs() {
         player: alice,
     });
 
-    assert!(game.leave_game(alice));
+    assert!(game.leave_game(alice).expect("checked designation/departure fixture"));
 
     assert_eq!(game.controlling_player_for(charlie), charlie);
     assert_eq!(game.controlling_player_for(alice), bob);
@@ -2797,7 +2797,7 @@ mod departure_notification_contract_tests {
             .build();
         game.create_object_from_definition(&watcher,bob,Zone::Battlefield);
         game.take_pending_trigger_events();
-        assert!(game.leave_game(alice)); assert!(game.object(id).is_none());
+        assert!(game.leave_game(alice).expect("checked designation/departure fixture")); assert!(game.object(id).is_none());
         let events = game.take_pending_trigger_events();
         let departures = events.iter().filter(|event| event.object_id() == Some(id)).collect::<Vec<_>>();
         assert_eq!(departures.len(),usize::from(!phased));
@@ -2836,7 +2836,7 @@ mod departure_lki_batch_contract_tests {
             .with_ability(Ability::triggered(Trigger::this_leaves_battlefield(),vec![Effect::gain_life(2)])).build();
         let object=game.create_object_from_definition(&card,alice,Zone::Battlefield);
         game.set_current_controller(object,bob).expect("finite controller fixture must refresh successfully");game.take_pending_trigger_events();
-        assert!(game.leave_game(alice));assert!(game.object(object).is_none());
+        assert!(game.leave_game(alice).expect("checked designation/departure fixture"));assert!(game.object(object).is_none());
         let mut queue=TriggerQueue::new();
         crate::game_loop::put_triggers_on_stack(&mut game,&mut queue).unwrap();
         assert_eq!(game.stack.len(),1,"the removed source's LKI ability belongs to surviving Bob");
@@ -2856,7 +2856,7 @@ mod departure_lki_batch_contract_tests {
             .with_ability(Ability::triggered(Trigger::leaves_battlefield(ObjectFilter::creature()),vec![Effect::gain_life(1)]))
             .with_ability(Ability::triggered(Trigger::new(ZoneChangeTrigger::leaves_battlefield(ObjectFilter::creature()).count(CountMode::OneOrMore)),vec![Effect::gain_life(10)]))
             .build();game.create_object_from_definition(&watcher,bob,Zone::Battlefield);game.take_pending_trigger_events();
-        assert!(game.leave_game(alice));let mut queue=TriggerQueue::new();
+        assert!(game.leave_game(alice).expect("checked designation/departure fixture"));let mut queue=TriggerQueue::new();
         crate::game_loop::put_triggers_on_stack(&mut game,&mut queue).unwrap();
         assert_eq!(game.stack.len(),3,"two per-object and one grouped LTB trigger");
         while !game.stack.is_empty() {crate::game_loop::resolve_stack_entry(&mut game).unwrap();}

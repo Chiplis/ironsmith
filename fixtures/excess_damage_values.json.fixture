@@ -1,0 +1,291 @@
+[
+  {
+    "name": "Bolg of the North",
+    "oracle_id": "88522a0f-5377-4522-97f4-4148bef954af",
+    "mana_cost": "{3}{B}{R}",
+    "type_line": "Legendary Creature — Goblin Soldier",
+    "power": "5",
+    "toughness": "5",
+    "oracle_text": "When Bolg enters, you may sacrifice another creature. When you do, Bolg deals damage equal to that creature's power to another target creature. If excess damage was dealt this way, amass Goblins X, where X is that excess damage. (Put X +1/+1 counters on an Army you control. It's also a Goblin. If you don't control an Army, create a 0/0 black Goblin Army creature token first.)",
+    "baseline": {
+      "card_name": "Bolg of the North",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "d8196090261907545145b276899e7756c2e0455b464fda4c48c910e8a422b32e",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "When Bolg enters, you may sacrifice another creature. When you do, Bolg deals damage equal to that creature's power to another target creature. If excess damage was dealt this way, amass Goblins X, where X is that excess damage.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "When Bolg enters, you may sacrifice another creature. When you do, Bolg deals damage equal to that creature's power to another target creature. If excess damage was dealt this way, amass Goblins X, where X is that excess damage.",
+      "parse_error": "unsupported where-x clause (clause: 'if excess damage was dealt this way, amass goblins x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause (clause: 'if excess damage was dealt this way, amass goblins x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'if excess damage was dealt this way, amass goblins x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "When Bolg enters, you may sacrifice another creature. When you do, Bolg deals damage equal to that creature's power to another target creature. If excess damage was dealt this way, amass Goblins X, where X is that excess damage. (Put X +1/+1 counters on an Army you control. It's also a Goblin. If you don't control an Army, create a 0/0 black Goblin Army creature token first.)",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'if excess damage was dealt this way, amass goblins x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'if excess damage was dealt this way, amass goblins x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Contest of Claws",
+    "oracle_id": "e30d5114-40d7-4dc5-8067-9c5e9625e097",
+    "mana_cost": "{1}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target creature you control deals damage equal to its power to another target creature. If excess damage was dealt this way, discover X, where X is that excess damage. (Exile cards from the top of your library until you exile a nonland card with that mana value or less. Cast it without paying its mana cost or put it into your hand. Put the rest on the bottom in a random order.)",
+    "baseline": {
+      "card_name": "Contest of Claws",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "9c652d3425b7d6cd61de22176b4122711d599ddc10f12965bb9001e6965ec911",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Target creature you control deals damage equal to its power to another target creature. If excess damage was dealt this way, discover X, where X is that excess damage.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Target creature you control deals damage equal to its power to another target creature. If excess damage was dealt this way, discover X, where X is that excess damage.",
+      "parse_error": "unsupported where-x clause (clause: 'if excess damage was dealt this way, discover x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported where-x clause (clause: 'if excess damage was dealt this way, discover x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'if excess damage was dealt this way, discover x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Target creature you control deals damage equal to its power to another target creature. If excess damage was dealt this way, discover X, where X is that excess damage. (Exile cards from the top of your library until you exile a nonland card with that mana value or less. Cast it without paying its mana cost or put it into your hand. Put the rest on the bottom in a random order.)",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'if excess damage was dealt this way, discover x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'if excess damage was dealt this way, discover x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Fall of Cair Andros",
+    "oracle_id": "33c0a8c0-d1d9-4b03-869d-65dab8ace3df",
+    "mana_cost": "{2}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a creature an opponent controls is dealt excess noncombat damage, amass Orcs X, where X is that excess damage. (Put X +1/+1 counters on an Army you control. It's also an Orc. If you don't control an Army, create a 0/0 black Orc Army creature token first.)\n{7}{R}: This enchantment deals 7 damage to target creature.",
+    "baseline": {
+      "card_name": "Fall of Cair Andros",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "e79ee93f2026db9a82b8a1a68c522b945a5ec67433dd7f435bae65c790b8c524",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Whenever a creature an opponent controls is dealt excess noncombat damage, amass Orcs X, where X is that excess damage.\n{7}{R}: This enchantment deals 7 damage to target creature.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Whenever a creature an opponent controls is dealt excess noncombat damage, amass Orcs X, where X is that excess damage.\n{7}{R}: This enchantment deals 7 damage to target creature.",
+      "parse_error": "unsupported where-x clause (clause: 'amass orcs x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause (clause: 'amass orcs x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'amass orcs x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Whenever a creature an opponent controls is dealt excess noncombat damage, amass Orcs X, where X is that excess damage. (Put X +1/+1 counters on an Army you control. It's also an Orc. If you don't control an Army, create a 0/0 black Orc Army creature token first.)\n{7}{R}: This enchantment deals 7 damage to target creature.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'amass orcs x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'amass orcs x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Violent Echoes",
+    "oracle_id": "e8ecec61-cc47-4051-a599-0e7470764488",
+    "mana_cost": "{2}{R}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Violent Echoes deals 6 damage to target creature or planeswalker. If excess damage was dealt to that permanent this way, empower Jace X, where X is that excess damage. (Put that many loyalty counters on a Jace token you control. If you don't control one, first create a blue Jace planeswalker token with \"[−1]: Surveil 1\" and \"[−3]: Draw a card.\")",
+    "baseline": {
+      "card_name": "Violent Echoes",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "eb4f889f9b4d0e37e0b1fe8591a18d1d0d904c6068eabf7e97438a3740fec178",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Violent Echoes deals 6 damage to target creature or planeswalker. If excess damage was dealt to that permanent this way, empower Jace X, where X is that excess damage.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Violent Echoes deals 6 damage to target creature or planeswalker. If excess damage was dealt to that permanent this way, empower Jace X, where X is that excess damage.",
+      "parse_error": "unsupported where-x clause (clause: 'if excess damage was dealt to that permanent this way, empower jace x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported where-x clause (clause: 'if excess damage was dealt to that permanent this way, empower jace x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'if excess damage was dealt to that permanent this way, empower jace x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Violent Echoes deals 6 damage to target creature or planeswalker. If excess damage was dealt to that permanent this way, empower Jace X, where X is that excess damage. (Put that many loyalty counters on a Jace token you control. If you don't control one, first create a blue Jace planeswalker token with \"[−1]: Surveil 1\" and \"[−3]: Draw a card.\")",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'if excess damage was dealt to that permanent this way, empower jace x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'if excess damage was dealt to that permanent this way, empower jace x, where x is that excess damage') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Goblin Negotiation",
+    "oracle_id": "79824266-bffa-476c-bdd3-976e9d789a42",
+    "mana_cost": "{X}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Goblin Negotiation deals X damage to target creature. Create a number of 1/1 red Goblin creature tokens equal to the amount of excess damage dealt to that creature this way.",
+    "baseline": {
+      "card_name": "Goblin Negotiation",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "8ba2367157531449a69bb1f5ce03c69d1f8eef64bf4beb6710cbd0334b177067",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Goblin Negotiation deals X damage to target creature. Create a number of 1/1 red Goblin creature tokens equal to the amount of excess damage dealt to that creature this way.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Goblin Negotiation deals X damage to target creature. Create a number of 1/1 red Goblin creature tokens equal to the amount of excess damage dealt to that creature this way.",
+      "parse_error": "unsupported dynamic token count in create clause (clause: 'a number of 1/1 red goblin creature tokens equal to the amount of excess damage dealt to that creature this way') [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported dynamic token count in create clause (clause: 'a number of 1/1 red goblin creature tokens equal to the amount of excess damage dealt to that creature this way') [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported dynamic token count in create clause (clause: 'a number of 1/1 red goblin creature tokens equal to the amount of excess damage dealt to that creature this way') [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Goblin Negotiation deals X damage to target creature. Create a number of 1/1 red Goblin creature tokens equal to the amount of excess damage dealt to that creature this way.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported dynamic token count in create clause (clause: 'a number of 1/1 red goblin creature tokens equal to the amount of excess damage dealt to that creature this way') [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported dynamic token count in create clause (clause: 'a number of 1/1 red goblin creature tokens equal to the amount of excess damage dealt to that creature this way') [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Hell to Pay",
+    "oracle_id": "7dc7d90d-5979-4c4a-9183-392e0e0b878a",
+    "mana_cost": "{X}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Hell to Pay deals X damage to target creature. Create a number of tapped Treasure tokens equal to the amount of excess damage dealt to that creature this way.",
+    "baseline": {
+      "card_name": "Hell to Pay",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "6f75a53254d1fe81e9cc7553bc9d50cb6715e95c99ed030c37636b589cb49c1d",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Hell to Pay deals X damage to target creature. Create a number of tapped Treasure tokens equal to the amount of excess damage dealt to that creature this way.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Hell to Pay deals X damage to target creature. Create a number of tapped Treasure tokens equal to the amount of excess damage dealt to that creature this way.",
+      "parse_error": "unsupported dynamic token count in create clause (clause: 'a number of tapped treasure tokens equal to the amount of excess damage dealt to that creature this way') [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported dynamic token count in create clause (clause: 'a number of tapped treasure tokens equal to the amount of excess damage dealt to that creature this way') [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported dynamic token count in create clause (clause: 'a number of tapped treasure tokens equal to the amount of excess damage dealt to that creature this way') [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Hell to Pay deals X damage to target creature. Create a number of tapped Treasure tokens equal to the amount of excess damage dealt to that creature this way.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported dynamic token count in create clause (clause: 'a number of tapped treasure tokens equal to the amount of excess damage dealt to that creature this way') [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported dynamic token count in create clause (clause: 'a number of tapped treasure tokens equal to the amount of excess damage dealt to that creature this way') [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Windswift Slice",
+    "oracle_id": "39ab72e2-04f2-41cc-ae33-4cc564b1542b",
+    "mana_cost": "{2}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Target creature you control deals damage equal to its power to target creature you don't control. Create a number of 1/1 green Elf Warrior creature tokens equal to the amount of excess damage dealt this way.",
+    "baseline": {
+      "card_name": "Windswift Slice",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "a672366de219020133ff2aa1316bede4d89df265376533afa1d307adf149729e",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Target creature you control deals damage equal to its power to target creature you don't control. Create a number of 1/1 green Elf Warrior creature tokens equal to the amount of excess damage dealt this way.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Target creature you control deals damage equal to its power to target creature you don't control. Create a number of 1/1 green Elf Warrior creature tokens equal to the amount of excess damage dealt this way.",
+      "parse_error": "unsupported dynamic token count in create clause (clause: 'a number of 1/1 green elf warrior creature tokens equal to the amount of excess damage dealt this way') [rule-path=complete-create > statement-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported dynamic token count in create clause (clause: 'a number of 1/1 green elf warrior creature tokens equal to the amount of excess damage dealt this way') [rule-path=complete-create > statement-reading] [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported dynamic token count in create clause (clause: 'a number of 1/1 green elf warrior creature tokens equal to the amount of excess damage dealt this way') [rule-path=complete-create > statement-reading] [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Target creature you control deals damage equal to its power to target creature you don't control. Create a number of 1/1 green Elf Warrior creature tokens equal to the amount of excess damage dealt this way.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported dynamic token count in create clause (clause: 'a number of 1/1 green elf warrior creature tokens equal to the amount of excess damage dealt this way') [rule-path=complete-create > statement-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported dynamic token count in create clause (clause: 'a number of 1/1 green elf warrior creature tokens equal to the amount of excess damage dealt this way') [rule-path=complete-create > statement-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  }
+]

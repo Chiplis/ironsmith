@@ -480,6 +480,8 @@ impl IncrementalBattlefieldGroups {
                             | StaticAbilityId::AllPlayersLookAtYourTopLibraryCard
                             | StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries
                             | StaticAbilityId::OpponentsPlayWithHandsRevealed
+                            | StaticAbilityId::ControllerPlaysWithHandRevealed
+                            | StaticAbilityId::PlayersPlayWithHandsRevealed
                     )
                 })
             }) {
@@ -512,6 +514,8 @@ impl IncrementalBattlefieldGroups {
                     StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
                     StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries,
                     StaticAbilityId::OpponentsPlayWithHandsRevealed,
+                    StaticAbilityId::ControllerPlaysWithHandRevealed,
+                    StaticAbilityId::PlayersPlayWithHandsRevealed,
                 ]
                 .into_iter()
                 .enumerate()
@@ -565,13 +569,15 @@ impl IncrementalBattlefieldGroups {
         player: PlayerId,
     ) -> (bool, bool) {
         let own = perspective == player || game.controlling_player_for(player) == perspective;
-        let top = self.visibility.values().any(|(controller, flags)| {
+        let top = (own && game.effect_store.grant_registry.grants_private_library_top_view(game, player)) || self.visibility.values().any(|(controller, flags)| {
             flags & 4 != 0 || (*controller == player && (flags & 2 != 0 || (own && flags & 1 != 0)))
         });
         let hand = self
             .visibility
             .values()
-            .any(|(controller, flags)| *controller != player && flags & 8 != 0);
+            .any(|(controller, flags)| flags & 32 != 0
+                || (*controller == player && flags & 16 != 0)
+                || (game.are_opponents(*controller, player) && flags & 8 != 0));
         (top, hand)
     }
 
@@ -2049,7 +2055,7 @@ fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId)
 
 #[cfg(test)]
 fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
-    game.object_store.battlefield.iter().any(|id| {
+    game.effect_store.grant_registry.grants_private_library_top_view(game, player) || game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
             game.current_controller(*id).unwrap_or(object.owner) == player
                 && game.object_has_static_ability_id(*id, StaticAbilityId::LookAtTopCardOfLibrary)
@@ -2088,12 +2094,11 @@ fn can_view_library_top(game: &GameState, perspective: PlayerId, player: PlayerI
 #[cfg(test)]
 fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
-        game.object(*id).is_some_and(|object| {
-            game.current_controller(*id).unwrap_or(object.owner) != player
-                && game.object_has_static_ability_id(
-                    *id,
-                    StaticAbilityId::OpponentsPlayWithHandsRevealed,
-                )
+        !game.is_phased_out(*id) && game.object(*id).is_some_and(|object| {
+            let controller = game.current_controller(*id).unwrap_or(object.owner);
+            game.object_has_static_ability_id(*id, StaticAbilityId::PlayersPlayWithHandsRevealed)
+                || (controller == player && game.object_has_static_ability_id(*id, StaticAbilityId::ControllerPlaysWithHandRevealed))
+                || (game.are_opponents(controller, player) && game.object_has_static_ability_id(*id, StaticAbilityId::OpponentsPlayWithHandsRevealed))
         })
     })
 }
@@ -2696,6 +2701,23 @@ pub(super) struct ZoneCardSnapshot {
 }
 
 impl GameSnapshot {
+    pub(super) fn include_payment_disclosure(
+        &mut self, game: &GameState, view: &ActiveViewedCards, cache: &SnapshotObjectViewCache,
+    ) {
+        let Some(player) = self.players.iter_mut().find(|player| player.id == view.subject.0) else { return; };
+        let disclosed = cache.hand_cards(game, view.subject, PlayerId::from_index(self.perspective), Some(view), 1);
+        if disclosed.is_empty() { return; }
+        let mut cards = player.hand_cards.as_ref().clone();
+        for card in disclosed.iter() {
+            if !cards.iter().any(|known| known.id == card.id) { cards.push(card.clone()); }
+        }
+        if let Some(owner) = game.player(view.subject) {
+            cards.sort_by_key(|card| owner.hand.iter().position(|id| id.0 == card.id));
+        }
+        player.hand_cards = Arc::new(cards);
+        player.can_view_hand = true;
+    }
+
     #[cfg(test)]
     pub(super) fn from_game(
         game: &GameState,
@@ -2729,6 +2751,7 @@ impl GameSnapshot {
         )
     }
 
+    #[cfg(test)]
     pub(super) fn from_game_with_object_view_cache(
         game: &GameState,
         perspective: PlayerId,
@@ -2743,6 +2766,29 @@ impl GameSnapshot {
         undo_land_stable_id: Option<u64>,
         snapshot_id: u64,
         object_view_cache: &SnapshotObjectViewCache,
+    ) -> Self {
+        Self::from_game_with_object_view_cache_during_action(
+            game, perspective, decision, mana_payment, game_over, pending_cast_stack_id,
+            resolving_stack_object, battlefield_transitions, viewed_cards, cancelable,
+            undo_land_stable_id, snapshot_id, object_view_cache, Default::default(),
+        )
+    }
+
+    pub(super) fn from_game_with_object_view_cache_during_action(
+        game: &GameState,
+        perspective: PlayerId,
+        decision: Option<&DecisionContext>,
+        mana_payment: Option<ManaPaymentView>,
+        game_over: Option<&GameResult>,
+        pending_cast_stack_id: Option<ObjectId>,
+        resolving_stack_object: Option<super::StackObjectSnapshot>,
+        battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
+        viewed_cards: Option<&ActiveViewedCards>,
+        cancelable: bool,
+        undo_land_stable_id: Option<u64>,
+        snapshot_id: u64,
+        object_view_cache: &SnapshotObjectViewCache,
+        top_visibility: super::StaticLibraryTopVisibilityWindow<'_>,
     ) -> Self {
         let stack_viewed_cards = super::stack_revealed_view(game);
         // A source snapshot grants ongoing inspection while its entry is on
@@ -2807,6 +2853,7 @@ impl GameSnapshot {
                     .groups
                     .borrow()
                     .visibility_for_player(game, perspective, p.id);
+                let can_view_library_top = can_view_library_top && top_visibility.allows(game, p.id);
                 let can_view_hand = is_perspective_player
                     || controls_player
                     || game.can_review_teammate_hand(perspective, p.id)
@@ -5848,6 +5895,46 @@ mod hidden_zone_continuous_effects {
                 "the bear in the {label} should be the chosen type, got {:?}",
                 chars.subtypes
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod scoped_revealed_hand_tests {
+    use super::*;
+    use ironsmith::ability::Ability;
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::static_abilities::StaticAbility;
+    use ironsmith::{CardId, CardType, Zone};
+    #[test]
+    fn public_hand_scopes_match_cached_and_sync_views_through_control_phase_and_leave() {
+        let _ids = crate::test_id_counter_guard();
+        for (scope, ability) in [
+            (0, StaticAbility::controller_plays_with_hand_revealed()),
+            (1, StaticAbility::players_play_with_hands_revealed()),
+            (2, StaticAbility::opponents_play_with_hands_revealed()),
+        ] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into(), "Dan".into()], 20);
+            let [a, b, c, d] = [0, 1, 2, 3].map(PlayerId::from_index);
+            game.set_teams(vec![vec![a, c], vec![b, d]]).unwrap();
+            let definition = CardDefinitionBuilder::new(CardId::new(), "Public hand scope probe")
+                .card_types(vec![CardType::Enchantment]).with_ability(Ability::static_ability(ability)).build();
+            let host = game.create_object_from_definition(&definition, a, Zone::Battlefield);
+            let views = SnapshotObjectViewCache::default(); let mut groups = IncrementalBattlefieldGroups::default();
+            let check = |game: &GameState, groups: &mut IncrementalBattlefieldGroups, controller: PlayerId, active: bool| {
+                groups.update(game, &HashSet::new(), &views);
+                for viewer in [a, b, c, d] { for subject in [a, b, c, d] {
+                    let expected = active && match scope { 0 => subject == controller, 1 => true, _ => game.are_opponents(controller, subject) };
+                    let (top, hand) = groups.visibility_for_player(game, viewer, subject);
+                    assert!(!top, "revealing hands grants no library information"); assert_eq!(hand, expected);
+                    assert_eq!(crate::hand_revealed_by_static_ability(game, subject), expected);
+                } }
+            };
+            check(&game, &mut groups, a, true);
+            game.set_current_controller(host, b).unwrap(); check(&game, &mut groups, b, true);
+            game.phase_out(host); check(&game, &mut groups, b, false);
+            game.phase_in(host); check(&game, &mut groups, b, true);
+            game.move_object_by_effect(host, Zone::Graveyard).unwrap(); check(&game, &mut groups, b, false);
         }
     }
 }

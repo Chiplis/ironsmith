@@ -1,6 +1,35 @@
 use super::*;
 use crate::cards::builders::PlayerPredicateAst;
 
+#[path = "zone_change_surfaces.rs"]
+mod zone_change_surfaces;
+#[path = "permanent_tap_state.rs"]
+mod permanent_tap_state;
+#[path = "attachment_transitions.rs"]
+mod attachment_transitions;
+#[path = "phasing_transitions.rs"]
+mod phasing_transitions;
+mod permanent_lifecycle;
+mod passive_damage_recipients;
+#[path = "milling_transitions.rs"]
+mod milling_transitions;
+#[path = "player_attack_declarations.rs"]
+mod player_attack_declarations;
+#[path = "life_change_triggers.rs"]
+mod life_change_triggers;
+#[path = "qualified_player_events.rs"]
+mod qualified_player_events;
+#[path = "control_transitions.rs"]
+mod control_transitions;
+#[path = "causal_events.rs"]
+mod causal_events;
+#[path = "combat_declaration_shapes.rs"]
+mod combat_declaration_shapes;
+#[path = "monarch_triggers.rs"]
+mod monarch_triggers;
+#[path = "paid_cost_triggers.rs"]
+mod paid_cost_triggers;
+
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
 fn owned_exile_origin_words(words: &[&str]) -> Option<(usize, Vec<Zone>)> {
@@ -278,6 +307,7 @@ pub(super) fn try_parse_source_with_filtered_attack_count_trigger_lexed(
 pub(super) fn parse_trigger_clause_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
+    if let Some(trigger) = combat_declaration_shapes::parse(tokens)? { return Ok(trigger); }
     {
         let words = crate::lexer::token_word_refs(tokens);
         if crate::word_primitives::parse_any_sequence_complete(
@@ -664,6 +694,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         ));
     }
 
+    if let Some(trigger) = causal_events::parse(tokens)? { return Ok(trigger); }
+    if let Some(trigger) = paid_cost_triggers::parse(tokens) { return Ok(trigger); }
+    if let Some(trigger) = monarch_triggers::parse(tokens) {return Ok(trigger);}
+
     if let Some(player) = parse_unpaid_cumulative_upkeep_player(&words) {
         return Ok(TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::CumulativeUpkeepNotPaid,
@@ -984,6 +1018,28 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // A complete keyword-action verb list inherits one player subject. Keep
+    // this typed union ahead of the general OR splitter, which otherwise
+    // sees a subjectless right arm ("surveil"). Explicit right-hand subjects
+    // and trailing qualifiers remain owned by their complete clause rules.
+    if let Some(alternatives) =
+        crate::grammar::trigger_clauses::parse_shared_keyword_action_alternatives(tokens)
+        && let Some(player) = parse_trigger_subject_player_filter(
+            &crate::lexer::token_word_refs(&tokens[alternatives.subject]),
+        )
+    {
+        let action_trigger = |action| TriggerSpec::KeywordAction {
+            action,
+            player: player.clone(),
+            source_filter: None,
+            during_your_turn: false,
+        };
+        return Ok(TriggerSpec::Either(
+            Box::new(action_trigger(alternatives.left)),
+            Box::new(action_trigger(alternatives.right)),
+        ));
+    }
+
     if let Some(or_idx) = split_trigger_or_index(tokens) {
         let left_tokens = &tokens[..or_idx];
         let right_tokens = &tokens[or_idx + 1..];
@@ -998,6 +1054,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             &[&["attack", "attacks"]],
         ) {
             trigger_atom_token(left_tokens, TriggerClauseAtom::Block)
+        } else if right_words.first().is_some_and(|word| matches!(*word, "mill" | "mills")) {
+            // An explicit player shared by discard/mill alternatives remains
+            // the actor of both complete arms (not the effect controller).
+            trigger_atom_token(left_tokens, TriggerClauseAtom::Discard)
         } else if right_words
             .first()
             .is_some_and(|word| matches!(*word, "copy" | "copies"))
@@ -2939,16 +2999,18 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     }
 
     if trigger_pattern_accepts(&words, YOU_CYCLE_OR_DISCARD_TRIGGER_PATTERN) {
+        let card_filter = trigger_pattern_accepts(&words[4..], CYCLE_ANOTHER_CARD_TAIL_PATTERN)
+            .then(|| ObjectFilter::default().other());
         return Ok(TriggerSpec::Either(
             Box::new(TriggerSpec::KeywordAction {
                 action: crate::events::KeywordActionKind::Cycle,
                 player: PlayerFilter::You,
-                source_filter: None,
+                source_filter: card_filter.clone(),
                 during_your_turn: false,
             }),
             Box::new(TriggerSpec::PlayerDiscardsCard {
                 player: PlayerFilter::You,
-                filter: None,
+                filter: card_filter,
                 cause_controller: None,
                 effect_like_only: false,
                 one_or_more: false,
@@ -3322,28 +3384,39 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
-    let becomes_tapped_words = if trigger_pattern_accepts(&words, DURING_YOUR_TURN_TRIGGER_SUFFIX) {
-        &words[..words.len().saturating_sub(3)]
-    } else {
-        words.as_slice()
-    };
+    if let Some(trigger) = player_attack_declarations::parse_player_attack_declaration(tokens)? { return Ok(trigger); }
+    if let Some(trigger) = milling_transitions::parse_milling_trigger(tokens)? {
+        return Ok(trigger);
+    }
+    if words == ["you", "choose", "a", "creature", "as", "your", "ring", "bearer"] {
+        return Ok(TriggerSpec::RingBearerChosen(PlayerFilter::You));
+    }
+    if let Some(trigger) = control_transitions::parse_control_transition_trigger(tokens)? { return Ok(trigger); }
+    if let Some(trigger) = phasing_transitions::parse_phasing_transition_trigger(tokens)? {
+        return Ok(trigger);
+    }
+    if let Some(trigger) = attachment_transitions::parse_attachment_transition_trigger(tokens)? {
+        return Ok(trigger);
+    }
+    if let Some(trigger) = permanent_tap_state::parse_player_tap_state_trigger(tokens)? {
+        return Ok(trigger);
+    }
 
-    if trigger_pattern_accepts(becomes_tapped_words, BECOMES_TAPPED_TRIGGER_SUFFIX)
-        && let Some(becomes_idx) = trigger_atom_token(tokens, TriggerClauseAtom::Becomes)
-    {
-        let subject_tokens = &tokens[..becomes_idx];
-        return Ok(match parse_trigger_subject_filter_lexed(subject_tokens)? {
-            Some(filter) => TriggerSpec::PermanentBecomesTapped(filter),
-            None => TriggerSpec::ThisBecomesTapped,
+    if let Some(trigger) = permanent_tap_state::parse_permanent_tap_state_trigger(tokens)? {
+        return Ok(trigger);
+    }
+
+    if let Some(tail) = words.strip_prefix(&["you", "become", "the", "target", "of"]) {
+        use ironsmith_core::filter_model::StackObjectKind;
+        let source = parse_targeting_source_controller_tail(tail).or_else(|| match tail {
+            ["a", "spell"] => Some((StackObjectKind::Spell, PlayerFilter::Any)),
+            ["an", "ability"] => Some((StackObjectKind::Ability, PlayerFilter::Any)),
+            ["a", "spell", "or", "ability"] => Some((StackObjectKind::SpellOrAbility, PlayerFilter::Any)),
+            _ => None,
         });
-    }
-
-    if trigger_pattern_accepts(becomes_tapped_words, THIS_BECOMES_TAPPED_TRIGGER_PATTERN) {
-        return Ok(TriggerSpec::ThisBecomesTapped);
-    }
-
-    if trigger_pattern_accepts(&words, THIS_BECOMES_UNTAPPED_TRIGGER_PATTERN) {
-        return Ok(TriggerSpec::ThisBecomesUntapped);
+        if let Some((source_kind, source_controller)) = source {
+            return Ok(TriggerSpec::PlayerBecomesTargeted { player: PlayerFilter::You, source_controller, source_kind });
+        }
     }
 
     if trigger_pattern_accepts(&words, THIS_BECOMES_MONSTROUS_TRIGGER_PATTERN) {
@@ -3365,6 +3438,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         && source_reference_surface_for_words(&words[..words.len() - 2]).is_some()
     {
         return Ok(TriggerSpec::ThisBecomesMonstrous);
+    }
+
+    if let Some(trigger) = permanent_lifecycle::parse_permanent_lifecycle_trigger(tokens)? {
+        return Ok(trigger);
     }
 
     if trigger_pattern_accepts(&words, THIS_MUTATES_TRIGGER_PATTERN) {
@@ -3423,6 +3500,23 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             );
         }
         let subject_filter = parse_trigger_subject_filter_lexed(subject_tokens)?;
+        if words[becomes_idx + 4..].starts_with(&["an", "ability", "of"]) {
+            let source_start = trigger_word_token_start(tokens, becomes_idx + 7)
+                .unwrap_or(tokens.len());
+            if source_start == tokens.len() {
+                return Err(CardTextError::ParseError("missing physical source in ability-source targeting event".into()));
+            }
+            let source = parse_object_filter_lexed(&tokens[source_start..], false)?;
+            if source == ObjectFilter::default() {
+                return Err(CardTextError::ParseError("unqualified physical source in ability-source targeting event".into()));
+            }
+            let target = match subject_filter.clone() {
+                Some(filter) => filter,
+                None if is_source_reference_words(subject_words) => ObjectFilter::source(),
+                None => return Err(CardTextError::ParseError("unknown participant in ability-source targeting event".into())),
+            };
+            return Ok(TriggerSpec::BecomesTargetedByAbilitySource { target, source });
+        }
         let subject_is_source =
             subject_words.is_empty() || is_source_reference_words(subject_words);
         if subject_is_source {
@@ -3444,7 +3538,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             }
             if trigger_pattern_accepts(tail_words, ONLY_IT_ABILITY_TARGET_TAIL_PATTERN) {
                 let mut ability_filter = ObjectFilter::ability();
-                ability_filter.target_count = Some(crate::effect::ChoiceCount::exactly(1));
+                // CR 115.9c: "targets only it" permits selecting that same
+                // object for multiple target words. A literal target-count
+                // constraint instead counts each chosen instance (115.9a).
                 ability_filter.targets_only_object = Some(Box::new(ObjectFilter::source()));
                 return Ok(TriggerSpec::ThisBecomesTargetedByStackObject(
                     ability_filter,
@@ -3533,6 +3629,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    if let Some(trigger) = passive_damage_recipients::parse(tokens)? { return Ok(trigger); }
+
     if let Some((recipient_end_word, source_start_word)) = passive_damage_by_word_span(&words) {
         let recipient_end_token =
             trigger_word_token_start(tokens, recipient_end_word).unwrap_or(tokens.len());
@@ -3566,6 +3664,24 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             source,
             target,
             source_surface: crate::triggers::DamageSourceSurface::PassiveBy,
+        });
+    }
+
+    if let Some(recipient) =
+        trigger_grammar::parse_passive_noncombat_damage_recipient(tokens)
+        && let Some(player) = trigger_subject_player_selector_lexed(&tokens[recipient.clone()])
+    {
+        // No source is singled out by passive recipient wording. Simultaneous
+        // damage from several sources is one event for each recipient (or
+        // one event for the whole recipient group when "one or more").
+        let mut source = ObjectFilter::default();
+        source.set_union_one_or_more(true);
+        return Ok(TriggerSpec::DealsNoncombatDamageToPlayer {
+            source,
+            player,
+            source_surface: crate::triggers::DamageSourceSurface::Filter,
+            damaged_player_one_or_more: has_leading_one_or_more(&tokens[recipient]),
+            during_turn: None,
         });
     }
 
@@ -3921,6 +4037,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         );
     }
 
+    if let Some(trigger) = qualified_player_events::parse(tokens)? { return Ok(trigger); }
+    if let Some(trigger) = life_change_triggers::parse_life_change_trigger(tokens) {
+        return Ok(trigger);
+    }
+
     if trigger_pattern_accepts(&words, YOU_GAIN_LIFE_TRIGGER_PATTERN) {
         return Ok(TriggerSpec::YouGainLife);
     }
@@ -4196,6 +4317,25 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
             use crate::grammar::trigger_clauses::RollResultShape;
             match trigger_grammar::parse_roll_result_words(result_words) {
+                Some(RollResultShape::Natural(result)) => {
+                    let result = i32::try_from(result).map_err(|_|CardTextError::ParseError("die result exceeds supported representation".into()))?;
+                    return Ok(TriggerSpec::PlayerRollsResultMatching { player, result: crate::filter::Comparison::Equal(result), natural: true });
+                }
+                Some(RollResultShape::AtLeast(result)) => {
+                    let result = i32::try_from(result).map_err(|_|CardTextError::ParseError("die result exceeds supported representation".into()))?;
+                    return Ok(TriggerSpec::PlayerRollsResultMatching { player, result: crate::filter::Comparison::GreaterThanOrEqual(result), natural: false });
+                }
+                Some(RollResultShape::Either(left,right)) => {
+                    let results = [left,right].into_iter().map(i32::try_from).collect::<Result<Vec<_>,_>>()
+                        .map_err(|_|CardTextError::ParseError("die result exceeds supported representation".into()))?;
+                    return Ok(TriggerSpec::PlayerRollsResultMatching { player, result: crate::filter::Comparison::OneOf(results.into()), natural: false });
+                }
+                Some(RollResultShape::Nth(ordinal)) => {
+                    if (result_words.first() == Some(&"your")) != matches!(player, PlayerFilter::You) {
+                        return Err(CardTextError::ParseError("die ordinal possessive does not match its rolling player".into()));
+                    }
+                    return Ok(TriggerSpec::PlayerRollsNthDie { player, ordinal });
+                }
                 Some(RollResultShape::ToVisitAttractions) => {
                     return Ok(TriggerSpec::PlayerRollsToVisitAttractions { player });
                 }
@@ -4281,6 +4421,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         });
     }
 
+    if let [subject @ .., "collect" | "collects", "evidence"] = words.as_slice()
+        && let Some(player) = parse_trigger_subject_player_filter(subject)
+    {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::CollectEvidence,
+            player,
+            source_filter: None,
+            during_your_turn: false,
+        });
+    }
     if let Some(last_word) = words.last().copied()
         && let Some(action) = crate::events::KeywordActionKind::from_trigger_word(last_word)
     {
@@ -5380,10 +5530,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         _ if trigger_pattern_accepts(words, BEGINNING_COMBAT_TRIGGER_PATTERN) => Ok(
             TriggerSpec::BeginningOfCombat(parse_possessive_clause_player_filter(words)),
         ),
-        _ => Err(CardTextError::ParseError(format!(
-            "unsupported trigger clause (clause: '{}')",
-            words.join(" ")
-        ))),
+        _ => {
+            if let Some(trigger) = zone_change_surfaces::parse_complete_zone_change(tokens)? {
+                Ok(trigger)
+            } else {
+                Err(CardTextError::ParseError(format!(
+                    "unsupported trigger clause (clause: '{}')",
+                    words.join(" ")
+                )))
+            }
+        }
     }
 }
 

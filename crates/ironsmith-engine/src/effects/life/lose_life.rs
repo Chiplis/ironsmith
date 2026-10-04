@@ -13,10 +13,27 @@ struct LoseLifeProposal {
     player: crate::ids::PlayerId,
     amount: u32,
     can_change_life_total: bool,
+    prepared: Option<crate::events::processing::TraitEventResult>,
     provenance: crate::provenance::ProvNodeId,
 }
 
 impl SimultaneousEffectProposal for LoseLifeProposal {
+    fn prepare_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<(), ExecutionError>
+    {
+        self.prepared = Some(if self.can_change_life_total {
+            super::life_change::prepare_life_change(game, ctx, crate::events::Event::new_with_provenance(
+                LifeLossEvent::from_effect(self.player, self.amount), self.provenance))?
+        } else { crate::events::processing::TraitEventResult::Prevented });
+        Ok(())
+    }
+    fn commit_original(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError>
+    {
+        if self.prepared.is_none() { self.prepare_original(game, ctx)?; }
+        super::life_change::commit_prepared_life_original(game, ctx, self.prepared.take().expect("life proposal prepared"))
+    }
+
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
@@ -122,6 +139,7 @@ impl LoseLifeEffect {
             player,
             amount,
             can_change_life_total: game.can_change_life_total(player),
+            prepared: None,
             provenance: ctx.provenance,
         })
     }

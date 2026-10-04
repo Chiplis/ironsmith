@@ -385,6 +385,11 @@ pub struct ObjectSnapshot {
     pub cast_order_this_turn: Option<u32>,
     /// Mana spent to cast this object when it was a spell on the stack.
     pub mana_spent_to_cast: ManaPool,
+    /// Actual mana spent by the caster, excluding Assist payments by others.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub caster_mana_spent_to_cast: Option<u32>,
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub mana_spent_on_x: Option<crate::mana::XManaAllocation>,
     /// Optional costs paid for this cast, retained for historical spell filters.
     pub optional_costs_paid: crate::cost::OptionalCostsPaid,
     pub snow_mana_spent_to_cast: ManaPool,
@@ -406,6 +411,10 @@ pub struct ObjectSnapshot {
     /// Last-known goad designation for a snapshot with calculated state.
     /// Raw snapshots leave this unset rather than recursively calculating layers.
     pub goaded: Option<bool>,
+    /// Historical designation, separate from which permanent is the bearer now.
+    /// Older/public snapshots may lack this evidence. Never assume false.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub ring_bearer: Option<bool>,
     /// Whether the object was flipped.
     pub flipped: bool,
     /// Whether the object was face-down.
@@ -429,6 +438,10 @@ pub struct ObjectSnapshot {
     pub is_commander: bool,
     /// The zone the object was in.
     pub zone: Zone,
+    /// Last life total actually noted for this exact incarnation. This is
+    /// noncopiable information available to already-pending abilities.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub noted_life_total: Option<i32>,
 }
 
 /// Counters encoded as `(kind, count)` pairs: a named counter kind is not a
@@ -506,6 +519,8 @@ impl ObjectSnapshot {
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: None,
             optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
@@ -514,6 +529,7 @@ impl ObjectSnapshot {
             tapped: false,
             attacking: false,
             goaded: None,
+            ring_bearer: None,
             flipped: false,
             face_down: false,
             transform_count: 0,
@@ -525,6 +541,7 @@ impl ObjectSnapshot {
             is_prepared: false,
             is_commander: false,
             zone,
+            noted_life_total: None,
         }
     }
 
@@ -638,6 +655,8 @@ impl ObjectSnapshot {
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
             mana_spent_to_cast: obj.mana_spent_to_cast.clone(),
+            caster_mana_spent_to_cast: obj.caster_mana_spent_to_cast,
+            mana_spent_on_x: obj.mana_spent_on_x,
             optional_costs_paid: obj.optional_costs_paid.clone(),
             snow_mana_spent_to_cast: obj.snow_mana_spent_to_cast.clone(),
             mana_sources_spent_to_cast: obj
@@ -655,6 +674,7 @@ impl ObjectSnapshot {
                 .as_ref()
                 .is_some_and(|combat| crate::combat_state::is_attacking(combat, obj.id)),
             goaded: None,
+            ring_bearer: Some(obj.zone == Zone::Battlefield && game.player(game.controller_of(obj)).is_some_and(|player| player.ring_bearer == Some(obj.id))),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
             transform_count: game.transform_count(obj.id),
@@ -666,6 +686,7 @@ impl ObjectSnapshot {
             is_prepared: game.is_prepared(obj.id),
             is_commander: game.is_commander(obj.id),
             zone: obj.zone,
+            noted_life_total: game.noted_life_total_for_source(obj.id),
         }
     }
 
@@ -813,6 +834,8 @@ impl ObjectSnapshot {
             snapshot.ability_labels = calculated.ability_labels.to_vec();
             snapshot.power = calculated.power;
             snapshot.toughness = calculated.toughness;
+            snapshot.base_power = calculated.base_power;
+            snapshot.base_toughness = calculated.base_toughness;
             snapshot.card_types = calculated.card_types.to_vec();
             snapshot.subtypes = calculated.subtypes.to_vec();
             snapshot.supertypes = calculated.supertypes.to_vec();
@@ -1034,6 +1057,8 @@ impl ObjectSnapshot {
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
             optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
@@ -1042,6 +1067,7 @@ impl ObjectSnapshot {
             tapped: false,
             attacking: false,
             goaded: Some(false),
+            ring_bearer: Some(false),
             flipped: false,
             face_down: false,
             transform_count: 0,
@@ -1053,6 +1079,7 @@ impl ObjectSnapshot {
             is_prepared: false,
             is_commander: false,
             zone: Zone::Battlefield,
+            noted_life_total: None,
         }
     }
 

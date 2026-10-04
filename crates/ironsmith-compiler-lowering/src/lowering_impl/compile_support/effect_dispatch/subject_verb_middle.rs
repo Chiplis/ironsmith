@@ -80,6 +80,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 StatChangeActionAst::RemoveAllSubtypesOfFamily { .. }
             )
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
@@ -556,6 +557,9 @@ pub(super) fn compile_pump_action(
         } else {
             (resolved_power.clone(), resolved_toughness.clone())
         };
+        let historical_block_participant = !spec.is_target()
+            && matches!(spec.base(), ChooseSpec::Tagged(tag)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::Blocking.as_str());
         let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
             spec,
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
@@ -564,8 +568,10 @@ pub(super) fn compile_pump_action(
             },
             duration.clone(),
         )
-        .require_creature_target()
         .with_set_quantifier_surface(*set_quantifier_surface);
+        // A definite event participant remains that object after its type
+        // changes (CR608.2k). Targeted pumps still require a legal creature.
+        if !historical_block_participant { apply = apply.require_creature_target(); }
         if let Some(surface) = source_reference_surface {
             apply = apply.with_source_reference_surface(surface);
         }
@@ -868,8 +874,8 @@ pub(super) fn compile_become_base_pt_creature_action(
         name_override,
         add_supertypes,
         remove_all_abilities,
-        power,
-        toughness,
+        remove_other_abilities,
+        base_power_toughness,
         target,
         card_types,
         subtypes,
@@ -878,6 +884,7 @@ pub(super) fn compile_become_base_pt_creature_action(
         abilities,
         granted_abilities,
         preserve_other_types,
+        preserve_other_colors,
         type_retention_surface,
         animation_pt_surface,
         animation_duration_surface,
@@ -888,6 +895,10 @@ pub(super) fn compile_become_base_pt_creature_action(
         unreachable!("typed animation route requires a BecomeBasePtCreature action")
     };
 
+    // Native late-static discovery classifies ordinary granted self-stat
+    // abilities in layer7b, with the receiving object's source/controller and
+    // the grant's timestamp. Keep their exact self-stat payload; rewriting to
+    // an effect-target Source filter would instead capture the grantor.
     let granted_modifications = lower_granted_ability_grant_modifications(granted_abilities)?;
     let abilities = abilities
         .iter()
@@ -898,22 +909,25 @@ pub(super) fn compile_become_base_pt_creature_action(
     // results (and other contextual references) in the P/T values like every
     // other value-bearing instruction; an unresolvable reference keeps its
     // authored form.
-    let power = &resolve_value_it_tag(power, &current_reference_env(ctx))
-        .unwrap_or_else(|_| power.clone());
-    let toughness = &resolve_value_it_tag(toughness, &current_reference_env(ctx))
-        .unwrap_or_else(|_| toughness.clone());
+    let resolved_size = base_power_toughness.as_ref().map(|(power, toughness)| (
+        resolve_value_it_tag(power, &current_reference_env(ctx)).unwrap_or_else(|_| power.clone()),
+        resolve_value_it_tag(toughness, &current_reference_env(ctx)).unwrap_or_else(|_| toughness.clone()),
+    ));
     compile_tagged_effect_for_target(target, ctx, "animated_creature", |spec| {
-        let resolved_power = bind_iterated_value_to_choose_spec(power, &spec);
-        let resolved_toughness = bind_iterated_value_to_choose_spec(toughness, &spec);
+        let resolved_size = resolved_size.as_ref().map(|(power, toughness)| (
+            bind_iterated_value_to_choose_spec(power, &spec),
+            bind_iterated_value_to_choose_spec(toughness, &spec),
+        ));
         // CR 205.1b gives "artifact creature" an implicit preservation
         // exception even without an "in addition" clause.
         let implicitly_preserves_card_types =
-            card_types.contains(&CardType::Artifact) && card_types.contains(&CardType::Creature);
+            card_types.contains(&CardType::Artifact) && card_types.contains(&CardType::Creature) && !remove_other_abilities;
         // No authored card type ("becomes a green Wurm with base power and
         // toughness 6/4", Scale Up): only the creature subtype is set, so the
-        // object keeps its card types and is at least a creature.
+        // object keeps its card types. Color/supertype/size-only templates
+        // likewise must not invent Creature on an existing noncreature.
         let type_modification = if card_types.is_empty() {
-            crate::continuous::Modification::AddCardTypes(vec![CardType::Creature])
+            crate::continuous::Modification::AddCardTypes(Vec::new())
         } else if *preserve_other_types || implicitly_preserves_card_types {
             crate::continuous::Modification::AddCardTypes(card_types.clone())
         } else {
@@ -927,13 +941,12 @@ pub(super) fn compile_become_base_pt_creature_action(
         .with_type_retention_surface(*type_retention_surface)
         .with_animation_pt_surface(*animation_pt_surface)
         .with_animation_duration_surface(*animation_duration_surface)
-        .with_set_quantifier_surface(*set_quantifier_surface)
-        .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
-            power: resolved_power,
-            toughness: resolved_toughness,
-            sublayer: crate::continuous::PtSublayer::Setting,
-        })
-        .resolve_set_pt_values_at_resolution();
+        .with_set_quantifier_surface(*set_quantifier_surface);
+        if let Some((power, toughness)) = resolved_size {
+            apply = apply.with_additional_modification(crate::continuous::Modification::SetPowerToughness {
+                power, toughness, sublayer: crate::continuous::PtSublayer::Setting,
+            }).resolve_set_pt_values_at_resolution();
+        }
         if let Some(name) = name_override {
             apply = apply.with_additional_modification(crate::continuous::Modification::SetName(
                 name.clone(),
@@ -950,20 +963,27 @@ pub(super) fn compile_become_base_pt_creature_action(
             );
         }
         if let Some(colors) = colors {
-            apply = apply
-                .with_additional_modification(crate::continuous::Modification::SetColors(*colors));
+            apply = apply.with_additional_modification(if *preserve_other_colors {
+                crate::continuous::Modification::AddColors(*colors)
+            } else { crate::continuous::Modification::SetColors(*colors) });
         }
         if !subtypes.is_empty() {
             if !preserve_other_types {
-                apply = apply.with_additional_modification(
-                    crate::continuous::Modification::RemoveAllSubtypesOfFamily(
-                        crate::types::SubtypeFamily::Creature,
-                    ),
-                );
+                for family in [crate::types::SubtypeFamily::Creature, crate::types::SubtypeFamily::Artifact,
+                    crate::types::SubtypeFamily::Enchantment, crate::types::SubtypeFamily::Land,
+                    crate::types::SubtypeFamily::Planeswalker, crate::types::SubtypeFamily::Spell,
+                    crate::types::SubtypeFamily::Battle] {
+                    if subtypes.iter().any(|subtype| subtype.belongs_to_family(family)) {
+                        apply = apply.with_additional_modification(crate::continuous::Modification::RemoveAllSubtypesOfFamily(family));
+                    }
+                }
             }
             apply = apply.with_additional_modification(
                 crate::continuous::Modification::AddSubtypes(subtypes.clone()),
             );
+        }
+        if *remove_other_abilities {
+            apply = apply.with_additional_modification(crate::continuous::Modification::RemoveAllAbilities);
         }
         for ability in &abilities {
             apply = apply.with_additional_modification(
@@ -1161,10 +1181,16 @@ pub(super) fn compile_subject_verb_middle(
             if *all_matches && let ChooseSpec::Object(filter) = &spec {
                 spec = ChooseSpec::All(filter.clone());
             }
-            let player_filter =
-                resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            let controller_target = if *player == PlayerAst::ItsController && spec.is_target() {
+                Some(reserved_or_next_object_tag(ctx, "copy_target"))
+            } else { None };
+            let player_filter = if let Some(tag) = controller_target.as_ref() {
+                PlayerFilter::ControllerOf(ObjectRef::tagged(tag.clone()))
+            } else {
+                resolve_non_target_player_filter(*player, &current_reference_env(ctx))?
+            };
             if !matches!(*player, PlayerAst::Implicit) {
-                ctx.last_player_filter = Some(player_filter.clone());
+                ctx.last_player_filter = Some(as_followup_player_alias(player_filter.clone()));
             }
             // "Copy target instant or sorcery spell, then return it to its
             // owner's hand": the copied target stays the pronoun antecedent.
@@ -1176,7 +1202,7 @@ pub(super) fn compile_subject_verb_middle(
                 )
                 // Only when reference annotation predicted a later reference
                 // to the copied target.
-                && let Some(tag) = ctx.take_reserved_object_result_tag("copy_target")
+                && let Some(tag) = controller_target.or_else(|| ctx.take_reserved_object_result_tag("copy_target"))
             {
                 ctx.last_object_tag = Some(tag.clone());
                 target_prelude = Some(
@@ -1368,6 +1394,7 @@ pub(super) fn compile_subject_verb_middle(
             ))
         }
         SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+            alternative_cost,
             tag,
             player,
             allow_land,
@@ -1392,6 +1419,7 @@ pub(super) fn compile_subject_verb_middle(
                 && additional_mana_cost.is_none()
                 && cost_reduction.is_none()
                 && alternative_payment.is_none()
+                && alternative_cost.is_none()
             {
                 let mut cast = crate::effects::CastSourceEffect::new();
                 if *without_paying_mana_cost {
@@ -1440,11 +1468,16 @@ pub(super) fn compile_subject_verb_middle(
                     cost_reduction.clone(),
                     *mana_spend_mode,
                     *alternative_payment,
+                    alternative_cost.as_ref().map(|cost| {
+                        let lowered = crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
+                        resolve_total_cost_it_tags(&lowered, &current_reference_env(ctx))
+                    }).transpose()?,
                 )],
                 Vec::new(),
             ))
         }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+            alternative_cost,
             tag,
             player,
             allow_land,
@@ -1490,6 +1523,13 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_any_color_for_cast,
             )
             .with_max_plays(*max_plays);
+            grant_play.alternative_cost = alternative_cost.as_ref().map(|cost| {
+                let lowered = crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
+                resolve_total_cost_it_tags(&lowered, &current_reference_env(ctx))
+            }).transpose()?;
+            if *without_paying_mana_cost && alternative_cost.is_some() {
+                return Err(CardTextError::ParseError("two alternative casting prices on one permission".into()));
+            }
             if let Some(cost) = spell_cost_reduction.clone() {
                 grant_play = grant_play.with_spell_cost_reduction(cost);
             }
@@ -2124,7 +2164,7 @@ pub(super) fn compile_subject_verb_middle(
                     let order_chooser = if matches!(*library_order_chooser, PlayerAst::Implicit)
                         && !matches!(
                             player,
-                            PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
+                            PlayerAst::Implicit
                         ) {
                         player
                     } else {
@@ -2138,10 +2178,7 @@ pub(super) fn compile_subject_verb_middle(
                     ))
                 }
             };
-            let actor_surface = if matches!(
-                player,
-                PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
-            ) {
+            let actor_surface = if matches!(player, PlayerAst::Implicit) {
                 None
             } else {
                 Some(resolve_non_target_player_filter(
@@ -2587,24 +2624,32 @@ pub(super) fn compile_subject_verb_middle(
             target,
             duration,
             set_quantifier_surface,
-        }) => compile_tagged_effect_for_target(target, ctx, "set_base_pt", |spec| {
-            let resolved_power = bind_iterated_value_to_choose_spec(power, &spec);
-            let resolved_toughness = bind_iterated_value_to_choose_spec(toughness, &spec);
-            Effect::new(
-                crate::effects::ApplyContinuousEffect::with_spec(
-                    spec,
-                    crate::continuous::Modification::SetPowerToughness {
-                        power: resolved_power,
-                        toughness: resolved_toughness,
-                        sublayer: crate::continuous::PtSublayer::Setting,
-                    },
-                    duration.clone(),
+        }) => {
+            // Bind the value antecedent before the destination advances the
+            // last-object tag. The copied object's identity may differ from
+            // the permanent whose base characteristics are being assigned.
+            let refs = current_reference_env(ctx);
+            let power = resolve_value_it_tag(power, &refs)?;
+            let toughness = resolve_value_it_tag(toughness, &refs)?;
+            compile_tagged_effect_for_target(target, ctx, "set_base_pt", |spec| {
+                let resolved_power = bind_iterated_value_to_choose_spec(&power, &spec);
+                let resolved_toughness = bind_iterated_value_to_choose_spec(&toughness, &spec);
+                Effect::new(
+                    crate::effects::ApplyContinuousEffect::with_spec(
+                        spec,
+                        crate::continuous::Modification::SetPowerToughness {
+                            power: resolved_power,
+                            toughness: resolved_toughness,
+                            sublayer: crate::continuous::PtSublayer::Setting,
+                        },
+                        duration.clone(),
+                    )
+                    .require_creature_target()
+                    .with_set_quantifier_surface(*set_quantifier_surface)
+                    .resolve_set_pt_values_at_resolution(),
                 )
-                .require_creature_target()
-                .with_set_quantifier_surface(*set_quantifier_surface)
-                .resolve_set_pt_values_at_resolution(),
-            )
-        }),
+            })
+        }
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
             ..
         }) => compile_become_base_pt_creature_action(subject_verb, ctx),
@@ -2612,38 +2657,44 @@ pub(super) fn compile_subject_verb_middle(
             power,
             target,
             duration,
-        }) => compile_tagged_effect_for_target(target, ctx, "set_base_power", |spec| {
-            Effect::new(
-                crate::effects::ApplyContinuousEffect::with_spec(
-                    spec,
-                    crate::continuous::Modification::SetPower {
-                        power: power.clone(),
-                        sublayer: crate::continuous::PtSublayer::Setting,
-                    },
-                    duration.clone(),
+        }) => {
+            let power = resolve_value_it_tag(power, &current_reference_env(ctx))?;
+            compile_tagged_effect_for_target(target, ctx, "set_base_power", |spec| {
+                Effect::new(
+                    crate::effects::ApplyContinuousEffect::with_spec(
+                        spec,
+                        crate::continuous::Modification::SetPower {
+                            power: power.clone(),
+                            sublayer: crate::continuous::PtSublayer::Setting,
+                        },
+                        duration.clone(),
+                    )
+                    .require_creature_target()
+                    .resolve_set_pt_values_at_resolution(),
                 )
-                .require_creature_target()
-                .resolve_set_pt_values_at_resolution(),
-            )
-        }),
+            })
+        }
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness {
             toughness,
             target,
             duration,
-        }) => compile_tagged_effect_for_target(target, ctx, "set_base_toughness", |spec| {
-            Effect::new(
-                crate::effects::ApplyContinuousEffect::with_spec(
-                    spec,
-                    crate::continuous::Modification::SetToughness {
-                        toughness: toughness.clone(),
-                        sublayer: crate::continuous::PtSublayer::Setting,
-                    },
-                    duration.clone(),
+        }) => {
+            let toughness = resolve_value_it_tag(toughness, &current_reference_env(ctx))?;
+            compile_tagged_effect_for_target(target, ctx, "set_base_toughness", |spec| {
+                Effect::new(
+                    crate::effects::ApplyContinuousEffect::with_spec(
+                        spec,
+                        crate::continuous::Modification::SetToughness {
+                            toughness: toughness.clone(),
+                            sublayer: crate::continuous::PtSublayer::Setting,
+                        },
+                        duration.clone(),
+                    )
+                    .require_creature_target()
+                    .resolve_set_pt_values_at_resolution(),
                 )
-                .require_creature_target()
-                .resolve_set_pt_values_at_resolution(),
-            )
-        }),
+            })
+        }
         SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
             power_per,
             toughness_per,
@@ -2728,6 +2779,10 @@ pub(super) fn compile_subject_verb_middle(
                 duration.clone(),
             ))
         }),
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { target, supertypes, duration }) =>
+            compile_tagged_effect_for_target(target, ctx, "typed", |spec| Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(spec,
+                    crate::continuous::Modification::RemoveSupertypes(supertypes.clone()), duration.clone()))),
         SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes {
             target,
             card_types,
@@ -2892,12 +2947,12 @@ pub(super) fn compile_subject_verb_middle(
             ))
         }),
         SubjectVerbActionAst::Characteristics(
-            CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration },
+            CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration, allowed_subtypes, preserve_other_types },
         ) => compile_tagged_effect_for_target(target, ctx, "become_basic_land_type", |spec| {
             Effect::new(crate::effects::BecomeBasicLandTypeChoiceEffect::new(
                 spec,
                 duration.clone(),
-            ))
+            ).with_options(allowed_subtypes.clone(), *preserve_other_types))
         }),
         SubjectVerbActionAst::Characteristics(
             CharacteristicActionAst::BecomeCreatureTypeChoice {

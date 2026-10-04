@@ -1,0 +1,56 @@
+[
+  {
+    "name": "Vow of Duty",
+    "oracle_id": "1e7bddbd-e448-4aea-9d18-b44bd45837c5",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +2/+2, has vigilance, and can't attack you or planeswalkers you control.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; independent bounded source review through943e96764"
+  },
+  {
+    "name": "Vow of Flight",
+    "oracle_id": "81fe554a-5257-446c-ad53-ee45bf5edb40",
+    "mana_cost": "{2}{U}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +2/+2, has flying, and can't attack you or planeswalkers you control.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; independent bounded source review through943e96764"
+  },
+  {
+    "name": "Vow of Lightning",
+    "oracle_id": "bfed67f3-70d2-49c2-8f25-16e4d10fa5be",
+    "mana_cost": "{2}{R}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +2/+2, has first strike, and can't attack you or planeswalkers you control.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; independent bounded source review through943e96764"
+  },
+  {
+    "name": "Vow of Malice",
+    "oracle_id": "894bc28a-6627-43dd-9650-86300b6fe5e6",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +2/+2, has intimidate, and can't attack you or planeswalkers you control. (A creature with intimidate can't be blocked except by artifact creatures and/or creatures that share a color with it.)",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; independent bounded source review through943e96764"
+  },
+  {
+    "name": "Vow of Torment",
+    "oracle_id": "237b87f4-783b-40ac-9fcf-4ae76a33229d",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +2/+2, has menace, and can't attack you or planeswalkers you control. (It can't be blocked except by two or more creatures.)",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; independent bounded source review through943e96764"
+  },
+  {
+    "name": "Vow of Wildness",
+    "oracle_id": "569a65fb-e35f-4388-ab49-f57be46b4889",
+    "mana_cost": "{2}{G}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +3/+3, has trample, and can't attack you or planeswalkers you control.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; independent bounded source review through943e96764"
+  }
+]

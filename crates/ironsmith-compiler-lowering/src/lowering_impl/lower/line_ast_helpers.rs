@@ -42,19 +42,34 @@ fn bind_this_ability_cost_reductions(
     }) else {
         return;
     };
+    fn bind_condition(condition: &mut ironsmith_core::ActivatedAbilityCostCondition, index: usize) -> bool {
+        use ironsmith_core::ActivatedAbilityCostCondition;
+        match condition {
+            ActivatedAbilityCostCondition::ThisAbility { ability_index: slot @ None } => { *slot = Some(index); true }
+            ActivatedAbilityCostCondition::All(conditions) => {
+                // Visit every child, not a short-circuiting iterator.
+                conditions.iter_mut().fold(false, |bound, condition| bind_condition(condition, index) | bound)
+            }
+            _ => false,
+        }
+    }
+    fn bind(ability: &mut crate::static_abilities::StaticAbility, index: usize) -> bool {
+        match &mut ability.payload {
+            ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction { condition: Some(condition), .. } => bind_condition(condition, index),
+            ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease { ability_condition: Some(condition), .. } => bind_condition(condition, index),
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => bind(ability, index),
+            _ => false,
+        }
+    }
+    let zones = builder.abilities[activated_index].functional_zones.clone();
     for ability in builder.abilities.iter_mut().skip(abilities_before) {
         let crate::ability::AbilityKind::Static(static_ability) = &mut ability.kind else {
             continue;
         };
-        if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction {
-            condition:
-                Some(ironsmith_core::ActivatedAbilityCostCondition::ThisAbility {
-                    ability_index: ability_index @ None,
-                }),
-            ..
-        } = &mut static_ability.payload
-        {
-            *ability_index = Some(activated_index);
+        if bind(static_ability, activated_index) {
+            // A reduction printed with a graveyard activation functions there
+            // as part of determining that ability's cost, not only in play.
+            ability.functional_zones = zones.clone();
         }
     }
 }
@@ -185,6 +200,7 @@ pub fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool 
     matches!(
         static_ability.id(),
         crate::static_abilities::StaticAbilityId::ConditionalSpellKeyword
+            | crate::static_abilities::StaticAbilityId::CantBeCopied
             | crate::static_abilities::StaticAbilityId::CantBeCountered
             | crate::static_abilities::StaticAbilityId::ThisSpellCastRestriction
             | crate::static_abilities::StaticAbilityId::ThisSpellXMaximum

@@ -328,7 +328,7 @@ fn main() {
                         &request.cost,
                         0,
                         PaymentReason::CastSpell,
-                    );
+                    ).expect("checked fixture mana payment");
                     assert!(
                         paid,
                         "two creature sources plus Cub really can pay {{2}}{{G}}{{G}}"

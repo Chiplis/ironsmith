@@ -48,14 +48,52 @@ pub fn assemble_activation_cost(
 fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
     match segment {
         ActivationCostSegmentCst::Mana(cost) => CompilerCost::Mana(cost.clone()),
+        ActivationCostSegmentCst::DynamicMana(cost) => CompilerCost::DynamicMana(cost.clone()),
         ActivationCostSegmentCst::Tap => CompilerCost::Tap,
         ActivationCostSegmentCst::TapChosen { count, filter } => CompilerCost::TapChosen {
             count: *count,
             filter: filter.clone(),
         },
         ActivationCostSegmentCst::Untap => CompilerCost::Untap,
+        ActivationCostSegmentCst::UntapChosen { count, filter } => CompilerCost::UntapChosen {
+            count: *count,
+            filter: filter.clone(),
+        },
+        ActivationCostSegmentCst::CollectEvidence { amount } => CompilerCost::ValidatedEffect(Box::new(
+            crate::cards::builders::EffectAst::subject_verb_collect_evidence(amount.clone()),
+        )),
+        ActivationCostSegmentCst::Forage => CompilerCost::ValidatedEffect(Box::new(
+            crate::cards::builders::EffectAst::subject_verb_emit_keyword_action(
+                crate::events::KeywordActionKind::Forage,
+                1,
+            ),
+        )),
         ActivationCostSegmentCst::Life(amount) => CompilerCost::Life(amount.clone()),
         ActivationCostSegmentCst::Energy(amount) => CompilerCost::Energy(*amount),
+        ActivationCostSegmentCst::EnergyValue(amount) => CompilerCost::ValidatedEffect(Box::new(
+            crate::cards::builders::EffectAst::subject_verb_pay_energy(
+                crate::cards::builders::PlayerAst::You, amount.clone(),
+            ),
+        )),
+        ActivationCostSegmentCst::GroupedHandSelection { count, filter, reveal, tag } => {
+            use crate::cards::builders::{EffectAst, ObjectChoiceEffectAst, PlayerAst};
+            let choose = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter: filter.clone(), count: ChoiceCount::exactly(*count as usize),
+                count_value: None, player: PlayerAst::You, tag: tag.clone(),
+            });
+            let selected = crate::target::ObjectFilter::tagged(tag.clone())
+                .in_zone(crate::zone::Zone::Hand).owned_by(crate::target::PlayerFilter::You);
+            let consume = if *reveal { EffectAst::subject_verb_reveal_tagged(tag.clone()) }
+            else { EffectAst::subject_verb_discard(PlayerAst::You, crate::effect::Value::Count(selected.clone()),
+                false, false, Some(selected), None) };
+            CompilerCost::ValidatedEffect(Box::new(EffectAst::Sequence { effects: vec![choose, consume] }))
+        },
+        ActivationCostSegmentCst::DiscardValue { count, filter, random } => CompilerCost::ValidatedEffect(Box::new(
+            crate::cards::builders::EffectAst::subject_verb_discard(
+                crate::cards::builders::PlayerAst::You, count.clone(), *random, false,
+                Some(filter.clone()), None,
+            ),
+        )),
         ActivationCostSegmentCst::DiscardSource => CompilerCost::DiscardSource,
         ActivationCostSegmentCst::DiscardHand => CompilerCost::DiscardHand,
         ActivationCostSegmentCst::DiscardCard(count) => CompilerCost::Discard {
@@ -173,6 +211,7 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
                 filter: filter.clone(),
             }
         }
+        ActivationCostSegmentCst::MoveChosenToZone { filter, destination } => CompilerCost::MoveChosenToZone { filter: filter.clone(), destination: *destination },
         ActivationCostSegmentCst::MoveChosenToLibraryTop { filter } => {
             CompilerCost::MoveChosenToLibraryTop {
                 filter: filter.clone(),

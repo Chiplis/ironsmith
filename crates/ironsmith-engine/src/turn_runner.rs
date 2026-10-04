@@ -105,6 +105,8 @@ pub enum TurnState {
 
     // === Terminal ===
     Complete,
+    UntapEndMana,
+    SkippedPhaseEndMana,
 }
 
 impl TurnState {
@@ -112,6 +114,8 @@ impl TurnState {
         match self {
             Self::BeginTurn => "begin_turn",
             Self::Untap => "untap",
+            Self::UntapEndMana => "untap_end_mana",
+            Self::SkippedPhaseEndMana => "skipped_phase_end_mana",
             Self::Upkeep => "upkeep",
             Self::UpkeepPriority => "upkeep_priority",
             Self::Draw => "draw",
@@ -158,6 +162,8 @@ impl TurnState {
         Some(match raw {
             "begin_turn" => Self::BeginTurn,
             "untap" => Self::Untap,
+            "untap_end_mana" => Self::UntapEndMana,
+            "skipped_phase_end_mana" => Self::SkippedPhaseEndMana,
             "upkeep" => Self::Upkeep,
             "upkeep_priority" => Self::UpkeepPriority,
             "draw" => Self::Draw,
@@ -793,6 +799,8 @@ pub struct TurnRunner {
     pending_sba_choices: Option<PendingSbaChoices>,
     pending_combat_damage_choices: Option<PendingTurnActionChoices>,
     pending_saga_lore_choices: Option<PendingTurnActionChoices>,
+    pending_mana_loss_choices: Option<PendingTurnActionChoices>,
+    skipped_phase_boundary: Option<(Step, Phase, TurnScheduleDestination)>,
     pending_cleanup_discard: Option<PendingCleanupDiscard>,
     /// Active teammates whose turn-based draw is still pending this draw step.
     remaining_draw_players: Vec<PlayerId>,
@@ -853,6 +861,8 @@ impl TurnRunner {
             pending_sba_choices: None,
             pending_combat_damage_choices: None,
             pending_saga_lore_choices: None,
+            pending_mana_loss_choices: None,
+            skipped_phase_boundary: None,
             pending_cleanup_discard: None,
             remaining_draw_players: Vec::new(),
             shared_draw_events: Vec::new(),
@@ -965,7 +975,10 @@ impl TurnRunner {
             };
             self.state = if ends_phase {
                 let phase = game.turn.phase;
-                finish_step_and_phase(game, step, phase, normal_next)
+                self.skipped_phase_boundary = Some((step, phase, normal_next));
+                // The skipped step does not exist, but the containing phase
+                // still ends. Retain that exact continuation across choices.
+                TurnState::SkippedPhaseEndMana
             } else {
                 finish_step(game, step, normal_next)
             };
@@ -990,6 +1003,8 @@ impl TurnRunner {
                     game.activate_pending_player_control(player);
                 }
 
+                game.establish_turn_start_continuous_control();
+
                 // Untap step — no priority
                 game.turn.phase = Phase::Beginning;
                 game.turn.step = Some(Step::Untap);
@@ -1010,11 +1025,7 @@ impl TurnRunner {
                     return Ok(TurnAction::Decision(prompt));
                 }
 
-                self.state = finish_step(
-                    game,
-                    Step::Untap,
-                    TurnScheduleDestination::Step(Step::Upkeep),
-                );
+                self.state = TurnState::UntapEndMana;
                 Ok(TurnAction::Continue)
             }
 
@@ -1036,11 +1047,32 @@ impl TurnRunner {
                 if let Some(prompt) = self.run_untap_step_with_choices(game, pending.answers)? {
                     return Ok(TurnAction::Decision(prompt));
                 }
-                self.state = finish_step(
-                    game,
-                    Step::Untap,
-                    TurnScheduleDestination::Step(Step::Upkeep),
-                );
+                self.state = TurnState::UntapEndMana;
+                Ok(TurnAction::Continue)
+            }
+
+            TurnState::SkippedPhaseEndMana => {
+                let (step, phase, next) = self.skipped_phase_boundary.clone().ok_or_else(||
+                    GameLoopError::InvalidState("missing skipped-phase mana continuation".into()))?;
+                game.turn.phase = phase;
+                game.turn.step = Some(if phase == Phase::Combat { Step::EndCombat } else { step });
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
+                if phase == Phase::Combat {
+                    crate::combat_state::end_combat(&mut self.combat);
+                    game.combat = Some(self.combat.clone());
+                }
+                self.skipped_phase_boundary = None;
+                self.state = finish_step_and_phase(game, step, phase, next);
+                Ok(TurnAction::Continue)
+            }
+
+            TurnState::UntapEndMana => {
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
+                self.state = finish_step(game, Step::Untap, TurnScheduleDestination::Step(Step::Upkeep));
                 Ok(TurnAction::Continue)
             }
 
@@ -1072,7 +1104,9 @@ impl TurnRunner {
             }
 
             TurnState::UpkeepPriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.state = finish_step(
                     game,
                     Step::Upkeep,
@@ -1131,7 +1165,9 @@ impl TurnRunner {
             }
 
             TurnState::DrawPriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.state = finish_step_and_phase(
                     game,
                     Step::Draw,
@@ -1182,7 +1218,9 @@ impl TurnRunner {
             TurnState::FirstMainAttractions => self.advance_attraction_roll(game, tq),
 
             TurnState::FirstMainPriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.state = next_runner_state_after_phase(game, TurnState::BeginCombat);
                 Ok(TurnAction::Continue)
             }
@@ -1199,6 +1237,7 @@ impl TurnRunner {
                         .turn_store
                         .skip_next_combat_phases
                         .remove(&game.turn.active_player)
+                    || game.turn_store.pending_combat_phase_skips.remove(&game.turn.active_player)
                 {
                     game.turn.phase = Phase::Combat;
                     self.state = if game
@@ -1238,7 +1277,9 @@ impl TurnRunner {
             }
 
             TurnState::BeginCombatPriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 // Creatures put onto the battlefield attacking during this
                 // step were recorded in `game.combat` (CR 508.4).
                 self.sync_combat_from_game(game);
@@ -1471,7 +1512,9 @@ impl TurnRunner {
             }
 
             TurnState::DeclareAttackersPriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.sync_combat_from_game(game);
                 self.state = finish_step(
                     game,
@@ -1637,7 +1680,9 @@ impl TurnRunner {
             }
 
             TurnState::DeclareBlockersPriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.sync_combat_from_game(game);
 
                 // Check for first strike
@@ -1690,7 +1735,9 @@ impl TurnRunner {
             }
 
             TurnState::CombatDamageFirstStrikePriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.sync_combat_from_game(game);
                 self.state = finish_step(
                     game,
@@ -1730,7 +1777,9 @@ impl TurnRunner {
             }
 
             TurnState::CombatDamageRegularPriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.sync_combat_from_game(game);
                 self.state = finish_step(
                     game,
@@ -1751,7 +1800,9 @@ impl TurnRunner {
             }
 
             TurnState::EndCombatPriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 crate::combat_state::end_combat(&mut self.combat);
                 game.combat = Some(self.combat.clone());
                 game.cleanup_effects_end_of_combat();
@@ -1776,7 +1827,9 @@ impl TurnRunner {
                         // combat boundary without generating its trigger event.
                         game.turn.phase = Phase::Combat;
                         game.turn.step = Some(Step::EndCombat);
-                        game.empty_mana_pools();
+                        if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                            return Ok(TurnAction::Decision(prompt));
+                        }
                         crate::combat_state::end_combat(&mut self.combat);
                         game.combat = Some(self.combat.clone());
                         game.cleanup_effects_end_of_combat();
@@ -1819,7 +1872,9 @@ impl TurnRunner {
             }
 
             TurnState::NextMainPriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.state = next_runner_state_after_phase(game, TurnState::EndStep);
                 Ok(TurnAction::Continue)
             }
@@ -1838,7 +1893,9 @@ impl TurnRunner {
             }
 
             TurnState::EndStepPriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.state = finish_step(
                     game,
                     Step::End,
@@ -1863,7 +1920,9 @@ impl TurnRunner {
                             // the combat boundary (as in `EndCombatPhaseSbas`).
                             game.turn.step = Some(Step::EndCombat);
                         }
-                        game.empty_mana_pools();
+                        if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                            return Ok(TurnAction::Decision(prompt));
+                        }
                         crate::combat_state::end_combat(&mut self.combat);
                         if let Some(combat) = game.combat.as_mut() {
                             crate::combat_state::end_combat(combat);
@@ -1892,6 +1951,7 @@ impl TurnRunner {
                                     )
                             });
                         }
+                        game.finish_draw_step_tracking();
                         game.turn.phase = Phase::Ending;
                         game.turn.step = Some(Step::Cleanup);
                         game.turn.priority_player = None;
@@ -1933,6 +1993,9 @@ impl TurnRunner {
                     self.state = TurnState::CleanupRecursivePriority;
                     Ok(TurnAction::RunPriority)
                 } else {
+                    if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                        return Ok(TurnAction::Decision(prompt));
+                    }
                     self.state = finish_step_and_phase(
                         game,
                         Step::Cleanup,
@@ -1944,7 +2007,9 @@ impl TurnRunner {
             }
 
             TurnState::CleanupRecursivePriority => {
-                game.empty_mana_pools();
+                if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
                 self.state = TurnState::CleanupRecursiveDiscard;
                 Ok(TurnAction::Continue)
             }
@@ -1994,6 +2059,12 @@ impl TurnRunner {
         self.pending_blockers = Some((declarations, defending_player));
     }
 
+    /// The wire state name cannot carry collected mana-loss answers or a
+    /// skipped phase's exact continuation. Native savepoints retain both.
+    pub fn has_pending_mana_loss_continuation(&self) -> bool {
+        self.pending_mana_loss_choices.is_some() || self.skipped_phase_boundary.is_some()
+    }
+
     /// True while a turn-based operation is waiting on a nested player choice.
     pub fn has_pending_replay_choice(&self) -> bool {
         self.pending_sba_choices.is_some()
@@ -2005,6 +2076,7 @@ impl TurnRunner {
             || self.pending_attacker_payment_choices.is_some()
             || self.pending_combat_damage_choices.is_some()
             || self.pending_saga_lore_choices.is_some()
+            || self.pending_mana_loss_choices.is_some()
             || self.pending_cleanup_discard.is_some()
             || self.pending_combat_mana_choices.is_some()
             || self.pending_blocker_preparation_choices.is_some()
@@ -2016,6 +2088,9 @@ impl TurnRunner {
             return self.combat_cost_response_slot();
         }
         if let Some(pending) = self.pending_combat_damage_choices.as_mut() {
+            return Some(&mut pending.response);
+        }
+        if let Some(pending) = self.pending_mana_loss_choices.as_mut() {
             return Some(&mut pending.response);
         }
         if let Some(pending) = self.pending_saga_lore_choices.as_mut() {
@@ -2394,6 +2469,38 @@ impl TurnRunner {
         }
     }
 
+    /// Resolve one whole boundary on a private state. A replacement choice
+    /// must not publish an earlier player's loss or duration expiry first.
+    fn empty_mana_pools_with_choices(&mut self, game: &mut GameState)
+        -> Result<Option<DecisionContext>, GameLoopError>
+    {
+        let mut answers = Vec::new();
+        if let Some(mut pending) = self.pending_mana_loss_choices.take() {
+            let Some(answer) = pending.response.take() else {
+                let prompt = pending.prompt.clone(); self.pending_mana_loss_choices = Some(pending);
+                return Ok(Some(prompt));
+            };
+            answers = pending.answers; answers.push(answer);
+        }
+        let mut trial = game.clone();
+        // CR 500.5: duration expiry precedes mana loss. Keep both mutations
+        // private until every affected player has supplied an ordering choice.
+        if trial.turn.phase == Phase::Combat && trial.turn.step == Some(Step::EndCombat) {
+            trial.cleanup_effects_end_of_combat();
+        }
+        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+        let result = trial.empty_mana_pools_with_dm(&mut dm);
+        if let Some(prompt) = dm.pending_prompt {
+            self.pending_mana_loss_choices = Some(PendingTurnActionChoices {
+                answers, prompt: prompt.clone(), response: None,
+            });
+            return Ok(Some(prompt));
+        }
+        result?;
+        *game = trial;
+        Ok(None)
+    }
+
     /// Resolve the entire simultaneous damage batch on a private state. A
     /// replacement choice must never publish some creatures' damage first.
     fn apply_combat_damage_with_choices(
@@ -2585,8 +2692,6 @@ impl TurnRunner {
 
         loop {
             let Some(active_player) = self.remaining_draw_players.first().copied() else {
-                game.turn_store.tracked_draw_step_player = None;
-                game.turn_store.cards_drawn_this_draw_step = 0;
                 game.reset_priority_for_new_window();
                 return Ok(RunnerProgress::Complete(std::mem::take(&mut self.shared_draw_events)));
             };
@@ -2914,6 +3019,9 @@ impl TurnRunner {
     /// CR 509.1: queue every defending player's block events as the one
     /// declare-blockers batch, against the completed blocking configuration.
     fn queue_declared_block_events(&mut self, game: &mut GameState, tq: &mut TriggerQueue) {
+        self.combat.block_declaration_complete = true;
+        game.combat = Some(self.combat.clone());
+        game.mark_continuous_state_dirty();
         let pairs = std::mem::take(&mut self.declared_block_pairs);
         queue_block_declaration_events(game, &self.combat, tq, &pairs, None);
     }
@@ -3432,6 +3540,7 @@ fn finish_step(
     step: Step,
     normal_next: TurnScheduleDestination,
 ) -> TurnState {
+    if step == Step::Draw { game.finish_draw_step_tracking(); }
     let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
     let active = game.turn_store.active_added_step.take();
     if let Some(scheduled) = active {
@@ -3454,6 +3563,7 @@ fn finish_step_and_phase(
     phase: Phase,
     normal_next: TurnScheduleDestination,
 ) -> TurnState {
+    if step == Step::Draw { game.finish_draw_step_tracking(); }
     let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
     let active = game.turn_store.active_added_step.take();
     if active.is_none() || active.is_some_and(|scheduled| scheduled.isolated_phase) {
@@ -3482,6 +3592,10 @@ fn finish_phase(
     phase: Phase,
     normal_next: TurnScheduleDestination,
 ) -> TurnState {
+    if phase == Phase::Beginning && game.turn.step == Some(Step::Draw) {
+        game.finish_draw_step_tracking();
+    }
+
     begin_phase_schedule(game, phase, normal_next)
 }
 
@@ -6149,4 +6263,21 @@ mod replacement_turn_draw_expansion_contract_tests {
         assert_eq!(events.iter().filter(|event| event.downcast::<crate::events::CardsDrawnEvent>().is_some()).count(), 1);
         assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
     }
+}
+
+#[cfg(test)]
+#[path = "turn_runner_combat_prevention_tests.rs"]
+mod combat_prevention_lifecycle_tests;
+
+pub(crate) fn empty_mana_pools_without_choices(game: &mut GameState)
+    -> Result<(), crate::effects::ExecutionError>
+{
+    let mut dm = QueuedAttackCostDecisionMaker::new(Vec::new());
+    game.empty_mana_pools_with_dm(&mut dm)?;
+    if let Some(prompt) = dm.pending_prompt {
+        return Err(crate::effects::ExecutionError::UnresolvedPlayerDecision {
+            player: prompt.player(), decision: "mana loss replacement",
+        });
+    }
+    Ok(())
 }

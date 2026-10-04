@@ -69,6 +69,7 @@ pub enum ChainVerbKind {
     Goad,
     Suspect,
     End,
+    Note,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -96,6 +96,7 @@ impl WasmGame {
         self.priority_epoch_checkpoint = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
+        self.priority_epoch_undo_locked_by_disclosure = false;
         self.priority_epoch_undo_land_stable_id = None;
     }
 
@@ -157,6 +158,7 @@ impl WasmGame {
         self.priority_epoch_checkpoint = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
+        self.priority_epoch_undo_locked_by_disclosure = false;
         self.priority_epoch_undo_land_stable_id = None;
         self.active_viewed_cards = None;
         self.pending_decision_game = None;
@@ -201,6 +203,9 @@ impl WasmGame {
         &mut self,
         checkpoint: ReplayCheckpoint,
     ) -> Result<JsValue, JsValue> {
+        if self.payment_disclosure.is_some() {
+            return Err(payment_disclosure_error("committed disclosure payment failed; resume the retained command instead of undoing its announcement"));
+        }
         self.restore_live_action_chain_to_checkpoint(checkpoint)?;
         self.snapshot()
     }
@@ -381,6 +386,7 @@ impl WasmGame {
                 self.priority_epoch_checkpoint = Some(self.capture_replay_checkpoint());
                 self.priority_epoch_has_undoable_action = false;
                 self.priority_epoch_undo_locked_by_mana = false;
+                self.priority_epoch_undo_locked_by_disclosure = false;
                 self.priority_epoch_undo_land_stable_id = None;
             }
             let checkpoint = self.capture_replay_checkpoint();
@@ -421,6 +427,7 @@ impl WasmGame {
                         self.priority_epoch_checkpoint = None;
                         self.priority_epoch_has_undoable_action = false;
                         self.priority_epoch_undo_locked_by_mana = false;
+                        self.priority_epoch_undo_locked_by_disclosure = false;
                         self.priority_epoch_undo_land_stable_id = None;
                         self.pending_decision = None;
                         self.clear_active_resolving_stack_object();
@@ -436,6 +443,7 @@ impl WasmGame {
                         self.priority_epoch_checkpoint = None;
                         self.priority_epoch_has_undoable_action = false;
                         self.priority_epoch_undo_locked_by_mana = false;
+                        self.priority_epoch_undo_locked_by_disclosure = false;
                         self.priority_epoch_undo_land_stable_id = None;
                         self.clear_active_resolving_stack_object();
                         if started_child {
@@ -482,6 +490,7 @@ impl WasmGame {
                 self.priority_epoch_checkpoint = None;
                 self.priority_epoch_has_undoable_action = false;
                 self.priority_epoch_undo_locked_by_mana = false;
+                self.priority_epoch_undo_locked_by_disclosure = false;
                 self.priority_epoch_undo_land_stable_id = None;
                 self.pending_decision = None;
                 self.clear_active_resolving_stack_object();
@@ -502,6 +511,7 @@ impl WasmGame {
                 self.priority_epoch_checkpoint = None;
                 self.priority_epoch_has_undoable_action = false;
                 self.priority_epoch_undo_locked_by_mana = false;
+                self.priority_epoch_undo_locked_by_disclosure = false;
                 self.priority_epoch_undo_land_stable_id = None;
                 self.pending_decision = None;
                 self.clear_active_resolving_stack_object();
@@ -631,6 +641,7 @@ impl WasmGame {
         &mut self,
         action_checkpoint: Option<&ReplayCheckpoint>,
     ) {
+        self.finish_payment_disclosure();
         if let Some(root_response) = self.pending_live_action_root.take() {
             self.priority_epoch_has_undoable_action |=
                 Self::response_starts_cancelable_action_chain(&root_response);
@@ -664,6 +675,7 @@ impl WasmGame {
             GameProgress::NeedsDecisionCtx(next_ctx) => {
                 let action_still_pending = self.priority_action_chain_still_pending();
                 let next_is_priority = matches!(next_ctx, DecisionContext::Priority(_));
+                if !action_still_pending { self.finish_payment_disclosure(); }
                 if !action_still_pending && next_is_priority {
                     // Completing directly into a priority context must retain the
                     // same undo safety checks as the ordinary progress path.
@@ -1086,6 +1098,8 @@ impl WasmGame {
             priority_state: self.priority_state.clone(),
             game_over: self.game_over.clone(),
             id_counters: snapshot_id_counters(),
+            public_hand_disclosures: self.public_hand_disclosure_identities(),
+            payment_disclosure_generation: self.payment_disclosure_generation,
             diag_tag: tag,
         }
     }
@@ -1781,7 +1795,7 @@ impl WasmGame {
                         ActivationStage::ChoosingSacrifice => Ok(
                             PriorityResponse::SacrificeTarget(ObjectId::from_raw(chosen)),
                         ),
-                        ActivationStage::ChoosingCardCost => {
+                        ActivationStage::ChoosingCardCost | ActivationStage::ChoosingCostReferences => {
                             Ok(PriorityResponse::CardCostChoice(ObjectId::from_raw(chosen)))
                         }
                         _ => Err(JsValue::from_str(
@@ -2569,7 +2583,7 @@ mod live_action_rollback_tests {
         assert_eq!(request, context.request);
         // Native analysis must retain the same pending payment request.
         let original = RuntimeSavepoint::capture(&wasm);
-        let options = mana_activation_option_views(&wasm.game, &request);
+        let options = mana_activation_option_views(&wasm.game, &request).unwrap();
         assert_eq!(serde_json::to_value(options).unwrap(), serde_json::to_value(eager.editor.activation_options).unwrap());
         original.restore(&mut wasm);
         assert_eq!(wasm.export_mana_payment_options_request("stale", &immediate.plan_id).unwrap(), "null");
@@ -3095,6 +3109,7 @@ mod live_action_rollback_tests {
                     preserved_source_ids: vec![],
                     prefer_life: false,
                     required_life_pips: vec![],
+                    x_allocation: None,
                 },
             },
         );
@@ -4269,4 +4284,10 @@ mod live_action_rollback_tests {
         assert_eq!(wasm.game.stack.len(), 1, "no copy trigger without the casualty cost");
         assert_eq!(resolve_stack_and_count_ogres(&mut wasm), 1);
     }
+
+    include!("payment_disclosure_undo_tests.rs");
+    include!("snc_payment_disclosure_undo_tests.rs");
+    include!("payment_disclosure_transaction_tests.rs");
+    include!("grouped_hand_payment_disclosure_tests.rs");
+
 }

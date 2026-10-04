@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Knollspine Invocation",
+    "oracle_id": "a45fd5cc-0085-4d4f-872b-b9251e8706cf",
+    "text": "Mana cost: {1}{R}{R}\nType: Enchantment\n{X}, Discard a card with mana value X: This enchantment deals X damage to any target.",
+    "proposed_coverage": "partial",
+    "previously_proposed_complete": true,
+    "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up."
+  },
+  {
+    "name": "Krovikan Sorcerer",
+    "oracle_id": "00e6808c-1f9e-4b6a-807c-83f433b81a41",
+    "text": "Mana cost: {2}{U}\nType: Creature — Human Wizard Sorcerer\nPower/Toughness: 1/1\n{T}, Discard a nonblack card: Draw a card.\n{T}, Discard a black card: Draw two cards, then discard one of them.",
+    "proposed_coverage": "partial",
+    "previously_proposed_complete": true,
+    "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up."
+  },
+  {
+    "name": "Sanctum Spirit",
+    "oracle_id": "1e640846-8f50-4a94-b7aa-f228124290d3",
+    "text": "Mana cost: {3}{W}\nType: Creature — Spirit\nPower/Toughness: 3/2\nLifelink\nDiscard a historic card: This creature gains indestructible until end of turn. (Artifacts, legendaries, and Sagas are historic.)",
+    "proposed_coverage": "partial",
+    "previously_proposed_complete": true,
+    "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up."
+  },
+  {
+    "name": "Kozilek, the Great Distortion",
+    "oracle_id": "4c1c1537-e519-4e2f-9bc2-d34b289d4487",
+    "text": "Mana cost: {8}{C}{C}\nType: Legendary Creature — Eldrazi\nPower/Toughness: 12/12\nWhen you cast this spell, if you have fewer than seven cards in hand, draw cards equal to the difference.\nMenace\nDiscard a card with mana value X: Counter target spell with mana value X.",
+    "proposed_coverage": "partial",
+    "previously_proposed_complete": true,
+    "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up."
+  },
+  {
+    "name": "Illuminated Folio",
+    "oracle_id": "0440f85f-8128-4399-9a3d-51f39e196c96",
+    "text": "Mana cost: {5}\nType: Artifact — Book\n{1}, {T}, Reveal two cards from your hand that share a color: Draw a card.",
+    "proposed_coverage": "partial",
+    "previously_proposed_complete": false,
+    "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up."
+  },
+  {
+    "name": "Sphinx of the Chimes",
+    "oracle_id": "690df8d2-9538-4c51-b730-cee09ad0ef1c",
+    "text": "Mana cost: {4}{U}{U}\nType: Creature — Sphinx\nPower/Toughness: 5/6\nFlying\nDiscard two nonland cards with the same name: Draw four cards.",
+    "proposed_coverage": "partial",
+    "previously_proposed_complete": false,
+    "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up."
+  },
+  {
+    "name": "Ormos, Archive Keeper",
+    "oracle_id": "06d60b71-a9f9-4a7f-ad69-15d760b6e5c3",
+    "text": "Mana cost: {4}{U}{U}\nType: Legendary Creature — Sphinx\nPower/Toughness: 5/5\nFlying\nIf you would draw a card while your library has no cards in it, instead put five +1/+1 counters on Ormos.\n{1}{U}{U}, Discard three cards with different names: Draw five cards.",
+    "proposed_coverage": "partial",
+    "previously_proposed_complete": false,
+    "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up."
+  }
+]

@@ -35,4 +35,20 @@ pub enum DamageActionAst {
     ExcessDamageToController {
         condition: Option<PredicateAst>,
     },
+    /// One source deals one shared amount to a union of referenced recipients
+    /// and quantified groups. The complete set is sampled before any damage.
+    DealDamageToRecipients {
+        amount: Value,
+        recipients: Vec<TargetAst>,
+        object_groups: Vec<ObjectFilter>,
+        player_groups: Vec<PlayerFilter>,
+    },
+    /// A source set deals each member's independently evaluated amount to one
+    /// recipient in one simultaneous damage occurrence.
+    DealDamageBySources {
+        sources: Vec<TargetAst>,
+        source_binding: ironsmith_core::DamageSourceSetBinding,
+        amount: Value,
+        target: TargetAst,
+    },
 }

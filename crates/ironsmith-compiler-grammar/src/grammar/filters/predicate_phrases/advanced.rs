@@ -9,6 +9,15 @@ use crate::filter::StackObjectKind;
 #[path = "advanced/phase_step_gates.rs"]
 mod phase_step_gates;
 
+#[path = "advanced/attack_power.rs"]
+mod attack_power;
+
+#[path = "advanced/damage_history.rs"]
+mod damage_history;
+
+#[path = "advanced/extrema.rs"]
+mod extrema;
+
 fn turn_history_player_subject(clause: LexedClause<'_>) -> Option<PlayerAst> {
     if surface::exact_any(clause, &[&["you've"], &["youve"]]) {
         return Some(PlayerAst::You);
@@ -742,6 +751,7 @@ pub(super) fn player_ast_from_status_player_filter(player: PlayerFilter) -> Opti
 pub(super) fn parse_player_status_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let status = crate::grammar::conditions::parse_player_status_condition(tokens)?;
     match status.status {
+        crate::grammar::conditions::PlayerStatusAst::Poisoned => Some(PredicateAst::ValueComparison { left: Value::PlayerCounters(crate::grammar::conditions::unconditional_player_filter(status.player)?, crate::object::CounterType::Poison), operator: crate::effect::ValueComparisonOperator::GreaterThan, right: Value::Fixed(0) }),
         crate::grammar::conditions::PlayerStatusAst::Monarch => {
             Some(PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch {
                 player: player_ast_from_status_player_filter(
@@ -1142,12 +1152,39 @@ pub(super) fn parse_player_cards_in_hand_predicate(
     let condition =
         crate::grammar::conditions::parse_player_cards_in_hand_condition(&present_tokens)?;
     let player = condition.player;
-    let player_filter = crate::grammar::conditions::unconditional_player_filter(player)?;
+    let player_filter = match player {
+        PlayerAst::ItsController => PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+        )),
+        PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+        )),
+        _ => crate::grammar::conditions::unconditional_player_filter(player)?,
+    };
 
     if !at_turn_start && player == PlayerAst::You && condition.is_no_cards_in_hand() {
         return Some(PredicateAst::YouHaveNoCardsInHand);
     }
 
+    // Retain the authored strict threshold: "fewer than seven" compares
+    // against seven, although its Boolean test is equivalent to at most six.
+    // A consequent may consume the difference between those exact operands.
+    if !at_turn_start
+        // Group scopes use existential player predicates, not the scalar
+        // hand size of whichever matching player happens to resolve first.
+        && !matches!(player, PlayerAst::Opponent | PlayerAst::Any)
+        && matches!(
+            condition.comparison,
+            crate::effect::Comparison::LessThan(_) | crate::effect::Comparison::GreaterThan(_)
+        )
+    {
+        let (operator, count) = comparison_to_value_comparison_operator(condition.comparison)?;
+        return Some(PredicateAst::ValueComparison {
+            left: Value::CardsInHand(player_filter),
+            operator,
+            right: Value::Fixed(count),
+        });
+    }
     match condition.comparison {
         crate::effect::Comparison::GreaterThanOrEqual(count) if count >= 0 => {
             Some(cards_in_hand_or_more(player, count as u32, at_turn_start))
@@ -1623,6 +1660,7 @@ pub(super) fn parse_controlled_creatures_total_power_predicate(
 pub(super) fn parse_value_reference_comparison_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
+    if let Some(predicate) = extrema::parse(tokens) { return Some(predicate); }
     let words = crate::lexer::parser_token_word_refs(tokens);
     let words = words.strip_prefix(&["the"]).unwrap_or(&words);
     let comparison = match words {
@@ -1668,7 +1706,9 @@ pub(super) fn parse_value_reference_comparison_predicate(
         let Some((left, left_used)) = parse_value(&tokens[..comparison_start]) else {
             continue;
         };
-        if left_used != comparison_start || !is_predicate_reference_value(&left) {
+        if left_used != comparison_start
+            || !(is_predicate_reference_value(&left) || is_life_total_comparison_value(&left))
+        {
             continue;
         }
         // Mana spent is recorded by the cast event. A past-tense comparison
@@ -1682,6 +1722,7 @@ pub(super) fn parse_value_reference_comparison_predicate(
             left,
             Value::ManaSpentToCast(_)
                 | Value::ManaSpentToCastTriggeringObject
+        | Value::CasterManaSpentToCastTriggeringObject
                 | Value::ManaValueOf(_)
         ) && comparison_tokens
             .first()
@@ -1697,10 +1738,47 @@ pub(super) fn parse_value_reference_comparison_predicate(
         let Some((right, right_used)) = parse_value(right_tokens) else {
             continue;
         };
-        if right_used != right_tokens.len() {
-            continue;
-        }
         let mut right = right;
+        if right_used != right_tokens.len() {
+            // "is at least 10 greater than your starting life total":
+            // preserve the authored inclusive operator and add the offset
+            // to its actual reference, rather than shifting a threshold by 1.
+            let Some(offset) = (match right {
+                Value::Fixed(n) => Some(n),
+                _ => None,
+            }) else {
+                continue;
+            };
+            if !is_life_total_comparison_value(&left)
+                || !right_tokens
+                    .get(right_used)
+                    .is_some_and(|t| t.is_word("greater"))
+                || !right_tokens
+                    .get(right_used + 1)
+                    .is_some_and(|t| t.is_word("than"))
+            {
+                continue;
+            }
+            let basis_tokens = &right_tokens[right_used + 2..];
+            let Some((basis, used)) = parse_value(basis_tokens) else {
+                continue;
+            };
+            if used != basis_tokens.len() || !is_life_total_comparison_value(&basis) {
+                continue;
+            }
+            right = Value::Add(Box::new(basis), Box::new(Value::Fixed(offset)));
+        }
+        if matches!(left.unhinted(), Value::LifeTotal(_)) {
+            // Existing literal-life predicates own their established typed
+            // forms. Only the previously missing dynamic references enter
+            // this reader, keeping registry candidates disjoint.
+            if matches!(right.unhinted(), Value::Fixed(_))
+                || parse_life_total_at_least_starting_predicate(tokens).is_some()
+                || parse_life_total_at_least_last_noted_predicate(tokens).is_some()
+            {
+                continue;
+            }
+        }
         bind_other_aggregate_to_compared_object(&left, &mut right);
         let mut left = left;
         mark_demonstrative_characteristic_subject(&mut left, &tokens[..comparison_start]);
@@ -1779,10 +1857,28 @@ fn bind_other_aggregate_to_compared_object(left: &Value, right: &mut Value) {
         });
 }
 
+fn is_life_total_comparison_value(value: &Value) -> bool {
+    match value.unhinted() {
+        Value::LifeTotal(_)
+        | Value::StartingLifeTotal(_)
+        | Value::LastNotedLifeTotal
+        | Value::MaximumLifeTotal(_)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(_) => true,
+        Value::Add(left, right) | Value::Min(left, right) => {
+            is_life_total_comparison_value(left) || is_life_total_comparison_value(right)
+        }
+        Value::Scaled(inner, _)
+        | Value::HalfRoundedDown(inner)
+        | Value::DividedRoundedDown(inner, _) => is_life_total_comparison_value(inner),
+        _ => false,
+    }
+}
+
 pub(super) fn is_predicate_reference_value(value: &Value) -> bool {
     matches!(
         value,
-        Value::X
+        Value::DamageHistory(_)
+            | Value::X
             | Value::Count(_)
             | Value::CountScaled(_, _)
             | Value::CountersOnSource(_)
@@ -1794,6 +1890,7 @@ pub(super) fn is_predicate_reference_value(value: &Value) -> bool {
             | Value::SourceToughness
             | Value::ManaSpentToCast(_)
             | Value::ManaSpentToCastTriggeringObject
+        | Value::CasterManaSpentToCastTriggeringObject
     )
 }
 
@@ -2402,6 +2499,7 @@ pub(super) fn parse_combat_turn_predicate(tokens: &[OwnedLexToken]) -> Option<Pr
     parse_negative_attack_history_shape(tokens)
         .or_else(|| parse_you_attacked_this_turn_shape(tokens))
         .or_else(|| parse_triggering_object_had_to_attack_this_combat_shape(tokens))
+        .or_else(|| attack_power::parse_attacked_with_total_power(tokens))
         .or_else(|| parse_you_attacked_with_n_or_more_creatures_shape(tokens))
         .or_else(|| parse_you_attacked_with_exactly_other_creatures_shape(tokens))
         .or_else(|| parse_source_attacked_or_blocked_this_turn_shape(tokens))
@@ -5653,6 +5751,16 @@ fn parse_you_control_shared_creature_type_count_predicate(
 }
 
 pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+    let monarch_words=non_article_token_word_refs(tokens);
+    if let Some(subject)=monarch_words.strip_suffix(&["monarch","as","turn","began"]) {
+        let player=match subject {
+            ["you","were"]=>Some(PlayerAst::You),
+            ["that","player","was"]|["they","were"]=>Some(PlayerAst::That),
+            _=>None,
+        };
+        if let Some(player)=player {return Ok(PredicateAst::Player(PlayerPredicateAst::PlayerWasMonarchAtTurnStart{player}));}
+    }
+
     let predicate_tokens = if token_slice_first_is(tokens, "if") {
         &tokens[1..]
     } else {
@@ -5663,6 +5771,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     {
         return Ok(predicate);
     }
+    if let Some(predicate) = super::parse_completed_die_result_predicate(predicate_tokens) { return Ok(predicate); }
     let input = predicate_readings::Predicate {
         tokens,
         predicate_tokens,

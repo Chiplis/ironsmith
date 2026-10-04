@@ -1281,6 +1281,8 @@ pub enum ObjectCharacteristic {
     Subtype(SubtypeFamily),
     Color,
     ManaValue,
+    /// At least one shared name; nameless objects never share a name.
+    Name,
 }
 
 impl ObjectCharacteristic {
@@ -1291,6 +1293,7 @@ impl ObjectCharacteristic {
             Self::Subtype(family) => format!("a {}", family.type_phrase()),
             Self::Color => "a color".to_string(),
             Self::ManaValue => "mana value".to_string(),
+            Self::Name => "a name".to_string(),
         }
     }
 }
@@ -1315,6 +1318,10 @@ pub struct ObjectCharacteristicRelation {
     pub kind: ObjectCharacteristicRelationKind,
     pub characteristics: Vec<ObjectCharacteristic>,
     pub comparison: ObjectFilter,
+    /// "another" is relative to the candidate being compared, not the
+    /// ability's source. Older relation payloads retain inclusive semantics.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub exclude_candidate: bool,
 }
 
 impl ObjectCharacteristicRelation {
@@ -1323,6 +1330,7 @@ impl ObjectCharacteristicRelation {
             kind: ObjectCharacteristicRelationKind::SharesAny,
             characteristics,
             comparison,
+            exclude_candidate: false,
         }
     }
 
@@ -1334,10 +1342,22 @@ impl ObjectCharacteristicRelation {
             kind: ObjectCharacteristicRelationKind::SharesNone,
             characteristics,
             comparison,
+            exclude_candidate: false,
         }
     }
 
+    pub fn excluding_candidate(mut self) -> Self {
+        self.exclude_candidate = true;
+        self
+    }
+
     pub fn comparison_description(&self) -> String {
+        if self.comparison.zone == Some(Zone::Hand)
+            && self.comparison.owner == Some(PlayerFilter::OwnerOf(ObjectRef::FilterCandidate))
+            && (ObjectFilter { zone: None, owner: None, ..self.comparison.clone() }) == ObjectFilter::default()
+        {
+            return if self.exclude_candidate { "another card in their hand" } else { "a card in their hand" }.into();
+        }
         if self.comparison.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 && constraint.tag.as_str() == crate::SOURCE_EXILED_TAG
@@ -1346,6 +1366,10 @@ impl ObjectCharacteristicRelation {
         }
 
         let description = self.comparison.description();
+        if self.exclude_candidate {
+            let bare = description.strip_prefix("a ").or_else(|| description.strip_prefix("an ")).unwrap_or(&description);
+            return format!("another {bare}");
+        }
         let keep_bare_reference = self.comparison.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 && matches!(constraint.tag.as_str(), "equipped" | "enchanted")
@@ -1552,9 +1576,27 @@ pub enum PlayerFilter {
     OwnerOf(ObjectRef),
     AliasedOwnerOf(ObjectRef),
     AliasedControllerOf(ObjectRef),
+    /// Every in-game player tied for the minimum current number of matching
+    /// permanents. Iteration snapshots this set before applying any actions.
+    /// Appended to preserve existing serialized variant ordinals.
+    ControlsFewestTied {
+        filter: Box<ObjectFilter>,
+    },
 }
 
 impl PlayerFilter {
+    /// Live attacking opponents of the attacked player captured by this
+    /// declaration event. The runtime binds the set when constructing a filter
+    /// context; the event's original attacking players are a different role.
+    pub fn opponents_attacking_event_defender() -> Self {
+        Self::excluding(
+            Self::TaggedPlayer(crate::tag::CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG.into()),
+            Self::your_team(),
+        )
+    }
+    pub fn is_opponents_attacking_event_defender(&self) -> bool {
+        self == &Self::opponents_attacking_event_defender()
+    }
     pub fn target_player() -> Self {
         Self::Target(Box::new(Self::Any))
     }
@@ -1668,7 +1710,9 @@ impl PlayerFilter {
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => {
                 player.mentions_iterated_player() || filter.mentions_iterated_player()
             }
-            Self::ControlsMost { filter } => filter.mentions_iterated_player(),
+            Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } => {
+                filter.mentions_iterated_player()
+            }
             Self::OpponentOf(base) | Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
@@ -1807,6 +1851,10 @@ impl PlayerFilter {
                 "the player who controls the most {}",
                 pluralize_count_terminal_word(&filter.description())
             ),
+            Self::ControlsFewestTied { filter } => format!(
+                "a player who controls the fewest {}",
+                pluralize_count_terminal_word(&filter.description())
+            ),
             Self::OpponentOf(base) => format!("an opponent of {}", base.description()),
             Self::MaxSpeed {
                 base,
@@ -1830,6 +1878,7 @@ impl PlayerFilter {
             }
             Self::Target(inner) => format!("target {}", inner.description()),
             Self::AliasedTarget(_) => "that player".to_string(),
+            Self::Excluding { .. } if self.is_opponents_attacking_event_defender() => "an opponent attacking that player".into(),
             Self::Excluding { base, excluded } => {
                 format!(
                     "{} other than {}",
@@ -2156,6 +2205,9 @@ pub struct ObjectFilter {
     /// Requires a permanent currently designated as goaded.
     #[cfg_attr(feature = "serde", serde(default))]
     pub goaded: bool,
+    /// Requires the current Ring-bearer designation (or its captured LKI).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub ring_bearer: bool,
     pub sticker: Option<KeywordActionKind>,
     pub token: bool,
     pub nontoken: bool,
@@ -2177,6 +2229,9 @@ pub struct ObjectFilter {
     pub ability_activated_this_turn: bool,
     /// Requires a creature that was declared as a blocker during this turn.
     pub blocked_this_turn: bool,
+    /// Passive combat history: this exact attacker became blocked this turn.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub was_blocked_this_turn: bool,
     pub didnt_attack_this_turn: bool,
     /// Requires a creature that is legally able to attack. This is used with
     /// turn history for instructions that affect creatures that did not
@@ -2219,6 +2274,10 @@ pub struct ObjectFilter {
     pub blocked: bool,
     pub blocked_by: Option<ObjectRef>,
     pub blocked_by_source: bool,
+    /// The candidate blocked this ability's source during the current turn.
+    /// Directional history, distinct from being blocked by the source.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub blocked_source_this_turn: bool,
     /// The current source crewed this Vehicle this turn ("a Vehicle crewed
     /// by this creature this turn"). Read from the turn's crew history.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2283,6 +2342,8 @@ pub struct ObjectFilter {
     /// The object moved from a library to a graveyard during the current turn.
     /// This is stable-identity history, not merely a present-zone qualifier.
     pub entered_graveyard_from_library_this_turn: bool,
+    /// This exact graveyard incarnation resulted from a mill instruction this turn.
+    pub milled_into_graveyard_this_turn: bool,
     pub surveilled_this_turn: bool,
     /// The object fought this turn ("a creature that fought this turn",
     /// Boxing Ring). Stable-identity history of fight keyword actions.
@@ -2312,6 +2373,9 @@ pub struct ObjectFilter {
     pub power_reference: PtReference,
     pub power_relative_to_source: Option<SourcePowerRelation>,
     pub power_greater_than_base_power: bool,
+    /// Compare this object's effective and base power in the same live/LKI frame.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub power_comparison_to_base: Option<crate::ValueComparisonOperator>,
     pub power_toughness_relation: Option<PowerToughnessRelation>,
     pub toughness: Option<Comparison>,
     pub toughness_reference: PtReference,
@@ -2382,6 +2446,18 @@ pub struct ObjectFilter {
     pub any_of: Vec<ObjectFilter>,
     pub source: bool,
     pub source_surface: Option<SourceReferenceSurface>,
+    /// Selection-set constraint: all chosen objects share at least one name.
+    /// This never changes whether an individual object matches the filter.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shares_name: bool,
+    /// Selection-set constraint: the intersection of the chosen objects' colors
+    /// must contain a color. Colorless objects do not share a color.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shares_color: bool,
+    /// Exact latest successfully drawn incarnation for a matching player this
+    /// turn. Never falls back when that card leaves its current zone.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub last_drawn_this_turn: Option<PlayerFilter>,
 }
 
 impl ObjectFilter {
@@ -2510,6 +2586,7 @@ impl ObjectFilter {
                 .map(|constraint| &constraint.source_controller),
             self.discarded_or_cycled_this_turn_by.as_ref(),
             self.dealt_damage_to_player_this_turn.as_ref(),
+            self.last_drawn_this_turn.as_ref(),
         ]
         .into_iter()
         .flatten()
@@ -2951,6 +3028,7 @@ impl ObjectFilter {
             || self.power_parity.is_some()
             || self.power_relative_to_source.is_some()
             || self.power_greater_than_base_power
+            || self.power_comparison_to_base.is_some()
             || self.power_toughness_relation.is_some()
             || self.distinct_powers
             || self.distinct_creature_types
@@ -3021,6 +3099,7 @@ impl ObjectFilter {
             || self.counters_put_on_this_turn.is_some()
             || self.discarded_or_cycled_this_turn_by.is_some()
             || self.drawn_this_turn
+            || self.last_drawn_this_turn.is_some()
             || self.mana_value.is_some()
             || self.mana_value_parity.is_some()
             || self.mana_value_eq_counters_on_source.is_some()
@@ -3590,6 +3669,17 @@ impl ObjectFilter {
         self
     }
 
+    /// The unique current designation for the ability's controller. This
+    /// noun remains meaningful if the designated permanent stops being a creature.
+    pub fn your_ring_bearer() -> Self {
+        Self { ring_bearer: true, controller: Some(PlayerFilter::You), zone: Some(Zone::Battlefield), ..Self::default() }
+    }
+
+    pub fn ring_bearer(mut self) -> Self {
+        self.ring_bearer = true;
+        self
+    }
+
     pub fn suspected(mut self) -> Self {
         self.suspected = true;
         self
@@ -3964,6 +4054,10 @@ impl ObjectFilter {
             return description;
         }
 
+        if self == &ObjectFilter::your_ring_bearer() {
+            return "your Ring-bearer".to_string();
+        }
+
         let mut parts = Vec::new();
         let mut post_noun_qualifiers: Vec<String> = Vec::new();
         let append_token_after_type = self.token;
@@ -4019,6 +4113,9 @@ impl ObjectFilter {
         }
         if self.goaded {
             parts.push("goaded".to_string());
+        }
+        if self.ring_bearer && (!self.card_types.is_empty() || !self.all_card_types.is_empty() || !self.subtypes.is_empty() || !self.all_subtypes.is_empty() || self.token) {
+            post_noun_qualifiers.push("that is a Ring-bearer".to_string());
         }
 
         let has_leading_determiner =
@@ -4090,7 +4187,7 @@ impl ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::ControlsMost { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
@@ -4282,7 +4379,7 @@ impl ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::ControlsMost { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
@@ -4464,6 +4561,14 @@ impl ObjectFilter {
             ));
         }
         for relation in &self.characteristic_relations {
+            if relation.characteristics == [ObjectCharacteristic::Name] {
+                let phrase = match relation.kind {
+                    ObjectCharacteristicRelationKind::SharesAny => "with the same name as",
+                    ObjectCharacteristicRelationKind::SharesNone => "that doesn't have the same name as",
+                };
+                post_noun_qualifiers.push(format!("{phrase} {}", relation.comparison_description()));
+                continue;
+            }
             let characteristics = relation
                 .characteristics
                 .iter()
@@ -4832,7 +4937,10 @@ impl ObjectFilter {
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
         }
         if self.blocked_by_source {
-            post_noun_qualifiers.push("blocked by this creature this turn".to_string());
+            post_noun_qualifiers.push("blocked by this creature".to_string());
+        }
+        if self.blocked_source_this_turn {
+            post_noun_qualifiers.push("that blocked this creature this turn".to_string());
         }
         if self.crewed_by_source_this_turn {
             post_noun_qualifiers.push("crewed by this creature this turn".to_string());
@@ -4889,6 +4997,7 @@ impl ObjectFilter {
         if self.blocked_this_turn {
             post_noun_qualifiers.push("that blocked this turn".to_string());
         }
+        if self.was_blocked_this_turn { post_noun_qualifiers.push("that was blocked this turn".to_string()); }
         if self.didnt_attack_this_turn {
             let clause = if self.could_have_attacked_this_turn {
                 "that didn't attack this turn, except for creatures that couldn't attack"
@@ -5070,6 +5179,7 @@ impl ObjectFilter {
                 }
             } else {
                 match self.zone {
+                    Some(Zone::Battlefield) | None if self.ring_bearer => "Ring-bearer",
                     Some(Zone::Battlefield) | None if self.is_commander => "commander",
                     Some(Zone::Battlefield) | None => "permanent",
                     Some(Zone::Stack) => {
@@ -5381,6 +5491,12 @@ impl ObjectFilter {
         if self.shares_land_type {
             parts.push("that share a land type".to_string());
         }
+        if self.shares_name {
+            parts.push("with the same name".to_string());
+        }
+        if self.shares_color {
+            parts.push("that share a color".to_string());
+        }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());
         }
@@ -5427,6 +5543,7 @@ impl ObjectFilter {
             || self.toughness.is_some()
             || self.power_parity.is_some()
             || self.power_greater_than_base_power
+            || self.power_comparison_to_base.is_some()
             || self.power_toughness_relation.is_some()
             || self.power_relative_to_source.is_some()
             || self.total_power_toughness.is_some();
@@ -5478,6 +5595,17 @@ impl ObjectFilter {
             }
             if self.power_greater_than_base_power {
                 parts.push("with power greater than its base power".to_string());
+            }
+            if let Some(operator) = self.power_comparison_to_base {
+                let relation = match operator {
+                    crate::ValueComparisonOperator::GreaterThan => "greater than",
+                    crate::ValueComparisonOperator::GreaterThanOrEqual => "greater than or equal to",
+                    crate::ValueComparisonOperator::Equal => "equal to",
+                    crate::ValueComparisonOperator::LessThan => "less than",
+                    crate::ValueComparisonOperator::LessThanOrEqual => "less than or equal to",
+                    crate::ValueComparisonOperator::NotEqual => "different from",
+                };
+                parts.push(format!("with power {relation} its base power"));
             }
             if let Some(relation) = self.power_toughness_relation {
                 match relation {
@@ -5788,6 +5916,10 @@ impl ObjectFilter {
             parts.push(format!("created with {source}"));
         }
 
+        if self.milled_into_graveyard_this_turn {
+            parts.push("that was milled this turn".to_string());
+        }
+
         if self.entered_graveyard_from_library_this_turn && self.zone == Some(Zone::Graveyard) {
             parts.push("that was put there from their library this turn".to_string());
         } else if self.entered_graveyard_from_battlefield_this_turn
@@ -5850,6 +5982,9 @@ impl ObjectFilter {
         }
         if self.drawn_this_turn {
             parts.push("drawn this turn".to_string());
+        }
+        if let Some(player) = &self.last_drawn_this_turn {
+            parts.push(format!("drawn last this turn by {}", describe_player_filter(player)));
         }
 
         parts.extend(chosen_trailing_qualifiers);
@@ -6930,7 +7065,9 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             describe_player_filter(player),
             pluralize_count_terminal_word(&filter.description())
         ),
-        PlayerFilter::ControlsMost { .. } => format!("{}'s", filter.description()),
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+            format!("{}'s", filter.description())
+        }
         PlayerFilter::OpponentOf(_) => format!("{}'s", describe_player_filter(filter)),
         PlayerFilter::MaxSpeed {
             base,
@@ -6949,6 +7086,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller's".to_string()
         }
+        PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => "an opponent attacking that player's".into(),
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             describe_possessive_player_filter(base),
@@ -7050,6 +7188,10 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "the player who controls the most {}",
             pluralize_count_terminal_word(&filter.description())
         ),
+        PlayerFilter::ControlsFewestTied { filter } => format!(
+            "player who controls the fewest {}",
+            pluralize_count_terminal_word(&filter.description())
+        ),
         PlayerFilter::OpponentOf(base) => {
             format!("an opponent of {}", describe_player_filter(base))
         }
@@ -7073,6 +7215,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller".to_string()
         }
+        PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => "opponent attacking that player".into(),
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             describe_player_filter(base),
@@ -7569,6 +7712,35 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     filter.description()
                 )
             }
+            Value::DamageHistory(query) => query.describe_with_reference(|spec| {
+                if let Some(surface) = spec.source_reference_surface() {
+                    return surface.display_text().to_string();
+                }
+                match spec.base() {
+                    ChooseSpec::Source => "this source".into(),
+                    ChooseSpec::Object(filter) => filter.description(),
+                    _ => "that object".into(),
+                }
+            }),
+            Value::MaximumLifeTotal(players) => {
+                let scope = match players {
+                    PlayerFilter::Any => "all players".to_string(),
+                    PlayerFilter::Opponent => "your opponents".to_string(),
+                    _ => players.description(),
+                };
+                format!("the highest life total among {scope}")
+            }
+            Value::CountPlayersBelowHalfStartingLifeTotal(players) => {
+                let scope = match players {
+                    PlayerFilter::Opponent => "opponents".to_string(),
+                    PlayerFilter::Any => "players".to_string(),
+                    _ => players.description(),
+                };
+                format!(
+                    "the number of {scope} whose life total is less than half their starting life total"
+                )
+            }
+            Value::LifeTotal(PlayerFilter::MostLifeTied) => "the highest life total among all players".to_string(),
             Value::LifeTotal(player) => {
                 format!("{} life total", describe_possessive_player_filter(player))
             }
@@ -7636,6 +7808,10 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::ToughnessOf(spec) => {
                 format!("{} toughness", describe_value_choose_spec_possessive(spec))
             }
+            Value::BasePowerOf(spec) => {
+                format!("{} base power", describe_value_choose_spec_possessive(spec))
+            }
+            Value::KicksPaidOf(_) => "the number of times it was kicked".to_string(),
             Value::ManaSpentToCast(_) => "the amount of mana spent to cast it".to_string(),
             Value::ManaValueOf(spec) => {
                 if let ChooseSpec::Tagged(tag) = spec.base() {
@@ -7674,6 +7850,12 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 )
             }
             Value::EventValue(EventValueSpec::Amount) => "that damage".to_string(),
+            Value::EventValue(EventValueSpec::LifeChange { gained, for_controller }) => format!(
+                "the amount of life {} {}", if *for_controller { "you" } else { "that player" },
+                if *gained { "gained" } else { "lost" },
+            ),
+            Value::EventValue(EventValueSpec::DieBatchTotal) => "the total result of those dice".to_string(),
+            Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)) => format!("the number of those die results of {minimum} or higher"),
             Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
             Value::EventValue(EventValueSpec::LifeAmount) => "that much life".to_string(),
             Value::EventValue(EventValueSpec::BlockersBeyondFirst { .. }) => {

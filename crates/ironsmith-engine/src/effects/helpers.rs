@@ -34,6 +34,7 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 pub(crate) mod value_eval;
+pub(crate) use value_eval::resolve_damage_history_for_comparison;
 
 // ============================================================================
 // Tagged Object Resolution
@@ -205,6 +206,22 @@ pub(crate) fn tagged_object_follow_permitted(
     snapshot: &ObjectSnapshot,
     current_id: ObjectId,
 ) -> bool {
+    if let Some(discard) = ctx.triggering_event.as_ref()
+        .and_then(|event| event.downcast::<crate::events::other::CardDiscardedEvent>())
+    {
+        if ctx.resolution_object_id_floor.is_some_and(|floor| current_id.0 >= floor.0) { return true; }
+        return discard.destinations.iter().any(|receipt|
+            receipt.object == Some(current_id)
+                && (receipt.card == snapshot.object_id || receipt.object == Some(snapshot.object_id)));
+    }
+    if ctx.triggering_event.as_ref().is_some_and(|event|
+        matches!(event.kind(), crate::events::EventKind::Transformed | crate::events::EventKind::Mutated | crate::events::EventKind::TurnedFaceUp)
+            || event.downcast::<crate::events::KeywordActionEvent>().is_some_and(|action| action.action == crate::events::KeywordActionKind::Renown)) {
+        // A status/characteristic change did not move its participant. Only
+        // an explicit move made by this resolution can introduce a successor.
+        return current_id == snapshot.object_id
+            || ctx.resolution_object_id_floor.is_some_and(|floor| current_id.0 >= floor.0);
+    }
     let Some(floor) = ctx.resolution_object_id_floor else {
         return true;
     };
@@ -240,8 +257,27 @@ pub(crate) fn tagged_object_follow_permitted(
             zone_change.result_objects.contains(&current_id)
         };
     }
-    // Other events that move their object (a sacrifice, a discard) don't
-    // record the object it became, so the object they name is still found.
+    // Combat, tap-state, attachment and phasing observations do not move
+    // their participants to new zones. Merely naming an attacker/blocker is
+    // no permission to follow a blink that happened before resolution.
+    // Genuine in-resolution moves still use the floor permission above.
+    if matches!(
+        event.kind(),
+        crate::events::EventKind::CreatureAttacked
+            | crate::events::EventKind::CreatureAttackedAndUnblocked
+            | crate::events::EventKind::CreatureBlocked
+            | crate::events::EventKind::CreatureBecameBlocked
+            | crate::events::EventKind::PermanentTapped
+            | crate::events::EventKind::PermanentUntapped
+            | crate::events::EventKind::ObjectBecameAttached
+            | crate::events::EventKind::ObjectBecameUnattached
+            | crate::events::EventKind::PermanentPhasedIn
+            | crate::events::EventKind::PermanentPhasedOut
+    ) {
+        return false;
+    }
+    // Other legacy movement events (for example sacrifice) may lack an
+    // explicit destination receipt. Discard uses its exact receipt above.
     event.object_id() == Some(snapshot.object_id)
         || event
             .inner()
@@ -309,12 +345,53 @@ pub(crate) fn pin_tagged_objects_to_current(
     }
 }
 
+/// CR400.7f authorizes only the Aura's first actual battlefield-to-graveyard
+/// receipt after its enchanted permanent left. A physical-card lookup cannot
+/// distinguish that object from a later exile/return incarnation.
+fn aura_source_graveyard_incarnation(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    trigger: &crate::events::ZoneChangeEvent,
+) -> Option<ObjectId> {
+    if trigger.from != Zone::Battlefield { return None; }
+    let attached_sources = trigger.object_tags.get("attached_source");
+    let snapshot = ctx.source_snapshot.as_ref()
+        .filter(|snapshot| snapshot.object_id == ctx.source)
+        .or_else(|| attached_sources.and_then(|sources| sources.iter().find(|snapshot| snapshot.object_id == ctx.source)))?;
+    if snapshot.zone != Zone::Battlefield || !snapshot.subtypes.contains(&crate::types::Subtype::Aura) { return None; }
+    let was_attached = snapshot.attached_to.as_ref().and_then(|target| target.object_id())
+        .is_some_and(|host| trigger.objects.contains(&host))
+        || attached_sources.is_some_and(|sources| sources.iter().any(|source| source.object_id == ctx.source && source.stable_id == snapshot.stable_id));
+    if !was_attached { return None; }
+    let transition = game.turn_store.turn_history.event_records.iter()
+        .chain(game.turn_store.turn_history.staged_event_records.iter())
+        .filter_map(|record| record.event.downcast::<crate::events::ZoneChangeEvent>())
+        .find(|event| event.from == Zone::Battlefield && event.objects.contains(&ctx.source))?;
+    if transition.to != Zone::Graveyard || transition.cause.cause_type != crate::events::cause::CauseType::StateBasedAction {
+        return None;
+    }
+    transition.result_objects.iter().copied().find(|id| game.object(*id).is_some_and(|object| {
+        object.zone == Zone::Graveyard && object.owner == snapshot.owner && object.stable_id == snapshot.stable_id
+    }))
+}
+
 pub(crate) fn resolve_source_object_id(
     game: &GameState,
     ctx: &ExecutionContext,
 ) -> Option<ObjectId> {
     if game.object(ctx.source).is_some() {
         return Some(ctx.source);
+    }
+    // Self-discard triggers can find exactly the public arrival made by
+    // that discard, including when scheduling a later return. Never follow a
+    // card that left that arrival before the registration resolved.
+    if let Some(discard) = ctx.triggering_event.as_ref()
+        .and_then(|event| event.downcast::<crate::events::other::CardDiscardedEvent>())
+        && discard.card == ctx.source
+    {
+        return discard.destination(ctx.source).filter(|receipt| receipt.zone.is_public())
+            .and_then(|receipt| receipt.object.filter(|id| game.object(*id).is_some_and(|object|
+                object.zone == receipt.zone && discard.snapshot.as_ref().is_none_or(|origin| origin.stable_id == object.stable_id))));
     }
     // A zone-change trigger may refer to the new object created by that
     // transition. Its recorded destination identity is authoritative: after
@@ -354,6 +431,24 @@ pub(crate) fn resolve_source_object_id(
         && event.objects.contains(&ctx.source)
     {
         return None;
+    }
+    if let Some(event) = ctx.triggering_event.as_ref()
+        .and_then(|event| event.downcast::<crate::events::ZoneChangeEvent>())
+    {
+        // Preserve the existing in-resolution movement permission used by
+        // tagged references (400.7j). Cost moves were pinned at stack entry;
+        // anything created before this resolution cannot use this exception.
+        if let Some(floor) = ctx.resolution_object_id_floor
+            && let Some(snapshot) = ctx.source_snapshot.as_ref()
+            && let Some(current) = game.find_object_by_stable_id(snapshot.stable_id)
+            && current.0 >= floor.0
+        {
+            return Some(current);
+        }
+        // Source movement in the same event was handled above (400.7e).
+        // A different dying object only authorizes the exact Aura/SBA case;
+        // never follow arbitrary pre-resolution moves by stable card identity.
+        return aura_source_graveyard_incarnation(game, ctx, event);
     }
     // Non-zone-change triggers retain the object that owned the ability.
     // A later independent zone change does not authorize following the same
@@ -542,6 +637,12 @@ fn resolve_effect_metric(
             .events_of_type::<LifeGainEvent>()
             .map(|event| event.amount as i64)
             .sum(),
+        EffectMetric::DamageDealtCappedByRecipient => {
+            if source != EffectMetricSource::Outcome {
+                return Err(ExecutionError::UnresolvableValue("capped damage requires an instruction outcome".into()));
+            }
+            return resolve_capped_damage_result(game, outcome);
+        }
         EffectMetric::DamageDealt => outcome
             .events_of_type::<DamageEvent>()
             .map(|event| event.amount as i64)
@@ -655,6 +756,49 @@ fn resolve_effect_metric(
     Ok(resolved)
 }
 
+fn resolve_capped_damage_result(game: &GameState, outcome: &EffectOutcome) -> Result<i64, ExecutionError> {
+    let original = outcome.instruction_result();
+    let mut amount = original.events_of_type::<DamageEvent>().map(|event| u128::from(event.amount)).sum::<u128>();
+    if amount == 0 { return Ok(0); }
+    let recipients = original.execution_facts.iter().filter_map(|fact| match fact {
+        crate::effect::ExecutionFact::DamageRecipientBefore(receipt) => Some(receipt), _ => None,
+    }).collect::<Vec<_>>();
+    let [recipient] = recipients.as_slice() else {
+        return Err(ExecutionError::UnresolvableValue("capped damage requires one exact original-recipient receipt".into()));
+    };
+    match recipient {
+        crate::effect::DamageRecipientBefore::Player { life, .. } => amount = amount.min((*life).max(0) as u128),
+        crate::effect::DamageRecipientBefore::Object { object, was_creature, loyalty } => {
+            if let Some(loyalty) = loyalty { amount = amount.min(u128::from(*loyalty)); }
+            if *was_creature {
+                // CR 608.2h: the printed creature-toughness cap is current
+                // information, unlike the explicitly pre-damage life/loyalty.
+                let toughness = if game.object(*object).is_some_and(|object| object.zone == Zone::Battlefield)
+                    && !game.is_phased_out(*object) {
+                    let checked = game.continuous_query_snapshot().map_err(ExecutionError::ContinuousDiscovery)?;
+                    let frame = checked.try_current_characteristics(*object)
+                        .map_err(ExecutionError::ContinuousDiscovery)?
+                        .ok_or_else(|| ExecutionError::UnresolvableValue(
+                            "original damaged creature has no available current frame".into()))?;
+                    if frame.card_types.contains(&CardType::Creature) {
+                        frame.toughness.ok_or_else(|| ExecutionError::UnresolvableValue(
+                            "original damaged creature has no current toughness evidence".into()))?
+                    } else { 0 }
+                } else {
+                    let snapshot = game.turn_store.turn_history.source_last_known_snapshot(*object)
+                        .ok_or_else(|| ExecutionError::UnresolvableValue("original damaged creature has no exact departure LKI".into()))?;
+                    if snapshot.card_types.contains(&CardType::Creature) {
+                        snapshot.toughness.ok_or_else(|| ExecutionError::UnresolvableValue(
+                            "original damaged creature has no retained toughness evidence".into()))?
+                    } else { 0 }
+                };
+                amount = amount.min(toughness.max(0) as u128);
+            }
+        }
+    }
+    crate::events::damage::checked_damage_count(amount, "recipient-capped damage result").map(i64::from)
+}
+
 fn resolve_prior_effect_metric(
     game: &GameState,
     ctx: &ExecutionContext,
@@ -663,6 +807,10 @@ fn resolve_prior_effect_metric(
 ) -> Result<i64, ExecutionError> {
     if query.filter.is_none() && query.player.is_none() {
         return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);
+    }
+
+    if query.metric == EffectMetric::DamageDealtCappedByRecipient {
+        return Err(ExecutionError::UnresolvableValue("recipient-capped damage does not accept a memory filter".into()));
     }
 
     let Some(outcome) = ctx.get_outcome(effect_id) else {
@@ -674,6 +822,26 @@ fn resolve_prior_effect_metric(
         .as_ref()
         .map(|player| resolve_player_filter_to_list(game, player, &filter_ctx, ctx))
         .transpose()?;
+
+    if query.source == EffectMetricSource::Outcome
+        && matches!(query.metric, EffectMetric::LifeGained | EffectMetric::LifeLost)
+    {
+        if query.filter.is_some() {
+            return Err(ExecutionError::UnresolvableValue("life metrics cannot apply an object filter".into()));
+        }
+        let accepts = |player| selected_players.as_ref().is_none_or(|players| players.contains(&player));
+        let mut amounts = outcome.events.iter().filter_map(|event| {
+            if query.metric == EffectMetric::LifeGained {
+                event.downcast::<LifeGainEvent>().filter(|life| accepts(life.player)).map(|life| life.amount)
+            } else {
+                event.downcast::<LifeLossEvent>().filter(|life| accepts(life.player)).map(|life| life.amount)
+            }
+        });
+        return amounts.try_fold(0i64, |sum, amount| {
+            Some(i64::from(amount)).and_then(|amount| sum.checked_add(amount))
+                .ok_or_else(|| ExecutionError::UnresolvableValue("life metric exceeds supported range".into()))
+        });
+    }
 
     let mut memory = if let Some(selected_players) = selected_players.as_ref()
         && let Some(partitions) = outcome.player_affected_object_memory()
@@ -958,6 +1126,23 @@ fn prior_effect_damaged_player(ctx: &ExecutionContext) -> Option<PlayerId> {
         })
 }
 
+/// Current attachment of a live source, or its exact departure receipt.
+/// A live but unattached source never revives an earlier attachment.
+pub(crate) fn source_attachment_target_with_lki(
+    game: &GameState,
+    source: ObjectId,
+    retained: Option<&ObjectSnapshot>,
+) -> Option<crate::object::AttachmentTarget> {
+    if let Some(source) = game.object(source) {
+        return source.attached_to;
+    }
+    game.turn_store
+        .turn_history
+        .source_departure_snapshot(source)
+        .or_else(|| retained.filter(|snapshot| snapshot.object_id == source))
+        .and_then(|snapshot| snapshot.attached_to)
+}
+
 fn object_lki_snapshot<'a>(
     ctx: &'a ExecutionContext<'_>,
     object_id: ObjectId,
@@ -1004,11 +1189,13 @@ fn latest_tagged_lki_snapshot<'a>(
         .chain(game.turn_store.turn_history.staged_event_records.iter())
         .rev()
         .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
-        .filter_map(|event| event.snapshot.as_ref())
+        .flat_map(|event| event.snapshots())
         .find(|snapshot| {
+            // CR 400.7: a later incarnation of the same physical card is not
+            // this tagged object. Authorized movement links update the tag
+            // separately; LKI lookup must not invent such permission.
             snapshot.zone == tagged_snapshot.zone
-                && (snapshot.object_id == tagged_snapshot.object_id
-                    || snapshot.stable_id == tagged_snapshot.stable_id)
+                && snapshot.object_id == tagged_snapshot.object_id
         })
 }
 
@@ -1634,6 +1821,7 @@ pub fn resolve_player_filter(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::MostCardsInHand => {
@@ -1787,7 +1975,11 @@ fn resolve_controller_of(
                         ) && (object.id == snapshot.object_id || object.zone != snapshot.zone)
                     })
                     .map(|object| game.controller_of(object));
-                Ok(live_controller.unwrap_or(snapshot.controller))
+                let departure_controller = ctx.triggering_event.as_ref()
+                    .filter(|event| matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped | crate::events::EventKind::ObjectBecameAttached | crate::events::EventKind::ObjectBecameUnattached | crate::events::EventKind::PermanentPhasedIn | crate::events::EventKind::PermanentPhasedOut))
+                    .and_then(|_| latest_zone_change_snapshot_for_object(game, snapshot.object_id))
+                    .map(|departed| departed.controller);
+                Ok(live_controller.or(departure_controller).unwrap_or(snapshot.controller))
             } else if let Some(player) = ctx
                 .get_tagged_players(tag.as_str())
                 .and_then(|players| players.first().copied())
@@ -3542,15 +3734,12 @@ pub(crate) fn resolve_player_filter_to_list(
                 .collect();
             Ok(others)
         }
-        PlayerFilter::Opponent => {
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != ctx.controller && p.is_in_game())
-                .map(|p| p.id)
-                .collect();
-            Ok(opponents)
-        }
+        PlayerFilter::Opponent => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game() && game.are_opponents(ctx.controller, player.id))
+            .map(|player| player.id)
+            .collect()),
         PlayerFilter::Specific(id) => Ok(vec![*id]),
         PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
             Ok(vec![resolve_player_filter(game, filter, ctx)?])
@@ -3695,7 +3884,8 @@ pub(crate) fn resolve_player_filter_to_list(
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
-        | PlayerFilter::ControlsMost { .. } => Ok(game
+        | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())
@@ -3790,9 +3980,12 @@ pub(crate) fn resolve_player_filter_to_list(
         PlayerFilter::OwnerOf(object_ref) | PlayerFilter::AliasedOwnerOf(object_ref) => {
             Ok(vec![resolve_owner_of(game, ctx, object_ref)?])
         }
-        PlayerFilter::Teammate => Err(ExecutionError::UnresolvableValue(
-            "Teammate filter not supported".to_string(),
-        )),
+        PlayerFilter::Teammate => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game() && game.are_teammates(ctx.controller, player.id))
+            .map(|player| player.id)
+            .collect()),
     }?;
     if let Some(players_in_range) = &_filter_ctx.players_in_range {
         players.retain(|player| players_in_range.contains(player));
@@ -4278,6 +4471,7 @@ mod tests {
             colorless: 2,
             ..ManaPool::default()
         };
+        snapshot.caster_mana_spent_to_cast = Some(2);
         let event = TriggerEvent::new_with_provenance(
             SpellCastEvent::new_with_snapshot(spell_id, alice, Zone::Hand, snapshot),
             ProvNodeId::default(),
@@ -4288,6 +4482,12 @@ mod tests {
             resolve_value(&game, &Value::ManaSpentToCastTriggeringObject, &ctx).unwrap(),
             5
         );
+        assert_eq!(resolve_value(&game, &Value::CasterManaSpentToCastTriggeringObject, &ctx).unwrap(), 2);
+        let mut unknown = ObjectSnapshot::for_testing(spell_id, alice, "Legacy payment");
+        unknown.mana_spent_to_cast.colorless = 7;
+        let unknown_event = TriggerEvent::new_with_provenance(SpellCastEvent::new_with_snapshot(spell_id, alice, Zone::Hand, unknown), ProvNodeId::default());
+        let unknown_ctx = ExecutionContext::new_default(source_id, alice).with_triggering_event(unknown_event);
+        assert!(resolve_value(&game, &Value::CasterManaSpentToCastTriggeringObject, &unknown_ctx).is_err(), "total payment cannot substitute for missing payer evidence");
     }
 
     #[test]
@@ -5743,5 +5943,167 @@ mod replacement_object_selection_contract_tests {
         assert_eq!(game.effect_store.replacement_effects.count_one_shot_effects_from_source(selected), 1);
         assert_eq!(game.effect_store.replacement_effects.count_one_shot_effects_from_source(first), 0);
         assert_eq!(game.effect_store.replacement_effects.count_one_shot_effects_from_source(second), 0);
+    }
+}
+
+#[cfg(test)]
+#[path = "helpers/tagged_lki_identity_tests.rs"]
+mod tagged_lki_identity_tests;
+
+#[cfg(test)]
+mod aura_source_incarnation_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::events::{ZoneChangeEvent, cause::EventCause};
+    use crate::ids::{CardId, PlayerId};
+    use crate::object::AttachmentTarget;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::triggers::TriggerEvent;
+    use crate::turn_history::TurnEventRecord;
+    use crate::types::{CardType, Subtype};
+    fn setup() -> (GameState, ObjectId, ObjectId, ObjectId, ObjectSnapshot) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let owner = PlayerId(0);
+        let host = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Attached host").card_types(vec![CardType::Creature]).build(), owner, Zone::Battlefield);
+        let aura = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Source Aura").card_types(vec![CardType::Enchantment]).subtypes(vec![Subtype::Aura]).build(), owner, Zone::Battlefield);
+        game.object_mut(aura).unwrap().attached_to = Some(AttachmentTarget::Object(host));
+        let snapshot = ObjectSnapshot::from_object(game.object(aura).unwrap(), &game);
+        let graveyard = game.move_object_by_effect(aura, Zone::Graveyard).unwrap();
+        // Unit fixture supplies a canonical completed SBA receipt. The full
+        // Ghoulish integration scenario separately uses real native SBAs.
+        game.turn_store.turn_history.event_records.clear(); game.turn_store.turn_history.staged_event_records.clear();
+        (game, host, aura, graveyard, snapshot)
+    }
+    fn record(game: &mut GameState, source: ObjectId, graveyard: ObjectId, snapshot: ObjectSnapshot, cause: EventCause) {
+        game.turn_store.turn_history.event_records.push(TurnEventRecord {
+            event: TriggerEvent::new_with_provenance(ZoneChangeEvent::with_results(source, vec![graveyard], Zone::Battlefield, Zone::Graveyard, cause, Some(snapshot)), Default::default()),
+            object_snapshot: None, source_snapshot: None,
+        });
+    }
+    fn trigger(host: ObjectId) -> TriggerEvent {
+        TriggerEvent::new_with_provenance(ZoneChangeEvent::with_cause(host, Zone::Battlefield, Zone::Graveyard, EventCause::from_game_rule(), None), Default::default())
+    }
+    #[test]
+    fn aura_exception_returns_the_recorded_sba_arrival_never_an_exile_return() {
+        let (mut game, host, source, graveyard, snapshot) = setup();
+        record(&mut game, source, graveyard, snapshot.clone(), EventCause::from_sba());
+        let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(trigger(host));
+        assert_eq!(resolve_source_object_id(&game, &ctx), Some(graveyard));
+        let exiled = game.move_object_by_effect(graveyard, Zone::Exile).unwrap();
+        let returned = game.move_object_by_effect(exiled, Zone::Graveyard).unwrap();
+        assert_ne!(returned, graveyard); assert_eq!(resolve_source_object_id(&game, &ctx), None);
+    }
+    #[test]
+    fn unrelated_move_or_unrelated_attachment_does_not_authorize_source_following() {
+        for sba in [false, true] {
+            let (mut game, host, source, graveyard, mut snapshot) = setup();
+            if sba { snapshot.attached_to = Some(AttachmentTarget::Object(ObjectId::from_raw(90909))); }
+            record(&mut game, source, graveyard, snapshot.clone(), if sba { EventCause::from_sba() } else { EventCause::from_game_rule() });
+            let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(trigger(host));
+            assert_eq!(resolve_source_object_id(&game, &ctx), None);
+        }
+    }
+    #[test]
+    fn batched_source_departure_retains_the_existing_exact_event_exception() {
+        let (game, host, source, graveyard, snapshot) = setup();
+        let mut event = ZoneChangeEvent::with_results(source, vec![graveyard], Zone::Battlefield, Zone::Graveyard, EventCause::from_game_rule(), Some(snapshot.clone()));
+        event.objects.push(host);
+        let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(TriggerEvent::new_with_provenance(event, Default::default()));
+        assert_eq!(resolve_source_object_id(&game, &ctx), Some(graveyard));
+    }
+    #[test]
+    fn copied_aura_can_lose_its_aura_type_in_graveyard_without_losing_the_proven_arrival() {
+        let (mut game, host, source, graveyard, snapshot) = setup();
+        record(&mut game, source, graveyard, snapshot.clone(), EventCause::from_sba());
+        game.object_mut(graveyard).unwrap().subtypes.clear();
+        let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(trigger(host));
+        assert_eq!(resolve_source_object_id(&game, &ctx), Some(graveyard));
+    }
+}
+#[cfg(test)]
+mod shared_player_list_team_tests {
+    use super::*;
+    #[test]
+    fn team_lists_keep_not_you_targets_iteration_and_range_distinct() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".into(),
+                "Teammate".into(),
+                "Bob".into(),
+                "Charlie".into(),
+            ],
+            20,
+        );
+        let [alice, teammate, bob, charlie] = std::array::from_fn(|i| game.players[i].id);
+        game.set_teams(vec![vec![alice, teammate], vec![bob, charlie]])
+            .unwrap();
+        let mut ctx = ExecutionContext::new_default(ObjectId::from_raw(999), alice)
+            .with_targets(vec![ResolvedTarget::Player(teammate)]);
+        ctx.iteration.iterated_player = Some(charlie);
+        let filter_ctx = ctx.filter_context(&game);
+        for (filter, expected) in [
+            (PlayerFilter::Opponent, vec![bob, charlie]),
+            (PlayerFilter::Teammate, vec![teammate]),
+            (PlayerFilter::NotYou, vec![teammate, bob, charlie]),
+            (PlayerFilter::target_player(), vec![teammate]),
+            (PlayerFilter::IteratedPlayer, vec![charlie]),
+            (
+                PlayerFilter::Excluding {
+                    base: Box::new(PlayerFilter::Any),
+                    excluded: Box::new(PlayerFilter::Opponent),
+                },
+                vec![alice, teammate],
+            ),
+        ] {
+            assert_eq!(
+                resolve_player_filter_to_list(&game, &filter, &filter_ctx, &ctx).unwrap(),
+                expected
+            );
+        }
+        let mut range = filter_ctx;
+        range.players_in_range = Some(vec![alice, teammate, bob]);
+        assert_eq!(
+            resolve_player_filter_to_list(&game, &PlayerFilter::Opponent, &range, &ctx).unwrap(),
+            vec![bob]
+        );
+        assert_eq!(
+            resolve_player_filter_to_list(&game, &PlayerFilter::Teammate, &range, &ctx).unwrap(),
+            vec![teammate]
+        );
+    }
+}
+
+#[cfg(test)]
+mod discarded_incarnation_receipt_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    use crate::effects::EffectExecutor;
+    #[test]
+    fn self_and_group_discard_references_find_only_the_recorded_arrival() {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let a=PlayerId::from_index(0);
+        let card=CardBuilder::new(CardId::new(),"Discarded source").build();
+        let origin=game.create_object_from_card(&card,a,Zone::Hand);
+        let before=ObjectSnapshot::from_object_with_calculated_characteristics(game.object(origin).unwrap(),&game);
+        let grave=game.move_object_by_effect(origin,Zone::Graveyard).unwrap();
+        let event=crate::events::other::CardDiscardedEvent::new(a,origin).with_snapshot(before.clone())
+            .with_batch(vec![origin],vec![before.clone()],0)
+            .with_destinations(vec![crate::events::other::DiscardedCardDestination {card:origin,object:Some(grave),zone:Zone::Graveyard}]);
+        let mut ctx=ExecutionContext::new_default(origin,a).with_source_snapshot(before.clone());
+        ctx.triggering_event=Some(crate::triggers::TriggerEvent::new_with_provenance(event,Default::default()));
+        ctx.set_tagged_objects(ironsmith_core::ZONE_CHANGE_GROUP_TAG,vec![before]);
+        assert_eq!(resolve_source_object_id(&game,&ctx),Some(grave));
+        crate::effects::TagTriggeringObjectEffect::new("discarded").execute(&mut game,&mut ctx).unwrap();
+        let snapshot=ctx.get_tagged_all("discarded").unwrap()[0].clone();assert_eq!(snapshot.object_id,grave);
+        assert_eq!(resolve_tagged_object_id(&game,&ctx,&snapshot),Some(grave));
+        let exile=game.move_object_by_effect(grave,Zone::Exile).unwrap();let later=game.move_object_by_effect(exile,Zone::Graveyard).unwrap();
+        assert_ne!(grave,later);
+        assert_eq!(resolve_source_object_id(&game,&ctx),None,"registration cannot pin a later graveyard incarnation");
+        assert_eq!(resolve_tagged_object_id(&game,&ctx,&snapshot),None,"group return cannot chase the physical card");
+        // Re-running the prelude preserves historical data rather than naming
+        // the later card; source/body movement still finds no eligible arrival.
+        crate::effects::TagTriggeringObjectEffect::new("discarded").execute(&mut game,&mut ctx).unwrap();
+        let retained=&ctx.get_tagged_all("discarded").unwrap()[0];assert_eq!(retained.object_id,origin);
+        assert_eq!(resolve_tagged_object_id(&game,&ctx,retained),None);
     }
 }

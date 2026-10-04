@@ -466,6 +466,7 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors { target, .. })
@@ -557,6 +558,12 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
     let Some(where_shape) = sentence_shapes::parse_where_x_sentence_tokens(tokens) else {
         return parse_effect_sentence_inner_lexed(tokens);
     };
+    if let Some(effects) = super::temporary_xy_pump::parse(
+        where_shape.stripped_tokens,
+        where_shape.where_tokens,
+    )? {
+        return Ok(effects);
+    }
     let aggregate_where =
         crate::keyword_static::parse_where_x_is_aggregate_filter_value(where_shape.where_tokens);
     let turn_history_where = aggregate_where

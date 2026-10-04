@@ -232,3 +232,13 @@ fn source_linked_exile_pool_preserves_permission_duration_tail() {
         );
     }
 }
+
+
+#[test]
+fn snc_self_card_permission_does_not_claim_immediate_source_casts() {
+    let tokens = lex("this card for as long as it remains exiled");
+    let target = parse_tagged_permission_target_tokens(&tokens).unwrap();
+    assert_eq!(target.reference, TaggedPermissionReference::SourceExiledSelf);
+    assert_eq!(target.surface, TaggedPermissionTargetSurface::ThisCard);
+    assert!(parse_tagged_permission_target_tokens(&lex("this card without paying its mana cost")).is_none());
+}

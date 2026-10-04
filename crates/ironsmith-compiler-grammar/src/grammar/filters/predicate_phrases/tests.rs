@@ -4155,3 +4155,178 @@ fn parse_predicate_tron_control_conjunction_keeps_compound_urzas_subtypes()
     }
     Ok(())
 }
+
+#[test]
+fn strict_hand_comparison_retains_the_authored_operand_for_difference() {
+    let tokens = lex_line("If you have fewer than seven cards in hand", 0).unwrap();
+    let predicate = parse_predicate(&predicate_tokens_after_if(&tokens)).unwrap();
+    assert!(matches!(
+        predicate,
+        PredicateAst::ValueComparison {
+            left: Value::CardsInHand(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::LessThan,
+            right: Value::Fixed(7),
+        }
+    ));
+}
+
+#[test]
+fn strict_hand_comparisons_preserve_existential_player_group_scopes() {
+    let tokens = lex_line("If an opponent has fewer than three cards in hand", 0).unwrap();
+    assert!(matches!(parse_predicate(&predicate_tokens_after_if(&tokens)).unwrap(),
+        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer { player: PlayerAst::Opponent, count: 2 })));
+}
+
+#[test]
+fn a_ring_choice_predicate_authenticates_the_source_and_keeps_historical_choice_semantics() {
+    for (name, text) in [
+        ("Aragorn, Company Leader", "you chose a creature other than Aragorn as your Ring-bearer"),
+        ("Gandalf, Friend of the Shire", "you chose a creature other than Gandalf as your Ring-bearer"),
+        ("Ring witness", "you chose a creature other than this creature as your Ring-bearer"),
+    ] {
+        assert_eq!(parse_predicate_for_source(name, text).unwrap(), PredicateAst::Triggering(TriggeringPredicateAst::YouChoseAnotherRingBearer));
+    }
+    assert!(parse_predicate_for_source("Ring witness", "you chose a creature other than Unknown Creature as your Ring-bearer").is_err());
+}
+
+#[test]
+fn dynamic_life_conditions_keep_strictness_offsets_and_article_player_scope() {
+    for (text, operator, right) in [
+        (
+            "If your life total is greater than your starting life total",
+            ValueComparisonOperator::GreaterThan,
+            Value::StartingLifeTotal(PlayerFilter::You),
+        ),
+        (
+            "If your life total is less than your starting life total",
+            ValueComparisonOperator::LessThan,
+            Value::StartingLifeTotal(PlayerFilter::You),
+        ),
+        (
+            "If your life total is at least 10 greater than your starting life total",
+            ValueComparisonOperator::GreaterThanOrEqual,
+            Value::Add(
+                Box::new(Value::StartingLifeTotal(PlayerFilter::You)),
+                Box::new(Value::Fixed(10)),
+            ),
+        ),
+    ] {
+        assert_eq!(
+            parse_predicate_for_source("Life condition witness", text).unwrap(),
+            PredicateAst::ValueComparison {
+                left: Value::LifeTotal(PlayerFilter::You),
+                operator,
+                right
+            }
+        );
+    }
+    assert_eq!(
+        parse_predicate_for_source(
+            "Life condition witness",
+            "If a player's life total is less than or equal to half their starting life total"
+        )
+        .unwrap(),
+        PredicateAst::Player(PlayerPredicateAst::PlayerLifeAtMostHalfStartingLifeTotal {
+            player: PlayerAst::Any
+        }),
+    );
+    assert_eq!(
+        parse_predicate_for_source(
+            "Life condition witness",
+            "If an opponent's life total is less than half their starting life total"
+        )
+        .unwrap(),
+        PredicateAst::Player(
+            PlayerPredicateAst::PlayerLifeLessThanHalfStartingLifeTotal {
+                player: PlayerAst::Opponent
+            }
+        ),
+    );
+}
+
+#[test]
+fn ring_bearer_control_predicate_keeps_the_typed_designation() {
+    let predicate = parse_predicate_for_source("Dúnedain Rangers", "you don't control a Ring-bearer").unwrap();
+    let debug = format!("{predicate:?}");
+    assert!(debug.contains("ring_bearer: true"), "{debug}");
+    assert!(debug.contains("PlayerControlsNo"), "{debug}");
+}
+
+#[test]
+fn referenced_characteristics_keep_current_and_historical_frames_distinct() -> Result<(), CardTextError> {
+    let cases = [
+        ("that creature is 1/1", false),
+        ("it had no counters on it", true),
+        ("it didn't have decayed", true),
+        ("its power was different from its base power", true),
+        ("an Aura you controlled was attached to it", true),
+        ("they were a creature", true),
+    ];
+    for (text, past) in cases {
+        let tokens = lex_line(text, 0)?;
+        let parsed = parse_predicate(&tokens)?;
+        let filter = match (&parsed, past) {
+            (PredicateAst::ItMatches(filter), false) | (PredicateAst::ItMatchedLastKnown(filter), true) => filter,
+            _ => panic!("wrong time frame for {text}: {parsed:?}"),
+        };
+        if text.contains("1/1") {
+            assert_eq!(filter.power, Some(crate::filter::Comparison::Equal(1)));
+            assert_eq!(filter.toughness, Some(crate::filter::Comparison::Equal(1)));
+        } else if text.contains("no counters") {
+            assert_eq!(filter.without_counter, Some(crate::filter::CounterConstraint::Any));
+        } else if text.contains("decayed") {
+            assert_eq!(filter.excluded_ability_markers, vec!["decayed".to_string()]);
+        } else if text.contains("base power") {
+            assert_eq!(filter.power_comparison_to_base, Some(ValueComparisonOperator::NotEqual));
+        } else if text.contains("Aura") {
+            let attachment = filter.with_attached_object.as_ref().unwrap();
+            assert_eq!(attachment.controller, Some(PlayerFilter::You));
+            assert!(attachment.subtypes.contains(&Subtype::Aura));
+        }
+    }
+    for text in ["that creature is 1/unknown", "its power was different from their life", "they were a player"] {
+        let tokens = lex_line(text, 0)?;
+        assert!(parse_predicate(&tokens).is_err(), "{text}");
+    }
+    Ok(())
+}
+
+#[test]
+fn passive_was_blocked_history_does_not_mean_the_object_declared_a_block() -> Result<(), CardTextError> {
+    let tokens = lex_line("it was blocked this turn", 0)?;
+    let PredicateAst::ItMatches(filter) = parse_predicate(&tokens)? else { panic!("past combat query") };
+    assert!(filter.was_blocked_this_turn);
+    assert!(!filter.blocked_this_turn);
+    assert!(!filter.blocked, "current combat state is insufficient after combat ends");
+    Ok(())
+}
+
+#[test]
+fn untyped_counter_absence_preserves_present_or_past_tense() -> Result<(), CardTextError> {
+    for (text, frame) in [
+        ("it has no counters on it", "current"),
+        ("this creature has no counters on it", "source"),
+        ("it had no counters on it", "past"),
+        ("that creature had no counters on it", "past"),
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let predicate = parse_predicate(&tokens)?;
+        let filter = match (&predicate, frame) {
+            (PredicateAst::ItMatches(filter), "current")
+            | (PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)), "source")
+            | (PredicateAst::ItMatchedLastKnown(filter), "past") => filter,
+            _ => panic!("wrong frame for {text}: {predicate:?}"),
+        };
+        assert_eq!(filter.without_counter, Some(crate::filter::CounterConstraint::Any));
+    }
+    Ok(())
+}
+
+#[test]
+fn monarch_at_turn_begin_is_a_historical_predicate_not_current_designation(){
+    for (text,player) in [("you were the monarch as the turn began",PlayerAst::You),("that player was the monarch as the turn began",PlayerAst::That)]{
+        let tokens=crate::lexer::lex_line(text,0).unwrap();assert_eq!(parse_predicate(&tokens).unwrap(),PredicateAst::Player(PlayerPredicateAst::PlayerWasMonarchAtTurnStart{player}));
+    }
+    let tokens=crate::lexer::lex_line("you are the monarch",0).unwrap();assert_eq!(parse_predicate(&tokens).unwrap(),PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch{player:PlayerAst::You}));
+    let tokens=crate::lexer::lex_line("you were the monarch during an unknown time",0).unwrap();assert!(parse_predicate(&tokens).is_err());
+}

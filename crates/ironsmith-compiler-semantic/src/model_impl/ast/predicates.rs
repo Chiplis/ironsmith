@@ -264,8 +264,20 @@ fn value_measures_source_object(value: &Value) -> bool {
         Value::CountersOnSource(_) | Value::SourcePower | Value::SourceToughness => true,
         Value::CountersOn(spec, _)
         | Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec) => matches!(spec.base(), ChooseSpec::Source),
+        // A stated source that damaged an existential class remains the
+        // subject ("put a counter on him"). An explicit second object, as in
+        // "this creature dealt damage to it", must retain its own antecedent.
+        Value::DamageHistory(query) => {
+            matches!(&query.sources, ironsmith_core::DamageHistorySources::Reference(spec)
+                if matches!(spec.base(), ChooseSpec::Source))
+                && !matches!(
+                    query.recipients,
+                    ironsmith_core::DamageHistoryRecipients::Reference(_)
+                )
+        }
         _ => false,
     }
 }
@@ -360,5 +372,39 @@ impl PredicateAst {
 impl ironsmith_core::ConditionConjunction for PredicateAst {
     fn and(self, other: Self) -> Self {
         PredicateAst::And(Box::new(self), Box::new(other))
+    }
+}
+
+#[cfg(test)]
+mod damage_history_antecedent_tests {
+    use super::*;
+    use ironsmith_core::{
+        DamageHistoryQuery, DamageHistoryRecipients, DamageHistoryReduction, DamageHistorySources,
+    };
+
+    #[test]
+    fn damage_history_source_subject_does_not_shadow_an_explicit_recipient() {
+        let make = |recipients| PredicateAst::ValueComparison {
+            left: Value::DamageHistory(Box::new(DamageHistoryQuery {
+                sources: DamageHistorySources::Reference(Box::new(ChooseSpec::Source)),
+                recipients,
+                combat: None,
+                reduction: DamageHistoryReduction::Total,
+            })),
+            operator: crate::effect::ValueComparisonOperator::GreaterThan,
+            right: Value::Fixed(0),
+        };
+        assert!(
+            make(DamageHistoryRecipients::MatchingObjects(
+                ObjectFilter::creature().other()
+            ))
+            .establishes_source_object_antecedent()
+        );
+        assert!(
+            !make(DamageHistoryRecipients::Reference(Box::new(
+                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key(),)
+            )))
+            .establishes_source_object_antecedent()
+        );
     }
 }

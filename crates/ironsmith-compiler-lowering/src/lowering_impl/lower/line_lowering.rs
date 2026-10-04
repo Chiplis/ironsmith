@@ -32,7 +32,18 @@ pub(super) fn apply_line_ast(
 ) -> Result<CardDefinitionBuilder, CardTextError> {
     match chunk {
         NormalizedLineChunk::Abilities(actions) => {
-            materialize_keyword_actions(builder, state, actions)
+            if matches!(
+                semantic_facts.static_ability.presentation_label.as_ref(),
+                Some(crate::ability::PresentationLabel::CaseSolved)
+            ) {
+                materialize_static_abilities(
+                    builder,
+                    actions.into_iter().map(StaticAbilityAst::KeywordAction).collect(),
+                    semantic_facts,
+                )
+            } else {
+                materialize_keyword_actions(builder, state, actions)
+            }
         }
         NormalizedLineChunk::StaticAbility(ability) => {
             materialize_static_abilities(builder, vec![ability], semantic_facts)
@@ -190,6 +201,10 @@ fn materialize_static_abilities(
     abilities: Vec<StaticAbilityAst>,
     semantic_facts: &LineSemanticFacts,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
+    let case_solved = matches!(
+        semantic_facts.static_ability.presentation_label.as_ref(),
+        Some(crate::ability::PresentationLabel::CaseSolved)
+    );
     let member_count = abilities
         .iter()
         .filter(|ability| {
@@ -207,6 +222,7 @@ fn materialize_static_abilities(
             .static_ability
             .presentation_label
             .as_ref()
+            .filter(|_| !case_solved)
             .and_then(crate::ability::PresentationLabel::display_prefix)
         {
             marker.label = format!(
@@ -222,6 +238,12 @@ fn materialize_static_abilities(
     let mut turn_surface_recorded = false;
     for ability in abilities {
         match ability {
+            StaticAbilityAst::AttachmentRestriction { .. }
+            | StaticAbilityAst::KeywordAction(KeywordAction::Fuse) if case_solved => {
+                return Err(CardTextError::ParseError(
+                    "Solved static attachment/Fuse rule has no conditional owner".into(),
+                ));
+            }
             StaticAbilityAst::AttachmentRestriction { filter, display } => {
                 builder = if display
                     .trim_start()
@@ -249,6 +271,15 @@ fn materialize_static_abilities(
                         ability.label,
                     );
                     turn_surface_recorded = true;
+                }
+                if case_solved {
+                    // Solved is executable designation scope, not a named
+                    // choice and not a level-counter threshold. Preserve an
+                    // existing inner condition rather than replacing it.
+                    ability = ability.with_labeled_condition(
+                        crate::ConditionExpr::SourceCaseSolved,
+                        "Solved",
+                    );
                 }
                 lowered_abilities.push(ability);
             }

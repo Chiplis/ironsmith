@@ -109,9 +109,16 @@ impl StaticAbility {
             Some(StaticAbilityId::CantBlock) => Self::cant_block(),
             Some(StaticAbilityId::CantAttack) => Self::cant_attack(),
             Some(StaticAbilityId::CantAttackItsOwner) => Self::cant_attack_its_owner(),
+            Some(StaticAbilityId::CantBeCopied) => Self::cant_be_copied(),
             Some(StaticAbilityId::CantBeCountered) => Self::cant_be_countered_ability(),
             Some(StaticAbilityId::CanBlockFlying) => Self::can_block_flying(),
             Some(StaticAbilityId::CanBlockOnlyFlying) => Self::can_block_only_flying(),
+            Some(StaticAbilityId::CanBlockAnyNumber) => Self::can_block_any_number(),
+            Some(StaticAbilityId::CanBlockAdditionalForEach) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail: "counted blocking capacity requires its typed permanent filter".to_string(),
+                });
+            }
             Some(StaticAbilityId::MustAttack) => Self::must_attack(),
             Some(StaticAbilityId::AllCreaturesAttackAttachedControllerEachCombatIfAble) => {
                 Self::all_creatures_attack_attached_controller_each_combat_if_able()
@@ -166,6 +173,9 @@ impl StaticAbility {
             }
             Some(StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness) => {
                 Self::this_creature_assigns_combat_damage_using_toughness()
+            }
+            Some(StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty) => {
+                Self::planeswalkers_you_control_dont_die_at_zero_loyalty()
             }
             Some(StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower) => {
                 Self::lethal_damage_to_creatures_you_control_uses_power()
@@ -358,6 +368,8 @@ impl StaticAbility {
             Some(StaticAbilityId::AllPlayersLookAtYourTopLibraryCard) => {
                 Self::all_players_look_at_your_top_library_card()
             }
+            Some(StaticAbilityId::ControllerPlaysWithHandRevealed) => Self::controller_plays_with_hand_revealed(),
+            Some(StaticAbilityId::PlayersPlayWithHandsRevealed) => Self::players_play_with_hands_revealed(),
             Some(StaticAbilityId::OpponentsPlayWithHandsRevealed) => {
                 Self::opponents_play_with_hands_revealed()
             }

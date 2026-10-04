@@ -190,11 +190,11 @@ fn u075_payments_redistribution_and_opposing_poison_queries_use_team_pools() {
     let (mut game, seats) = players(4);
     enable(&mut game, &seats, 2);
 
-    assert!(!game.pay_life_simultaneously(&[(seats[0], 20), (seats[1], 11)]));
+    assert!(!game.pay_life_simultaneously(&[(seats[0], 20), (seats[1], 11)]).expect("checked simultaneous payment"));
     assert_eq!(team_pool(&game, &seats[0..2]), vec![(30, 0), (30, 0)]);
-    assert!(game.pay_life_simultaneously(&[(seats[0], 8), (seats[1], 4)]));
+    assert!(game.pay_life_simultaneously(&[(seats[0], 8), (seats[1], 4)]).expect("checked simultaneous payment"));
     assert_eq!(team_pool(&game, &seats[0..2]), vec![(18, 0), (18, 0)]);
-    assert!(game.pay_life_simultaneously(&[(seats[0], 0), (seats[1], 0)]));
+    assert!(game.pay_life_simultaneously(&[(seats[0], 0), (seats[1], 0)]).expect("checked simultaneous payment"));
 
     assert!(!game.redistribute_life_totals(&[(seats[0], 18), (seats[1], 18)]));
     assert!(game.redistribute_life_totals(&[(seats[0], 30), (seats[2], 18)]));
@@ -335,7 +335,7 @@ fn u075_cant_win_cant_lose_and_concession_apply_to_the_complete_team() {
             ))
     );
 
-    assert!(game.concede_game(seats[1]));
+    assert!(game.concede_game(seats[1]).expect("checked designation/departure fixture"));
     assert!(
         seats[0..2]
             .iter()

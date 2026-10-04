@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Hezrou",
+    "mana_cost": "{5}{B}{B}",
+    "type_line": "Creature — Frog Demon",
+    "power": "6",
+    "toughness": "6",
+    "oracle_text": "Whenever one or more creatures you control become blocked, each blocking creature gets -1/-1 until end of turn.",
+    "canonical_name": "Hezrou // Demonic Stench",
+    "oracle_id": "65d257c2-b3be-4244-a74c-bc4b5d7cedc3",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever one or more creatures you control become blocked, each blocking creature gets -1/-1 until end of turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more creatures you control become blocked, each blocking creature gets -1/-1 until end of turn.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "3e1b51c49962155b637fc618bf3def8e884fa73c79dbe4a73d06b4f05316599a",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; bounded source review clear through 2b890badf with final Fight prerequisite 2efce3710; scenarios unrun",
+    "other_face": {
+      "name": "Demonic Stench",
+      "mana_cost": "{B}",
+      "type_line": "Instant — Adventure",
+      "oracle_text": "Each creature that blocked this turn gets -1/-1 until end of turn. (Then exile this card. You may cast the creature later from exile.)"
+    }
+  },
+  {
+    "name": "Neyith of the Dire Hunt",
+    "mana_cost": "{2}{G}{G}",
+    "type_line": "Legendary Creature — Human Warrior",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "Whenever one or more creatures you control fight or become blocked, draw a card.\nAt the beginning of combat on your turn, you may pay {2}{R/G}. If you do, double target creature's power until end of turn. That creature must be blocked this combat if able. ({R/G} can be paid with either {R} or {G}.)",
+    "canonical_name": "Neyith of the Dire Hunt",
+    "oracle_id": "aba04455-c13f-48f7-9674-56803b39a42b",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever one or more creatures you control fight or become blocked, draw a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more creatures you control fight or become blocked, draw a card.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "fa67b84c1460dc06bdbed0177af3a5fd2d28b8952360ac2d81c3bd90744dfb85",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; bounded source review clear through 2b890badf with final Fight prerequisite 2efce3710; scenarios unrun"
+  },
+  {
+    "name": "Righteous Indignation",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a creature blocks a black or red creature, the blocking creature gets +1/+1 until end of turn.",
+    "canonical_name": "Righteous Indignation",
+    "oracle_id": "97409c60-537e-4eeb-9d63-be0fde7e8284",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever a creature blocks a black or red creature, the blocking creature gets +1/+1 until end of turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a creature blocks a black or red creature, the blocking creature gets +1/+1 until end of turn.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "829a2096e28db3391a1fee032e3ee21dc3b64d911738615c179f86a44702ee01",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; bounded source review clear through 2b890badf with final Fight prerequisite 2efce3710; scenarios unrun"
+  },
+  {
+    "name": "Yuriko, Blade of the Mighty",
+    "mana_cost": "{3}{W}",
+    "type_line": "Legendary Creature — Human Samurai",
+    "power": "2",
+    "toughness": "3",
+    "oracle_text": "During combat, players can't cast spells or activate abilities that aren't mana abilities.\nWhenever a creature you control attacks a player alone, it gains double strike until end of turn.",
+    "canonical_name": "Yuriko, Blade of the Mighty",
+    "oracle_id": "f89b0143-4b19-4ab1-a96b-356b21e435ef",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever a creature you control attacks a player alone, it gains double strike until end of turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a creature you control attacks a player alone, it gains double strike until end of turn.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "f74d09a3dfd7f1f940b3b6ead2dadfd77bb3ecc286c5af4f9a773007ac74ce6d",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; bounded source review clear through 2b890badf with final Fight prerequisite 2efce3710; scenarios unrun"
+  }
+]

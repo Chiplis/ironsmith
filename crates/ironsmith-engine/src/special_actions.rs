@@ -582,6 +582,9 @@ pub enum ActionError {
 
     /// Not the active player.
     NotActivePlayer,
+
+    /// A continuous or resolved prohibition prevents this land play.
+    LandPlayProhibited,
 }
 
 impl std::fmt::Display for ActionError {
@@ -622,6 +625,7 @@ impl std::fmt::Display for ActionError {
                 f.write_str("You cannot perform that action at this time")
             }
             ActionError::NotActivePlayer => f.write_str("You are not the active player"),
+            ActionError::LandPlayProhibited => f.write_str("An active rule prevents playing that land"),
         }
     }
 }
@@ -1206,13 +1210,18 @@ fn can_roll_planar_die(game: &GameState, player: PlayerId) -> Result<(), ActionE
     }
     game.planar_die_roll_cost(player)
         .ok_or(ActionError::InvalidTiming)?;
+    game.turn_store.turn_history.check_completed_die_roll_capacity(player, 1)
+        .map_err(|error|ActionError::ExecutionFailure { source: ObjectId::from_raw(0), error })?;
     Ok(())
 }
 
 fn perform_roll_planar_die(game: &mut GameState, player: PlayerId) -> Result<(), ActionError> {
     game.roll_planar_die(player, true)
         .map(|_| ())
-        .map_err(|_| ActionError::InvalidTiming)
+        .map_err(|error|match error {
+            crate::effects::ExecutionError::Impossible(_) => ActionError::InvalidTiming,
+            error => ActionError::ExecutionFailure { source: ObjectId::from_raw(0), error },
+        })
 }
 
 // === Play Land ===
@@ -1223,6 +1232,11 @@ fn can_play_land(
     card_id: ObjectId,
     back_face: bool,
 ) -> Result<(), ActionError> {
+    // Direct special-action validation must preserve failed discovery, just as
+    // the checked legal-action enumerator does; unknown is not "prohibited".
+    let checked = game.continuous_query_snapshot().map_err(|error| ActionError::ExecutionFailure {
+        source: card_id, error: crate::effects::ExecutionError::ContinuousDiscovery(error) })?;
+    let game = &checked;
     // Must be the active player
     if !game.is_active_player(player) {
         return Err(ActionError::NotActivePlayer);
@@ -1253,23 +1267,40 @@ fn can_play_land(
         return Err(ActionError::AlreadyPlayedLand);
     }
 
-    // Check the object exists
+    // CR 712.12: evaluate the chosen face in an isolated query. Merely passing
+    // a cloned Object to a live filter lets characteristic lookup by ObjectId
+    // silently read the unchosen front face again.
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-    // CR 712.12: validate the face the player chose to play.
     let land_face = crate::decision::land_play_face_definition(game, object, back_face)
-        .map_err(|()| ActionError::NotALand)?
-        .map(|definition| {
-            let mut face = object.clone();
-            face.apply_definition_face(&definition);
-            face
-        });
-    let proposed_land = land_face.as_ref().unwrap_or(object);
+        .map_err(|()| ActionError::NotALand)?;
+    let proposed_game;
+    let game = if let Some(definition) = land_face {
+        let mut branch = game.clone();
+        branch.object_mut(card_id).ok_or(ActionError::ObjectNotFound)?.apply_definition_face(&definition);
+        branch.refresh_continuous_state().map_err(|error| ActionError::ExecutionFailure {
+            source: card_id, error: crate::effects::ExecutionError::ContinuousDiscovery(error) })?;
+        proposed_game = branch;
+        &proposed_game
+    } else { game };
+    let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
+    let proposed_land = object;
+    if game.effect_store.cant_effects.cant_play_land_filters.get(&player).is_some_and(|restrictions| {
+        restrictions.iter().any(|restriction| {
+            let ctx = game.filter_context_for_combat(restriction.controller, restriction.source, None, None)
+                .with_iterated_player(restriction.iterated_player.or(Some(player)))
+                .with_tagged_objects(&restriction.tagged_objects);
+            restriction.filter.matches(proposed_land, &ctx, game)
+        })
+    }) {
+        return Err(ActionError::LandPlayProhibited);
+    }
     let permission_view = crate::derived_view::DerivedGameView::new(game);
     let can_play_from_zone = object.zone == Zone::Hand
         || (object.zone == Zone::Exile && game.adventure_exiled_player(card_id) == Some(player))
-        || !permission_view
-            .granted_play_from_for_card_view(card_id, proposed_land, object.zone, player)
-            .is_empty();
+        || permission_view
+            .granted_play_from_for_card(card_id, object.zone, player)
+            .iter().any(|grant| crate::grant_registry::grant_usage_limit_allows(
+                game, player, grant.permission_identity.as_ref(), grant.usage_limit));
     if !can_play_from_zone {
         return Err(ActionError::WrongZone {
             expected: Zone::Hand,
@@ -1286,23 +1317,71 @@ fn can_play_land(
     Ok(())
 }
 
-/// Shared tagged-play budget used by this land play, if the land needs an
-/// external limited permission. Normal hand and Adventure-exile permissions
-/// take precedence and do not spend a tagged collection's budget.
-pub(crate) fn shared_usage_to_consume_for_land_play(
-    game: &GameState,
-    player: PlayerId,
-    card_id: ObjectId,
-) -> Option<crate::grant_registry::SharedGrantUsageId> {
-    let object = game.object(card_id)?;
-    if object.zone == Zone::Hand
-        || (object.zone == Zone::Exile && game.adventure_exiled_player(card_id) == Some(player))
-    {
-        return None;
+/// A selected land permission, captured before entry replacements can remove
+/// its provider. Both the direct special-action and priority owners use this.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct LandPlayPermissionReceipt {
+    shared: Option<crate::grant_registry::SharedGrantUsageId>,
+    identity: Option<crate::grant_registry::GrantPermissionIdentity>,
+    completion: Option<crate::grant_registry::GrantUseCompletion>,
+    permanent_grants: Vec<crate::static_abilities::StaticAbility>,
+    original_land: Option<ObjectId>,
+    pub enters_tapped: bool,
+}
+impl LandPlayPermissionReceipt {
+    pub(crate) fn reserve(&self, game: &mut GameState, player: PlayerId) -> Result<(), crate::effects::ExecutionError> {
+        if let Some(shared) = self.shared {
+            if !game.effect_store.grant_registry.consume_shared_usage(shared) {
+                return Err(crate::effects::ExecutionError::InternalError("selected land permission budget disappeared".into()));
+            }
+        }
+        if let Some(identity) = &self.identity { game.turn_store.grant_cast_uses_this_turn.insert((player, identity.clone())); }
+        if let Some(card) = self.original_land { game.stage_land_permission_grants(card, self.permanent_grants.clone()); }
+        Ok(())
     }
-    game.effect_store
-        .grant_registry
-        .shared_usage_to_consume_for_play_from(game, card_id, object.zone, player, None)
+    pub(crate) fn complete(self, game: &mut GameState) {
+        if let Some(completion) = self.completion { completion.complete(game); }
+    }
+}
+pub(crate) fn choose_land_play_permission(
+    game: &GameState, player: PlayerId, card: ObjectId, decision_maker: &mut impl DecisionMaker,
+) -> Result<LandPlayPermissionReceipt, crate::effects::ExecutionError> {
+    let checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let object = checked.object(card).ok_or(crate::effects::ExecutionError::ObjectNotFound(card))?;
+    let intrinsic = object.zone == Zone::Hand || (object.zone == Zone::Exile && checked.adventure_exiled_player(card) == Some(player));
+    let mut choices = if intrinsic {vec![None]} else {Vec::new()};
+    choices.extend(checked.effect_store.grant_registry.get_grants_for_card(&checked, card, object.zone, player)
+        .into_iter().filter(|grant| matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+            && crate::grant_registry::grant_usage_limit_allows(&checked, player, grant.permission_identity.as_ref(), grant.usage_limit))
+        .map(Some));
+    if choices.is_empty() { return Err(crate::effects::ExecutionError::Impossible("no land-play permission for the chosen face".into())); }
+    let chosen = if choices.len() == 1 {0} else {
+        let options = choices.iter().enumerate().map(|(index, grant)| {
+            let description = match grant {
+                None => "Use the ordinary land-play permission".to_string(),
+                Some(grant) => {
+                    let source = checked.object(grant.source.source_id()).map_or("resolved permission", |object| object.name.as_ref());
+                    format!("Use {source} permission{}{}", if grant.usage_limit.is_some() {" (uses its turn allowance)"} else {""},
+                        if grant.on_use_effects.is_empty() {""} else {" (triggers its follow-up)"})
+                }
+            };
+            crate::decisions::context::SelectableOption::new(index, description)
+        }).collect();
+        let selection = decision_maker.decide_options(game, &crate::decisions::context::SelectOptionsContext::new(
+            player, Some(card), "Choose the permission used to play this land", options, 1, 1));
+        if decision_maker.awaiting_choice() { return Ok(LandPlayPermissionReceipt::default()); }
+        if selection.len() != 1 || selection[0] >= choices.len() { return Err(crate::effects::ExecutionError::InvalidTarget); }
+        selection[0]
+    };
+    let Some(grant) = choices.swap_remove(chosen) else { return Ok(LandPlayPermissionReceipt::default()); };
+    Ok(LandPlayPermissionReceipt {
+        shared: grant.shared_usage_id,
+        identity: grant.permission_identity,
+        completion: crate::grant_registry::GrantUseCompletion::capture(&checked, grant.source.source_id(), player, grant.on_use_effects),
+        permanent_grants: grant.permanent_this_way_grants,
+        original_land: Some(card),
+        enters_tapped: grant.play_from_constraints.lands_enter_tapped,
+    })
 }
 
 /// Turn a card about to be played as a land to the face chosen for the land
@@ -1330,18 +1409,18 @@ fn perform_play_land(
     if decision_maker.awaiting_choice() { return Ok(()); }
     let checkpoint = game.clone();
     let instruction = (|| -> Result<(), ActionError> {
-    let shared_usage_to_consume = shared_usage_to_consume_for_land_play(game, player, card_id);
+    game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Land(card_id));
     let old_zone = game
         .object(card_id)
         .ok_or(ActionError::ObjectNotFound)?
         .zone;
-    let initial_tapped = old_zone != Zone::Hand
-        && game
-            .effect_store
-            .grant_registry
-            .land_play_from_permissions_enters_tapped(game, card_id, old_zone, player);
     let cause = crate::events::cause::EventCause::from_special_action(Some(card_id), player);
     apply_land_play_face(game, card_id, back_face);
+    let permission = choose_land_play_permission(game, player, card_id, decision_maker)
+        .map_err(|error| ActionError::ExecutionFailure { source: card_id, error })?;
+    if decision_maker.awaiting_choice() { return Ok(()); }
+    permission.reserve(game, player).map_err(|error| ActionError::ExecutionFailure { source: card_id, error })?;
+    let initial_tapped = permission.enters_tapped;
 
     // Move the land to the battlefield with ETB replacement processing.
     let result = game
@@ -1365,17 +1444,6 @@ fn perform_play_land(
         crate::events::processing::EventOutcome::Prevented | crate::events::processing::EventOutcome::Replaced => None,
         crate::events::processing::EventOutcome::NotApplicable => return Err(ActionError::ObjectNotFound),
     };
-    if let Some(shared_usage_id) = shared_usage_to_consume {
-        let consumed = game
-            .effect_store
-            .grant_registry
-            .consume_shared_usage(shared_usage_id);
-        debug_assert!(
-            consumed,
-            "selected shared land-play permission should be available"
-        );
-    }
-
     // Mark that the player has played a land this turn
     if let Some(player_data) = game.player_mut(player) {
         player_data.record_land_play();
@@ -1393,10 +1461,10 @@ fn perform_play_land(
         let provenance = game
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-        game.queue_trigger_event(
-            provenance,
-            crate::triggers::TriggerEvent::new_with_provenance(event, provenance),
-        );
+        let mut event = crate::triggers::TriggerEvent::new_with_provenance(event, provenance);
+        game.freeze_completed_entry_events(std::iter::once(&mut event))
+            .map_err(|error| ActionError::ExecutionFailure { source: card_id, error })?;
+        game.queue_trigger_event(provenance, event);
         let provenance = game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::LandPlayed);
         game.queue_trigger_event(provenance, crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::LandPlayedEvent::new(new_id, player, old_zone), provenance,
@@ -1404,6 +1472,7 @@ fn perform_play_land(
     }
     finish_land_play_receipt(game, card_id, player, result, decision_maker)
         .map_err(|error| ActionError::ExecutionFailure { source: card_id, error })?;
+    if !decision_maker.awaiting_choice() { permission.complete(game); }
     Ok(())
     })();
     if instruction.is_err() || decision_maker.awaiting_choice() { *game = checkpoint; }
@@ -1437,6 +1506,7 @@ pub(crate) fn finish_land_play_receipt(
     if execution.decision_maker.awaiting_choice() { return Ok(()); }
     crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
     for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+    game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Land(card_id));
     Ok(())
 }
 
@@ -1637,13 +1707,12 @@ fn finish_turn_face_up(
 
     let event_provenance = game
         .alloc_child_event_provenance(action_provenance, crate::events::EventKind::TurnedFaceUp);
-    game.queue_trigger_event(
-        action_provenance,
-        TriggerEvent::new_with_provenance(
-            crate::events::TurnedFaceUpEvent::new(permanent_id, player),
-            event_provenance,
-        ),
-    );
+    let mut completed = vec![TriggerEvent::new_with_provenance(
+        crate::events::TurnedFaceUpEvent::new(permanent_id, player), event_provenance,
+    )];
+    crate::events::other::freeze_completed_lifecycle_events(game, &mut completed)
+        .map_err(|error| ActionError::ExecutionFailure { source: permanent_id, error })?;
+    for event in completed { game.queue_trigger_event(action_provenance, event); }
 
     Ok(())
 }
@@ -2717,6 +2786,9 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
         }
         game.begin_exhaust_activation(permanent_id, ability_index);
 
+        let visibility_provenance = game.provenance_graph_mut().alloc_root(
+            crate::provenance::ProvenanceNodeKind::EffectExecution { source: permanent_id, controller: player });
+        game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(visibility_provenance));
         // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
         let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
             .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
@@ -2730,6 +2802,7 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             return Ok(Vec::new());
         }
 
+        game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(visibility_provenance));
         // Use the same resolved-event owner as mana-producing effects.
         let mut mana_ctx = ExecutionContext::new(permanent_id, player, &mut *decision_maker)
             .with_mana_color_restriction(mana_color_restriction.clone())
@@ -3170,12 +3243,18 @@ fn preflight_tagged_choice_in_context(
     filter_ctx.players_in_range = payer_filter_ctx.players_in_range;
     filter_ctx.your_commanders = payer_filter_ctx.your_commanders;
 
+    let untaps_chosen = consumer_component.effect_ref().is_some_and(|effect| {
+        let mut effect = effect;
+        while let Some(inner) = effect.transparent_child_effect() { effect = inner; }
+        effect.downcast_ref::<crate::effects::UntapEffect>().is_some()
+    });
     let mut candidates = Vec::new();
     let mut visit = |id: ObjectId| {
         if !candidates.contains(&id)
             && game.object(id).is_some_and(|object| {
                 (!choice.filter.other || id != source)
                     && choice.filter.matches(object, &filter_ctx, game)
+                    && (!untaps_chosen || game.can_untap(id))
             })
         {
             candidates.push(id);
@@ -3211,6 +3290,12 @@ fn preflight_tagged_choice_in_context(
             .into_iter()
             .find_map(|(_, ids)| (ids.len() >= required).then_some(ids))
             .unwrap_or_default();
+    }
+
+    if crate::effects::composition::selection_relations::has_relations(&choice.filter) {
+        candidates.retain(|id| !execution_ctx.replacement.entry_reserved_objects.contains(id));
+        candidates = crate::effects::composition::selection_relations::find_group(game, &choice.filter, &candidates, required, true)
+            .ok_or_else(|| CostPaymentError::Other("no legal group for tagged cost selection".into()))?;
     }
 
     let snapshots = candidates
@@ -3811,8 +3896,9 @@ fn pay_component_without_execution_context(
             mana_cost,
             cost_ctx.reason,
         );
+        let execution = cost_ctx.capture_execution_context();
         if let Some(exclusions) = cost_ctx.interactive_mana_exclusions.clone() {
-            return crate::mana_payment::pay_mana_interactively(
+            return crate::mana_payment::pay_mana_interactively_in_context(
                 game,
                 cost_ctx.payer,
                 cost_ctx.source,
@@ -3820,9 +3906,10 @@ fn pay_component_without_execution_context(
                 cost_ctx.reason,
                 exclusions,
                 cost_ctx.decision_maker,
+                Some(&execution),
             );
         }
-        return crate::costs::pay_mana_cost_with_choices(
+        return crate::costs::pay_mana_cost_with_choices_in_context(
             game,
             cost_ctx.payer,
             Some(cost_ctx.source),
@@ -3830,6 +3917,7 @@ fn pay_component_without_execution_context(
             0,
             cost_ctx.reason,
             cost_ctx.decision_maker,
+            Some(&execution),
         );
     }
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
@@ -3861,7 +3949,8 @@ fn pay_component_in_context(
         let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, execution_ctx)?;
         let adjusted_cost =
             game.adjust_mana_cost_for_payment_reason(payer, Some(source), &resolved, reason);
-        return crate::costs::pay_mana_cost_with_choices(
+        let execution = crate::effects::ExecutionContextCheckpoint::capture(execution_ctx);
+        return crate::costs::pay_mana_cost_with_choices_in_context(
             game,
             payer,
             Some(source),
@@ -3869,6 +3958,7 @@ fn pay_component_in_context(
             0,
             reason,
             execution_ctx.decision_maker,
+            Some(&execution),
         );
     }
     let mut cost_ctx = CostContext::new(source, payer, execution_ctx.decision_maker)
@@ -3919,7 +4009,39 @@ pub(crate) fn resolve_dynamic_mana_cost(
         execution_ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
     }
 
-    let base = if dynamic_mana.source_mana_cost {
+    let referenced_mana = if let Some(spec) = dynamic_mana.mana_cost_of.as_deref() {
+        if dynamic_mana.source_mana_cost {
+            return Err(CostPaymentError::Other("ambiguous referenced mana cost".into()));
+        }
+        let objects = match spec.base() {
+            crate::target::ChooseSpec::Object(filter) | crate::target::ChooseSpec::All(filter) => {
+                let context = execution_ctx.filter_context(game);
+                let zone = filter.zone.unwrap_or(Zone::Battlefield);
+                game.objects_in_zone(zone).into_iter().filter(|id| game.object(*id)
+                    .is_some_and(|object| filter.matches(object, &context, game))).collect()
+            }
+            _ => crate::effects::helpers::resolve_objects_from_spec(game, spec, execution_ctx)
+                .map_err(|error| CostPaymentError::Other(format!("unresolved mana-cost object: {error:?}")))?,
+        };
+        let [id] = objects.as_slice() else {
+            return Err(CostPaymentError::Other("mana cost needs one exact referenced object".into()));
+        };
+        let object = game.object(*id).ok_or_else(|| CostPaymentError::Other("mana-cost object has departed".into()))?;
+        if let crate::target::ChooseSpec::Tagged(tag) = spec.base() {
+            if execution_ctx.tagged_objects.get(tag).is_none_or(|snapshots|
+                snapshots.len() != 1 || snapshots[0].object_id != *id) {
+                return Err(CostPaymentError::Other("mana-cost reference changed incarnation".into()));
+            }
+        }
+        let cost = crate::filter::object_current_mana_cost(game, *id)
+            .ok_or_else(|| CostPaymentError::Other("referenced object has no payable mana cost".into()))?;
+        // CR 107.3g: X on an object outside the stack is zero. It is not
+        // a new variable announced for this ability.
+        Some((cost, if object.zone == Zone::Stack { object.x_value.unwrap_or(0) } else { 0 }))
+    } else { None };
+    let base = if let Some((cost, _)) = &referenced_mana {
+        cost.clone()
+    } else if dynamic_mana.source_mana_cost {
         game.object(execution_ctx.source)
             .and_then(|object| object.mana_cost_owned())
             .or_else(|| {
@@ -3937,7 +4059,9 @@ pub(crate) fn resolve_dynamic_mana_cost(
         dynamic_mana.base.clone()
     };
 
-    let x_value = if let Some(value) = dynamic_mana.x_value.as_ref() {
+    let x_value = if let Some((_, x)) = referenced_mana {
+        x
+    } else if let Some(value) = dynamic_mana.x_value.as_ref() {
         resolve_dynamic_u32(game, value, execution_ctx)?
     } else if base.has_x() {
         execution_ctx.x_value.ok_or_else(|| {
@@ -4040,7 +4164,7 @@ fn expand_dynamic_mana_base(base: &ManaCost, x_value: u32, multiplier: u32) -> M
             );
         }
     }
-    ManaCost::from_pips(pips).add_generic(generic_to_add)
+    base.with_pips(pips).add_generic(generic_to_add)
 }
 
 fn resolve_cost_choice(
@@ -4195,7 +4319,7 @@ fn resolve_cost_choice(
                         return Err(CostPaymentError::ExecutionFailed(crate::effects::ExecutionError::InternalError(
                             "discard cost changed an unsupported batch identity".into())));
                     }
-                    successful_discards.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone));
+                    successful_discards.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone, receipt.result.new_id));
                 }
                 // CR 118.11: a legal started payment remains paid when its
                 // action is changed/prevented. Count actual original discards

@@ -653,7 +653,7 @@ fn describe_mixed_target_exile_top_damage_program(
     if player_exile != object_exile || player_exiled_tag != object_exiled_tag {
         return None;
     }
-    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if player_exile.accumulated_tags.first() != Some(&permission.tag)
         || permission.player != PlayerFilter::You
         || permission.duration != crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
@@ -681,7 +681,7 @@ fn describe_prior_exile_until_next_turn_permission_program(
     let [permission_effect] = permission_segment.default_effects.as_slice() else {
         return None;
     };
-    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if permission.player != PlayerFilter::You
         || permission.duration != crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
         || !permission.allow_land
@@ -1722,6 +1722,11 @@ fn describe_labeled_static_bundle(abilities: &[Ability], subject: &str) -> Optio
         return None;
     };
     let (label, first_inner, condition) = first.labeled_static_condition()?;
+    if first_inner.enter_as_copy_as_enters().is_some() {
+        let label = label.strip_prefix(ironsmith_core::static_ability_model::EXPLICIT_STATIC_PRESENTATION_LABEL_PREFIX).unwrap_or(&label);
+        return Some((format!("{label} — If {}, {}", lowercase_first(&describe_condition(&condition)),
+            lowercase_first(&render_labeled_static_body(&first_inner, subject))), 1));
+    }
     let normalized_label = label.trim().trim_end_matches('.').to_ascii_lowercase();
     if first_inner.id() == crate::static_abilities::StaticAbilityId::Flash
         && normalized_label.contains("you may cast this spell as though it had flash")
@@ -2614,12 +2619,13 @@ fn modeled_filter_static_grant(
 fn is_can_block_additional_each_combat_rule(
     ability: &crate::static_abilities::StaticAbility,
 ) -> bool {
-    ability.compiled_model().is_some_and(|model| {
-        matches!(
-            model.payload,
-            ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(_)
-        )
-    })
+    matches!(ability.id(), crate::static_abilities::StaticAbilityId::CanBlockAnyNumber | crate::static_abilities::StaticAbilityId::CanBlockAdditionalForEach)
+        || ability.compiled_model().is_some_and(|model| {
+            matches!(
+                model.payload,
+                ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(_)
+            )
+        })
 }
 
 /// Rejoin the two independently executable Cascade grants produced by an
@@ -6581,7 +6587,7 @@ fn describe_cross_segment_bottom_library_exile_look_cast_window(
     };
     let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
     let look = look_effect.downcast_ref::<crate::effects::LookAtObjectsEffect>()?;
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     describe_for_players_bottom_library_exile_then_look_cast(for_players, look, grant)
         .map(|rendered| (rendered, 2))
 }
@@ -13112,7 +13118,7 @@ fn describe_cross_segment_linked_exile_top_play_window(
             {
                 continue;
             }
-            if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
                 && let Some(source_tag) = derived_tag_sources.get(&grant.tag)
             {
                 let mut normalized = grant.clone();
@@ -13122,7 +13128,7 @@ fn describe_cross_segment_linked_exile_top_play_window(
                 continue;
             }
             has_linked_grant |= effect
-                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
                 .is_some_and(|grant| linked_tags.contains(&grant.tag));
             normalized_segment_effects.push(effect);
         }
@@ -13191,7 +13197,7 @@ fn describe_cross_segment_filtered_exile_cast_then_has_ability_window(
     let with_id = permission_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
     let grant = with_id
         .effect
-        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if grant.tag != matching.tag
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
@@ -13318,7 +13324,7 @@ fn describe_cross_segment_filtered_exile_cast_window(
     if spell_filter == ObjectFilter::default() {
         return None;
     }
-    let grant = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if grant.tag != matching.tag
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
@@ -13682,7 +13688,7 @@ fn describe_cross_segment_treasure_look_exile_permission_window(
         return None;
     };
     let grant = structural_unwrap_render_wrappers(permission_effect)
-        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if grant.tag.as_str() != crate::tag::SOURCE_EXILED_TAG
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
@@ -13758,7 +13764,7 @@ mod cross_segment_treasure_look_exile_permission_tests {
 
         let mut near_miss_segments = exact.segments.clone();
         let permission = near_miss_segments[1].default_effects[0]
-            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             .expect("second segment should retain the typed permission");
         let mut wrong_permission = permission.clone();
         wrong_permission.tag = "unrelated_exiled_set".into();
@@ -13816,7 +13822,7 @@ fn describe_cross_segment_exile_top_choose_play_window(
     };
     let exile_top = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let grant_play = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant_play = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     describe_exile_top_choose_one_then_play(exile_top, choose, grant_play)
         .map(|rendered| (rendered, 2))
 }
@@ -13971,7 +13977,7 @@ fn describe_cross_segment_shuffle_exile_top_free_play_window(
         return None;
     }
     let exile_top = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
-    let grant_play = grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant_play = grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     let grant_free_cast = grant_free_cast_effect
         .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(
     )?;
@@ -14073,7 +14079,7 @@ fn describe_cross_segment_shuffle_reveal_top_free_play_window(
         let reveal_permission = structural_unwrap_render_wrappers(reveal_permission_effect)
             .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
         let grant_play = structural_unwrap_render_wrappers(grant_play_effect)
-            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
         let grant_free_cast = structural_unwrap_render_wrappers(grant_free_effect)
             .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(
         )?;
@@ -16924,7 +16930,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if &cast.tag != exile_tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -16953,7 +16959,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
     let [grant_effect] = fallback.then.as_slice() else {
         return None;
     };
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if &grant.tag != exile_tag
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
@@ -17279,7 +17285,7 @@ fn describe_amass_mill_then_optional_capped_cast_program(
         return None;
     }
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag != choose.tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -18850,7 +18856,7 @@ fn describe_cross_segment_reveal_optional_cast_decline_bottom_window(
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if !matches!(may.decider.as_ref(), None | Some(PlayerFilter::You))
         || may.fallback != crate::decision::FallbackStrategy::Decline
         || cast.tag != *revealed_tag
@@ -19778,7 +19784,7 @@ fn describe_you_life_change_exile_then_play_program(
         return None;
     };
     let permission = structural_unwrap_render_wrappers(permission_effect)
-        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if !exile.moved_tags.contains(&permission.tag)
         || permission.player != PlayerFilter::You
         || permission.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
@@ -21897,7 +21903,7 @@ pub(super) fn describe_resolution_program(
                 && let Some(exile_top) =
                     exile_top_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
                 && let Some(grant_play) =
-                    grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                    grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
                 && let Some(grant_free_cast) = grant_free_cast_effect
                     .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
                 && let Some(rendered) =
@@ -29330,6 +29336,12 @@ fn describe_structural_echo_keyword(ability: &Ability) -> Option<String> {
     let [unless] = triggered.effects.flattened_default_effects() else {
         return None;
     };
+    if let Some(paid) = unless.downcast_ref::<crate::effects::CumulativeUpkeepEffect>() {
+        if paid.kind != ironsmith_core::effect::UpkeepPaymentKind::Echo || paid.player != PlayerFilter::You { return None; }
+        let [sacrifice] = paid.failure.as_slice() else { return None; };
+        if !matches!(sacrifice.downcast_ref::<crate::effects::SacrificeTargetEffect>()?.target, ChooseSpec::Source) { return None; }
+        return Some(format!("Echo{}", describe_echo_alternative_cost(&paid.payment)?));
+    }
     let unless = unless.downcast_ref::<crate::effects::UnlessActionEffect>()?;
     if unless.player != PlayerFilter::You {
         return None;
@@ -29684,6 +29696,9 @@ fn describe_structural_equipment_token_keyword(ability: &Ability) -> Option<Stri
     if is_for_mirrodin_rebel_token(&create.token) {
         return Some("For Mirrodin!".to_string());
     }
+    if is_job_select_hero_token(&create.token) {
+        return Some("Job select".to_string());
+    }
     None
 }
 
@@ -29720,6 +29735,22 @@ fn is_living_weapon_germ_token(token: &CardDefinition) -> bool {
         && token.abilities.is_empty()
 }
 
+fn is_job_select_hero_token(token: &CardDefinition) -> bool {
+    token.card.is_token
+        && token.card.name == "Hero"
+        && token.card.colors().is_empty()
+        && token.card.card_types == [CardType::Creature]
+        && token.card.subtypes == [Subtype::Hero]
+        && matches!(
+            token.card.power_toughness,
+            Some(crate::card::PowerToughness {
+                power: crate::card::PtValue::Fixed(1),
+                toughness: crate::card::PtValue::Fixed(1),
+            })
+        )
+        && token.abilities.is_empty()
+}
+
 fn is_for_mirrodin_rebel_token(token: &CardDefinition) -> bool {
     token.card.is_token
         && token.card.name == "Rebel"
@@ -29744,6 +29775,22 @@ fn trigger_is_this_enters_battlefield(trigger: &crate::triggers::Trigger) -> boo
                 && zone_change.to.matches(Zone::Battlefield)
                 && zone_change.cause_filter.is_none()
         })
+}
+
+fn describe_structural_increment_keyword(ability: &Ability) -> Option<String> {
+    let AbilityKind::Triggered(triggered) = &ability.kind else { return None; };
+    if ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !triggered.choices.is_empty()
+        || triggered.intervening_if.as_ref() != Some(&crate::ConditionExpr::increment())
+    { return None; }
+    let cast = triggered.trigger.downcast_ref::<crate::triggers::SpellCastTrigger>()?;
+    if cast != &crate::triggers::SpellCastTrigger::new(None, PlayerFilter::You) { return None; }
+    let [effect] = triggered.effects.flattened_default_effects() else { return None; };
+    let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.counter_type != CounterType::PlusOnePlusOne || put.amount != Value::Fixed(1)
+        || !matches!(put.target, ChooseSpec::Source) || put.target_count.is_some() || put.distributed
+    { return None; }
+    Some("Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)".to_string())
 }
 
 fn describe_structural_evolve_keyword(ability: &Ability) -> Option<String> {
@@ -30965,6 +31012,48 @@ pub(super) fn describe_alternative_cast_line(
     idx: usize,
 ) -> String {
     match method {
+        AlternativeCastingMethod::FromZone { name, zone, total_cost, condition, exiles_after_resolution, entry_counters }
+            if name.as_ref() == "Parsed graveyard alternative cost" =>
+        {
+            fn payment(cost: &crate::cost::TotalCost) -> String {
+                match cost.kind() {
+                    ironsmith_core::TotalCostKind::OneOf(branches) =>
+                        branches.iter().map(payment).collect::<Vec<_>>().join(" or "),
+                    ironsmith_core::TotalCostKind::All(costs) => {
+                        let parts = costs.iter().map(|cost| {
+                            let text = lowercase_first(&describe_total_cost(
+                                &crate::cost::TotalCost::from_cost(cost.clone()),
+                            ));
+                            if text.starts_with('{') { return format!("paying {text}"); }
+                            for (verb, gerund) in [("pay ", "paying "), ("sacrifice ", "sacrificing "),
+                                ("exile ", "exiling "), ("discard ", "discarding "),
+                                ("return ", "returning "), ("reveal ", "revealing "), ("tap ", "tapping ")] {
+                                if let Some(rest) = text.strip_prefix(verb) { return format!("{gerund}{rest}"); }
+                            }
+                            text
+                        }).collect::<Vec<_>>();
+                        if parts.is_empty() { "paying {0}".into() } else { parts.join(" and ") }
+                    }
+                }
+            }
+            let mut line = format!("You may cast this card from your {} by {} rather than paying its mana cost",
+                zone.name(), payment(total_cost));
+            if let Some(condition) = condition
+                && let Some(text) = crate::static_abilities::describe_this_spell_cost_condition(condition)
+            {
+                line = format!("As long as {text}, {}", lowercase_first(&line));
+            }
+            if *exiles_after_resolution {
+                line.push_str(". If you cast this card this way and it would be put into your graveyard, exile it instead");
+            }
+            if !entry_counters.is_empty() {
+                let entries = entry_counters.iter().map(|(kind, count)| format!("{} {} counter{}",
+                    ironsmith_core::cardinal_word(*count).unwrap_or_else(|| count.to_string()),
+                    kind.description(), if *count == 1 { "" } else { "s" })).collect::<Vec<_>>().join(" and ");
+                line.push_str(&format!(". If you do, it enters with {entries} on it"));
+            }
+            line
+        }
         method if method.trap_condition().is_some() => {
             let condition = method.trap_condition().expect("trap condition checked above");
             let cost = method
@@ -31091,6 +31180,12 @@ pub(super) fn describe_alternative_cast_line(
                     crate::static_abilities::describe_this_spell_cost_condition(condition)
             {
                 line = format!("If {condition_text}, {}", lowercase_first(&line));
+            }
+            if let Some(cost) = mana_cost {
+                for rule in cost.spending_restrictions() {
+                    line.push_str(". ");
+                    line.push_str(&rule.cast_description(true));
+                }
             }
             line
         }
@@ -32242,7 +32337,7 @@ fn describe_triggering_card_type_exile_then_cast_permission(ability: &Ability) -
     let [permission_effect] = permission_segment.default_effects.as_slice() else {
         return None;
     };
-    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     let expected_permission = crate::effects::GrantPlayTaggedEffect::new(
         tagged.tag.clone(),
         PlayerFilter::You,
@@ -32304,7 +32399,7 @@ mod triggering_card_type_exile_permission_tests {
             panic!("expected triggered ability");
         };
         let mut permission = triggered.effects.segments[1].default_effects[0]
-            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             .expect("permission")
             .clone();
         permission.tag = TagKey::from("unrelated_card");
@@ -34328,6 +34423,11 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
+            if let Some(keyword) = describe_structural_increment_keyword(ability) {
+                output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
             if let Some(keyword) = describe_structural_evolve_keyword(ability) {
                 output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
                 ability_idx += 1;
@@ -35706,6 +35806,17 @@ fn describe_source_line_static_group(
         return None;
     }
     let members = abilities.get(..member_count)?;
+    // Solved is the printed surface of the executable Case designation, not
+    // an extra authored "as long as" predicate. Keep it outside the entire
+    // source-line bundle while rendering any inner predicates normally.
+    if let AbilityKind::Static(first) = &members.first()?.kind
+        && first.labeled_static_condition().is_some_and(|(_, _, condition)|
+            matches!(condition, Condition::SourceCaseSolved))
+        && let Some((text, consumed)) = describe_labeled_static_bundle(members, subject)
+        && consumed == member_count
+    {
+        return Some(text);
+    }
     describe_source_line_additive_type_loss_group(members)
         .or_else(|| {
             describe_structural_all_subtypes_scope_ladder(members)
@@ -36224,7 +36335,8 @@ fn describe_source_line_first_spell_cost_reduction_and_flash_group(
         return None;
     };
     let flash = flash_static.grant_spec()?;
-    if flash != crate::grant::GrantSpec::flash_to_spells_matching(reduction.filter.clone()) {
+    if flash != crate::grant::GrantSpec::flash_timing_for_spells_matching(reduction.filter.clone())
+        && flash != crate::grant::GrantSpec::flash_to_spells_matching(reduction.filter.clone()) {
         return None;
     }
     Some(format!(
@@ -37097,6 +37209,7 @@ fn describe_source_line_graveyard_permission_dynamic_surcharge_group(
         || grant.beneficiary != PlayerFilter::You
         || grant.usage_limit.is_some()
         || !grant.cast_this_way_grants.is_empty()
+        || !grant.permanent_this_way_grants.is_empty()
         || grant.cast_this_way_filter.is_some()
         || grant.source_exiled_surface.is_some()
         || !grant.filter.source

@@ -76,7 +76,7 @@ pub fn parse_carry_duration_prefix_tokens(
             leaf::LeafConditionalDurationKind::YouControlSource => Until::YouStopControllingThis,
             leaf::LeafConditionalDurationKind::SourceRemainsTapped => Until::SourceUntaps,
             leaf::LeafConditionalDurationKind::SourceRemainsOnBattlefield => {
-                Until::ThisLeavesTheBattlefield
+                Until::while_source_remains_on_battlefield()
             }
         };
         (duration, parsed.rest)

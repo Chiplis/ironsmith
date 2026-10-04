@@ -7,7 +7,12 @@ pub fn parse_conditional_anthem_replacement_line(
         return Ok(None);
     };
     let subject = parse_anthem_subject(shape.subject_tokens)?;
-    let condition = PredicateAst::AttachedToSourceMatches(shape.condition_filter);
+    let condition = match shape.condition {
+        anthem_grant_grammar::AnthemReplacementCondition::Attached(filter) =>
+            PredicateAst::AttachedToSourceMatches(filter),
+        anthem_grant_grammar::AnthemReplacementCondition::Predicate(tokens) =>
+            parse_static_condition_clause(tokens)?,
+    };
     let base = fixed_anthem_clause(
         subject.clone(),
         shape.base_power,
@@ -618,11 +623,11 @@ pub fn parse_matching_are_goaded_line(
     let subject = &tokens[..are];
     let mut filter = if let Some(with) = subject.iter().position(|token| token.is_word("with")) {
         let words = crate::lexer::token_word_refs(&subject[with + 1..]);
-        if words.len() < 5 || words[..3] != ["power", "less", "than"]
-            || words.last().copied() != Some("power")
-            || crate::util::source_reference_surface_for_possessive_words(&words[3..words.len()-1]).is_none()
-        { return Ok(None) }
-        parse_object_filter(&subject[..with], false)?.with_power_less_than_source()
+        if words.len() >= 5 && words[..3] == ["power", "less", "than"]
+            && words.last().copied() == Some("power")
+            && crate::util::source_reference_surface_for_possessive_words(&words[3..words.len()-1]).is_some()
+        { parse_object_filter(&subject[..with], false)?.with_power_less_than_source() }
+        else { parse_object_filter(subject, false)? }
     } else {
         parse_object_filter(subject, false)?
     };
@@ -633,27 +638,14 @@ pub fn parse_matching_are_goaded_line(
 pub fn parse_anthem_and_goaded_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let clause_words = crate::lexer::token_word_refs(tokens);
     let Some(shape) = anthem_grant_grammar::parse_anthem_goaded_shape(tokens) else {
         return Ok(None);
     };
 
     let clause = parse_anthem_clause(tokens, shape.get_token, shape.and_token)?;
-    let display_subject = attached_goaded_display_subject(&clause.subject).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unsupported goaded anthem subject (clause: '{}')",
-            clause_words.join(" ")
-        ))
-    })?;
-
-    Ok(Some(vec![
-        build_anthem_static_ability(&clause).into(),
-        crate::model::CompilerStaticAbilityCore::attached_goaded_by_source_controller(format!(
-            "{} is goaded",
-            capitalize_display_subject(&display_subject)
-        ))
-        .into(),
-    ]))
+    // Goad is a designation supplied by this static source, not an ability
+    // to grant to (and subsequently strip from) the enchanted creature.
+    Ok(Some(vec![build_anthem_static_ability(&clause).into(), goad_for_anthem_subject(&clause)]))
 }
 
 pub fn parse_anthem_and_no_defender_line(
@@ -777,6 +769,7 @@ fn add_static_ability_ast_condition(
         StaticAbilityAst::Static(_)
         | StaticAbilityAst::KeywordAction(_)
         | StaticAbilityAst::PregameRevealFromOpeningHand { .. }
+        | StaticAbilityAst::TokenCreationTemplates { .. }
         | StaticAbilityAst::LoseGameReplacement { .. } => {
             StaticAbilityAst::ConditionalStaticAbility {
                 ability: Box::new(ability),
@@ -2247,14 +2240,58 @@ fn parse_continuing_anthem_granted_segment(
     Ok(None)
 }
 
+fn goad_for_anthem_subject(clause: &ParsedAnthemClause) -> StaticAbilityAst {
+    let mut filter = anthem_subject_filter(&clause.subject);
+    if attached_goaded_display_subject(&clause.subject).is_some() {
+        // Preserve the authored attachment surface and prove this exact
+        // granter is attached, excluding intrinsic any-Aura fallback.
+        filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
+    }
+    let mut ability = StaticAbility::goad_matching(filter);
+    if let Some(condition) = &clause.condition { ability = ability.with_condition(condition.clone()); }
+    ability.into()
+}
+
+fn lower_atomic_anthem_predicate(clause: &ParsedAnthemClause, tokens: &[OwnedLexToken], quoted: bool) -> Option<StaticAbilityAst> {
+    if let Some(ability) = crate::activation_and_restrictions::activation_costs::blocking_cant_static_ability(tokens) {
+        return Some(grant_for_anthem_subject(clause, ability));
+    }
+    use anthem_grant_grammar::ContinuingSegmentShape as S;
+    let ability = match anthem_grant_grammar::parse_continuing_segment_shape(tokens) {
+        S::CantAttackYou { covers_planeswalkers } => {
+            // Edge trimming has removed quotation tokens by this point. Only
+            // the untouched raw segment can establish ownership of this rule.
+            if quoted { return None; }
+            // This unquoted rule is controlled by the granter. Giving the
+            // creature a new ability would incorrectly rebind "you" to its
+            // controller and let ordinary ability removal erase the rule.
+            let mut filter = anthem_subject_filter(&clause.subject);
+            if attached_goaded_display_subject(&clause.subject).is_some() {
+                filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
+            }
+            let restriction = if covers_planeswalkers {
+                crate::effect::Restriction::attack_player_or_planeswalkers_controlled_by(filter, PlayerFilter::You)
+            } else { crate::effect::Restriction::attack_player(filter, PlayerFilter::You) };
+            let mut ability = StaticAbility::restriction(restriction,
+                format!("{} {}", anthem_subject_filter(&clause.subject).description(), display_text_for_tokens(tokens, false)));
+            if let Some(condition) = &clause.condition { ability = ability.with_condition(condition.clone()); }
+            return Some(ability.into());
+        }
+        S::CantAttack => StaticAbility::cant_attack(),
+        S::MustBeBlocked => StaticAbility::restriction(crate::effect::Restriction::must_be_blocked(ObjectFilter::source()), "This creature must be blocked if able"),
+        S::AllMustBlock => StaticAbility::restriction(crate::effect::Restriction::must_block_specific_attacker(ObjectFilter::creature(), ObjectFilter::source()), "All creatures able to block this creature do so"),
+        S::AssignUsingToughness => StaticAbility::this_creature_assigns_combat_damage_using_toughness(),
+        S::Goaded => return Some(goad_for_anthem_subject(clause)),
+        _ => return None,
+    };
+    Some(grant_for_anthem_subject(clause, ability))
+}
+
 pub fn parse_anthem_with_trailing_segments_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    // Complete anthem-plus-keyword clauses have their own grammar production.
-    // This trailing-segment family only accepts the remaining compound tails.
-    if is_plain_anthem_keyword_line(tokens) {
-        return Ok(None);
-    }
+    // Only a successful complete production can own a competing line;
+    // a prefix-tolerant keyword leaf is not proof that no later predicate exists.
     if matches!(parse_anthem_and_keyword_line(tokens), Ok(Some(_))) {
         // The anthem-plus-keyword production proves the complete line,
         // including quoted granted abilities; this family owns only the
@@ -2262,9 +2299,10 @@ pub fn parse_anthem_with_trailing_segments_line(
         // this family may still prove a line that production cannot.
         return Ok(None);
     }
-    if let Some(shape) = anthem_grant_grammar::parse_anthem_and_addition_shape(tokens)
-        && parse_type_color_addition_clause(shape.addition_tokens)?.is_some()
-    {
+    if matches!(parse_anthem_and_type_color_addition_line(tokens), Ok(Some(_))) {
+        // A valid final addition tail alone is not proof that the preceding
+        // anthem had no quoted grants or other predicates. Yield only after
+        // the specialized production proves the entire line.
         return Ok(None);
     }
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -2291,9 +2329,15 @@ pub fn parse_anthem_with_trailing_segments_line(
         for raw_segment in anthem_grant_grammar::split_trailing_grant_segments(&grant_tail) {
             let Some(segment) = anthem_grant_grammar::parse_trailing_grant_segment(&raw_segment)
             else {
-                continue;
+                return Ok(None);
             };
             let segment = segment.body_tokens.to_vec();
+            if let Some(additions) = parse_type_color_addition_clause(&segment)? {
+                push_type_color_additions_for_anthem_subject(&mut extras, &clause, additions); continue;
+            }
+            if let Some(extra) = lower_atomic_anthem_predicate(&clause, &segment, raw_segment.iter().any(|token| token.kind == TokenKind::Quote)) {
+                extras.push(extra); continue;
+            }
 
             if let Some(mut granted) =
                 parse_continuing_anthem_granted_segment(&clause, &clause_words, &segment)?
@@ -2347,9 +2391,15 @@ pub fn parse_anthem_with_trailing_segments_line(
     let mut continuing_have_clause = false;
     for raw_segment in anthem_grant_grammar::split_trailing_grant_segments(&tail_tokens) {
         let Some(segment) = anthem_grant_grammar::parse_trailing_grant_segment(&raw_segment) else {
-            continue;
+            return Ok(None);
         };
         let segment = segment.body_tokens.to_vec();
+        if let Some(additions) = parse_type_color_addition_clause(&segment)? {
+            push_type_color_additions_for_anthem_subject(&mut extras, &clause, additions); continue;
+        }
+        if let Some(extra) = lower_atomic_anthem_predicate(&clause, &segment, raw_segment.iter().any(|token| token.kind == TokenKind::Quote)) {
+            extras.push(extra); continue;
+        }
 
         let segment_shape = anthem_grant_grammar::parse_continuing_segment_shape(&segment);
         if segment_shape == anthem_grant_grammar::ContinuingSegmentShape::CantBlock {
@@ -2549,11 +2599,12 @@ pub fn parse_anthem_with_trailing_segments_line(
                 ));
             } else if let Some(actions) = actions {
                 reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+                let expected = actions.len();
                 let granted = actions
                     .into_iter()
                     .filter_map(keyword_action_to_static_ability)
                     .collect::<Vec<_>>();
-                if granted.is_empty() {
+                if granted.is_empty() || granted.len() != expected {
                     return Ok(None);
                 }
                 for ability in granted {
@@ -3499,6 +3550,20 @@ fn parse_conditional_source_prevention_and_grant(
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // A complete attack-permission effect owns its hypothetical `have`.
+    // In particular, `this turn` belongs to the duration, not to a subject
+    // that may be recovered as the suffix `it didn't`. Do not let either
+    // broad grant reader reinterpret that comparison as granting defender.
+    if crate::grammar::effects::clause_pattern_shapes::parse_can_attack_no_defender_subject_tokens(tokens)
+        .is_some_and(|subject| {
+            // A preceding real grant still owns a compound tail, e.g.
+            // `it has trample and can attack as though ...`. Only a
+            // hypothetical `have` without such a grant is inapplicable.
+            !subject.iter().any(|token| token.is_any_word(&["has", "have"]))
+        })
+    {
+        return Ok(None);
+    }
     // "You and <permanents> have protection from ..." carries a player half
     // this production would drop; the granted-keyword production owns it.
     if matches!(parse_you_and_subject_protection_grant_line(tokens), Ok(Some(_))) {
@@ -5084,4 +5149,128 @@ fn source_attachment_disjunction_is_a_static_attack_condition() {
     let tokens = crate::lexer::lex_line("As long as this creature is enchanted or equipped, it can attack as though it didn't have defender.", 0).unwrap();
     let parsed = parse_as_long_as_condition_can_attack_as_though_no_defender_line(&tokens).unwrap();
     assert!(matches!(parsed, Some(StaticAbilityAst::ConditionalStaticAbility { .. })), "{parsed:#?}");
+}
+
+#[cfg(test)]
+#[test]
+fn hypothetical_no_defender_have_is_never_a_static_grant_subject() {
+    for text in [
+        "can attack this turn as though it didn't have defender",
+        "this creature can attack this turn as though it didn't have defender",
+        "this creature gets +3/-1 until end of turn and can attack this turn as though it didn't have defender",
+        "can attack as though it did not have defender",
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let (result, loss) = crate::parse_loss::capture(|| {
+            (
+                parse_filter_has_granted_ability_line(&tokens),
+                parse_granted_keyword_static_line(&tokens),
+            )
+        });
+        assert!(matches!(result, (Ok(None), Ok(None))), "{text}: {result:?}");
+        assert!(!loss.is_lossy(), "{text}: {}", loss.reasons_text());
+    }
+    let tokens = crate::lexer::lex_line("Creatures you control have defender", 0).unwrap();
+    assert!(parse_filter_has_granted_ability_line(&tokens).unwrap().is_some());
+}
+
+#[cfg(test)]
+mod complete_anthem_tail_tests {
+    use super::*;
+    #[test]
+    fn retained_modifier_and_each_complete_predicate_are_both_required() {
+        for (line, marker) in [
+            ("Enchanted creature gets +2/+2 and can't attack.", "CantAttack"),
+            ("Enchanted creature gets +2/+0 and can't be blocked by creatures with flying.", "BlockSpecificAttacker"),
+            ("Enchanted creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.", "ThisCreatureAssignsCombatDamageUsingToughness"),
+            ("Enchanted creature gets +3/+3, must be blocked if able, and is goaded.", "GoadMatching"),
+            ("As long as enchanted creature is green, it gets +1/+1 and all creatures able to block it do so.", "MustBlockSpecificAttacker"),
+            ("Creatures you control that are enchanted get +1/+1 and can't be blocked except by creatures with defender.", "BlockSpecificAttacker"),
+            ("As long as there are two or more creature cards in your graveyard, this creature gets +2/+2 and is all creature types.", "AddAllSubtypesOfFamily"),
+        ] {
+            let tokens = crate::lexer::lex_line(line, 0).unwrap();
+            let abilities = parse_anthem_with_trailing_segments_line(&tokens).unwrap().expect(line);
+            let debug = format!("{abilities:#?}");
+            assert!(debug.contains("Anthem"), "{debug}"); assert!(debug.contains(marker), "{debug}");
+        }
+        for tail in ["can't attack strange objects", "has flying and unsupported splendor", "is a Wizard in addition to its other dimensions"] {
+            let tokens = crate::lexer::lex_line(&format!("Enchanted creature gets +2/+2 and {tail}."), 0).unwrap();
+            assert!(!matches!(parse_anthem_with_trailing_segments_line(&tokens), Ok(Some(_))), "{tail}");
+        }
+    }
+    #[test]
+    fn a_valid_final_type_tail_does_not_hide_the_quoted_grant_before_it() {
+        let line = "Equipped creature gets +2/+2, has lifelink and \"Other commanders you control get +2/+2 and have lifelink,\" and is a Performer in addition to its other types.";
+        let abilities = parse_anthem_with_trailing_segments_line(&crate::lexer::lex_line(line, 0).unwrap()).unwrap().unwrap();
+        let debug = format!("{abilities:#?}");
+        assert!(debug.contains("Performer"), "{debug}");
+        assert!(debug.contains("Lifelink"), "{debug}");
+        assert!(debug.contains("is_commander: true"), "{debug}");
+    }
+    #[test]
+    fn grouped_static_counts_divide_before_scaling() {
+        let ability = parse_anthem_line(&crate::lexer::lex_line("This creature gets +2/+0 for every seven cards in your graveyard.", 0).unwrap()).unwrap().unwrap();
+        let debug = format!("{ability:#?}");
+        assert!(debug.contains("DividedRoundedDown"), "{debug}");
+        assert!(debug.contains("Graveyard"), "{debug}");
+        for amount in ["zero", "2147483648"] {
+            let tokens = crate::lexer::lex_line(&format!("This creature gets +2/+0 for every {amount} cards in your graveyard."), 0).unwrap();
+            assert!(!matches!(parse_anthem_line(&tokens), Ok(Some(_))));
+        }
+    }
+}
+
+#[cfg(test)]
+mod live_same_name_goad_tests {
+    use super::*;
+    #[test]
+    fn matching_goad_retains_exact_source_name_relation_and_rejects_unknown_qualifiers() {
+        let tokens = crate::lexer::lex_line("Other creatures with the same name as this creature are goaded.", 0).unwrap();
+        let ability = parse_matching_are_goaded_line(&tokens).unwrap().unwrap();
+        let debug = format!("{ability:#?}");
+        assert!(debug.contains("GoadMatching"), "{debug}");
+        assert!(debug.contains("SameNameAsTagged"), "{debug}");
+        assert!(debug.contains("Battlefield"), "{debug}");
+        for line in ["Other creatures with the same name as this creature are goaded beyond time.",
+            "Other creatures with the same impossible quality are goaded."] {
+            let tokens = crate::lexer::lex_line(line, 0).unwrap();
+            assert!(!matches!(parse_matching_are_goaded_line(&tokens), Ok(Some(_))), "{line}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod attached_player_restriction_tests {
+    use super::*;
+    #[test]
+    fn complete_unquoted_tail_belongs_to_the_granter() {
+        let tokens=crate::lexer::lex_line("Enchanted creature gets +2/+2, has vigilance, and can't attack you or planeswalkers you control.",0).unwrap();
+        let result=parse_anthem_with_trailing_segments_line(&tokens).unwrap().unwrap();
+        assert_eq!(result.len(),3);
+        assert!(matches!(&result[2], StaticAbilityAst::Static(_)),"the restriction is not an ability granted to the recipient");
+        for text in ["Enchanted creature gets +2/+2, has vigilance, and can't attack you or planeswalkers you control unless its controller pays {2}.","Enchanted creature gets +2/+2, has vigilance, and can't attack you or battles you protect."] {
+            assert!(!matches!(parse_anthem_with_trailing_segments_line(&crate::lexer::lex_line(text,0).unwrap()),Ok(Some(_))),"{text}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod quoted_anthem_attack_rule_ownership_tests {
+    use super::*;
+    #[test]
+    fn mixed_quoted_tail_is_never_rebound_as_a_granters_unquoted_rule() {
+        for text in [
+            "Enchanted creature gets +2/+2, has vigilance, and has \"can't attack you or planeswalkers you control\".",
+            "Enchanted creature gets +2/+2, has \"can't attack you or planeswalkers you control\", and has vigilance.",
+            "Enchanted creature gets +2/+2, has vigilance, and \"can't attack you or planeswalkers you control\".",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            if let Ok(Some(abilities))=parse_anthem_with_trailing_segments_line(&tokens) {
+                assert!(!abilities.iter().any(|ability| matches!(ability,
+                    StaticAbilityAst::Static(ability) if matches!(&ability.payload,
+                        ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction: crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy { .. }, .. }))),
+                    "a quoted ability must stay recipient-owned or be rejected: {text}");
+            }
+        }
+    }
 }

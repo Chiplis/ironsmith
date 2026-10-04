@@ -37,6 +37,9 @@ pub struct DamageEvent {
     pub remainder: Option<(DamageTarget, u32)>,
     /// Last-known information for an object that was dealt damage.
     pub target_snapshot: Option<ObjectSnapshot>,
+    /// Completed assignments from this exact simultaneous damage action.
+    /// Prospective replacement events never carry this trigger-only evidence.
+    pub(crate) received_amounts: Option<super::receipt_amounts::ReceivedDamageAmounts>,
 }
 
 impl DamageEvent {
@@ -58,6 +61,7 @@ impl DamageEvent {
             cause,
             remainder: None,
             target_snapshot: None,
+            received_amounts: None,
         }
     }
 
@@ -79,21 +83,46 @@ impl DamageEvent {
             cause,
             remainder: None,
             target_snapshot: None,
+            received_amounts: None,
         }
     }
 
+    /// Total damage in one completed occurrence, never marked damage or turn history.
+    pub(crate) fn received_amount(&self, combat: Option<bool>, single_source: bool) -> u128 {
+        self.received_amounts
+            .as_ref()
+            .map(|amounts| amounts.amount(combat, single_source))
+            .unwrap_or_else(|| {
+                if combat.is_none_or(|combat| combat == self.is_combat) {
+                    u128::from(self.amount)
+                } else {
+                    0
+                }
+            })
+    }
+
+    /// Immutable completed source/recipient total, when the original owner
+    /// has supplied all actual assignments from this damage occurrence.
+    pub(crate) fn completed_source_recipient_amount(&self, combat: Option<bool>) -> Option<u128> {
+        self.received_amounts
+            .as_ref()
+            .map(|amounts| amounts.amount(combat, true))
+    }
+
     /// Return a new event with doubled damage.
-    pub fn doubled(&self) -> Self {
-        Self {
-            amount: self.amount.saturating_mul(2),
+    pub fn doubled(&self) -> Result<Self, crate::effects::ExecutionError> {
+        Ok(Self {
+            amount: super::checked_damage_amount(u128::from(self.amount) * 2, "doubled damage")?,
+            received_amounts: None,
             ..self.clone()
-        }
+        })
     }
 
     /// Return a new event with damage reduced by the given amount.
     pub fn reduced(&self, by: u32) -> Self {
         Self {
             amount: self.amount.saturating_sub(by),
+            received_amounts: None,
             ..self.clone()
         }
     }
@@ -102,6 +131,7 @@ impl DamageEvent {
     pub fn with_amount(&self, amount: u32) -> Self {
         Self {
             amount,
+            received_amounts: None,
             ..self.clone()
         }
     }
@@ -118,6 +148,7 @@ impl DamageEvent {
     pub fn prevented(&self) -> Self {
         Self {
             amount: 0,
+            received_amounts: None,
             ..self.clone()
         }
     }
@@ -126,9 +157,14 @@ impl DamageEvent {
     pub fn with_target(&self, target: DamageTarget) -> Self {
         Self {
             target,
+            received_amounts: None,
             // Recipient LKI belongs to one exact incarnation. Redirecting
             // cannot transfer the former recipient's snapshot to the new one.
-            target_snapshot: if target == self.target { self.target_snapshot.clone() } else { None },
+            target_snapshot: if target == self.target {
+                self.target_snapshot.clone()
+            } else {
+                None
+            },
             ..self.clone()
         }
     }
@@ -263,8 +299,15 @@ mod tests {
     fn test_damage_event_doubled() {
         let event = effect_damage(3);
 
-        let doubled = event.doubled();
+        let doubled = event.doubled().unwrap();
         assert_eq!(doubled.amount, 6);
+    }
+
+    #[test]
+    fn doubling_does_not_cap_a_larger_mathematical_result() {
+        let error = effect_damage(u32::MAX).doubled().unwrap_err();
+        assert!(error.is_incomplete_execution());
+        assert!(matches!(error, crate::effects::ExecutionError::ResourceLimitExceeded { requested, .. } if requested == u128::from(u32::MAX) * 2));
     }
 
     #[test]

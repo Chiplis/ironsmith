@@ -727,7 +727,10 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         (player) => Number(player.index) === resyncSigner
       );
       const signerKey = await importAuditPublicKey(String(signerPlayer?.auditPublicKey || ""));
-      const resyncEnvelopeReport = await verifySignedResyncEnvelope({
+      if (String(message.resyncEnvelope?.matchId || "") !== String(matchPayload.auditMatchId || currentAuditMatchId())) {
+        throw new Error("Resync envelope belongs to a different accepted match");
+      }
+      await verifySignedResyncEnvelope({
         envelope: message.resyncEnvelope,
         publicKey: signerKey,
         actions: actionEntries,
@@ -911,6 +914,14 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           ? `Resynced with host at action ${lastSequence}`
           : "Resynced with host",
       );
+      // Replaying the accepted prefix does not erase a signed payment whose
+      // public openings were sent before its command could be accepted.
+      servicesRef.current.acceptPaymentDisclosure(currentAuditMatchId(), lastSequence);
+      await servicesRef.current.restorePaymentDisclosureAtHead({ sequence: lastSequence + 1,
+        prevStateHash: auditStateHashRef.current });
+      nextState = await currentGame.uiState();
+      stateRef.current = nextState;
+      setState(nextState);
       awaitingStateResyncRef.current = false;
       await revealLocalZiffleHand(acceptedMatchPayload);
 

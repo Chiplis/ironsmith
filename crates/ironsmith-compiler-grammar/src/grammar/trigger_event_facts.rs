@@ -192,20 +192,44 @@ fn trigger_kind(full_tokens: &[OwnedLexToken], trigger: &TriggerSpec) -> Trigger
 
 fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
     match core_semantics(trigger) {
+        TriggerSpec::PlayerAttackDeclaration { attacker, defender, grouping } => {
+            TriggerSubjectAst::Player(
+                if *grouping == ironsmith_core::trigger_model::PlayerAttackGrouping::Defender {
+                    defender.clone()
+                } else {
+                    attacker.clone()
+                },
+            )
+        }
+        TriggerSpec::ZoneChange(event) if event.this => TriggerSubjectAst::Source,
+        TriggerSpec::ZoneChange(event) => event
+            .filter
+            .as_ref()
+            .map(|filter| TriggerSubjectAst::Object(filter.clone()))
+            .unwrap_or(TriggerSubjectAst::Source),
         TriggerSpec::Attacks(filter)
         | TriggerSpec::AttacksAndIsntBlocked(filter)
         | TriggerSpec::AttacksAndIsntBlockedOneOrMore(filter)
         | TriggerSpec::AttacksWhileSaddled(filter)
         | TriggerSpec::AttacksOneOrMore(filter)
         | TriggerSpec::AttacksAlone(filter)
+        | TriggerSpec::AttacksPlayerAlone(filter)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(filter)
         | TriggerSpec::Blocks(filter)
         | TriggerSpec::BlocksOneOrMore(filter)
         | TriggerSpec::BecomesBlocked(filter)
+        | TriggerSpec::BecomesBlockedOneOrMore(filter)
+        | TriggerSpec::KeywordActionOneOrMore { source_filter: filter, .. }
         | TriggerSpec::ThisBecomesBlockedByObject(filter)
         | TriggerSpec::PermanentBecomesTapped(filter)
+        | TriggerSpec::PermanentBecomesTappedOneOrMore(filter)
+        | TriggerSpec::PermanentBecomesUntapped { filter, .. }
         | TriggerSpec::TurnedFaceUp(filter)
+        | TriggerSpec::PermanentMutates(filter)
+        | TriggerSpec::PermanentTransforms(filter)
+        | TriggerSpec::PermanentTransformsInto { filter, .. }
+        | TriggerSpec::PlayerTurnsFaceUp { filter, .. }
         | TriggerSpec::BecomesTargeted(filter)
         | TriggerSpec::ThisBecomesTargetedBySpell(filter)
         | TriggerSpec::ThisBecomesTargetedByStackObject(filter)
@@ -222,6 +246,13 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             TriggerSubjectAst::Object(filter.clone())
         }
+        TriggerSpec::DamageReceived { target, .. } => match target.base() {
+            crate::target::ChooseSpec::Object(filter) => TriggerSubjectAst::Object(filter.clone()),
+            crate::target::ChooseSpec::Player(player) => TriggerSubjectAst::Player(player.clone()),
+            _ => TriggerSubjectAst::Source,
+        },
+        TriggerSpec::BecomesTargetedByAbilitySource { target, .. } => TriggerSubjectAst::Object(target.clone()),
+        TriggerSpec::ControlChanged(trigger) => TriggerSubjectAst::Object(trigger.filter.clone()),
         TriggerSpec::SpellCast {
             filter: Some(filter),
             ..
@@ -234,6 +265,10 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
             filter: Some(filter),
             ..
         }
+        | TriggerSpec::AttachmentChanged { recipient: filter, .. }
+        | TriggerSpec::CardsMilled { filter: Some(filter), .. }
+        | TriggerSpec::PhasingChanged { filter, .. }
+        | TriggerSpec::PlayerChangesTapState { filter, .. }
         | TriggerSpec::EntersBattlefield { filter, .. }
         | TriggerSpec::EntersBattlefieldOneOrMore { filter, .. }
         | TriggerSpec::EntersBattlefieldFromZone { filter, .. }
@@ -249,13 +284,26 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::BeginningOfCombat(player)
         | TriggerSpec::BeginningOfEndStep(player)
         | TriggerSpec::BeginningOfPrecombatMain(player)
+        | TriggerSpec::RingBearerChosen(player)
+        | TriggerSpec::PlayerBecomesTargeted { player, .. }
+        | TriggerSpec::PlayerGainsLife { player, .. }
         | TriggerSpec::PlayerLosesLife(player)
+        | TriggerSpec::PlayerPaysLife(player)
         | TriggerSpec::PlayersLoseLifeOneOrMore(player)
         | TriggerSpec::PlayerLosesGame(player)
+        | TriggerSpec::PlayerBecomesMonarch(player)
+        | TriggerSpec::PlayerDrawsCardDuringTurn { player, .. }
+        | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(player)
         | TriggerSpec::PlayerDrawsCard(player)
         | TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player)
         | TriggerSpec::PlayerGivesGift(player)
-        | TriggerSpec::PlayerSearchesLibrary(player) => TriggerSubjectAst::Player(player.clone()),
+        | TriggerSpec::PlayerSearchesLibrary(player)
+        | TriggerSpec::PlayerRollsResult { player, .. }
+        | TriggerSpec::PlayerRollsResultMatching { player, .. }
+        | TriggerSpec::PlayerRollsNthDie { player, .. }
+        | TriggerSpec::PlayerRollsDie { player, .. }
+        | TriggerSpec::PlayerRollsToVisitAttractions { player }
+        | TriggerSpec::PlayerRollsHighestNaturalResult { player } => TriggerSubjectAst::Player(player.clone()),
         TriggerSpec::YouGainLife | TriggerSpec::YouDrawCard | TriggerSpec::YouCastThisSpell => {
             TriggerSubjectAst::Player(PlayerFilter::You)
         }
@@ -265,6 +313,10 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
 
 fn trigger_zone_transition(trigger: &TriggerSpec) -> Option<TriggerZoneTransitionAst> {
     match core_semantics(trigger) {
+        TriggerSpec::ZoneChange(event) => Some(TriggerZoneTransitionAst {
+            from: event.from,
+            to: event.to,
+        }),
         TriggerSpec::ThisDies
         | TriggerSpec::Dies(_)
         | TriggerSpec::DiesOneOrMore(_)
@@ -327,9 +379,26 @@ fn trigger_zone_transition(trigger: &TriggerSpec) -> Option<TriggerZoneTransitio
 
 fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
     match core_semantics(trigger) {
+        TriggerSpec::Either(left, right) => {
+            let left = triggering_object_cardinality(left);
+            let right = triggering_object_cardinality(right);
+            (left == right).then_some(left).flatten()
+        }
+        TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Player(_), .. } => None,
+        TriggerSpec::PlayerRollsResult { .. } | TriggerSpec::PlayerRollsResultMatching { .. }
+        | TriggerSpec::PlayerRollsNthDie { .. } | TriggerSpec::PlayerRollsDie { .. }
+        | TriggerSpec::PlayerRollsToVisitAttractions { .. } | TriggerSpec::PlayerRollsHighestNaturalResult { .. } => None,
+        TriggerSpec::ZoneChange(event) => {
+            Some(if event.count == ironsmith_core::trigger_model::CountMode::OneOrMore {
+                Cardinality::OneOrMore
+            } else {
+                Cardinality::ExactlyOne
+            })
+        }
         TriggerSpec::BeginningOfUpkeep(_)
         | TriggerSpec::BeginningOfDrawStep(_)
         | TriggerSpec::BeginningOfCombat(_)
+        | TriggerSpec::EndOfCombat
         | TriggerSpec::BeginningOfEndStep(_)
         | TriggerSpec::BeginningOfTheEndStep
         | TriggerSpec::BeginningOfMonarchEndStep
@@ -337,14 +406,23 @@ fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
         | TriggerSpec::BeginningOfPrecombatMain(_)
         | TriggerSpec::BeginningOfPostcombatMain { .. }
         | TriggerSpec::YouGainLife
+        | TriggerSpec::PlayerPaysLife(_)
+        | TriggerSpec::PlayerBecomesMonarch(_)
         | TriggerSpec::YouDrawCard
         | TriggerSpec::DayNightChanged
         | TriggerSpec::StateBased { .. } => None,
+        TriggerSpec::CardsMilled { one_or_more: true, .. }
+        | TriggerSpec::PhasingChanged { one_or_more: true, .. }
+        | TriggerSpec::PlayerChangesTapState { one_or_more: true, .. }
+        | TriggerSpec::PermanentBecomesTappedOneOrMore(_)
+        | TriggerSpec::PermanentBecomesUntapped { one_or_more: true, .. } => Some(Cardinality::OneOrMore),
         TriggerSpec::AttacksOneOrMore(_)
         | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
         | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
         | TriggerSpec::AttacksOneOrMoreWithAggregate { .. }
         | TriggerSpec::BlocksOneOrMore(_)
+        | TriggerSpec::BecomesBlockedOneOrMore(_)
+        | TriggerSpec::KeywordActionOneOrMore { .. }
         | TriggerSpec::DiesOneOrMore(_)
         | TriggerSpec::PutIntoGraveyardOneOrMore(_)
         | TriggerSpec::EntersBattlefieldOneOrMore { .. }

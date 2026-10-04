@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Tomorrow, Azami's Familiar",
+    "oracle_id": "51d517c9-2812-44ce-ab4d-e5422b5ecf6c",
+    "mana_cost": "{5}{U}",
+    "type_line": "Legendary Creature — Spirit",
+    "oracle_text": "If you would draw a card, look at the top three cards of your library instead. Put one of those cards into your hand and the rest on the bottom of your library in any order.",
+    "power": "1",
+    "toughness": "5",
+    "scryfall_uri": "https://scryfall.com/card/bok/58/tomorrow-azamis-familiar?utm_source=api"
+  },
+  {
+    "name": "Obstinate Familiar",
+    "oracle_id": "fbfa8b3f-58a7-44ca-8c22-6747b56fdcb9",
+    "mana_cost": "{R}",
+    "type_line": "Creature — Lizard",
+    "oracle_text": "If you would draw a card, you may skip that draw instead.",
+    "power": "1",
+    "toughness": "1",
+    "scryfall_uri": "https://scryfall.com/card/ody/210/obstinate-familiar?utm_source=api"
+  },
+  {
+    "name": "Possessed Portal",
+    "oracle_id": "33345c43-3e77-4d9c-a9b5-5d723e1e5c69",
+    "mana_cost": "{8}",
+    "type_line": "Artifact",
+    "oracle_text": "If a player would draw a card, that player skips that draw instead.\nAt the beginning of each end step, each player sacrifices a permanent of their choice unless they discard a card.",
+    "scryfall_uri": "https://scryfall.com/card/5dn/144/possessed-portal?utm_source=api"
+  },
+  {
+    "name": "Forbidden Crypt",
+    "oracle_id": "8b34b211-985b-4934-bb3b-8e6672685ac2",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "If you would draw a card, return a card from your graveyard to your hand instead. If you can't, you lose the game.\nIf a card would be put into your graveyard from anywhere, exile that card instead.",
+    "scryfall_uri": "https://scryfall.com/card/6ed/132/forbidden-crypt?utm_source=api"
+  },
+  {
+    "name": "Out of the Tombs",
+    "oracle_id": "473a7998-669d-4181-83fe-f178a2e781f0",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your upkeep, put two eon counters on this enchantment, then mill cards equal to the number of eon counters on it.\nIf you would draw a card while your library has no cards in it, instead return a creature card from your graveyard to the battlefield. If you can't, you lose the game.",
+    "scryfall_uri": "https://scryfall.com/card/40k/46%E2%98%85/out-of-the-tombs?utm_source=api"
+  },
+  {
+    "name": "Chains of Mephistopheles",
+    "oracle_id": "eae87919-6322-4bd2-ae9c-b1ce25d686da",
+    "mana_cost": "{1}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "If a player would draw a card except the first one they draw in each of their draw steps, that player discards a card instead. If the player discards a card this way, they draw a card. If the player doesn't discard a card this way, they mill a card.",
+    "scryfall_uri": "https://scryfall.com/card/leg/91/chains-of-mephistopheles?utm_source=api"
+  },
+  {
+    "name": "Enduring Renewal",
+    "oracle_id": "47a080c4-ff04-4f52-aca0-2b8e4f4d931e",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Play with your hand revealed.\nIf you would draw a card, reveal the top card of your library instead. If it's a creature card, put it into your graveyard. Otherwise, draw a card.\nWhenever a creature is put into your graveyard from the battlefield, return it to your hand.",
+    "scryfall_uri": "https://scryfall.com/card/tsb/7/enduring-renewal?utm_source=api"
+  }
+]

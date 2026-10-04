@@ -1,3 +1,6 @@
+mod multi_source_damage;
+mod reciprocal_power_damage;
+mod shared_amount_recipient_set;
 use super::super::grammar::effects::fanout_shapes as fanout_grammar;
 use super::super::grammar::effects::parse_serial_damage_fanout_tokens;
 use super::super::keyword_static::{parse_pt_modifier, parse_pt_modifier_values};
@@ -1014,6 +1017,15 @@ fn parse_conditional_damage_pair_sentence(
 pub fn parse_compound_damage_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = reciprocal_power_damage::parse(tokens)? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = multi_source_damage::parse(tokens)? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = shared_amount_recipient_set::parse(tokens)? {
+        return Ok(Some(effects));
+    }
     if tokens
         .first()
         .is_some_and(|token| token.is_word("if") || token.is_word("unless"))
@@ -1141,9 +1153,14 @@ fn bind_damage_amount_to_removed_counter_count(
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 amount, ..
             })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => {
-                Some(amount)
-            }
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
+            }) => Some(amount),
             _ => None,
         };
         if let Some(amount) = amount
@@ -1178,6 +1195,8 @@ fn is_removed_counter_damage_fanout_member(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { .. })
         ),
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }

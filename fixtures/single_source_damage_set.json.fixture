@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Friendly Fire",
+    "oracle_id": "d4ab3e1d-e1c4-43c3-8068-1809938ab094",
+    "mana_cost": "{3}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Target creature's controller reveals a card at random from their hand. Friendly Fire deals damage to that creature and that player equal to the revealed card's mana value."
+  },
+  {
+    "name": "Volcanic Eruption",
+    "oracle_id": "4c15889e-3172-413b-b805-a2b7ad05f636",
+    "mana_cost": "{X}{U}{U}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Destroy X target Mountains. Volcanic Eruption deals damage to each creature and each player equal to the number of Mountains put into a graveyard this way."
+  }
+]

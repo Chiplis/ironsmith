@@ -750,6 +750,7 @@ pub(super) fn subject_verb_player_action_player_mut(
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn)
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn)
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon { .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeMonarch)
@@ -770,6 +771,7 @@ pub(super) fn subject_verb_player_action_player_mut(
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
@@ -846,6 +848,7 @@ pub(super) fn subject_verb_player_action_player(effect: &EffectAst) -> Option<Pl
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn)
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn)
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon { .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeMonarch)
@@ -866,6 +869,7 @@ pub(super) fn subject_verb_player_action_player(effect: &EffectAst) -> Option<Pl
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
@@ -1162,7 +1166,13 @@ pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
             action: SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. })
-                | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. }),
+                | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { .. }),
         }) => {
             if matches!(subject.player, PlayerAst::Implicit) {
                 subject.player = player;

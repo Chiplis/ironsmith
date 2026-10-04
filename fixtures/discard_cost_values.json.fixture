@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Gix, Yawgmoth Praetor",
+    "oracle_id": "928d977e-cff0-4e0e-83bb-16d73a754f35",
+    "text": "Mana cost: {1}{B}{B}\nType: Legendary Creature \u2014 Phyrexian Praetor\nPower/Toughness: 3/3\nWhenever a creature deals combat damage to one of your opponents, its controller may pay 1 life. If they do, they draw a card.\n{4}{B}{B}{B}, Discard X cards: Exile the top X cards of target opponent's library. You may play lands and cast spells from among cards exiled this way without paying their mana costs.",
+    "proposed_coverage": "partial",
+    "remaining_blocker": "Immediate optional play/cast over the whole exiled pool needs ordered selection and correct land-play rules; the current singular CastTaggedEffect cannot represent the plural clause alone."
+  },
+  {
+    "name": "Knollspine Invocation",
+    "oracle_id": "a45fd5cc-0085-4d4f-872b-b9251e8706cf",
+    "text": "Mana cost: {1}{R}{R}\nType: Enchantment\n{X}, Discard a card with mana value X: This enchantment deals X damage to any target.",
+    "proposed_coverage": "source_implemented_all_validation_deferred",
+    "remaining_blocker": "Stage40 source review admits the transaction/Undo boundary; authored native and peer regressions and full corpus validation remain unrun."
+  },
+  {
+    "name": "Kozilek, the Great Distortion",
+    "oracle_id": "4c1c1537-e519-4e2f-9bc2-d34b289d4487",
+    "text": "Mana cost: {8}{C}{C}\nType: Legendary Creature \u2014 Eldrazi\nPower/Toughness: 12/12\nWhen you cast this spell, if you have fewer than seven cards in hand, draw cards equal to the difference.\nMenace\nDiscard a card with mana value X: Counter target spell with mana value X.",
+    "proposed_coverage": "source_implemented_all_validation_deferred",
+    "closure_dependency": "Joint full-card proposal after relative-hand quantities bfea8a63 and discard costs6e29de42 are integrated.",
+    "remaining_blocker": "Stage40 source review admits the transaction/Undo boundary; authored native and peer regressions and full corpus validation remain unrun."
+  },
+  {
+    "name": "Krovikan Sorcerer",
+    "oracle_id": "00e6808c-1f9e-4b6a-807c-83f433b81a41",
+    "text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Wizard Sorcerer\nPower/Toughness: 1/1\n{T}, Discard a nonblack card: Draw a card.\n{T}, Discard a black card: Draw two cards, then discard one of them.",
+    "proposed_coverage": "source_implemented_all_validation_deferred",
+    "remaining_blocker": "Stage40 source review admits the transaction/Undo boundary; authored native and peer regressions and full corpus validation remain unrun."
+  },
+  {
+    "name": "Sanctum Spirit",
+    "oracle_id": "1e640846-8f50-4a94-b7aa-f228124290d3",
+    "text": "Mana cost: {3}{W}\nType: Creature \u2014 Spirit\nPower/Toughness: 3/2\nLifelink\nDiscard a historic card: This creature gains indestructible until end of turn. (Artifacts, legendaries, and Sagas are historic.)",
+    "proposed_coverage": "source_implemented_all_validation_deferred",
+    "remaining_blocker": "Stage40 source review admits the transaction/Undo boundary; authored native and peer regressions and full corpus validation remain unrun."
+  }
+]

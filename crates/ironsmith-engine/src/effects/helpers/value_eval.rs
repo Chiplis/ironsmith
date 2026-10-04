@@ -2,9 +2,11 @@
 use super::*;
 use crate::continuous::value_context::LayerValueContext;
 mod context;
+mod damage_history;
 pub(crate) use context::EvaluationContext;
 pub(crate) use context::NumericProperty;
 use context::Reduction;
+pub(crate) use damage_history::resolve_damage_history_for_comparison;
 
 pub(crate) fn resolve_continuous(value: &Value, layer: LayerValueContext<'_, '_>) -> i32 {
     let context = EvaluationContext::continuous(layer);
@@ -36,6 +38,13 @@ pub(crate) fn resolve_wide(
             resolve_wide(value,context)?.checked_div_euclid(i64::from(*divisor)).ok_or_else(|| ExecutionError::UnresolvableValue("numeric division exceeds the wide value range".into()))
         }
         Value::Min(left, right) => Ok(i64::from(resolve_wide(left, context)?.min(resolve_wide(right, context)?))),
+        Value::DamageHistory(query) => {
+            if let Some(execution) = context.execution() {
+                damage_history::resolve_damage_history_for_comparison(game, query, execution)
+            } else {
+                damage_history::resolve_damage_history_for_comparison(game, query, &ExecutionContext::new_default(context.source, context.controller))
+            }
+        },
         Value::Count(filter) if filter_reads_source_devoured(filter) => {
             Ok(i64::from(count_source_devoured(filter, context)))
         }
@@ -324,8 +333,12 @@ pub(crate) fn resolve_wide(
         Value::SourcePower => context.source_number(NumericProperty::Power).map(i64::from),
         Value::SourceToughness => context.source_number(NumericProperty::Toughness).map(i64::from),
         Value::PowerOf(target_spec) => context.object_number(target_spec, NumericProperty::Power).map(i64::from),
+        Value::BasePowerOf(target_spec) => context.object_number(target_spec, NumericProperty::BasePower).map(i64::from),
         Value::ToughnessOf(target_spec) => {
             context.object_number(target_spec, NumericProperty::Toughness).map(i64::from)
+        }
+        Value::KicksPaidOf(target_spec) => {
+            context.object_number(target_spec, NumericProperty::KickerCount).map(i64::from)
         }
         Value::ManaSpentToCast(target_spec) => {
             context.object_number(target_spec, NumericProperty::ManaSpent).map(i64::from)
@@ -433,6 +446,26 @@ pub(crate) fn resolve_wide(
         Value::NameStickerCharacterCountOnSource { character, .. } => {
             Ok(i64::from(game.name_sticker_character_count_on_object(context.source, *character) as i64))
         }
+        Value::MaximumLifeTotal(players) => Ok(context
+            .aggregate_player_ids(value, players)?
+            .into_iter()
+            .filter_map(|id| {
+                game.player(id)
+                    .filter(|player| player.is_in_game())
+                    .map(|player| i64::from(player.life))
+            })
+            .max()
+            .unwrap_or(0)),
+        Value::CountPlayersBelowHalfStartingLifeTotal(players) => Ok(context
+            .aggregate_player_ids(value, players)?
+            .into_iter()
+            .filter(|id| {
+                game.player(*id).is_some_and(|player| {
+                    player.is_in_game()
+                        && 2 * i64::from(player.life) < i64::from(player.starting_life)
+                })
+            })
+            .count() as i64),
         Value::LifeTotal(player_spec) => {
             let player = context.single_player(value, player_spec)?;
             Ok(i64::from(player.life))
@@ -476,7 +509,7 @@ pub(crate) fn resolve_wide(
         }
         Value::HalfLifeTotalRoundedUp(player_spec) => {
             let player = context.single_player(value, player_spec)?;
-            Ok(i64::from((player.life + 1).div_euclid(2)))
+            Ok(((i64::from(player.life) + 1).div_euclid(2)))
         }
         Value::HalfLifeTotalRoundedDown(player_spec) => {
             let player = context.single_player(value, player_spec)?;
@@ -484,7 +517,7 @@ pub(crate) fn resolve_wide(
         }
         Value::HalfStartingLifeTotalRoundedUp(player_spec) => {
             let player = context.single_player(value, player_spec)?;
-            Ok(i64::from((player.starting_life + 1).div_euclid(2)))
+            Ok(((i64::from(player.starting_life) + 1).div_euclid(2)))
         }
         Value::HalfStartingLifeTotalRoundedDown(player_spec) => {
             let player = context.single_player(value, player_spec)?;
@@ -791,6 +824,22 @@ pub(crate) fn resolve_wide(
                 });
             Ok(i64::from(spent.map_or(0, |mana| mana.total() as i64)))
         }
+        Value::ManaSpentOnX(color) => {
+            // A missing legacy receipt is unknown. Do not reinterpret an
+            // imported paid spell as an unspent copy, or replace exact live
+            // evidence with an older source snapshot.
+            let allocation = if let Some(source) = game.object(context.source) {
+                source.mana_spent_on_x
+            } else {
+                context.execution().and_then(|ctx| ctx.source_snapshot.as_ref())
+                    .and_then(|snapshot| snapshot.mana_spent_on_x)
+            }.ok_or_else(|| ExecutionError::UnresolvableValue(
+                "actual mana allocated to X was not retained".into()))?;
+            let amount = allocation.of_color(*color);
+            i64::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
+                resource: "actual mana spent on X", requested: u128::from(amount), maximum: i64::MAX as u128,
+            })
+        }
         Value::ManaSymbolSpentToCastThisSpell { symbol, .. } => {
             let Some(source_obj) = game.object(context.source) else {
                 return Ok(i64::from(0));
@@ -831,6 +880,21 @@ pub(crate) fn resolve_wide(
                     .mana_from_source_spent_to_cast_this_spell(value, source_filter)))
             }
         }
+        Value::CasterManaSpentToCastTriggeringObject => {
+            let ctx = context.require_execution(value, RESOLUTION_ONLY);
+            let spent = ctx.triggering_event.as_ref()
+                .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+                .and_then(|cast| match &cast.snapshot {
+                    Some(snapshot) => snapshot.caster_mana_spent_to_cast,
+                    None => game.object(cast.spell).and_then(|object| object.caster_mana_spent_to_cast),
+                });
+            let spent = spent.ok_or_else(|| ExecutionError::UnresolvableValue(
+                "triggering spell has no captured caster payment evidence".into(),
+            ))?;
+            i64::try_from(spent).map_err(|_| ExecutionError::UnresolvableValue(
+                "triggering spell caster payment exceeds the integer value range".into(),
+            ))
+        }
         Value::ManaSpentToCastTriggeringObject => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
             {
@@ -855,7 +919,7 @@ pub(crate) fn resolve_wide(
             let total = player_ids
                 .iter()
                 .filter_map(|player_id| game.player(*player_id))
-                .map(|player| player.mana_pool.total() as i64)
+                .map(|player| player.mana_pool.total_wide() as i64)
                 .sum::<i64>();
             Ok(i64::from(total))
         }
@@ -890,6 +954,27 @@ pub(crate) fn resolve_wide(
             .unwrap_or(i32::MAX))),
         Value::LastNotedLifeTotal => game
             .noted_life_total_for_source(context.source)
+            .or_else(|| {
+                // Live and explicitly re-noted values above are authoritative.
+                // An absent source uses its exact departure receipt, never the
+                // new incarnation of the same stable card. Pending stack LKI
+                // also preserves the receipt across turn-history cleanup.
+                if game.object(context.source).is_some() {
+                    return None;
+                }
+                let ctx = context.execution()?;
+                game.turn_store
+                    .turn_history
+                    .source_departure_snapshot(context.source)
+                    .cloned()
+                    .or_else(|| {
+                        ctx.source_snapshot
+                            .as_ref()
+                            .filter(|snapshot| snapshot.object_id == context.source)
+                            .cloned()
+                    })
+                    .and_then(|snapshot| snapshot.noted_life_total)
+            })
             .map(|n| Ok(i64::from(n)))
             .unwrap_or_else(|| {
                 context.unavailable(
@@ -1038,23 +1123,25 @@ pub(crate) fn resolve_wide(
         Value::CountersOnFilterCandidate(_) => Ok(i64::from(0)),
         Value::CountersOnSource(counter_type) => {
             if let Some(ctx) = context.execution() {
-                {
-                    // Get the number of counters of the specified type on the source
-                    if let Some(snapshot) = source_lki_for_moved_current_object(game, ctx) {
-                        Ok(i64::from(snapshot.counters.get(counter_type).copied().unwrap_or(0) as i64))
-                    } else if let Some(source) = game.object(ctx.source) {
-                        Ok(i64::from(source.counters.get(counter_type).copied().unwrap_or(0) as i64))
-                    } else if let Some(snapshot) = &ctx.source_snapshot {
-                        Ok(i64::from(snapshot.counters.get(counter_type).copied().unwrap_or(0) as i64))
-                    } else {
-                        Ok(i64::from(0))
-                    }
-                }
+                let amount = if let Some(snapshot) = source_lki_for_moved_current_object(game, ctx) {
+                    snapshot.counters.get(counter_type).copied().unwrap_or(0)
+                } else if let Some(source) = game.object(ctx.source) {
+                    source.counters.get(counter_type).copied().unwrap_or(0)
+                } else if let Some(snapshot) = &ctx.source_snapshot {
+                    snapshot.counters.get(counter_type).copied().unwrap_or(0)
+                } else {
+                    return Err(ExecutionError::UnresolvableValue(
+                        "counter source has neither current nor retained characteristics".into()));
+                };
+                Ok(i64::from(amount))
             } else {
                 Ok(i64::from(context.layer().counters_on_source(value, counter_type)))
             }
         }
         Value::CountersOn(spec, counter_type) => {
+            if matches!(spec.base(), ChooseSpec::Source) && let Some(kind) = counter_type {
+                return resolve_wide(&Value::CountersOnSource(*kind), context);
+            }
             // Counters on players ("each counter among players and
             // permanents", Lumbering Megasloth, CR 122.1).
             if let ChooseSpec::EachPlayer(player_filter) = spec.base() {
@@ -1198,6 +1285,37 @@ fn resolve_event_value(
     spec: &EventValueSpec,
 ) -> Result<i64, ExecutionError> {
     match spec {
+        EventValueSpec::LifeChange { gained, for_controller } => {
+            let event = ctx.triggering_event.as_ref().ok_or_else(|| ExecutionError::UnresolvableValue("life quantity requires its triggering event".into()))?;
+            let (player, amount) = if *gained {
+                let life = event.downcast::<LifeGainEvent>().ok_or_else(|| ExecutionError::UnresolvableValue("life-gain quantity requires a life-gain event".into()))?;
+                (life.player, life.amount)
+            } else {
+                let life = event.downcast::<LifeLossEvent>().ok_or_else(|| ExecutionError::UnresolvableValue("life-loss quantity requires a life-loss event".into()))?;
+                (life.player, life.amount)
+            };
+            if *for_controller && player != ctx.controller {
+                return Err(ExecutionError::UnresolvableValue("life quantity names another participant".into()));
+            }
+            crate::events::damage::checked_damage_count(
+                u128::from(amount),
+                "life-change event scalar",
+            ).map(i64::from)
+        }
+        EventValueSpec::DieBatchTotal | EventValueSpec::DieResultsAtLeast(_) => {
+            let roll = ctx.triggering_event.as_ref()
+                .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
+                .ok_or_else(||ExecutionError::UnresolvableValue("die batch value requires its completed roll event".into()))?;
+            let amount: u128 = match spec {
+                EventValueSpec::DieBatchTotal => roll.numeric_batch_results().map(u128::from).sum(),
+                EventValueSpec::DieResultsAtLeast(minimum) => roll.numeric_batch_results()
+                    .filter(|result| i64::from(*result) >= i64::from(*minimum)).count() as u128,
+                _ => unreachable!(),
+            };
+            i64::try_from(amount).map_err(|_|ExecutionError::ResourceLimitExceeded {
+                resource: "die-roll batch quantity", requested: amount, maximum: i64::MAX as u128,
+            })
+        }
         EventValueSpec::DieResult => {
             let roll = ctx
                 .triggering_event
@@ -1225,6 +1343,9 @@ fn resolve_event_value(
                     "EventValue(Amount) requires a triggering event".to_string(),
                 ));
             };
+            if let Some(payment) = triggering_event.downcast::<crate::events::LifePaidEvent>() {
+                return crate::events::damage::checked_damage_count(u128::from(payment.amount), "life payment event amount").map(i64::from);
+            }
             if let Some(life_loss_event) = triggering_event.downcast::<LifeLossEvent>() {
                 return Ok(i64::from(life_loss_event.amount as i64));
             }

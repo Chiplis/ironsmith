@@ -13,6 +13,7 @@ pub struct TransformsTrigger {
     /// Watch every permanent matching this filter instead of only the
     /// trigger's source ("Whenever a permanent you control transforms").
     pub permanent_filter: Option<crate::target::ObjectFilter>,
+    pub destination_filter: Option<crate::target::ObjectFilter>,
 }
 
 impl TransformsTrigger {
@@ -21,11 +22,17 @@ impl TransformsTrigger {
             this_object_surface: None,
             destination_name: None,
             permanent_filter: None,
+            destination_filter: None,
         }
     }
 
     pub fn permanent_filter(mut self, filter: crate::target::ObjectFilter) -> Self {
         self.permanent_filter = Some(filter);
+        self
+    }
+
+    pub fn destination_filter(mut self, filter: crate::target::ObjectFilter) -> Self {
+        self.destination_filter = Some(filter);
         self
     }
 
@@ -73,11 +80,13 @@ impl TriggerMatcher for TransformsTrigger {
             return false;
         };
         if let Some(filter) = &self.permanent_filter {
-            use crate::filter::ObjectFilterExt as _;
-            return ctx
-                .game
-                .object(e.permanent)
-                .is_some_and(|object| filter.matches(object, &ctx.filter_ctx, ctx.game));
+            let matches = |snapshot| {
+                super::permanent_lifecycle::matches_completed(filter, snapshot, ctx)
+                    && self.destination_filter.as_ref().is_none_or(|destination| {
+                        super::permanent_lifecycle::matches_completed(destination, snapshot, ctx)
+                    })
+            };
+            return e.snapshot.as_ref().is_some_and(matches);
         }
         if e.permanent != ctx.source_id {
             return false;
@@ -92,20 +101,37 @@ impl TriggerMatcher for TransformsTrigger {
             .as_ref()
             .filter(|name| !destination_is_self_reference(name))
         {
-            return ctx
-                .game
-                .object(e.permanent)
-                .is_some_and(|object| object.name == *destination_name);
+            return e
+                .snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.name == *destination_name)
+                .unwrap_or_else(|| {
+                    ctx.game
+                        .object(e.permanent)
+                        .is_some_and(|object| object.name == *destination_name)
+                });
         }
         true
+    }
+
+    fn uses_snapshot(&self) -> bool {
+        self.permanent_filter.is_some()
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::Transformed])
     }
 
     fn display(&self) -> String {
         if let Some(filter) = &self.permanent_filter {
             use crate::filter::ObjectFilterExt as _;
             return format!(
-                "Whenever {} transforms",
-                filter.description()
+                "Whenever {} transforms{}",
+                filter.description(),
+                self.destination_filter
+                    .as_ref()
+                    .map(|destination| format!(" into {}", destination.description()))
+                    .unwrap_or_default()
             );
         }
         if self.destination_name.is_some() {

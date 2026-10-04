@@ -23,6 +23,17 @@ impl TokensCreatedTrigger {
     }
 }
 
+impl TokensCreatedTrigger {
+    fn matched_count(&self, created: &CreateTokensEvent, ctx: &TriggerContext) -> u32 {
+        if !self.player.matches_player(created.controller, &ctx.filter_ctx) { return 0; }
+        let count = created.matching_count(|key| created.group_object(key).map_or_else(
+            || self.filter == ObjectFilter::default(),
+            |token| self.filter.matches(&token, &ctx.filter_ctx, ctx.game),
+        ));
+        u32::try_from(count).expect("published token groups passed checked creation preflight")
+    }
+}
+
 impl TriggerMatcher for TokensCreatedTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::CreateTokens {
@@ -31,17 +42,12 @@ impl TriggerMatcher for TokensCreatedTrigger {
         let Some(created) = event.downcast::<CreateTokensEvent>() else {
             return false;
         };
-        if created.count == 0
-            || !self
-                .player
-                .matches_player(created.controller, &ctx.filter_ctx)
-        {
-            return false;
-        }
-        let Some(token) = &created.token else {
-            return self.filter == ObjectFilter::default();
-        };
-        self.filter.matches(token, &ctx.filter_ctx, ctx.game)
+        self.matched_count(created, ctx) > 0
+    }
+
+    fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
+        let count = event.downcast::<CreateTokensEvent>().map_or(0, |created| self.matched_count(created, ctx));
+        if self.one_or_more { count.min(1) } else { count }
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
@@ -54,7 +60,7 @@ impl TriggerMatcher for TokensCreatedTrigger {
         }
         event
             .downcast::<CreateTokensEvent>()
-            .map_or(1, |created| created.count.max(1))
+            .map_or(1, |created| u32::try_from(created.total_count()).expect("published token groups passed checked creation preflight").max(1))
     }
 
     fn display(&self) -> String {

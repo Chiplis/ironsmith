@@ -21,7 +21,15 @@ impl EffectExecutor for TargetOnlyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if let Ok(objects) = resolve_objects_for_effect(game, ctx, &self.target)
+        // Count bounds constrain announcement (CR 601.2c), not how many of
+        // those targets must survive resolution (CR 608.2b). Synthetic object
+        // declarations retain every surviving member for later instructions.
+        let member_spec = if !self.explicit_declaration && self.target.is_target() {
+            ChooseSpec::target(self.target.base().clone())
+        } else {
+            self.target.clone()
+        };
+        if let Ok(objects) = resolve_objects_for_effect(game, ctx, &member_spec)
             && !objects.is_empty()
         {
             return Ok(EffectOutcome::count(objects.len() as i32)
@@ -37,7 +45,11 @@ impl EffectExecutor for TargetOnlyEffect {
         if self.target.count().min == 0 {
             return Ok(EffectOutcome::count(0));
         }
-        Err(ExecutionError::InvalidTarget)
+        if self.explicit_declaration {
+            Err(ExecutionError::InvalidTarget)
+        } else {
+            Ok(EffectOutcome::target_invalid())
+        }
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -75,7 +87,7 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
         let target = ChooseSpec::target(ChooseSpec::creature());
-        let required = TargetOnlyEffect::new(target.clone());
+        let required = TargetOnlyEffect::explicit(target.clone());
         assert!(matches!(
             required.execute(&mut game, &mut ctx),
             Err(ExecutionError::InvalidTarget)
@@ -86,5 +98,33 @@ mod tests {
             optional.execute(&mut game, &mut ctx).unwrap().as_count(),
             Some(0)
         );
+    }
+}
+
+#[cfg(test)]
+mod partial_target_declaration_tests {
+    use super::*;
+    #[test]
+    fn synthetic_count_bounds_do_not_erase_a_surviving_announced_target() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let definition =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Survivor")
+                .card_types(vec![crate::types::CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 4))
+                .build();
+        let survivor =
+            game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(survivor)];
+        let target = ChooseSpec::target(ChooseSpec::creature())
+            .with_count(crate::effect::ChoiceCount::exactly(2));
+        let declaration = TargetOnlyEffect::new(target);
+        assert_eq!(declaration.get_target_count().unwrap().min, 2);
+        let outcome = declaration.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(outcome.as_count(), Some(1));
+        assert_eq!(outcome.chosen_objects().unwrap()[0], survivor);
+        ctx.targets.clear();
+        assert!(declaration.execute(&mut game, &mut ctx).is_ok());
     }
 }

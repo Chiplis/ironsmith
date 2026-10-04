@@ -12,6 +12,8 @@ pub struct SpellCounteredEvent {
     pub spell: ObjectId,
     pub controller: PlayerId,
     pub snapshot: Option<ObjectSnapshot>,
+    pub cause: Option<crate::events::cause::EventCause>,
+    pub complete_source_lookback: bool,
 }
 
 impl SpellCounteredEvent {
@@ -20,11 +22,22 @@ impl SpellCounteredEvent {
             spell,
             controller,
             snapshot,
+            cause: None,
+            complete_source_lookback: false,
         }
+    }
+    pub fn with_complete_source_lookback(mut self) -> Self {
+        self.complete_source_lookback = true; self
+    }
+    pub fn with_cause(mut self, cause: crate::events::cause::EventCause) -> Self {
+        self.cause = Some(cause);
+        self
     }
 }
 
 impl GameEventType for SpellCounteredEvent {
+    fn cause(&self) -> Option<&crate::events::cause::EventCause> { self.cause.as_ref() }
+
     fn event_kind(&self) -> EventKind {
         EventKind::SpellCountered
     }
@@ -47,6 +60,10 @@ impl GameEventType for SpellCounteredEvent {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn source_object(&self) -> Option<ObjectId> {
+        self.cause.as_ref().and_then(|cause| cause.source)
     }
 
     fn object_id(&self) -> Option<ObjectId> {

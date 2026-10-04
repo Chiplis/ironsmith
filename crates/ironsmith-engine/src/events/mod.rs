@@ -97,8 +97,8 @@ pub use traits::{
 pub use cards::{DiscardEvent, DrawEvent};
 pub use counters::{MoveCountersEvent, PutCountersEvent, RemoveCountersEvent};
 pub use damage::{DamageEvent, DamagePreventedEvent, PreventedDamage};
-pub use life::{LifeGainEvent, LifeLossEvent};
-pub use mana::{ManaAddedEvent, ManaUnitSpentEvent};
+pub use life::{LifeGainEvent, LifeLossEvent, LifePaidEvent};
+pub use mana::{ManaAddedEvent, ManaLostEvent, ManaUnitSpentEvent};
 pub use permanents::{DestroyEvent, SacrificeEvent, TapEvent, UntapEvent};
 pub use tokens::CreateTokensEvent;
 pub use zones::{EnterBattlefieldEvent, ZoneChangeEvent};
@@ -106,13 +106,13 @@ pub use zones::{EnterBattlefieldEvent, ZoneChangeEvent};
 // Re-export new event types
 pub use combat::{
     AttackEventTarget, CreatureAttackedAndUnblockedEvent, CreatureAttackedEvent,
-    CreatureBecameBlockedEvent, CreatureBlockedEvent,
+    CreatureBecameBlockedEvent, CreatureBlockedEvent, PlayerAttackDeclarationEvent,
 };
 pub use other::{
     BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent, CoinFlippedEvent,
     ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
     KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
-    MutatedEvent, ObjectBecameUnattachedEvent, PermanentPhasedOutEvent, PermanentTappedEvent,
+    CardMilledEvent, MutatedEvent, ObjectBecameAttachedEvent, ObjectBecameUnattachedEvent, PermanentPhasedInEvent, PermanentPhasedOutEvent, PermanentTappedEvent,
     PermanentUntappedEvent, PlayerLosesGameEvent, PlayerVote, PlayersFinishedVotingEvent,
     SearchLibraryEvent, ShuffleLibraryEvent, SpellCounteredEvent, StateTriggerEvent,
     TransformedEvent, TurnedFaceUpEvent, WouldKeywordActionMatcher,
@@ -331,6 +331,7 @@ impl Event {
         Self::new_with_provenance(
             EnterBattlefieldEvent {
                 object,
+            completed_snapshot: None,
                 from,
                 enters_tapped,
                 enters_with_counters,
@@ -543,3 +544,5 @@ mod tests {
         assert_eq!(event.kind(), cloned.kind());
     }
 }
+
+pub use other::MonarchChangedEvent;

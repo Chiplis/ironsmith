@@ -17,8 +17,29 @@ pub fn parse_become_base_pt_words<'a>(
         .iter()
         .find(|head| permission_shapes::prefix_words(tail, head))?;
     let value_words = tail.get(head.len()..)?;
-    if permission_shapes::prefix_words(value_words, &["each", "equal", "to"]) {
-        let expression_words = value_words.get(3..)?;
+    let expression_words = if permission_shapes::prefix_words(value_words, &["each", "equal", "to"])
+    {
+        value_words.get(3..)
+    } else if permission_shapes::prefix_words(value_words, &["equal", "to"]) {
+        value_words.get(2..)
+    } else {
+        None
+    };
+    if let Some(expression_words) = expression_words {
+        if let Some((power, toughness)) =
+            crate::grammar::shared_util::value_expr::parse_power_toughness_value_pair_words(
+                expression_words,
+            )
+        {
+            if value_words.first() == Some(&"each") {
+                return None;
+            }
+            return Some(BecomePowerToughnessTail {
+                descriptor_words: &words[..with],
+                power,
+                toughness,
+            });
+        }
         let (value, consumed) = parse_become_iterated_counter_value_words(expression_words)
             .map(|value| (value, expression_words.len()))
             .or_else(|| crate::util::parse_value_expr_words(expression_words))?;

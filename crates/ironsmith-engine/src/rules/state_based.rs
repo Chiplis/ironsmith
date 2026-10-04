@@ -357,7 +357,7 @@ pub(crate) struct SbaCandidateCache {
     effects: Option<std::sync::Arc<Vec<crate::continuous::ContinuousEffect>>>,
     context_revision: Option<SbaContextKey>,
     entries: crate::game_state::PersistentMap<ObjectId, (u128, u16)>,
-    categories: [im::OrdMap<u128, ObjectId>; 10],
+    categories: [im::OrdMap<u128, ObjectId>; 12],
     permanent_actions: im::OrdMap<u128, Vec<StateBasedAction>>,
     restriction_cursors: [Option<crate::incremental::ChangeCursor>; 2],
 }
@@ -479,7 +479,11 @@ impl SbaCandidates {
                 })) << 8)
                 | (u16::from(chars.static_abilities.iter().any(|ability| {
                     ability.id() == StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower
-                })) << 9);
+                })) << 9)
+                | (u16::from(chars.card_types.contains(&CardType::Planeswalker)) << 10)
+                | (u16::from(chars.static_abilities.iter().any(|ability| {
+                    ability.id() == StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty
+                })) << 11);
             changed_flags |= flags;
             cache.entries.insert(id, (label, flags));
             for (i, category) in cache.categories.iter_mut().enumerate() {
@@ -533,6 +537,16 @@ impl SbaCandidates {
         };
         if !permanent_dirty.is_empty() && !cache.categories[9].is_empty() {
             permanent_dirty.extend(cache.categories[7].values().copied());
+        }
+        // The zero-loyalty rule is a live controller-scoped permission. A
+        // source leaving, phasing, changing control, or losing the ability must
+        // revisit otherwise unchanged planeswalkers, including after removal
+        // of the last permission source. General object changes can alter the
+        // permission's conditional/derived abilities as well.
+        if changed_flags & (1 << 11) != 0
+            || (any_object_change && !cache.categories[11].is_empty())
+        {
+            permanent_dirty.extend(cache.categories[10].values().copied());
         }
         permanent_dirty.sort_unstable();
         permanent_dirty.dedup();
@@ -1346,7 +1360,9 @@ fn check_permanent_sbas_for_ids(
                 .get(&CounterType::Loyalty)
                 .copied()
                 .unwrap_or(0);
-            if loyalty_counters == 0 {
+            if loyalty_counters == 0
+                && !controller_ignores_zero_loyalty_sba(game, view, game.controller_of(obj))
+            {
                 actions.push(StateBasedAction::PlaneswalkerDies(obj_id));
                 continue;
             }
@@ -1482,6 +1498,21 @@ fn lethal_damage_threshold_for_creature(
     creature_id: ObjectId,
 ) -> Option<i32> {
     lethal_damage_threshold_for_creature_with_rule(game, view, creature_id, None)
+}
+
+fn controller_ignores_zero_loyalty_sba(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    controller: PlayerId,
+) -> bool {
+    game.battlefield.iter().copied().any(|source| {
+        !game.is_phased_out(source)
+            && game.controller_of_id(source) == Some(controller)
+            && view.object_has_static_ability_id(
+                source,
+                StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty,
+            )
+    })
 }
 
 fn lethal_damage_threshold_for_creature_with_rule(
@@ -2209,7 +2240,7 @@ fn prepare_and_apply_state_based_actions(
         }
         any_applied = true;
     }
-    for receipt in &mut loss_receipts { crate::events::processing::commit_player_loss_receipt(game, receipt); }
+    crate::events::processing::commit_player_loss_receipts(game, &mut loss_receipts)?;
     // Freeze both event families before any addition can move another arrival.
     let frozen_zones = crate::effects::zones::freeze_zone_change_receipts(game, committed_zones);
     let frozen_destroy = crate::events::processing::freeze_destroy_receipts(game, destroy_receipts);

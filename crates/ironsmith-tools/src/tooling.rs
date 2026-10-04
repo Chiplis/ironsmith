@@ -557,33 +557,7 @@ pub fn load_card_payloads_by_names(
 }
 
 pub fn parse_card_with_fallback(name: &str, parse_input: &str) -> ParseAttempt {
-    let strict_attempt = parse_card(name, parse_input, false);
-    if strict_attempt.status == ParseStatus::StrictCompiled {
-        return strict_attempt;
-    }
-    let strict_error = strict_attempt.parse_error.clone();
-    let allow_attempt = parse_card(name, parse_input, true);
-    if allow_attempt.status == ParseStatus::StrictCompiled {
-        let mut parse_loss = allow_attempt.parse_loss;
-        parse_loss.push_reason(
-            "allow_unsupported_fallback",
-            strict_error
-                .as_deref()
-                .unwrap_or("strict parse failed before allow-unsupported fallback"),
-        );
-        return ParseAttempt {
-            status: ParseStatus::CompiledWithAllowUnsupported,
-            parse_error: None,
-            definition: allow_attempt.definition,
-            parse_loss,
-        };
-    }
-    ParseAttempt {
-        status: ParseStatus::ParseFailed,
-        parse_error: strict_error,
-        definition: None,
-        parse_loss: strict_attempt.parse_loss,
-    }
+    parse_with_fallback(|allow_unsupported| parse_card(name, parse_input, allow_unsupported))
 }
 
 pub fn compile_snapshot_from_payload(payload: &CardPayload) -> CompilationSnapshot {
@@ -2793,67 +2767,41 @@ fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
 }
 
 fn parse_card(name: &str, parse_input: &str, allow_unsupported: bool) -> ParseAttempt {
-    with_allow_unsupported(allow_unsupported, || {
-        parse_trace::event(format!(
-            "tool snapshot parse: card=\"{}\" allow_unsupported={} lines={}",
-            name,
-            allow_unsupported,
-            parse_input.lines().count()
-        ));
-        let (result, parse_loss) = parse_loss::capture(|| {
-            panic::catch_unwind(AssertUnwindSafe(|| {
-                ironsmith_registry::compile_builder_to_runtime_definition(
-                    CompilerCardDefinitionBuilder::new(
-                        CardId::from_raw(FIXED_SNAPSHOT_CARD_ID),
-                        name,
-                    ),
-                    parse_input.to_string(),
-                    allow_unsupported,
-                )
-            }))
-        });
-        match result {
-            Ok(Ok(definition)) => ParseAttempt {
-                status: ParseStatus::StrictCompiled,
-                parse_error: None,
-                definition: Some(definition),
-                parse_loss,
-            },
-            Ok(Err(err)) => ParseAttempt {
-                status: ParseStatus::ParseFailed,
-                parse_error: Some(format!("{err:?}")),
-                definition: None,
-                parse_loss,
-            },
-            Err(payload) => ParseAttempt {
-                status: ParseStatus::ParseFailed,
-                parse_error: Some(format!("panic: {}", panic_payload_to_string(payload))),
-                definition: None,
-                parse_loss,
-            },
-        }
-    })
-}
-
-fn with_allow_unsupported<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
-    let original = env::var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED").ok();
-    unsafe {
-        if enabled {
-            env::set_var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED", "1");
-        } else {
-            env::remove_var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED");
-        }
-    }
-    let result = f();
-    match original {
-        Some(value) => unsafe {
-            env::set_var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED", value);
+    parse_trace::event(format!(
+        "tool snapshot parse: card=\"{}\" allow_unsupported={} lines={}",
+        name,
+        allow_unsupported,
+        parse_input.lines().count()
+    ));
+    let (result, parse_loss) = parse_loss::capture(|| {
+        panic::catch_unwind(AssertUnwindSafe(|| {
+            ironsmith_registry::compile_builder_to_runtime_definition(
+                CompilerCardDefinitionBuilder::new(CardId::from_raw(FIXED_SNAPSHOT_CARD_ID), name),
+                parse_input.to_string(),
+                allow_unsupported,
+            )
+        }))
+    });
+    match result {
+        Ok(Ok(definition)) => ParseAttempt {
+            status: ParseStatus::StrictCompiled,
+            parse_error: None,
+            definition: Some(definition),
+            parse_loss,
         },
-        None => unsafe {
-            env::remove_var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED");
+        Ok(Err(err)) => ParseAttempt {
+            status: ParseStatus::ParseFailed,
+            parse_error: Some(format!("{err:?}")),
+            definition: None,
+            parse_loss,
+        },
+        Err(payload) => ParseAttempt {
+            status: ParseStatus::ParseFailed,
+            parse_error: Some(format!("panic: {}", panic_payload_to_string(payload))),
+            definition: None,
+            parse_loss,
         },
     }
-    result
 }
 
 fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
@@ -3140,7 +3088,9 @@ fn decorate_definition_from_payload(definition: &mut CardDefinition, payload: &C
 fn definition_from_payload(
     payload: &CardPayload,
     card_id: CardId,
+    allow_unsupported: bool,
 ) -> Result<CardDefinition, String> {
+    // Snapshot workers run concurrently; keep policy explicit for both attempts.
     let parse_name = payload.parse_name.as_deref().unwrap_or(&payload.name);
     let builder = CompilerCardDefinitionBuilder::new(card_id, parse_name);
     parse_trace::event(format!(
@@ -3151,7 +3101,7 @@ fn definition_from_payload(
     let mut definition = match ironsmith_registry::compile_builder_to_runtime_definition(
         builder.clone(),
         payload.parse_input.clone(),
-        false,
+        allow_unsupported,
     ) {
         Ok(definition) => definition,
         Err(parse_input_err) => {
@@ -3165,7 +3115,7 @@ fn definition_from_payload(
             ironsmith_registry::compile_builder_to_runtime_definition(
                 builder,
                 payload.oracle_text.clone(),
-                false,
+                allow_unsupported,
             )
             .map_err(|oracle_err| {
                 format!("{parse_input_err}; oracle-only fallback also failed: {oracle_err}")
@@ -3184,48 +3134,54 @@ pub fn compile_runtime_definition_from_payload(
     payload: &CardPayload,
 ) -> Result<CardDefinition, String> {
     panic::catch_unwind(AssertUnwindSafe(|| {
-        definition_from_payload(payload, CardId::new())
+        definition_from_payload(payload, CardId::new(), false)
     }))
     .map_err(|payload| format!("panic: {}", panic_payload_to_string(payload)))?
 }
 
 fn parse_card_payload(payload: &CardPayload, allow_unsupported: bool) -> ParseAttempt {
-    with_allow_unsupported(allow_unsupported, || {
-        let (result, parse_loss) = parse_loss::capture(|| {
-            panic::catch_unwind(AssertUnwindSafe(|| {
-                definition_from_payload(payload, CardId::from_raw(FIXED_SNAPSHOT_CARD_ID))
-            }))
-        });
-        match result {
-            Ok(Ok(definition)) => ParseAttempt {
-                status: ParseStatus::StrictCompiled,
-                parse_error: None,
-                definition: Some(definition),
-                parse_loss,
-            },
-            Ok(Err(err)) => ParseAttempt {
-                status: ParseStatus::ParseFailed,
-                parse_error: Some(err),
-                definition: None,
-                parse_loss,
-            },
-            Err(payload) => ParseAttempt {
-                status: ParseStatus::ParseFailed,
-                parse_error: Some(format!("panic: {}", panic_payload_to_string(payload))),
-                definition: None,
-                parse_loss,
-            },
-        }
-    })
+    let (result, parse_loss) = parse_loss::capture(|| {
+        panic::catch_unwind(AssertUnwindSafe(|| {
+            definition_from_payload(
+                payload,
+                CardId::from_raw(FIXED_SNAPSHOT_CARD_ID),
+                allow_unsupported,
+            )
+        }))
+    });
+    match result {
+        Ok(Ok(definition)) => ParseAttempt {
+            status: ParseStatus::StrictCompiled,
+            parse_error: None,
+            definition: Some(definition),
+            parse_loss,
+        },
+        Ok(Err(err)) => ParseAttempt {
+            status: ParseStatus::ParseFailed,
+            parse_error: Some(err),
+            definition: None,
+            parse_loss,
+        },
+        Err(payload) => ParseAttempt {
+            status: ParseStatus::ParseFailed,
+            parse_error: Some(format!("panic: {}", panic_payload_to_string(payload))),
+            definition: None,
+            parse_loss,
+        },
+    }
 }
 
 fn parse_card_payload_with_fallback(payload: &CardPayload) -> ParseAttempt {
-    let strict_attempt = parse_card_payload(payload, false);
+    parse_with_fallback(|allow_unsupported| parse_card_payload(payload, allow_unsupported))
+}
+
+fn parse_with_fallback(mut parse: impl FnMut(bool) -> ParseAttempt) -> ParseAttempt {
+    let strict_attempt = parse(false);
     if strict_attempt.status == ParseStatus::StrictCompiled {
         return strict_attempt;
     }
     let strict_error = strict_attempt.parse_error.clone();
-    let allow_attempt = parse_card_payload(payload, true);
+    let allow_attempt = parse(true);
     if allow_attempt.status == ParseStatus::StrictCompiled {
         let mut parse_loss = allow_attempt.parse_loss;
         parse_loss.push_reason(
@@ -3255,7 +3211,7 @@ pub fn compile_definition_from_payload(payload: &CardPayload) -> Result<CardDefi
     if let Err(error) = ironsmith_registry::register_builtin_dungeons() {
         parse_trace::event(format!("dungeon cards failed to compile: {error}"));
     }
-    definition_from_payload(payload, CardId::new())
+    definition_from_payload(payload, CardId::new(), false)
 }
 
 #[cfg(test)]
@@ -3384,6 +3340,284 @@ CardDefinition {
             other_face_name: None,
             linked_face_layout: None,
         }
+    }
+
+    fn unsupported_policy_payload() -> CardPayload {
+        // Deliberately invented rules text keeps this policy test independent
+        // of which real mechanics the compiler learns to support next.
+        let oracle_text = "Draw a card.\nFrobnicate the moon.";
+        let metadata_lines = vec!["Type: Sorcery".to_string()];
+        CardPayload {
+            name: "Unsupported Policy Fixture".to_string(),
+            parse_name: None,
+            oracle_text: oracle_text.to_string(),
+            raw_oracle_text: oracle_text.to_string(),
+            parse_input: build_parse_input(&metadata_lines, oracle_text),
+            metadata_lines,
+            other_face_name: None,
+            linked_face_layout: None,
+        }
+    }
+
+    #[test]
+    fn snapshot_policy_keeps_public_compilers_strict() {
+        let payload = unsupported_policy_payload();
+        let strict = compile_strict_snapshot_from_payload(&payload);
+
+        assert_eq!(strict.parse_status, ParseStatus::ParseFailed);
+        assert!(strict.parse_error.is_some());
+        assert!(strict.compiled_text.is_none());
+        assert!(strict.compiled_card_definition.is_none());
+        assert!(compile_runtime_definition_from_payload(&payload).is_err());
+        assert!(compile_definition_from_payload(&payload).is_err());
+    }
+
+    #[test]
+    fn snapshot_policy_rejects_unsupported_placeholders_even_when_allowed() {
+        let payload = unsupported_policy_payload();
+        let strict = parse_card_payload(&payload, false);
+        let lenient = parse_card_payload(&payload, true);
+        assert_eq!(strict.status, ParseStatus::ParseFailed);
+        // Explicit policy permits recognition recovery, but the compiler's
+        // final validation still rejects executable placeholder definitions.
+        assert_eq!(lenient.status, ParseStatus::ParseFailed);
+        assert!(lenient.definition.is_none());
+        assert!(
+            !strict
+                .parse_loss
+                .reasons_text()
+                .contains("allow_unsupported_recognized_line")
+        );
+        assert!(
+            lenient
+                .parse_loss
+                .reasons_text()
+                .contains("allow_unsupported_recognized_line")
+        );
+        assert!(
+            lenient
+                .parse_loss
+                .reasons_text()
+                .contains("Frobnicate the moon")
+        );
+
+        let strict_snapshot = compile_strict_snapshot_from_payload(&payload);
+        for snapshot in [
+            compile_snapshot_from_payload(&payload),
+            compile_authoritative_snapshot_from_payload(&payload),
+        ] {
+            assert_eq!(snapshot.parse_status, ParseStatus::ParseFailed);
+            assert!(snapshot.compiled_card_definition.is_none());
+            assert_eq!(snapshot.content_hash, strict_snapshot.content_hash);
+        }
+        assert_eq!(
+            parse_card_with_fallback(&payload.name, &payload.parse_input).status,
+            ParseStatus::ParseFailed
+        );
+    }
+
+    #[test]
+    fn snapshot_policy_labels_successful_lenient_retry_as_lossy() {
+        let payload = lightning_bolt_payload();
+        let mut policies = Vec::new();
+        // Exercise retry bookkeeping independently of the compiler's final
+        // placeholder rejection: only a successful lenient attempt gets the
+        // fallback label, and its definition must remain visible for auditing.
+        let attempt = parse_with_fallback(|allow_unsupported| {
+            policies.push(allow_unsupported);
+            if allow_unsupported {
+                parse_card_payload(&payload, true)
+            } else {
+                ParseAttempt {
+                    status: ParseStatus::ParseFailed,
+                    parse_error: Some("strict fixture failure".to_string()),
+                    definition: None,
+                    parse_loss: parse_loss::ParseLossReport::default(),
+                }
+            }
+        });
+        assert_eq!(policies, vec![false, true]);
+        let snapshot = snapshot_from_attempt(&payload, &attempt);
+        assert_eq!(
+            snapshot.parse_status,
+            ParseStatus::CompiledWithAllowUnsupported
+        );
+        assert!(snapshot.parse_error.is_none());
+        assert!(snapshot.compiled_card_definition.is_some());
+        assert!(snapshot.parse_lossy);
+        assert_eq!(snapshot.parse_loss_count, 1);
+        assert_eq!(
+            snapshot.parse_loss_reasons,
+            "allow_unsupported_fallback: strict fixture failure"
+        );
+
+        policies.clear();
+        let strict = parse_with_fallback(|allow_unsupported| {
+            policies.push(allow_unsupported);
+            parse_card_payload(&payload, allow_unsupported)
+        });
+        assert_eq!(policies, vec![false]);
+        assert_eq!(strict.status, ParseStatus::StrictCompiled);
+        assert!(!strict.parse_loss.is_lossy());
+    }
+
+    #[test]
+    fn snapshot_policy_reaches_the_oracle_only_retry() {
+        let mut payload = unsupported_policy_payload();
+        // Invalid metadata fails under either policy. Only the oracle-only
+        // retry can recognize the unsupported line and record lenient loss.
+        payload.parse_input = format!("Color indicator: octarine\n{}", payload.parse_input);
+        let first = parse_card(&payload.name, &payload.parse_input, true);
+        assert_eq!(first.status, ParseStatus::ParseFailed);
+        assert!(
+            !first
+                .parse_loss
+                .reasons_text()
+                .contains("allow_unsupported_recognized_line")
+        );
+
+        let lenient = parse_card_payload(&payload, true);
+        assert_eq!(lenient.status, ParseStatus::ParseFailed);
+        assert!(
+            lenient
+                .parse_loss
+                .reasons_text()
+                .contains("oracle_only_fallback")
+        );
+        assert!(
+            lenient
+                .parse_loss
+                .reasons_text()
+                .contains("allow_unsupported_recognized_line")
+        );
+        assert_eq!(
+            compile_snapshot_from_payload(&payload).parse_status,
+            ParseStatus::ParseFailed
+        );
+    }
+
+    #[test]
+    fn snapshot_policy_parallel_calls_are_isolated() {
+        let unsupported = unsupported_policy_payload();
+        let supported = lightning_bolt_payload();
+        let strict = parse_card_payload(&unsupported, false);
+        let lenient = parse_card_payload(&unsupported, true);
+        assert_eq!(strict.status, ParseStatus::ParseFailed);
+        assert_eq!(lenient.status, ParseStatus::ParseFailed);
+        assert_ne!(strict.parse_loss, lenient.parse_loss);
+        let expected_snapshot = compile_snapshot_from_payload(&unsupported);
+        let supported_snapshot = compile_snapshot_from_payload(&supported);
+        assert_eq!(supported_snapshot.parse_status, ParseStatus::StrictCompiled);
+        assert!(!supported_snapshot.parse_lossy);
+        let original_env = env::var_os("IRONSMITH_PARSER_ALLOW_UNSUPPORTED");
+        let start = std::sync::Barrier::new(4);
+
+        std::thread::scope(|scope| {
+            for worker in 0..4 {
+                let start = &start;
+                let unsupported = &unsupported;
+                let supported = &supported;
+                // CardDefinition contains runtime traits, so only share the
+                // expected plain-data diagnostic reports between workers.
+                let strict = (&strict.parse_error, &strict.parse_loss);
+                let lenient = (&lenient.parse_error, &lenient.parse_loss);
+                let expected_snapshot = &expected_snapshot;
+                let supported_snapshot = &supported_snapshot;
+                let original_env = &original_env;
+                scope.spawn(move || {
+                    start.wait();
+                    for iteration in 0..8 {
+                        let allow_unsupported = (worker + iteration) % 2 == 1;
+                        let expected = if allow_unsupported { lenient } else { strict };
+                        let actual = parse_card_payload(unsupported, allow_unsupported);
+                        assert_eq!(actual.status, ParseStatus::ParseFailed);
+                        assert_eq!(&actual.parse_error, expected.0);
+                        assert_eq!(&actual.parse_loss, expected.1);
+                        let snapshot = if allow_unsupported {
+                            compile_snapshot_from_payload(unsupported)
+                        } else {
+                            compile_strict_snapshot_from_payload(unsupported)
+                        };
+                        assert_eq!(snapshot.content_hash, expected_snapshot.content_hash);
+                        // Loss from an unsupported card must not leak to the
+                        // next supported card, even on the same worker thread.
+                        assert_eq!(
+                            compile_snapshot_from_payload(supported).content_hash,
+                            supported_snapshot.content_hash
+                        );
+                        assert_eq!(
+                            &env::var_os("IRONSMITH_PARSER_ALLOW_UNSUPPORTED"),
+                            original_env
+                        );
+                    }
+                });
+            }
+        });
+        assert_eq!(
+            env::var_os("IRONSMITH_PARSER_ALLOW_UNSUPPORTED"),
+            original_env
+        );
+    }
+
+    #[test]
+    fn snapshot_policy_preserves_process_environment() {
+        const CHILD: &str = "IRONSMITH_TOOLING_POLICY_TEST_CHILD";
+        const POLICY_ENV: &str = "IRONSMITH_PARSER_ALLOW_UNSUPPORTED";
+        if env::var_os(CHILD).is_none() {
+            let values = vec![Some(std::ffi::OsString::from("1")), None];
+            // The old save/restore wrapper discarded non-Unicode values.
+            // Seed a child process rather than mutating this parallel test runner.
+            #[cfg(unix)]
+            let values = {
+                use std::os::unix::ffi::OsStringExt;
+                let mut values = values;
+                values.push(Some(std::ffi::OsString::from_vec(vec![0xff])));
+                values
+            };
+            for value in values {
+                let mut command = std::process::Command::new(env::current_exe().unwrap());
+                command.args([
+                    "--exact",
+                    "tooling::tests::snapshot_policy_preserves_process_environment",
+                    "--nocapture",
+                ]);
+                command.env(CHILD, "1");
+                if let Some(value) = value {
+                    command.env(POLICY_ENV, value);
+                } else {
+                    command.env_remove(POLICY_ENV);
+                }
+                let output = command.output().expect("run isolated policy test");
+                assert!(
+                    output.status.success(),
+                    "{}\n{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            return;
+        }
+
+        let original_env = env::var_os(POLICY_ENV);
+        let payload = unsupported_policy_payload();
+        assert_eq!(
+            compile_strict_snapshot_from_payload(&payload).parse_status,
+            ParseStatus::ParseFailed
+        );
+        assert_eq!(env::var_os(POLICY_ENV), original_env);
+        assert_eq!(
+            compile_snapshot_from_payload(&payload).parse_status,
+            ParseStatus::ParseFailed
+        );
+        assert_eq!(env::var_os(POLICY_ENV), original_env);
+        assert_eq!(
+            parse_card_with_fallback(&payload.name, &payload.parse_input).status,
+            ParseStatus::ParseFailed
+        );
+        assert_eq!(env::var_os(POLICY_ENV), original_env);
+        assert!(compile_runtime_definition_from_payload(&payload).is_err());
+        assert!(compile_definition_from_payload(&payload).is_err());
+        assert_eq!(env::var_os(POLICY_ENV), original_env);
     }
 
     fn pseudo_oracle_fallback_payload() -> CardPayload {

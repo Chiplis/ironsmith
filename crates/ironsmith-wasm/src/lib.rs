@@ -157,6 +157,7 @@ struct SnapshotCacheKey {
     active_resolving_stack_hash: u64,
     active_viewed_cards_hash: u64,
     crypto_requirements_hash: u64,
+    static_library_top_visibility_hash: u64,
     cancelable: bool,
     undo_land_stable_id: Option<u64>,
 }
@@ -380,6 +381,12 @@ struct ManaPaymentEditorView {
     required_activations: Vec<ManaPaymentActivationCommand>,
     required_alternatives: Vec<ManaPaymentAlternativeCommand>,
     required_life_pips: Vec<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x_allocation: Option<[u32; 5]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    planned_x_allocation: Option<[u32; 5]>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    x_spending_rules: Vec<String>,
     activation_options: Vec<ManaActivationOptionView>,
     activation_options_complete: bool,
     life_options: Vec<ManaLifeOptionView>,
@@ -715,7 +722,7 @@ fn mana_payment_view_from_pending_cast(
     game: &GameState,
     pending: &ironsmith::game_loop::PendingCast,
     activation_options: &[ManaActivationOptionView],
-    defer_options: bool,
+    manual_abilities: &[ManualManaAbilityView],
 ) -> Option<ManaPaymentView> {
     if !matches!(
         pending.stage,
@@ -758,7 +765,7 @@ fn mana_payment_view_from_pending_cast(
             .collect(),
         planned_sources: planned_mana_source_views(game, payment),
         available_sources: available_mana_source_views(game, payment),
-        mana_abilities: if defer_options { Vec::new() } else { manual_mana_ability_views(game, &payment.request) },
+        mana_abilities: manual_abilities.to_vec(),
         allocations: planned_pip_allocation_views(payment),
         pool_before: (&payment.plan.pool_before).into(),
         pool_after_activations: (&payment.plan.expected_pool_after_activations).into(),
@@ -800,7 +807,7 @@ fn mana_payment_view_from_pending_activation(
     game: &GameState,
     pending: &ironsmith::game_loop::PendingActivation,
     activation_options: &[ManaActivationOptionView],
-    defer_options: bool,
+    manual_abilities: &[ManualManaAbilityView],
 ) -> Option<ManaPaymentView> {
     if !matches!(pending.stage, ActivationStage::PayingMana) {
         return None;
@@ -832,7 +839,7 @@ fn mana_payment_view_from_pending_activation(
             .collect(),
         planned_sources: planned_mana_source_views(game, payment),
         available_sources: available_mana_source_views(game, payment),
-        mana_abilities: if defer_options { Vec::new() } else { manual_mana_ability_views(game, &payment.request) },
+        mana_abilities: manual_abilities.to_vec(),
         allocations: planned_pip_allocation_views(payment),
         pool_before: (&payment.plan.pool_before).into(),
         pool_after_activations: (&payment.plan.expected_pool_after_activations).into(),
@@ -874,7 +881,7 @@ fn mana_payment_view_from_context(
     game: &GameState,
     context: &ironsmith::decisions::context::ManaPaymentContext,
     activation_options: &[ManaActivationOptionView],
-    defer_options: bool,
+    manual_abilities: &[ManualManaAbilityView],
 ) -> ManaPaymentView {
     let payment = ironsmith::mana_payment::PendingManaPayment::new(
         context.request.clone(),
@@ -900,7 +907,7 @@ fn mana_payment_view_from_context(
             .collect(),
         planned_sources: planned_mana_source_views(game, &payment),
         available_sources: available_mana_source_views(game, &payment),
-        mana_abilities: if defer_options { Vec::new() } else { manual_mana_ability_views(game, &payment.request) },
+        mana_abilities: manual_abilities.to_vec(),
         allocations: planned_pip_allocation_views(&payment),
         pool_before: (&context.plan.pool_before).into(),
         pool_after_activations: (&context.plan.expected_pool_after_activations).into(),
@@ -945,8 +952,9 @@ fn cast_payment_cost_context(
     use ironsmith::alternative_cast::CastingMethod;
     let object = game.object(pending.spell_id);
     let method = match &pending.casting_method {
+        CastingMethod::AlternativePrice { .. } => "Alternative price".to_string(),
         CastingMethod::Normal => "Normal cast".to_string(),
-        CastingMethod::FaceDown => "Face down".to_string(),
+        CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => "Face down".to_string(),
         CastingMethod::SplitOtherHalf => "Other half".to_string(),
         CastingMethod::Fuse => "Fuse".to_string(),
         CastingMethod::GrantedEscape { .. } => "Escape".to_string(),
@@ -957,13 +965,13 @@ fn cast_payment_cost_context(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: index,
+            use_alternative: Some(index),
             ..
         } => object
             .and_then(|object| object.alternative_casts.get(*index))
             .map(|method| method.name().to_string())
             .unwrap_or_else(|| "Alternative cost".to_string()),
-        CastingMethod::PlayFrom { .. } => "Granted cast".to_string(),
+        CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => "Granted cast".to_string(),
     };
     let mut result = vec![method];
     if pending.base_mana_cost_waived {
@@ -986,16 +994,12 @@ fn cast_payment_cost_context(
 fn mana_activation_option_views(
     game: &GameState,
     request: &ironsmith::mana_payment::ManaPaymentRequest,
-) -> Vec<ManaActivationOptionView> {
+) -> Result<Vec<ManaActivationOptionView>, ironsmith::effects::ExecutionError> {
     let counters = snapshot_id_counters();
-    let options = ironsmith::mana_payment::mana_payment_ready_activation_inventory(
-        game,
-        request,
-        || WasmReplayDecisionMaker::new(&[]),
-    );
-    let views = mana_activation_views_from_inventory(game, request, &options);
+    let options = ironsmith::mana_payment::mana_payment_ready_activation_inventory_checked(
+        game, request, || WasmReplayDecisionMaker::new(&[]));
     restore_id_counters(counters);
-    views
+    options.map(|options| mana_activation_views_from_inventory(game, request, &options))
 }
 
 fn mana_activation_views_from_inventory(
@@ -1103,6 +1107,11 @@ fn mana_payment_editor_view(
             .iter()
             .map(|pip| pip.0)
             .collect(),
+        x_allocation: preferences.x_allocation.map(|allocation| allocation.0),
+        planned_x_allocation: payment.plan.mana_cost_after_alternatives.required_x_allocation().map(|allocation| allocation.0),
+        x_spending_rules: request.cost.spending_restrictions().iter()
+            .filter(|rule| matches!(rule, ironsmith_core::mana::ManaSpendingRestriction::OnX { .. }))
+            .map(|rule| rule.cast_description(false)).collect(),
         activation_options: activation_options.to_vec(),
         activation_options_complete: true,
         life_options: ironsmith::mana_payment::mana_payment_life_options(game, &life_request)
@@ -1591,7 +1600,7 @@ fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId)
 }
 
 fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
-    game.object_store.battlefield.iter().any(|id| {
+    game.effect_store.grant_registry.grants_private_library_top_view(game, player) || game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
             game.current_controller(*id).unwrap_or(object.owner) == player
                 && game.object_has_static_ability_id(*id, StaticAbilityId::LookAtTopCardOfLibrary)
@@ -1614,20 +1623,21 @@ fn library_top_revealed_by_static_ability(game: &GameState, player: PlayerId) ->
 
 fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
-        game.object(*id).is_some_and(|object| {
-            game.current_controller(*id).unwrap_or(object.owner) != player
-                && game.object_has_static_ability_id(
-                    *id,
-                    StaticAbilityId::OpponentsPlayWithHandsRevealed,
-                )
+        !game.is_phased_out(*id) && game.object(*id).is_some_and(|object| {
+            let controller = game.current_controller(*id).unwrap_or(object.owner);
+            game.object_has_static_ability_id(*id, StaticAbilityId::PlayersPlayWithHandsRevealed)
+                || (controller == player && game.object_has_static_ability_id(*id, StaticAbilityId::ControllerPlaysWithHandRevealed))
+                || (game.are_opponents(controller, player) && game.object_has_static_ability_id(*id, StaticAbilityId::OpponentsPlayWithHandsRevealed))
         })
     })
 }
 
-fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewedCards>) {
+fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewedCards>, window: StaticLibraryTopVisibilityWindow<'_>) {
     let public_viewer = PlayerId::from_index(0);
     for player in &game.players {
-        if let Some(&top_card) = player.library.last() {
+        if let Some(&top_card) = player.library.last()
+            && window.allows(game, player.id)
+        {
             if library_top_revealed_by_static_ability(game, player.id) {
                 views.push(ActiveViewedCards {
                     acknowledged_by: Vec::new(),
@@ -2334,7 +2344,7 @@ impl WasmGame {
         {
             audit_views.push(view.clone());
         }
-        append_static_visibility_views(audit_game, &mut audit_views);
+        append_static_visibility_views(audit_game, &mut audit_views, self.static_library_top_visibility_window());
 
         for view in audit_views {
             let count = view.cards.len().min(u16::MAX as usize) as u16;
@@ -2742,6 +2752,12 @@ enum SpecialActionRef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct GrantSelectionRef {
+    source: u64,
+    index: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum CastingMethodRef {
     Normal,
@@ -2780,7 +2796,22 @@ enum CastingMethodRef {
     SplitOtherHalfPlayFrom {
         source: u64,
         zone: String,
-        use_alternative: usize,
+        use_alternative: Option<usize>,
+    },
+    FaceDownPlayFrom {
+        source: u64,
+        zone: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        face_down_kind: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        face_down_permission_source: Option<u64>,
+    },
+    AlternativePrice {
+        origin: Box<CastingMethodRef>,
+        origin_permission: Option<GrantSelectionRef>,
+        price: GrantSelectionRef,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prototype: Option<usize>,
     },
 }
 
@@ -3849,6 +3880,8 @@ enum ManaPaymentCommand {
         prefer_life: bool,
         #[serde(default)]
         required_life_pips: Vec<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        x_allocation: Option<[u32; 5]>,
     },
     Activate {
         source_id: String,
@@ -3893,6 +3926,7 @@ impl ManaPaymentCommand {
                 preserved_source_ids,
                 prefer_life,
                 required_life_pips,
+                x_allocation,
             } => Ok(ironsmith::mana_payment::ManaPaymentResponse::Replan {
                 preferences: ironsmith::mana_payment::ManaPaymentPreferences {
                     required_sources: parse_mana_payment_source_ids(
@@ -3916,6 +3950,7 @@ impl ManaPaymentCommand {
                         "preserved",
                     )?,
                     prefer_life,
+                    x_allocation: x_allocation.map(ironsmith_core::mana::XManaAllocation),
                     required_life_pips: required_life_pips
                         .into_iter()
                         .map(ironsmith::mana_payment::ManaPipId)
@@ -4048,6 +4083,10 @@ struct ReplayCheckpoint {
     priority_state: PriorityLoopState,
     game_over: Option<GameResult>,
     id_counters: ironsmith::ids::IdCountersSnapshot,
+    /// Public hand identities already disclosed at this Undo boundary. This is
+    /// knowledge, including audit views, rather than a reversible zone count.
+    public_hand_disclosures: HashSet<(PlayerId, ObjectId)>,
+    payment_disclosure_generation: u64,
     /// Diagnostic tag identifying where this checkpoint was captured.
     diag_tag: &'static str,
 }
@@ -4655,6 +4694,8 @@ pub struct WasmGame {
     pending_action_checkpoint: Option<ReplayCheckpoint>,
     /// Root priority response for the current live action chain.
     pending_live_action_root: Option<PriorityResponse>,
+    payment_disclosure: Option<wasm_game_impl::PaymentDisclosureCommitment>,
+    payment_disclosure_generation: u64,
     /// Replayable suspended live priority computation plus any nested answers
     /// already provided for it.
     pending_live_continuation: Option<LivePriorityContinuation>,
@@ -4691,6 +4732,7 @@ pub struct WasmGame {
     /// Latched for the current priority epoch when an irreversible mana ability
     /// activation has occurred (for example sacrifice/counter/life side effects).
     priority_epoch_undo_locked_by_mana: bool,
+    priority_epoch_undo_locked_by_disclosure: bool,
     /// Stable id of the most recent reversible land-for-mana tap committed in
     /// the current priority epoch.
     priority_epoch_undo_land_stable_id: Option<u64>,
@@ -5598,6 +5640,8 @@ impl PregameState {
 }
 
 mod wasm_game_impl;
+mod static_top_visibility;
+use static_top_visibility::StaticLibraryTopVisibilityWindow;
 use wasm_game_impl::*;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -6930,8 +6974,11 @@ struct ManualManaAbilityView {
 fn manual_mana_ability_views(
     game: &GameState,
     request: &ironsmith::mana_payment::ManaPaymentRequest,
-) -> Vec<ManualManaAbilityView> {
-    manual_mana_views_from_inventory(game, ironsmith::mana_payment::manual_mana_abilities(game, request))
+) -> Result<Vec<ManualManaAbilityView>, ironsmith::effects::ExecutionError> {
+    let counters = snapshot_id_counters();
+    let inventory = ironsmith::mana_payment::manual_mana_abilities_checked(game, request);
+    restore_id_counters(counters);
+    inventory.map(|inventory| manual_mana_views_from_inventory(game, inventory))
 }
 
 fn manual_mana_views_from_inventory(
@@ -6955,15 +7002,16 @@ fn manual_mana_views_from_inventory(
 fn mana_payment_options_view(
     game: &GameState,
     request: &mut ironsmith::mana_payment::ManaPaymentRequest,
-) -> ManaPaymentOptionsView {
+) -> Result<ManaPaymentOptionsView, ironsmith::effects::ExecutionError> {
     let counters = snapshot_id_counters();
-    let (ready, manual) = ironsmith::mana_payment::mana_payment_ready_and_manual_inventory(
+    let inventory = ironsmith::mana_payment::mana_payment_ready_and_manual_inventory_checked(
         game, request, || WasmReplayDecisionMaker::new(&[]));
+    restore_id_counters(counters);
+    let (ready, manual) = inventory?;
     let mana_abilities = manual_mana_views_from_inventory(game, manual);
     request.preferences = Default::default();
     let activation_options = mana_activation_views_from_inventory(game, request, &ready);
-    restore_id_counters(counters);
-    ManaPaymentOptionsView { activation_options, mana_abilities }
+    Ok(ManaPaymentOptionsView { activation_options, mana_abilities })
 }
 
 #[cfg(test)]
@@ -6999,9 +7047,9 @@ mod shared_payment_inventory_tests {
         let spell_id = game.create_object_from_definition(&spell, alice, ironsmith::Zone::Hand);
         let mut request = ironsmith::mana_payment::ManaPaymentRequest::new(alice, spell_id,
             ironsmith::costs::PaymentReason::CastSpell, cost);
-        let manual = manual_mana_ability_views(&game, &request);
-        let ready = mana_activation_option_views(&game, &request);
-        let combined = mana_payment_options_view(&game, &mut request);
+        let manual = manual_mana_ability_views(&game, &request).unwrap();
+        let ready = mana_activation_option_views(&game, &request).unwrap();
+        let combined = mana_payment_options_view(&game, &mut request).unwrap();
         assert_eq!(serde_json::to_value(&combined.mana_abilities).unwrap(), serde_json::to_value(&manual).unwrap());
         assert_eq!(serde_json::to_value(&combined.activation_options).unwrap(), serde_json::to_value(&ready).unwrap());
         assert!(!combined.mana_abilities.is_empty(), "ready={:?}, manual={:?}", serde_json::to_value(&ready), serde_json::to_value(&manual));
@@ -7009,5 +7057,118 @@ mod shared_payment_inventory_tests {
         assert_eq!(game.player(alice).unwrap().life, 20);
         assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
         assert!(game.battlefield.iter().all(|id| !game.is_tapped(*id)));
+    }
+}
+
+#[cfg(test)]
+mod revealed_hand_crypto_scope_tests {
+    use super::*;
+    use ironsmith::ability::Ability;
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::static_abilities::StaticAbility;
+    #[test]
+    fn self_and_global_revelation_require_public_hand_openings_through_source_transitions() {
+        let _ids = crate::test_id_counter_guard();
+        for global in [false, true] {
+            let mut wasm = WasmGame::new();
+            wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+            let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+            let first = wasm.game.create_hidden_card_placeholder(alice, Zone::Hand, 3, "alice-hand-scope-proof".into());
+            let second = wasm.game.create_hidden_card_placeholder(bob, Zone::Hand, 4, "bob-hand-scope-proof".into());
+            let library = wasm.game.create_hidden_card_placeholder(alice, Zone::Library, 5, "library-must-stay-private".into());
+            let source = CardDefinitionBuilder::new(CardId::new(), "Revealed hand opening probe")
+                .card_types(vec![CardType::Enchantment]).with_ability(Ability::static_ability(if global {
+                    StaticAbility::players_play_with_hands_revealed()
+                } else { StaticAbility::controller_plays_with_hand_revealed() })).build();
+            let before = wasm.capture_crypto_audit_state();
+            let host = wasm.game.create_object_from_definition(&source, alice, Zone::Battlefield);
+            wasm.update_crypto_requirements_from(before);
+            let verify = |wasm: &WasmGame, controller: PlayerId, active: bool| {
+                for (player, id, commitment) in [(alice, first, "alice-hand-scope-proof"), (bob, second, "bob-hand-scope-proof")] {
+                    let expected = active && (global || player == controller);
+                    assert_eq!(wasm.last_crypto_requirements.iter().any(|requirement|
+                        requirement.requirement_type == "public_view_window" && requirement.owner == player.index() as u8
+                            && requirement.zone == "hand" && requirement.count == Some(1)), expected);
+                    assert_eq!(wasm.last_crypto_requirements.iter().any(|requirement|
+                        requirement.requirement_type == "public_open" && requirement.owner == player.index() as u8
+                            && requirement.object_id == Some(id.0) && requirement.commitment.as_deref() == Some(commitment)
+                            && requirement.visibility.as_deref() == Some("public")), expected);
+                }
+                assert!(!wasm.last_crypto_requirements.iter().any(|requirement|
+                    requirement.requirement_type == "public_open" && requirement.object_id == Some(library.0)));
+            };
+            verify(&wasm, alice, true);
+            // A proof may reopen a card whose identity is already known locally.
+            // Hydration must keep its physical binding and current object state.
+            let known = CardDefinitionBuilder::new(CardId::new(), "Known hand identity").card_types(vec![CardType::Artifact]).build();
+            wasm.registry.register(known.clone());
+            wasm.game.reveal_hidden_card_with_definition(first, &known).unwrap();
+            wasm.game.object_mut(first).unwrap().add_counters(ironsmith::object::CounterType::Charge, 2);
+            let stable = wasm.game.object(first).unwrap().stable_id;
+            wasm.game.reveal_hidden_card_with_definition(first, &known).unwrap();
+            assert_eq!(wasm.game.object(first).unwrap().stable_id, stable);
+            assert_eq!(wasm.game.object(first).unwrap().counters.get(&ironsmith::object::CounterType::Charge), Some(&2));
+            assert_eq!(wasm.game.hidden_card_info(first).unwrap().commitment, "alice-hand-scope-proof");
+            let before = wasm.capture_crypto_audit_state(); wasm.game.set_current_controller(host, bob).unwrap();
+            wasm.update_crypto_requirements_from(before); verify(&wasm, bob, true);
+            let before = wasm.capture_crypto_audit_state(); wasm.game.phase_out(host);
+            wasm.update_crypto_requirements_from(before); verify(&wasm, bob, false);
+            let before = wasm.capture_crypto_audit_state(); wasm.game.phase_in(host);
+            wasm.update_crypto_requirements_from(before); verify(&wasm, bob, true);
+            let before = wasm.capture_crypto_audit_state(); wasm.game.move_object_by_effect(host, Zone::Graveyard).unwrap();
+            wasm.update_crypto_requirements_from(before); verify(&wasm, bob, false);
+        }
+    }
+}
+
+#[cfg(test)]
+fn resource_payment_test_fixture() -> (GameState, PlayerId, ObjectId, ironsmith::mana_payment::ManaPaymentRequest) {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let player = PlayerId::from_index(0);
+    game.turn.active_player = player; game.turn.priority_player = Some(player);
+    game.turn.phase = ironsmith::game_state::Phase::FirstMain; game.turn.step = None;
+    let card = ironsmith::CardBuilder::new(ironsmith::CardId::new(), "Resource UI source")
+        .card_types(vec![ironsmith::CardType::Land]).build();
+    let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+    game.object_mut(source).unwrap().abilities_mut().push(ironsmith::Ability::mana(
+        ironsmith::cost::TotalCost::from_cost(ironsmith::costs::Cost::tap()), vec![ManaSymbol::Green]));
+    game.effect_store.replacement_effects.add_resolution_effect(ironsmith::replacement::ReplacementEffect::with_matcher(
+        source, player, ironsmith::events::mana::matchers::ManaProducedBySourceMatcher::new(ironsmith::target::ObjectFilter::specific(source)),
+        ironsmith::replacement::ReplacementAction::Additionally(vec![ironsmith::effect::Effect::new(ironsmith::effects::CreateTokenEffect::you(ironsmith::cards::tokens::treasure_token_definition(), 2))]),
+    ));
+    let request = ironsmith::mana_payment::ManaPaymentRequest::new(player, source,
+        ironsmith::costs::PaymentReason::Effect, ironsmith::mana::ManaCost::from_symbols(vec![ManaSymbol::Green]));
+    (game, player, source, request)
+}
+
+
+#[cfg(test)]
+mod independent_price_action_reference_tests {
+    use super::*;
+    #[test]
+    fn public_price_reference_distinguishes_origins_and_price_choices_without_native_occurrence_ids() {
+        use ironsmith::alternative_cast::{CastingMethod, GrantSelection};
+        use ironsmith::grant_registry::GrantPermissionIdentity;
+        let method = CastingMethod::AlternativePrice {
+            origin: Box::new(CastingMethod::PlayFrom {source:ObjectId::from_raw(11),zone:Zone::Exile,use_alternative:None}),
+            origin_permission: Some(GrantSelection {identity:GrantPermissionIdentity::Stored(71),source:ObjectId::from_raw(11),index:0}),
+            price: GrantSelection {identity:GrantPermissionIdentity::Stored(73),source:ObjectId::from_raw(12),index:1},
+            prototype: None,
+        };
+        let reference=wasm_game_impl::casting_method_ref(&method);
+        let json=serde_json::to_value(&reference).unwrap();
+        assert_eq!(json["kind"],"alternative_price");
+        assert_eq!(json["price"],serde_json::json!({"source":12,"index":1}));
+        assert_eq!(serde_json::from_value::<CastingMethodRef>(json).unwrap(),reference);
+        let mut different=method.clone();
+        if let CastingMethod::AlternativePrice{price,..}=&mut different {price.index=2;price.identity=GrantPermissionIdentity::Stored(75);}
+        assert_ne!(wasm_game_impl::casting_method_ref(&different),reference);
+        let mut prototyped=method.clone();
+        if let CastingMethod::AlternativePrice{prototype,..}=&mut prototyped { *prototype=Some(0); }
+        let prototype_ref=wasm_game_impl::casting_method_ref(&prototyped);
+        assert_ne!(prototype_ref,reference);
+        assert_eq!(serde_json::to_value(prototype_ref).unwrap()["prototype"],0);
+        let old=CastingMethodRef::PlayFrom{source:11,zone:"exile".into(),use_alternative:None};
+        assert_eq!(serde_json::to_value(old).unwrap(),serde_json::json!({"kind":"play_from","source":11,"zone":"exile","use_alternative":null}));
     }
 }

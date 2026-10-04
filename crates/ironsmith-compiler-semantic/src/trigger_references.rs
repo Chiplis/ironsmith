@@ -41,6 +41,7 @@ pub fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool
         TriggerSpec::BeginningOfUpkeep(_)
             | TriggerSpec::BeginningOfDrawStep(_)
             | TriggerSpec::BeginningOfCombat(_)
+            | TriggerSpec::EndOfCombat
             | TriggerSpec::BeginningOfEndStep(_)
             | TriggerSpec::BeginningOfTheEndStep
             | TriggerSpec::BeginningOfMonarchEndStep
@@ -75,12 +76,20 @@ pub fn this_blocks_or_becomes_blocked_other_filter(trigger: &TriggerSpec) -> Opt
 }
 
 pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> {
+    if matches!(trigger, TriggerSpec::PlayerPaysLife(_)) { return None; }
+    if matches!(trigger,TriggerSpec::PlayerBecomesMonarch(_)){return None;}
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return default_trigger_last_object_tag(trigger);
     }
     if let Some(tag) = phase_step_trigger_object_reference_tag(trigger) {
         return Some(tag);
     }
+    if trigger_die_event_grouped(trigger).is_some() || matches!(trigger, TriggerSpec::PlayerRollsNthDie { .. }) {
+        // The die-producing object is not the implicit subject of a roll trigger.
+        return None;
+    }
+    if matches!(trigger, TriggerSpec::PlayerBecomesTargeted { .. }) { return None; }
+    if matches!(trigger, TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Player(_), .. }) { return None; }
     if phase_step_trigger_has_no_object_reference(trigger) {
         return None;
     }
@@ -182,7 +191,8 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
     }
     if matches!(
         trigger,
-        TriggerSpec::ThisIsDealtDamage
+        TriggerSpec::DamageReceived { .. }
+            | TriggerSpec::ThisIsDealtDamage
             | TriggerSpec::ThisIsDealtCombatDamage
             | TriggerSpec::IsDealtDamage(_)
             | TriggerSpec::IsDealtCombatDamage(_)
@@ -212,10 +222,17 @@ fn watched_permanent(trigger: &TriggerSpec) -> Option<WatchedPermanent> {
         TriggerSpec::ThisBecomesTapped
         | TriggerSpec::ThisBecomesUntapped
         | TriggerSpec::ThisAttacks
+        | TriggerSpec::ThisAttacksPlayerWithMostLife
         | TriggerSpec::ThisBlocks
         | TriggerSpec::ThisIsDealtDamage
         | TriggerSpec::ThisIsDealtCombatDamage => return Some(WatchedPermanent::Source),
-        TriggerSpec::PermanentBecomesTapped(filter)
+        TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Source, .. } => return Some(WatchedPermanent::Source),
+        TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Object(filter), .. } if filter.source => return Some(WatchedPermanent::Source),
+        TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Object(filter), .. }
+        | TriggerSpec::PermanentBecomesTapped(filter)
+        | TriggerSpec::PermanentBecomesTappedOneOrMore(filter)
+        | TriggerSpec::PermanentBecomesUntapped { filter, .. }
+        | TriggerSpec::PlayerChangesTapState { filter, .. }
         | TriggerSpec::Attacks(filter)
         | TriggerSpec::Blocks(filter)
         | TriggerSpec::IsDealtDamage(filter)
@@ -234,4 +251,105 @@ fn watched_permanent(trigger: &TriggerSpec) -> Option<WatchedPermanent> {
         })
     })
     .map(|tag| WatchedPermanent::Attached(tag.bind().into()))
+}
+
+/// Only these typed triggers export excess, rather than ordinary damage/life,
+/// as their ambient amount. This capability survives reference-frame scopes.
+pub fn trigger_binds_excess_damage_amount(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_binds_excess_damage_amount(trigger),
+        TriggerSpec::Either(left, right) => {
+            trigger_binds_excess_damage_amount(left) && trigger_binds_excess_damage_amount(right)
+        }
+        TriggerSpec::IsDealtExcessNoncombatDamage(_) => true,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod excess_damage_amount_tests {
+    use super::*;
+    #[test]
+    fn only_excess_triggers_export_excess_amounts() {
+        let excess = TriggerSpec::IsDealtExcessNoncombatDamage(ObjectFilter::creature());
+        assert!(trigger_binds_excess_damage_amount(&excess));
+        assert!(!trigger_binds_excess_damage_amount(
+            &TriggerSpec::ThisIsDealtDamage
+        ));
+        assert!(!trigger_binds_excess_damage_amount(
+            &TriggerSpec::YouGainLife
+        ));
+        assert!(trigger_binds_excess_damage_amount(&TriggerSpec::Either(
+            Box::new(excess.clone()),
+            Box::new(excess.clone())
+        )));
+        assert!(!trigger_binds_excess_damage_amount(&TriggerSpec::Either(
+            Box::new(excess),
+            Box::new(TriggerSpec::ThisIsDealtDamage)
+        )));
+    }
+}
+
+/// The exact card predicate used by the event's numeric count. A query can use
+/// that number only after proving semantic equality, including all qualifiers.
+/// Mixed-event or differently filtered alternatives deliberately have no proof.
+pub fn trigger_milling_event_filter(trigger: &TriggerSpec) -> Option<std::sync::Arc<ObjectFilter>> {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_milling_event_filter(trigger),
+        TriggerSpec::CardsMilled { filter, one_or_more: true, .. } => Some(std::sync::Arc::new(filter.clone().unwrap_or_default())),
+        TriggerSpec::Either(left, right) => {
+            let left = trigger_milling_event_filter(left)?;
+            let right = trigger_milling_event_filter(right)?;
+            (left == right).then_some(left)
+        }
+        _ => None,
+    }
+}
+
+/// Evidence for one affected player's actual life-change event. The action
+/// direction is distinct from a generic numeric event (damage, cards, etc.).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LifeEventBinding {
+    pub metric: ironsmith_core::EffectMetric,
+    pub player: PlayerFilter,
+}
+
+/// A compatible lexical life instruction, independent of an intervening cost's
+/// result ID. Optional instructions retain an outcome ID even when declined.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LifeAmountProducer {
+    pub effect_id: ironsmith_core::EffectId,
+    pub metric: ironsmith_core::EffectMetric,
+    pub player: PlayerFilter,
+}
+
+pub fn trigger_life_event_binding(trigger: &TriggerSpec) -> Option<std::sync::Arc<LifeEventBinding>> {
+    use ironsmith_core::EffectMetric;
+    let (metric, player) = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => return trigger_life_event_binding(trigger),
+        TriggerSpec::YouGainLife | TriggerSpec::YouGainLifeCausedBy(_) | TriggerSpec::YouGainLifeDuringTurn(_) => (EffectMetric::LifeGained, PlayerFilter::You),
+        TriggerSpec::PlayerGainsLife { player, .. } => (EffectMetric::LifeGained, player.clone()),
+        TriggerSpec::PlayerLosesLife(player) | TriggerSpec::PlayerLosesLifeDuringTurn { player, .. } => (EffectMetric::LifeLost, player.clone()),
+        TriggerSpec::Either(left, right) => {
+            let left = trigger_life_event_binding(left)?;
+            let right = trigger_life_event_binding(right)?;
+            return (left == right).then_some(left);
+        }
+        _ => return None,
+    };
+    Some(std::sync::Arc::new(LifeEventBinding { metric, player }))
+}
+
+/// Only a typed compatible roll event can supply a bare result. Either must
+/// retain the same singular/batch contract in both arms. Ordinals do not
+/// identify which physical die in a simultaneous group was "the third".
+pub fn trigger_die_event_grouped(trigger: &TriggerSpec) -> Option<bool> {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_die_event_grouped(trigger),
+        TriggerSpec::PlayerRollsDie { one_or_more, .. } => Some(*one_or_more),
+        TriggerSpec::PlayerRollsToVisitAttractions { .. } | TriggerSpec::PlayerRollsResult { .. }
+        | TriggerSpec::PlayerRollsResultMatching { .. } | TriggerSpec::PlayerRollsHighestNaturalResult { .. } => Some(false),
+        TriggerSpec::Either(a,b) => { let a = trigger_die_event_grouped(a)?; (trigger_die_event_grouped(b) == Some(a)).then_some(a) }
+        _ => None,
+    }
 }

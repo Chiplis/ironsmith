@@ -1,0 +1,120 @@
+[
+  {
+    "name": "Bilbo, Fellow Conspirator",
+    "oracle_id": "d273f87d-1271-49d2-a628-2d1bd888f56c",
+    "mana_cost": "{2}{G}",
+    "type_line": "Legendary Creature \u2014 Halfling Citizen",
+    "oracle_text": "If you would create a Food token, instead create a Food token and a Treasure token.",
+    "power": "2",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/hoc/4/bilbo-fellow-conspirator?utm_source=api"
+  },
+  {
+    "name": "Divine Visitation",
+    "oracle_id": "5917216f-5b42-41fa-8976-401bdbeb782e",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "If one or more creature tokens would be created under your control, that many 4/4 white Angel creature tokens with flying and vigilance are created instead.",
+    "scryfall_uri": "https://scryfall.com/card/msc/301/divine-visitation?utm_source=api"
+  },
+  {
+    "name": "Donatello, the Brains",
+    "oracle_id": "1ba2f763-5895-4663-b38f-95591ebb2ef4",
+    "mana_cost": "{2}{U}",
+    "type_line": "Legendary Creature \u2014 Mutant Ninja Turtle",
+    "oracle_text": "If one or more tokens would be created under your control, those tokens plus a Mutagen token are created instead.\nPartner\u2014Character select (You can have two commanders if both have this ability.)",
+    "power": "2",
+    "toughness": "4",
+    "scryfall_uri": "https://scryfall.com/card/tmc/85/donatello-the-brains?utm_source=api"
+  },
+  {
+    "name": "Draconic Visitor",
+    "oracle_id": "6745e850-68f6-480b-a1e0-e06180dde169",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Creature \u2014 Dragon",
+    "oracle_text": "Flying\nIf one or more artifact tokens would be created under your control, that many 5/5 red Dragon creature tokens with flying are created instead.",
+    "power": "5",
+    "toughness": "5",
+    "scryfall_uri": "https://scryfall.com/card/fra/80/draconic-visitor?utm_source=api"
+  },
+  {
+    "name": "Jinnie Fay, Jetmir's Second",
+    "oracle_id": "61fbaaf2-4286-4e9a-b9cb-aa31262b596a",
+    "mana_cost": "{R/G}{G}{G/W}",
+    "type_line": "Legendary Creature \u2014 Elf Druid",
+    "oracle_text": "If you would create one or more tokens, you may instead create that many 2/2 green Cat creature tokens with haste or that many 3/1 green Dog creature tokens with vigilance.",
+    "power": "3",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/snc/378/jinnie-fay-jetmirs-second?utm_source=api"
+  },
+  {
+    "name": "Jolene, the Plunder Queen",
+    "oracle_id": "8215f4a2-7131-426b-ad9c-6427caabd715",
+    "mana_cost": "{2}{R}{G}",
+    "type_line": "Legendary Creature \u2014 Human Warrior",
+    "oracle_text": "Whenever a player attacks one or more of your opponents, that attacking player creates a Treasure token.\nIf you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.\nSacrifice five Treasures: Put five +1/+1 counters on Jolene.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/plst/NCC-73/jolene-the-plunder-queen?utm_source=api"
+  },
+  {
+    "name": "Queen Allenal of Ruadach",
+    "oracle_id": "5f04d4b0-2c75-4f2d-97d5-96220b624b17",
+    "mana_cost": "{G}{W}{W}",
+    "type_line": "Legendary Creature \u2014 Elf Noble",
+    "oracle_text": "Queen Allenal of Ruadach's power and toughness are each equal to the number of creatures you control.\nIf one or more creature tokens would be created under your control, those tokens plus a 1/1 white Soldier creature token are created instead.",
+    "power": "*",
+    "toughness": "*",
+    "scryfall_uri": "https://scryfall.com/card/dmu/350/queen-allenal-of-ruadach?utm_source=api"
+  },
+  {
+    "name": "Quina, Qu Gourmet",
+    "oracle_id": "2acb15bd-6c89-4ff3-ab32-beac67e9c88a",
+    "mana_cost": "{2}{G}",
+    "type_line": "Legendary Creature \u2014 Qu",
+    "oracle_text": "If one or more tokens would be created under your control, those tokens plus a 1/1 green Frog creature token are created instead.\n{2}, Sacrifice a Frog: Put a +1/+1 counter on Quina.",
+    "power": "2",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/fin/471/quina-qu-gourmet?utm_source=api"
+  },
+  {
+    "name": "Stridehangar Automaton",
+    "oracle_id": "9070c98b-fd01-4eeb-a4ec-fc464946c7c0",
+    "mana_cost": "{3}",
+    "type_line": "Artifact Creature \u2014 Construct",
+    "oracle_text": "Thopters you control get +1/+1.\nIf one or more artifact tokens would be created under your control, those tokens plus an additional 1/1 colorless Thopter artifact creature token with flying are created instead.",
+    "power": "1",
+    "toughness": "4",
+    "scryfall_uri": "https://scryfall.com/card/drc/35/stridehangar-automaton?utm_source=api"
+  },
+  {
+    "name": "Tippy-Toe, Terrific Partner",
+    "oracle_id": "6a1bce89-0c11-4d8d-aacb-c0a5a5effffc",
+    "mana_cost": "{3}{G}",
+    "type_line": "Legendary Creature \u2014 Squirrel Hero",
+    "oracle_text": "If you would create one or more tokens, instead create those tokens plus an additional Food token. (It's an artifact with \"{2}, {T}, Sacrifice this token: You gain 3 life.\")\nAt the beginning of your end step, if you gained life this turn, draw a card.",
+    "power": "2",
+    "toughness": "4",
+    "scryfall_uri": "https://scryfall.com/card/sld/2625/tippy-toe-terrific-partner?utm_source=api"
+  },
+  {
+    "name": "Worldwalker Helm",
+    "oracle_id": "9573c85a-e574-4b4e-aae0-2165c45fd27e",
+    "mana_cost": "{2}{U}",
+    "type_line": "Artifact",
+    "oracle_text": "If you would create one or more artifact tokens, instead create those tokens plus an additional Map token. (It's an artifact with \"{1}, {T}, Sacrifice this token: Target creature you control explores. Activate only as a sorcery.\")\n{1}{U}, {T}: Create a token that's a copy of target artifact token you control.",
+    "scryfall_uri": "https://scryfall.com/card/pbig/7p/worldwalker-helm?utm_source=api"
+  },
+  {
+    "mana_cost": "{R/G}{G}{G/W}",
+    "type_line": "Legendary Creature \u2014 Elf Druid",
+    "oracle_text": "If you would create one or more tokens, you may instead create that many 2/2 green Cat creature tokens with haste or that many 3/1 green Dog creature tokens with vigilance.",
+    "power": "3",
+    "toughness": "3",
+    "name": "Jinnie Fay, Jetmir's Second // Jinnie Fay, Jetmir's Second",
+    "oracle_id": "61fbaaf2-4286-4e9a-b9cb-aa31262b596a",
+    "scryfall_uri": "https://scryfall.com/card/sld/1556/jinnie-fay-jetmirs-second-jinnie-fay-jetmirs-second?utm_source=api",
+    "source_layout": "reversible_card",
+    "source_face_index": 0
+  }
+]

@@ -204,15 +204,8 @@ pub fn parse_choose_target_verb_shape_tokens(
 }
 
 fn source_descriptor<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
-    let descriptor = repeat_till(
-        1..,
-        any.void(),
-        peek((opt(primitives::kw("sources")), primitives::sentence_end())),
-    )
-    .map(|((), _)| ())
-    .take()
-    .parse_next(input)?;
-    opt(primitives::kw("sources")).parse_next(input)?;
+    let descriptor = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
+        .map(|((), _)| ()).take().parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(trim_lexed_commas(descriptor))
 }
@@ -254,8 +247,18 @@ fn parse_duration_first_source<'a>(
     })
 }
 
+fn parse_source_before_duration<'a>(input: &mut LexStream<'a>) -> WResult<PreventAllDamageShape<'a>> {
+    primitives::phrase(&["prevent", "all", "damage", "that", "would", "be", "dealt", "by"]).parse_next(input)?;
+    let source_tokens = repeat_till(1.., any.void(), peek((
+        primitives::phrase(&["this", "turn"]), primitives::sentence_end(),
+    ))).map(|((), _)| ()).take().parse_next(input)?;
+    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(PreventAllDamageShape::FromSource { source_tokens: trim_lexed_commas(source_tokens) })
+}
+
 fn parse_source_would_deal<'a>(input: &mut LexStream<'a>) -> WResult<PreventAllDamageShape<'a>> {
-    primitives::phrase(&["prevent", "all", "damage", "that"]).parse_next(input)?;
+    primitives::phrase(&["prevent", "all", "damage"]).parse_next(input)?;
     let source_tokens = repeat_till(
         1..,
         any.void(),
@@ -377,6 +380,7 @@ pub fn parse_prevent_all_damage_shape_tokens(
         tokens,
         alt((
             parse_duration_first_source,
+            parse_source_before_duration,
             parse_duration_first_target,
             parse_target_source_duration,
             parse_target_first_source,
@@ -461,6 +465,11 @@ pub fn parse_can_attack_no_defender_subject_tokens(
 }
 
 fn target_indicator<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    let mut any = input.clone();
+    if primitives::phrase(&["any", "target"]).parse_next(&mut any).is_ok() {
+        *input = any;
+        return Ok(());
+    }
     opt(primitives::phrase(&["any", "number", "of"])).parse_next(input)?;
     let mut count_probe = input.clone();
     if crate::grammar::leaf::parse_leaf_target_count_range_prefix_lexed

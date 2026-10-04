@@ -361,6 +361,7 @@ pub fn parse_stack_retarget_filter(
 
 pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     const PRIMITIVES: &[ClausePrimitive] = &[
+        specific_primitive!("bounded-number-choice", &["choose"], super::bounded_number_choice::parse),
         specific_primitive!(
             "choose-card-name-clause",
             &["choose"],
@@ -487,6 +488,11 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             "attack-as-though-no-defender-clause",
             &["it", "they", "target"],
             parse_can_attack_as_though_no_defender_clause,
+        ),
+        specific_primitive!(
+            "blocking-capacity-clause",
+            &["it", "they", "target", "this", "can"],
+            parse_blocking_capacity_this_turn_clause,
         ),
         specific_primitive!(
             "block-additional-creature-clause",

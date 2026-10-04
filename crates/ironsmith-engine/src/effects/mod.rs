@@ -80,13 +80,14 @@ pub use context::{DoThisLimit, ExecutionError, ReplacementExecutionContext, Reso
 pub use executor_trait::{
     CostExecutableEffect, CostValidationError, DeferredPlayerActionProposal,
     EffectExecutionCategory, EffectExecutor, ModalEffectSpec, ModalSpec,
-    SimultaneousEffectProposal, TargetReusePolicy, TargetSelectionProfile,
+    SimultaneousEffectProposal, SimultaneousEffectCommit, SimultaneousEffectCompletion, TargetReusePolicy, TargetSelectionProfile,
 };
 pub type EffectContext<'a> = context::ExecutionContext<'a>;
 pub(crate) use context::{ExecutionContext, ExecutionContextCheckpoint};
 pub use runtime::{execute_effect, resolve_value, validate_target};
 pub(crate) use runtime::{
     match_triggers_at_instruction_boundary, retain_unmatched_outcome_events,
+    capture_triggers_before_added_program,
     with_per_event_trigger_matching,
 };
 
@@ -109,10 +110,11 @@ pub use combat::{
     FightEffect, GoadEffect, GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect, MeleeEffect,
     ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
     PreventAllCombatDamageEffect, PreventAllCombatDamageFromEffect, PreventAllDamageEffect,
-    PreventAllDamageToTargetEffect, PreventDamageEffect, RemoveFromCombatEffect,
+    PreventAllDamageToTargetEffect, PreventDamageEffect, BecomeBlockedEffect, RemoveFromCombatEffect,
     SetBasePowerToughnessEffect,
 };
 pub use composition::{
+    CollectEvidenceEffect,
     AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BidLifeEffect,
     BolsterEffect, CastEncodedCardCopyEffect, ChooseModeEffect, ChooseObjectsEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ConditionalEffect, CounterAbilityEffect,
@@ -184,9 +186,9 @@ pub use permanents::{
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,
-    BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
+    RippleEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
     ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
-    ChooseNamedOptionEffect, ChooseNumberAtRandomEffect, ChoosePlayerEffect,
+    ChooseNamedOptionEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChoosePlayerEffect,
     ControlCombatChoicesThisTurnEffect, ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect,
     DrawTheGameEffect, EndCombatPhaseEffect, EndTurnEffect, EnergyCountersEffect,
     ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect, ExileUntilMatchCastEffect,
@@ -199,7 +201,7 @@ pub use player::{
     PayEnergyEffect, PlaySubgameEffect, PlayerCountersEffect, PoisonCountersEffect,
     RadiationEffect, ReduceSpeedEffect, RestartGameEffect, RevealChosenSubtypeEffect,
     ReverseTurnOrderEffect, RingTemptsYouEffect, RollDiceChooseResultEffect, RollDieEffect,
-    SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect,
+    SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipScheduledEffect,
     SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
     TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
 };
@@ -208,7 +210,7 @@ pub use replacement::{
     RegisterDamagedBySourceZoneReplacementEffect,
     RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
-    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
+    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect, RegisterManaRewriteEffect, RegisterManaSpendPermissionEffect,
     RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;
@@ -219,7 +221,7 @@ pub use stack::{
     VariableCasualtyPlaneswalkerCopyEffect,
 };
 pub use tokens::{
-    AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, IncubateEffect,
+    AmassEffect, EmpowerJaceEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, IncubateEffect,
     InvestigateEffect, TokenCopyReferenceSurface,
 };
 pub use zones::{
@@ -233,3 +235,18 @@ pub use zones::{
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
     ShuffleObjectsIntoLibraryEffect,
 };
+
+pub use replacement::RegisterDamageMultiplierEffect;
+pub use replacement::RegisterDamageAdditionEffect;
+pub use damage::DealDamageToRecipientsEffect;
+
+pub(crate) use composition::{prepare_conditional_branch, resolve_source_binding,
+    is_object_selection, apply_outcome_tags, TaggedRuntimeState, capture_tagged_runtime_state};
+
+pub(crate) use composition::{PreparedIfBranch, prepare_if_branches, execute_if_branches};
+
+pub(crate) use composition::{ForPlayersDrawContinuation, ForPlayersDrawProgress};
+
+pub use damage::DealDamageBySourcesEffect;
+
+pub use damage::DealDamageEachEffect;

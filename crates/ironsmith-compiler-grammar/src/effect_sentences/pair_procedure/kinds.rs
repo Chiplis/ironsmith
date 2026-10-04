@@ -79,7 +79,7 @@ pub(super) fn open_chosen_creature_type(
     let Some(next) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    if choose_creature_type_sentence(sentence)
+    if choose_subtype_sentence(sentence)
         && let Some(effects) =
             crate::activation_and_restrictions::parse_choose_creature_type_then_become_type(
                 sentence.lowered(),

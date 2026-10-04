@@ -671,6 +671,7 @@ pub(crate) fn finish_zone_change_receipts_frozen(
     mut outcome: crate::effect::EffectOutcome, frozen: FrozenZoneChangeReceipts,
 ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
     use crate::effects::ExecutionError;
+    game.freeze_completed_entry_events(outcome.events.iter_mut())?;
     let primary = outcome.value.clone(); let prepared = frozen.0;
     for (object, ids, snapshots, programs) in prepared {
         outcome = crate::effects::replacement::execute_deferred_replacement_programs_with_bindings(

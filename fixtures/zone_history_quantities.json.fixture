@@ -1,0 +1,168 @@
+[
+  {
+    "name": "Florian, Voldaren Scion",
+    "oracle_id": "d74a2cbf-4d13-401d-9b3f-bfbde4942afd",
+    "mana_cost": "{1}{B}{R}",
+    "type_line": "Legendary Creature — Vampire Noble",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "First strike\nAt the beginning of each of your postcombat main phases, look at the top X cards of your library, where X is the total amount of life your opponents lost this turn. Exile one of those cards and put the rest on the bottom of your library in a random order. You may play the exiled card this turn.",
+    "baseline": {
+      "card_name": "Florian, Voldaren Scion",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "907f9b5cd46bac7bf87fc2fc3bcd26c76607329b6a33be22bb8482821bd71785",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "First strike\nAt the beginning of each of your postcombat main phases, look at the top X cards of your library, where X is the total amount of life your opponents lost this turn. Exile one of those cards and put the rest on the bottom of your library in a random order. You may play the exiled card this turn.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "First strike\nAt the beginning of each of your postcombat main phases, look at the top X cards of your library, where X is the total amount of life your opponents lost this turn. Exile one of those cards and put the rest on the bottom of your library in a random order. You may play the exiled card this turn.",
+      "parse_error": "unsupported where-x clause (clause: 'look at the top x cards of your library, where x is the total amount of life your opponents lost this turn') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported where-x clause (clause: 'look at the top x cards of your library, where x is the total amount of life your opponents lost this turn') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'look at the top x cards of your library, where x is the total amount of life your opponents lost this turn') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "First strike\nAt the beginning of each of your postcombat main phases, look at the top X cards of your library, where X is the total amount of life your opponents lost this turn. Exile one of those cards and put the rest on the bottom of your library in a random order. You may play the exiled card this turn.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'look at the top x cards of your library, where x is the total amount of life your opponents lost this turn') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'look at the top x cards of your library, where x is the total amount of life your opponents lost this turn') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Notorious Throng",
+    "oracle_id": "b1461f2a-2f12-49ae-8821-d934dddcb567",
+    "mana_cost": "{3}{U}",
+    "type_line": "Kindred Sorcery — Rogue",
+    "oracle_text": "Prowl {5}{U} (You may cast this for its prowl cost if you dealt combat damage to a player this turn with a Rogue.)\nCreate X 1/1 black Faerie Rogue creature tokens with flying, where X is the damage dealt to your opponents this turn. If this spell's prowl cost was paid, take an extra turn after this one.",
+    "baseline": {
+      "card_name": "Notorious Throng",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "2461317586a416fb2ea9ee6083d25900e0f6250b3ca8a6608ffa4b587503508d",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Prowl {5}{U}\nCreate X 1/1 black Faerie Rogue creature tokens with flying, where X is the damage dealt to your opponents this turn. If this spell's prowl cost was paid, take an extra turn after this one.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Prowl {5}{U}\nCreate X 1/1 black Faerie Rogue creature tokens with flying, where X is the damage dealt to your opponents this turn. If this spell's prowl cost was paid, take an extra turn after this one.",
+      "parse_error": "unsupported where-x clause in create clause (clause: 'x 1/1 black faerie rogue creature tokens with flying where x is the damage dealt to your opponents this turn') [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported where-x clause in create clause (clause: 'x 1/1 black faerie rogue creature tokens with flying where x is the damage dealt to your opponents this turn') [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause in create clause (clause: 'x 1/1 black faerie rogue creature tokens with flying where x is the damage dealt to your opponents this turn') [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Prowl {5}{U} (You may cast this for its prowl cost if you dealt combat damage to a player this turn with a Rogue.)\nCreate X 1/1 black Faerie Rogue creature tokens with flying, where X is the damage dealt to your opponents this turn. If this spell's prowl cost was paid, take an extra turn after this one.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x 1/1 black faerie rogue creature tokens with flying where x is the damage dealt to your opponents this turn') [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause in create clause (clause: 'x 1/1 black faerie rogue creature tokens with flying where x is the damage dealt to your opponents this turn') [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Serpentine Curve",
+    "oracle_id": "e07ed462-17b8-46ec-8a3f-3f5c89f4bf78",
+    "mana_cost": "{3}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Create a 0/0 green and blue Fractal creature token. Put X +1/+1 counters on it, where X is one plus the total number of instant and sorcery cards you own in exile and in your graveyard.",
+    "baseline": {
+      "card_name": "Serpentine Curve",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "6f84239ee62764ee6a37fcd9ab24d835b58e5cecff1b9c51dd1f299aa8570fb5",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Create a 0/0 green and blue Fractal creature token. Put X +1/+1 counters on it, where X is one plus the total number of instant and sorcery cards you own in exile and in your graveyard.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Create a 0/0 green and blue Fractal creature token. Put X +1/+1 counters on it, where X is one plus the total number of instant and sorcery cards you own in exile and in your graveyard.",
+      "parse_error": "unsupported where-x clause (clause: 'put x +1/+1 counters on it, where x is one plus the total number of instant and sorcery cards you own in exile and in your graveyard') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported where-x clause (clause: 'put x +1/+1 counters on it, where x is one plus the total number of instant and sorcery cards you own in exile and in your graveyard') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'put x +1/+1 counters on it, where x is one plus the total number of instant and sorcery cards you own in exile and in your graveyard') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Create a 0/0 green and blue Fractal creature token. Put X +1/+1 counters on it, where X is one plus the total number of instant and sorcery cards you own in exile and in your graveyard.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'put x +1/+1 counters on it, where x is one plus the total number of instant and sorcery cards you own in exile and in your graveyard') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'put x +1/+1 counters on it, where x is one plus the total number of instant and sorcery cards you own in exile and in your graveyard') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Slime Against Humanity",
+    "oracle_id": "b53597f4-1a0f-4fa8-9c17-29178cdc4d2b",
+    "mana_cost": "{2}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Create a 0/0 green Ooze creature token with trample. Put X +1/+1 counters on it, where X is two plus the total number of cards you own in exile and in your graveyard that are Oozes or are named Slime Against Humanity.\nA deck can have any number of cards named Slime Against Humanity.",
+    "baseline": {
+      "card_name": "Slime Against Humanity",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "e69b41322a3c0804161cb5ae49b5d15a7f5fa52a0cccaca07317e6ddaebdc48c",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Create a 0/0 green Ooze creature token with trample. Put X +1/+1 counters on it, where X is two plus the total number of cards you own in exile and in your graveyard that are Oozes or are named Slime Against Humanity.\nA deck can have any number of cards named Slime Against Humanity.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Create a 0/0 green Ooze creature token with trample. Put X +1/+1 counters on it, where X is two plus the total number of cards you own in exile and in your graveyard that are Oozes or are named Slime Against Humanity.\nA deck can have any number of cards named Slime Against Humanity.",
+      "parse_error": "unsupported where-x clause (clause: 'put x +1/+1 counters on it, where x is two plus the total number of cards you own in exile and in your graveyard that are oozes or are named slime against humanity') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported where-x clause (clause: 'put x +1/+1 counters on it, where x is two plus the total number of cards you own in exile and in your graveyard that are oozes or are named slime against humanity') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported where-x clause (clause: 'put x +1/+1 counters on it, where x is two plus the total number of cards you own in exile and in your graveyard that are oozes or are named slime against humanity') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Create a 0/0 green Ooze creature token with trample. Put X +1/+1 counters on it, where X is two plus the total number of cards you own in exile and in your graveyard that are Oozes or are named Slime Against Humanity.\nA deck can have any number of cards named Slime Against Humanity.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'put x +1/+1 counters on it, where x is two plus the total number of cards you own in exile and in your graveyard that are oozes or are named slime against humanity') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported where-x clause (clause: 'put x +1/+1 counters on it, where x is two plus the total number of cards you own in exile and in your graveyard that are oozes or are named slime against humanity') [rule-path=top-level-subject-verb-recognition > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  }
+]

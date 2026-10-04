@@ -492,13 +492,24 @@ impl PhaseOutEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PhaseInEffect {
     pub target: ChooseSpec,
+    /// An explicitly simultaneous phase-out set, selected before either set changes.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub simultaneous_phase_out: Option<ObjectFilter>,
 }
 
 impl PhaseInEffect {
     pub fn with_spec(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, simultaneous_phase_out: None }
+    }
+    pub fn exchange(phase_in: ObjectFilter, phase_out: ObjectFilter) -> Self {
+        Self { target: ChooseSpec::all(phase_in), simultaneous_phase_out: Some(phase_out) }
     }
 }
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct BecomeBlockedEffect { pub target: ChooseSpec }
+impl BecomeBlockedEffect { pub fn with_spec(target: ChooseSpec)->Self { Self{target} } }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
@@ -808,11 +819,31 @@ impl RedirectNextTimeDamageToSourceEffect {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum TimedDamageRedirectDestination { Target, Source, Controller, DamageSourceController }
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct TimedDamageRedirectionScope {
+    pub source_filter: ObjectFilter,
+    pub source_target: Option<ChooseSpec>,
+    pub protected_target: Option<ChooseSpec>,
+    pub player_filter: Option<PlayerFilter>,
+    pub object_filter: Option<ObjectFilter>,
+    pub combat_only: bool,
+    pub destination: TimedDamageRedirectDestination,
+    pub mode: crate::ReplacementApplyMode,
+    pub display: String,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RedirectAllDamageThisTurnToTargetEffect {
     pub player_filter: PlayerFilter,
     pub object_filter: ObjectFilter,
     pub target: ChooseSpec,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub scope: Option<TimedDamageRedirectionScope>,
 }
 
 impl RedirectAllDamageThisTurnToTargetEffect {
@@ -825,13 +856,15 @@ impl RedirectAllDamageThisTurnToTargetEffect {
             player_filter,
             object_filter,
             target,
+            scope: None,
         }
     }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
-pub struct GrantPlayTaggedEffect {
+#[cfg_attr(feature = "serde", serde(bound(deserialize = "C: serde::Deserialize<'de>")))]
+pub struct GrantPlayTaggedEffect<C> {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
     pub duration: GrantPlayTaggedDuration,
@@ -868,9 +901,13 @@ pub struct GrantPlayTaggedEffect {
     /// each tagged card independently; `Some(1)` models "play one of those
     /// cards" while deferring the choice until a card is actually played.
     pub max_plays: Option<u32>,
+    /// Required replacement price for a spell cast through this permission.
+    /// This does not create a separate optional price or change a land play.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub alternative_cost: Option<crate::TotalCost<C>>,
 }
 
-impl GrantPlayTaggedEffect {
+impl<C> GrantPlayTaggedEffect<C> {
     pub fn new(
         tag: crate::tag::TagKey,
         player: PlayerFilter,
@@ -896,7 +933,13 @@ impl GrantPlayTaggedEffect {
             lands_enter_tapped: false,
             cast_pool_is_plural: false,
             max_plays: None,
+            alternative_cost: None,
         }
+    }
+
+    pub fn with_alternative_cost(mut self, cost: crate::TotalCost<C>) -> Self {
+        self.alternative_cost = Some(cost);
+        self
     }
 
     pub fn cast_pool_is_plural(mut self, plural: bool) -> Self {
@@ -1053,6 +1096,10 @@ pub struct RegisterDrawReplacementEffect<E = ()> {
     pub player: PlayerFilter,
     pub replacement_effects: Vec<E>,
     pub mode: ReplacementApplyMode,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub player_target: Option<ChooseSpec>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub display: Option<String>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1061,6 +1108,18 @@ pub struct RegisterManaReplacementEffect {
     pub source_filter: crate::filter_model::ObjectFilter,
     pub replacement_mana: Vec<ManaSymbol>,
     pub mode: ReplacementApplyMode,
+}
+
+/// Register one typed mana-production rewrite. A target is announced with the
+/// activating/casting instruction and is locked to that exact incarnation.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterManaRewriteEffect {
+    pub rule: crate::mana::ManaOutputRewrite,
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "crate::mana::deserialize_required_mana_option"))]
+    pub target: Option<ChooseSpec>,
+    pub mode: ReplacementApplyMode,
+    pub display: String,
 }
 
 /// "Until end of turn, if you would put one or more +1/+1 counters on a
@@ -1255,6 +1314,8 @@ impl<E> RegisterDrawReplacementEffect<E> {
             player,
             replacement_effects,
             mode,
+            player_target: None,
+            display: None,
         }
     }
 }
@@ -3105,6 +3166,10 @@ pub struct DamageFilter {
     pub from_specific_source: Option<crate::ids::ObjectId>,
     /// Do not prevent damage from this independently chosen source.
     pub excluded_specific_source: Option<crate::ids::ObjectId>,
+    /// CR 400.7c: the one permanent this exact spell became. This is populated
+    /// only by its Stack -> Battlefield transition, never by stable-card lookup.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub resolved_permanent_source: Option<crate::ids::ObjectId>,
 }
 
 impl DamageFilter {
@@ -3161,6 +3226,7 @@ impl DamageFilter {
         }
         if let Some(specific) = self.from_specific_source
             && source != specific
+            && self.resolved_permanent_source != Some(source)
         {
             return false;
         }
@@ -3185,8 +3251,12 @@ impl DamageFilter {
 
 /// Effect that prevents all damage until a duration expires.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(deserialize = "E: serde::Deserialize<'de>"))
+)]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
-pub struct PreventAllDamageEffect {
+pub struct PreventAllDamageEffect<E = ()> {
     /// What this shield protects.
     pub target: PreventionTarget,
     /// What kinds of damage this shield prevents.
@@ -3203,9 +3273,15 @@ pub struct PreventAllDamageEffect {
     /// Protect the resolving ability's source object.
     pub protect_source: bool,
     pub until: Until,
+    /// Bind an incoming shield to the same selected source(s).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub protect_source_target: bool,
+    /// Programs executed for the actual amount prevented by this shield.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub follow_up_effects: Vec<E>,
 }
 
-impl PreventAllDamageEffect {
+impl<E> PreventAllDamageEffect<E> {
     /// Create a new prevent-all-damage effect.
     pub fn new(target: PreventionTarget, damage_filter: DamageFilter, until: Until) -> Self {
         Self {
@@ -3217,7 +3293,37 @@ impl PreventAllDamageEffect {
             excluded_source_target: None,
             protect_source: false,
             until,
+            protect_source_target: false,
+            follow_up_effects: Vec::new(),
         }
+    }
+
+    pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
+        self.follow_up_effects = effects;
+        self
+    }
+
+    pub fn try_map_effects<F, Error>(
+        self,
+        mut map: impl FnMut(E) -> Result<F, Error>,
+    ) -> Result<PreventAllDamageEffect<F>, Error> {
+        Ok(PreventAllDamageEffect {
+            target: self.target,
+            damage_filter: self.damage_filter,
+            source_of_your_choice: self.source_of_your_choice,
+            source_choice_shares_activation_mana_color: self
+                .source_choice_shares_activation_mana_color,
+            source_target: self.source_target,
+            excluded_source_target: self.excluded_source_target,
+            protect_source: self.protect_source,
+            until: self.until,
+            protect_source_target: self.protect_source_target,
+            follow_up_effects: self
+                .follow_up_effects
+                .into_iter()
+                .map(&mut map)
+                .collect::<Result<Vec<_>, Error>>()?,
+        })
     }
 
     /// Restrict this prevention shield to a source chosen as the effect resolves.
@@ -3236,6 +3342,11 @@ impl PreventAllDamageEffect {
 
     pub fn with_target_source(mut self, source: ChooseSpec) -> Self {
         self.source_target = Some(source);
+        self
+    }
+
+    pub fn protecting_target_source(mut self) -> Self {
+        self.protect_source_target = true;
         self
     }
 
@@ -4134,7 +4245,8 @@ pub enum CopyInstructionSurface {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, TagKeyWalk)]
-pub struct CastTaggedEffect {
+#[cfg_attr(feature = "serde", serde(bound(deserialize = "C: serde::Deserialize<'de>")))]
+pub struct CastTaggedEffect<C> {
     pub tag: TagKey,
     pub player: PlayerFilter,
     pub allow_land: bool,
@@ -4158,6 +4270,10 @@ pub struct CastTaggedEffect {
     /// paying its mana cost").
     #[cfg_attr(feature = "serde", serde(default))]
     pub alternative_payment: Option<CastTaggedAlternativePayment>,
+    /// The resolving instruction's mandatory alternative to the mana cost.
+    /// Other additional costs still apply. None preserves the ordinary price.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub alternative_cost: Option<crate::TotalCost<C>>,
 }
 
 /// A payment the resolving instruction substitutes for the cast spell's mana
@@ -4169,7 +4285,7 @@ pub enum CastTaggedAlternativePayment {
     EnergyEqualToManaValue,
 }
 
-impl PartialEq for CastTaggedEffect {
+impl<C: PartialEq> PartialEq for CastTaggedEffect<C> {
     fn eq(&self, other: &Self) -> bool {
         self.tag == other.tag
             && self.player == other.player
@@ -4180,10 +4296,11 @@ impl PartialEq for CastTaggedEffect {
             && self.cost_reduction == other.cost_reduction
             && self.mana_spend_mode == other.mana_spend_mode
             && self.alternative_payment == other.alternative_payment
+            && self.alternative_cost == other.alternative_cost
     }
 }
 
-impl CastTaggedEffect {
+impl<C> CastTaggedEffect<C> {
     pub fn new(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
         Self {
             tag: tag.into(),
@@ -4197,7 +4314,25 @@ impl CastTaggedEffect {
             cost_reduction: None,
             mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
             alternative_payment: None,
+            alternative_cost: None,
         }
+    }
+
+    pub fn with_alternative_cost(mut self, cost: crate::TotalCost<C>) -> Self {
+        self.alternative_cost = Some(cost);
+        self
+    }
+
+    pub fn try_map_cost<C2, Error>(self, mut map: impl FnMut(C) -> Result<C2, Error>) -> Result<CastTaggedEffect<C2>, Error> {
+        Ok(CastTaggedEffect {
+            tag: self.tag, player: self.player, allow_land: self.allow_land, as_copy: self.as_copy,
+            copy_cast_reminder_surface: self.copy_cast_reminder_surface,
+            copy_instruction_surface: self.copy_instruction_surface,
+            without_paying_mana_cost: self.without_paying_mana_cost,
+            additional_mana_cost: self.additional_mana_cost, cost_reduction: self.cost_reduction,
+            mana_spend_mode: self.mana_spend_mode, alternative_payment: self.alternative_payment,
+            alternative_cost: self.alternative_cost.map(|cost| cost.try_map(&mut map)).transpose()?,
+        })
     }
 
     pub fn alternative_payment(mut self, payment: CastTaggedAlternativePayment) -> Self {
@@ -4871,17 +5006,33 @@ pub struct UnlessPaysEffect<E> {
     pub before_delayed_step: bool,
 }
 
+/// The keyword whose whole optional upkeep cost is being paid.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub enum UpkeepPaymentKind {
+    #[default]
+    Cumulative,
+    Echo,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CumulativeUpkeepEffect<E> {
     pub player: PlayerFilter,
     pub payment: Vec<E>,
     pub failure: Vec<E>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub kind: UpkeepPaymentKind,
 }
 
 impl<E> CumulativeUpkeepEffect<E> {
+    pub fn with_kind(mut self, kind: UpkeepPaymentKind) -> Self { self.kind = kind; self }
+    pub fn echo(player: PlayerFilter, payment: Vec<E>, failure: Vec<E>) -> Self {
+        Self::new(player, payment, failure).with_kind(UpkeepPaymentKind::Echo)
+    }
     pub fn new(player: PlayerFilter, payment: Vec<E>, failure: Vec<E>) -> Self {
         Self {
+            kind: UpkeepPaymentKind::Cumulative,
             player,
             payment,
             failure,
@@ -4954,3 +5105,146 @@ pub struct ReflexiveTriggerEffect<E> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
 pub struct RevealChosenSubtypeEffect;
+
+/// The next occurrences of a scheduled turn unit, with no current-turn expiry.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum ScheduledSkipKind {
+    UntapStep,
+    CombatPhase,
+    Turn,
+    DrawStep,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct SkipScheduledEffect {
+    pub player: PlayerFilter,
+    pub kind: ScheduledSkipKind,
+    pub count: u32,
+}
+
+/// A resolving spell/ability creates a multi-use damage multiplier for its
+/// duration. Its controller is captured on resolution, independently of the
+/// source's later controller, zone, or continued existence.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterDamageMultiplierEffect {
+    pub source_filter: crate::filter_model::ObjectFilter,
+    pub target_player_filter: Option<crate::filter_model::PlayerFilter>,
+    pub target_object_filter: Option<crate::filter_model::ObjectFilter>,
+    pub factor: u32,
+    pub combat_only: bool,
+    pub noncombat_only: bool,
+    pub mode: ReplacementApplyMode,
+}
+
+/// One source deals one amount to the complete union of recipients at once.
+/// Specs are resolution references or quantified groups, not fresh choices.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct DealDamageToRecipientsEffect {
+    pub amount: Value,
+    pub recipients: Vec<ChooseSpec>,
+}
+
+/// How an explicitly identified damage-source set survives state changes.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub enum DamageSourceSetBinding {
+    #[default]
+    LiveMembers,
+    /// Only exact captured battlefield incarnations. A departed member uses
+    /// its actual last-known receipt, never a later object of the same card.
+    CapturedIncarnations,
+}
+
+/// Whether independently bound damage sources share recipients or each hit itself.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub enum DamageRecipientSetBinding {
+    #[default]
+    SharedSet,
+    /// One assignment per source: (source, that exact same object, its amount).
+    EachSource,
+}
+
+/// All sources deal their own evaluated amount in one simultaneous occurrence.
+/// The complete source set and each source's amount are captured before damage.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct DealDamageBySourcesEffect {
+    pub sources: Vec<ChooseSpec>,
+    /// Original authored groups for declaration-aware presentation. Execution
+    /// uses the corresponding captured `sources`, never chooses again.
+    pub source_declarations: Vec<ChooseSpec>,
+    pub amount: Value,
+    pub target: ChooseSpec,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_binding: DamageSourceSetBinding,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub recipient_binding: DamageRecipientSetBinding,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub unpreventable: bool,
+}
+
+impl DealDamageBySourcesEffect {
+    pub fn new(sources: Vec<ChooseSpec>, amount: Value, target: ChooseSpec) -> Self {
+        Self {
+            sources,
+            source_binding: DamageSourceSetBinding::LiveMembers,
+            recipient_binding: DamageRecipientSetBinding::SharedSet,
+            unpreventable: false,
+            source_declarations: Vec::new(),
+            amount,
+            target,
+        }
+    }
+    pub fn with_recipient_binding(mut self, binding: DamageRecipientSetBinding) -> Self {
+        self.recipient_binding = binding;
+        self
+    }
+    pub fn with_unpreventable(mut self, unpreventable: bool) -> Self {
+        self.unpreventable = unpreventable;
+        self
+    }
+    pub fn with_source_binding(mut self, binding: DamageSourceSetBinding) -> Self {
+        self.source_binding = binding;
+        self
+    }
+    pub fn with_source_declarations(mut self, declarations: Vec<ChooseSpec>) -> Self {
+        self.source_declarations = declarations;
+        self
+    }
+}
+
+/// One source deals independently computed amounts to a captured object set.
+/// Each amount can refer to that recipient or its controller. Every amount is
+/// evaluated before any original damage result or added instruction executes.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct DealDamageEachEffect {
+    pub amount: Value,
+    pub filter: ObjectFilter,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterManaSpendPermissionEffect {
+    pub permission: crate::ManaSpendPermission,
+    pub until: Until,
+    pub display: String,
+}
+
+/// A resolving instruction captures its additive replacement amount once.
+/// The registered modifier keeps this controller and duration after source exit.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterDamageAdditionEffect {
+    pub source_filter: crate::filter_model::ObjectFilter,
+    pub target_player_filter: Option<crate::filter_model::PlayerFilter>,
+    pub target_object_filter: Option<crate::filter_model::ObjectFilter>,
+    pub delta: Value,
+    pub noncombat_only: bool,
+    pub mode: ReplacementApplyMode,
+}

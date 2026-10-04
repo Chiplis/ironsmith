@@ -29,24 +29,34 @@ pub fn parse_resource_shuffle_shape(
                 target_len: into_idx,
             });
         }
-        if matches!(
-            target_words.as_slice(),
-            ["your", "hand"] | ["their", "hand"] | ["his", "or", "her", "hand"]
-        ) && let Some((destination_player, rest)) =
-            primitives::parse_prefix(&normalized_destination, destination)
+        // A relative possessor is bound to the typed subject/antecedent,
+        // not guessed as the controller of a previously mentioned object.
+        // The subject can still be resolved by the enclosing each-player loop.
+        let relative_player = if default_player == PlayerAst::Implicit { PlayerAst::That } else { default_player };
+        let zone_words = match target_words.as_slice() {
+            ["the", "cards", "from", rest @ ..] | ["all", "cards", "from", rest @ ..]
+            | ["cards", "from", rest @ ..] => rest,
+            rest => rest,
+        };
+        let whole_zone = match zone_words {
+            ["your", "hand"] => Some((Zone::Hand, PlayerAst::You)),
+            ["their", "hand"] | ["his", "or", "her", "hand"] => Some((Zone::Hand, relative_player)),
+            ["your", "graveyard"] => Some((Zone::Graveyard, PlayerAst::You)),
+            ["their", "graveyard"] | ["his", "or", "her", "graveyard"] => Some((Zone::Graveyard, relative_player)),
+            _ => None,
+        };
+        if let Some((zone, source_player)) = whole_zone
+            && let Some((destination_player, rest)) = primitives::parse_prefix(&normalized_destination, destination)
             && trimmed(rest).is_empty()
+            && resolve_destination(destination_player, source_player) == source_player
         {
-            let source_player = if target_words.first() == Some(&"your") {
-                PlayerAst::You
-            } else {
-                default_player
-            };
-            if resolve_destination(destination_player, default_player) == source_player {
-                return Some(ResourceShuffleShape::HandIntoLibrary {
+            return Some(if zone == Zone::Hand { ResourceShuffleShape::HandIntoLibrary { player: source_player } }
+                else { ResourceShuffleShape::GraveyardIntoLibrary {
                     player: source_player,
-                });
-            }
+                    explicit_all_cards_from: target_words.starts_with(&["all", "cards", "from"]),
+                } });
         }
+        if whole_zone.is_some() { return None; }
         if exact_unit(target, tagged_reference)
             && let Some((destination_player, rest)) =
                 primitives::parse_prefix(&normalized_destination, destination)
@@ -66,6 +76,15 @@ pub fn parse_resource_shuffle_shape(
                 player: resolve_destination(destination_player, default_player),
             });
         }
+        if !target.is_empty()
+            && let Some((destination_player, rest)) = primitives::parse_prefix(&normalized_destination, destination)
+            && trimmed(rest).is_empty()
+        {
+            let player = resolve_destination(destination_player, relative_player);
+            return Some(ResourceShuffleShape::ObjectsIntoSubjectLibrary {
+                target_len: into_idx, player, all: target_words.first() == Some(&"all"),
+            });
+        }
     }
 
     if matches!(default_player, PlayerAst::ItsOwner)
@@ -81,10 +100,14 @@ pub fn parse_resource_shuffle_shape(
     }
 
     let normalized = without_articles(clause);
+    if crate::lexer::token_word_refs(&normalized) == ["that", "library"] {
+        return Some(ResourceShuffleShape::ShuffleLibrary {
+            player: if default_player == PlayerAst::Implicit { PlayerAst::That } else { default_player },
+        });
+    }
     let (destination_player, rest) = primitives::parse_prefix(&normalized, destination)?;
     if !trimmed(rest).is_empty() {
         return None;
     }
-    let _ = destination_player;
-    Some(ResourceShuffleShape::SimpleLibrary)
+    Some(ResourceShuffleShape::ShuffleLibrary { player: resolve_destination(destination_player, default_player) })
 }

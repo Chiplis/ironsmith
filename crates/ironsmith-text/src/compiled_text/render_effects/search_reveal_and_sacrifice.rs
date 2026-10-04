@@ -283,7 +283,7 @@ pub(super) fn describe_look_exile_one_rest_bottom_cast_else_hand(
     if !conditional.if_false.is_empty() {
         return None;
     }
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if condition_tag != &choose.tag
         || cast.tag != choose.tag
         || cast.player != PlayerFilter::You
@@ -338,7 +338,7 @@ pub(super) fn describe_target_opponent_look_exile_one_rest_bottom_cast(
         unwrap_basic_tag_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
     let rest =
         rest_effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
 
     let targets_opponent = matches!(
         &target.target,
@@ -2859,7 +2859,7 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
     };
     let cast_result_tag = wrapped_effect_tag(cast_effect);
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag != choose.tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -2997,7 +2997,7 @@ pub(super) fn describe_reflexive_targeted_graveyard_cast_with_replacement(
         return None;
     };
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
 
     // Reflexive-trigger `choices` are target declarations by construction.
     // Older lowering stores only that declaration; the public multi-sentence
@@ -3063,7 +3063,7 @@ fn describe_duration_scoped_targeted_graveyard_cast_replacement(
     let card_types_text = describe_graveyard_cast_card_types(&card_types)?;
 
     let grant = structural_unwrap_render_wrappers(grant_effect)
-        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     let surface = grant.surface.as_ref()?;
     if &grant.tag != target_tag
         || grant.player != PlayerFilter::You
@@ -3210,7 +3210,7 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
     let cast_effect = &may.effects[0];
     let cast_spell_tag = wrapped_effect_tag(cast_effect)?;
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if &cast.tag != target_tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -3339,7 +3339,7 @@ fn describe_immediate_targeted_graveyard_any_type_cast(effects: &[&Effect]) -> O
         return None;
     };
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if &cast.tag != target_tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -4524,7 +4524,7 @@ pub(super) fn describe_reveal_top_opponent_exiles_rest_hand_then_may_cast(
     {
         return None;
     }
-    let cast = may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag != choose.tag
         || cast.player != expected_opponent
         || cast.allow_land
@@ -5330,6 +5330,12 @@ pub(super) fn describe_for_players_simple_iterated_action(
     let leader_subject;
     let subject = if matches!(for_players.filter, PlayerFilter::ControlsMost { .. }) {
         leader_subject = capitalize_first(&for_players.filter.description());
+        leader_subject.as_str()
+    } else if matches!(for_players.filter, PlayerFilter::ControlsFewestTied { .. }) {
+        leader_subject = format!(
+            "Each {}",
+            strip_leading_article(&for_players.filter.description())
+        );
         leader_subject.as_str()
     } else {
         describe_for_players_subject(&for_players.filter)?

@@ -577,6 +577,12 @@ mod chain_entry_readings;
 fn parse_effect_chain_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = super::duration_source_prevention::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) = super::temporary_attack_requirement::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(effect) = matching_spell_cost_modifier_chain(tokens) {
         return Ok(vec![effect]);
     }
@@ -1329,6 +1335,12 @@ fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = super::duration_source_prevention::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) = super::temporary_attack_requirement::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
     // Conditional sentence readers enter here directly. A value definition
     // between coordinated actions still belongs to the complete chain; the
     // outer binding reader removes that definition before recursing here.
@@ -2633,6 +2645,25 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
     };
     match action {
         SubjectVerbActionAst::DamagePrevention(
+            DamagePreventionActionAst::PreventAllDamageToTarget {
+                source_target: Some(_),
+                follow_up_effects,
+                ..
+            },
+        ) if follow_up_effects.is_empty()
+            && sequence_grammar::parse_prevention_gain_life_followup_shape(sentence) =>
+        {
+            follow_up_effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
+                    amount: Value::EventValue(crate::effect::EventValueSpec::Amount),
+                }),
+            ));
+            true
+        }
+
+        SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventNextTimeDamage {
                 source,
                 reflect_damage_to_source_controller,
@@ -2836,10 +2867,15 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
         }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventAllDamageToTarget {
-                target, duration, ..
+                target,
+                duration,
+                combat_only,
+                source_target: None,
+                protect_source_target: false,
+                ..
             },
         ) => {
-            if sequence_grammar::parse_prevention_counter_followup_shape(sentence) {
+            if !*combat_only && sequence_grammar::parse_prevention_counter_followup_shape(sentence) {
                 let replacement = EffectAst::subject_verb_prevent_damage_to_target_put_counters(
                     None,
                     target.clone(),
@@ -3209,3 +3245,6 @@ fn set_ability_modifier_target(effect: &mut EffectAst, subject: TargetAst) {
         *target = subject;
     }
 }
+
+mod extremum_choice;
+pub(crate) use extremum_choice::bind as bind_extremum_choice_followup;

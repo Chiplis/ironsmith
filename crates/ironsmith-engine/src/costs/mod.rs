@@ -33,6 +33,7 @@
 
 mod cost_effect;
 mod dynamic_mana;
+mod life_representation;
 mod mana;
 mod payer_trait;
 mod processing_mode;
@@ -48,7 +49,7 @@ pub use processing_mode::CostProcessingMode;
 pub use cost_effect::CostEffect;
 pub use dynamic_mana::DynamicManaPaymentCost;
 pub use mana::ManaPaymentCost;
-pub(crate) use mana::pay_mana_cost_with_choices;
+pub(crate) use mana::{pay_mana_cost_with_choices, pay_mana_cost_with_choices_in_context};
 
 use crate::color::ColorSet;
 use crate::filter::ObjectFilter;
@@ -132,8 +133,11 @@ impl Cost {
 
     /// Create a life payment cost.
     pub fn life(amount: u32) -> Self {
-        Self::effect(crate::effects::LoseLifeEffect::you(amount))
-            .with_model(ironsmith_core::Cost::Life(crate::effect::Value::from(amount)))
+        let Ok(scalar) = i32::try_from(amount) else {
+            return Self::new(life_representation::UnrepresentableLifePayment { amount });
+        };
+        Self::effect(crate::effects::PayLifeEffect::you(scalar))
+            .with_model(ironsmith_core::Cost::Life(crate::effect::Value::Fixed(scalar)))
     }
 
     /// Create a mana cost.

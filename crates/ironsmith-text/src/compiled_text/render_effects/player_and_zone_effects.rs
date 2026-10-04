@@ -1186,6 +1186,17 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         return Some("creature chosen before it".to_string());
     }
     match value.unhinted() {
+        Value::EventValue(EventValueSpec::LifeChange { gained, for_controller }) => Some(format!(
+            "1 life {} {}", if *for_controller { "you" } else { "that player" },
+            if *gained { "gained" } else { "lost" },
+        )),
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query)
+            if query.source == crate::effect::EffectMetricSource::Outcome
+                && matches!(query.metric, crate::effect::EffectMetric::LifeGained | crate::effect::EffectMetric::LifeLost)
+                && query.filter.is_none() => Some(format!(
+                    "1 life {} {}", if query.player == Some(PlayerFilter::You) { "you" } else { "that player" },
+                    if query.metric == crate::effect::EffectMetric::LifeGained { "gained" } else { "lost" },
+                )),
         Value::Count(filter) => Some(
             describe_prior_effect_source_count_basis(filter, false)
                 .or_else(|| describe_repeated_each_union_count(filter))
@@ -4523,7 +4534,7 @@ pub(super) fn describe_exile_top_then_may_cast(
         return None;
     };
     let cast = unwrap_basic_tag_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.player != PlayerFilter::You || cast.as_copy || cast.cost_reduction.is_some() {
         return None;
     }
@@ -4752,7 +4763,7 @@ pub(super) fn describe_looked_card_split_destinations_structural(
     let bottom_move = unwrap_basic_tag_wrappers(bottom_move_effect)
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let exile_move = move_to_zone_surface_view(unwrap_basic_tag_wrappers(exile_move_effect))?;
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
 
     describe_look_at_top_split_hand_bottom_exile_then_play_exiled(
         look_at_top,
@@ -4952,7 +4963,7 @@ pub(super) fn describe_look_at_top_choose_exile_rest_bottom_play_and_any_mana_wh
     let [play_effect] = may_play.effects.as_slice() else {
         return None;
     };
-    let play_grant = play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let play_grant = play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     describe_look_at_top_choose_exile_rest_bottom_play_grants_and_any_mana_while_exiled(
         look_at_top,
         choose,

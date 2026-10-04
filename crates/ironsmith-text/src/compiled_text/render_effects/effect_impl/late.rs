@@ -1572,6 +1572,19 @@
         };
         let plural_subject = target.starts_with("all ") || target.starts_with("those ");
         let target = capitalize_first(&target);
+        if become_basic.preserve_other_types || !become_basic.allowed_subtypes.is_empty() {
+            let land_type = if become_basic.allowed_subtypes.is_empty() {
+                "the basic land type of your choice".to_string()
+            } else {
+                become_basic.allowed_subtypes.iter().map(|subtype| {
+                    format!("{} {}", if *subtype == crate::types::Subtype::Island { "an" } else { "a" }, subtype)
+                }).collect::<Vec<_>>().join(" or ")
+            };
+            let retention = if become_basic.preserve_other_types { " in addition to its other types" } else { "" };
+            let duration = if become_basic.duration == Until::Forever { String::new() }
+                else { format!(" {}", describe_until(&become_basic.duration)) };
+            return format!("{target} {} {land_type}{retention}{duration}", if plural_subject { "become" } else { "becomes" });
+        }
         if let Some(subtype) = become_basic.fixed_subtype {
             let subtype_text = if plural_subject {
                 pluralize_noun_phrase(&subtype.to_string())
@@ -1720,6 +1733,24 @@
             "{player} {} {tail}",
             player_verb(&player, "incubate", "incubates")
         );
+    }
+    if let Some(collect) = effect.downcast_ref::<crate::effects::CollectEvidenceEffect>() {
+        let (amount, where_x) = if value_prefers_where_x(&collect.amount) {
+            ("X".to_string(), describe_where_x_basis(&collect.amount)
+                .map(|basis| format!(", where X is {basis}")).unwrap_or_default())
+        } else {
+            (describe_value(&collect.amount), String::new())
+        };
+        return format!("Collect evidence {amount}{where_x}");
+    }
+    if let Some(empower) = effect.downcast_ref::<crate::effects::EmpowerJaceEffect>() {
+        let (amount, where_x) = if value_prefers_where_x(&empower.amount) {
+            ("X".to_string(), describe_where_x_basis(&empower.amount)
+                .map(|basis| format!(", where X is {basis}")).unwrap_or_default())
+        } else {
+            (describe_value(&empower.amount), String::new())
+        };
+        return format!("Empower Jace {amount}{where_x}");
     }
     if let Some(amass) = effect.downcast_ref::<crate::effects::AmassEffect>() {
         let (amount, where_x) = if value_prefers_where_x(&amass.amount) {
@@ -1939,6 +1970,18 @@
     }
     if let Some(subgame) = effect.downcast_ref::<crate::effects::PlaySubgameEffect>() {
         return describe_play_subgame(subgame);
+    }
+    if let Some(skip) = effect.downcast_ref::<crate::effects::SkipScheduledEffect>() {
+        let player = describe_player_filter(&skip.player);
+        let unit = match skip.kind {
+            ironsmith_core::ScheduledSkipKind::UntapStep => "untap step",
+            ironsmith_core::ScheduledSkipKind::CombatPhase => "combat phase",
+            ironsmith_core::ScheduledSkipKind::Turn => "turn",
+            ironsmith_core::ScheduledSkipKind::DrawStep => "draw step",
+        };
+        let quantity = if skip.count == 1 { String::new() } else { format!("{} ", small_number_word(skip.count).unwrap_or_else(|| skip.count.to_string())) };
+        let plural = if skip.count == 1 { "" } else { "s" };
+        return format!("{} {} {} next {}{}{}", player, player_verb(&player, "skip", "skips"), describe_possessive_player_filter(&skip.player), quantity, unit, plural);
     }
     if let Some(skip_draw) = effect.downcast_ref::<crate::effects::SkipDrawStepEffect>() {
         let player = describe_player_filter(&skip_draw.player);
@@ -3107,6 +3150,7 @@
     if let Some(redirect_all) =
         effect.downcast_ref::<crate::effects::RedirectAllDamageThisTurnToTargetEffect>()
     {
+        if let Some(scope) = &redirect_all.scope { return scope.display.clone(); }
         let target_set = if redirect_all.player_filter == crate::target::PlayerFilter::You
             && redirect_all.object_filter == crate::target::ObjectFilter::permanent().you_control()
         {
@@ -3217,26 +3261,62 @@
         };
     }
     if let Some(prevent_all) = effect.downcast_ref::<crate::effects::PreventAllDamageEffect>() {
-        if let Some(source_target) = &prevent_all.source_target
-            && matches!(prevent_all.until, Until::EndOfTurn)
-        {
+        let finish = |mut rendered: String| {
+            if prevention_gain_life_follow_up(&prevent_all.follow_up_effects).is_some() {
+                rendered.push_str(". You gain life equal to the damage prevented this way");
+            } else if !prevent_all.follow_up_effects.is_empty() {
+                rendered.push_str(&format!(
+                    ". When damage is prevented this way, {}",
+                    lowercase_first(&describe_effect_list(&prevent_all.follow_up_effects))
+                ));
+            }
+            rendered
+        };
+        if prevent_all.source_target.is_none() && !prevent_all.follow_up_effects.is_empty() {
+            let mut base = prevent_all.clone();
+            base.follow_up_effects.clear();
+            return finish(describe_effect(&Effect::new(base)));
+        }
+        if let Some(source_target) = &prevent_all.source_target {
+            let timing = if matches!(prevent_all.until, Until::EndOfTurn) {
+                "this turn".to_owned()
+            } else {
+                describe_until(&prevent_all.until)
+            };
+            let damage = if prevent_all.damage_filter.combat_only {
+                "combat damage"
+            } else {
+                "damage"
+            };
+            if prevent_all.protect_source_target {
+                return finish(format!(
+                    "Prevent all {damage} that would be dealt to and dealt by {} {timing}",
+                    describe_choose_spec(source_target)
+                ));
+            }
             if !prevent_all.protect_source
                 && matches!(prevent_all.target, crate::prevention::PreventionTarget::All)
             {
-                return format!(
-                    "Prevent all damage that would be dealt this turn by {}",
+                if matches!(prevent_all.until, Until::EndOfTurn) {
+                    return finish(format!(
+                        "Prevent all {damage} that would be dealt this turn by {}",
+                        describe_choose_spec(source_target)
+                    ));
+                }
+                return finish(format!(
+                    "Prevent all {damage} {} would deal {timing}",
                     describe_choose_spec(source_target)
-                );
+                ));
             }
             let protected = if prevent_all.protect_source {
                 "this creature".to_string()
             } else {
                 describe_prevention_target(&prevent_all.target)
             };
-            return format!(
-                "Prevent all damage that would be dealt to {protected} by {} this turn",
+            return finish(format!(
+                "Prevent all {damage} that would be dealt to {protected} by {} {timing}",
                 describe_choose_spec(source_target)
-            );
+            ));
         }
         if let Some(excluded_source_target) = &prevent_all.excluded_source_target
             && prevent_all.damage_filter.combat_only
@@ -4228,6 +4308,7 @@
         );
     }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterDrawReplacementEffect>() {
+        if let Some(display) = &register.display { return display.clone(); }
         let player = if register.player == PlayerFilter::IteratedPlayer {
             "they".to_string()
         } else {
@@ -4252,6 +4333,12 @@
             "The next time {player} would draw a card{duration}, instead {replacement}"
         );
     }
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaSpendPermissionEffect>() {
+        return register.display.clone();
+    }
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaRewriteEffect>() {
+        return register.display.clone();
+    }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaReplacementEffect>() {
         let source = register.source_filter.description();
         let mana = register
@@ -4275,6 +4362,62 @@
         return format!(
             "{prefix}{source} is tapped for mana, it produces {mana} instead of any other type"
         );
+    }
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterDamageMultiplierEffect>() {
+        let mut base = register.source_filter.clone();
+        base.controller = None;
+        let source = if base == ObjectFilter::default() {
+            match &register.source_filter.controller {
+                None => "a source".to_string(),
+                Some(PlayerFilter::You) => "a source you control".to_string(),
+                Some(PlayerFilter::Opponent) => "a source an opponent controls".to_string(),
+                Some(player) => format!("a source controlled by {}", describe_player_filter(player)),
+            }
+        } else { with_indefinite_article(strip_leading_article(&register.source_filter.description())) };
+        let recipient = match (&register.target_player_filter, &register.target_object_filter) {
+            (Some(PlayerFilter::Any), Some(object)) if *object == ObjectFilter::permanent() => "a permanent or player".to_string(),
+            (Some(player), None) => describe_player_filter(player),
+            (None, Some(object)) => with_indefinite_article(strip_leading_article(&object.description())),
+            (Some(player), Some(object)) => format!("{} or {}", object.description(), describe_player_filter(player)),
+            (None, None) => "no recipients".to_string(),
+        };
+        let damage = if register.combat_only { "combat damage" } else if register.noncombat_only { "noncombat damage" } else { "damage" };
+        let multiplier = match register.factor { 2 => "double".to_string(), 3 => "triple".to_string(), n => format!("{n} times") };
+        let duration = match register.mode {
+            crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => " until your next turn",
+            _ => "",
+        };
+        let prefix = if matches!(register.mode, crate::effects::ReplacementApplyMode::OneShot) { "The next time" } else { "If" };
+        return format!("{prefix} {source} would deal {damage} to {recipient}{duration}, it deals {multiplier} that damage instead");
+    }
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterDamageAdditionEffect>() {
+        let mut base = register.source_filter.clone();
+        base.controller = None;
+        let source = if base == ObjectFilter::default() {
+            match &register.source_filter.controller {
+                None => "a source".to_string(),
+                Some(PlayerFilter::You) => "a source you control".to_string(),
+                Some(PlayerFilter::Opponent) => "a source an opponent controls".to_string(),
+                Some(player) => format!("a source controlled by {}", describe_player_filter(player)),
+            }
+        } else { with_indefinite_article(strip_leading_article(&register.source_filter.description())) };
+        let recipient = match (&register.target_player_filter, &register.target_object_filter) {
+            (Some(PlayerFilter::Any), Some(object)) if *object == ObjectFilter::permanent() => "a permanent or player".to_string(),
+            (Some(player), None) => describe_player_filter(player),
+            (None, Some(object)) => with_indefinite_article(strip_leading_article(&object.description())),
+            (Some(player), Some(object)) => format!("{} or {}", object.description(), describe_player_filter(player)),
+            (None, None) => "no recipients".to_string(),
+        };
+        let damage = if register.noncombat_only { "noncombat damage" } else { "damage" };
+        let bonus = describe_value(&register.delta);
+        let duration = match register.mode {
+            crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => " until your next turn",
+            _ => "",
+        };
+        let prefix = if matches!(register.mode, crate::effects::ReplacementApplyMode::OneShot) { "The next time" } else { "If" };
+        return format!("{prefix} {source} would deal {damage} to {recipient}{duration}, it deals that much damage plus {bonus} instead");
     }
     if let Some(register) =
         effect.downcast_ref::<crate::effects::RegisterCounterPlacementReplacementEffect>()
@@ -5041,6 +5184,7 @@
             && grant.player == crate::filter::PlayerFilter::You
             && grant.spec.usage_limit.is_none()
             && grant.spec.cast_this_way_grants.is_empty()
+            && grant.spec.permanent_this_way_grants.is_empty()
             && grant.spec.cast_this_way_filter.is_none()
             && grant.spec.source_exiled_surface.is_none()
             && let crate::grant::Grantable::AlternativeCast(method) = &grant.spec.grantable
@@ -5066,7 +5210,7 @@
             return "That card's owner may play it for as long as it remains exiled".to_string();
         }
         if grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
-            && grant.spec.zone == Zone::Hand
+            && matches!(grant.spec.zone, Zone::Hand | Zone::Stack)
             && matches!(
                 &grant.spec.grantable,
                 crate::grant::Grantable::Ability(ability) if ability.has_flash()
@@ -5095,6 +5239,15 @@
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
+        if let Some(price) = &grant_play_tagged.alternative_cost {
+            let mut grant = grant_play_tagged.clone(); grant.alternative_cost = None;
+            let payment = describe_casting_price_payment(price);
+            let payment = payment.strip_prefix("paying ").map(|tail| format!("pay {tail}"))
+                .or_else(|| payment.strip_prefix("discarding ").map(|tail| format!("discard {tail}")))
+                .unwrap_or(payment);
+            return format!("{}. If you cast a spell this way, {payment} rather than pay its mana cost",
+                describe_effect(&Effect::new(grant)));
+        }
         if let Some(filter) = &grant_play_tagged.spell_filter {
             let mut permission = grant_play_tagged.clone();
             permission.spell_filter = None;
@@ -5749,6 +5902,11 @@
         .is_some()
     {
         return "Put this card onto the battlefield tapped and attacking".to_string();
+    }
+    if let Some(blocked)=effect.downcast_ref::<crate::effects::BecomeBlockedEffect>() {
+        let subject=describe_choose_spec(&blocked.target);
+        let verb=if blocked.target.is_single() {"becomes"}else{"become"};
+        return format!("{} {verb} blocked",capitalize_first(&subject));
     }
     if let Some(remove_from_combat) =
         effect.downcast_ref::<crate::effects::RemoveFromCombatEffect>()

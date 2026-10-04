@@ -1028,6 +1028,44 @@ pub(crate) fn describe_ability(
     subject: &str,
     rewrite_it_deals: bool,
 ) -> Vec<String> {
+    if let AbilityKind::Activated(activated) = &ability.kind {
+        fn rules(cost: &crate::cost::TotalCost, output: &mut Vec<ironsmith_core::mana::ManaSpendingRestriction>) {
+            match cost.kind() {
+                ironsmith_core::TotalCostKind::OneOf(branches) => for branch in branches { rules(branch, output); },
+                ironsmith_core::TotalCostKind::All(costs) => for cost in costs {
+                    if let Some(mana) = cost.mana_cost_ref() {
+                        for rule in mana.spending_restrictions() {
+                            if matches!(rule, ironsmith_core::mana::ManaSpendingRestriction::OnX { .. }) && !output.contains(rule) {
+                                output.push(rule.clone());
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        let mut spending = Vec::new(); rules(&activated.mana_cost, &mut spending);
+        if !spending.is_empty() {
+            let mut bare = ability.clone();
+            if let AbilityKind::Activated(activated) = &mut bare.kind {
+                activated.mana_cost = activated.mana_cost.clone().try_map(|cost| {
+                    Ok::<_, std::convert::Infallible>(if let Some(mana) = cost.mana_cost_ref() {
+                        crate::costs::Cost::mana(mana.clone().without_x_spending_restrictions())
+                    } else { cost })
+                }).unwrap_or_else(|never| match never {});
+            }
+            let mut lines = describe_ability(index, &bare, subject, rewrite_it_deals);
+            // Modal descriptions can preserve the authored rider on every
+            // bullet; otherwise render the shared typed cost rider once.
+            for rule in spending {
+                let rider = rule.cast_description(false);
+                if !lines.iter().any(|line| line.to_ascii_lowercase().contains(&rider.to_ascii_lowercase()))
+                    && let Some(last) = lines.last_mut() {
+                    last.push_str(". "); last.push_str(&rider);
+                }
+            }
+            return lines;
+        }
+    }
     if let Some(rendered) = describe_exiled_last_time_counter_creatures_unblockable(ability) {
         return vec![format!("Triggered ability {index}: {rendered}")];
     }
@@ -1112,6 +1150,19 @@ pub(crate) fn describe_ability(
     {
         let surface = restore_modeled_value_surface(static_ability, surface);
         return vec![format!("Static ability {index}: {surface}")];
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && ability.functional_zones == vec![crate::zone::Zone::Stack]
+        && triggered.intervening_if.is_none()
+        && triggered.choices.is_empty()
+        && triggered.presentation_label.is_none()
+        && triggered.trigger.downcast_ref::<crate::triggers::YouCastThisSpellTrigger>().is_some()
+        && let [segment] = triggered.effects.segments.as_slice()
+        && segment.self_replacements.is_empty()
+        && let [effect] = segment.default_effects.as_slice()
+        && let Some(ripple) = effect.downcast_ref::<crate::effects::RippleEffect>()
+    {
+        return vec![format!("Keyword ability {index}: Ripple {}", ripple.amount)];
     }
     if let Some(keyword) = describe_keyword_ability(ability) {
         return vec![format!("Keyword ability {index}: {keyword}")];
@@ -2623,6 +2674,7 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             ActivationTiming::DuringOpponentsTurn => {
                 "Activate only during an opponent's turn".to_string()
             }
+            ActivationTiming::AnyTimeByEnchantedCreatureController => "Only the controller of the enchanted creature may activate this ability".to_string(),
             ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
                 "Any player may activate this ability but only during their turn before the end step"
                     .to_string()

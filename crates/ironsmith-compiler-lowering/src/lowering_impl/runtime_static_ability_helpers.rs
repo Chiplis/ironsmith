@@ -15,7 +15,7 @@ use ironsmith_compiler::ParseCardText;
 
 use super::lowering_support::lower_parsed_ability;
 
-/// Expands marker-backed gameplay keywords to the complete object-ability set
+/// Expands gameplay keywords to the complete object-ability set
 /// used by a printed instance of the same keyword.
 pub fn executable_object_abilities_for_keyword_action(
     action: &KeywordAction,
@@ -33,8 +33,12 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::Toxic(_)
             | KeywordAction::Poisonous(_)
             | KeywordAction::BattleCry
+            | KeywordAction::Melee
+            | KeywordAction::Myriad
+            | KeywordAction::Afflict(_)
             | KeywordAction::Dethrone
             | KeywordAction::Evolve
+            | KeywordAction::Increment
             | KeywordAction::Ingest
             | KeywordAction::Mentor
             | KeywordAction::Training
@@ -42,6 +46,7 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::Renown(_)
             | KeywordAction::Modular(_)
             | KeywordAction::Graft(_)
+        | KeywordAction::Ripple(_)
             | KeywordAction::Soulbond
             | KeywordAction::Soulshift(_)
             | KeywordAction::SoulshiftValue(_)
@@ -151,6 +156,7 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         | KeywordAction::BattleCry
         | KeywordAction::Dethrone
         | KeywordAction::Evolve
+        | KeywordAction::Increment
         | KeywordAction::Ingest
         | KeywordAction::Mentor => None,
         KeywordAction::Skulk => Some(CompilerStaticAbility::skulk()),
@@ -159,6 +165,7 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         KeywordAction::Renown(_)
         | KeywordAction::Modular(_)
         | KeywordAction::Graft(_)
+        | KeywordAction::Ripple(_)
         | KeywordAction::Soulbond
         | KeywordAction::Soulshift(_)
         | KeywordAction::SoulshiftValue(_)
@@ -360,24 +367,6 @@ pub fn decayed_triggered_ability() -> Ability {
     )
 }
 
-pub fn afflict_triggered_ability(amount: u32) -> Ability {
-    Ability {
-        kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
-            trigger: Trigger::this_becomes_blocked(),
-            effects: ResolutionProgram::from_effects(vec![Effect::lose_life_player(
-                amount as i32,
-                PlayerFilter::Defending,
-            )]),
-            choices: vec![],
-            intervening_if: None,
-            presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Afflict(
-                amount,
-            ))),
-        }),
-        functional_zones: vec![crate::zone::Zone::Battlefield],
-    }
-}
-
 pub fn decayed_object_abilities() -> Vec<Ability> {
     vec![
         Ability::static_ability(RuntimeStaticAbility::keyword_marker("decayed")),
@@ -399,27 +388,6 @@ pub fn exalted_triggered_ability() -> Ability {
                 crate::effect::Until::EndOfTurn,
             ),
         ],
-    )
-}
-
-pub fn myriad_triggered_ability() -> Ability {
-    let opponent_other_than_defending =
-        PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending);
-    Ability::triggered(
-        Trigger::this_attacks(),
-        vec![Effect::for_players(
-            opponent_other_than_defending,
-            vec![Effect::may(vec![Effect::new(
-                crate::effects::CreateTokenCopyEffect::new(
-                    crate::target::ChooseSpec::Source,
-                    1,
-                    PlayerFilter::You,
-                )
-                .enters_tapped(true)
-                .attacking_player_or_planeswalker_controlled_by(PlayerFilter::IteratedPlayer)
-                .exile_at_eoc(true),
-            )])],
-        )],
     )
 }
 
@@ -677,14 +645,6 @@ pub fn lower_granted_abilities_ast_to_object_abilities(
         }
         match ability {
             GrantedAbilityAst::KeywordAction(action)
-                if matches!(action.as_ref(), KeywordAction::Afflict(_)) =>
-            {
-                let KeywordAction::Afflict(amount) = action.as_ref() else {
-                    unreachable!();
-                };
-                lowered.push(afflict_triggered_ability(*amount));
-            }
-            GrantedAbilityAst::KeywordAction(action)
                 if matches!(action.as_ref(), KeywordAction::Decayed) =>
             {
                 lowered.extend(decayed_object_abilities());
@@ -703,11 +663,6 @@ pub fn lower_granted_abilities_ast_to_object_abilities(
                 if matches!(action.as_ref(), KeywordAction::Exalted) =>
             {
                 lowered.push(exalted_triggered_ability());
-            }
-            GrantedAbilityAst::KeywordAction(action)
-                if matches!(action.as_ref(), KeywordAction::Myriad) =>
-            {
-                lowered.push(myriad_triggered_ability());
             }
             GrantedAbilityAst::KeywordAction(action)
                 if matches!(action.as_ref(), KeywordAction::Marker("suspend")) =>
@@ -760,6 +715,35 @@ mod dynamic_keyword_grant_tests {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::types::CardType;
 
+    #[test]
+    fn keyword_grant_materialization_matches_printed_triggered_abilities() {
+        for action in [
+            KeywordAction::Melee,
+            KeywordAction::Myriad,
+            KeywordAction::Afflict(3),
+        ] {
+            let printed = CardDefinitionBuilder::new(crate::CardId::new(), "printed keyword")
+                .card_types(vec![CardType::Creature])
+                .apply_keyword_action(action.clone());
+            let grant = super::super::lowering_support::lower_keyword_action_to_object_abilities(
+                action.clone(),
+            )
+            .expect("continuous keyword grant must have an executable expansion");
+            let temporary = lower_granted_abilities_ast_to_object_abilities(&[
+                GrantedAbilityAst::KeywordAction(Box::new(action)),
+            ])
+            .expect("temporary grants must use the same expansion");
+            assert_eq!(format!("{grant:?}"), format!("{:?}", printed.abilities));
+            assert_eq!(format!("{temporary:?}"), format!("{grant:?}"));
+            assert_eq!(grant.len(), 1);
+            assert!(matches!(grant[0].kind, AbilityKind::Triggered(_)));
+            assert_eq!(
+                grant[0].functional_zones,
+                vec![crate::zone::Zone::Battlefield]
+            );
+        }
+    }
+
     const EXECUTABLE_MARKER_BACKED_KEYWORDS: &[&str] = &[
         "afterlife 2",
         "fabricate 2",
@@ -769,6 +753,7 @@ mod dynamic_keyword_grant_tests {
         "battle cry",
         "dethrone",
         "evolve",
+        "increment",
         "ingest",
         "mentor",
         "training",

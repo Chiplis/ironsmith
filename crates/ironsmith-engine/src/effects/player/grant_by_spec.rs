@@ -82,31 +82,26 @@ impl EffectExecutor for GrantBySpecEffect {
 
         let grant_source = grant_duration_source(self.duration, game, ctx.source, player_id);
 
-        if matches!(self.spec.grantable, Grantable::PlayFrom)
-            && let Some(max_plays) = self.spec.max_plays
-        {
-            game.effect_store
-                .grant_registry
-                .grant_play_from_to_filter_with_budget(
-                    self.spec.filter.clone(),
-                    self.spec.zone,
-                    player_id,
-                    grant_source,
-                    max_plays,
-                );
-        } else {
+        let shared_budget = self.spec.max_plays.map(|uses| game.effect_store.grant_registry.create_shared_usage_budget(uses));
+        let mut identity = None;
+        for spec in self.spec.zone_specs() {
             game.effect_store.grant_registry.grant_to_filter(
-                self.spec.filter.clone(),
-                self.spec.zone,
-                player_id,
-                self.spec.grantable.clone(),
-                grant_source,
-            );
-        }
-        if let Some(grant) = game.effect_store.grant_registry.grants.last_mut() {
-            grant.cast_this_way_grants = self.spec.cast_this_way_grants.clone();
-            grant.cast_this_way_filter = self.spec.cast_this_way_filter.clone();
-            grant.usage_limit = self.spec.usage_limit;
+                spec.filter.clone(), spec.zone, player_id, spec.grantable.clone(), grant_source.clone());
+            if let Some(grant) = game.effect_store.grant_registry.grants.last_mut() {
+                // One resolving instruction has one use identity and one total
+                // budget across its alternative origins.
+                if identity.is_none() { identity = grant.permission_identity.clone(); }
+                grant.permission_identity = identity.clone();
+                grant.shared_usage_id = shared_budget;
+                grant.cast_this_way_grants = spec.cast_this_way_grants;
+                grant.permanent_this_way_grants = spec.permanent_this_way_grants;
+                grant.cast_this_way_filter = spec.cast_this_way_filter;
+                grant.on_use_effects = spec.on_use_effects;
+                grant.usage_limit = spec.usage_limit;
+                grant.play_from_constraints.top_card_only = spec.top_card_only;
+                grant.play_from_constraints.instant_timing = spec.instant_timing;
+                grant.play_from_constraints.may_look_at_top = spec.may_look_at_top;
+            }
         }
 
         Ok(EffectOutcome::resolved())

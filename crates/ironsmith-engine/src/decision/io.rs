@@ -98,9 +98,10 @@ pub trait DecisionMaker {
     /// Returns IDs of selected objects.
     fn decide_objects(
         &mut self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &crate::decisions::context::SelectObjectsContext,
     ) -> Vec<ObjectId> {
+        if ctx.relation_filter.is_some() { return ctx.legal_relation_selection(game, ctx.min).unwrap_or_default(); }
         // Default: select minimum required from legal candidates
         ctx.candidates
             .iter()
@@ -902,9 +903,10 @@ impl DecisionMaker for AutoPassDecisionMaker {
 
     fn decide_objects(
         &mut self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &crate::decisions::context::SelectObjectsContext,
     ) -> Vec<ObjectId> {
+        if ctx.relation_filter.is_some() { return ctx.legal_relation_selection(game, ctx.min).unwrap_or_default(); }
         // Auto-pass: select minimum required, using first legal candidates
         let legal: Vec<ObjectId> = ctx
             .candidates
@@ -1067,9 +1069,10 @@ impl DecisionMaker for SelectFirstDecisionMaker {
 
     fn decide_objects(
         &mut self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &crate::decisions::context::SelectObjectsContext,
     ) -> Vec<ObjectId> {
+        if ctx.relation_filter.is_some() { return ctx.legal_relation_selection(game, ctx.max.unwrap_or(1).max(ctx.min)).unwrap_or_default(); }
         // Select first: select first legal option (up to max)
         let legal: Vec<ObjectId> = ctx
             .candidates
@@ -2547,10 +2550,14 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
         } => {
             if let Some(obj) = game.object(*spell_id) {
                 match casting_method {
+                    crate::alternative_cast::CastingMethod::AlternativePrice { price, prototype, .. } => {
+                        let provider = game.object(price.source).map(|source| source.name.to_string()).unwrap_or_else(|| "alternative price".into());
+                        format!("{} [using {}{}]", obj.name, provider, if prototype.is_some() { ", prototyped" } else { "" })
+                    }
                     crate::alternative_cast::CastingMethod::Normal => {
                         format!("{} ({})", obj.name, format_mana_cost(obj))
                     }
-                    crate::alternative_cast::CastingMethod::FaceDown => {
+                    crate::alternative_cast::CastingMethod::FaceDown | crate::alternative_cast::CastingMethod::FaceDownPlayFrom { .. } => {
                         format!("{} [Face down] ({})", obj.name, "{3}")
                     }
                     crate::alternative_cast::CastingMethod::SplitOtherHalf => {
@@ -2575,17 +2582,13 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
                         ..
                     } => {
                         let acting_player = game.turn.priority_player.unwrap_or(obj.owner);
-                        let alt_method = resolve_play_from_alternative_method(
-                            game,
-                            acting_player,
-                            obj,
-                            *zone,
-                            *use_alternative,
-                        );
+                        let alt_method = use_alternative.and_then(|index| resolve_play_from_alternative_method(
+                            game, acting_player, obj, *zone, index,
+                        ));
                         let method_name = alt_method
                             .as_ref()
                             .map(|method| method.name())
-                            .unwrap_or("Alternative");
+                            .unwrap_or("Granted cast");
                         let cost_desc = if let Some(method) = alt_method.as_ref() {
                             let costs = method.non_mana_costs();
                             if !costs.is_empty() {
@@ -2605,7 +2608,8 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
                                 format_mana_cost(obj)
                             }
                         } else {
-                            format_mana_cost(obj)
+                            spell_mana_cost_for_cast(game, acting_player, obj, casting_method, *zone)
+                                .as_ref().map(format_mana_cost_from_cost).unwrap_or_default()
                         };
                         let name = game
                             .linked_face_definition_by_name_or_id(

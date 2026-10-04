@@ -23,6 +23,7 @@ mod choose_mode_runtime;
 pub(crate) mod choose_objects;
 pub(crate) mod choose_objects_runtime;
 mod choose_spell_cast_history;
+pub(crate) mod collect_evidence;
 mod conditional;
 mod cumulative_upkeep;
 mod emit_gift_given;
@@ -100,7 +101,7 @@ pub use mechanic_actions::{
 };
 pub use reflexive_trigger::ReflexiveTriggerEffect;
 pub(crate) use reflexive_trigger::{
-    PendingReflexiveTrigger, queue_reflexive_trigger, reflexive_trigger_stack_entry,
+    PendingReflexiveTrigger, queue_reflexive_trigger, queue_reflexive_trigger_with_source_snapshot, reflexive_trigger_stack_entry,
 };
 pub use repeat_effects::RepeatEffectsEffect;
 pub use repeat_process::RepeatProcessEffect;
@@ -123,4 +124,16 @@ pub use villainous_choice::VillainousChoiceEffect;
 pub use vote::{
     VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult,
 };
+pub use collect_evidence::CollectEvidenceEffect;
 pub use with_id::WithIdEffect;
+
+pub(crate) mod selection_relations;
+pub(crate) use conditional::prepare_conditional_branch;
+pub(crate) use execute_with_source::resolve_source_binding;
+pub(crate) use may::is_object_selection;
+pub(crate) use tagged::apply_outcome_tags;
+pub(crate) use tagging_runtime::{TaggedRuntimeState, capture_tagged_runtime_state};
+
+pub(crate) use if_effect::{PreparedIfBranch, prepare_if_branches, execute_if_branches};
+
+pub(crate) use for_players::{ForPlayersDrawContinuation, ForPlayersDrawProgress};

@@ -30,6 +30,7 @@ enum ReturnCostShape {
 pub fn parse_reveal_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    if let Some(group) = super::grouped_hand::parse_grouped_hand_cost(tokens, true) { return group; }
     parse_segment(tokens, parse_reveal_segment_lexed, "reveal-cost")
 }
 
@@ -378,5 +379,36 @@ mod tests {
 
         let near_miss = lex_line("put a creature card on the bottom of your library", 0).unwrap();
         assert!(parse_move_source_to_library_bottom_cost_tokens(&near_miss).is_none());
+    }
+}
+
+/// A mandatory public-zone card movement paid as part of an activation.
+pub fn parse_move_chosen_to_graveyard_cost_tokens(tokens: &[OwnedLexToken]) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
+    let suffix = ["into", "its", "owners", "graveyard"];
+    if tokens.len() <= suffix.len() + 2 || !tokens[0].is_word("put") { return None; }
+    let end = tokens.len() - suffix.len();
+    if !tokens[end..].iter().zip(suffix).all(|(token, word)| token.is_word(word)) { return None; }
+    let start = if tokens[1].is_word("a") || tokens[1].is_word("an") { 2 } else { 1 };
+    Some(filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens[start..end], false).and_then(|filter| {
+        if filter.zone != Some(Zone::Exile) {
+            return Err(unsupported(tokens, "public-exile-to-graveyard-cost"));
+        }
+        Ok(ActivationCostSegmentCst::MoveChosenToZone { filter, destination: Zone::Graveyard })
+    }))
+}
+
+#[cfg(test)]
+mod linked_exile_movement_cost_tests {
+    use super::*;
+    #[test]
+    fn linked_exile_movement_keeps_card_type_source_and_destination() {
+        let tokens = crate::lexer::lex_line("Put a creature card exiled with this creature into its owner's graveyard", 0).unwrap();
+        let ActivationCostSegmentCst::MoveChosenToZone { filter, destination } = parse_move_chosen_to_graveyard_cost_tokens(&tokens).unwrap().unwrap() else { panic!("typed move cost expected"); };
+        assert_eq!(destination, Zone::Graveyard);
+        assert_eq!(filter.zone, Some(Zone::Exile));
+        assert!(filter.card_types.contains(&crate::CardType::Creature));
+        assert!(filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG));
+        let wrong = crate::lexer::lex_line("Put a creature card from your hand into its owner's graveyard", 0).unwrap();
+        assert!(parse_move_chosen_to_graveyard_cost_tokens(&wrong).unwrap().is_err());
     }
 }

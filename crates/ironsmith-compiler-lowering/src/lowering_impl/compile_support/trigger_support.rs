@@ -4,7 +4,7 @@ use crate::cards::builders::{
 use crate::effect::{Effect, EventValueSpec};
 use crate::filter::ObjectRef;
 use crate::model::ast::TriggerIntroSurfaceAst;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::Trigger;
 
 use super::LoweredEffects;
@@ -327,6 +327,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::WithIntro { .. } => {
             unreachable!("leading trigger intro surfaces are removed before lowering")
         }
+        TriggerSpec::ZoneChange(event) => Trigger::new(event),
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::AnyOf(branches) => {
             let play_description = match branches.as_slice() {
@@ -418,6 +419,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::ThisAttacksAndIsntBlocked => Trigger::this_attacks_and_isnt_blocked(),
         TriggerSpec::ThisAttacksWhileSaddled => Trigger::this_attacks_while_saddled(),
+        TriggerSpec::ThisAttacksPlayerWithMostLife => Trigger::this_attacks_player_with_most_life(),
         TriggerSpec::Attacks(filter) => Trigger::attacks(filter),
         TriggerSpec::AttacksAndIsntBlocked(filter) => Trigger::attacks_and_isnt_blocked(filter),
         TriggerSpec::AttacksAndIsntBlockedOneOrMore(filter) => {
@@ -448,6 +450,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             comparison,
         } => Trigger::attacks_one_or_more_with_aggregate(filter, metric, comparison),
         TriggerSpec::AttacksAlone(filter) => Trigger::attacks_alone(filter),
+        TriggerSpec::AttacksPlayerAlone(filter) => Trigger::attacks_player_alone(filter),
+        TriggerSpec::BecomesBlockedOneOrMore(filter) => Trigger::becomes_blocked_one_or_more(filter),
+        TriggerSpec::KeywordActionOneOrMore { action, player, source_filter } => Trigger::keyword_action_matching_object_one_or_more(action, player, source_filter),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter) => Trigger::attacks_you(filter),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(filter) => {
             Trigger::attacks_you_one_or_more(filter)
@@ -500,6 +505,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
         TriggerSpec::ThisPhasesOut => Trigger::this_phases_out(),
+        TriggerSpec::PlayerAttackDeclaration { attacker, defender, grouping } => Trigger::player_attack_declaration(attacker, defender, grouping),
+        TriggerSpec::CardsMilled { player, filter, one_or_more, per_player } => Trigger::cards_milled(player, filter, one_or_more, per_player),
+        TriggerSpec::PhasingChanged { filter, phased_in, one_or_more } => Trigger::phasing_changed(filter, phased_in, one_or_more),
         TriggerSpec::ThisLeavesBattlefieldWithSurface(surface) => Trigger::new(
             crate::triggers::ZoneChangeTrigger::new()
                 .from(crate::zone::Zone::Battlefield)
@@ -507,13 +515,41 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
                 .this_surface(surface.clone()),
         ),
         TriggerSpec::ThisMutates => Trigger::this_mutates(),
+        TriggerSpec::PermanentMutates(filter) => Trigger::permanent_mutates(filter.clone()),
+        TriggerSpec::PlayerTurnsFaceUp { player, filter } => Trigger::player_turns_face_up(player.clone(), filter.clone()),
+        TriggerSpec::PermanentTransformsInto { filter, destination } => Trigger::permanent_transforms_into(filter.clone(), destination.clone()),
         TriggerSpec::ThisBecomesMonstrous => Trigger::this_becomes_monstrous(),
         TriggerSpec::ThisClassBecomesLevel(level) => Trigger::class_becomes_level(level),
+        TriggerSpec::PlayerChangesTapState { player, filter, tapped, one_or_more, during_untap_step } => {
+            Trigger::player_changes_tap_state(player, filter, tapped, one_or_more, during_untap_step)
+        }
+        TriggerSpec::ControlChanged(trigger) => Trigger::control_changed(trigger),
+        TriggerSpec::RingBearerChosen(player) => Trigger::ring_bearer_chosen(player),
+        TriggerSpec::PlayerBecomesTargeted { player, source_controller, source_kind } => Trigger::player_becomes_targeted(player, source_controller, source_kind),
+        TriggerSpec::AttachmentChanged { attachment, recipient, attached } => Trigger::attachment_changed(attachment, recipient, attached),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
         TriggerSpec::PermanentBecomesTapped(filter) => Trigger::permanent_becomes_tapped(filter),
+        TriggerSpec::PermanentBecomesTappedOneOrMore(filter) => {
+            let display = format!(
+                "Whenever {} become tapped", one_or_more_subject_description(&filter),
+            );
+            Trigger::permanent_becomes_tapped_one_or_more(filter).with_display_label(display)
+        }
+        TriggerSpec::PermanentBecomesUntapped { filter, one_or_more } => {
+            let display = one_or_more.then(|| format!(
+                "Whenever {} become untapped", one_or_more_subject_description(&filter),
+            ));
+            let trigger = Trigger::permanent_becomes_untapped(filter, one_or_more);
+            if let Some(display) = display {
+                trigger.with_display_label(display)
+            } else {
+                trigger
+            }
+        }
         TriggerSpec::ThisBecomesUntapped => Trigger::becomes_untapped(),
         TriggerSpec::ThisTurnedFaceUp => Trigger::this_is_turned_face_up(),
         TriggerSpec::TurnedFaceUp(filter) => Trigger::turned_face_up(filter),
+        TriggerSpec::BecomesTargetedByAbilitySource { target, source } => Trigger::becomes_targeted_by_ability_source(target, source),
         TriggerSpec::ThisBecomesTargeted => Trigger::becomes_targeted(),
         TriggerSpec::BecomesTargeted(filter) => Trigger::becomes_targeted_object(filter),
         TriggerSpec::ThisBecomesTargetedBySpell(filter) => {
@@ -621,9 +657,20 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
                 Some(PlayerFilter::Opponent) => " during an opponent's turn",
                 _ => "",
             };
-            let display = format!(
-                "Whenever {source_description} deals noncombat damage to {player_description}{turn_description}"
-            );
+            let mut source_without_grouping = source.clone();
+            source_without_grouping.set_union_one_or_more(false);
+            let display = if source_surface == crate::triggers::DamageSourceSurface::Filter
+                && source_without_grouping == ObjectFilter::default()
+            {
+                let verb = if damaged_player_one_or_more || player == PlayerFilter::You {
+                    "are"
+                } else {
+                    "is"
+                };
+                format!("Whenever {player_description} {verb} dealt noncombat damage{turn_description}")
+            } else {
+                format!("Whenever {source_description} deals noncombat damage to {player_description}{turn_description}")
+            };
             Trigger::deals_noncombat_damage_to_player_qualified(
                 source,
                 player,
@@ -653,6 +700,8 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerRollsToVisitAttractions { player } => {
             Trigger::player_rolls_to_visit_attractions(player)
         }
+        TriggerSpec::PlayerRollsResultMatching { player, result, natural } => Trigger::player_rolls_result_matching(player, result, natural),
+        TriggerSpec::PlayerRollsNthDie { player, ordinal } => Trigger::player_rolls_nth_die(player, ordinal),
         TriggerSpec::PlayerRollsResult { player, result } => {
             Trigger::player_rolls_result(player, result)
         }
@@ -686,6 +735,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         } => {
             Trigger::ability_triggered_qualified(another, source_filter, caused_by_source_entering)
         }
+        TriggerSpec::DamageReceived { target, combat, minimum, single_source } => Trigger::damage_received(target, combat, minimum, single_source),
         TriggerSpec::ThisIsDealtDamage => Trigger::is_dealt_damage(ChooseSpec::Source),
         TriggerSpec::ThisIsDealtCombatDamage => Trigger::is_dealt_combat_damage(ChooseSpec::Source),
         TriggerSpec::IsDealtDamage(filter) => Trigger::is_dealt_damage(ChooseSpec::Object(filter)),
@@ -695,11 +745,13 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::IsDealtExcessNoncombatDamage(filter) => {
             Trigger::is_dealt_excess_noncombat_damage(ChooseSpec::Object(filter))
         }
+        TriggerSpec::PlayerGainsLife { player, during_turn } => Trigger::player_gains_life(player, during_turn),
         TriggerSpec::YouGainLife => Trigger::you_gain_life(),
         TriggerSpec::YouGainLifeCausedBy(source) => Trigger::you_gain_life_caused_by(source),
         TriggerSpec::YouGainLifeDuringTurn(during_turn) => {
             Trigger::you_gain_life_during_turn(during_turn)
         }
+        TriggerSpec::PlayerPaysLife(player) => Trigger::player_pays_life(player),
         TriggerSpec::PlayerLosesLife(player) => Trigger::player_loses_life(player),
         TriggerSpec::PlayersLoseLifeOneOrMore(player) => {
             Trigger::players_lose_life_one_or_more(player)
@@ -707,12 +759,15 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::OpponentsEachLoseExactLife { amount } => {
             Trigger::opponents_each_lose_exact_life(amount)
         }
+        TriggerSpec::PlayerBecomesMonarch(player) => Trigger::player_becomes_monarch(player),
         TriggerSpec::PlayerLosesGame(player) => Trigger::player_loses_game(player),
         TriggerSpec::PlayerLosesLifeDuringTurn {
             player,
             during_turn,
         } => Trigger::player_loses_life_during_turn(player, during_turn),
         TriggerSpec::YouDrawCard => Trigger::you_draw_card(),
+        TriggerSpec::PlayerDrawsCardDuringTurn { player, during_turn } => Trigger::player_draws_card_during_turn(player, during_turn),
+        TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(player) => Trigger::player_draws_first_card_in_own_draw_step(player),
         TriggerSpec::PlayerDrawsCard(player) => Trigger::player_draws_card(player),
         TriggerSpec::PlayerDrawsCardNotDuringTurn {
             player,
@@ -736,15 +791,14 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             effect_like_only,
             one_or_more,
         } => {
-            if one_or_more {
+            if let Some(cause_controller) = cause_controller {
+                if one_or_more {
+                    Trigger::player_discards_cards_caused_by_controller(player, filter, cause_controller, effect_like_only)
+                } else {
+                    Trigger::player_discards_card_caused_by_controller(player, filter, cause_controller, effect_like_only)
+                }
+            } else if one_or_more {
                 Trigger::player_discards_cards(player, filter)
-            } else if let Some(cause_controller) = cause_controller {
-                Trigger::player_discards_card_caused_by_controller(
-                    player,
-                    filter,
-                    cause_controller,
-                    effect_like_only,
-                )
             } else {
                 Trigger::player_discards_card(player, filter)
             }
@@ -1178,6 +1232,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::BeginningOfUpkeep(player) => Trigger::beginning_of_upkeep(player),
         TriggerSpec::BeginningOfDrawStep(player) => Trigger::beginning_of_draw_step(player),
         TriggerSpec::BeginningOfCombat(player) => Trigger::beginning_of_combat(player),
+        TriggerSpec::EndOfCombat => Trigger::end_of_combat(),
         TriggerSpec::BeginningOfEndStep(player) => Trigger::beginning_of_end_step(player),
         TriggerSpec::BeginningOfTheEndStep => Trigger::beginning_of_the_end_step(),
         TriggerSpec::BeginningOfMonarchEndStep => Trigger::beginning_of_monarch_end_step(),
@@ -1358,6 +1413,17 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
 pub fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTextError> {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => ensure_concrete_trigger_spec(trigger),
+        TriggerSpec::ZoneChange(event)
+            if event.this
+                && !matches!(
+                    event.from,
+                    Some(crate::zone::Zone::Battlefield | crate::zone::Zone::Graveyard)
+                ) =>
+        {
+            Err(CardTextError::ParseError(
+                "source zone-change trigger requires a supported look-back origin".into(),
+            ))
+        }
         TriggerSpec::Either(left, right) => {
             ensure_concrete_trigger_spec(left)?;
             ensure_concrete_trigger_spec(right)?;
@@ -1369,17 +1435,22 @@ pub fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTex
 
 fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
     match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => trigger_binds_iterated_player(trigger),
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_binds_iterated_player(trigger),
         TriggerSpec::SpellCast { .. }
         | TriggerSpec::SpellCastSameNameCardInZone { .. }
         | TriggerSpec::NthSpellOfTurnCast { .. }
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::SpellCountered { .. }
+        | TriggerSpec::PlayerGainsLife { .. }
         | TriggerSpec::PlayerLosesLife(_)
+        | TriggerSpec::PlayerPaysLife(_)
         | TriggerSpec::PlayersLoseLifeOneOrMore(_)
         | TriggerSpec::OpponentsEachLoseExactLife { .. }
         | TriggerSpec::PlayerLosesGame(_)
+        | TriggerSpec::PlayerBecomesMonarch(_)
         | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
+        | TriggerSpec::PlayerDrawsCardDuringTurn { .. }
+        | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(_)
         | TriggerSpec::PlayerDrawsCard(_)
         | TriggerSpec::PlayerDrawsCardNotDuringTurn { .. }
         | TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_)
@@ -1394,6 +1465,8 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerTapsForMana { .. }
         | TriggerSpec::PlayerRollsToVisitAttractions { .. }
         | TriggerSpec::PlayerRollsResult { .. }
+        | TriggerSpec::PlayerRollsResultMatching { .. }
+        | TriggerSpec::PlayerRollsNthDie { .. }
         | TriggerSpec::PlayerRollsHighestNaturalResult { .. }
         | TriggerSpec::PlayerRollsDie { .. }
         | TriggerSpec::PlayerCoinFlipResult { .. }
@@ -1422,7 +1495,9 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::KeywordActionFromSource { .. }
         | TriggerSpec::WinsClash { .. }
         | TriggerSpec::Expend { .. } => true,
+        TriggerSpec::DamageReceived { target, .. } => matches!(target.base(), ChooseSpec::Player(_) | ChooseSpec::SpecificPlayer(_) | ChooseSpec::SourceController),
         TriggerSpec::StateBased { .. } => false,
+        TriggerSpec::PlayerBecomesTargeted { .. } | TriggerSpec::PlayerTurnsFaceUp { .. } => true,
         TriggerSpec::BecomesTargetedBySourceController {
             source_controller, ..
         }
@@ -1454,10 +1529,20 @@ pub fn trigger_binds_player_reference_context(trigger: &TriggerSpec) -> bool {
 
 pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
     match spec {
+        EventValueSpec::LifeChange { gained, for_controller } => {
+            let metric = if *gained { ironsmith_core::EffectMetric::LifeGained } else { ironsmith_core::EffectMetric::LifeLost };
+            ironsmith_compiler_semantic::trigger_references::trigger_life_event_binding(trigger)
+                .is_some_and(|event| event.metric == metric
+                    && (!*for_controller || event.player == PlayerFilter::You))
+        }
+        EventValueSpec::DieBatchTotal | EventValueSpec::DieResultsAtLeast(_) => {
+            ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(trigger) == Some(true)
+        }
         EventValueSpec::DieResult => match trigger {
-            TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
+            TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::PlayerRollsToVisitAttractions { .. }
             | TriggerSpec::PlayerRollsResult { .. }
+        | TriggerSpec::PlayerRollsResultMatching { .. }
             | TriggerSpec::PlayerRollsHighestNaturalResult { .. }
             | TriggerSpec::PlayerRollsDie { .. } => true,
             TriggerSpec::Either(left, right) => {
@@ -1467,7 +1552,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             _ => false,
         },
         EventValueSpec::Amount | EventValueSpec::LifeAmount => match trigger {
-            TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
+            TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::SpellCast {
                 filter: Some(filter),
                 ..
@@ -1476,13 +1561,16 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
                 filter: Some(filter),
                 ..
             } if spell_cast_filter_binds_target_count(filter) => true,
-            TriggerSpec::YouGainLife
+            TriggerSpec::PlayerGainsLife { .. }
+            | TriggerSpec::YouGainLife
             | TriggerSpec::YouGainLifeCausedBy(_)
             | TriggerSpec::YouGainLifeDuringTurn(_)
             | TriggerSpec::PlayerLosesLife(_)
+        | TriggerSpec::PlayerPaysLife(_)
             | TriggerSpec::PlayersLoseLifeOneOrMore(_)
             | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
             | TriggerSpec::ThisIsDealtDamage
+            | TriggerSpec::DamageReceived { .. }
             | TriggerSpec::ThisIsDealtCombatDamage
             | TriggerSpec::IsDealtDamage(_)
             | TriggerSpec::IsDealtCombatDamage(_)
@@ -1515,6 +1603,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             | TriggerSpec::CounterRemovedFrom { .. }
             | TriggerSpec::TokensCreated { .. }
             | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,
+            TriggerSpec::CardsMilled { .. } | TriggerSpec::PlayerChangesTapState { .. } | TriggerSpec::PhasingChanged { .. } => matches!(spec, EventValueSpec::Amount),
             TriggerSpec::PutIntoExileFromZones { one_or_more, .. } => *one_or_more,
             TriggerSpec::PlayerDiscardsCard { one_or_more, .. } => *one_or_more,
             TriggerSpec::StateBased { .. } => false,
@@ -1525,7 +1614,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             _ => false,
         },
         EventValueSpec::BlockersBeyondFirst { .. } => match trigger {
-            TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
+            TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::ThisBecomesBlocked
             | TriggerSpec::BecomesBlocked(_)
             | TriggerSpec::ThisBecomesBlockedByObject(_) => true,

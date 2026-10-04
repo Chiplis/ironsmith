@@ -12,6 +12,8 @@ use crate::snapshot::ObjectSnapshot;
 pub struct MutatedEvent {
     /// The mutated permanent.
     pub permanent: ObjectId,
+    /// Completed post-change characteristics of this exact incarnation.
+    pub snapshot: Option<ObjectSnapshot>,
     /// The controller of the mutated permanent.
     pub controller: PlayerId,
 }
@@ -22,7 +24,15 @@ impl MutatedEvent {
         Self {
             permanent,
             controller,
+            snapshot: None,
         }
+    }
+    pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
+        if let Some(snapshot) = &snapshot {
+            self.controller = snapshot.controller;
+        }
+        self.snapshot = snapshot;
+        self
     }
 }
 
@@ -60,6 +70,6 @@ impl GameEventType for MutatedEvent {
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
-        None
+        self.snapshot.as_ref()
     }
 }

@@ -362,18 +362,33 @@ impl StaticAbilityModelInterpreter {
                 crate::grant::Grantable::DerivedAlternativeCast(spec.clone())
             }
             ironsmith_core::Grantable::PlayFrom => crate::grant::Grantable::PlayFrom,
+            ironsmith_core::Grantable::AlternativePrice { costs, origin } => crate::grant::Grantable::AlternativePrice {
+                costs: costs.clone(), origin: *origin,
+            },
         };
         crate::grant::GrantSpec {
             grantable,
             filter: spec.filter.clone(),
             zone: spec.zone,
+            additional_zones: spec.additional_zones.clone(),
             beneficiary: spec.beneficiary.clone(),
             usage_limit: spec.usage_limit,
             max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter.clone(),
+            on_use_effects: spec.on_use_effects.clone(),
             source_exiled_surface: spec.source_exiled_surface.clone(),
+            filtered_zone_surface: spec.filtered_zone_surface.clone(),
+            top_card_only: spec.top_card_only,
+            instant_timing: spec.instant_timing,
+            may_look_at_top: spec.may_look_at_top,
             cast_this_way_grants: spec
                 .cast_this_way_grants
+                .iter()
+                .cloned()
+                .map(StaticAbility::from_model)
+                .collect(),
+            permanent_this_way_grants: spec
+                .permanent_this_way_grants
                 .iter()
                 .cloned()
                 .map(StaticAbility::from_model)
@@ -467,6 +482,8 @@ impl StaticAbilityModelInterpreter {
                         .collect(),
                     set_base_power_toughness: spec.set_base_power_toughness,
                     additional_counters: spec.additional_counters.clone(),
+                    additional_x_counters: spec.additional_x_counters.clone(),
+                    keep_other_source_abilities: spec.keep_other_source_abilities,
                     additional_counters_source_filter: spec
                         .additional_counters_source_filter
                         .clone(),
@@ -561,6 +578,17 @@ impl StaticAbilityModelInterpreter {
         }
     }
 
+    fn activation_cost_condition(condition: &ironsmith_core::ActivatedAbilityCostCondition) -> super::ActivatedAbilityCostCondition {
+        use ironsmith_core::ActivatedAbilityCostCondition as Model;
+        use super::ActivatedAbilityCostCondition as Runtime;
+        match condition {
+            Model::TargetsExactly { count, filter } => Runtime::TargetsExactly { count: *count, filter: filter.clone() },
+            Model::EquipAbility { targeting } => Runtime::EquipAbility { targeting: targeting.clone() },
+            Model::ThisAbility { ability_index } => Runtime::ThisAbility { ability_index: *ability_index },
+            Model::All(conditions) => Runtime::All(conditions.iter().map(Self::activation_cost_condition).collect()),
+        }
+    }
+
     fn cached_activated_ability_cost_reduction(
         model: &CompiledStaticAbility,
     ) -> Option<super::ActivatedAbilityCostReduction> {
@@ -608,25 +636,7 @@ impl StaticAbilityModelInterpreter {
                         .with_per_basic_land_types_among(per_basic_land_types_among.clone());
                 }
                 if let Some(condition) = condition {
-                    converted = converted.with_condition(match condition {
-                        ironsmith_core::ActivatedAbilityCostCondition::TargetsExactly {
-                            count,
-                            filter,
-                        } => super::ActivatedAbilityCostCondition::TargetsExactly {
-                            count: *count,
-                            filter: filter.clone(),
-                        },
-                        ironsmith_core::ActivatedAbilityCostCondition::EquipAbility { targeting } => {
-                            super::ActivatedAbilityCostCondition::EquipAbility {
-                                targeting: targeting.clone(),
-                            }
-                        }
-                        ironsmith_core::ActivatedAbilityCostCondition::ThisAbility {
-                            ability_index,
-                        } => super::ActivatedAbilityCostCondition::ThisAbility {
-                            ability_index: *ability_index,
-                        },
-                    });
+                    converted = converted.with_condition(Self::activation_cost_condition(condition));
                 }
                 Some(converted)
             }
@@ -648,6 +658,8 @@ impl StaticAbilityModelInterpreter {
                 activator,
                 non_mana_only,
                 condition,
+                ability_condition,
+                display,
             } => {
                 let mut parsed = if let Some(activator) = activator.clone() {
                     super::ActivatedAbilityCostIncrease::for_activator(
@@ -661,6 +673,8 @@ impl StaticAbilityModelInterpreter {
                     increase_model.non_mana_only = *non_mana_only;
                     increase_model
                 };
+                parsed.ability_condition = ability_condition.as_ref().map(Self::activation_cost_condition);
+                parsed.display = display.clone();
                 if let Some(condition) = condition.clone() {
                     parsed = parsed.with_condition(condition);
                 }
@@ -848,6 +862,7 @@ impl StaticAbilityModelInterpreter {
     fn this_spell_cast_restriction_from_model(
         kind: &ironsmith_core::ThisSpellCastRestrictionKind,
     ) -> super::ThisSpellCastRestrictionKind {
+        if let Some(timing) = kind.timing { return super::ThisSpellCastRestrictionKind::timing(timing); }
         match kind.label.as_str() {
             "during declare attackers step" => {
                 super::ThisSpellCastRestrictionKind::during_declare_attackers_step()
@@ -1042,11 +1057,22 @@ impl StaticAbilityModelInterpreter {
                 display,
             } => StaticAbility::counter_limit_rule(*counter_type, *maximum, display.clone()),
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
-                let converted = StaticAbility::from_model((**ability).clone());
-                converted.with_condition(condition.clone()).unwrap_or_else(|| {
+                // The retained model keeps each authored label. Native leaf
+                // setters receive the complete executable conjunction once,
+                // so an outer designation cannot replace an inner predicate.
+                let mut leaf = ability.as_ref();
+                let mut combined = condition.clone();
+                while let ironsmith_core::StaticAbilityPayload::Conditional {
+                    ability: inner, condition: inner_condition,
+                } = &leaf.payload {
+                    combined = inner_condition.clone().and(combined);
+                    leaf = inner.as_ref();
+                }
+                let converted = StaticAbility::from_model(leaf.clone());
+                converted.with_condition(combined.clone()).unwrap_or_else(|| {
                     StaticAbility::new(
                         crate::static_abilities::GrantAbility::source(converted)
-                            .with_condition(condition.clone()),
+                            .with_condition(combined),
                     )
                 })
             }
@@ -1171,6 +1197,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbility::can_block_additional_creature_each_combat(*count)
             }
+            ironsmith_core::StaticAbilityPayload::CanBlockAdditionalForEach { additional, filter } => {
+                StaticAbility::can_block_additional_for_each(*additional, filter.clone())
+            }
             ironsmith_core::StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
                 StaticAbility::can_block_subtype_as_though_reach(*subtype)
             }
@@ -1179,6 +1208,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender => {
                 StaticAbility::can_attack_players_who_attacked_controller_last_turn_as_though_no_defender()
+            }
+            ironsmith_core::StaticAbilityPayload::BlockingAsThoughNoLandwalk(spec) => {
+                StaticAbility::blocking_as_though_no_landwalk(spec.clone())
             }
             ironsmith_core::StaticAbilityPayload::TargetingAsThoughNoAbility(spec) => {
                 StaticAbility::targeting_as_though_no_ability(spec.clone())
@@ -1352,6 +1384,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SetChosenColor { filter, display } => {
                 StaticAbility::set_chosen_color(filter.clone(), display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::NoMaximumHandSizeFor(player) => StaticAbility::no_maximum_hand_size_for(player.clone()),
+            ironsmith_core::StaticAbilityPayload::MaximumHandSizeFromSourceCounters { player, counter_type } =>
+                StaticAbility::maximum_hand_size_from_source_counters(player.clone(), *counter_type),
             ironsmith_core::StaticAbilityPayload::SetMaximumHandSize { player, amount } => {
                 StaticAbility::set_maximum_hand_size(player.clone(), *amount)
             }
@@ -1647,6 +1682,8 @@ impl StaticAbilityModelInterpreter {
                             .collect(),
                         set_base_power_toughness: spec.set_base_power_toughness,
                         additional_counters: spec.additional_counters.clone(),
+                        additional_x_counters: spec.additional_x_counters.clone(),
+                        keep_other_source_abilities: spec.keep_other_source_abilities,
                         additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
                         conditional_additional_counters: spec.conditional_additional_counters.clone(),
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
@@ -1729,20 +1766,18 @@ impl StaticAbilityModelInterpreter {
                 }
             }
             ironsmith_core::StaticAbilityPayload::ModifyDamageAmountReplacement {
-                source_filter,
-                target_player_filter,
-                target_object_filter,
-                delta,
-                noncombat_only,
-                display,
-            } => StaticAbility::modify_damage_amount_replacement_with_noncombat_only(
-                source_filter.clone(),
-                target_player_filter.clone(),
-                target_object_filter.clone(),
-                *delta,
-                *noncombat_only,
-                display.clone(),
-            ),
+                source_filter, target_player_filter, target_object_filter,
+                delta, dynamic_delta, noncombat_only, display,
+            } => {
+                let mut native = super::ModifyDamageAmountReplacement::new(
+                    source_filter.clone(), target_player_filter.clone(),
+                    target_object_filter.clone(), *delta, display.clone(),
+                ).with_noncombat_only(*noncombat_only);
+                if let Some(value) = dynamic_delta {
+                    native = native.with_dynamic_delta(value.clone());
+                }
+                StaticAbility::new(native)
+            },
             ironsmith_core::StaticAbilityPayload::MinimumDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
@@ -1791,6 +1826,15 @@ impl StaticAbilityModelInterpreter {
                 replacement_effects.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::PreventMatchingDamageWithFollowUp(spec) => {
+                StaticAbility::prevent_matching_damage_with_follow_up(spec.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::RedirectMatchingDamage(spec) => {
+                StaticAbility::redirect_matching_damage(spec.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) => {
+                StaticAbility::prevent_matching_damage(spec.clone())
+            }
             ironsmith_core::StaticAbilityPayload::PreventHalfDamageReplacement {
                 source_filter,
                 target_player_filter,
@@ -1839,6 +1883,8 @@ impl StaticAbilityModelInterpreter {
                     display.clone(),
                 ),
             },
+            ironsmith_core::StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display } =>
+                StaticAbility::actor_counters_addition_replacement(filter.clone(), player_filter.clone(), actor.clone(), *counter_type, *additional, display.clone()),
             ironsmith_core::StaticAbilityPayload::AddCountersPlacementReplacement {
                 filter,
                 player_filter,
@@ -1999,6 +2045,10 @@ impl StaticAbilityModelInterpreter {
                 *destination,
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::ConvertUnspentMana { player, symbol } =>
+                StaticAbility::new(super::misc::ConvertUnspentMana { player: player.clone(), symbol: *symbol }),
+            ironsmith_core::StaticAbilityPayload::ManaProductionRewrite { rule, display } =>
+                StaticAbility::mana_production_rewrite(rule.clone(), display.clone()),
             ironsmith_core::StaticAbilityPayload::ManaProductionReplacement {
                 source_filter,
                 minimum_amount,
@@ -2042,6 +2092,11 @@ impl StaticAbilityModelInterpreter {
                 *factor,
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display } => {
+                StaticAbility::token_creation_templates(controller.clone(), token_filter.clone(), templates.clone(), *mode, *choose_one, *optional, display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::AddLifeGainReplacement { player, additional, display } =>
+                StaticAbility::add_life_gain_replacement(player.clone(), *additional, display.clone()),
             ironsmith_core::StaticAbilityPayload::DoubleLifeChangeReplacement {
                 player,
                 loss,
@@ -2456,8 +2511,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn may_generate_continuous_effects(&self) -> bool {
+        if self.enter_as_copy_spec.is_some() && matches!(&self.model.payload, ironsmith_core::StaticAbilityPayload::Conditional {..}) { return false; }
         self.leaf_static_ability()
             .is_some_and(StaticAbility::may_generate_continuous_effects)
+    }
+
+    fn validate_mana_scalar_ranges(&self, game: &GameState, source: ObjectId, controller: PlayerId)
+        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        self.leaf_static_ability().map(|ability| ability.validate_mana_scalar_ranges(game, source, controller))
+            .unwrap_or(Ok(false))
     }
 
     fn generate_effects(
@@ -2466,6 +2528,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        // Entry-copy conditions belong to the replacement occurrence. Turning
+        // them into a layer-6 self-grant would duplicate that occurrence when
+        // true, while the cached outer copy specification also remains visible.
+        if self.enter_as_copy_spec.is_some() && matches!(&self.model.payload, ironsmith_core::StaticAbilityPayload::Conditional {..}) { return Vec::new(); }
         self.leaf_static_ability()
             .map(|ability| ability.generate_effects(source, controller, game))
             .unwrap_or_default()
@@ -2567,6 +2633,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        if let Some(reduction) = &self.activated_ability_cost_reduction {
+            return reduction.is_active(game, source);
+        }
+        if let Some(increase) = &self.activated_ability_cost_increase {
+            return increase.is_active(game, source);
+        }
         if let Some(reduction) = &self.cost_reduction {
             return reduction.is_active(game, source);
         }
@@ -2649,6 +2721,11 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             }
             _ => None,
         }
+    }
+
+    fn additional_blockable_attackers_for_source(&self, game: &GameState, source: ObjectId) -> Option<usize> {
+        self.leaf_static_ability().and_then(|ability| ability.additional_blockable_attackers_for_source(game, source))
+            .or_else(|| self.additional_blockable_attackers())
     }
 
     fn additional_blockable_attackers(&self) -> Option<usize> {

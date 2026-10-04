@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Hint of Insanity",
+    "oracle_id": "4db59824-6bcb-4707-977b-0ff699d8662b",
+    "mana_cost": "{2}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target player reveals their hand. That player discards all nonland cards with the same name as another card in their hand."
+  },
+  {
+    "name": "Key to the Side-Door",
+    "oracle_id": "76c036df-44f5-4021-b7fc-656147351341",
+    "mana_cost": "{1}",
+    "type_line": "Artifact",
+    "oracle_text": "{2}, {T}: Target creature can't be blocked this turn.\n{1}, {T}, Discard a legendary card with the same name as a legendary permanent you control: Draw two cards."
+  }
+]

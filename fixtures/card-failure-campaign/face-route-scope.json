@@ -1,0 +1,2725 @@
+{
+  "artifact_baker_verified": false,
+  "compilation_verified": false,
+  "engine_commit": "e8740178a7f7367ffa3147e7642607042079237c",
+  "face_names_sha256": "015cb16d89c8ff8e956f07d211dce05a38b85400514b9ce5efe9ba075bbd68fc",
+  "gameplay_verified": false,
+  "membership_only": true,
+  "schema_version": 1,
+  "shadowed_source_face_routes": [
+    {
+      "face_index": 0,
+      "face_name": "Adrix and Nev, Twincasters",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "12a6cad9-eb42-43bd-9e68-aaf862cd83db",
+      "route_id": "source:230/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 229,
+          "source_name": "Adrix and Nev, Twincasters"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Adrix and Nev, Twincasters // Adrix and Nev, Twincasters"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Adrix and Nev, Twincasters",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "12a6cad9-eb42-43bd-9e68-aaf862cd83db",
+      "route_id": "source:230/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 229,
+          "source_name": "Adrix and Nev, Twincasters"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Adrix and Nev, Twincasters // Adrix and Nev, Twincasters"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Aesi, Tyrant of Gyre Strait",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "6511f317-bd38-46d0-b800-7125a3f420da",
+      "route_id": "source:295/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 294,
+          "source_name": "Aesi, Tyrant of Gyre Strait"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Aesi, Tyrant of Gyre Strait // Aesi, Tyrant of Gyre Strait"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Aesi, Tyrant of Gyre Strait",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "6511f317-bd38-46d0-b800-7125a3f420da",
+      "route_id": "source:295/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 294,
+          "source_name": "Aesi, Tyrant of Gyre Strait"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Aesi, Tyrant of Gyre Strait // Aesi, Tyrant of Gyre Strait"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Ajani Goldmane",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "dfb5f660-fd8b-4b7b-934c-6a71cd182f15",
+      "route_id": "source:470/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 469,
+          "source_name": "Ajani Goldmane"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Ajani Goldmane // Ajani Goldmane"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Ajani Goldmane",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "dfb5f660-fd8b-4b7b-934c-6a71cd182f15",
+      "route_id": "source:470/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 469,
+          "source_name": "Ajani Goldmane"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Ajani Goldmane // Ajani Goldmane"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Anje Falkenrath",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "4dab6a96-4376-4aea-983d-406167993214",
+      "route_id": "source:947/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 946,
+          "source_name": "Anje Falkenrath"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Anje Falkenrath // Anje Falkenrath"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Anje Falkenrath",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "4dab6a96-4376-4aea-983d-406167993214",
+      "route_id": "source:947/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 946,
+          "source_name": "Anje Falkenrath"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Anje Falkenrath // Anje Falkenrath"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Anointed Procession",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7246d45b-2185-4cdd-981b-5419b7d52bce",
+      "route_id": "source:969/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 968,
+          "source_name": "Anointed Procession"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Anointed Procession // Anointed Procession"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Anointed Procession",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7246d45b-2185-4cdd-981b-5419b7d52bce",
+      "route_id": "source:969/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 968,
+          "source_name": "Anointed Procession"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Anointed Procession // Anointed Procession"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Birds of Paradise",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "d3a0b660-358c-41bd-9cd2-41fbf3491b1a",
+      "route_id": "source:2511/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 2510,
+          "source_name": "Birds of Paradise"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Birds of Paradise // Birds of Paradise"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Birds of Paradise",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "d3a0b660-358c-41bd-9cd2-41fbf3491b1a",
+      "route_id": "source:2511/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 2510,
+          "source_name": "Birds of Paradise"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Birds of Paradise // Birds of Paradise"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Blightsteel Colossus",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "e80772e2-8623-4094-81a2-70828b2b151c",
+      "route_id": "source:2719/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 2718,
+          "source_name": "Blightsteel Colossus"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Blightsteel Colossus // Blightsteel Colossus"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Blightsteel Colossus",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "e80772e2-8623-4094-81a2-70828b2b151c",
+      "route_id": "source:2719/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 2718,
+          "source_name": "Blightsteel Colossus"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Blightsteel Colossus // Blightsteel Colossus"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Blood Crypt",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "43985bbc-a0f6-4812-984e-392bc8562633",
+      "route_id": "source:2790/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 2789,
+          "source_name": "Blood Crypt"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Blood Crypt // Blood Crypt"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Blood Crypt",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "43985bbc-a0f6-4812-984e-392bc8562633",
+      "route_id": "source:2790/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 2789,
+          "source_name": "Blood Crypt"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Blood Crypt // Blood Crypt"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Bloomvine Regent",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "da1e019c-2ffb-412d-90d7-f2e5e5c44c4b",
+      "route_id": "source:2933/face:0",
+      "selected_contexts": [
+        {
+          "face_index": 0,
+          "route_id": "source:2932/face:0",
+          "source_index": 2932,
+          "source_name": "Bloomvine Regent // Claim Territory"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Bloomvine Regent // Claim Territory // Bloomvine Regent"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Claim Territory",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "da1e019c-2ffb-412d-90d7-f2e5e5c44c4b",
+      "route_id": "source:2933/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:2932/face:1",
+          "source_index": 2932,
+          "source_name": "Bloomvine Regent // Claim Territory"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Bloomvine Regent // Claim Territory // Bloomvine Regent"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Chandra Nalaar",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f4da7a43-e9d5-47ea-b2f0-3cf55a156f4a",
+      "route_id": "source:4353/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 4352,
+          "source_name": "Chandra Nalaar"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Chandra Nalaar // Chandra Nalaar"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Chandra Nalaar",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f4da7a43-e9d5-47ea-b2f0-3cf55a156f4a",
+      "route_id": "source:4353/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 4352,
+          "source_name": "Chandra Nalaar"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Chandra Nalaar // Chandra Nalaar"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Chulane, Teller of Tales",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "ebf7ce9b-9e5e-4557-9e28-76556997f0ee",
+      "route_id": "source:4623/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 4622,
+          "source_name": "Chulane, Teller of Tales"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Chulane, Teller of Tales // Chulane, Teller of Tales"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Chulane, Teller of Tales",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "ebf7ce9b-9e5e-4557-9e28-76556997f0ee",
+      "route_id": "source:4623/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 4622,
+          "source_name": "Chulane, Teller of Tales"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Chulane, Teller of Tales // Chulane, Teller of Tales"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Clarion Conqueror",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f1266a1b-bae6-4ded-b4d5-7586a5b6c5d0",
+      "route_id": "source:4726/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 4725,
+          "source_name": "Clarion Conqueror"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Clarion Conqueror // Clarion Conqueror"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Clarion Conqueror",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f1266a1b-bae6-4ded-b4d5-7586a5b6c5d0",
+      "route_id": "source:4726/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 4725,
+          "source_name": "Clarion Conqueror"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Clarion Conqueror // Clarion Conqueror"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Command Tower",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "0895c9b7-ae7d-4bb3-af17-3b75deb50a25",
+      "route_id": "source:5050/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 5049,
+          "source_name": "Command Tower"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Command Tower // Command Tower"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Command Tower",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "0895c9b7-ae7d-4bb3-af17-3b75deb50a25",
+      "route_id": "source:5050/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 5049,
+          "source_name": "Command Tower"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Command Tower // Command Tower"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Darksteel Colossus",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "1b09d0cf-403c-4a15-aeee-602a1bdaf0c1",
+      "route_id": "source:6124/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 6123,
+          "source_name": "Darksteel Colossus"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Darksteel Colossus // Darksteel Colossus"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Darksteel Colossus",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "1b09d0cf-403c-4a15-aeee-602a1bdaf0c1",
+      "route_id": "source:6124/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 6123,
+          "source_name": "Darksteel Colossus"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Darksteel Colossus // Darksteel Colossus"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Death Baron",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "99024aa8-5687-4d38-8a4b-feef42d6c1ff",
+      "route_id": "source:6306/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 6305,
+          "source_name": "Death Baron"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Death Baron // Death Baron"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Death Baron",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "99024aa8-5687-4d38-8a4b-feef42d6c1ff",
+      "route_id": "source:6306/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 6305,
+          "source_name": "Death Baron"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Death Baron // Death Baron"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Braingeyser",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "655ee0db-1913-464f-bd06-072c6bf446bd",
+      "route_id": "source:6922/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 3279,
+          "source_name": "Braingeyser"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Dirgur Focusmage // Braingeyser"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Doubling Cube",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "9afd8f12-0796-4500-aaa3-10b4a46ef6ec",
+      "route_id": "source:7225/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7224,
+          "source_name": "Doubling Cube"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Doubling Cube // Doubling Cube"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Doubling Cube",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "9afd8f12-0796-4500-aaa3-10b4a46ef6ec",
+      "route_id": "source:7225/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7224,
+          "source_name": "Doubling Cube"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Doubling Cube // Doubling Cube"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Dragonlord Atarka",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "daff70a4-a990-47c9-b6ef-2c379272c8a3",
+      "route_id": "source:7338/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7337,
+          "source_name": "Dragonlord Atarka"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Dragonlord Atarka // Dragonlord Atarka"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Dragonlord Atarka",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "daff70a4-a990-47c9-b6ef-2c379272c8a3",
+      "route_id": "source:7338/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7337,
+          "source_name": "Dragonlord Atarka"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Dragonlord Atarka // Dragonlord Atarka"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Dragonlord Dromoka",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "82cdd612-3322-4372-810f-1ff106ea8e6a",
+      "route_id": "source:7340/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7339,
+          "source_name": "Dragonlord Dromoka"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Dragonlord Dromoka // Dragonlord Dromoka"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Dragonlord Dromoka",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "82cdd612-3322-4372-810f-1ff106ea8e6a",
+      "route_id": "source:7340/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7339,
+          "source_name": "Dragonlord Dromoka"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Dragonlord Dromoka // Dragonlord Dromoka"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Dragonlord Kolaghan",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "5ff89859-ddfd-48e5-8423-57b3956173ac",
+      "route_id": "source:7342/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7341,
+          "source_name": "Dragonlord Kolaghan"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Dragonlord Kolaghan // Dragonlord Kolaghan"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Dragonlord Kolaghan",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "5ff89859-ddfd-48e5-8423-57b3956173ac",
+      "route_id": "source:7342/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7341,
+          "source_name": "Dragonlord Kolaghan"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Dragonlord Kolaghan // Dragonlord Kolaghan"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Dragonlord Ojutai",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "654ff673-4630-4068-9bcf-e88a7877eb58",
+      "route_id": "source:7344/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7343,
+          "source_name": "Dragonlord Ojutai"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Dragonlord Ojutai // Dragonlord Ojutai"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Dragonlord Ojutai",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "654ff673-4630-4068-9bcf-e88a7877eb58",
+      "route_id": "source:7344/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7343,
+          "source_name": "Dragonlord Ojutai"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Dragonlord Ojutai // Dragonlord Ojutai"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Dragonlord Silumgar",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "44581d4f-746b-43b8-a34d-16dc383ab70e",
+      "route_id": "source:7346/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7345,
+          "source_name": "Dragonlord Silumgar"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Dragonlord Silumgar // Dragonlord Silumgar"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Dragonlord Silumgar",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "44581d4f-746b-43b8-a34d-16dc383ab70e",
+      "route_id": "source:7346/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 7345,
+          "source_name": "Dragonlord Silumgar"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Dragonlord Silumgar // Dragonlord Silumgar"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Seed Suture",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7737ccdc-49f2-463e-8ffd-43ab98d11f45",
+      "route_id": "source:8247/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:2937/face:1",
+          "source_index": 2937,
+          "source_name": "Blossom-Blessed Angel // Seed Suture"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Emergency Phytomedic // Seed Suture"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Demonic Tutor",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "93056597-b964-421f-be2f-e92abef1c2a4",
+      "route_id": "source:8264/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 6612,
+          "source_name": "Demonic Tutor"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Emeritus of Woe // Demonic Tutor"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Estrid's Invocation",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7f5f10ee-6428-4053-8824-3bc70420ec2c",
+      "route_id": "source:8614/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 8613,
+          "source_name": "Estrid's Invocation"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Estrid's Invocation // Estrid's Invocation"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Estrid's Invocation",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7f5f10ee-6428-4053-8824-3bc70420ec2c",
+      "route_id": "source:8614/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 8613,
+          "source_name": "Estrid's Invocation"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Estrid's Invocation // Estrid's Invocation"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Estrid, the Masked",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7cf1fa2e-1572-4d9d-8e93-e49016b34458",
+      "route_id": "source:8616/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 8615,
+          "source_name": "Estrid, the Masked"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Estrid, the Masked // Estrid, the Masked"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Estrid, the Masked",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7cf1fa2e-1572-4d9d-8e93-e49016b34458",
+      "route_id": "source:8616/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 8615,
+          "source_name": "Estrid, the Masked"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Estrid, the Masked // Estrid, the Masked"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Etali, Primal Storm",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "078def07-ae5d-4591-8db6-d156834aab97",
+      "route_id": "source:8621/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 8620,
+          "source_name": "Etali, Primal Storm"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Etali, Primal Storm // Etali, Primal Storm"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Etali, Primal Storm",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "078def07-ae5d-4591-8db6-d156834aab97",
+      "route_id": "source:8621/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 8620,
+          "source_name": "Etali, Primal Storm"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Etali, Primal Storm // Etali, Primal Storm"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Forest",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
+      "route_id": "source:10007/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 10006,
+          "source_name": "Forest"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Forest // Forest"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Forest",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
+      "route_id": "source:10007/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 10006,
+          "source_name": "Forest"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Forest // Forest"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Garruk Wildspeaker",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "186b4def-4fff-4a2b-bcbf-5318b0ac5fa9",
+      "route_id": "source:10505/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 10504,
+          "source_name": "Garruk Wildspeaker"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Garruk Wildspeaker // Garruk Wildspeaker"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Garruk Wildspeaker",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "186b4def-4fff-4a2b-bcbf-5318b0ac5fa9",
+      "route_id": "source:10505/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 10504,
+          "source_name": "Garruk Wildspeaker"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Garruk Wildspeaker // Garruk Wildspeaker"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Ghalta, Primal Hunger",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b0b6be0c-41cf-4757-9f0e-87227b6ba6b3",
+      "route_id": "source:10713/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 10712,
+          "source_name": "Ghalta, Primal Hunger"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Ghalta, Primal Hunger // Ghalta, Primal Hunger"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Ghalta, Primal Hunger",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b0b6be0c-41cf-4757-9f0e-87227b6ba6b3",
+      "route_id": "source:10713/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 10712,
+          "source_name": "Ghalta, Primal Hunger"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Ghalta, Primal Hunger // Ghalta, Primal Hunger"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Grimgrin, Corpse-Born",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "a2aa2c8f-7058-4020-9881-663b104ea051",
+      "route_id": "source:11807/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 11806,
+          "source_name": "Grimgrin, Corpse-Born"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Grimgrin, Corpse-Born // Grimgrin, Corpse-Born"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Grimgrin, Corpse-Born",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "a2aa2c8f-7058-4020-9881-663b104ea051",
+      "route_id": "source:11807/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 11806,
+          "source_name": "Grimgrin, Corpse-Born"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Grimgrin, Corpse-Born // Grimgrin, Corpse-Born"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Hallowed Fountain",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f1750962-a87c-49f6-b731-02ae971ac6ea",
+      "route_id": "source:12119/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 12118,
+          "source_name": "Hallowed Fountain"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Hallowed Fountain // Hallowed Fountain"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Hallowed Fountain",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f1750962-a87c-49f6-b731-02ae971ac6ea",
+      "route_id": "source:12119/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 12118,
+          "source_name": "Hallowed Fountain"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Hallowed Fountain // Hallowed Fountain"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Brainstorm",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f6036065-7196-44d4-8a27-2199f0e1a03c",
+      "route_id": "source:12240/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 3283,
+          "source_name": "Brainstorm"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Harmonized Trio // Brainstorm"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Island",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b2c6aa39-2d2a-459c-a555-fb48ba993373",
+      "route_id": "source:13999/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 13998,
+          "source_name": "Island"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Island // Island"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Island",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b2c6aa39-2d2a-459c-a555-fb48ba993373",
+      "route_id": "source:13999/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 13998,
+          "source_name": "Island"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Island // Island"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Jace Beleren",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "cc2b6e58-2d6f-495e-95f3-9496105c4cba",
+      "route_id": "source:14069/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 14068,
+          "source_name": "Jace Beleren"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Jace Beleren // Jace Beleren"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Jace Beleren",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "cc2b6e58-2d6f-495e-95f3-9496105c4cba",
+      "route_id": "source:14069/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 14068,
+          "source_name": "Jace Beleren"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Jace Beleren // Jace Beleren"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Jetmir, Nexus of Revels",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "da72a4bc-ce6f-4b72-bc66-2ee33cfa87df",
+      "route_id": "source:14236/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 14235,
+          "source_name": "Jetmir, Nexus of Revels"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Jetmir, Nexus of Revels // Jetmir, Nexus of Revels"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Jetmir, Nexus of Revels",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "da72a4bc-ce6f-4b72-bc66-2ee33cfa87df",
+      "route_id": "source:14236/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 14235,
+          "source_name": "Jetmir, Nexus of Revels"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Jetmir, Nexus of Revels // Jetmir, Nexus of Revels"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Jinnie Fay, Jetmir's Second",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "61fbaaf2-4286-4e9a-b9cb-aa31262b596a",
+      "route_id": "source:14272/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 14271,
+          "source_name": "Jinnie Fay, Jetmir's Second"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Jinnie Fay, Jetmir's Second // Jinnie Fay, Jetmir's Second"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Jinnie Fay, Jetmir's Second",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "61fbaaf2-4286-4e9a-b9cb-aa31262b596a",
+      "route_id": "source:14272/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 14271,
+          "source_name": "Jinnie Fay, Jetmir's Second"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Jinnie Fay, Jetmir's Second // Jinnie Fay, Jetmir's Second"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Kardur, Doomscourge",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "bc14356c-3a1a-47af-9a6e-2b449de0331f",
+      "route_id": "source:14536/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 14535,
+          "source_name": "Kardur, Doomscourge"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Kardur, Doomscourge // Kardur, Doomscourge"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Kardur, Doomscourge",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "bc14356c-3a1a-47af-9a6e-2b449de0331f",
+      "route_id": "source:14536/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 14535,
+          "source_name": "Kardur, Doomscourge"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Kardur, Doomscourge // Kardur, Doomscourge"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Soul Tether",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "bad2e3b2-ad47-4e17-b35e-0fcc13e82937",
+      "route_id": "source:15077/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:12440/face:1",
+          "source_index": 12440,
+          "source_name": "Heartwood Crafter // Soul Tether"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Konstrari Improviser // Soul Tether"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Krark's Thumb",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "a97c8482-775c-4f11-9872-25b4f9bfcb1a",
+      "route_id": "source:15148/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 15147,
+          "source_name": "Krark's Thumb"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Krark's Thumb // Krark's Thumb"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Krark's Thumb",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "a97c8482-775c-4f11-9872-25b4f9bfcb1a",
+      "route_id": "source:15148/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 15147,
+          "source_name": "Krark's Thumb"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Krark's Thumb // Krark's Thumb"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Krark, the Thumbless",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "18e421c0-2879-4ad8-b027-397f168dfbc2",
+      "route_id": "source:15150/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 15149,
+          "source_name": "Krark, the Thumbless"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Krark, the Thumbless // Krark, the Thumbless"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Krark, the Thumbless",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "18e421c0-2879-4ad8-b027-397f168dfbc2",
+      "route_id": "source:15150/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 15149,
+          "source_name": "Krark, the Thumbless"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Krark, the Thumbless // Krark, the Thumbless"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Liliana Vess",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "a6c05941-2cfb-4dac-a7c0-ab808187eb7c",
+      "route_id": "source:15797/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 15796,
+          "source_name": "Liliana Vess"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Liliana Vess // Liliana Vess"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Liliana Vess",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "a6c05941-2cfb-4dac-a7c0-ab808187eb7c",
+      "route_id": "source:15797/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 15796,
+          "source_name": "Liliana Vess"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Liliana Vess // Liliana Vess"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Lu Xun, Scholar General",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "ea658352-abef-4201-b20c-f5c5809d1d3e",
+      "route_id": "source:16170/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 16169,
+          "source_name": "Lu Xun, Scholar General"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Lu Xun, Scholar General // Lu Xun, Scholar General"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Lu Xun, Scholar General",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "ea658352-abef-4201-b20c-f5c5809d1d3e",
+      "route_id": "source:16170/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 16169,
+          "source_name": "Lu Xun, Scholar General"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Lu Xun, Scholar General // Lu Xun, Scholar General"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Magmatic Hellkite",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "2a3b29c3-f69d-4671-8907-600d21528153",
+      "route_id": "source:16403/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 16402,
+          "source_name": "Magmatic Hellkite"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Magmatic Hellkite // Magmatic Hellkite"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Magmatic Hellkite",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "2a3b29c3-f69d-4671-8907-600d21528153",
+      "route_id": "source:16403/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 16402,
+          "source_name": "Magmatic Hellkite"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Magmatic Hellkite // Magmatic Hellkite"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Marang River Regent",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "099b8d2c-b482-48dd-b6bc-dedf546d66c5",
+      "route_id": "source:16620/face:0",
+      "selected_contexts": [
+        {
+          "face_index": 0,
+          "route_id": "source:16619/face:0",
+          "source_index": 16619,
+          "source_name": "Marang River Regent // Coil and Catch"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Marang River Regent // Coil and Catch // Marang River Regent"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Coil and Catch",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "099b8d2c-b482-48dd-b6bc-dedf546d66c5",
+      "route_id": "source:16620/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:16619/face:1",
+          "source_index": 16619,
+          "source_name": "Marang River Regent // Coil and Catch"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Marang River Regent // Coil and Catch // Marang River Regent"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Mechtitan Core",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f1eb489d-104c-4801-b6d2-3f1a7ee73a75",
+      "route_id": "source:16932/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 16931,
+          "source_name": "Mechtitan Core"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Mechtitan Core // Mechtitan Core"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Mechtitan Core",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f1eb489d-104c-4801-b6d2-3f1a7ee73a75",
+      "route_id": "source:16932/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 16931,
+          "source_name": "Mechtitan Core"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Mechtitan Core // Mechtitan Core"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Mountain",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "a3fb7228-e76b-4e96-a40e-20b5fed75685",
+      "route_id": "source:17912/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 17911,
+          "source_name": "Mountain"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Mountain // Mountain"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Mountain",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "a3fb7228-e76b-4e96-a40e-20b5fed75685",
+      "route_id": "source:17912/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 17911,
+          "source_name": "Mountain"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Mountain // Mountain"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Norin the Wary",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b8b51a29-a2be-4b97-a73c-ea512d3d5622",
+      "route_id": "source:18757/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 18756,
+          "source_name": "Norin the Wary"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Norin the Wary // Norin the Wary"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Norin the Wary",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b8b51a29-a2be-4b97-a73c-ea512d3d5622",
+      "route_id": "source:18757/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 18756,
+          "source_name": "Norin the Wary"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Norin the Wary // Norin the Wary"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Noxious Ghoul",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "602e421e-afab-4488-8a52-af66b4fdce4b",
+      "route_id": "source:18812/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 18811,
+          "source_name": "Noxious Ghoul"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Noxious Ghoul // Noxious Ghoul"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Noxious Ghoul",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "602e421e-afab-4488-8a52-af66b4fdce4b",
+      "route_id": "source:18812/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 18811,
+          "source_name": "Noxious Ghoul"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Noxious Ghoul // Noxious Ghoul"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Okaun, Eye of Chaos",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7dec219b-96d1-4d4c-b3ac-15eda9d2ccc6",
+      "route_id": "source:19069/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 19068,
+          "source_name": "Okaun, Eye of Chaos"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Okaun, Eye of Chaos // Okaun, Eye of Chaos"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Okaun, Eye of Chaos",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7dec219b-96d1-4d4c-b3ac-15eda9d2ccc6",
+      "route_id": "source:19069/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 19068,
+          "source_name": "Okaun, Eye of Chaos"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Okaun, Eye of Chaos // Okaun, Eye of Chaos"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Overgrown Tomb",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "975ec9a3-6f20-4177-8211-82526e092538",
+      "route_id": "source:19484/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 19483,
+          "source_name": "Overgrown Tomb"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Overgrown Tomb // Overgrown Tomb"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Overgrown Tomb",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "975ec9a3-6f20-4177-8211-82526e092538",
+      "route_id": "source:19484/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 19483,
+          "source_name": "Overgrown Tomb"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Overgrown Tomb // Overgrown Tomb"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Parhelion II",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "24d22bcb-8a77-4c47-a508-6f4bc093c1d0",
+      "route_id": "source:19699/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 19698,
+          "source_name": "Parhelion II"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Parhelion II // Parhelion II"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Parhelion II",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "24d22bcb-8a77-4c47-a508-6f4bc093c1d0",
+      "route_id": "source:19699/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 19698,
+          "source_name": "Parhelion II"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Parhelion II // Parhelion II"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Peacewalker Colossus",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f89f7c7d-6eb3-4335-b9df-0ccaa9c50558",
+      "route_id": "source:19795/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 19794,
+          "source_name": "Peacewalker Colossus"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Peacewalker Colossus // Peacewalker Colossus"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Peacewalker Colossus",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f89f7c7d-6eb3-4335-b9df-0ccaa9c50558",
+      "route_id": "source:19795/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 19794,
+          "source_name": "Peacewalker Colossus"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Peacewalker Colossus // Peacewalker Colossus"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Plains",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "bc71ebf6-2056-41f7-be35-b2e5c34afa99",
+      "route_id": "source:20250/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 20249,
+          "source_name": "Plains"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Plains // Plains"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Plains",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "bc71ebf6-2056-41f7-be35-b2e5c34afa99",
+      "route_id": "source:20250/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 20249,
+          "source_name": "Plains"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Plains // Plains"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Propaganda",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "ea9709b6-4c37-4d5a-b04d-cd4c42e4f9dd",
+      "route_id": "source:20723/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 20722,
+          "source_name": "Propaganda"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Propaganda // Propaganda"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Propaganda",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "ea9709b6-4c37-4d5a-b04d-cd4c42e4f9dd",
+      "route_id": "source:20723/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 20722,
+          "source_name": "Propaganda"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Propaganda // Propaganda"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Peer Review",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "63f67baa-3f37-41b8-9ee6-3c37f828917d",
+      "route_id": "source:20790/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:9178/face:1",
+          "source_index": 9178,
+          "source_name": "Fatehold Chronologist // Peer Review"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Prudent Fateseer // Peer Review"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Radha, Heart of Keld",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "927fb139-0493-48be-8cc4-2c7d854d6a55",
+      "route_id": "source:21151/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 21150,
+          "source_name": "Radha, Heart of Keld"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Radha, Heart of Keld // Radha, Heart of Keld"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Radha, Heart of Keld",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "927fb139-0493-48be-8cc4-2c7d854d6a55",
+      "route_id": "source:21151/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 21150,
+          "source_name": "Radha, Heart of Keld"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Radha, Heart of Keld // Radha, Heart of Keld"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Reckoner Bankbuster",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b6be94dc-7162-4887-b959-3bda709724eb",
+      "route_id": "source:21691/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 21690,
+          "source_name": "Reckoner Bankbuster"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Reckoner Bankbuster // Reckoner Bankbuster"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Reckoner Bankbuster",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b6be94dc-7162-4887-b959-3bda709724eb",
+      "route_id": "source:21691/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 21690,
+          "source_name": "Reckoner Bankbuster"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Reckoner Bankbuster // Reckoner Bankbuster"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Rin and Seri, Inseparable",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "28c46eb7-bdfc-44b9-b7e9-b073260851f0",
+      "route_id": "source:22299/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 22298,
+          "source_name": "Rin and Seri, Inseparable"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Rin and Seri, Inseparable // Rin and Seri, Inseparable"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Rin and Seri, Inseparable",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "28c46eb7-bdfc-44b9-b7e9-b073260851f0",
+      "route_id": "source:22299/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 22298,
+          "source_name": "Rin and Seri, Inseparable"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Rin and Seri, Inseparable // Rin and Seri, Inseparable"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Sakashima of a Thousand Faces",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "8ecdaf4b-4442-42da-9714-4257a83faf50",
+      "route_id": "source:23018/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 23017,
+          "source_name": "Sakashima of a Thousand Faces"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Sakashima of a Thousand Faces",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "8ecdaf4b-4442-42da-9714-4257a83faf50",
+      "route_id": "source:23018/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 23017,
+          "source_name": "Sakashima of a Thousand Faces"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Scavenger Regent",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7e97a242-0bac-4f18-9228-e98ecca36254",
+      "route_id": "source:23401/face:0",
+      "selected_contexts": [
+        {
+          "face_index": 0,
+          "route_id": "source:23400/face:0",
+          "source_index": 23400,
+          "source_name": "Scavenger Regent // Exude Toxin"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Scavenger Regent // Exude Toxin // Scavenger Regent"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Exude Toxin",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "7e97a242-0bac-4f18-9228-e98ecca36254",
+      "route_id": "source:23401/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:23400/face:1",
+          "source_index": 23400,
+          "source_name": "Scavenger Regent // Exude Toxin"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Scavenger Regent // Exude Toxin // Scavenger Regent"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Peer Review",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "21b8d59f-a90d-44ff-a2e3-9f439ac3e14a",
+      "route_id": "source:23867/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:9178/face:1",
+          "source_index": 9178,
+          "source_name": "Fatehold Chronologist // Peer Review"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Semester Foreseer // Peer Review"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Smuggler's Copter",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "49136bdc-bc50-49a2-999a-1ef9c16ea130",
+      "route_id": "source:25178/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 25177,
+          "source_name": "Smuggler's Copter"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Smuggler's Copter // Smuggler's Copter"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Smuggler's Copter",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "49136bdc-bc50-49a2-999a-1ef9c16ea130",
+      "route_id": "source:25178/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 25177,
+          "source_name": "Smuggler's Copter"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Smuggler's Copter // Smuggler's Copter"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Sol Ring",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "6ad8011d-3471-4369-9d68-b264cc027487",
+      "route_id": "source:25273/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 25272,
+          "source_name": "Sol Ring"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Sol Ring // Sol Ring"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Sol Ring",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "6ad8011d-3471-4369-9d68-b264cc027487",
+      "route_id": "source:25273/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 25272,
+          "source_name": "Sol Ring"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Sol Ring // Sol Ring"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Careful Study",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "df5e4100-8c83-42d6-af96-1a1ec84a9210",
+      "route_id": "source:25668/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 3976,
+          "source_name": "Careful Study"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Spellbook Seeker // Careful Study"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Steam Vents",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "17039058-822d-409f-938c-b727a366ba63",
+      "route_id": "source:26235/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 26234,
+          "source_name": "Steam Vents"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Steam Vents // Steam Vents"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Steam Vents",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "17039058-822d-409f-938c-b727a366ba63",
+      "route_id": "source:26235/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 26234,
+          "source_name": "Steam Vents"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Steam Vents // Steam Vents"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Steely Resolve",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "48c127f0-2857-4c36-97bc-1291b6fe4a82",
+      "route_id": "source:26268/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 26267,
+          "source_name": "Steely Resolve"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Steely Resolve // Steely Resolve"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Steely Resolve",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "48c127f0-2857-4c36-97bc-1291b6fe4a82",
+      "route_id": "source:26268/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 26267,
+          "source_name": "Steely Resolve"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Steely Resolve // Steely Resolve"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Exsanguinate",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "25877c41-39a4-4cc3-ac4b-8f3dd06d579b",
+      "route_id": "source:26283/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 8860,
+          "source_name": "Exsanguinate"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Stensian Sanguinist // Exsanguinate"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Vicious Verse",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "e8f755f7-ec93-4d2e-bffc-c719984fa13d",
+      "route_id": "source:26328/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:12127/face:1",
+          "source_index": 12127,
+          "source_name": "Hallway Heckler // Vicious Verse"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Stingerquill Voxmancer // Vicious Verse"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Stitch in Time",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "59b2a90e-542f-4fb0-b290-ac79dc2892a4",
+      "route_id": "source:26353/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 26352,
+          "source_name": "Stitch in Time"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Stitch in Time // Stitch in Time"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Stitch in Time",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "59b2a90e-542f-4fb0-b290-ac79dc2892a4",
+      "route_id": "source:26353/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 26352,
+          "source_name": "Stitch in Time"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Stitch in Time // Stitch in Time"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Rampant Growth",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "58b0c737-0a84-4f9a-b3b7-300c5de43874",
+      "route_id": "source:26648/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 21377,
+          "source_name": "Rampant Growth"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Studious First-Year // Rampant Growth"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Swamp",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "56719f6a-1a6c-4c0a-8d21-18f7d7350b68",
+      "route_id": "source:27022/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 27021,
+          "source_name": "Swamp"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Swamp // Swamp"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Swamp",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "56719f6a-1a6c-4c0a-8d21-18f7d7350b68",
+      "route_id": "source:27022/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 27021,
+          "source_name": "Swamp"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Swamp // Swamp"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Teferi's Ageless Insight",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "1c9e1f75-73f0-4846-b53f-458a0984b1bb",
+      "route_id": "source:27496/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 27495,
+          "source_name": "Teferi's Ageless Insight"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Teferi's Ageless Insight // Teferi's Ageless Insight"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Teferi's Ageless Insight",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "1c9e1f75-73f0-4846-b53f-458a0984b1bb",
+      "route_id": "source:27496/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 27495,
+          "source_name": "Teferi's Ageless Insight"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Teferi's Ageless Insight // Teferi's Ageless Insight"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Temple Garden",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f413a83d-a40d-434c-b20a-4c707c0527fa",
+      "route_id": "source:27581/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 27580,
+          "source_name": "Temple Garden"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Temple Garden // Temple Garden"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Temple Garden",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f413a83d-a40d-434c-b20a-4c707c0527fa",
+      "route_id": "source:27581/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 27580,
+          "source_name": "Temple Garden"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Temple Garden // Temple Garden"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Terror",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b81f041d-98db-4408-9472-c483e4a502bc",
+      "route_id": "source:27721/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 27720,
+          "source_name": "Terror"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Terror // Terror"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Terror",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "b81f041d-98db-4408-9472-c483e4a502bc",
+      "route_id": "source:27721/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 27720,
+          "source_name": "Terror"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Terror // Terror"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Omit Variables",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "92a0aa44-0ef7-4e6f-8288-7c33067c5fd1",
+      "route_id": "source:28166/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:19652/face:1",
+          "source_index": 19652,
+          "source_name": "Paradox Shaper // Omit Variables"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Theorix Metamage // Omit Variables"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Tuvasa the Sunlit",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "6a83d976-8087-48d7-b6f5-63efb8329e99",
+      "route_id": "source:29305/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 29304,
+          "source_name": "Tuvasa the Sunlit"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Tuvasa the Sunlit // Tuvasa the Sunlit"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Tuvasa the Sunlit",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "6a83d976-8087-48d7-b6f5-63efb8329e99",
+      "route_id": "source:29305/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 29304,
+          "source_name": "Tuvasa the Sunlit"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Tuvasa the Sunlit // Tuvasa the Sunlit"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Ugin, Eye of the Storms",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "5c58353a-fd60-4528-bf0d-669626cda0b2",
+      "route_id": "source:29416/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 29415,
+          "source_name": "Ugin, Eye of the Storms"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Ugin, Eye of the Storms // Ugin, Eye of the Storms"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Ugin, Eye of the Storms",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "5c58353a-fd60-4528-bf0d-669626cda0b2",
+      "route_id": "source:29416/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 29415,
+          "source_name": "Ugin, Eye of the Storms"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Ugin, Eye of the Storms // Ugin, Eye of the Storms"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Ulamog, the Ceaseless Hunger",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "0bfa4512-e35a-4c93-b324-80ec659f5a97",
+      "route_id": "source:29434/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 29433,
+          "source_name": "Ulamog, the Ceaseless Hunger"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Ulamog, the Ceaseless Hunger // Ulamog, the Ceaseless Hunger"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Ulamog, the Ceaseless Hunger",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "0bfa4512-e35a-4c93-b324-80ec659f5a97",
+      "route_id": "source:29434/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 29433,
+          "source_name": "Ulamog, the Ceaseless Hunger"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Ulamog, the Ceaseless Hunger // Ulamog, the Ceaseless Hunger"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Unholy Grotto",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "c28211c6-a5ee-40c3-bb6a-da3e7e73fd95",
+      "route_id": "source:29631/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 29630,
+          "source_name": "Unholy Grotto"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Unholy Grotto // Unholy Grotto"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Unholy Grotto",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "c28211c6-a5ee-40c3-bb6a-da3e7e73fd95",
+      "route_id": "source:29631/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 29630,
+          "source_name": "Unholy Grotto"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Unholy Grotto // Unholy Grotto"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Seed Suture",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "bd416426-d037-45e3-9647-816bf982cbea",
+      "route_id": "source:30308/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:2937/face:1",
+          "source_index": 2937,
+          "source_name": "Blossom-Blessed Angel // Seed Suture"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Vigorbloom Vanguard // Seed Suture"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Omit Variables",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "517f84b5-cf99-410d-96ea-910740231dac",
+      "route_id": "source:30536/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:19652/face:1",
+          "source_index": 19652,
+          "source_name": "Paradox Shaper // Omit Variables"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Void Extrapolator // Omit Variables"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Vicious Verse",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "e1ffb884-a89e-4e2a-9beb-8bd5838b6a94",
+      "route_id": "source:31238/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:12127/face:1",
+          "source_index": 12127,
+          "source_name": "Hallway Heckler // Vicious Verse"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Whiplash Wordsmith // Vicious Verse"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Soul Tether",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "f3ed157f-a09b-405f-aec4-0e7a81d80fc8",
+      "route_id": "source:31711/face:1",
+      "selected_contexts": [
+        {
+          "face_index": 1,
+          "route_id": "source:12440/face:1",
+          "source_index": 12440,
+          "source_name": "Heartwood Crafter // Soul Tether"
+        }
+      ],
+      "source_layout": "prepare",
+      "source_name": "Woodwork Prodigy // Soul Tether"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Yargle, Glutton of Urborg",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "ed66cd31-958f-4b28-82a3-e04acc819afc",
+      "route_id": "source:31888/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 31887,
+          "source_name": "Yargle, Glutton of Urborg"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Yargle, Glutton of Urborg // Yargle, Glutton of Urborg"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Yargle, Glutton of Urborg",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "ed66cd31-958f-4b28-82a3-e04acc819afc",
+      "route_id": "source:31888/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 31887,
+          "source_name": "Yargle, Glutton of Urborg"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Yargle, Glutton of Urborg // Yargle, Glutton of Urborg"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Zndrsplt, Eye of Wisdom",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "502849a6-8e65-40f3-b348-a41c4f939768",
+      "route_id": "source:32126/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 32125,
+          "source_name": "Zndrsplt, Eye of Wisdom"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Zndrsplt, Eye of Wisdom // Zndrsplt, Eye of Wisdom"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Zndrsplt, Eye of Wisdom",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "502849a6-8e65-40f3-b348-a41c4f939768",
+      "route_id": "source:32126/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 32125,
+          "source_name": "Zndrsplt, Eye of Wisdom"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Zndrsplt, Eye of Wisdom // Zndrsplt, Eye of Wisdom"
+    },
+    {
+      "face_index": 0,
+      "face_name": "Zombie Master",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "5446c92f-ff22-4e9b-a2f6-e64c8560c1e0",
+      "route_id": "source:32157/face:0",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 32156,
+          "source_name": "Zombie Master"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Zombie Master // Zombie Master"
+    },
+    {
+      "face_index": 1,
+      "face_name": "Zombie Master",
+      "lookup_disposition": "name_shadowed",
+      "oracle_id": "5446c92f-ff22-4e9b-a2f6-e64c8560c1e0",
+      "route_id": "source:32157/face:1",
+      "selected_contexts": [
+        {
+          "face_index": null,
+          "route_id": null,
+          "source_index": 32156,
+          "source_name": "Zombie Master"
+        }
+      ],
+      "source_layout": "reversible_card",
+      "source_name": "Zombie Master // Zombie Master"
+    }
+  ],
+  "source_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "summary": {
+    "distinct_face_lookup_name_count": 1752,
+    "exact_face_route_count": 1678,
+    "face_route_count": 1836,
+    "face_routes_by_layout": {
+      "adventure": 302,
+      "flip": 40,
+      "modal_dfc": 196,
+      "prepare": 134,
+      "reversible_card": 142,
+      "split": 246,
+      "transform": 776
+    },
+    "multiface_source_entry_count": 918,
+    "multiface_unique_oracle_card_count": 915,
+    "omitted_face_route_count": 158,
+    "omitted_routes_by_layout": {
+      "prepare": 16,
+      "reversible_card": 142
+    },
+    "product_baker_linked_face_route_count": 1694,
+    "selected_canonical_payload_count": 74,
+    "selected_lookup_query_count": 1752,
+    "selected_payload_count": 1752,
+    "source_entry_count": 32209,
+    "unique_source_oracle_card_count": 32138
+  }
+}

@@ -326,6 +326,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::Casualty { power }) => {
                 f.debug_tuple("Casualty").field(power).finish()
             }
+            Self::KeywordActions(KeywordActionAst::CollectEvidence { amount }) => f
+                .debug_struct("CollectEvidence").field("amount", amount).finish(),
+            Self::KeywordActions(KeywordActionAst::EmpowerJace { amount }) => f
+                .debug_struct("EmpowerJace")
+                .field("amount", amount)
+                .finish(),
             Self::KeywordActions(KeywordActionAst::Amass { subtype, amount }) => f
                 .debug_struct("Amass")
                 .field("subtype", subtype)
@@ -456,6 +462,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Choices(ChoiceActionAst::ChooseCardType { options }) => {
                 f.debug_tuple("ChooseCardType").field(options).finish()
             }
+            Self::Choices(ChoiceActionAst::ChooseNumber { min, max }) => f.debug_struct("ChooseNumber").field("min", min).field("max", max).finish(),
             Self::Choices(ChoiceActionAst::ChooseNamedOption { options }) => {
                 f.debug_tuple("ChooseNamedOption").field(options).finish()
             }
@@ -684,12 +691,21 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 player,
                 replacement_effects,
                 duration,
+                player_target,
+                display,
             }) => f
                 .debug_struct("RegisterDrawReplacement")
                 .field("player", player)
+                .field("player_target", player_target)
+                .field("display", display)
                 .field("replacement_effects", replacement_effects)
                 .field("duration", duration)
                 .finish(),
+            Self::Replacements(ReplacementActionAst::RegisterManaSpendPermission { permission, until, display }) => f
+                .debug_struct("RegisterManaSpendPermission").field("permission", permission).field("until", until).field("display", display).finish(),
+            Self::Replacements(ReplacementActionAst::RegisterManaRewrite { rule, target, mode, display }) => f
+                .debug_struct("RegisterManaRewrite").field("rule", rule).field("target", target)
+                .field("mode", mode).field("display", display).finish(),
             Self::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 source_filter,
                 replacement_mana,
@@ -699,6 +715,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("source_filter", source_filter)
                 .field("replacement_mana", replacement_mana)
                 .field("mode", mode)
+                .finish(),
+            Self::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => f
+                .debug_struct("RegisterDamageAddition").field("spec", spec).finish(),
+            Self::Replacements(ReplacementActionAst::RegisterDamageMultiplier { spec }) => f
+                .debug_struct("RegisterDamageMultiplier")
+                .field("spec", spec)
                 .finish(),
             Self::Replacements(ReplacementActionAst::RegisterCounterPlacementReplacement {
                 filter,
@@ -996,11 +1018,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
                 target,
                 duration,
+                combat_only,
                 source_of_your_choice,
                 source_choice_shares_activation_mana_color,
                 source_target,
+                protect_source_target,
+                follow_up_effects,
             }) => f
                 .debug_struct("PreventAllDamageToTarget")
+                .field("combat_only", combat_only)
                 .field("target", target)
                 .field("duration", duration)
                 .field("source_of_your_choice", source_of_your_choice)
@@ -1009,6 +1035,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     source_choice_shares_activation_mana_color,
                 )
                 .field("source_target", source_target)
+                .field("protect_source_target", protect_source_target)
+                .field("follow_up_effects", follow_up_effects)
                 .finish(),
             Self::DamagePrevention(
                 DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
@@ -1138,6 +1166,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("surface", surface)
                 .finish(),
             Self::Stack(StackActionAst::CastTagged {
+                alternative_cost,
                 tag,
                 player,
                 allow_land,
@@ -1162,8 +1191,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("cost_reduction", cost_reduction)
                 .field("mana_spend_mode", mana_spend_mode)
                 .field("alternative_payment", alternative_payment)
+                .field("alternative_cost", alternative_cost)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost,
                 tag,
                 player,
                 allow_land,
@@ -1186,6 +1217,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("free_cast_from_current_zone", free_cast_from_current_zone)
                 .field("until_source_exiles_another", until_source_exiles_another)
                 .field("spell_cost_reduction", spell_cost_reduction)
+                .field("alternative_cost", alternative_cost)
                 .field("max_plays", max_plays)
                 .field("surface", surface)
                 .finish(),
@@ -1434,8 +1466,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 name_override,
                 add_supertypes,
                 remove_all_abilities,
-                power,
-                toughness,
+                remove_other_abilities,
+                base_power_toughness,
                 target,
                 card_types,
                 subtypes,
@@ -1444,6 +1476,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 abilities,
                 granted_abilities,
                 preserve_other_types,
+                preserve_other_colors,
                 type_retention_surface,
                 animation_pt_surface,
                 animation_duration_surface,
@@ -1454,8 +1487,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("name_override", name_override)
                 .field("add_supertypes", add_supertypes)
                 .field("remove_all_abilities", remove_all_abilities)
-                .field("power", power)
-                .field("toughness", toughness)
+                .field("remove_other_abilities", remove_other_abilities)
+                .field("base_power_toughness", base_power_toughness)
                 .field("target", target)
                 .field("card_types", card_types)
                 .field("subtypes", subtypes)
@@ -1464,6 +1497,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("abilities", abilities)
                 .field("granted_abilities", granted_abilities)
                 .field("preserve_other_types", preserve_other_types)
+                .field("preserve_other_colors", preserve_other_colors)
                 .field("type_retention_surface", type_retention_surface)
                 .field("animation_pt_surface", animation_pt_surface)
                 .field("animation_duration_surface", animation_duration_surface)
@@ -1552,6 +1586,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("card_types", card_types)
                 .field("duration", duration)
                 .finish(),
+            Self::StatChanges(StatChangeActionAst::RemoveSupertypes {target,supertypes,duration}) => f
+                .debug_struct("RemoveSupertypes").field("target",target).field("supertypes",supertypes).field("duration",duration).finish(),
             Self::StatChanges(StatChangeActionAst::RemoveCardTypes {
                 target,
                 card_types,
@@ -1666,10 +1702,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .finish(),
             Self::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice {
-                target,
-                duration,
+                target, duration, allowed_subtypes, preserve_other_types,
             }) => f
                 .debug_struct("BecomeBasicLandTypeChoice")
+                .field("allowed_subtypes", allowed_subtypes)
+                .field("preserve_other_types", preserve_other_types)
                 .field("target", target)
                 .field("duration", duration)
                 .finish(),
@@ -1961,12 +1998,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     player_filter,
                     object_filter,
                     target,
+                    scope,
                 },
             ) => f
                 .debug_struct("RedirectAllDamageThisTurnToTarget")
                 .field("player_filter", player_filter)
                 .field("object_filter", object_filter)
                 .field("target", target)
+                .field("scope", scope)
                 .finish(),
             Self::KeywordActions(KeywordActionAst::Meld {
                 result_name,
@@ -2015,6 +2054,30 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("DealDamage")
                 .field("amount", amount)
                 .field("target", target)
+                .finish(),
+            Self::Damage(DamageActionAst::DealDamageBySources {
+                sources,
+                amount,
+                target,
+                source_binding,
+            }) => f
+                .debug_struct("DealDamageBySources")
+                .field("source_binding", source_binding)
+                .field("sources", sources)
+                .field("amount", amount)
+                .field("target", target)
+                .finish(),
+            Self::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                recipients,
+                object_groups,
+                player_groups,
+            }) => f
+                .debug_struct("DealDamageToRecipients")
+                .field("amount", amount)
+                .field("recipients", recipients)
+                .field("object_groups", object_groups)
+                .field("player_groups", player_groups)
                 .finish(),
             Self::Damage(DamageActionAst::DealDamageEach { amount, filter }) => f
                 .debug_struct("DealDamageEach")
@@ -2093,8 +2156,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::PermanentState(PermanentStateActionAst::PhaseIn { target }) => {
                 f.debug_tuple("PhaseIn").field(target).finish()
             }
-            Self::PermanentState(PermanentStateActionAst::PhaseInAll { filter }) => {
-                f.debug_tuple("PhaseInAll").field(filter).finish()
+            Self::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out }) => {
+                f.debug_tuple("PhaseInAll").field(filter).field(simultaneous_phase_out).finish()
             }
             Self::PermanentState(PermanentStateActionAst::Transform { target }) => {
                 f.debug_tuple("Transform").field(target).finish()
@@ -2472,6 +2535,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn) => {
                 f.write_str("SkipCombatPhasesThisTurn")
             }
+            Self::TurnStructure(TurnStructureActionAst::SkipScheduled { kind, count }) => {
+                f.debug_struct("SkipScheduled").field("kind", kind).field("count", count).finish()
+            }
             Self::TurnStructure(TurnStructureActionAst::SkipDrawStep) => {
                 f.write_str("SkipDrawStep")
             }
@@ -2572,6 +2638,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("ExcessDamageToController")
                 .field("condition", condition)
                 .finish(),
+            Self::PermanentState(PermanentStateActionAst::BecomeBlocked { target }) => {
+                f.debug_tuple("BecomeBlocked").field(target).finish()
+            }
             Self::PermanentState(PermanentStateActionAst::RemoveFromCombat { target }) => {
                 f.debug_tuple("RemoveFromCombat").field(target).finish()
             }

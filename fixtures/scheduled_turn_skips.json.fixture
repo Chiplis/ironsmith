@@ -1,0 +1,91 @@
+[
+  {
+    "name": "Avizoa",
+    "oracle_id": "91520db8-2d50-4c17-9f0e-2f92f63285f7",
+    "mana_cost": "{3}{U}",
+    "type_line": "Creature \u2014 Jellyfish",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "Flying\n{0}: This creature gets +2/+2 until end of turn. You skip your next untap step. Activate only once each turn.",
+    "scryfall_uri": "https://scryfall.com/card/wth/35/avizoa?utm_source=api"
+  },
+  {
+    "name": "Blinding Angel",
+    "oracle_id": "cb479ce1-59e8-4531-9a21-f7c97d334817",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Creature \u2014 Angel",
+    "power": "2",
+    "toughness": "4",
+    "oracle_text": "Flying (This creature can't be blocked except by creatures with flying or reach.)\nWhenever this creature deals combat damage to a player, that player skips their next combat phase.",
+    "scryfall_uri": "https://scryfall.com/card/sld/1379/blinding-angel?utm_source=api"
+  },
+  {
+    "name": "Brine Elemental",
+    "oracle_id": "0e7b02fd-f2a3-493c-939b-ff9bca337774",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Creature \u2014 Elemental",
+    "power": "5",
+    "toughness": "4",
+    "oracle_text": "Morph {5}{U}{U} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, each opponent skips their next untap step.",
+    "scryfall_uri": "https://scryfall.com/card/tsr/55/brine-elemental?utm_source=api"
+  },
+  {
+    "name": "Dovin, Architect of Law",
+    "oracle_id": "a3386efe-d6c5-4853-a4db-61460da3364a",
+    "mana_cost": "{4}{W}{U}",
+    "type_line": "Legendary Planeswalker \u2014 Dovin",
+    "loyalty": "5",
+    "oracle_text": "+1: You gain 2 life and draw a card.\n\u22121: Tap target creature. It doesn't untap during its controller's next untap step.\n\u22129: Tap all permanents target opponent controls. That player skips their next untap step.",
+    "scryfall_uri": "https://scryfall.com/card/rna/265/dovin-architect-of-law?utm_source=api"
+  },
+  {
+    "name": "Eater of Days",
+    "oracle_id": "205f6384-7203-42ed-bc0f-8803cf1f4514",
+    "mana_cost": "{4}",
+    "type_line": "Artifact Creature \u2014 Leviathan",
+    "power": "9",
+    "toughness": "8",
+    "oracle_text": "Flying, trample\nWhen this creature enters, you skip your next two turns.",
+    "scryfall_uri": "https://scryfall.com/card/plst/DST-120/eater-of-days?utm_source=api"
+  },
+  {
+    "name": "Revenant Patriarch",
+    "oracle_id": "942f6260-055e-4cc7-bec6-3a46fd4b048e",
+    "mana_cost": "{4}{B}",
+    "type_line": "Creature \u2014 Spirit",
+    "power": "4",
+    "toughness": "3",
+    "oracle_text": "When this creature enters, if {W} was spent to cast it, target player skips their next combat phase.\nThis creature can't block.",
+    "scryfall_uri": "https://scryfall.com/card/ddk/16/revenant-patriarch?utm_source=api"
+  },
+  {
+    "name": "Shisato, Whispering Hunter",
+    "oracle_id": "8658cd14-6826-4308-b6ce-fcfd8f2e17ed",
+    "mana_cost": "{3}{G}",
+    "type_line": "Legendary Creature \u2014 Snake Warrior",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "At the beginning of your upkeep, sacrifice a Snake.\nWhenever Shisato deals combat damage to a player, that player skips their next untap step.",
+    "scryfall_uri": "https://scryfall.com/card/chk/242/shisato-whispering-hunter?utm_source=api"
+  },
+  {
+    "name": "Stonehorn Dignitary",
+    "oracle_id": "65368569-68bf-4498-9979-d2935942ca49",
+    "mana_cost": "{3}{W}",
+    "type_line": "Creature \u2014 Rhino Soldier",
+    "power": "1",
+    "toughness": "4",
+    "oracle_text": "When this creature enters, target opponent skips their next combat phase.",
+    "scryfall_uri": "https://scryfall.com/card/plst/M12-37/stonehorn-dignitary?utm_source=api"
+  },
+  {
+    "name": "Yosei, the Morning Star",
+    "oracle_id": "5c2d0ead-8bfc-4ca7-9b38-2fc07af1c1d5",
+    "mana_cost": "{4}{W}{W}",
+    "type_line": "Legendary Creature \u2014 Dragon Spirit",
+    "power": "5",
+    "toughness": "5",
+    "oracle_text": "Flying\nWhen Yosei dies, target player skips their next untap step. Tap up to five target permanents that player controls.",
+    "scryfall_uri": "https://scryfall.com/card/plst/IMA-39/yosei-the-morning-star?utm_source=api"
+  }
+]

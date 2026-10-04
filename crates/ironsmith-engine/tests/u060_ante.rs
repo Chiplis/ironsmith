@@ -27,7 +27,7 @@ fn u060_ante_is_owner_only_public_and_preserved_when_its_owner_leaves() {
     assert!(Zone::Ante.is_public());
     assert!(!Zone::Ante.is_ordered());
 
-    game.mark_player_lost(alice);
+    game.mark_player_lost(alice).expect("checked designation/departure fixture");
     let retained = game.object(ante_id).expect("CR 800.4n retains ante cards");
     assert_eq!(retained.owner, alice);
     assert_eq!(retained.zone, Zone::Ante);
@@ -43,7 +43,7 @@ fn u060_terminal_winner_receives_every_ante_card_exactly_once() {
     let alice_ante = game.ante_owned_object(alice, alice_card).unwrap();
     let bob_ante = game.ante_owned_object(bob, bob_card).unwrap();
 
-    game.mark_player_lost(alice);
+    game.mark_player_lost(alice).expect("checked designation/departure fixture");
     let mut triggers = TriggerQueue::new();
     let progress =
         advance_priority(&mut game, &mut triggers).expect("priority reaches game result");

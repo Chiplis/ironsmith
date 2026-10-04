@@ -168,6 +168,10 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
                 add_supertypes,
                 copy_exception_surface,
             },
+            compiler::effects::continuous::RuntimeModification::CopyOfWithAbilities { source, preserve_source_abilities, name_override, name_override_surface, add_supertypes, copy_exception_surface, abilities } =>
+                ironsmith::effects::continuous::RuntimeModification::CopyOfWithAbilities { source, preserve_source_abilities, name_override, name_override_surface, add_supertypes, copy_exception_surface,
+                    abilities: abilities.into_iter().map(|ability| runtime_ability_from_core_model(ability)).collect::<Result<Vec<_>, _>>()?,
+                },
             compiler::effects::continuous::RuntimeModification::RemoveAllAbilities => {
                 ironsmith::effects::continuous::RuntimeModification::RemoveAllAbilities
             }
@@ -192,6 +196,9 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
                 ironsmith::grant::Grantable::AlternativeCast(convert_alternative_cast(method)?)
             }
             compiler::grant::Grantable::PlayFrom => ironsmith::grant::Grantable::PlayFrom,
+            compiler::grant::Grantable::AlternativePrice { costs, origin } => ironsmith::grant::Grantable::AlternativePrice {
+                costs: costs.into_iter().map(runtime_cost_from_core_model).collect::<Result<_, _>>()?, origin,
+            },
             compiler::grant::Grantable::DerivedAlternativeCast(spec) => {
                 ironsmith::grant::Grantable::DerivedAlternativeCast(
                     convert_derived_alternative_cast(spec)?,
@@ -226,13 +233,24 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             grantable: self.runtime_grantable_hook(spec.grantable)?,
             filter: spec.filter,
             zone: spec.zone,
+            additional_zones: spec.additional_zones,
             beneficiary: spec.beneficiary,
             usage_limit: spec.usage_limit,
             max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter,
+            on_use_effects: spec.on_use_effects.into_iter().map(runtime_effect_from_core_model).collect::<Result<_, _>>()?,
             source_exiled_surface: spec.source_exiled_surface,
+            filtered_zone_surface: spec.filtered_zone_surface,
+            top_card_only: spec.top_card_only,
+            instant_timing: spec.instant_timing,
+            may_look_at_top: spec.may_look_at_top,
             cast_this_way_grants: spec
                 .cast_this_way_grants
+                .into_iter()
+                .map(|ability| self.runtime_static_ability_hook(ability))
+                .collect::<Result<Vec<_>, _>>()?,
+            permanent_this_way_grants: spec
+                .permanent_this_way_grants
                 .into_iter()
                 .map(|ability| self.runtime_static_ability_hook(ability))
                 .collect::<Result<Vec<_>, _>>()?,
@@ -3729,3 +3747,6 @@ mod compiled_distinct_player_clause_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod keyword_grant_materialization_tests;

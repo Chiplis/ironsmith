@@ -11,7 +11,21 @@ mod event_kind;
 mod expend;
 mod keyword_action;
 mod mana_added;
+mod player_changes_tap_state;
+mod attachment_changed;
+mod phasing_changed;
+mod player_attack_declaration;
+pub use player_attack_declaration::PlayerAttackDeclarationTrigger;
+mod cards_milled;
+pub use cards_milled::CardsMilledTrigger;
+pub use phasing_changed::PhasingChangedTrigger;
+pub use attachment_changed::AttachmentChangedTrigger;
+mod control_changed;
+pub use control_changed::ControlChangedTrigger;
+mod ring_bearer_chosen;
+pub use ring_bearer_chosen::RingBearerChosenTrigger;
 mod permanent_becomes_tapped;
+mod permanent_becomes_untapped;
 mod permanent_sacrificed_or_destroyed;
 mod permanent_turned_face_up;
 mod player_coin_flip_result;
@@ -24,6 +38,8 @@ mod player_sacrifices;
 mod player_searches_library;
 mod player_shuffles_library;
 mod transforms;
+mod permanent_lifecycle;
+pub use permanent_lifecycle::PermanentMutatesTrigger;
 mod wins_clash;
 
 pub use any_of::AnyOfTrigger;
@@ -39,7 +55,9 @@ pub use event_kind::{
 pub use expend::ExpendTrigger;
 pub use keyword_action::KeywordActionTrigger;
 pub use mana_added::ManaAddedTrigger;
+pub use player_changes_tap_state::PlayerChangesTapStateTrigger;
 pub use permanent_becomes_tapped::PermanentBecomesTappedTrigger;
+pub use permanent_becomes_untapped::PermanentBecomesUntappedTrigger;
 pub use permanent_sacrificed_or_destroyed::{
     PermanentDestroyedTrigger, PermanentSacrificedTrigger,
 };
@@ -55,3 +73,9 @@ pub use player_searches_library::PlayerSearchesLibraryTrigger;
 pub use player_shuffles_library::PlayerShufflesLibraryTrigger;
 pub use transforms::TransformsTrigger;
 pub use wins_clash::WinsClashTrigger;
+
+mod qualified_die_roll;
+pub use qualified_die_roll::QualifiedDieRollTrigger;
+
+mod player_becomes_monarch;
+pub use player_becomes_monarch::PlayerBecomesMonarchTrigger;

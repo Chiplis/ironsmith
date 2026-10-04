@@ -27,7 +27,10 @@ fn half_life_shape<'a>(input: &mut primitives::WordSliceInput<'a>) -> WResult<Ha
             .value(false),
     )))
     .parse_next(input)?
-    .unwrap_or(false);
+    // The document normalizer omits "Round down each time" because it
+    // restates the shared arithmetic default. A bare half-life instruction
+    // must use that same default; an explicit/upward sentence still wins.
+    .unwrap_or(true);
     eof.parse_next(input)?;
     Ok(HalfLifeShape {
         rounded_down,

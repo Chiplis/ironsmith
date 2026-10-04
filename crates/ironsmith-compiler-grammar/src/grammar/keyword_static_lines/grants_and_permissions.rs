@@ -35,6 +35,7 @@ pub enum HandSizePlayerKind {
     You,
     Opponent,
     Any,
+    Chosen,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +44,7 @@ pub enum HandSizeOperation {
     Increase(u32),
     Set(u32),
     SevenMinusGraveyardCardTypes,
+    SourceCounters(crate::object::CounterType),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,11 +104,26 @@ pub fn parse_cascade_land_drop_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn parse_hand_size_line_tokens(tokens: &[OwnedLexToken]) -> Option<HandSizeLineSpec<'_>> {
+    if let Some(spec) = parse_counter_hand_size_line(tokens) { return Some(spec); }
     crate::grammar::primitives::probe_all(
         tokens,
         parse_hand_size_line_lexed,
         "maximum hand-size line",
     )
+}
+
+fn parse_counter_hand_size_line(tokens: &[OwnedLexToken]) -> Option<HandSizeLineSpec<'_>> {
+    if tokens.iter().any(OwnedLexToken::is_quote) { return None; }
+    let mut input=crate::lexer::LexStream::new(tokens);
+    let player=parse_hand_size_subject_and_head.parse_next(&mut input).ok()?;
+    primitives::phrase(&["is", "equal", "to", "the", "number", "of"]).parse_next(&mut input).ok()?;
+    let input = &*input;
+    let words=crate::lexer::parser_token_word_refs(input);
+    let positions=crate::lexer::parser_token_word_positions(input);
+    let counter=words.iter().position(|word|matches!(*word,"counter"|"counters"))?;
+    if counter==0 || words.get(counter+1)!=Some(&"on") || !crate::util::is_source_reference_words(&words[counter+2..]) { return None; }
+    let counter_type=crate::grammar::filters::parse_counter_type_from_tokens(&input[..positions[counter].0])?;
+    Some(HandSizeLineSpec { condition_tokens:None, player, operation:HandSizeOperation::SourceCounters(counter_type) })
 }
 
 pub fn parse_mana_spend_permission_tokens(
@@ -277,6 +294,8 @@ fn parse_hand_size_line_lexed<'a>(input: &mut LexStream<'a>) -> WResult<HandSize
 fn parse_hand_size_subject_and_head<'a>(input: &mut LexStream<'a>) -> WResult<HandSizePlayerKind> {
     let player = alt((
         alt((primitives::kw("your"), primitives::kw("you"))).value(HandSizePlayerKind::You),
+        (primitives::phrase(&["the", "chosen"]), alt((primitives::kw("player"), primitives::kw("player's"))), opt(primitives::kw("s")))
+            .value(HandSizePlayerKind::Chosen),
         (
             opt(primitives::kw("each")),
             alt((

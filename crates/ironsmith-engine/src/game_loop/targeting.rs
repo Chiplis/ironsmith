@@ -87,6 +87,10 @@ pub(crate) fn queue_triggers_from_event(
     event: TriggerEvent,
     include_delayed: bool,
 ) {
+    if event.triggers_captured() { return; }
+    let event = if let Some(targeted) = event.downcast::<BecomesTargetedEvent>() {
+        event.with_inner_event(targeted.clone().with_participant_snapshots(game))
+    } else { event };
     game.record_turn_history_event(&event);
     queue_triggers_for_event(game, trigger_queue, event.clone());
 
@@ -119,12 +123,15 @@ pub(crate) fn queue_triggers_from_reported_events(
                     | crate::events::EventKind::DieRolled
                     | crate::events::EventKind::Damage
                     | crate::events::EventKind::LifeLoss
+                    | crate::events::EventKind::LifePaid
                     | crate::events::EventKind::ZoneChange
                     | crate::events::EventKind::ObjectLeavesGame
+                    | crate::events::EventKind::PermanentTapped
+                    | crate::events::EventKind::PermanentUntapped
             )
         })
     };
-    let mut events = events.into_iter().map(Some).collect::<Vec<_>>();
+    let mut events = events.into_iter().filter(|event| !event.triggers_captured()).map(Some).collect::<Vec<_>>();
     for index in 0..events.len() {
         let Some(event) = events[index].take() else {
             continue;
@@ -146,6 +153,8 @@ pub(crate) fn queue_triggers_from_reported_events(
                     simultaneous.extend(later.take());
                 }
             }
+            crate::events::other::bind_die_roll_batch_results(&mut simultaneous);
+            crate::events::damage::bind_received_damage_amounts(&mut simultaneous);
             queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
             if include_delayed {
                 for trigger in crate::triggers::check_delayed_triggers_for_simultaneous_events(
@@ -181,10 +190,13 @@ pub(super) fn queue_triggers_for_simultaneous_events(
     trigger_queue: &mut TriggerQueue,
     events: Vec<TriggerEvent>,
 ) {
-    let events = events
+    let mut events = events
         .into_iter()
+        .filter(|event| !event.triggers_captured())
         .map(|event| game.ensure_trigger_event_provenance(event))
         .collect::<Vec<_>>();
+    crate::events::other::bind_die_roll_batch_results(&mut events);
+    crate::events::damage::bind_received_damage_amounts(&mut events);
     let previous_batch_start = game.turn_store.turn_history.begin_simultaneous_batch();
     for event in &events {
         game.record_turn_history_event(event);
@@ -216,7 +228,12 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                 let key = (trigger.source_stable_id, trigger.trigger_identity, group);
                 if matches!(group,
                     crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch
-                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::ObjectLeavesGameBatch)
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::MillingBatch
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerMillingBatch(_)
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::ObjectLeavesGameBatch
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::PhasingBatch { .. }
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { .. }
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerTapStateBatch { .. })
                 {
                     // Identical ability instances remain separate; match each
                     // occurrence to its corresponding entry from earlier events.
@@ -242,6 +259,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                         group,
                         crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
                             | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
+                            | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceTarget(_, _)
                     ) && let Some(indices) = damage_groups.get(&key)
                     {
                         for &index in indices {
@@ -262,6 +280,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                     group,
                     crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
                         | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
+                            | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceTarget(_, _)
                 ) {
                     damage_groups_from_this_event.push((key, trigger_queue.entries.len()));
                 }
@@ -345,7 +364,7 @@ pub(super) fn targets_commit_crime(
         .any(|target| is_crime_target(game, committer, target))
 }
 
-pub(super) fn queue_becomes_targeted_events(
+fn queue_target_selection_events(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     targets: &[Target],
@@ -360,7 +379,7 @@ pub(super) fn queue_becomes_targeted_events(
             .iter()
             .rev()
             .find(|entry| entry.is_ability && entry.object_id == source)
-            .and_then(|entry| entry.ability_id)
+            .map(|entry| entry.target_id())
     } else {
         None
     };
@@ -395,6 +414,12 @@ pub(super) fn queue_becomes_targeted_events(
         }
     }
 
+}
+
+pub(super) fn queue_targeting_crime(
+    game: &mut GameState, trigger_queue: &mut TriggerQueue, targets: &[Target],
+    source: ObjectId, source_controller: PlayerId, provenance: ProvNodeId,
+) {
     if !targets.is_empty() && targets_commit_crime(game, source_controller, targets) {
         let crime_event_provenance =
             game.alloc_child_event_provenance(provenance, crate::events::EventKind::KeywordAction);
@@ -413,6 +438,40 @@ pub(super) fn queue_becomes_targeted_events(
             true,
         );
     }
+}
+
+pub(super) fn queue_becomes_targeted_events(
+    game: &mut GameState, trigger_queue: &mut TriggerQueue, targets: &[Target],
+    source: ObjectId, source_controller: PlayerId, by_ability: bool, provenance: ProvNodeId,
+) {
+    queue_target_selection_events(game, trigger_queue, targets, source, source_controller, by_ability, provenance);
+    queue_targeting_crime(game, trigger_queue, targets, source, source_controller, provenance);
+}
+
+/// CR 601.2c/602.2b: target transitions occur before costs. Match now against
+/// the complete announced stack object, but retain the queue inside the action
+/// transaction until payment succeeds. No choices/stacking are performed here.
+/// The temporary entry exposes exactly the metadata already announced; costs
+/// still follow the existing pending-action representation.
+pub(super) fn capture_announced_targeting(
+    game: &mut GameState, entry: StackEntry,
+) -> Result<TriggerQueue, GameLoopError> {
+    if entry.targets.is_empty() { return Ok(TriggerQueue::new()); }
+    let checkpoint = game.clone();
+    let slot = game.stack.len();
+    game.stack.push(entry.clone());
+    game.bump_mutation_revision(); game.mark_continuous_state_dirty();
+    if let Err(error) = game.refresh_continuous_state() {
+        *game = checkpoint;
+        return Err(crate::effects::ExecutionError::ContinuousDiscovery(error).into());
+    }
+    let mut captured = TriggerQueue::new();
+    queue_target_selection_events(game, &mut captured, &entry.targets, entry.object_id,
+        entry.controller, entry.is_ability, entry.provenance);
+    let removed = game.stack.remove(slot);
+    debug_assert_eq!(removed.target_id(), entry.target_id());
+    game.bump_mutation_revision(); game.mark_continuous_state_dirty();
+    Ok(captured)
 }
 
 pub(super) fn queue_ability_activated_event(
@@ -526,24 +585,20 @@ pub(super) fn activated_ability_has_tap_cost(
 
 pub(super) fn tap_permanent_with_trigger(
     game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
     permanent: ObjectId,
-) {
+    actor: PlayerId,
+) -> Option<TriggerEvent> {
     if game.object(permanent).is_some() && !game.is_tapped(permanent) {
+        let before = game.object(permanent).map(|object| {
+            ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+        });
         game.tap(permanent);
-        let event_provenance = game
-            .provenance_graph_mut()
+        let event_provenance = game.provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::PermanentTapped);
-        queue_triggers_from_event(
-            game,
-            trigger_queue,
-            TriggerEvent::new_with_provenance(
-                crate::events::PermanentTappedEvent::new(permanent),
-                event_provenance,
-            ),
-            true,
-        );
-    }
+        let mut notification = crate::events::PermanentTappedEvent::capture(game, permanent, Some(actor));
+        notification.before_snapshot = before;
+        Some(TriggerEvent::new_with_provenance(notification, event_provenance))
+    } else { None }
 }
 
 pub(super) fn keyword_action_from_alternative_effect(
@@ -803,6 +858,8 @@ fn drain_pending_trigger_events_inner<E>(
                         simultaneous.extend(later.take());
                     }
                 }
+                crate::events::other::bind_die_roll_batch_results(&mut simultaneous);
+            crate::events::damage::bind_received_damage_amounts(&mut simultaneous);
                 queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
                 // CR 603.7b: a one-shot delayed trigger sees the whole group.
                 for trigger in crate::triggers::check_delayed_triggers_for_simultaneous_events(
@@ -1914,6 +1971,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     consumed_modal_selection: &mut bool,
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
 ) {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         extract_target_requirements_from_effect_internal(
@@ -1925,6 +1983,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             consumed_modal_selection,
             declared_targets,
             requirements,
+            references,
         );
         return;
     }
@@ -1945,6 +2004,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 consumed_modal_selection,
                 declared_targets,
                 requirements,
+            references,
             );
         }
         return;
@@ -1964,6 +2024,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 consumed_modal_selection,
                 &mut child_declared_targets,
                 requirements,
+            references,
             );
             coordinated.merge_child_state(child_declared_targets);
         }
@@ -1980,6 +2041,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             consumed_modal_selection,
             declared_targets,
             requirements,
+            references,
         );
         return;
     }
@@ -2016,6 +2078,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                             consumed_modal_selection,
                             &mut mode_declared_targets,
                             requirements,
+            references,
                         );
                     }
                     for requirement in &mut requirements[mode_requirement_start..] {
@@ -2096,7 +2159,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 reuse_policy: crate::effects::TargetReusePolicy::AlwaysDeclareNew,
             };
             declare_target(&profile, declared_targets);
-            let legal_targets = compute_legal_targets(game, &spec, caster, source_id);
+            let legal_targets = compute_legal_targets_with_tagged_objects(game, &spec, caster, source_id, references);
             if !legal_targets.is_empty() {
                 let legal_target_sets =
                     crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
@@ -2126,25 +2189,21 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             return;
         }
         declare_target(&extracted, declared_targets);
-        let relaxed_spec = if matches!(extracted.spec.base(), ChooseSpec::Object(_))
-            && prior_relative_target_requirement(extracted.spec, requirements).is_some()
-        {
-            Some(relax_relative_object_target_source_exclusion(
-                extracted.spec,
-            ))
-        } else if prior_shared_player_requirement(extracted.spec, requirements).is_some() {
-            // "target artifact card in that player's graveyard": which player
-            // is fixed by the earlier target; the shared-player group below
-            // enforces the link, so candidates are computed without it.
-            Some(relax_target_player_relation(extracted.spec))
-        } else {
-            None
-        };
-        let mut legal_targets = compute_legal_targets(
+        let mut relaxed_spec = extracted.spec.clone();
+        if prior_relative_target_requirement(extracted.spec, requirements).is_some() {
+            relaxed_spec = relax_relative_object_target_source_exclusion(&relaxed_spec);
+        }
+        if prior_shared_player_requirement(extracted.spec, requirements).is_some() {
+            // The shared-player group and distinct-object group are separate
+            // constraints; a dependent target can require both at once.
+            relaxed_spec = relax_target_player_relation(&relaxed_spec);
+        }
+        let mut legal_targets = compute_legal_targets_with_tagged_objects(
             game,
-            relaxed_spec.as_ref().unwrap_or(extracted.spec),
+            &relaxed_spec,
             caster,
             source_id,
+            references,
         );
         retain_targets_satisfying_announcement_condition(
             game,
@@ -2249,23 +2308,10 @@ fn prior_shared_player_requirement(
     if filter.controller != relation && filter.owner != relation {
         return None;
     }
-    requirements
-        .iter()
-        .rposition(|r| {
-            matches!(
-                r.spec.base(),
-                ChooseSpec::Player(_) | ChooseSpec::PlayerOrPlaneswalker(_)
-            )
-        })
-        .or_else(|| {
-            (filter.owner == relation)
-                .then(|| {
-                    requirements
-                        .iter()
-                        .rposition(|r| matches!(r.spec.base(), ChooseSpec::Object(_)))
-                })
-                .flatten()
-        })
+    requirements.iter().rposition(|requirement| matches!(
+        requirement.spec.base(),
+        ChooseSpec::Player(_) | ChooseSpec::PlayerOrPlaneswalker(_) | ChooseSpec::Object(_)
+    ))
 }
 
 pub(super) fn relax_target_player_relation(spec: &ChooseSpec) -> ChooseSpec {
@@ -2461,6 +2507,7 @@ fn extract_for_players_target_requirements(
     consumed_modal_selection: &mut bool,
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
 ) {
     let mut filter_ctx = crate::filter::FilterContext::new(caster)
         .with_active_player(game.turn.active_player)
@@ -2494,6 +2541,7 @@ fn extract_for_players_target_requirements(
                 consumed_modal_selection,
                 declared_targets,
                 requirements,
+            references,
             );
         }
     }
@@ -2508,6 +2556,7 @@ fn extract_target_requirements_from_iterated_effect(
     consumed_modal_selection: &mut bool,
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
 ) {
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
@@ -2528,7 +2577,7 @@ fn extract_target_requirements_from_iterated_effect(
             return;
         }
         declare_target(&profile, declared_targets);
-        let legal_targets = compute_legal_targets(game, &spec, caster, source_id);
+        let legal_targets = compute_legal_targets_with_tagged_objects(game, &spec, caster, source_id, references);
         let (min_targets, max_targets) = resolved_target_bounds(game, &profile, caster, source_id);
         let legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
@@ -2575,6 +2624,7 @@ fn extract_target_requirements_from_iterated_effect(
         consumed_modal_selection,
         declared_targets,
         requirements,
+        references,
     );
 }
 
@@ -2694,6 +2744,8 @@ fn specialize_iterated_player_object_filter(
         .dealt_damage_to_player_this_turn
         .as_ref()
         .map(|damaged| specialize_iterated_player_filter(damaged, player));
+    filter.last_drawn_this_turn = filter.last_drawn_this_turn.as_ref()
+        .map(|drawer| specialize_iterated_player_filter(drawer, player));
     if let Some(constraint) = filter.counters_put_on_this_turn.as_mut() {
         constraint.source_controller =
             specialize_iterated_player_filter(&constraint.source_controller, player);
@@ -2777,6 +2829,9 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
             fewer: *fewer,
         },
         PlayerFilter::ControlsMost { filter } => PlayerFilter::ControlsMost {
+            filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
+        },
+        PlayerFilter::ControlsFewestTied { filter } => PlayerFilter::ControlsFewestTied {
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
         },
         PlayerFilter::MaxSpeed {
@@ -2999,6 +3054,7 @@ pub(crate) fn extract_target_requirements_for_effect_with_state(
         consumed_modal_selection,
         &mut declared_targets,
         &mut requirements,
+        None,
     );
     requirements
 }
@@ -3237,6 +3293,17 @@ pub(crate) fn extract_target_requirements_with_modes(
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
 ) -> Vec<TargetRequirement> {
+    extract_target_requirements_with_modes_and_references(game, effects, caster, source_id, chosen_modes, None)
+}
+
+pub(crate) fn extract_target_requirements_with_modes_and_references(
+    game: &GameState,
+    effects: &[Effect],
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
+) -> Vec<TargetRequirement> {
     let mut requirements = Vec::new();
     let mut consumed_modal_selection = false;
     let mut declared_targets = Vec::new();
@@ -3251,6 +3318,7 @@ pub(crate) fn extract_target_requirements_with_modes(
             &mut consumed_modal_selection,
             &mut declared_targets,
             &mut requirements,
+            references,
         );
     }
 
@@ -3500,7 +3568,29 @@ pub(crate) fn spell_has_legal_targets_with_modes_and_view(
             return false;
         }
     }
-    true
+    declared_targets.windows(2).all(|pair| {
+        let [source, recipient] = pair else { unreachable!() };
+        let ChooseSpec::Object(_) = source.spec.base() else { return true; };
+        let ChooseSpec::Object(recipient_filter) = recipient.spec.base() else { return true; };
+        if source.spec.count() != crate::effect::ChoiceCount::exactly(1)
+            || recipient.spec.count() != crate::effect::ChoiceCount::exactly(1)
+            || recipient_filter.controller != Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        { return true; }
+        let sources = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+            game, &source.spec, caster, source_id, None, view);
+        let recipients = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+            game, &relax_target_player_relation(&relax_relative_object_target_source_exclusion(&recipient.spec)),
+            caster, source_id, None, view);
+        sources.iter().any(|source| {
+            let Target::Object(source_id) = source else { return false; };
+            let controller = view.current_controller(*source_id);
+            recipients.iter().any(|recipient| match recipient {
+                Target::Object(id) => (!recipient_filter.other || id != source_id)
+                    && controller.is_some() && view.current_controller(*id) == controller,
+                _ => false,
+            })
+        })
+    })
 }
 
 /// Check if a spell has all required legal targets.
@@ -3712,7 +3802,8 @@ pub fn player_matches_filter_with_combat(
                     .is_some_and(|(candidate, you)| candidate.life > you.life)
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
-        | PlayerFilter::ControlsMost { .. } => {
+        | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. } => {
             let filter_ctx = game.filter_context_for(controller, None);
             crate::filter::player_filter_matches_game(filter, player_id, game, &filter_ctx)
         }
@@ -3966,13 +4057,20 @@ pub(super) fn stack_entry_validation_target_specs(
 pub(super) fn validate_stack_entry_targets(
     game: &GameState,
     entry: &StackEntry,
-) -> (
+) -> Result<(
     Vec<ResolvedTarget>,
     Vec<crate::game_state::TargetAssignment>,
     bool,
-) {
-    let view = crate::derived_view::DerivedGameView::new(game);
-    validate_stack_entry_targets_with_view(game, entry, &view)
+), crate::effects::ExecutionError> {
+    validate_stack_entry_targets_with_context(game,entry,None)
+}
+
+pub(super) fn validate_stack_entry_targets_with_context(
+    game:&GameState, entry:&StackEntry, ctx:Option<&crate::effects::ExecutionContext>,
+) -> Result<(Vec<ResolvedTarget>,Vec<crate::game_state::TargetAssignment>,bool),crate::effects::ExecutionError> {
+    let checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(&checked);
+    validate_stack_entry_targets_with_view(&checked, entry, &view,ctx)
 }
 
 fn combat_attacking_player_for_entry(game: &GameState, entry: &StackEntry) -> Option<PlayerId> {
@@ -4034,15 +4132,20 @@ fn replace_damaged_player_object_filter(
     }
 }
 
-pub(super) fn choose_spec_with_damaged_player_from_event(
+pub(super) fn choose_spec_with_recorded_players_from_event(
     spec: &crate::target::ChooseSpec,
     event: Option<&TriggerEvent>,
 ) -> crate::target::ChooseSpec {
-    let Some(player) = damaged_player_from_event(event) else {
-        return spec.clone();
-    };
     let mut spec = spec.clone();
-    replace_damaged_player_choose_spec(&mut spec, player);
+    if let Some(player) = damaged_player_from_event(event) {
+        replace_damaged_player_choose_spec(&mut spec, player);
+    }
+    // This trigger's inferred participant is the holder in the completed
+    // receipt. Target announcement and later validation must bind that same
+    // player before any live player-filter query, just as resolution does.
+    if let Some(change) = event.and_then(|event| event.downcast::<crate::events::MonarchChangedEvent>()) {
+        spec = specialize_iterated_player_choose_spec(&spec, change.monarch);
+    }
     spec
 }
 
@@ -4248,38 +4351,6 @@ fn specialize_target_player_relation_in_choose_spec(
     }
 }
 
-fn prior_player_or_planeswalker_target(
-    game: &GameState,
-    entry: &StackEntry,
-    before_assignment: usize,
-    view: &crate::derived_view::DerivedGameView<'_>,
-) -> Option<PlayerId> {
-    entry
-        .target_assignments
-        .iter()
-        .take(before_assignment)
-        .rev()
-        .filter(|assignment| {
-            matches!(
-                assignment.spec.base(),
-                crate::target::ChooseSpec::PlayerOrPlaneswalker(_)
-            )
-        })
-        .find_map(|assignment| {
-            entry
-                .targets
-                .get(assignment.range.clone())?
-                .iter()
-                .find_map(|target| match target {
-                    Target::Player(player) => Some(*player),
-                    Target::Object(object) => game
-                        .object(*object)
-                        .filter(|_| game.current_has_card_type(*object, CardType::Planeswalker))
-                        .and_then(|_| view.current_controller(*object)),
-                })
-        })
-}
-
 /// Legal targets for one announced target assignment of a stack entry, with
 /// the entry's controller, source LKI, tagged objects and reflexive results.
 /// Shared by the CR 608.2b recheck and by effects that change or choose new
@@ -4298,8 +4369,16 @@ pub(crate) fn stack_entry_assignment_legal_targets(
     assignment_index: usize,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> AssignmentLegalTargets {
+    // Stack entries retain snapshots for both spells and abilities. Preserve
+    // their explicit role across retargeting and resolution instead of
+    // inferring "ability" merely from a snapshot's presence.
+    if !entry.is_ability && !view.is_casting_spell(entry.object_id) {
+        return view.with_casting_spell(entry.object_id, || {
+            stack_entry_assignment_legal_targets(game, entry, assignment_index, view)
+        });
+    }
     let assignment = &entry.target_assignments[assignment_index];
-    let resolved_spec = choose_spec_with_damaged_player_from_event(
+    let resolved_spec = choose_spec_with_recorded_players_from_event(
         &assignment.spec,
         entry.triggering_event.as_ref(),
     );
@@ -4416,17 +4495,75 @@ pub(crate) fn stack_entry_assignment_legal_targets(
     }
 }
 
+/// Target-set restrictions belong to the announced assignment, not to each
+/// candidate independently. Recheck current characteristics without selecting
+/// a convenient smaller subset when the total becomes too large (CR608.2b).
+fn assignment_aggregate_still_legal(
+    game:&GameState, entry:&StackEntry, spec:&ChooseSpec, assigned:&[Target],
+    view:&crate::derived_view::DerivedGameView<'_>,
+    supplied_context:Option<&crate::effects::ExecutionContext>,
+) -> Result<bool,crate::effects::ExecutionError> {
+    use crate::effect::ChoiceAggregateMetric;
+    let Some(constraint)=spec.target_set_aggregate_constraint() else {return Ok(true)};
+    if assigned.is_empty() {return Ok(true)};
+    let mut dm=crate::decision::SelectFirstDecisionMaker;
+    let mut ctx=crate::effects::ExecutionContext::new(entry.object_id,entry.controller,&mut dm);
+    ctx.x_value=entry.x_value;
+    if let Some(snapshot)=entry.source_snapshot.clone() {ctx=ctx.with_source_snapshot(snapshot);}
+    if let Some(event)=entry.triggering_event.clone() {ctx=ctx.with_triggering_event(event);}
+    if let Some(amount)=entry.event_value_amount {ctx=ctx.with_event_value_amount(amount);}
+    ctx=ctx.with_tagged_objects(entry.tagged_objects.clone());
+    ctx.targets=entry.targets.iter().map(|target|match target {Target::Object(id)=>ResolvedTarget::Object(*id),Target::Player(id)=>ResolvedTarget::Player(*id)}).collect();
+    ctx.target_assignments=entry.target_assignments.clone();
+    apply_keyword_payment_tags_for_resolution(game,entry,&mut ctx);
+    let maximum = if let Some(supplied) = supplied_context { crate::effects::helpers::resolve_value(game,&constraint.maximum,supplied)? } else { crate::effects::helpers::resolve_value(game,&constraint.maximum,&ctx)? };
+    let minimum = constraint.minimum.as_ref().map(|value| if let Some(supplied) = supplied_context {crate::effects::helpers::resolve_value(game,value,supplied)} else {crate::effects::helpers::resolve_value(game,value,&ctx)}).transpose()?.map(i128::from);
+    let maximum=i128::from(maximum);
+    let mut total=0i128;let mut types=0u128;
+    for target in assigned {
+        let Target::Object(id)=target else {continue};
+        // The legality of one member can depend on the other announced
+        // members, including independently illegal targets (CR608.2b;
+        // Run Away Together's controller comparison is the same purpose).
+        // Use exact departure/phasing LKI, never a later stable-card incarnation.
+        let (power,toughness,mana_value,card_types)=if let Some(object)=game.object(*id).filter(|_|!game.is_phased_out(*id)) {
+            let chars=view.current_characteristics_arc(*id).ok_or_else(||crate::effects::ExecutionError::UnresolvableValue("aggregate target characteristics are unavailable".into()))?;
+            let mana_value=chars.linked_face_mana_value.unwrap_or_else(||chars.mana_cost.as_ref().map_or(0,|cost|if object.zone==Zone::Stack {cost.mana_value_with_x(object.x_value.unwrap_or(0))}else{cost.mana_value()}));
+            (chars.power,chars.toughness,mana_value,chars.card_types.to_vec())
+        } else {
+            let snapshot=game.turn_store.turn_history.source_last_known_snapshot(*id)
+                .ok_or_else(||crate::effects::ExecutionError::UnresolvableValue("aggregate target requires exact departed or phased characteristic evidence".into()))?;
+            let mana_value=snapshot.linked_face_mana_value.unwrap_or_else(||snapshot.mana_cost.as_ref().map_or(0,|cost|if snapshot.zone==Zone::Stack {cost.mana_value_with_x(snapshot.x_value.unwrap_or(0))}else{cost.mana_value()}));
+            (snapshot.power,snapshot.toughness,mana_value,snapshot.card_types.clone())
+        };
+        match constraint.metric {
+            ChoiceAggregateMetric::Power => total+=i128::from(if card_types.contains(&crate::types::CardType::Creature) {power.unwrap_or(0)}else{0}),
+            ChoiceAggregateMetric::Toughness => total+=i128::from(if card_types.contains(&crate::types::CardType::Creature) {toughness.unwrap_or(0)}else{0}),
+            ChoiceAggregateMetric::ManaValue => total+=i128::from(mana_value),
+            ChoiceAggregateMetric::DistinctCardTypes => {for ty in card_types {types|=1u128<<(ty as u32);}},
+        }
+    }
+    if constraint.metric==ChoiceAggregateMetric::DistinctCardTypes {total=i128::from(types.count_ones());}
+    Ok(total<=maximum&&minimum.is_none_or(|minimum|total>=minimum))
+}
+
 pub(super) fn validate_stack_entry_targets_with_view(
     game: &GameState,
     entry: &StackEntry,
     view: &crate::derived_view::DerivedGameView<'_>,
-) -> (
+    ctx:Option<&crate::effects::ExecutionContext>,
+) -> Result<(
     Vec<ResolvedTarget>,
     Vec<crate::game_state::TargetAssignment>,
     bool,
-) {
+), crate::effects::ExecutionError> {
+    if !entry.is_ability && !view.is_casting_spell(entry.object_id) {
+        return view.with_casting_spell(entry.object_id, || {
+            validate_stack_entry_targets_with_view(game, entry, view,ctx)
+        });
+    }
     if entry.targets.is_empty() {
-        return (Vec::new(), Vec::new(), false);
+        return Ok((Vec::new(), Vec::new(), false));
     }
 
     if !entry.target_assignments.is_empty() {
@@ -4443,7 +4580,14 @@ pub(super) fn validate_stack_entry_targets_with_view(
             } = stack_entry_assignment_legal_targets(game, entry, assignment_index, view);
 
             let start = valid_targets.len();
-            for target in &entry.targets[assignment.range.clone()] {
+            let assigned = entry.targets.get(assignment.range.clone()).ok_or_else(||
+                crate::effects::ExecutionError::InternalError("target assignment range is outside its retained targets".into()))?;
+            if !assignment_aggregate_still_legal(game,entry,&assignment.spec,assigned,view,ctx)? {
+                invalid_count += assigned.len();
+                valid_assignments.push(crate::game_state::TargetAssignment { spec:assignment.spec.clone(), range:start..start });
+                continue;
+            }
+            for target in assigned {
                 if (legal_targets.contains(target)
                     && (!relative_object_target || !prior_object_targets.contains(target)))
                     || (!exchange_specs.is_empty()
@@ -4471,15 +4615,23 @@ pub(super) fn validate_stack_entry_targets_with_view(
         }
 
         let all_invalid = invalid_count == entry.targets.len();
-        return (valid_targets, valid_assignments, all_invalid);
+        return Ok((valid_targets, valid_assignments, all_invalid));
     }
 
     let validation_specs = stack_entry_validation_target_specs(game, entry);
+    if validation_specs.iter().any(|spec|spec.target_set_aggregate_constraint().is_some()) {
+        let [spec] = validation_specs.as_slice() else {
+            return Err(crate::effects::ExecutionError::UnresolvableValue("aggregate target groups require retained assignment boundaries".into()));
+        };
+        let mut assigned=entry.clone();
+        assigned.target_assignments=vec![crate::game_state::TargetAssignment {spec:spec.clone(),range:0..entry.targets.len()}];
+        return validate_stack_entry_targets_with_view(game,&assigned,view,ctx);
+    }
     let legal_target_sets: Vec<Vec<Target>> = validation_specs
         .iter()
         .map(|spec| {
             let resolved_spec =
-                choose_spec_with_damaged_player_from_event(spec, entry.triggering_event.as_ref());
+                choose_spec_with_recorded_players_from_event(spec, entry.triggering_event.as_ref());
             let resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
             if entry.defending_player.is_some() {
                 return compute_legal_targets_with_tagged_objects_combat_context_and_view(
@@ -4540,7 +4692,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
     }
 
     let all_invalid = invalid_count == entry.targets.len();
-    (valid_targets, Vec::new(), all_invalid)
+    Ok((valid_targets, Vec::new(), all_invalid))
 }
 
 #[cfg(test)]
@@ -4730,5 +4882,153 @@ mod multiplayer_prior_controller_announcement_tests {
             assert_eq!(crate::targeting::validate_flat_target_assignment(&contexts,&[Target::Object(ids[from]),Target::Object(ids[to])]),
                 to!=0 && from!=to,"retain both original Opponent and excluded-source-controller predicates");
         }}
+}
+}
+
+#[cfg(test)]
+mod announcement_target_tests {
+    use super::*;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::ids::CardId;
+    use crate::ability::Ability;
+    use crate::types::CardType;
+    fn observer(game: &mut GameState, a: PlayerId) -> ObjectId {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Target observer")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::triggered(crate::triggers::Trigger::new(
+                crate::triggers::PlayerBecomesTargetedTrigger {
+                    player_filter: PlayerFilter::You,
+                    source_controller: PlayerFilter::Any,
+                    source_kind: crate::filter::StackObjectKind::SpellOrAbility,
+                }), vec![Effect::draw(1)]))
+            .build();
+        game.create_object_from_definition(&definition, a, Zone::Battlefield)
     }
+    #[test]
+    fn announced_targets_keep_original_observer_and_clone_or_cancel_with_action() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = PlayerId::from_index(0); let b = PlayerId::from_index(1);
+        let observer = observer(&mut game, a);
+        let source = crate::card::CardBuilder::new(CardId::new(), "Ability source").card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&source, b, Zone::Battlefield);
+        let mut state = PriorityLoopState::new(2); state.save_checkpoint(&game);
+        let ability_id = game.allocate_stack_ability_id();
+        let mut entry = StackEntry::ability(source, b, crate::resolution::ResolutionProgram::from_effects(vec![]))
+            .with_targets(vec![Target::Player(a), Target::Player(a)]);
+        entry.ability_id = Some(ability_id);
+        let captured = capture_announced_targeting(&mut game, entry.clone()).unwrap();
+        assert_eq!(captured.entries.len(), 1, "a repeated slot is one target transition");
+        assert!(game.stack.is_empty(), "announcement inspection does not finalize the action");
+        let targeted = captured.entries[0].triggering_event.downcast::<BecomesTargetedEvent>().unwrap();
+        assert_eq!(targeted.stack_ability, Some(ability_id));
+        assert_eq!(targeted.source, source);
+        let history_count = game.turn_store.turn_history.event_records.len();
+        let saved_game = game.clone(); let saved_state = state.clone(); let saved_queue = captured.clone();
+        game.move_object_by_effect(observer, Zone::Graveyard).unwrap();
+        game.move_object_by_effect(source, Zone::Graveyard).unwrap();
+        game.push_to_stack(entry);
+        let mut queue = TriggerQueue::new(); queue.append_captured(captured);
+        assert_eq!(queue.entries.len(), 1); assert_eq!(queue.entries[0].source, observer);
+        assert_eq!(queue.entries[0].controller, a);
+        game = saved_game; state = saved_state;
+        assert_eq!(game.turn_store.turn_history.event_records.len(), history_count);
+        assert_eq!(saved_queue.entries[0].triggering_event.downcast::<BecomesTargetedEvent>().unwrap().stack_ability, Some(ability_id));
+        assert!(state.rollback_action(&mut game));
+        assert!(game.object(observer).is_some()); assert!(game.object(source).is_some());
+        assert!(!game.turn_store.turn_history.event_records.iter().any(|record| record.event.kind() == crate::events::EventKind::BecomesTargeted));
+    }
+}
+
+#[cfg(test)]
+mod completed_target_history_tests {
+    use super::*;
+    use crate::ability::{Ability, AbilityKind};
+    use crate::card::PowerToughness;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::ids::CardId;
+    use crate::types::CardType;
+    #[test]
+    fn restored_first_target_fact_does_not_reset_for_new_grants_but_new_incarnations_do() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = PlayerId::from_index(0);
+        let mut ability = Ability::triggered(crate::triggers::Trigger::becomes_targeted(), vec![Effect::draw(1)]);
+        let AbilityKind::Triggered(triggered) = &mut ability.kind else { panic!("trigger"); };
+        triggered.intervening_if = Some(crate::ConditionExpr::FirstTimeThisTurn);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "First target observer")
+            .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2,2))
+            .with_ability(ability).build();
+        let observer = game.create_object_from_definition(&definition, a, Zone::Battlefield);
+        let spell = crate::card::CardBuilder::new(CardId::new(), "Targeting spell").card_types(vec![CardType::Instant]).build();
+        let spell = game.create_object_from_card(&spell, a, Zone::Stack);
+        let event = TriggerEvent::new_with_provenance(BecomesTargetedEvent::new(observer, spell, a, false), Default::default());
+        game.record_turn_history_event(&event);
+        assert_eq!(crate::triggers::check_triggers(&game, &event).len(), 1);
+        let ids = game.turn_store.turn_history.targeted_object_history_for_checkpoint();
+        assert_eq!(ids, vec![observer]);
+        game.turn_store.turn_history = Default::default();
+        game.turn_store.turn_history.restore_targeted_object_history(ids).unwrap();
+        assert!(game.turn_store.turn_history.event_records.is_empty(), "the checkpoint does not invent a prior source/event");
+        let next = TriggerEvent::new_with_provenance(BecomesTargetedEvent::new(observer, spell, a, false), Default::default());
+        assert!(crate::triggers::check_triggers(&game, &next).is_empty());
+        let exiled = game.move_object_by_effect(observer, Zone::Exile).unwrap();
+        let returned = game.move_object_by_effect(exiled, Zone::Battlefield).unwrap();
+        assert_ne!(observer, returned);
+        let new_incarnation = TriggerEvent::new_with_provenance(BecomesTargetedEvent::new(returned, spell, a, false), Default::default());
+        assert_eq!(crate::triggers::check_triggers(&game, &new_incarnation).len(), 1);
+        game.turn_store.turn_history.clear_for_new_turn();
+        assert!(game.turn_store.turn_history.targeted_object_history_for_checkpoint().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod current_aggregate_validation_tests {
+    use super::*;
+    #[test]
+    fn unknown_dynamic_bound_is_not_silently_an_unrestricted_or_illegal_target() {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let a=PlayerId::from_index(0);let b=PlayerId::from_index(1);
+        let definition=crate::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Aggregate target")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        let source=game.create_object_from_definition(&definition,a,Zone::Battlefield);
+        let target=game.create_object_from_definition(&definition,b,Zone::Battlefield);
+        let mut filter=crate::filter::ObjectFilter::creature();
+        filter.target_set_aggregate_constraint=Some(Box::new(crate::effect::ChoiceAggregateConstraint::at_most(
+            crate::effect::ChoiceAggregateMetric::ManaValue,crate::effect::Value::LastNotedLifeTotal)));
+        let mut entry=StackEntry::new(source,a).with_targets(vec![Target::Object(target)]);
+        entry.target_assignments=vec![crate::game_state::TargetAssignment{spec:ChooseSpec::target(ChooseSpec::Object(filter)),range:0..1}];
+        assert!(matches!(validate_stack_entry_targets(&game,&entry),Err(crate::effects::ExecutionError::UnresolvableValue(_))));
+    }
+}
+
+fn prior_player_or_planeswalker_target(
+    game: &GameState,
+    entry: &StackEntry,
+    before_assignment: usize,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Option<PlayerId> {
+    entry
+        .target_assignments
+        .iter()
+        .take(before_assignment)
+        .rev()
+        .filter(|assignment| {
+            matches!(
+                assignment.spec.base(),
+                crate::target::ChooseSpec::PlayerOrPlaneswalker(_)
+            )
+        })
+        .find_map(|assignment| {
+            entry
+                .targets
+                .get(assignment.range.clone())?
+                .iter()
+                .find_map(|target| match target {
+                    Target::Player(player) => Some(*player),
+                    Target::Object(object) => game
+                        .object(*object)
+                        .filter(|_| game.current_has_card_type(*object, CardType::Planeswalker))
+                        .and_then(|_| view.current_controller(*object)),
+                })
+        })
 }

@@ -4,6 +4,7 @@
 //! the "who ..." clauses) read before the generic participant effect chain.
 //! Formerly a first-match ladder in `participant_scopes`; every reading runs;
 //! two different readings of one input are an ambiguity error.
+use crate::zone::Zone;
 
 use super::*;
 use crate::cards::builders::ConditionalEffectAst;
@@ -188,6 +189,33 @@ fn read_relative_control_clause(
     let clause_text = input.clause_text;
     if let Some(relative) = for_each_shapes::parse_relative_control_clause_shape(outer.inner_tokens)
     {
+        if relative.controls_fewest {
+            if iteration_filter != PlayerFilter::Any || !outer.participant_is_actor {
+                return Err(CardTextError::ParseError(
+                    "unsupported fewest-controller participant scope".into(),
+                ));
+            }
+            let mut filter = parse_object_filter(relative.filter_tokens, false)?;
+            if filter.controller.is_some()
+                || filter.zone.is_some_and(|zone| zone != Zone::Battlefield)
+            {
+                return Err(CardTextError::ParseError("fewest-controller scope must name battlefield objects without another controller".into()));
+            }
+            filter.zone = Some(Zone::Battlefield);
+            let normalized = prepend_that_player_subject(relative.effect_tokens);
+            let effects = parse_maybe_effects(&normalized, true, false)?;
+            // Selecting the full tied set happens before any token creation
+            // changes counts; a per-participant condition would be too late.
+            return Ok(Some(EffectAst::ForEach(
+                ForEachEffectAst::ForEachPlayersFiltered {
+                    filter: PlayerFilter::ControlsFewestTied {
+                        filter: Box::new(filter),
+                    },
+                    effects,
+                    sequential: false,
+                },
+            )));
+        }
         let conditional =
             parse_relative_control_conditional(relative, outer.participant_is_actor, &clause_text)?;
         return Ok(Some(wrap_players(&iteration_filter, vec![conditional])));
@@ -341,4 +369,49 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod fewest_participant_tests {
+    use super::*;
+    #[test]
+    fn fewest_relative_clause_lowers_to_a_captured_player_set_not_a_repeated_condition() {
+        let tokens=crate::lexer::lex_line("Each player who controls the fewest creatures creates a 4/3 blue Salamander Warrior creature token.",0).unwrap();
+        let (parsed, loss) = ironsmith_compiler::parse_loss::capture(|| {
+            crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+        });
+        let parsed = parsed.unwrap();
+        assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+        let [
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::ControlsFewestTied { filter },
+                effects,
+                sequential: false,
+            }),
+        ] = parsed.as_slice()
+        else {
+            panic!("{parsed:#?}")
+        };
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert!(
+            filter
+                .card_types
+                .contains(&crate::types::CardType::Creature)
+        );
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, EffectAst::Conditionals(_))),
+            "all eligible players are selected before any creates a token"
+        );
+        let unsupported = crate::lexer::lex_line(
+            "Each opponent who controls the fewest creatures draws a card.",
+            0,
+        )
+        .unwrap();
+        assert!(
+            crate::effect_sentences::parse_effect_sentence_lexed(&unsupported).is_err(),
+            "do not silently substitute a different comparison scope"
+        );
+    }
 }

@@ -1092,8 +1092,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         attachment_state_as_attached_object(&mut filter);
     }
     // Definite combat-role noun phrases identify the concrete participant in
-    // the triggering block relationship. Keep the ordinary role predicate as
-    // well, both for structural rendering and as a legality guard.
+    // the triggering block relationship, not an independently chosen live
+    // combat participant.
     if crate::word_primitives::parse_sequence_prefix(&token_words, &["the", "blocking"])
         && filter.blocking
     {
@@ -1101,6 +1101,17 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             crate::tag::CompilerReferenceTag::Blocking.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
+        // The definite noun identifies the recorded participant even after
+        // that same incarnation leaves combat. Bare "blocking creatures"
+        // retain the current-role restriction.
+        filter.blocking = false;
+        if !explicit_target && token_words == ["the", "blocking", "creature"] {
+            // CR608.2k: this complete definite phrase denotes the exact
+            // event participant, with no fresh live type qualification.
+            return Ok(wrap_target_count(TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::Blocking.bind(), None,
+            ), target_count));
+        }
     } else if crate::word_primitives::parse_sequence_prefix(&token_words, &["the", "attacking"])
         && filter.attacking
     {

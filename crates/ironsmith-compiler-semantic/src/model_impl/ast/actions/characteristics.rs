@@ -15,8 +15,8 @@ pub enum CharacteristicActionAst {
         name_override: Option<String>,
         add_supertypes: Vec<Supertype>,
         remove_all_abilities: bool,
-        power: Value,
-        toughness: Value,
+        remove_other_abilities: bool,
+        base_power_toughness: Option<(Value, Value)>,
         target: TargetAst,
         card_types: Vec<CardType>,
         subtypes: Vec<Subtype>,
@@ -25,6 +25,7 @@ pub enum CharacteristicActionAst {
         abilities: Vec<crate::model::CompilerStaticAbilityCore>,
         granted_abilities: Vec<GrantedAbilityAst>,
         preserve_other_types: bool,
+        preserve_other_colors: bool,
         type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
         animation_pt_surface: Option<ironsmith_core::AnimationPtSurface>,
         animation_duration_surface: Option<ironsmith_core::AnimationDurationSurface>,
@@ -95,6 +96,8 @@ pub enum CharacteristicActionAst {
     BecomeBasicLandTypeChoice {
         target: TargetAst,
         duration: Until,
+        allowed_subtypes: Vec<Subtype>,
+        preserve_other_types: bool,
     },
     BecomeCreatureTypeChoice {
         target: TargetAst,

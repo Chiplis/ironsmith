@@ -124,14 +124,14 @@ impl EffectExecutor for GrantEffect {
                 );
                 Ok(EffectOutcome::resolved())
             }
-            Grantable::PlayFrom => {
+            Grantable::PlayFrom | Grantable::AlternativePrice { .. } => {
                 // PlayFrom is typically granted via grant_to_filter (Yawgmoth's Will)
                 // rather than targeting individual cards. If used here, just grant it.
                 game.effect_store.grant_registry.grant_to_card(
                     target_id,
                     zone,
                     owner,
-                    Grantable::PlayFrom,
+                    self.grantable.clone(),
                     grant_source,
                 );
                 Ok(EffectOutcome::resolved())
@@ -148,7 +148,7 @@ impl EffectExecutor for GrantEffect {
             Grantable::DerivedAlternativeCast(_) => "card",
             Grantable::Ability(_) => "card",
             Grantable::AlternativeCast(_) => "card",
-            Grantable::PlayFrom => "card",
+            Grantable::PlayFrom | Grantable::AlternativePrice { .. } => "card",
         }
     }
 }

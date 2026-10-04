@@ -6,6 +6,9 @@ pub(super) fn parse_relative_control_conditional(
     participant_is_actor: bool,
     clause_text: &str,
 ) -> Result<EffectAst, CardTextError> {
+    if relative.controls_fewest {
+        return Err(CardTextError::ParseError("fewest-controller membership requires a captured player set before participant effects".into()));
+    }
     let mut filter = parse_object_filter(relative.filter_tokens, false)?;
     let mut branch_effects;
     let participant_where_x = parse_participant_body_where_x_value(relative.effect_tokens);

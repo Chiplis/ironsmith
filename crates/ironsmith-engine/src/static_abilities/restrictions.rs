@@ -13,6 +13,36 @@ use crate::object::CounterType;
 use crate::target::{ObjectFilter, PlayerFilter};
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct BlockingAsThoughNoLandwalk {
+    pub spec: ironsmith_core::static_ability_model::BlockingAsThoughNoLandwalkSpec,
+}
+
+impl StaticAbilityKind for BlockingAsThoughNoLandwalk {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::BlockingAsThoughNoLandwalk
+    }
+
+    fn display(&self) -> String {
+        self.spec.display.clone()
+    }
+
+    fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        !game.is_phased_out(source)
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        game.effect_store
+            .cant_effects
+            .blocking_as_though_landwalk_overrides
+            .push(crate::game_state::BlockingAsThoughLandwalkOverride {
+                spec: self.spec.clone(),
+                source,
+                controller,
+            });
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TargetingAsThoughNoAbility {
     pub spec: ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec,
 }
@@ -156,6 +186,13 @@ impl StaticAbilityKind for YouCantLoseGame {
         "You can't lose the game".to_string()
     }
 
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        // A command-zone emblem changes game rules directly. A conditional
+        // self-granted ability would be confined to battlefield layer six.
+        StaticAbility::restriction(Restriction::lose_game(PlayerFilter::You), self.display())
+            .with_condition(condition)
+    }
+
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
         Restriction::lose_game(PlayerFilter::You).apply(game, &mut tracker, controller, None, None);
@@ -174,6 +211,16 @@ impl StaticAbilityKind for OpponentsCantWinGame {
 
     fn display(&self) -> String {
         "Your opponents can't win the game".to_string()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        // A command-zone emblem changes game rules directly. A conditional
+        // self-granted ability would be confined to battlefield layer six.
+        StaticAbility::restriction(
+            Restriction::win_game(PlayerFilter::Opponent),
+            self.display(),
+        )
+        .with_condition(condition)
     }
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
@@ -600,6 +647,14 @@ impl StaticAbilityKind for CounterLimit {
     fn counter_limit(&self) -> Option<(CounterType, u32)> {
         Some((self.counter_type, self.maximum))
     }
+}
+
+/// A restriction on copying this spell, not abilities of its source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CantBeCopied;
+impl StaticAbilityKind for CantBeCopied {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::CantBeCopied }
+    fn display(&self) -> String { "This spell can't be copied".into() }
 }
 
 /// "This spell can't be countered"

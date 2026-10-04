@@ -338,8 +338,8 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
     // "Shuffle all creature cards of that type from your graveyard ..." moves
     // a filtered subset, not the whole graveyard; only a bare possessive
     // graveyard phrase (optionally "all cards from ...") is the whole-zone
-    // shuffle. A filtered phrase that fails to parse still falls back to the
-    // whole-zone reading rather than failing the card.
+    // shuffle. A malformed filtered phrase must fail instead of silently
+    // selecting the whole graveyard.
     let whole_graveyard_target = {
         let rest: &[&str] = if explicit_all_cards_from {
             &target_words[3..]
@@ -363,6 +363,9 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
         && !shape.has_hand_clause
         && parse_target_phrase(target_tokens).is_ok();
     if !has_target_selector && !filtered_graveyard_target {
+        if !whole_graveyard_target && !shape.has_source_and_graveyard_clause && !shape.has_hand_clause {
+            return Err(CardTextError::ParseError("unsupported complete graveyard shuffle selector".into()));
+        }
         let mut effects = Vec::new();
         let has_source_and_graveyard_clause = shape.has_source_and_graveyard_clause;
         let has_hand_clause = shape.has_hand_clause;

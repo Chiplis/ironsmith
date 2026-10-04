@@ -68,6 +68,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("inner-chain-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("coordinated-object-and-player-choice"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(crate::activation_and_restrictions::choice_object_clauses::parse_coordinated_object_and_player_choice(input.tokens)),
+    },
+    Reading {
         id: RuleId::new("hand-choice-then-shuffle-remainder"),
         head: HeadDiscriminator::Any,
         admits: |input| input.tokens.iter().any(|token| token.is_word("rest")),
@@ -130,7 +136,7 @@ const READINGS: &[Reading] = &[
         head: HeadDiscriminator::Any,
         admits: |input| {
             // Readings ranked above this one that read the input read it.
-            !input.read_by("gain-then-get")
+            !input.read_by("gain-then-get") && !input.read_by("coordinated-object-and-player-choice")
         },
         read: |input| input.outcome(read_control_flow_plan(input)),
     },
@@ -493,6 +499,15 @@ fn read_keyword_mechanic_without_terminal_punctuation(
     input: &InnerChain<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    // Explicit simultaneity owns the full pair before ordinary and-splitting.
+    if tokens.first().is_some_and(|token| token.is_word("simultaneously"))
+        && tokens.iter().any(|token| token.is_any_word(&["phase", "phases"]))
+    {
+        return match parse_keyword_mechanic_without_terminal_punctuation(tokens)? {
+            Some(effect) => Ok(Some(vec![effect])),
+            None => Err(CardTextError::ParseError("unsupported simultaneous phasing clause".into())),
+        };
+    }
     // A keyword mechanic at the end of a coordinated chain must not consume
     // the earlier action as part of its target phrase (for example, "you
     // lose 1 life and this creature endures 1"). Let the semantic chain

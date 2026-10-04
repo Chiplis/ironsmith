@@ -12,6 +12,8 @@ pub struct PermanentPhasedOutEvent {
     pub permanent: ObjectId,
     pub controller: PlayerId,
     pub snapshot: Option<ObjectSnapshot>,
+    /// The producer captured every visible pre-transition trigger source.
+    pub complete_source_lookback: bool,
 }
 
 impl PermanentPhasedOutEvent {
@@ -24,7 +26,15 @@ impl PermanentPhasedOutEvent {
             permanent,
             controller,
             snapshot,
+            complete_source_lookback: false,
         }
+    }
+}
+
+impl PermanentPhasedOutEvent {
+    pub fn with_complete_source_lookback(mut self) -> Self {
+        self.complete_source_lookback = true;
+        self
     }
 }
 

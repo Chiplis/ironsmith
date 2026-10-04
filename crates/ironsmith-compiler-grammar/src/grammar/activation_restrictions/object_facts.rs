@@ -47,6 +47,13 @@ pub enum TargetRestrictionEnvelope {
     /// "spells or abilities your opponents control" (`opponents`) or
     /// "spells or abilities you control".
     ControlledSpellsOrAbilities { opponents: bool },
+    SpellsOrAbilities,
+    SourceAbility { full_source_tokens: Range<usize> },
+    /// Complete noun phrases on both sides, including their own controller tails.
+    PairedControlledSources {
+        spell_tokens: Range<usize>, spell_noun: usize,
+        source_tokens: Range<usize>, source_noun: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,6 +162,11 @@ pub fn parse_target_indicator_tokens(tokens: &[OwnedLexToken]) -> Option<TargetI
 }
 
 fn parse_target_indicator_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    let mut any = input.clone();
+    if primitives::phrase(&["any", "target"]).parse_next(&mut any).is_ok() {
+        *input = any;
+        return Ok(());
+    }
     opt(primitives::phrase(&["any", "number", "of"])).parse_next(input)?;
     let mut counted = input.clone();
     if alt((
@@ -184,13 +196,16 @@ pub fn parse_target_restriction_envelope_tokens(
 ) -> Option<TargetRestrictionEnvelope> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
-    if words.len() < 6
+    if words.len() < 5
         || !(prefix(&words, &["be", "the", "target", "of"])
             || prefix(&words, &["be", "the", "targets", "of"]))
     {
         return None;
     }
     if words.get(4..7) == Some(&["spells", "or", "abilities"][..]) {
+        if words.len() == 7 {
+            return Some(TargetRestrictionEnvelope::SpellsOrAbilities);
+        }
         let opponents = match words.get(7..) {
             Some(["your", "opponents", "control"]) => Some(true),
             Some(["you", "control"]) => Some(false),
@@ -228,11 +243,49 @@ pub fn parse_target_restriction_envelope_tokens(
         });
     }
 
+    // "nongreen spells your opponents control or abilities from nongreen
+    // sources your opponents control" retains both explicit controller tails.
+    if let Some(split) = words.windows(3).position(|words| words == ["or", "abilities", "from"])
+        && split > 4
+        && let Some(spell_noun) = words[4..split].iter().position(|word| matches!(*word, "spell" | "spells")).map(|index| index + 4)
+        && let Some(source_noun) = words[split + 3..].iter().position(|word| matches!(*word, "source" | "sources")).map(|index| index + split + 3)
+        && exact_any(&words[spell_noun + 1..split], &[&["your", "opponents", "control"], &["you", "control"]])
+        && exact_any(&words[source_noun + 1..], &[&["your", "opponents", "control"], &["you", "control"]])
+    {
+        return Some(TargetRestrictionEnvelope::PairedControlledSources {
+            spell_tokens: token_range_for_words(tokens, &view, 4..split)?,
+            spell_noun: token_range_for_words(tokens, &view, spell_noun..spell_noun + 1)?.start,
+            source_tokens: token_range_for_words(tokens, &view, split + 3..words.len())?,
+            source_noun: token_range_for_words(tokens, &view, source_noun..source_noun + 1)?.start,
+        });
+    }
+    // A single spell/ability noun may carry a trailing controller qualifier.
+    if let Some(noun) = words[4..].iter().position(|word| matches!(*word, "spell" | "spells" | "ability" | "abilities")).map(|index| index + 4)
+        && (noun + 1 == words.len()
+            || exact_any(&words[noun + 1..], &[&["your", "opponents", "control"], &["you", "control"]]))
+    {
+        if matches!(words[noun], "ability" | "abilities") {
+            // Typed ability subkinds/qualities need their own complete reading.
+            if noun != 4 { return None; }
+            return Some(TargetRestrictionEnvelope::SourceAbility {
+                full_source_tokens: token_range_for_words(tokens, &view, 4..words.len())?,
+            });
+        }
+        if noun + 1 < words.len() {
+            // The full noun phrase is owned by the existing complete filter
+            // parser; this fallback range is only used if that reader declines.
+            let full_source_tokens = token_range_for_words(tokens, &view, 4..words.len())?;
+            return Some(TargetRestrictionEnvelope::SourceSpell {
+                descriptor_tokens: full_source_tokens.clone(), full_source_tokens,
+            });
+        }
+    }
     if !matches!(words.last().copied(), Some("spell" | "spells")) {
         return None;
     }
     let full_source_tokens = token_range_for_words(tokens, &view, 4..words.len())?;
-    let descriptor_tokens = token_range_for_words(tokens, &view, 4..words.len() - 1)?;
+    let descriptor_tokens = token_range_for_words(tokens, &view, 4..words.len() - 1)
+        .unwrap_or_else(|| full_source_tokens.clone());
     Some(TargetRestrictionEnvelope::SourceSpell {
         full_source_tokens,
         descriptor_tokens,

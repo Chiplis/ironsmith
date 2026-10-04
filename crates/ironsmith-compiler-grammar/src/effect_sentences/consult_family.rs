@@ -673,22 +673,19 @@ pub fn consult_cast_effects(
             }
         }
         ConsultCastCost::PayLifeEqualToManaValue => {
-            if clause.allow_land {
-                return Err(CardTextError::ParseError(
-                    "pay-life consult cast clauses cannot allow lands".to_string(),
-                ));
+            let cost = crate::permission_helpers::effect_cast_prices::mana_value_life_price();
+            match clause.timing {
+                ConsultCastTiming::Immediate if !clause.allow_land => vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                    player: clause.caster,
+                    effects: vec![EffectAst::subject_verb_cast_tagged(crate::tag::TagRef::of(match_tag.clone()),
+                        clause.caster, false, false, false, None).with_casting_alternative_cost(cost)],
+                })],
+                ConsultCastTiming::UntilEndOfTurn => vec![
+                    EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
+                        crate::tag::TagRef::of(match_tag.clone()), clause.caster, clause.allow_land,
+                        false, false, Some(clause.surface.clone())).with_casting_alternative_cost(cost)],
+                _ => return Err(CardTextError::ParseError("unsupported duration for priced consult permission".into())),
             }
-            vec![
-                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
-                    crate::tag::TagRef::of(match_tag.clone()),
-                    clause.caster,
-                    false,
-                    false,
-                    false,
-                    Some(clause.surface.clone()),
-                ),
-                EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(crate::tag::TagRef::of(match_tag.clone()), clause.caster),
-            ]
         }
         ConsultCastCost::PayEnergyEqualToManaValue => {
             if clause.allow_land || !matches!(clause.timing, ConsultCastTiming::Immediate) {

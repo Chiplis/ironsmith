@@ -51,6 +51,7 @@ pub fn apply_keyword_action(
         KeywordAction::Melee => builder.melee(),
         KeywordAction::Dethrone => builder.dethrone(),
         KeywordAction::Evolve => builder.evolve(),
+        KeywordAction::Increment => builder.increment(),
         KeywordAction::Ingest => builder.ingest(),
         KeywordAction::Mentor => builder.mentor(),
         KeywordAction::Training => builder.training(),
@@ -178,6 +179,7 @@ pub fn apply_keyword_action(
         KeywordAction::Modular(amount) => builder.modular(amount),
         KeywordAction::ModularSunburst => builder.modular_sunburst(),
         KeywordAction::Graft(amount) => builder.graft(amount),
+        KeywordAction::Ripple(amount) => builder.ripple(amount),
         KeywordAction::Rampage(amount) => builder.rampage(amount),
         KeywordAction::Bushido(amount) => builder.bushido(amount),
         KeywordAction::Frenzy(amount) => builder.frenzy(amount),
@@ -247,6 +249,7 @@ pub fn apply_keyword_action(
         KeywordAction::Annihilator(amount) => builder.annihilator(amount),
         KeywordAction::ForMirrodin => builder.for_mirrodin(),
         KeywordAction::LivingWeapon => builder.living_weapon(),
+        KeywordAction::JobSelect => builder.job_select(),
         KeywordAction::Fuse => builder.has_fuse(),
         KeywordAction::Prototype {
             cost,

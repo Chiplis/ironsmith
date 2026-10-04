@@ -436,7 +436,7 @@ fn describe_each_player_hand_exile_with_linked_play_constraints(
         return None;
     }
 
-    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if permission.tag != choose.tag
         || permission.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
         || !permission.allow_land
@@ -1107,7 +1107,7 @@ fn describe_exile_collection_play_any_type_then_exile_source(effects: &[Effect])
     let [grant_effect] = for_each.effects.as_slice() else {
         return None;
     };
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if grant.tag.as_str() != "__it__"
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
@@ -5701,7 +5701,7 @@ pub(in crate::compiled_text) fn describe_chosen_hand_optional_free_cast(
     let [cast] = each.effects.as_slice() else {
         return None;
     };
-    let cast = cast.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     let mut hand = ObjectFilter::default().in_zone(Zone::Hand);
     hand.owner = Some(PlayerFilter::IteratedPlayer);
     let viewed = ObjectFilter::tagged(selection.tag.clone()).in_zone(Zone::Hand);
@@ -5774,7 +5774,7 @@ pub(in crate::compiled_text) fn describe_revealed_hand_then_optional_free_cast(
         return None;
     }
     let choose = may.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let cast = may.effects[1].downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = may.effects[1].downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
 
     let mut expected_filter = ObjectFilter::default();
     expected_filter.zone = Some(Zone::Hand);
@@ -5818,34 +5818,6 @@ pub(in crate::compiled_text) fn describe_revealed_hand_then_optional_free_cast(
         "Target opponent reveals their hand. You may cast an instant or sorcery spell from among those cards without paying its mana cost"
             .to_string(),
     )
-}
-
-pub(super) fn describe_phase_in_out_pair(first: &Effect, second: &Effect) -> Option<String> {
-    let phase_in = first.downcast_ref::<crate::effects::PhaseInEffect>()?;
-    let phase_out = second.downcast_ref::<crate::effects::PhaseOutEffect>()?;
-    let ChooseSpec::All(phase_in_filter) = phase_in.spec.base() else {
-        return None;
-    };
-    let ChooseSpec::All(phase_out_filter) = phase_out.spec.base() else {
-        return None;
-    };
-    let phase_in_is_all_creatures = phase_in_filter.card_types == vec![CardType::Creature]
-        && phase_in_filter.subtypes.is_empty()
-        && phase_in_filter.static_abilities.is_empty();
-    let phase_out_is_creatures_with_phasing = phase_out_filter.card_types
-        == vec![CardType::Creature]
-        && phase_out_filter.subtypes.is_empty()
-        && phase_out_filter
-            .static_abilities
-            .contains(&crate::static_abilities::StaticAbilityId::Phasing);
-    if phase_in_is_all_creatures && phase_out_is_creatures_with_phasing {
-        Some(
-            "Simultaneously, all phased-out creatures phase in and all creatures with phasing phase out"
-                .to_string(),
-        )
-    } else {
-        None
-    }
 }
 
 pub(super) fn describe_for_players_target_return_unless_draw(
@@ -5994,6 +5966,18 @@ pub(super) fn choose_spec_references_target_player(spec: &ChooseSpec) -> bool {
 
 pub(super) fn value_references_target_player(value: &Value) -> bool {
     match value {
+        Value::DamageHistory(query) => {
+            query
+                .reference_specs()
+                .any(choose_spec_references_target_player)
+                || query
+                    .object_filters()
+                    .any(object_filter_references_target_player)
+                || query
+                    .player_filter()
+                    .is_some_and(player_filter_references_target_player)
+        }
+
         Value::SurfaceHinted { value, .. }
         | Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
@@ -6032,6 +6016,8 @@ pub(super) fn value_references_target_player(value: &Value) -> bool {
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
+        | Value::MaximumLifeTotal(player)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player)
         | Value::UnspentMana(player)
@@ -13425,7 +13411,7 @@ pub(in crate::compiled_text) fn describe_opponent_top_exile_and_play(
     {
         return None;
     }
-    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if permission.tag != tagged.tag
         || permission.player != PlayerFilter::You
         || !permission.allow_land
@@ -13490,7 +13476,7 @@ pub(in crate::compiled_text) fn describe_hand_choice_exile_permission(
     {
         return None;
     }
-    let permission = permission.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let permission = permission.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if permission.tag != choice.tag
         || !permission.allow_land
         || permission.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled

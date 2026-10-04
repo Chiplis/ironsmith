@@ -177,7 +177,10 @@ impl OutcomeObjectMemory {
         Self {
             object_id: snapshot.object_id,
             stable_id: snapshot.stable_id,
-            name: snapshot.name.clone(),
+            // Compact memory must retain both names of a split card even if
+            // no current object survives to enrich its later snapshot.
+            name: snapshot.split_other_half_name().filter(|other| !crate::filter::names_match(&snapshot.name, other))
+                .map(|other| format!("{} // {other}", snapshot.name)).unwrap_or_else(|| snapshot.name.clone()),
             controller: snapshot.controller,
             owner: snapshot.owner,
             zone: snapshot.zone,
@@ -225,6 +228,7 @@ impl OutcomeObjectMemory {
             .unwrap_or_else(|| ObjectSnapshot {
                 chosen_subtype: None,
                 secret_chosen_subtype: None,
+                noted_life_total: None,
                 chosen_object: None,
                 object_id: self.object_id,
                 stable_id: self.stable_id,
@@ -261,6 +265,8 @@ impl OutcomeObjectMemory {
                 x_value: None,
                 cast_order_this_turn: None,
                 mana_spent_to_cast: crate::player::ManaPool::default(),
+                caster_mana_spent_to_cast: None,
+                mana_spent_on_x: None,
                 snow_mana_spent_to_cast: crate::player::ManaPool::default(),
                 mana_sources_spent_to_cast: Vec::new(),
                 optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
@@ -269,6 +275,7 @@ impl OutcomeObjectMemory {
                 tapped: false,
                 attacking: false,
                 goaded: None,
+            ring_bearer: None,
                 flipped: false,
                 face_down: false,
                 transform_count: 0,
@@ -297,6 +304,15 @@ impl OutcomeObjectMemory {
         snapshot.is_token = self.is_token;
         snapshot
     }
+}
+
+/// Original recipient evidence for one damage instruction, before damage's
+/// life/counter consequences and independently of any redirection destination.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub enum DamageRecipientBefore {
+    Player { player: PlayerId, life: i32 },
+    Object { object: ObjectId, was_creature: bool, loyalty: Option<u32> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -344,6 +360,11 @@ pub enum ExecutionFact {
         winner: Option<PlayerId>,
         loser: Option<PlayerId>,
     },
+    /// Captured once for each distinct original damage recipient.
+    DamageRecipientBefore(DamageRecipientBefore),
+    /// Exact successful original arrivals, before replacement-added programs.
+    /// This is not selection/reveal evidence and does not include draws.
+    CardsPutIntoHand { player: PlayerId, cards: Vec<OutcomeObjectMemory> },
 }
 
 impl ExecutionFact {
@@ -1131,6 +1152,14 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                     positive.negated = false;
                     return !Self::PriorEffectResult(positive).evaluate_outcome(outcome);
                 }
+                if surface.action == crate::effect::PriorEffectAction::PutIntoHand {
+                    // The context-aware If owner additionally selects the actor.
+                    let count = outcome.execution_facts.iter().filter_map(|fact| {
+                        let ExecutionFact::CardsPutIntoHand { cards, .. } = fact else { return None; };
+                        Some(cards)
+                    }).flatten().filter(|card| prior_result_memory_matches_filter(card, &surface.filter)).count();
+                    return count >= surface.required_count.unwrap_or(1) as usize;
+                }
                 if !prior_result_filter_has_lki_constraints(&surface.filter) {
                     // CR 701.19a / 701.8a: regeneration (or a shield counter)
                     // replaces the destruction, so a regenerated permanent
@@ -1316,21 +1345,41 @@ impl RestrictionExt for Restriction {
                                     if !chosen_name.is_empty() {
                                         let mut resolved_filter = spell_filter.clone();
                                         resolved_filter.name = Some(chosen_name.to_string());
-                                        tracker.add_cant_cast_filter_from_source(
-                                            player.id,
-                                            resolved_filter,
-                                            Some(source),
-                                        );
+                                        tracker.add_scoped_cant_cast_filter(player.id, crate::game_state::CastRestrictionFilter {
+                                            filter: resolved_filter, source: Some(source), controller: Some(controller),
+                                            iterated_player, tagged_objects: tagged_objects.clone(),
+                                        });
                                     }
                                 }
                             }
                         } else {
-                            tracker.add_cant_cast_filter_from_source(
-                                player.id,
-                                spell_filter.clone(),
-                                source,
-                            );
+                            tracker.add_scoped_cant_cast_filter(player.id, crate::game_state::CastRestrictionFilter {
+                                filter: spell_filter.clone(), source, controller: Some(controller),
+                                iterated_player, tagged_objects: tagged_objects.clone(),
+                            });
                         }
+                    }
+                }
+            }
+            Restriction::PlayLandsMatching(player_filter, land_filter) => {
+                let restriction = crate::game_state::LandPlayRestrictionFilter {
+                    filter: land_filter.clone(), source, controller, iterated_player,
+                    tagged_objects: tagged_objects.clone(),
+                };
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, player_filter)
+                        && ctx.players_in_range.as_ref().is_none_or(|players| players.contains(&player.id))
+                    {
+                        tracker.cant_play_land_filters.entry(player.id).or_default().push(restriction.clone());
+                    }
+                }
+            }
+            Restriction::ActivateLoyaltyAbilitiesOf(filter) => {
+                for &id in &game.battlefield {
+                    if let Some(object) = game.object(id)
+                        && !game.is_phased_out(id) && filter.matches(object, &ctx, game)
+                    {
+                        tracker.cant_activate_loyalty_abilities_of.insert(id);
                     }
                 }
             }
@@ -1349,11 +1398,18 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::ActivateAbilitiesOf(filter) => {
-                for &obj_id in &game.battlefield {
-                    if let Some(obj) = game.object(obj_id)
-                        && filter.matches(obj, &ctx, game)
+                // A graveyard-card prohibition applies to real ability sources
+                // there, including mana abilities. Unqualified permanent bans
+                // retain their battlefield domain.
+                fn explicit_off_battlefield(filter: &crate::target::ObjectFilter) -> bool {
+                    filter.zone.is_some_and(|zone| zone != crate::zone::Zone::Battlefield)
+                        || filter.any_of.iter().any(explicit_off_battlefield)
+                }
+                for object in game.objects_in_deterministic_order() {
+                    if (object.zone == crate::zone::Zone::Battlefield || explicit_off_battlefield(filter))
+                        && !game.is_phased_out(object.id) && filter.matches(object, &ctx, game)
                     {
-                        tracker.cant_activate_abilities_of.insert(obj_id);
+                        tracker.cant_activate_abilities_of.insert(object.id);
                     }
                 }
             }
@@ -1451,6 +1507,12 @@ impl RestrictionExt for Restriction {
                         tracker.cant_become_monarch.insert(player.id);
                     }
                 }
+            }
+            Restriction::PreventDamageFrom { sources, combat_only } => {
+                tracker.source_damage_cant_be_prevented.push(crate::game_state::SourceDamagePreventionProhibition {
+                    sources: sources.clone(), combat_only: *combat_only, host: source, controller,
+                    iterated_player, tagged_objects: tagged_objects.clone(),
+                });
             }
             Restriction::PreventDamage => {
                 tracker.damage_cant_be_prevented = true;
@@ -1586,6 +1648,16 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::MustAttack(filter) => {
+                for &object in &game.battlefield {
+                    if !game.is_phased_out(object)
+                        && let Some(object) = game.object(object)
+                        && filter.matches(object, &ctx, game)
+                    {
+                        *tracker.must_attack.entry(object.id).or_default() += 1;
+                    }
+                }
+            }
             Restriction::MustBeBlocked(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)
@@ -1655,8 +1727,8 @@ impl RestrictionExt for Restriction {
             }
             Restriction::EnterBattlefield(filter) => {
                 let restriction = crate::game_state::CastRestrictionFilter {
-                    filter: filter.clone(),
-                    source,
+                    filter: filter.clone(), source, controller: Some(controller),
+                    iterated_player, tagged_objects: tagged_objects.clone(),
                 };
                 if !tracker.cant_enter_battlefield.contains(&restriction) {
                     tracker.cant_enter_battlefield.push(restriction);
@@ -1692,19 +1764,17 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::BeTargeted(filter) => {
-                for &obj_id in &game.battlefield {
-                    if let Some(obj) = game.object(obj_id)
-                        && filter.matches(obj, &ctx, game)
-                    {
+                for obj in game.objects_in_deterministic_order() {
+                    let obj_id = obj.id;
+                    if filter.matches(obj, &ctx, game) {
                         tracker.cant_be_targeted.insert(obj_id);
                     }
                 }
             }
             Restriction::BeTargetedFrom(filter, source_filter) => {
-                for &obj_id in &game.battlefield {
-                    if let Some(obj) = game.object(obj_id)
-                        && filter.matches(obj, &ctx, game)
-                    {
+                for obj in game.objects_in_deterministic_order() {
+                    let obj_id = obj.id;
+                    if filter.matches(obj, &ctx, game) {
                         tracker.cant_be_targeted_from.push(
                             crate::game_state::ObjectCantBeTargetedFrom {
                                 object: obj_id,

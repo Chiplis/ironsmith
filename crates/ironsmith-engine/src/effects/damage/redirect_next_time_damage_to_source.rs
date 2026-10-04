@@ -74,27 +74,8 @@ pub struct RedirectNextTimeDamageToSourceEffect {
     pub all_this_turn: bool,
 }
 
-/// "All damage that would be dealt this turn to [a player/permanent set] is dealt to [target] instead."
-#[derive(Debug, Clone, PartialEq)]
-pub struct RedirectAllDamageThisTurnToTargetEffect {
-    pub player_filter: PlayerFilter,
-    pub object_filter: ObjectFilter,
-    pub target: ChooseSpec,
-}
-
-impl RedirectAllDamageThisTurnToTargetEffect {
-    pub fn new(
-        player_filter: PlayerFilter,
-        object_filter: ObjectFilter,
-        target: ChooseSpec,
-    ) -> Self {
-        Self {
-            player_filter,
-            object_filter,
-            target,
-        }
-    }
-}
+/// Typed scoped redirection, retaining the original legacy constructor.
+pub type RedirectAllDamageThisTurnToTargetEffect = ironsmith_core::RedirectAllDamageThisTurnToTargetEffect;
 
 impl EffectExecutor for RedirectAllDamageThisTurnToTargetEffect {
     fn execute(
@@ -102,6 +83,47 @@ impl EffectExecutor for RedirectAllDamageThisTurnToTargetEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if let Some(scope) = &self.scope {
+            let mut source_filter = scope.source_filter.clone();
+            if let Some(spec) = &scope.source_target {
+                let source = resolve_objects_for_effect(game, ctx, spec)?.into_iter().next().ok_or(ExecutionError::InvalidTarget)?;
+                source_filter = ObjectFilter::specific(source);
+            }
+            let (mut players, mut objects) = (scope.player_filter.clone(), scope.object_filter.clone());
+            if let Some(spec) = &scope.protected_target {
+                let target = if matches!(spec.base(), ChooseSpec::Source) { DamageTarget::Object(ctx.source) }
+                    else { resolve_damage_target_for_effect(game, ctx, spec)? };
+                (players, objects) = match target {
+                    DamageTarget::Player(player) => (Some(PlayerFilter::Specific(player)), None),
+                    DamageTarget::Object(object) => (None, Some(ObjectFilter::specific(object))),
+                };
+            }
+            let target = match scope.destination {
+                ironsmith_core::TimedDamageRedirectDestination::Target => match resolve_damage_target_for_effect(game, ctx, &self.target)? {
+                    DamageTarget::Player(player) => RedirectTarget::ToPlayer(player),
+                    DamageTarget::Object(object) => RedirectTarget::ToObject(object),
+                },
+                ironsmith_core::TimedDamageRedirectDestination::Source => RedirectTarget::ToObject(ctx.source),
+                ironsmith_core::TimedDamageRedirectDestination::Controller => RedirectTarget::ToPlayer(ctx.controller),
+                ironsmith_core::TimedDamageRedirectDestination::DamageSourceController => RedirectTarget::ToSourceController,
+            };
+            let replacement = ReplacementEffect::with_matcher(ctx.source, ctx.controller,
+                crate::static_abilities::DamageAmountReplacementMatcher {
+                    source_filter, target_player_filter: players, target_object_filter: objects,
+                    condition: None, combat_only: scope.combat_only, noncombat_only: false,
+                    amount_less_than: None, maximum_damage: None,
+                }, ReplacementAction::Redirect { target, which: RedirectWhich::First });
+            match scope.mode {
+                ironsmith_core::ReplacementApplyMode::UntilEndOfTurn => {
+                    game.effect_store.replacement_effects.add_until_end_of_turn_effect(replacement);
+                }
+                ironsmith_core::ReplacementApplyMode::UntilYourNextTurn => {
+                    game.effect_store.replacement_effects.add_until_next_turn_effect(replacement, ctx.controller, game.turn.turn_number);
+                }
+                _ => return Err(ExecutionError::InternalError("all-damage redirect requires an explicit bounded duration".into())),
+            }
+            return Ok(EffectOutcome::resolved());
+        }
         let redirect_target = resolve_objects_for_effect(game, ctx, &self.target)?
             .into_iter()
             .next()
@@ -126,7 +148,21 @@ impl EffectExecutor for RedirectAllDamageThisTurnToTargetEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        if let Some(scope) = &self.scope {
+            return scope.source_target.as_ref().filter(|spec| spec.is_target())
+                .or_else(|| scope.protected_target.as_ref().filter(|spec| spec.is_target()))
+                .or_else(|| (scope.destination == ironsmith_core::TimedDamageRedirectDestination::Target).then_some(&self.target));
+        }
         Some(&self.target)
+    }
+
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        if let Some(scope) = &self.scope {
+            let mut targets: Vec<_> = scope.source_target.iter().chain(scope.protected_target.iter()).cloned().collect();
+            if scope.destination == ironsmith_core::TimedDamageRedirectDestination::Target { targets.push(self.target.clone()); }
+            return targets;
+        }
+        vec![self.target.clone()]
     }
 
     fn target_description(&self) -> &'static str {

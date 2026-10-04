@@ -30,7 +30,7 @@ fn s1_monarch_uses_live_controller_or_departure_lki_not_a_new_incarnation() {
     for depart in [false, true] {
         let mut g = game();
         let attacker = permanent(&mut g, BOB, CardType::Creature);
-        g.set_monarch(Some(A));
+        g.set_monarch(Some(A)).expect("checked designation/departure fixture");
         let event = TriggerEvent::new_with_provenance(
             DamageEvent::with_cause(
                 attacker,
@@ -122,6 +122,7 @@ fn s7_doubled_mana_has_no_inherited_restrictions_or_bonuses() {
     let source = permanent(&mut g, A, CardType::Artifact);
     let old_source = g.new_object_id();
     let restricted = RestrictedManaUnit {
+        source_controller: None,
         symbol: ManaSymbol::Red,
         source: old_source,
         source_chosen_creature_type: None,

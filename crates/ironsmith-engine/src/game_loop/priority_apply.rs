@@ -14,6 +14,7 @@ fn total_cost_contains_tap(cost: &crate::cost::TotalCost) -> bool {
 }
 
 pub(super) fn stage_after_activation_announcements(pending: &PendingActivation) -> ActivationStage {
+    if !pending.cost_references_ready { return ActivationStage::ChoosingCostReferences; }
     if !pending.remaining_requirements.is_empty() {
         ActivationStage::ChoosingTargets
     } else if !pending.pending_target_distributions.is_empty() {
@@ -133,12 +134,19 @@ pub(super) fn begin_mana_ability_activation(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
+    let mut saved_root_checkpoint = false;
     let result = (|| -> Result<GameProgress, GameLoopError> {
     if game.object(*source).is_some()
         && let Some(ability) = game.current_ability(*source, *ability_index)
         && let AbilityKind::Activated(mana_ability) = &ability.kind
         && mana_ability.is_runtime_mana_ability(game, *source, player)
     {
+        // A root mana announcement can be canceled before paying. Its
+        // checkpoint must precede exhaust and visibility registration alike.
+        if state.checkpoint.is_none() {
+            state.save_checkpoint(game);
+            saved_root_checkpoint = true;
+        }
         let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
         let effects_to_run = mana_ability.effects.clone();
         let base_cost = mana_ability.mana_cost.clone();
@@ -211,6 +219,7 @@ pub(super) fn begin_mana_ability_activation(
                     source: *source,
                     controller: player,
                 });
+        game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(mana_ability_provenance));
         // Continuous effects have to be part of the snapshot: an
         // animated land (earthbend, Awaken, ...) is a creature only in
         // its calculated characteristics, and "whenever you tap a
@@ -250,6 +259,7 @@ pub(super) fn begin_mana_ability_activation(
             drop(cost_ctx);
 
             if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+            game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(mana_ability_provenance));
             drain_pending_trigger_events(game, trigger_queue);
 
             let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
@@ -349,6 +359,8 @@ pub(super) fn begin_mana_ability_activation(
         *game = checkpoint.0;
         *trigger_queue = checkpoint.1;
         *state = checkpoint.2;
+    } else if saved_root_checkpoint && !state.has_pending_action() {
+        state.clear_checkpoint();
     }
     result
 }
@@ -594,16 +606,12 @@ fn apply_priority_response_with_dm_inner(
                 .map_err(|e| GameLoopError::InvalidState(format!("Cannot play land: {e}")))?;
 
             let old_zone = game.object(*land_id).map(|o| o.zone).unwrap_or(Zone::Hand);
-            let shared_usage_to_consume =
-                crate::special_actions::shared_usage_to_consume_for_land_play(
-                    game, player, *land_id,
-                );
-            let permission_forces_tapped = old_zone != Zone::Hand
-                && game
-                    .effect_store
-                    .grant_registry
-                    .land_play_from_permissions_enters_tapped(game, *land_id, old_zone, player);
+            game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Land(*land_id));
             crate::special_actions::apply_land_play_face(game, *land_id, back_face);
+            let permission = crate::special_actions::choose_land_play_permission(game, player, *land_id, decision_maker)?;
+            if decision_maker.awaiting_choice() { return Ok(()); }
+            permission.reserve(game, player)?;
+            let permission_forces_tapped = permission.enters_tapped;
             let result = game.move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
                 *land_id,
                 Zone::Battlefield,
@@ -622,25 +630,11 @@ fn apply_priority_response_with_dm_inner(
                 crate::events::processing::EventOutcome::Prevented | crate::events::processing::EventOutcome::Replaced => None,
                 crate::events::processing::EventOutcome::NotApplicable => return Err(GameLoopError::InvalidState("Failed to move land".into())),
             };
-            if let Some(shared_usage_id) = shared_usage_to_consume {
-                let consumed = game
-                    .effect_store
-                    .grant_registry
-                    .consume_shared_usage(shared_usage_id);
-                debug_assert!(
-                    consumed,
-                    "selected shared land-play permission should be available"
-                );
-            }
-
-
             // Check for ETB triggers only if the land entered the battlefield.
             if let Some(entry) = original_entry
                 && game.object(entry.new_id).is_some_and(|object| object.zone == Zone::Battlefield)
             {
                 let new_id = entry.new_id;
-                // Drain pending ZoneChangeEvent emitted by ETB move processing.
-                drain_pending_trigger_events(game, trigger_queue);
 
                 let etb_event_provenance = game
                     .provenance_graph_mut()
@@ -656,7 +650,10 @@ fn apply_priority_response_with_dm_inner(
                         etb_event_provenance,
                     )
                 };
-                let etb_event = game.ensure_trigger_event_provenance(etb_event);
+                let mut etb_event = game.ensure_trigger_event_provenance(etb_event);
+                game.freeze_completed_entry_events(std::iter::once(&mut etb_event))
+                    .map_err(GameLoopError::ExecutionFailed)?;
+                drain_pending_trigger_events(game, trigger_queue);
                 let etb_triggers = check_triggers(game, &etb_event);
                 for trigger in etb_triggers {
                     trigger_queue.add(trigger);
@@ -687,6 +684,7 @@ fn apply_priority_response_with_dm_inner(
             crate::special_actions::finish_land_play_receipt(game, *land_id, player, result, decision_maker)
                 .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
             if decision_maker.awaiting_choice() { return Ok(()); }
+            permission.complete(game);
             drain_pending_trigger_events(game, trigger_queue);
             Ok(())
             })();
@@ -719,7 +717,7 @@ fn apply_priority_response_with_dm_inner(
                 && may_have_multiple_casting_methods(game, player, *spell_id, *from_zone)
             {
                 let available_methods =
-                    collect_available_casting_methods(game, player, *spell_id, *from_zone);
+                    collect_available_casting_methods(game, player, *spell_id, *from_zone)?;
                 if available_methods.len() > 1 {
                     // Store the pending selection and prompt user
                     state.pending_method_selection = Some(PendingMethodSelection {
@@ -912,6 +910,7 @@ fn apply_priority_response_with_dm_inner(
                 .turn
                 .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
+            let needs_cost_references = crate::cost::prospective_references::needs_activation_reference_context(&base_cost, effects.flattened_default_effects());
             let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
                 game,
                 player,
@@ -933,6 +932,7 @@ fn apply_priority_response_with_dm_inner(
                         controller: player,
                     });
 
+            game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance));
             // Defer non-mana activation costs until after target selection.
             let mut mana_cost_to_pay: Option<crate::mana::ManaCost> = None;
             let mut remaining_cost_steps = Vec::new();
@@ -945,6 +945,7 @@ fn apply_priority_response_with_dm_inner(
             );
             for cost_component in flat_components {
                 if let Some(dynamic_mana) = cost_component.dynamic_mana_cost_ref() {
+                    if needs_cost_references && dynamic_mana.mana_cost_of.is_some() { continue; }
                     let mut execution_ctx =
                         ExecutionContext::new(*source, player, &mut *decision_maker)
                             .with_provenance(activation_provenance);
@@ -995,7 +996,8 @@ fn apply_priority_response_with_dm_inner(
             let has_hybrid_pips = !pips_to_announce.is_empty();
 
             // Create pending activation if there are choices to make
-            if has_x
+            if needs_cost_references
+                || has_x
                 || has_modal
                 || !alternative_cost_branches.is_empty()
                 || !remaining_cost_steps.is_empty()
@@ -1012,6 +1014,8 @@ fn apply_priority_response_with_dm_inner(
                     ActivationStage::ChoosingAlternativeCost
                 } else if has_x {
                     ActivationStage::ChoosingX
+                } else if needs_cost_references {
+                    ActivationStage::ChoosingCostReferences
                 } else if has_hybrid_pips {
                     ActivationStage::AnnouncingCost
                 } else if !target_requirements.is_empty() {
@@ -1028,7 +1032,7 @@ fn apply_priority_response_with_dm_inner(
                     *ability_index,
                     &mut granting_source_tags,
                 );
-                let pending = PendingActivation::new(
+                let mut pending = PendingActivation::new(
                     *source,
                     *ability_index,
                     game.current_characteristics(*source)
@@ -1058,6 +1062,13 @@ fn apply_priority_response_with_dm_inner(
                     pips_to_announce,
                 );
 
+                if needs_cost_references {
+                    pending.cost_reference_base = Some(base_cost.clone());
+                    pending.cost_references_ready = false;
+                    pending.tagged_objects = crate::cost::prospective_references::activation_reference_context(game, *source, *ability_index);
+                    pending.cost_reference_choices = crate::cost::prospective_references::activation_reference_choices(&base_cost, pending.effects.flattened_default_effects())
+                        .map_err(|error| GameLoopError::InvalidState(format!("cost reference announcement: {error:?}")))?;
+                }
                 continue_activation(game, trigger_queue, state, pending, &mut *decision_maker)
             } else {
                 // No choices needed - put ability on stack directly
@@ -1084,6 +1095,7 @@ fn apply_priority_response_with_dm_inner(
                     )
                     .with_tagged_objects(granting_source_tags);
                 game.push_to_stack(entry);
+                game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance));
                 queue_ability_activated_event(
                     game,
                     trigger_queue,
@@ -1268,6 +1280,17 @@ pub(super) fn apply_targets_response(
                 ),
                 None => activated.mana_cost.clone(),
             };
+            let base_cost = if pending.cost_reference_base.is_some() {
+                match base_cost.as_one_of() {
+                    Some(branches) => branches.get(pending.selected_alternative_cost.ok_or_else(|| GameLoopError::InvalidState("reference price has no announced branch".into()))?)
+                        .cloned().ok_or_else(|| GameLoopError::InvalidState("announced reference branch is absent".into()))?,
+                    None => base_cost,
+                }
+            } else { base_cost };
+            let base_cost = crate::cost::prospective_references::lock_activation_reference_cost(
+                game, pending.source, pending.activator, &base_cost, &pending.tagged_objects,
+                &pending.announced_cost_objects, pending.x_value.map(|x| x as u32),
+            ).map_err(|error| GameLoopError::InvalidState(format!("activation reference pricing: {error:?}")))?;
             let repriced = crate::decision::calculate_effective_activation_total_cost_for_ability(
                 game,
                 pending.activator,

@@ -37,7 +37,7 @@ pub(crate) fn execute_replacement_payload_with_object_tags(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn execute_replacement_payload_with_snapshot(
+pub(crate) fn execute_replacement_payload_with_snapshot(
     game: &mut GameState,
     parent: &mut ExecutionContext,
     effects: &[Effect],
@@ -48,6 +48,18 @@ fn execute_replacement_payload_with_snapshot(
     captured_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     object_tags: Vec<(String, Vec<crate::snapshot::ObjectSnapshot>)>,
 ) -> Result<EffectOutcome, ExecutionError> {
+    with_replacement_child(game, parent, source, controller, context, targets, captured_source_snapshot, object_tags,
+        |game, child| execute_replacement_program(game, child, effects))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn with_replacement_child<R>(
+    game: &mut GameState, parent: &mut ExecutionContext, source: ObjectId, controller: PlayerId,
+    context: &ReplacementEventContext, targets: Option<Vec<crate::effects::ResolvedTarget>>,
+    captured_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    object_tags: Vec<(String, Vec<crate::snapshot::ObjectSnapshot>)>,
+    run: impl FnOnce(&mut GameState, &mut ExecutionContext) -> Result<R, ExecutionError>,
+) -> Result<R, ExecutionError> {
     let affected_player = context.affected_player;
     let inherited_replacements = parent.replacement.clone();
     let source_snapshot = captured_source_snapshot.or_else(|| game
@@ -83,14 +95,24 @@ fn execute_replacement_payload_with_snapshot(
         child.set_tagged_objects(name.as_str(), snapshots);
     }
     context.apply_to(&mut child);
-    let mut outcomes = Vec::new();
-    for effect in effects {
-        outcomes.push(execute_effect(game, effect, &mut child)?);
-        if child.decision_maker.awaiting_choice() {
-            break;
+    run(game, &mut child)
+}
+
+pub(super) fn execute_replacement_program(
+    game: &mut GameState, child: &mut ExecutionContext, effects: &[Effect],
+) -> Result<EffectOutcome, ExecutionError> {
+    crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
+        let mut outcomes: Vec<EffectOutcome> = Vec::new();
+        for (index, effect) in effects.iter().enumerate() {
+            outcomes.push(execute_effect(game, effect, child)?);
+            if child.decision_maker.awaiting_choice() { break; }
+            crate::effects::runtime::capture_triggers_before_added_program(
+                game, child, effects.get(index + 1),
+                outcomes.iter_mut().flat_map(|outcome| outcome.events.iter_mut()),
+            )?;
         }
-    }
-    Ok(EffectOutcome::aggregate(outcomes))
+        Ok(EffectOutcome::aggregate(outcomes))
+    })
 }
 
 
@@ -191,7 +213,7 @@ where T: Fn(&GameState, &ReplacementEventContext, &EffectOutcome) -> Result<Opti
 pub(crate) fn execute_deferred_replacement_programs_with_bindings<T>(
     game: &mut GameState,
     parent: &mut ExecutionContext,
-    original_outcome: EffectOutcome,
+    mut original_outcome: EffectOutcome,
     programs: Vec<crate::events::processing::PreparedReplacementProgram>,
     bindings_for_program: T,
 ) -> Result<EffectOutcome, ExecutionError>
@@ -201,8 +223,15 @@ where T: Fn(&GameState, &ReplacementEventContext, &EffectOutcome) -> Result<Repl
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(parent);
     let result = (|| {
         if parent.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let mut outcomes = Vec::new();
+        let mut outcomes: Vec<EffectOutcome> = Vec::new();
         for program in programs {
+            // The original event has already happened. Its event-time
+            // qualifications must be captured before an added instruction can
+            // remove a qualifying permanent or change another participant.
+            crate::effects::runtime::capture_triggers_before_added_program(
+                game, parent, program.effects.first(),
+                original_outcome.events.iter_mut().chain(outcomes.iter_mut().flat_map(|outcome| outcome.events.iter_mut())),
+            )?;
             let bindings = bindings_for_program(game, &program.context, &original_outcome)?;
             let outcome = execute_replacement_payload_with_snapshot(
                 game, parent, &program.effects, program.source, program.controller,

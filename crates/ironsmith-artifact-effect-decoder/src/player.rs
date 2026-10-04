@@ -19,7 +19,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::BecomeMonarchEffect>(payload).map(Some)
         }
         "CastSourceEffect" => decode_as::<ironsmith_core::CastSourceEffect>(payload).map(Some),
-        "CastTaggedEffect" => decode_as::<ironsmith_core::CastTaggedEffect>(payload).map(Some),
+        "CastTaggedEffect" => decode_as::<ironsmith_core::CastTaggedEffect<wire::WireCost>>(payload).map(Some),
         "ChooseCardNameEffect" => {
             decode_as::<ironsmith_core::ChooseCardNameEffect>(payload).map(Some)
         }
@@ -33,6 +33,8 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "ChooseLandTypeEffect" => {
             decode_as::<ironsmith_core::ChooseLandTypeEffect>(payload).map(Some)
         }
+        "RippleEffect" => decode_as::<ironsmith_core::RippleEffect>(payload).map(Some),
+        "ChooseNumberEffect" => decode_as::<ironsmith_core::ChooseNumberEffect>(payload).map(Some),
         "ChooseNamedOptionEffect" => {
             decode_as::<ironsmith_core::ChooseNamedOptionEffect>(payload).map(Some)
         }
@@ -85,7 +87,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::GrantNextSpellCostReductionEffect>(payload).map(Some)
         }
         "GrantPlayTaggedEffect" => {
-            decode_as::<ironsmith_core::GrantPlayTaggedEffect>(payload).map(Some)
+            decode_as::<ironsmith_core::GrantPlayTaggedEffect<wire::WireCost>>(payload).map(Some)
         }
         "GrantTaggedSpellFreeCastUntilEndOfTurnEffect" => {
             decode_as::<ironsmith_core::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(payload)
@@ -131,6 +133,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::SkipCombatPhasesThisTurnEffect>(payload).map(Some)
         }
         "SkipDrawStepEffect" => decode_as::<ironsmith_core::SkipDrawStepEffect>(payload).map(Some),
+        "SkipScheduledEffect" => decode_as::<ironsmith_core::SkipScheduledEffect>(payload).map(Some),
         "SkipMainPhasesThisTurnEffect" => {
             decode_as::<ironsmith_core::SkipMainPhasesThisTurnEffect>(payload).map(Some)
         }
@@ -188,7 +191,7 @@ pub(super) fn map_card_ids(
                 .map(Some)
         }
         "CastTaggedEffect" => {
-            super::card_graph::map_payload_as::<ironsmith_core::CastTaggedEffect>(payload, context)
+            super::card_graph::map_payload_as::<ironsmith_core::CastTaggedEffect<wire::WireCost>>(payload, context)
                 .map(Some)
         }
         "ChooseCardNameEffect" => super::card_graph::map_payload_as::<
@@ -211,6 +214,8 @@ pub(super) fn map_card_ids(
             ironsmith_core::ChooseLandTypeEffect,
         >(payload, context)
         .map(Some),
+        "RippleEffect" => super::card_graph::map_payload_as::<ironsmith_core::RippleEffect>(payload, context).map(Some),
+        "ChooseNumberEffect" => super::card_graph::map_payload_as::<ironsmith_core::ChooseNumberEffect>(payload, context).map(Some),
         "ChooseNamedOptionEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::ChooseNamedOptionEffect,
         >(payload, context)
@@ -288,7 +293,7 @@ pub(super) fn map_card_ids(
         >(payload, context)
         .map(Some),
         "GrantPlayTaggedEffect" => super::card_graph::map_payload_as::<
-            ironsmith_core::GrantPlayTaggedEffect,
+            ironsmith_core::GrantPlayTaggedEffect<wire::WireCost>,
         >(payload, context)
         .map(Some),
         "GrantTaggedSpellFreeCastUntilEndOfTurnEffect" => super::card_graph::map_payload_as::<
@@ -363,6 +368,7 @@ pub(super) fn map_card_ids(
             ironsmith_core::SkipCombatPhasesThisTurnEffect,
         >(payload, context)
         .map(Some),
+        "SkipScheduledEffect" => super::card_graph::map_payload_as::<ironsmith_core::SkipScheduledEffect>(payload, context).map(Some),
         "SkipDrawStepEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::SkipDrawStepEffect,
         >(payload, context)

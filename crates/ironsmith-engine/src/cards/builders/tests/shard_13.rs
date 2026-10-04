@@ -2851,7 +2851,7 @@ pub(super) fn celestial_dawn_mana_spend_runtime_uses_white_as_any_color_only() {
         "Celestial Dawn should let white mana pay a blue pip"
     );
     assert!(
-        game.try_pay_mana_cost(alice, Some(blue_spell_id), &blue_cost, 0),
+        game.try_pay_mana_cost(alice, Some(blue_spell_id), &blue_cost, 0).expect("checked fixture mana payment"),
         "white mana should actually be spent as blue"
     );
     assert_eq!(
@@ -2925,7 +2925,7 @@ pub(super) fn celestial_dawn_mana_spend_runtime_treats_other_mana_as_colorless_o
             Some(colorless_spell_id),
             &colorless_cost,
             0,
-        ),
+        ).expect("checked fixture mana payment"),
         "nonwhite mana should actually be spendable as colorless"
     );
 

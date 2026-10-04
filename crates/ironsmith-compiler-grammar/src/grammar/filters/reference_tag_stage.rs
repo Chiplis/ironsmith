@@ -930,6 +930,37 @@ fn try_apply_shared_characteristic_relation_clause(
     Ok(true)
 }
 
+fn try_apply_directional_source_block_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let words = non_article_parser_word_refs(segment_tokens);
+    let Some(blocked) = words.iter().position(|word| *word == "blocked") else {
+        return false;
+    };
+    let tail = &words[blocked + 1..];
+    let current_blocked_by_source = tail.first() == Some(&"by")
+        && crate::util::is_source_reference_words(&tail[1..]);
+    let blocked_source_this_turn = tail.ends_with(&["this", "turn"])
+        && crate::util::is_source_reference_words(&tail[..tail.len() - 2]);
+    if !current_blocked_by_source && !blocked_source_this_turn {
+        return false;
+    }
+    let mut clause_start = blocked;
+    while clause_start > 0 && matches!(words[clause_start - 1], "that" | "which" | "is" | "are") {
+        clause_start -= 1;
+    }
+    let Some(token_start) = token_boundary_for_non_article_word(segment_tokens, clause_start) else {
+        return false;
+    };
+    filter.blocked_by_source |= current_blocked_by_source;
+    filter.blocked_source_this_turn |= blocked_source_this_turn;
+    all_words.truncate(clause_start);
+    segment_tokens.truncate(token_start);
+    true
+}
+
 fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
@@ -1071,6 +1102,7 @@ pub fn parse_object_filter_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(result) = super::live_name_relations::parse_live_name_relation(tokens, other) { return result; }
     let attack_destination_relation = is_attack_destination_relation(tokens);
     let mut filter = if attack_destination_relation {
         parse_object_filter(tokens, other)?

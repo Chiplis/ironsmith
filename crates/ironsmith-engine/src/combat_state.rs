@@ -12,7 +12,7 @@ use crate::filter::{FilterContext, ObjectFilterExt as _};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::rules::combat::{
-    can_attack_defending_player, can_block, has_vigilance_with_game, maximum_blockers,
+    can_attack_target, can_block, has_vigilance_with_game, maximum_blockers,
     minimum_blockers_with_game,
 };
 use crate::static_abilities::StaticAbility;
@@ -21,6 +21,9 @@ use crate::zone::Zone;
 /// Combat state tracking.
 #[derive(Debug, Clone, Default)]
 pub struct CombatState {
+    /// CR 509.1h: attackers are neither blocked nor unblocked until the whole
+    /// declaration (including its costs) completes, even when no blockers exist.
+    pub block_declaration_complete: bool,
     /// All declared attackers with their targets.
     pub attackers: Vec<AttackerInfo>,
     /// Mapping from attacker to their blockers.
@@ -233,6 +236,8 @@ pub enum CombatError {
         blocker: ObjectId,
         attacker: ObjectId,
     },
+    /// Checked cost evaluation failed; this is not an illegal declaration.
+    ExecutionFailed(crate::effects::ExecutionError),
 }
 
 impl std::fmt::Display for CombatError {
@@ -246,6 +251,7 @@ impl std::fmt::Display for CombatError {
         }
 
         match self {
+            CombatError::ExecutionFailed(error) => write!(f, "Combat cost execution failed: {error}"),
             CombatError::CreatureCannotAttack(id) => {
                 write!(f, "Creature {} cannot attack", object_label(id))
             }
@@ -378,6 +384,7 @@ pub fn new_combat() -> CombatState {
 
 /// Clears all combat state at end of combat.
 pub fn end_combat(combat: &mut CombatState) {
+    combat.block_declaration_complete = false;
     combat.attackers.clear();
     combat.blockers.clear();
     combat.blocked_attackers.clear();
@@ -598,7 +605,7 @@ pub fn declare_attackers(
 
         // Must be able to attack (no defender, no summoning sickness unless haste, etc.)
         // Check both rules-based restrictions and effect-based restrictions.
-        if !can_attack_defending_player(creature, defending_player, game)
+        if !can_attack_target(creature, defending_player, target, game)
             || !game.can_attack(*creature_id)
             || (matches!(target, AttackTarget::Player(_))
                 && !game.can_attack_player_directly(*creature_id, defending_player))
@@ -710,6 +717,7 @@ pub fn declare_attackers(
         let mana_cost = generic_mana_cost(additional_attack_mana_cost);
         if !game.can_pay_mana_cost(active_player, None, &mana_cost, 0)
             || !game.try_pay_mana_cost(active_player, None, &mana_cost, 0)
+                .map_err(CombatError::ExecutionFailed)?
         {
             return Err(CombatError::CreatureCannotAttack(*first_attacker));
         }
@@ -724,6 +732,7 @@ pub fn declare_attackers(
         .collect();
 
     // Second pass: apply declarations and tap attackers without vigilance
+    combat.block_declaration_complete = false;
     for (creature_id, target) in declarations {
         // Add to attackers list
         combat.attackers.push(AttackerInfo {
@@ -766,7 +775,9 @@ pub fn declare_blockers(
     combat: &mut CombatState,
     declarations: Vec<(ObjectId, ObjectId)>,
 ) -> Result<(), CombatError> {
-    declare_blockers_internal(game, combat, declarations, true, None)
+    declare_blockers_internal(game, combat, declarations, true, None)?;
+    combat.block_declaration_complete = true;
+    Ok(())
 }
 
 /// Validate one defending player's declaration while retaining declarations
@@ -1038,10 +1049,16 @@ fn max_attackers_this_blocker_can_block(
     blocker_id: ObjectId,
     effects: &[crate::continuous::ContinuousEffect],
 ) -> usize {
-    let extra = static_abilities_for_object(game, blocker_id, effects)
+    let abilities = static_abilities_for_object(game, blocker_id, effects);
+    if abilities.iter().any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::CanBlockAnyNumber) {
+        // Capacity is unbounded by this rule; duplicate pairs, evasion, costs,
+        // controller scope and global blocker restrictions are still checked.
+        return usize::MAX;
+    }
+    let extra = abilities
         .iter()
-        .filter_map(|ability| ability.additional_blockable_attackers())
-        .sum::<usize>();
+        .filter_map(|ability| ability.additional_blockable_attackers_for_source(game, blocker_id))
+        .fold(0usize, usize::saturating_add);
     1usize.saturating_add(extra)
 }
 
@@ -1845,7 +1862,7 @@ pub fn is_blocked(combat: &CombatState, attacker: ObjectId) -> bool {
 
 /// Returns true if the attacker is unblocked (no blockers assigned and is attacking).
 pub fn is_unblocked(combat: &CombatState, attacker: ObjectId) -> bool {
-    is_attacking(combat, attacker) && !is_blocked(combat, attacker)
+    combat.block_declaration_complete && is_attacking(combat, attacker) && !is_blocked(combat, attacker)
 }
 
 /// Returns the attack target for a creature, if it is attacking.
@@ -2030,6 +2047,22 @@ mod tests {
         CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Enchantment])
             .build()
+    }
+
+    #[test]
+    fn zero_blocker_declaration_marks_unblocked_only_after_the_declaration() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let attacker = game.create_object_from_card(&creature_card("Boundary attacker", 2, 2), alice, Zone::Battlefield);
+        game.remove_summoning_sickness(attacker);
+        let mut combat = CombatState::default();
+        declare_attackers(&mut game, &mut combat, vec![(attacker, AttackTarget::Player(bob))]).unwrap();
+        assert!(!is_unblocked(&combat, attacker));
+        declare_blockers(&game, &mut combat, vec![]).unwrap();
+        assert!(is_unblocked(&combat, attacker));
+        end_combat(&mut combat); game.untap(attacker);
+        declare_attackers(&mut game, &mut combat, vec![(attacker, AttackTarget::Player(bob))]).unwrap();
+        assert!(!is_unblocked(&combat, attacker), "an extra combat does not inherit the preceding declaration boundary");
     }
 
     #[test]

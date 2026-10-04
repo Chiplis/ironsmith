@@ -1095,3 +1095,25 @@ mod turn_history_draw_tests {
         assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
     }
 }
+
+#[cfg(test)]
+mod relative_draw_tests {
+    use super::*;
+    #[test]
+    fn complete_draw_quantities_use_shared_semantic_values() {
+        let tokens = crate::lexer::lex_line("equal to the difference", 0).unwrap();
+        assert_eq!(
+            parse_draw_equal_to_value(&tokens).unwrap(),
+            Some(Value::PendingComparisonDifference)
+        );
+        let tokens = crate::lexer::lex_line("equal to the milled card's mana value", 0).unwrap();
+        assert!(
+            matches!(parse_draw_equal_to_value(&tokens).unwrap(), Some(Value::PendingPriorEffectMetric(query))
+            if query.action == Some(ironsmith_core::PriorEffectAction::Milled)
+                && query.metric == ironsmith_core::EffectMetric::FirstManaValue)
+        );
+        let tokens =
+            crate::lexer::lex_line("equal to the difference among strange things", 0).unwrap();
+        assert!(parse_draw_equal_to_value(&tokens).unwrap().is_none());
+    }
+}

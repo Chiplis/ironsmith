@@ -33,7 +33,11 @@ fn parses_turn_conditional_and_quoted_durations() {
     ])
     .unwrap();
     assert_eq!(source_lifetime.start, 2);
-    assert_eq!(source_lifetime.duration, Until::ThisLeavesTheBattlefield);
+    assert_eq!(source_lifetime.duration, Until::ForAsLongAs(
+        ironsmith_core::ContinuousDurationPredicate::ObjectOnBattlefield(
+            ironsmith_core::ContinuousDurationObject::Source,
+        ),
+    ));
 
     let tapped_tokens = lex_line("flying for as long as this creature remains tapped.", 0).unwrap();
     let tapped = parse_source_tapped_gain_duration_shape(&tapped_tokens).unwrap();
@@ -133,4 +137,16 @@ fn parses_leading_affected_object_counter_duration_before_real_grant_verb() {
         parse_leading_affected_object_counter_duration_shape(&normalized_without_comma).is_some(),
         "multi-sentence normalization may omit the duration comma"
     );
+}
+
+#[test]
+fn snc_quoted_mana_grant_has_exact_source_cast_duration() {
+    let tokens = lex_line("Target land gains \"{T}: Add {U}, {B}, or {R}\" until this card is cast from exile.", 0).unwrap();
+    let parsed = parse_quoted_gain_duration_shape(&tokens, 2).unwrap();
+    assert!(matches!(parsed.duration, Until::ObjectIsCast {
+        object: ironsmith_core::ContinuousDurationObject::Tagged(ref tag),
+        from_zone: crate::zone::Zone::Exile,
+    } if tag.as_str() == ironsmith_core::tag::SOURCE_EXILED_SELF_TAG));
+    assert!(parse_simple_ability_duration_shape(&["until", "that", "card", "is", "cast", "from", "exile"]).is_none(),
+        "an unrelated object must not silently become this source");
 }

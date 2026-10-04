@@ -10,7 +10,9 @@ pub trait GrantStaticAbility: Clone + PartialEq {
     fn grant_display(&self) -> String;
     fn grant_has_flash(&self) -> bool;
     /// Whether this payload replaces its own owner's graveyard arrival with exile.
-    fn grant_is_source_owner_graveyard_exile(&self) -> bool { false }
+    fn grant_is_source_owner_graveyard_exile(&self) -> bool {
+        false
+    }
 }
 
 /// A granted alternative cast whose exact cost is derived from the granted card.
@@ -262,6 +264,16 @@ pub enum Grantable<SA, E, C, Cond> {
     DerivedAlternativeCast(DerivedAlternativeCast<C>),
     /// Grant the ability to play a card from a non-hand zone as if it were in hand.
     PlayFrom,
+    /// An optional replacement for a spell's mana cost. This grants no zone
+    /// permission. `origin` restricts eligible independently authorized casts;
+    /// None applies to every otherwise legal origin (including command).
+    /// Appended to preserve the ordinals of all existing grant payloads.
+    AlternativePrice {
+        /// A conjunction of paid components. Alternative branches require a
+        /// separate announced price, rather than an unresolved nested choice.
+        costs: Vec<C>,
+        origin: Option<Zone>,
+    },
 }
 
 impl<SA, E, C, Cond> Grantable<SA, E, C, Cond> {
@@ -295,6 +307,9 @@ impl<SA, E, C, Cond> Grantable<SA, E, C, Cond> {
                 Grantable::DerivedAlternativeCast(spec.try_map(&mut map_cost)?)
             }
             Self::PlayFrom => Grantable::PlayFrom,
+            Self::AlternativePrice { costs, origin } => Grantable::AlternativePrice {
+                costs: costs.into_iter().map(&mut map_cost).collect::<Result<_, _>>()?, origin,
+            },
         })
     }
 }
@@ -418,6 +433,7 @@ where
             Self::AlternativeCast(m) => m.name().to_string(),
             Self::DerivedAlternativeCast(spec) => spec.display_name().to_string(),
             Self::PlayFrom => "play from zone".to_string(),
+            Self::AlternativePrice { .. } => "alternative spell price".to_string(),
         }
     }
 }
@@ -432,6 +448,9 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub filter: ObjectFilter,
     /// The zone where this grant applies.
     pub zone: Zone,
+    /// Additional origins belonging to the same permission and use identity.
+    /// Each origin receives the same filter; explicit zone constraints are rebound.
+    pub additional_zones: Vec<Zone>,
     /// Which player may use the grant when rendered or applied statically.
     pub beneficiary: PlayerFilter,
     /// How often this permission may be used from the same source.
@@ -441,13 +460,30 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub max_plays: Option<u32>,
     /// Static abilities granted to a spell as it is cast using this permission.
     pub cast_this_way_grants: Vec<SA>,
+    /// Noncopiable recipient abilities retained until the played/cast permanent leaves.
+    /// Unlike cast_this_way_grants these do not expire at the end of the turn.
+    #[cfg_attr(feature = "serde", serde(default = "Vec::new"))]
+    pub permanent_this_way_grants: Vec<SA>,
     /// An optional narrower filter for the spell that receives
     /// `cast_this_way_grants`. The permission itself continues to use
     /// `filter`, which matters for permissions that include lands or
     /// noncreature spells but only modify creature spells cast this way.
     pub cast_this_way_filter: Option<ObjectFilter>,
+    /// Reflexive instruction triggered only when this exact permission completes a play/cast.
+    pub on_use_effects: Vec<E>,
     /// Presentation metadata for a persistent source-linked exile grant.
     pub source_exiled_surface: Option<SourceExiledGrantSurface>,
+    /// Only the current top card of the beneficiary's library is permitted.
+    /// This is authoritative action scope, not just an enumeration shortcut.
+    pub top_card_only: bool,
+    /// This exact play-from permission supplies instant-speed timing.
+    pub instant_timing: bool,
+    /// A resolving permission also lets its fixed beneficiary privately inspect each current top.
+    pub may_look_at_top: bool,
+    /// Complete surface retained only by strict filtered-zone or price productions.
+    /// Execution uses the typed filter, origin, timing and use-limit fields.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub filtered_zone_surface: Option<String>,
 }
 
 /// A filter naming exactly the cards exiled with the granting source (any
@@ -473,12 +509,19 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             grantable,
             filter,
             zone,
+            additional_zones: Vec::new(),
             beneficiary: PlayerFilter::You,
             usage_limit: None,
             max_plays: None,
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
+            on_use_effects: Vec::new(),
             source_exiled_surface: None,
+            top_card_only: false,
+            instant_timing: false,
+            may_look_at_top: false,
+            filtered_zone_surface: None,
         }
     }
 
@@ -499,6 +542,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
                 .try_map(&mut map_static, &mut map_effect, &mut map_cost)?,
             filter: self.filter,
             zone: self.zone,
+            additional_zones: self.additional_zones,
             beneficiary: self.beneficiary,
             usage_limit: self.usage_limit,
             max_plays: self.max_plays,
@@ -507,10 +551,45 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
                 .into_iter()
                 .map(&mut map_static)
                 .collect::<Result<Vec<_>, _>>()?,
+            permanent_this_way_grants: self
+                .permanent_this_way_grants
+                .into_iter()
+                .map(&mut map_static)
+                .collect::<Result<Vec<_>, _>>()?,
             cast_this_way_filter: self.cast_this_way_filter,
+            on_use_effects: self.on_use_effects.into_iter().map(&mut map_effect).collect::<Result<_, _>>()?,
             source_exiled_surface: self.source_exiled_surface,
+            top_card_only: self.top_card_only,
+            instant_timing: self.instant_timing,
+            may_look_at_top: self.may_look_at_top,
+            filtered_zone_surface: self.filtered_zone_surface,
         })
     }
+
+    /// Concrete origin scopes share their owning permission identity at runtime.
+    /// FromZone alternative costs keep the same payment but use the concrete
+    /// origin; a library-top restriction never constrains a hand alternative.
+    pub fn zone_specs(&self) -> Vec<Self>
+    where SA: Clone, E: Clone, C: Clone, Cond: Clone {
+        let mut zones = vec![self.zone];
+        for zone in &self.additional_zones { if !zones.contains(zone) { zones.push(*zone); } }
+        let multiple = zones.len() > 1;
+        zones.into_iter().map(|zone| {
+            let mut spec = self.clone(); spec.additional_zones.clear(); spec.zone = zone;
+            if multiple {
+                spec.filter.zone = Some(zone);
+                spec.top_card_only &= zone == Zone::Library;
+                spec.may_look_at_top &= zone == Zone::Library;
+                if let Grantable::AlternativeCast(AlternativeCastingMethod::FromZone {zone: method_zone, ..}) = &mut spec.grantable {
+                    *method_zone = zone;
+                }
+            }
+            spec
+        }).collect()
+    }
+
+    pub fn with_top_card_only(mut self) -> Self { self.top_card_only = true; self }
+    pub fn with_instant_timing(mut self) -> Self { self.instant_timing = true; self }
 
     /// Return a copy of this grant specification with an explicit beneficiary.
     pub fn with_beneficiary(mut self, beneficiary: PlayerFilter) -> Self {
@@ -577,13 +656,35 @@ where
             grantable: Grantable::Ability(SA::grant_flash()),
             filter,
             zone: Zone::Hand,
+            additional_zones: Vec::new(),
             beneficiary: PlayerFilter::You,
             usage_limit: None,
             max_plays: None,
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
+            on_use_effects: Vec::new(),
             source_exiled_surface: None,
+            top_card_only: false,
+            instant_timing: false,
+            may_look_at_top: false,
+            filtered_zone_surface: None,
         }
+    }
+
+    /// Timing of matching spells from any independently authorized origin.
+    /// Stack is the proposed spell domain, not a permission to cast from it.
+    /// Real zone-limited card grants keep using flash_to_spells_matching.
+    pub fn flash_timing_for_spells_matching(mut filter: ObjectFilter) -> Self {
+        fn spell_domain(filter: &mut ObjectFilter) {
+            if matches!(filter.zone, Some(Zone::Battlefield | Zone::Stack)) { filter.zone = None; }
+            filter.stack_kind = None;
+            for branch in &mut filter.any_of { spell_domain(branch); }
+        }
+        spell_domain(&mut filter);
+        let mut spec = Self::flash_to_spells_matching(filter);
+        spec.zone = Zone::Stack;
+        spec
     }
 
     /// Create a grant spec for flash to noncreature spells in hand.
@@ -638,12 +739,19 @@ where
             grantable: Grantable::escape(exile_count),
             filter: ObjectFilter::nonland(),
             zone: Zone::Graveyard,
+            additional_zones: Vec::new(),
             beneficiary: PlayerFilter::You,
             usage_limit: None,
             max_plays: None,
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
+            on_use_effects: Vec::new(),
             source_exiled_surface: None,
+            top_card_only: false,
+            instant_timing: false,
+            may_look_at_top: false,
+            filtered_zone_surface: None,
         }
     }
 }
@@ -657,6 +765,14 @@ where
 {
     /// Get a display string for this grant specification.
     pub fn display(&self) -> String {
+        if let Some(surface) = &self.filtered_zone_surface { return surface.clone(); }
+        let text = self.display_base();
+        if self.instant_timing {
+            format!("{text}. If you cast a spell this way, you may cast it as though it had flash")
+        } else { text }
+    }
+
+    fn display_base(&self) -> String {
         fn zone_name(zone: Zone) -> &'static str {
             match zone {
                 Zone::Battlefield => "battlefield",
@@ -914,35 +1030,65 @@ where
         }
 
         fn graveyard_cast_cost_text<C: CostComponent>(additional_costs: &[C]) -> String {
-            if let [cost] = additional_costs
-                && let Some(filter) = cost.sacrifice_filter()
-                && let Some(filter_text) = sacrifice_cost_filter_description(filter)
-            {
-                return format!("sacrificing {filter_text} in addition to paying its other costs");
-            }
-
-            if let [cost] = additional_costs
-                && let Some((count, card_types)) = cost.exile_from_graveyard_details()
-            {
-                let count_text = if count == 1 {
-                    "a".to_string()
-                } else {
-                    crate::cardinal_word(count).unwrap_or_else(|| count.to_string())
-                };
-                let type_text = list_card_types_and_or(card_types);
-                let type_prefix = if type_text.is_empty() {
-                    String::new()
-                } else {
-                    format!("{type_text} ")
-                };
-                let card_word = if count == 1 { "card" } else { "cards" };
-                return format!(
-                    "exiling {count_text} {type_prefix}{card_word} from your graveyard in addition to paying its other costs"
-                );
+            fn cost_text<C: CostComponent>(cost: &C) -> Option<String> {
+                if let Some(amount) = cost.life_amount() {
+                    return Some(format!("paying {amount} life"));
+                }
+                if let Some((count, card_type)) = cost.discard_details() {
+                    let count_text = if count == 1 {
+                        "a".to_string()
+                    } else {
+                        crate::cardinal_word(count).unwrap_or_else(|| count.to_string())
+                    };
+                    let type_prefix = card_type
+                        .map(|kind| format!("{} ", kind.to_string().to_ascii_lowercase()))
+                        .unwrap_or_default();
+                    let noun = if count == 1 { "card" } else { "cards" };
+                    return Some(format!("discarding {count_text} {type_prefix}{noun}"));
+                }
+                if let Some(filter) = cost.sacrifice_filter()
+                    && let Some(filter_text) = sacrifice_cost_filter_description(filter)
+                {
+                    return Some(format!("sacrificing {filter_text}"));
+                }
+                if let Some((count, card_types)) = cost.exile_from_graveyard_details() {
+                    let other = cost.exile_from_graveyard_excludes_source();
+                    let count_text = if count == 1 {
+                        if other { "another" } else { "a" }.to_string()
+                    } else {
+                        let number =
+                            crate::cardinal_word(count).unwrap_or_else(|| count.to_string());
+                        if other {
+                            format!("{number} other")
+                        } else {
+                            number
+                        }
+                    };
+                    let type_text = list_card_types_and_or(card_types);
+                    let type_prefix = if type_text.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{type_text} ")
+                    };
+                    let noun = if count == 1 { "card" } else { "cards" };
+                    return Some(format!(
+                        "exiling {count_text} {type_prefix}{noun} from your graveyard"
+                    ));
+                }
+                None
             }
 
             if additional_costs.is_empty() {
                 "paying its mana cost".to_string()
+            } else if let Some(costs) = additional_costs
+                .iter()
+                .map(cost_text)
+                .collect::<Option<Vec<_>>>()
+            {
+                format!(
+                    "{} in addition to paying its other costs",
+                    costs.join(" and ")
+                )
             } else {
                 format!(
                     "paying its mana cost plus {}",
@@ -1025,7 +1171,9 @@ where
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     "That player may".to_string()
                 }
-                PlayerFilter::ControlsMost { .. } => "That player may".to_string(),
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+                    "That player may".to_string()
+                }
                 PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
                     "That player may".to_string()
                 }
@@ -1363,7 +1511,9 @@ where
                 && self.cast_this_way_grants[0].grant_is_source_owner_graveyard_exile()
             {
                 let spell_text = cast_spell_text();
-                return format!(". If {spell_text} cast this way would be put into your graveyard, exile it instead");
+                return format!(
+                    ". If {spell_text} cast this way would be put into your graveyard, exile it instead"
+                );
             }
             if grants.len() == 1 && grants[0].eq_ignore_ascii_case("haste") {
                 let spell_text = cast_spell_text();
@@ -1657,9 +1807,7 @@ where
                 && !filter.card_types.contains(&CardType::Instant)
                 && !filter.card_types.contains(&CardType::Sorcery);
             if nonland_permanent
-                && let Some(rest) = filter_desc
-                    .strip_prefix("spell card")
-                    .map(str::to_string)
+                && let Some(rest) = filter_desc.strip_prefix("spell card").map(str::to_string)
             {
                 filter_desc = format!("nonland permanent card{rest}");
             }
@@ -1786,7 +1934,11 @@ where
                 cast_filter.owner = None;
             }
             let filter_desc = castable_filter_description(&cast_filter);
-            let filter_desc = if filter_desc == "spell" { "a spell".to_string() } else { filter_desc };
+            let filter_desc = if filter_desc == "spell" {
+                "a spell".to_string()
+            } else {
+                filter_desc
+            };
             let cost_text = graveyard_cast_cost_text(additional_costs);
             if self.filter == ObjectFilter::source() {
                 let mut line = format!("{may_prefix} cast this card from your graveyard");
@@ -1838,7 +1990,7 @@ where
         }
         if let Grantable::Ability(ability) = &self.grantable
             && ability.grant_has_flash()
-            && self.zone == Zone::Hand
+            && matches!(self.zone, Zone::Hand | Zone::Stack)
         {
             if self.filter == ObjectFilter::nonland() {
                 return format!("{may_prefix} cast spells as though they had flash");

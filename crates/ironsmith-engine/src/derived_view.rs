@@ -31,6 +31,7 @@ use crate::zone::Zone;
 /// global invalidation concerns on `GameState`.
 pub(crate) struct DerivedGameView<'a> {
     game: &'a GameState,
+    target_reference_bindings: crate::cost::prospective_references::CostReferenceBindings,
     memo_characteristic_context: Cell<Option<u64>>,
     all_effects: Arc<Vec<ContinuousEffect>>,
     battlefield_characteristic_scope: OnceCell<BattlefieldCharacteristicScope>,
@@ -287,6 +288,7 @@ fn modification_can_change_spell_cost_modifier_presence(modification: &Modificat
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
+        | Modification::RemoveLandRulesTextAbilities
         | Modification::RemoveAllAbilitiesExceptMana
         | Modification::RemoveStaticAbilityFamily(_) => true,
         Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
@@ -309,6 +311,7 @@ fn modification_can_change_activated_ability_cost_modifier_presence(
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
+        | Modification::RemoveLandRulesTextAbilities
         | Modification::RemoveAllAbilitiesExceptMana
         | Modification::RemoveStaticAbilityFamily(_) => true,
         Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
@@ -329,6 +332,7 @@ fn modification_can_change_minimum_total_spell_mana_presence(modification: &Modi
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
+        | Modification::RemoveLandRulesTextAbilities
         | Modification::RemoveAllAbilitiesExceptMana
         | Modification::RemoveStaticAbilityFamily(_) => true,
         Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
@@ -382,6 +386,18 @@ fn static_ability_has_minimum_total_spell_mana(
 }
 
 impl<'a> DerivedGameView<'a> {
+    /// A fresh activation-local target view. Its memo table must never reuse
+    /// answers computed for another announced cost identity.
+    pub(crate) fn with_target_reference_bindings(mut self, references: crate::cost::prospective_references::CostReferenceBindings) -> Self {
+        self.target_reference_bindings = references;
+        self.spell_target_legality.get_mut().clear();
+        self
+    }
+
+    pub(crate) fn target_reference_bindings(&self) -> Option<&crate::cost::prospective_references::CostReferenceBindings> {
+        (!self.target_reference_bindings.is_empty()).then_some(&self.target_reference_bindings)
+    }
+
     pub(crate) fn new(game: &'a GameState) -> Self {
         if game.continuous_state_is_clean() {
             Self::from_refreshed_state(game)
@@ -399,6 +415,7 @@ impl<'a> DerivedGameView<'a> {
         game.count_derived_view_rebuild();
         Self {
             game,
+            target_reference_bindings: Default::default(),
             memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(game)),
             battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
@@ -439,6 +456,7 @@ impl<'a> DerivedGameView<'a> {
         let all_effects = Arc::new(all_effects);
         Self {
             game,
+            target_reference_bindings: Default::default(),
             memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(game)),
             battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
@@ -1152,8 +1170,11 @@ impl<'a> DerivedGameView<'a> {
                     method: method.clone(),
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
-                    usage_limit: None,
+                    usage_limit: grant.usage_limit,
+                    constraints: grant.play_from_constraints.clone(),
                     cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                    permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
+                    on_use_effects: grant.on_use_effects.clone(),
                     cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 }),
                 Grantable::DerivedAlternativeCast(spec) => {
@@ -1163,13 +1184,16 @@ impl<'a> DerivedGameView<'a> {
                             method,
                             source_id: grant.source.source_id(),
                             zone: grant.zone,
-                            usage_limit: spec.usage_limit(),
+                            usage_limit: spec.usage_limit().or(grant.usage_limit),
+                            constraints: grant.play_from_constraints.clone(),
                             cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                            permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
+                            on_use_effects: grant.on_use_effects.clone(),
                             cast_this_way_filter: grant.cast_this_way_filter.clone(),
                         }
                     })
                 }
-                Grantable::Ability(_) | Grantable::PlayFrom => None,
+                Grantable::Ability(_) | Grantable::PlayFrom | Grantable::AlternativePrice { .. } => None,
             })
             .chain(self.game.plotted_cast_permission(card_id, zone, player))
             .collect();
@@ -1210,7 +1234,7 @@ impl<'a> DerivedGameView<'a> {
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)
-                | Grantable::DerivedAlternativeCast(_) => None,
+                | Grantable::DerivedAlternativeCast(_) | Grantable::AlternativePrice { .. } => None,
             })
             .collect();
         self.granted_play_from
@@ -1256,8 +1280,11 @@ impl<'a> DerivedGameView<'a> {
                     method: method.clone(),
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
-                    usage_limit: None,
+                    usage_limit: grant.usage_limit,
+                    constraints: grant.play_from_constraints.clone(),
                     cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                    permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
+                    on_use_effects: grant.on_use_effects.clone(),
                     cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 }),
                 Grantable::DerivedAlternativeCast(spec) => {
@@ -1267,13 +1294,16 @@ impl<'a> DerivedGameView<'a> {
                             method,
                             source_id: grant.source.source_id(),
                             zone: grant.zone,
-                            usage_limit: spec.usage_limit(),
+                            usage_limit: spec.usage_limit().or(grant.usage_limit),
+                            constraints: grant.play_from_constraints.clone(),
                             cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                            permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
+                            on_use_effects: grant.on_use_effects.clone(),
                             cast_this_way_filter: grant.cast_this_way_filter.clone(),
                         }
                     })
                 }
-                Grantable::Ability(_) | Grantable::PlayFrom => None,
+                Grantable::Ability(_) | Grantable::PlayFrom | Grantable::AlternativePrice { .. } => None,
             })
             .collect()
     }
@@ -1303,7 +1333,7 @@ impl<'a> DerivedGameView<'a> {
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)
-                | Grantable::DerivedAlternativeCast(_) => None,
+                | Grantable::DerivedAlternativeCast(_) | Grantable::AlternativePrice { .. } => None,
             })
             .collect()
     }
@@ -1966,6 +1996,8 @@ fn grant_applies_to_card(
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
+    if !crate::grant_registry::grant_top_card_matches(game, grant, card_id) { return false; }
+
     if grant
         .required_face_name
         .as_ref()
@@ -1999,6 +2031,8 @@ fn grant_applies_to_card_non_recursive(
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
+    if !crate::grant_registry::grant_top_card_matches(game, grant, card_id) { return false; }
+
     // A self-grant can require a particular cast face even when the grant's
     // card filter must use that card's characteristics in its current zone.
     if grant

@@ -1,0 +1,46 @@
+[
+  {
+    "name": "Psychic Possession",
+    "text": "Mana cost: {2}{U}{U}\nType: Enchantment \u2014 Aura\nEnchant opponent\nSkip your draw step.\nWhenever enchanted opponent draws a card, you may draw a card.",
+    "oracle_id": "d2458d63-c627-4e75-8bda-23bca38cae93",
+    "source": "https://scryfall.com/card/dis/30/psychic-possession?utm_source=api",
+    "baseline_content_hash": "aad42831eec16d182912a1f6aef62ddeef8bf6c92f5bc46fd833085163c8cb26",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever enchanted opponent draws a card, you may draw a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever enchanted opponent draws a card, you may draw a card.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only, no builds, tests, or compiler probes."
+  },
+  {
+    "name": "The Watcher in the Water",
+    "text": "Mana cost: {3}{U}{U}\nType: Legendary Creature \u2014 Kraken\nPower/Toughness: 9/9\nThe Watcher in the Water enters tapped with nine stun counters on it. (If a permanent with a stun counter would become untapped, remove one from it instead.)\nWhenever you draw a card during an opponent's turn, create a 1/1 blue Tentacle creature token.\nWhenever a Tentacle you control dies, untap up to one target Kraken and put a stun counter on up to one target nonland permanent.",
+    "oracle_id": "a9ddb3dc-f289-46a1-af17-3a8523a26b0d",
+    "source": "https://scryfall.com/card/ltr/765/the-watcher-in-the-water?utm_source=api",
+    "baseline_content_hash": "f376078c004a6e31c377ff2929bade6c31166cfe4b90c6a8b39516f4d2862709",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever you draw a card during an opponent's turn, create a 1/1 blue Tentacle creature token.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you draw a card during an opponent's turn, create a 1/1 blue Tentacle creature token.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only, no builds, tests, or compiler probes."
+  },
+  {
+    "name": "Wedding Ring",
+    "text": "Mana cost: {2}{W}{W}\nType: Artifact\nWhen this artifact enters, if it was cast, target opponent creates a token that's a copy of it.\nWhenever an opponent who controls an artifact named Wedding Ring draws a card during their turn, you draw a card.\nWhenever an opponent who controls an artifact named Wedding Ring gains life during their turn, you gain that much life.",
+    "oracle_id": "0c34e962-99d9-4163-b852-4f61886546aa",
+    "source": "https://scryfall.com/card/sld/2802/wedding-ring?utm_source=api",
+    "baseline_content_hash": "82f78ebf040eecdebc11c04bd85ba1a7d1fc1c197910b066519b2f3316fd17b7",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever an opponent who controls an artifact named Wedding Ring draws a card during their turn, you draw a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever an opponent who controls an artifact named Wedding Ring draws a card during their turn, you draw a card.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": false,
+    "remaining_blocker": "Literal draw continuations and earlier direct-draw receipt boundaries are implemented. A draw introduced indirectly by replacing a non-draw leaf still lacks a propagated outer continuation boundary; the active unignored nested-life regression records it.",
+    "validation_status": "UNVALIDATED: source only, no builds, tests, or compiler probes."
+  },
+  {
+    "name": "Wiretapping",
+    "text": "Mana cost: {4}{U}\nType: Enchantment\nHideaway 5 (When this enchantment enters, look at the top five cards of your library, exile one face down, then put the rest on the bottom in a random order.)\nWhenever you draw your first card during each of your draw steps, draw a card. Then if you have nine or more cards in hand, you may play the exiled card without paying its mana cost.",
+    "oracle_id": "befc5986-f06c-40a4-98ee-ffcace4ceaa8",
+    "source": "https://scryfall.com/card/snc/65/wiretapping?utm_source=api",
+    "baseline_content_hash": "7b3bdf19fd9efb288687fa381c3d8ea4f399d35f4a8772d66ff1202a3995c5ae",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever you draw your first card during each of your draw steps, draw a card. Then if you have nine or more cards in hand, you may play the exiled card without paying its mana cost.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you draw your first card during each of your draw steps, draw a card. Then if you have nine or more cards in hand, you may play the exiled card without paying its mana cost.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only, no builds, tests, or compiler probes."
+  }
+]

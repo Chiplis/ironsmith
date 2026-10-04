@@ -77,6 +77,7 @@ fn retarget_it_restriction_for_counter_followup(
         Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
+        | Restriction::MustAttack(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
@@ -106,6 +107,7 @@ fn retarget_it_restriction_for_counter_followup(
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
         | Restriction::AttackPlayer { attackers, .. }
+        | Restriction::PlayLandsMatching(_, attackers)
         | Restriction::CastSpellsMatching(_, attackers)
         | Restriction::CastMoreThanOneSpellEachTurn(_, attackers) => {
             retarget_it_filter_for_counter_followup(attackers, source_filter);
@@ -114,7 +116,9 @@ fn retarget_it_restriction_for_counter_followup(
             retarget_it_filter_for_counter_followup(target, source_filter);
             retarget_it_filter_for_counter_followup(source, source_filter);
         }
-        Restriction::BeTargetedPlayerFrom(_, source) => {
+        Restriction::ActivateLoyaltyAbilitiesOf(source)
+        | Restriction::PreventDamageFrom { sources: source, .. }
+        | Restriction::BeTargetedPlayerFrom(_, source) => {
             retarget_it_filter_for_counter_followup(source, source_filter);
         }
         _ => {}

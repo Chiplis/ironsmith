@@ -1,0 +1,200 @@
+[
+  {
+    "name": "Act of Heroism",
+    "oracle_id": "25edb501-11b5-4617-8a65-2eb4869cccd5",
+    "scryfall_uri": "https://scryfall.com/card/a25/1/act-of-heroism?utm_source=api",
+    "mana_cost": "{1}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Untap target creature. It gets +2/+2 until end of turn and can block an additional creature this turn.",
+    "stack07_error": "could not find verb in effect clause (clause: 'can block an additional creature this turn'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'can block an additional creature this turn'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > statement-probe]",
+    "repair_group": "finite_conditional_or_compound"
+  },
+  {
+    "name": "Avatar of Hope",
+    "oracle_id": "e2f22cef-9494-4356-aa5c-619aecd7e74d",
+    "scryfall_uri": "https://scryfall.com/card/8ed/4%E2%98%85/avatar-of-hope?utm_source=api",
+    "mana_cost": "{6}{W}{W}",
+    "type_line": "Creature — Avatar",
+    "oracle_text": "If you have 3 or less life, this spell costs {6} less to cast.\nFlying\nThis creature can block any number of creatures.",
+    "power": "4",
+    "toughness": "9",
+    "stack07_error": "parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]",
+    "repair_group": "unlimited_capacity"
+  },
+  {
+    "name": "Blaze of Glory",
+    "oracle_id": "b330ac89-790e-4cc9-96a5-532c48252088",
+    "scryfall_uri": "https://scryfall.com/card/30a/6/blaze-of-glory?utm_source=api",
+    "mana_cost": "{W}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during combat before blockers are declared.\nTarget creature defending player controls can block any number of creatures this turn. It blocks each attacking creature this turn if able.",
+    "stack07_error": "parser does not yet support line family: 'Target creature defending player controls can block any number of creatures this turn. It blocks each attacking creature this turn if able.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Target creature defending player controls can block any number of creatures this turn. It blocks each attacking creature this turn if able.' [rule-path=unsupported-line-family]",
+    "repair_group": "forced_all_attackers"
+  },
+  {
+    "name": "Echo Circlet",
+    "oracle_id": "17134950-fdb3-48d0-b541-419db673f4c9",
+    "scryfall_uri": "https://scryfall.com/card/som/153/echo-circlet?utm_source=api",
+    "mana_cost": "{2}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Equipped creature can block an additional creature each combat.\nEquip {1}",
+    "stack07_error": "parser does not yet support line family: 'Equipped creature can block an additional creature each combat.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Equipped creature can block an additional creature each combat.' [rule-path=unsupported-line-family]",
+    "repair_group": "finite_conditional_or_compound"
+  },
+  {
+    "name": "Entangler",
+    "oracle_id": "285cf707-df0c-4eb9-8f60-5d052ee8eb8c",
+    "scryfall_uri": "https://scryfall.com/card/plst/PCY-7/entangler?utm_source=api",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature can block any number of creatures.",
+    "stack07_error": "parser does not yet support line family: 'Enchanted creature can block any number of creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Enchanted creature can block any number of creatures.' [rule-path=unsupported-line-family]",
+    "repair_group": "unlimited_capacity"
+  },
+  {
+    "name": "Entourage of Trest",
+    "oracle_id": "27b0bd3f-2c11-474a-8512-fe035a514905",
+    "scryfall_uri": "https://scryfall.com/card/plst/CN2-64/entourage-of-trest?utm_source=api",
+    "mana_cost": "{4}{G}",
+    "type_line": "Creature — Elf Soldier",
+    "oracle_text": "When this creature enters, you become the monarch.\nThis creature can block an additional creature each combat as long as you're the monarch.",
+    "power": "4",
+    "toughness": "4",
+    "stack07_error": "parser does not yet support line family: 'This creature can block an additional creature each combat as long as you're the monarch.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block an additional creature each combat as long as you're the monarch.' [rule-path=unsupported-line-family]",
+    "repair_group": "finite_conditional_or_compound"
+  },
+  {
+    "name": "Foriysian Totem",
+    "oracle_id": "d053ea00-e727-4030-8c64-0d32ae57f169",
+    "scryfall_uri": "https://scryfall.com/card/tsp/254/foriysian-totem?utm_source=api",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "{T}: Add {R}.\n{4}{R}: This artifact becomes a 4/4 red Giant artifact creature with trample until end of turn.\nAs long as this artifact is a creature, it can block an additional creature each combat.",
+    "stack07_error": "parser does not yet support line family: 'As long as this artifact is a creature, it can block an additional creature each combat.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'As long as this artifact is a creature, it can block an additional creature each combat.' [rule-path=unsupported-line-family]",
+    "repair_group": "finite_conditional_or_compound"
+  },
+  {
+    "name": "Give No Ground",
+    "oracle_id": "bae18a46-00e0-4b3e-8fdb-44cc61f30f8e",
+    "scryfall_uri": "https://scryfall.com/card/emn/29/give-no-ground?utm_source=api",
+    "mana_cost": "{3}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Target creature gets +2/+6 until end of turn and can block any number of creatures this turn.",
+    "stack07_error": "unsupported trailing gets clause (clause: '+2/+6 until end of turn and can block any number of creatures this turn') [rule-path=complete-get-pump > document-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported trailing gets clause (clause: '+2/+6 until end of turn and can block any number of creatures this turn') [rule-path=complete-get-pump > document-reading] [rule-path=statement-line > statement-probe]",
+    "repair_group": "finite_conditional_or_compound"
+  },
+  {
+    "name": "Guardian of the Gateless",
+    "oracle_id": "e133605f-9227-42c4-afe9-6613ab095433",
+    "scryfall_uri": "https://scryfall.com/card/cn2/89/guardian-of-the-gateless?utm_source=api",
+    "mana_cost": "{4}{W}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flying\nThis creature can block any number of creatures.\nWhenever this creature blocks, it gets +1/+1 until end of turn for each creature it's blocking.",
+    "power": "3",
+    "toughness": "3",
+    "stack07_error": "parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]",
+    "repair_group": "current_combat_count"
+  },
+  {
+    "name": "Hundred-Handed One",
+    "oracle_id": "954aaaa7-c3c1-4696-9ace-bcb5359b1709",
+    "scryfall_uri": "https://scryfall.com/card/plst/THS-20/hundred-handed-one?utm_source=api",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Creature — Giant",
+    "oracle_text": "Vigilance\n{3}{W}{W}{W}: Monstrosity 3. (If this creature isn't monstrous, put three +1/+1 counters on it and it becomes monstrous.)\nAs long as this creature is monstrous, it has reach and can block an additional ninety-nine creatures each combat.",
+    "power": "3",
+    "toughness": "5",
+    "stack07_error": "parser does not yet support line family: 'As long as this creature is monstrous, it has reach and can block an additional ninety-nine creatures each combat.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'As long as this creature is monstrous, it has reach and can block an additional ninety-nine creatures each combat.' [rule-path=unsupported-line-family]",
+    "repair_group": "finite_conditional_or_compound"
+  },
+  {
+    "name": "Iona's Blessing",
+    "oracle_id": "fc5bde87-231e-424a-a8fa-cd9910a09d43",
+    "scryfall_uri": "https://scryfall.com/card/ogw/21/ionas-blessing?utm_source=api",
+    "mana_cost": "{3}{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +2/+2, has vigilance, and can block an additional creature each combat.",
+    "stack07_error": "parser does not yet support line family: 'Enchanted creature gets +2/+2, has vigilance, and can block an additional creature each combat.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Enchanted creature gets +2/+2, has vigilance, and can block an additional creature each combat.' [rule-path=unsupported-line-family]",
+    "repair_group": "finite_conditional_or_compound"
+  },
+  {
+    "name": "Ironfist Crusher",
+    "oracle_id": "ba4c9337-4cdf-44d8-849b-ffd808e5407d",
+    "scryfall_uri": "https://scryfall.com/card/ons/42/ironfist-crusher?utm_source=api",
+    "mana_cost": "{4}{W}",
+    "type_line": "Creature — Human Soldier",
+    "oracle_text": "This creature can block any number of creatures.\nMorph {3}{W} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)",
+    "power": "2",
+    "toughness": "4",
+    "stack07_error": "parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]",
+    "repair_group": "unlimited_capacity"
+  },
+  {
+    "name": "Kemba's Legion",
+    "oracle_id": "338ad8c4-c89f-4e78-be28-7224fac0fd0f",
+    "scryfall_uri": "https://scryfall.com/card/plst/MBS-9/kembas-legion?utm_source=api",
+    "mana_cost": "{5}{W}{W}",
+    "type_line": "Creature — Cat Soldier",
+    "oracle_text": "Vigilance\nThis creature can block an additional creature each combat for each Equipment attached to this creature.",
+    "power": "4",
+    "toughness": "6",
+    "stack07_error": "parser does not yet support line family: 'This creature can block an additional creature each combat for each Equipment attached to this creature.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block an additional creature each combat for each Equipment attached to this creature.' [rule-path=unsupported-line-family]",
+    "repair_group": "dynamic_attachment_capacity"
+  },
+  {
+    "name": "Palace Guard",
+    "oracle_id": "5c92f375-ae6a-4be5-a499-ab87d6bdc49b",
+    "scryfall_uri": "https://scryfall.com/card/m11/24/palace-guard?utm_source=api",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Human Soldier",
+    "oracle_text": "This creature can block any number of creatures.",
+    "power": "1",
+    "toughness": "4",
+    "stack07_error": "parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]",
+    "repair_group": "unlimited_capacity"
+  },
+  {
+    "name": "Thoughtweft Trio",
+    "oracle_id": "15fca8d6-8a86-4c24-9178-f0b6496518ab",
+    "scryfall_uri": "https://scryfall.com/card/lrw/44/thoughtweft-trio?utm_source=api",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Creature — Kithkin Soldier",
+    "oracle_text": "First strike, vigilance\nChampion a Kithkin (When this enters, sacrifice it unless you exile another Kithkin you control. When this leaves the battlefield, that card returns to the battlefield.)\nThis creature can block any number of creatures.",
+    "power": "5",
+    "toughness": "5",
+    "stack07_error": "parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]",
+    "repair_group": "unlimited_capacity"
+  },
+  {
+    "name": "Valor Made Real",
+    "oracle_id": "5bd1348c-51cc-4426-b995-8bb6d4a5bd2e",
+    "scryfall_uri": "https://scryfall.com/card/cns/86/valor-made-real?utm_source=api",
+    "mana_cost": "{W}",
+    "type_line": "Instant",
+    "oracle_text": "Target creature can block any number of creatures this turn.",
+    "stack07_error": "unsupported target-only restriction clause; oracle-only fallback also failed: unsupported target-only restriction clause",
+    "repair_group": "unlimited_capacity"
+  },
+  {
+    "name": "Vanguard's Shield",
+    "oracle_id": "bc628018-f5d0-4bd2-91e7-ee4e4a5af9aa",
+    "scryfall_uri": "https://scryfall.com/card/avr/223/vanguards-shield?utm_source=api",
+    "mana_cost": "{2}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Equipped creature gets +0/+3 and can block an additional creature each combat.\nEquip {3} ({3}: Attach to target creature you control. Equip only as a sorcery.)",
+    "stack07_error": "unsupported trailing anthem clause (clause: 'equipped creature gets +0/+3 and can block an additional creature each combat') [rule-path=parse_anthem_line] [rule-path=static-line]; oracle-only fallback also failed: unsupported trailing anthem clause (clause: 'equipped creature gets +0/+3 and can block an additional creature each combat') [rule-path=parse_anthem_line] [rule-path=static-line]",
+    "repair_group": "finite_conditional_or_compound"
+  },
+  {
+    "name": "Wall of Glare",
+    "oracle_id": "a59897cb-7ead-494a-a1d0-c9baf79bf18b",
+    "scryfall_uri": "https://scryfall.com/card/plst/UDS-25/wall-of-glare?utm_source=api",
+    "mana_cost": "{1}{W}",
+    "type_line": "Creature — Wall",
+    "oracle_text": "Defender (This creature can't attack.)\nThis creature can block any number of creatures.",
+    "power": "0",
+    "toughness": "5",
+    "stack07_error": "parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'This creature can block any number of creatures.' [rule-path=unsupported-line-family]",
+    "repair_group": "unlimited_capacity"
+  }
+]

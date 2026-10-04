@@ -338,6 +338,8 @@ fn execute_planned_keyword_payments(
     // CR 702.66a / 603.2c: the cards exiled with delve leave the graveyard
     // together, as one event ("whenever one or more cards leave your
     // graveyard").
+    let before = crate::events::other::before_tap_state_snapshots(game);
+    let mut tapped_events = Vec::new();
     let opened_batch = game.open_simultaneous_action();
     let result = (|| -> Result<(), GameLoopError> {
         for allocation in &payment.plan.allocations {
@@ -378,7 +380,9 @@ fn execute_planned_keyword_payments(
                     "planned {effect:?} permanent {permanent_id:?} is no longer available"
                 )));
             }
-            tap_permanent_with_trigger(game, trigger_queue, permanent_id);
+            if let Some(event) = tap_permanent_with_trigger(game, permanent_id, pending.caster) {
+                tapped_events.push(event);
+            }
             let event_provenance = game
                 .provenance_graph_mut()
                 .alloc_root_event(crate::events::EventKind::KeywordAction);
@@ -404,6 +408,11 @@ fn execute_planned_keyword_payments(
         }
         Ok(())
     })();
+    if result.is_ok() {
+        crate::events::other::bind_before_tap_state_snapshots(&mut tapped_events, &before);
+        crate::events::other::group_tap_state_events(game, &mut tapped_events, pending.provenance);
+        for event in tapped_events { game.queue_trigger_event(event.provenance(), event); }
+    }
     game.close_simultaneous_action(opened_batch);
     result?;
     drain_pending_trigger_events(game, trigger_queue);
@@ -464,6 +473,9 @@ pub(super) fn prompt_pending_mana_ability_payment(
     });
     let plan = plan_result.map_err(|failure| {
         state.rollback_action(game);
+        if let crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) = failure {
+            return GameLoopError::ExecutionFailed(error);
+        }
         GameLoopError::ActionCancelled(format!(
             "the mana ability's activation cost has no legal payment plan: {failure:?}"
         ))
@@ -516,6 +528,9 @@ fn refresh_prepared_spell_payment(
     request.preferences.normalize();
     let plan = crate::mana_payment::plan_mana_payment(game, &request)
         .map_err(|failure| {
+            if let crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) = failure {
+                return GameLoopError::ExecutionFailed(error);
+            }
             GameLoopError::ActionCancelled(format!(
                 "the prepared spell payment can no longer pay the selected costs: {failure:?}"
             ))
@@ -539,6 +554,11 @@ pub(super) fn commit_prepared_spell_mana_payment(
     mut payment: crate::mana_payment::PendingManaPayment,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
+    let mut pending_checkpoint = pending.clone();
+    pending_checkpoint.pending_mana_payment = Some(payment.clone());
+    let result = (|| -> Result<GameProgress, GameLoopError> {
+
     if let Err(error) = refresh_prepared_spell_payment(game, &pending, &mut payment) {
         state.rollback_action(game);
         return Err(error);
@@ -562,7 +582,7 @@ pub(super) fn commit_prepared_spell_mana_payment(
             "spell payer is missing".to_string(),
         ));
     };
-    if !game.try_pay_mana_cost_with_payment_options(
+    if !game.try_pay_mana_cost_with_payment_options_and_dm(
         payment.request.payer,
         Some(payment.request.source),
         &payment.plan.mana_cost_after_alternatives,
@@ -572,7 +592,9 @@ pub(super) fn commit_prepared_spell_mana_payment(
         payment.request.allow_life_payment,
         payment.request.allow_black_life,
         payment.request.preferences.prefer_life,
-    ) {
+        decision_maker,
+    ).map_err(|error| { state.rollback_action(game); GameLoopError::ExecutionFailed(error) })? {
+        if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
         state.rollback_action(game);
         return Err(GameLoopError::ActionCancelled(
             "spell payment failed validation and was rolled back".to_string(),
@@ -587,6 +609,14 @@ pub(super) fn commit_prepared_spell_mana_payment(
     pending.pending_mana_payment = None;
     pending.stage = spell_stage_after_targets(&pending);
     continue_spell_next_cost_or_finalize(game, trigger_queue, state, pending, decision_maker)
+    })();
+    if decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint.0, result.is_ok());
+        *trigger_queue = checkpoint.1; *state = checkpoint.2;
+        state.pending_cast = Some(pending_checkpoint);
+        return Ok(GameProgress::Continue);
+    }
+    result
 }
 
 pub(super) fn commit_prepared_activation_mana_payment(
@@ -597,6 +627,11 @@ pub(super) fn commit_prepared_activation_mana_payment(
     mut payment: crate::mana_payment::PendingManaPayment,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
+    let mut pending_checkpoint = pending.clone();
+    pending_checkpoint.pending_mana_payment = Some(payment.clone());
+    let result = (|| -> Result<GameProgress, GameLoopError> {
+
     let mut request = match activation_mana_payment_request(game, &pending) {
         Ok(request) => request,
         Err(error) => {
@@ -631,6 +666,9 @@ pub(super) fn commit_prepared_activation_mana_payment(
         })?,
         Err(failure) => {
             state.rollback_action(game);
+            if let crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) = failure {
+                return Err(GameLoopError::ExecutionFailed(error));
+            }
             return Err(GameLoopError::ActionCancelled(format!(
                 "the prepared activation payment can no longer pay the selected costs: {failure:?}"
             )));
@@ -647,7 +685,7 @@ pub(super) fn commit_prepared_activation_mana_payment(
             "activation payer is missing".to_string(),
         ));
     };
-    if !game.try_pay_mana_cost_with_payment_options(
+    if !game.try_pay_mana_cost_with_payment_options_and_dm(
         payment.request.payer,
         Some(payment.request.source),
         &payment.plan.mana_cost_after_alternatives,
@@ -657,7 +695,9 @@ pub(super) fn commit_prepared_activation_mana_payment(
         payment.request.allow_life_payment,
         payment.request.allow_black_life,
         payment.request.preferences.prefer_life,
-    ) {
+        decision_maker,
+    ).map_err(|error| { state.rollback_action(game); GameLoopError::ExecutionFailed(error) })? {
+        if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
         state.rollback_action(game);
         return Err(GameLoopError::ActionCancelled(
             "activation payment failed validation and was rolled back".to_string(),
@@ -676,6 +716,14 @@ pub(super) fn commit_prepared_activation_mana_payment(
     pending.pending_mana_payment = None;
     pending.stage = activation_stage_after_targets(&pending);
     continue_activation(game, trigger_queue, state, pending, decision_maker)
+    })();
+    if decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint.0, result.is_ok());
+        *trigger_queue = checkpoint.1; *state = checkpoint.2;
+        state.pending_activation = Some(pending_checkpoint);
+        return Ok(GameProgress::Continue);
+    }
+    result
 }
 
 fn revalidate_authoritative_payment_plan(
@@ -685,14 +733,16 @@ fn revalidate_authoritative_payment_plan(
 ) -> Result<crate::mana_payment::ManaPaymentPlan, GameLoopError> {
     // A displayed first plan is already authoritative. Validate that same
     // proposal without running the optional ranking pass on confirmation.
-    if let Ok(plan) = crate::mana_payment::plan_first_mana_payment(game, &payment.request)
-        && plan.id == payment.plan.id
-        && plan.request_hash == payment.plan.request_hash
-    {
-        return Ok(plan);
+    match crate::mana_payment::plan_first_mana_payment(game, &payment.request) {
+        Ok(plan) if plan.id == payment.plan.id && plan.request_hash == payment.plan.request_hash => return Ok(plan),
+        Err(crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)) => return Err(GameLoopError::ExecutionFailed(error)),
+        _ => {}
     }
     crate::mana_payment::plan_mana_payment(game, &payment.request)
         .map_err(|failure| {
+            if let crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) = failure {
+                return GameLoopError::ExecutionFailed(error);
+            }
             GameLoopError::ActionCancelled(format!(
                 "{label} payment became illegal before confirmation: {failure:?}"
             ))
@@ -718,13 +768,13 @@ pub(super) fn apply_mana_payment_plan_response(
     // A captured nested decision replays this response against the same
     // authoritative payment. Cancellation retains its existing action rollback.
     let checkpoint = (!matches!(response, crate::mana_payment::ManaPaymentResponse::Cancel)
-        && (state.pending_mana_ability.is_some()
+        && (state.pending_mana_ability.is_some() || state.pending_cast.is_some() || state.pending_activation.is_some()
             || matches!(response, crate::mana_payment::ManaPaymentResponse::Activate { .. })))
         .then(|| (game.clone(), trigger_queue.clone(), state.clone()));
     let result = apply_mana_payment_plan_response_inner(game, trigger_queue, state, response, decision_maker);
     if let Some((before_game, before_queue, before_state)) = checkpoint {
         if decision_maker.awaiting_choice() || matches!(&result, Err(GameLoopError::ExecutionFailed(_))) {
-            *game = before_game; *trigger_queue = before_queue; *state = before_state;
+            game.restore_execution_checkpoint(before_game, result.is_ok() && decision_maker.awaiting_choice()); *trigger_queue = before_queue; *state = before_state;
         }
         if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
     }
@@ -817,7 +867,9 @@ fn apply_mana_payment_plan_response_inner(
             .ok_or_else(|| GameLoopError::InvalidState("no mana payment is active".to_string()))?;
         let request = payment.request.clone();
         let undo_safe = mana_ability_is_undo_safe(game, *source, *ability_index);
-        if !crate::mana_payment::manual_mana_abilities(game, &request).contains(&(*source, *ability_index)) {
+        let manual = crate::mana_payment::manual_mana_abilities_checked(game, &request)
+            .map_err(GameLoopError::ExecutionFailed)?;
+        if !manual.contains(&(*source, *ability_index)) {
             return Err(GameLoopError::InvalidState("illegal mana activation during payment".to_string()));
         }
         if let Some(parent) = state.pending_mana_ability.take() {
@@ -842,16 +894,24 @@ fn apply_mana_payment_plan_response_inner(
     }
 
     if matches!(response, ManaPaymentResponse::Cancel) {
-        if state.pending_mana_ability.is_some()
-            && (!state.pending_mana_parents.is_empty() || state.pending_cast.is_some() || state.pending_activation.is_some())
-        {
-            if let Some(announcement) = state.pending_mana_ability.as_mut().and_then(|pending| pending.exhaust_announcement.take()) {
+        let canceled = state.pending_mana_ability.take();
+        let canceled_provenance = canceled.as_ref().map(|pending| pending.provenance);
+        if let Some(mut child) = canceled {
+            game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(child.provenance));
+            if let Some(announcement) = child.exhaust_announcement.take() {
                 game.cancel_exhaust_announcement(announcement);
             }
-            state.pending_mana_ability = state.pending_mana_parents.pop();
-            return resume_enclosing_mana_payment(game, trigger_queue, state, decision_maker);
+            if !state.pending_mana_parents.is_empty() || state.pending_cast.is_some() || state.pending_activation.is_some() {
+                state.pending_mana_ability = state.pending_mana_parents.pop();
+                return resume_enclosing_mana_payment(game, trigger_queue, state, decision_maker);
+            }
         }
         state.rollback_action(game);
+        // Also cover an older/incomplete root checkpoint that already held
+        // this frame. Never remove an enclosing cast or a different mana owner.
+        if let Some(provenance) = canceled_provenance {
+            game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(provenance));
+        }
         state.pending_mana_ability = None;
         state.pending_mana_parents.clear();
         return advance_priority_with_dm(game, trigger_queue, decision_maker);
@@ -919,7 +979,7 @@ fn apply_mana_payment_plan_response_inner(
                 return Err(error);
             }
         }
-        if !game.try_pay_mana_cost_with_payment_options(
+        if !game.try_pay_mana_cost_with_payment_options_and_dm(
             payment.request.payer,
             Some(payment.request.source),
             &payment.plan.mana_cost_after_alternatives,
@@ -929,7 +989,9 @@ fn apply_mana_payment_plan_response_inner(
             payment.request.allow_life_payment,
             payment.request.allow_black_life,
             payment.request.preferences.prefer_life,
-        ) {
+            decision_maker,
+    ).map_err(|error| { state.rollback_action(game); GameLoopError::ExecutionFailed(error) })? {
+            if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
             state.rollback_action(game);
             return Err(GameLoopError::ActionCancelled(
                 "mana-ability payment failed validation and was rolled back".to_string(),
@@ -955,6 +1017,9 @@ fn apply_mana_payment_plan_response_inner(
             source: pending.source, ability_index: pending.ability_index, color_restriction: None,
         })).collect::<Vec<_>>();
         discharge_enclosing_mana_selections(state, pending.activator, &completed);
+        // A completed deferred root must not lend its old pre-payment
+        // checkpoint to the next, unrelated mana announcement.
+        if !state.has_pending_action() { state.clear_checkpoint(); }
         return resume_enclosing_mana_payment(game, trigger_queue, state, decision_maker);
     }
 
@@ -1102,7 +1167,7 @@ fn apply_mana_payment_plan_response_inner(
                 "Assist payer is missing".to_string(),
             ));
         };
-        if !game.try_pay_mana_cost_with_payment_options(
+        if !game.try_pay_mana_cost_with_payment_options_and_dm(
             payment.request.payer,
             Some(payment.request.source),
             &payment.plan.mana_cost_after_alternatives,
@@ -1112,7 +1177,9 @@ fn apply_mana_payment_plan_response_inner(
             payment.request.allow_life_payment,
             payment.request.allow_black_life,
             payment.request.preferences.prefer_life,
-        ) {
+            decision_maker,
+    ).map_err(|error| { state.rollback_action(game); GameLoopError::ExecutionFailed(error) })? {
+            if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
             state.rollback_action(game);
             return Err(GameLoopError::ActionCancelled(
                 "Assist payment failed validation and was rolled back".to_string(),
@@ -1643,7 +1710,8 @@ pub(super) fn apply_assist_choice_response(
             }
             pending.assist_player_choice_made = true;
             if choice == 0 {
-                if !spell_mana_payment_is_legal(game, &pending) {
+                if !crate::decision::with_complete_legality_query(game, |checked| Ok(spell_mana_payment_is_legal(checked, &pending)))
+                    .map_err(|error| { state.pending_cast = Some(pending.clone()); GameLoopError::ExecutionFailed(error) })? {
                     state.pending_cast = Some(pending);
                     return Err(GameLoopError::ActionCancelled(
                         "the caster cannot complete this payment without Assist".to_string(),
@@ -1660,7 +1728,8 @@ pub(super) fn apply_assist_choice_response(
                 );
             }
             pending.assist_player = Some(eligible[choice - 1]);
-            if max_assist_generic_contribution(game, &pending) == 0 {
+            if crate::decision::with_complete_legality_query(game, |checked| Ok(max_assist_generic_contribution(checked, &pending)))
+                    .map_err(|error| { state.pending_cast = Some(pending.clone()); GameLoopError::ExecutionFailed(error) })? == 0 {
                 state.pending_cast = Some(pending);
                 return Err(GameLoopError::ActionCancelled(
                     "the selected player cannot complete an Assist payment".to_string(),
@@ -1675,7 +1744,8 @@ pub(super) fn apply_assist_choice_response(
             let assistant = pending.assist_player.ok_or_else(|| {
                 GameLoopError::InvalidState("Assist contribution has no chosen player".to_string())
             })?;
-            if !assist_generic_contribution_is_legal(game, &pending, assistant, contribution) {
+            if !crate::decision::with_complete_legality_query(game, |checked| Ok(assist_generic_contribution_is_legal(checked, &pending, assistant, contribution)))
+                    .map_err(|error| { state.pending_cast = Some(pending.clone()); GameLoopError::ExecutionFailed(error) })? {
                 state.pending_cast = Some(pending);
                 return Err(GameLoopError::ActionCancelled(format!(
                     "Assist contribution {contribution} cannot complete the spell's mana payment"
@@ -1718,6 +1788,7 @@ pub(super) fn execute_pending_mana_ability(
     use crate::costs::CostContext;
     use crate::effects::ExecutionContext;
 
+    game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(pending.provenance));
     // Snapshot with continuous effects applied so tap-for-mana triggers see the
     // source's real characteristics (an animated land is a creature only there).
     let source_snapshot = game
@@ -1725,13 +1796,15 @@ pub(super) fn execute_pending_mana_ability(
         .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
 
     // Pay the mana cost
-    if !game.try_pay_mana_cost_with_reason(
+    if !game.try_pay_mana_cost_with_reason_and_dm(
         pending.activator,
         Some(pending.source),
         &pending.mana_cost,
         0,
         crate::costs::PaymentReason::ActivateManaAbility,
-    ) {
+        decision_maker,
+    ).map_err(GameLoopError::ExecutionFailed)? {
+        if decision_maker.awaiting_choice() { return Ok(()); }
         return Err(GameLoopError::InvalidState(
             "Failed to pay mana cost".to_string(),
         ));
@@ -1752,6 +1825,7 @@ pub(super) fn execute_pending_mana_ability(
     let x_value_from_costs = cost_ctx.x_value;
     let cost_tagged_objects = cost_ctx.tagged_objects.clone();
     drop(cost_ctx);
+    game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(pending.provenance));
     drain_pending_trigger_events(game, trigger_queue);
 
     let mut mana_ctx = ExecutionContext::new(pending.source, pending.activator, &mut *decision_maker)
@@ -1958,14 +2032,14 @@ pub(super) fn apply_alternative_activation_cost_response(
                 pending.alternative_cost_branches.len()
             ))
         })?;
-    let view = crate::derived_view::DerivedGameView::new(game);
-    if !crate::decision::activation_total_cost_branch_is_payable_with_view(
-        game,
-        pending.activator,
-        pending.source,
-        &branch,
-        &view,
+    let raw = captured_activation_reference_branch(&pending, choice)?;
+    let payable = match crate::cost::prospective_references::activation_branch_preflight_checked(
+        game, pending.source, pending.ability_index, pending.activator, raw.as_ref(), &branch,
     ) {
+        Ok(payable) => payable,
+        Err(error) => { state.pending_activation = Some(pending); return Err(GameLoopError::ExecutionFailed(error)); }
+    };
+    if !payable {
         state.pending_activation = Some(pending);
         return Err(GameLoopError::ActionCancelled(
             "the selected activation cost branch cannot be paid".to_string(),
@@ -1978,6 +2052,11 @@ pub(super) fn apply_alternative_activation_cost_response(
         return Ok(GameProgress::Continue);
     }
     pending.selected_alternative_cost = Some(choice);
+    if let Some(base) = pending.cost_reference_base.as_ref() {
+        let branch = base.as_one_of().and_then(|branches| branches.get(choice)).ok_or_else(|| GameLoopError::InvalidState("missing captured reference-cost branch".into()))?;
+        pending.cost_reference_choices = crate::cost::prospective_references::activation_reference_choices(branch, pending.effects.flattened_default_effects())
+            .map_err(|error| GameLoopError::InvalidState(format!("reference-cost branch: {error:?}")))?;
+    }
     pending.stage = activation_stage_after_modes(&pending);
     continue_activation(game, trigger_queue, state, pending, decision_maker)
 }
@@ -1995,6 +2074,20 @@ pub(super) fn apply_sacrifice_target_response(
     })?;
 
     match pending.stage {
+        ActivationStage::ChoosingCostReferences => {
+            let choice = pending.cost_reference_choices.first().ok_or_else(|| GameLoopError::InvalidState("missing public cost reference choice".into()))?;
+            let candidates = crate::cost::prospective_references::public_reference_candidates(
+                game, pending.source, pending.activator, choice, &pending.tagged_objects,
+                pending.x_value.map(|x| x as u32),
+            );
+            if !candidates.contains(&target_id) { return Err(GameLoopError::InvalidState("ineligible public cost reference".into())); }
+            let object = game.object(target_id).ok_or_else(|| GameLoopError::InvalidState("cost reference departed".into()))?;
+            let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+            pending.announced_cost_objects.insert(choice.tag.clone(), vec![snapshot.clone()]);
+            pending.tagged_objects.insert(choice.tag.clone(), vec![snapshot]);
+            pending.cost_reference_choices.remove(0);
+        }
+
         ActivationStage::ChoosingSacrifice => {
             let (cost, filter, choice_tag) = match pending.remaining_cost_steps.first() {
                 Some(ActivationCostStep::Sacrifice {
@@ -2790,12 +2883,33 @@ pub(super) fn apply_casting_method_choice_response(
 ///
 /// Returns the new ObjectId on the stack.
 pub(crate) fn propose_spell_cast(
-    game: &mut GameState,
-    spell_id: ObjectId,
-    _from_zone: Zone,
-    caster: PlayerId,
-    casting_method: &CastingMethod,
+    game: &mut GameState, spell_id: ObjectId, from_zone: Zone,
+    caster: PlayerId, casting_method: &CastingMethod,
 ) -> Result<ObjectId, GameLoopError> {
+    propose_spell_cast_with_origin(game, spell_id, from_zone, caster, casting_method, false)
+}
+
+/// Only the resolving-instruction owner supplies this authority. A UI action
+/// cannot obtain a free-standing permission merely by naming a source.
+pub(super) fn propose_spell_cast_from_effect(
+    game: &mut GameState, spell_id: ObjectId, from_zone: Zone,
+    caster: PlayerId, casting_method: &CastingMethod,
+) -> Result<ObjectId, GameLoopError> {
+    propose_spell_cast_with_origin(game, spell_id, from_zone, caster, casting_method, true)
+}
+
+fn propose_spell_cast_with_origin(
+    game: &mut GameState, spell_id: ObjectId, _from_zone: Zone,
+    caster: PlayerId, casting_method: &CastingMethod, effect_authorized: bool,
+) -> Result<ObjectId, GameLoopError> {
+    let price_route = if matches!(casting_method, CastingMethod::AlternativePrice { .. }) {
+        let object = game.object(spell_id).ok_or_else(|| GameLoopError::InvalidState("Price-route spell does not exist".into()))?;
+        if object.zone != _from_zone { return Err(GameLoopError::InvalidState("Price route origin has changed".into())); }
+        Some(crate::alternative_cast::price_routes::resolve_announcement_with_effect_authority(game, caster, object, casting_method, effect_authorized)?
+            .ok_or_else(|| GameLoopError::InvalidState("Selected origin or alternative price does not authorize this exact spell face".into()))?)
+    } else { None };
+    let casting_method = casting_method.origin_method();
+    let visibility_boundary = game.capture_library_top_visibility_boundary();
     let cast_during_main_phase = game.is_active_player(caster)
         && matches!(
             game.turn.phase,
@@ -2806,7 +2920,7 @@ pub(crate) fn propose_spell_cast(
     // a nonempty stack means a sorcery still could not have been cast.
     let cast_at_sorcery_timing =
         game.is_active_player(caster) && crate::turn::is_sorcery_timing(game);
-    let selected_method = game.object(spell_id).and_then(|obj| match casting_method {
+    let selected_method = price_route.as_ref().and_then(|route| route.origin_alternative.clone()).or_else(|| game.object(spell_id).and_then(|obj| match casting_method {
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -2814,7 +2928,7 @@ pub(crate) fn propose_spell_cast(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx),
@@ -2824,13 +2938,22 @@ pub(crate) fn propose_spell_cast(
             },
         ),
         _ => None,
-    });
-    let selected_grant = game.object(spell_id).and_then(|obj| match casting_method {
+    }));
+    let selected_grant = price_route.as_ref().and_then(|route| route.origin.as_ref())
+        .filter(|grant| !matches!(grant.grantable, crate::grant::Grantable::PlayFrom))
+        .map(|grant| crate::grant_registry::GrantedAlternativeCast {
+            permission_identity: grant.permission_identity.clone(), constraints: grant.play_from_constraints.clone(),
+            method: selected_method.clone().expect("validated priced origin has its additional-cost method"),
+            source_id: grant.source.source_id(), zone: grant.zone, usage_limit: grant.usage_limit,
+            cast_this_way_grants: grant.cast_this_way_grants.clone(), cast_this_way_filter: grant.cast_this_way_filter.clone(),
+            permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
+            on_use_effects: grant.on_use_effects.clone(),
+        }).or_else(|| game.object(spell_id).and_then(|obj| match casting_method {
         CastingMethod::PlayFrom {use_alternative: Some(idx), zone, ..}
-        | CastingMethod::SplitOtherHalfPlayFrom {use_alternative: idx, zone, ..} =>
+        | CastingMethod::SplitOtherHalfPlayFrom {use_alternative: Some(idx), zone, ..} =>
             crate::decision::resolve_play_from_alternative_grant(game, caster, obj, *zone, *idx),
         _ => None,
-    });
+    }));
     if let Some(grant) = &selected_grant {
         let source = match casting_method {
             CastingMethod::PlayFrom {source, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, ..} => *source,
@@ -2845,7 +2968,7 @@ pub(crate) fn propose_spell_cast(
     // matches it comes from the cast command, so peers holding only a
     // placeholder derive the same ward (see `decision::face_down_cast_kind`).
     let face_down_kind = match casting_method {
-        CastingMethod::FaceDown => game
+        CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => game
             .object(spell_id)
             .and_then(|obj| crate::decision::face_down_cast_kind(game, obj)),
         _ => None,
@@ -2862,24 +2985,60 @@ pub(crate) fn propose_spell_cast(
     let cast_origin_snapshot = game.object(spell_id).map(|obj| {
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
-    let selected_plain_grant = if selected_grant.is_none() {
+    let proposed_face = match (casting_method, game.object(spell_id)) {
+        (CastingMethod::SplitOtherHalfPlayFrom { .. }, Some(object)) =>
+            crate::decision::spell_view_for_split_other_half_cast(game, object),
+        (CastingMethod::FaceDownPlayFrom { .. }, Some(object)) => {
+            if !crate::decision::spell_can_be_cast_face_down(game, object) {
+                return Err(GameLoopError::InvalidState("The card has no face-down casting rule".into()));
+            }
+            Some(crate::decision::spell_view_for_face_down_cast(game, object))
+        }
+        _ => None,
+    };
+    let proposed_query = proposed_face.as_ref()
+        .map(|face| crate::grant_registry::proposed_card_face_query(game, face)).transpose()?;
+    let permission_game = proposed_query.as_ref().unwrap_or(game);
+    let selected_plain_grant = if let Some(origin) = price_route.as_ref().and_then(|route| route.origin.as_ref())
+        .filter(|grant| matches!(grant.grantable, crate::grant::Grantable::PlayFrom)) {
+        Some(origin.clone())
+    } else if price_route.is_some() && effect_authorized { None }
+    else if selected_grant.is_none() {
         match casting_method {
-            CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..} =>
-                game.effect_store.grant_registry.selected_play_from_grant_for_card(game, spell_id, *zone, caster, *source),
+            CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..}
+            | CastingMethod::FaceDownPlayFrom {source, zone} =>
+                permission_game.effect_store.grant_registry.selected_play_from_grant_for_card(
+                    permission_game, spell_id, *zone, caster, *source),
             _ => None,
         }
     } else { None };
-    let once_limit = |limit| matches!(limit,
-        Some(crate::grant::GrantUsageLimit::OnceEachTurn | crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns));
-    let usage_identity = if let Some(grant) = &selected_grant {
-        once_limit(grant.usage_limit).then(|| grant.permission_identity.clone()).flatten()
-    } else {
-        selected_plain_grant.as_ref().filter(|grant| once_limit(grant.usage_limit))
-            .and_then(|grant| grant.permission_identity.clone())
-    };
+    if matches!(casting_method,
+        CastingMethod::PlayFrom { use_alternative: None, .. }
+            | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. }
+            | CastingMethod::FaceDownPlayFrom { .. })
+        && selected_plain_grant.is_none() && !effect_authorized
+        // A priced additional-cost origin projects to PlayFrom(None), but
+        // its exact derived permission has already been validated and frozen.
+        && !price_route.as_ref().is_some_and(|route| route.origin.is_some())
+    {
+        let native_search_permission = matches!(casting_method,
+            CastingMethod::PlayFrom { source, zone: Zone::Library, use_alternative: None }
+            if *source == spell_id)
+            && game.current_has_static_ability_id(spell_id,
+                crate::static_abilities::StaticAbilityId::CastThisCardFromLibraryWhileSearching);
+        if !native_search_permission {
+            return Err(GameLoopError::InvalidState("The selected play-from permission does not authorize this card face".into()));
+        }
+    }
+    // Retain the selected permission for every granted cast, not just limited
+    // ones. The receipt also pins top-only and timing scope during CR 601.2e.
+    let usage_identity = selected_grant.as_ref().and_then(|grant| grant.permission_identity.clone())
+        .or_else(|| selected_plain_grant.as_ref().and_then(|grant| grant.permission_identity.clone()));
     let play_from_constraints = match casting_method {
-        CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..} => {
-            let constraints = selected_plain_grant.as_ref().map(|grant| grant.play_from_constraints.clone()).unwrap_or_default();
+        CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..}
+            | CastingMethod::FaceDownPlayFrom {source, zone} => {
+            let constraints = selected_plain_grant.as_ref().map(|grant| grant.play_from_constraints.clone())
+                .or_else(|| selected_grant.as_ref().map(|grant| grant.constraints.clone())).unwrap_or_default();
             Some(Box::new((*source, *zone, constraints)))
         }
         _ => None,
@@ -2888,32 +3047,69 @@ pub(crate) fn propose_spell_cast(
     // cost") still uses the play permission from the same source; a
     // permission with a shared budget ("you may cast a creature spell from
     // among them", Idol of Endurance) spends it either way.
-    let shared_usage_to_consume = match &selected_plain_grant {
+    let shared_usage_to_consume = price_route.as_ref().and_then(|route| route.origin.as_ref()).and_then(|grant| grant.shared_usage_id).or_else(|| match &selected_plain_grant {
         Some(grant) => grant.shared_usage_id,
-        None if selected_grant.is_some() => match casting_method {
-            CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..} =>
+        None if selected_grant.is_some() => selected_grant.as_ref()
+            .and_then(|selected| selected.permission_identity.as_ref())
+            .and_then(|identity| game.effect_store.grant_registry.grants.iter()
+                .find(|grant| grant.permission_identity.as_ref() == Some(identity)))
+            .and_then(|grant| grant.shared_usage_id)
+            .or_else(|| match casting_method {
+            CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..}
+            | CastingMethod::FaceDownPlayFrom {source, zone} =>
                 game.effect_store.grant_registry
                     .selected_play_from_grant_for_card(game, spell_id, *zone, caster, *source)
                     .and_then(|grant| grant.shared_usage_id),
             _ => None,
-        },
+        }),
         None => None,
-    };
+    });
 
+    // Capture the exact origin and price occurrences before costs can remove
+    // their providers. Recipient riders do not create a reflexive trigger.
+    let permanent_riders = if let Some(route) = &price_route {
+        route.origin.iter().flat_map(|grant| grant.permanent_this_way_grants.iter())
+            .chain(route.price.permanent_this_way_grants.iter()).cloned().collect::<Vec<_>>()
+    } else if let Some(grant) = &selected_grant {
+        grant.permanent_this_way_grants.clone()
+    } else { selected_plain_grant.as_ref().map(|grant| grant.permanent_this_way_grants.clone()).unwrap_or_default() };
+
+    let use_completion = if let Some(route) = &price_route {
+        route.origin.as_ref().and_then(|grant| crate::grant_registry::GrantUseCompletion::capture_with_snapshot(
+            grant.source.source_id(), caster, grant.on_use_effects.clone(), route.origin_snapshot.clone()))
+    } else { selected_grant.as_ref().and_then(|grant|
+        crate::grant_registry::GrantUseCompletion::capture(game, grant.source_id, caster, grant.on_use_effects.clone()))
+        .or_else(|| selected_plain_grant.as_ref().and_then(|grant|
+            crate::grant_registry::GrantUseCompletion::capture(game, grant.source.source_id(), caster, grant.on_use_effects.clone()))) };
+
+    let price_completion = price_route.as_ref().and_then(|route|
+        crate::grant_registry::GrantUseCompletion::capture_with_snapshot(route.price.source.source_id(), caster, route.price.on_use_effects.clone(), route.price_snapshot.clone()));
+    let price_provider_snapshot = price_route.as_ref().and_then(|route| route.price_snapshot.clone());
+    let price_receipt = price_route.as_ref().and_then(|route| crate::alternative_cast::price_routes::receipt_from_route(route));
     let new_id = game
         .move_object_by_effect(spell_id, Zone::Stack)
         .ok_or_else(|| {
             GameLoopError::InvalidState("Failed to move spell to stack during proposal".to_string())
         })?;
+    game.register_library_top_announcement(
+        crate::game_state::LibraryTopAnnouncement::Cast(new_id), visibility_boundary);
+    if let Some(completion) = use_completion { game.capture_cast_grant_completion(new_id, completion); }
+    if let Some(completion) = price_completion { game.capture_cast_grant_completion(new_id, completion); }
     if let Some(spell) = game.object_mut(new_id) {
         spell.cast_play_from_constraints = play_from_constraints;
         spell.cast_grant_usage_identity = usage_identity.map(Box::new);
+        spell.cast_price = price_receipt.map(Box::new);
+        if let Some(snapshot) = price_provider_snapshot {
+            spell.cast_tagged_objects.insert("__cast_price_provider".into(), vec![snapshot]);
+        }
     }
     if let Some(kind) = face_down_kind {
         // A peer that holds only a placeholder must later check that the
         // opened card really has this keyword (or is covered by the
         // permission it was cast through).
-        game.record_hidden_face_down_cast_obligation(new_id, kind, face_down_permission.as_ref());
+        game.record_hidden_face_down_cast_obligation(new_id, kind,
+            cast_origin_snapshot.as_ref().map_or(_from_zone, |snapshot| snapshot.zone),
+            face_down_permission.as_ref());
     }
     if let Some(permission) = &face_down_permission {
         game.consume_face_down_cast_permission(
@@ -2932,6 +3128,10 @@ pub(crate) fn propose_spell_cast(
             "selected shared play permission should be available"
         );
     }
+    if let Some(shared) = price_route.as_ref().and_then(|route| route.price.shared_usage_id)
+        && Some(shared) != shared_usage_to_consume
+        && !game.effect_store.grant_registry.consume_shared_usage(shared)
+    { return Err(GameLoopError::InvalidState("Selected alternative price budget is unavailable".into())); }
     if let Some(snapshot) = cast_origin_snapshot {
         game.set_cast_origin_snapshot(new_id, snapshot);
     }
@@ -3070,7 +3270,7 @@ pub(crate) fn propose_spell_cast(
         }
 
         match casting_method {
-            CastingMethod::FaceDown => {
+            CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => {
                 let disguise_ward =
                     face_down_kind == Some(crate::game_state::FaceDownCastKind::Disguise);
                 obj.apply_face_down_cast_overlay_with_disguise_ward(disguise_ward);
@@ -3096,6 +3296,13 @@ pub(crate) fn propose_spell_cast(
             _ => {}
         }
 
+        if let Some(index) = price_route.as_ref().and_then(|route| route.prototype) {
+            let method = obj.alternative_casts.get(index).ok_or_else(|| GameLoopError::InvalidState("Selected prototype disappeared from this face".into()))?;
+            let cost = method.mana_cost().cloned().ok_or_else(|| GameLoopError::InvalidState("Selected prototype has no mana characteristic".into()))?;
+            let power_toughness = method.prototype_power_toughness().ok_or_else(|| GameLoopError::InvalidState("Selected price characteristic is not prototype".into()))?;
+            obj.apply_prototype_cast_overlay(cost, power_toughness);
+        }
+
         obj.ensure_aura_cast_spell_effect();
 
         // Initialize announcement metadata while the proposal object is
@@ -3104,6 +3311,9 @@ pub(crate) fn propose_spell_cast(
         // rebuilt state in each caller, and keeps method-selection casts in
         // sync with direct casts.
         let mut optional_costs_paid = OptionalCostsPaid::from_costs(&obj.optional_costs);
+        if price_route.as_ref().is_some_and(|route| route.prototype.is_some()) {
+            optional_costs_paid.mark_label_paid(super::priority_cast::PROTOTYPE_CHOICE_LABEL);
+        }
         if cast_during_main_phase {
             optional_costs_paid.mark_label_paid("CastDuringYourMainPhase");
         }
@@ -3118,6 +3328,13 @@ pub(crate) fn propose_spell_cast(
     }
 
     apply_play_from_cast_this_way_grants(game, new_id, caster, casting_method, selected_grant, selected_plain_grant);
+    for ability in permanent_riders { game.grant_incarnation_static_ability(new_id, ability); }
+
+    if let Some(route) = price_route {
+        for ability in route.price_riders {
+            game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(new_id, ability.id(), Some(ability));
+        }
+    }
 
     // CR 601.2a / 610.5: one-shot effects that make the next matching spell
     // gain an ability apply while the spell is being put on the stack.  The
@@ -3148,7 +3365,8 @@ fn apply_play_from_cast_this_way_grants(
 ) {
     let (source_id, zone) = match casting_method {
         CastingMethod::PlayFrom { source, zone, .. }
-        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => (*source, *zone),
+        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
+        | CastingMethod::FaceDownPlayFrom { source, zone } => (*source, *zone),
         _ => return,
     };
     let source = game.object(source_id).or_else(|| game.object(stack_id));
@@ -3210,6 +3428,7 @@ fn casting_method_matches_alternative_name(
     expected_name: &str,
 ) -> bool {
     let method = match casting_method {
+        CastingMethod::AlternativePrice { .. } => crate::alternative_cast::price_routes::origin_alternative(game, caster, obj, casting_method),
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -3229,6 +3448,7 @@ fn alternative_cast_label(
 ) -> Option<String> {
     let obj = game.object(obj_id)?;
     let method = match casting_method {
+        CastingMethod::AlternativePrice { .. } => crate::alternative_cast::price_routes::origin_alternative(game, caster, obj, casting_method),
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -3236,7 +3456,7 @@ fn alternative_cast_label(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx)
@@ -3255,6 +3475,7 @@ fn selected_alternative_cost_reference(
 ) -> Option<crate::cost::OptionalCostRef> {
     let obj = game.object(obj_id)?;
     let method = match casting_method {
+        CastingMethod::AlternativePrice { .. } => crate::alternative_cast::price_routes::origin_alternative(game, caster, obj, casting_method),
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -3262,7 +3483,7 @@ fn selected_alternative_cost_reference(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx)
@@ -3352,13 +3573,14 @@ pub(super) fn finalize_spell_cast(
     if !mana_already_paid && let Some(cost) = effective_cost {
         let x = x_value.unwrap_or(0);
         let before_pool = game.player(caster).map(|player| player.mana_pool.clone());
-        if !game.try_pay_mana_cost_with_reason(
+        if !game.try_pay_mana_cost_with_reason_and_dm(
             caster,
             Some(spell_id),
             &cost,
             x,
             crate::costs::PaymentReason::CastSpell,
-        ) {
+            _decision_maker,
+    ).map_err(GameLoopError::ExecutionFailed)? {
             return Err(GameLoopError::InvalidState(
                 "Cannot pay mana cost".to_string(),
             ));
@@ -3378,6 +3600,9 @@ pub(super) fn finalize_spell_cast(
     let mana_spent_total = mana_spent_to_cast.total();
     let new_id = stack_id;
     if let Some(spell_obj) = game.object_mut(new_id) {
+        spell_obj.caster_mana_spent_to_cast = Some(mana_spent_total.saturating_sub(
+            assist_mana_spent_to_cast.as_ref().map(|(_, spent)| spent.total()).unwrap_or(0),
+        ));
         spell_obj.mana_spent_to_cast = mana_spent_to_cast;
         spell_obj.x_value = x_value;
     }
@@ -3423,6 +3648,10 @@ pub(super) fn finalize_spell_cast(
     if warped {
         game.turn_store.turn_history.spell_warped_this_turn = true;
     }
+    if game.object(new_id).is_some_and(|object| object.cast_price.as_ref().is_some_and(|price| price.prototype.is_some())) {
+        optional_costs_paid.mark_label_paid(super::priority_cast::PROTOTYPE_CHOICE_LABEL);
+        if let Some(object) = game.object_mut(new_id) { object.optional_costs_paid.mark_label_paid(super::priority_cast::PROTOTYPE_CHOICE_LABEL); }
+    }
     let selected_alternative_label = alternative_cast_label(game, caster, new_id, &casting_method);
     if let Some(reference) =
         selected_alternative_cost_reference(game, caster, new_id, &casting_method)
@@ -3446,6 +3675,10 @@ pub(super) fn finalize_spell_cast(
     }
 
     if let Some(identity) = game.object(new_id).and_then(|spell| spell.cast_grant_usage_identity.as_deref()).cloned() {
+        game.turn_store.grant_cast_uses_this_turn.insert((caster, identity));
+    }
+
+    if let Some(identity) = game.object(new_id).and_then(|spell| spell.cast_price.as_deref()).map(|price| price.identity.clone()) {
         game.turn_store.grant_cast_uses_this_turn.insert((caster, identity));
     }
 
@@ -3535,6 +3768,8 @@ pub(super) fn finalize_spell_cast(
             .insert(new_id, std::sync::Arc::new((spell_obj, entry.clone())));
     }
     game.push_to_stack(entry);
+    game.complete_cast_grant(new_id);
+    game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Cast(new_id));
 
     if let Some(spell_obj) = game.object(new_id).cloned() {
         let ctx = crate::filter::FilterContext::new(caster)
@@ -3586,15 +3821,7 @@ pub(super) fn finalize_spell_cast(
             game, new_id, caster,
         );
     }
-    queue_becomes_targeted_events(
-        game,
-        trigger_queue,
-        &targets,
-        new_id,
-        caster,
-        false,
-        provenance,
-    );
+    queue_targeting_crime(game, trigger_queue, &targets, new_id, caster, provenance);
 
     if from_zone == Zone::Command {
         game.record_commander_cast_from_command_zone(new_id);
@@ -3630,6 +3857,8 @@ pub(super) fn finalize_spell_cast(
             provenance,
         );
     }
+
+    game.record_completed_cast_origin(new_id, from_zone);
 
     Ok(SpellCastResult {
         new_id,
@@ -3877,7 +4106,7 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
             if state.pending_activation.as_ref().is_some_and(|pending| {
                 matches!(
                     pending.stage,
-                    ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost
+                    ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost | ActivationStage::ChoosingCostReferences
                 )
             }) {
                 apply_sacrifice_target_response(game, trigger_queue, state, chosen, decision_maker)

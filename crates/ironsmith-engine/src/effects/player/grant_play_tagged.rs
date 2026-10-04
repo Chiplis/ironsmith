@@ -48,6 +48,7 @@ pub struct GrantPlayTaggedEffect {
     /// Total number of plays shared by the tagged collection. The choice of
     /// card is deferred until a card is actually played.
     pub max_plays: Option<u32>,
+    pub alternative_cost: Option<crate::cost::TotalCost>,
 }
 
 impl GrantPlayTaggedEffect {
@@ -76,7 +77,13 @@ impl GrantPlayTaggedEffect {
             lands_enter_tapped: false,
             cast_pool_is_plural: false,
             max_plays: None,
+            alternative_cost: None,
         }
+    }
+
+    pub fn with_alternative_cost(mut self, cost: crate::cost::TotalCost) -> Self {
+        self.alternative_cost = Some(cost);
+        self
     }
 
     pub fn cast_pool_is_plural(mut self, plural: bool) -> Self {
@@ -228,11 +235,21 @@ impl GrantPlayTaggedEffect {
 }
 
 impl EffectExecutor for GrantPlayTaggedEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        if let Some(cost) = &self.alternative_cost {
+            crate::ability::visit_total_cost_owned_effects(cost, visitor);
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.alternative_cost.as_ref().is_some_and(|cost| cost.as_all().is_none()
+            || cost.as_all().is_some_and(|components| components.iter().any(|cost| cost.dynamic_mana_cost_ref().is_some()))) {
+            return Err(ExecutionError::InternalError("temporary casting price requires an announced flat cost".into()));
+        }
         let player_is_each_tagged_owner = matches!(
             &self.player,
             PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag))
@@ -279,8 +296,17 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         let mut mana_permission_stable_ids =
             std::collections::BTreeMap::<crate::ids::PlayerId, Vec<crate::ids::StableId>>::new();
         for snapshot in snapshots {
+            // An open-ended exile permission names this exile incarnation.
+            // Leaving and later reentering exile must not revive it, and a
+            // card that left before this instruction resolves gets no grant.
+            if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled
+                && (snapshot.zone != crate::zone::Zone::Exile
+                    || !game.object(snapshot.object_id).is_some_and(|object|
+                        object.zone == crate::zone::Zone::Exile))
+            { continue; }
             let mut object_id = snapshot.object_id;
             if game.object(object_id).is_none() {
+                if self.alternative_cost.is_some() { continue; }
                 if let Some(found) = game.find_object_by_stable_id(snapshot.stable_id) {
                     object_id = found;
                 } else {
@@ -315,7 +341,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 continue;
             }
             let object_is_land = object.is_land();
-            if (!self.allow_land && object_is_land && self.spell_filter.is_none())
+            if (!self.allow_land && object_is_land && self.spell_filter.is_none() && self.alternative_cost.is_none())
                 || !seen.insert(object_id)
             {
                 continue;
@@ -376,6 +402,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 spell_cost_increase: self.spell_cost_increase.clone(),
                 spell_cost_reduction: self.spell_cost_reduction.clone(),
                 lands_enter_tapped: self.lands_enter_tapped,
+                top_card_only: false, instant_timing: false, may_look_at_top: false,
             };
             let shared_usage_id = self.max_plays.map(|max_plays| {
                 *shared_usage_by_player.entry(player_id).or_insert_with(|| {
@@ -384,6 +411,37 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                         .create_shared_usage_budget(max_plays)
                 })
             });
+            if let Some(cost) = &self.alternative_cost {
+                // One permission family owns both faces and its one-play
+                // budget. Only the land face receives an ordinary PlayFrom;
+                // every spell face must pay this exact replacement price.
+                let mut spell_filter = self.spell_filter.clone().unwrap_or_default();
+                spell_filter.zone = None;
+                if !spell_filter.excluded_card_types.contains(&crate::types::CardType::Land) {
+                    spell_filter.excluded_card_types.push(crate::types::CardType::Land);
+                }
+                let mana = cost.costs().iter().filter_map(|cost| cost.mana_cost_ref())
+                    .fold(crate::mana::ManaCost::new(), |sum, part| crate::decision::add_mana_cost(&sum, part));
+                let mut components = cost.costs().iter().filter(|cost| cost.mana_cost_ref().is_none()).cloned().collect::<Vec<_>>();
+                if !mana.is_empty() { components.insert(0, crate::costs::Cost::mana(mana)); }
+                let price = crate::cost::TotalCost::from_costs(components);
+                game.effect_store.grant_registry.grant_to_card(object_id, object_zone, player_id,
+                    Grantable::AlternativeCast(crate::alternative_cast::AlternativeCastingMethod::cast_from_zone_with_total_cost(
+                        "Effect casting price", object_zone, price, None, false)), source.clone());
+                let grant = game.effect_store.grant_registry.grants.last_mut().expect("inserted priced grant");
+                grant.filter = Some(spell_filter);
+                grant.play_from_constraints = constraints.clone();
+                grant.shared_usage_id = shared_usage_id;
+                if self.allow_land {
+                    game.effect_store.grant_registry.grant_play_from_to_card(object_id, object_zone, player_id, constraints, source);
+                    let grant = game.effect_store.grant_registry.grants.last_mut().expect("inserted land grant");
+                    let mut land_filter = ObjectFilter::land(); land_filter.zone = None;
+                    grant.filter = Some(land_filter);
+                    grant.shared_usage_id = shared_usage_id;
+                }
+                granted += 1;
+                continue;
+            }
             if let Some(shared_usage_id) = shared_usage_id {
                 let target_stable_id = ((constraints != PlayFromConstraints::default()
                     && self.duration != GrantPlayTaggedDuration::ForAsLongAsExiled)

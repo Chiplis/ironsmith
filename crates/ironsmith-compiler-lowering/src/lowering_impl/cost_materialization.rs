@@ -15,10 +15,14 @@ enum MaterializationCost {
     DynamicMana(ironsmith_core::DynamicManaCost),
     Tap,
     TapChosen {
-        count: u32,
+        count: ChoiceCount,
         filter: ObjectFilter,
     },
     Untap,
+    UntapChosen {
+        count: ChoiceCount,
+        filter: ObjectFilter,
+    },
     Life(crate::effect::Value),
     Energy(u32),
     DiscardSource,
@@ -84,6 +88,7 @@ enum MaterializationCost {
         count: u32,
         filter: ObjectFilter,
     },
+    MoveChosenToZone { filter: ObjectFilter, destination: crate::zone::Zone },
     MoveChosenToLibraryTop {
         filter: ObjectFilter,
     },
@@ -213,6 +218,22 @@ fn bind_cost_attachment_reference_to_source(
     filter
 }
 
+fn tap_state_cost_scope(filter: &ObjectFilter) -> ObjectFilter {
+    let mut filter = bind_cost_attachment_reference_to_source(filter);
+    // An explicit attachment/source identity does not imply control by the
+    // payer. The action is a written tap/untap instruction, not {T}/{Q}.
+    let anchored = filter.source || filter.with_attached_object.is_some()
+        || filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == ironsmith_compiler_semantic::tag::CompilerReferenceTag::GrantingSource.key()
+        });
+    if anchored {
+        filter.zone.get_or_insert(crate::zone::Zone::Battlefield);
+    } else {
+        apply_activation_cost_default_battlefield_scope(&mut filter);
+    }
+    filter
+}
+
 pub fn materialize_compiler_core_total_cost(
     cost: &ironsmith_core::TotalCost<CompilerCost>,
 ) -> Result<TotalCost, CardTextError> {
@@ -243,6 +264,10 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
             filter: filter.clone(),
         },
         CompilerCost::Untap => MaterializationCost::Untap,
+        CompilerCost::UntapChosen { count, filter } => MaterializationCost::UntapChosen {
+            count: *count,
+            filter: filter.clone(),
+        },
         CompilerCost::Life(amount) => MaterializationCost::Life(amount.clone()),
         CompilerCost::Energy(amount) => MaterializationCost::Energy(*amount),
         CompilerCost::DiscardSource => MaterializationCost::DiscardSource,
@@ -368,6 +393,7 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
                 filter: filter.clone(),
             }
         }
+        CompilerCost::MoveChosenToZone { filter, destination } => MaterializationCost::MoveChosenToZone { filter: filter.clone(), destination: *destination },
         CompilerCost::MoveChosenToLibraryTop { filter } => {
             MaterializationCost::MoveChosenToLibraryTop {
                 filter: filter.clone(),
@@ -469,16 +495,17 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
 fn lower_materialization_costs(
     segments: &[MaterializationCost],
 ) -> Result<TotalCost, CardTextError> {
-    fn flush_pending_mana(costs: &mut Vec<Cost>, pending: &mut Vec<Vec<ManaSymbol>>) {
+    fn flush_pending_mana(costs: &mut Vec<Cost>, pending: &mut ManaCost) {
         if pending.is_empty() {
             return;
         }
-        costs.push(Cost::mana(ManaCost::from_pips(std::mem::take(pending))));
+        costs.push(Cost::mana(std::mem::take(pending)));
     }
 
     let mut costs = Vec::new();
-    let mut pending_mana_pips = Vec::new();
+    let mut pending_mana_pips = ManaCost::new();
     let mut tap_tag_id = 0usize;
+    let mut untap_tag_id = 0usize;
     let mut discard_tag_id = 0usize;
     let mut sacrifice_tag_id = 0usize;
     let mut exile_tag_id = 0usize;
@@ -491,11 +518,22 @@ fn lower_materialization_costs(
     for (segment_index, segment) in segments.iter().enumerate() {
         match segment {
             MaterializationCost::Mana(cost) => {
-                pending_mana_pips.extend(cost.pips().to_vec());
+                pending_mana_pips = pending_mana_pips.combined_with(cost);
             }
             MaterializationCost::DynamicMana(cost) => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                costs.push(Cost::dynamic_mana(cost.clone()));
+                let mut cost = cost.clone();
+                if matches!(cost.mana_cost_of.as_deref().map(crate::target::ChooseSpec::base),
+                    Some(crate::target::ChooseSpec::Tagged(tag)) if *tag == ironsmith_compiler_semantic::tag::CompilerReferenceTag::It.key()) {
+                    // "Exile a card and pay its mana cost": bind the preceding
+                    // declaration, not a source-name or a guessed graveyard card.
+                    let tag = costs.iter().rev().filter_map(|component| component.effect_ref())
+                        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+                        .map(|choose| choose.tag.clone())
+                        .ok_or_else(|| CardTextError::ParseError("referenced mana cost has no preceding cost-object choice".into()))?;
+                    cost.mana_cost_of = Some(Box::new(crate::target::ChooseSpec::tagged(tag)));
+                }
+                costs.push(Cost::dynamic_mana(cost));
             }
             MaterializationCost::Tap => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
@@ -503,8 +541,7 @@ fn lower_materialization_costs(
             }
             MaterializationCost::TapChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let mut filter = filter.clone();
-                apply_activation_cost_default_battlefield_scope(&mut filter);
+                let mut filter = tap_state_cost_scope(filter);
                 filter.untapped = true;
                 let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
                     "tap_cost_{tap_tag_id}"
@@ -512,11 +549,24 @@ fn lower_materialization_costs(
                 tap_tag_id += 1;
                 costs.push(Cost::validated_effect(Effect::choose_objects(
                     filter,
-                    ChoiceCount::exactly(*count as usize),
+                    *count,
                     PlayerFilter::You,
                     tag.clone(),
                 )));
                 costs.push(Cost::validated_effect(Effect::tap(
+                    crate::target::ChooseSpec::tagged(tag),
+                )));
+            }
+            MaterializationCost::UntapChosen { count, filter } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let mut filter = tap_state_cost_scope(filter);
+                filter.tapped = true;
+                let tag = ironsmith_compiler_semantic::tag::CompilerCostObjectTag::Untap.key(untap_tag_id);
+                untap_tag_id += 1;
+                costs.push(Cost::validated_effect(Effect::choose_objects(
+                    filter, *count, PlayerFilter::You, tag.clone(),
+                )));
+                costs.push(Cost::validated_effect(Effect::untap(
                     crate::target::ChooseSpec::tagged(tag),
                 )));
             }
@@ -529,10 +579,10 @@ fn lower_materialization_costs(
                 if matches!(amount, crate::effect::Value::Fixed(_)) {
                     costs.push(Cost::life(amount.clone()));
                 } else {
-                    costs.push(Cost::validated_effect(Effect::lose_life_player(
-                        amount.clone(),
-                        PlayerFilter::You,
-                    )));
+                    // Dynamic life is still a payment, not an ordinary
+                    // life-loss instruction. PayLife retains cost validation
+                    // and its source snapshot (notably Ward after departure).
+                    costs.push(Cost::validated_effect(Effect::pay_life(amount.clone())));
                 }
             }
             MaterializationCost::Energy(amount) => {
@@ -948,6 +998,13 @@ fn lower_materialization_costs(
                     ObjectFilter::tagged(tag),
                 )));
             }
+            MaterializationCost::MoveChosenToZone { filter, destination } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("zone_cost_{return_tag_id}"));
+                return_tag_id += 1;
+                costs.push(Cost::validated_effect(Effect::choose_objects(filter.clone(), ChoiceCount::exactly(1), PlayerFilter::You, tag.clone())));
+                costs.push(Cost::validated_effect(Effect::move_to_zone(crate::target::ChooseSpec::tagged(tag), *destination, false)));
+            }
             MaterializationCost::MoveChosenToLibraryTop { filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
@@ -1133,4 +1190,34 @@ fn lower_materialization_costs(
     }
     flush_pending_mana(&mut costs, &mut pending_mana_pips);
     Ok(TotalCost::from_costs(costs))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dynamic_life_materializes_as_payment_with_its_exact_typed_amount() {
+        for amount in [
+            crate::effect::Value::SourcePower,
+            crate::effect::Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)),
+            crate::effect::Value::CardsInHand(PlayerFilter::You),
+        ] {
+            let cost = lower_materialization_costs(&[MaterializationCost::Life(amount.clone())])
+                .expect("dynamic payment lowers");
+            let [component] = cost.costs() else {
+                panic!("one life cost");
+            };
+            let effect = component.effect_ref().expect("dynamic cost effect");
+            let payment = effect
+                .downcast_ref::<crate::effects::PayLifeEffect>()
+                .expect("life cost must retain payment semantics");
+            assert_eq!(payment.amount, amount);
+            assert!(
+                effect
+                    .downcast_ref::<crate::effects::LoseLifeEffect>()
+                    .is_none()
+            );
+        }
+    }
 }

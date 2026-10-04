@@ -1,3 +1,11 @@
+mod bounded_number_choice;
+mod declared_any_target;
+mod ability_loss_templates;
+mod characteristic_assertions;
+mod timed_draw_replacement;
+mod temporary_attack_requirement;
+mod duration_source_prevention;
+pub(crate) mod life_unit_programs;
 use self::sentence_helpers::*;
 use super::object_filters::parse_object_filter;
 use super::util::{parse_target_phrase, span_from_tokens};
@@ -85,6 +93,7 @@ mod exiled_top_procedure;
 mod fanout_family;
 mod for_each_helpers;
 mod gain_ability;
+mod toughness_assignment;
 mod graveyard_cast_procedure;
 mod hand_procedure;
 mod lex_chain_helpers;
@@ -94,6 +103,9 @@ mod mill_procedure;
 mod next_spell_family;
 mod optional_companion_fanout;
 mod pair_procedure;
+pub(crate) fn recognizes_life_gain_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
+    pair_procedure::recognizes_life_gain_replacement_sentence(tokens)
+}
 mod player_subject_sequences;
 mod procedures;
 mod rider_procedure;

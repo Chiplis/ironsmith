@@ -57,3 +57,19 @@ pub use exile_replacement_shapes::*;
 #[path = "keyword_static_lines/companion.rs"]
 mod companion;
 pub use companion::*;
+
+#[path = "keyword_static_lines/life_change.rs"]
+mod life_change;
+pub use life_change::*;
+
+#[path = "keyword_static_lines/token_templates.rs"]
+mod token_templates;
+pub use token_templates::*;
+
+#[path = "keyword_static_lines/draw_programs.rs"]
+mod draw_programs;
+pub use draw_programs::*;
+
+#[path = "keyword_static_lines/damage_redirection.rs"]
+mod damage_redirection;
+pub use damage_redirection::*;

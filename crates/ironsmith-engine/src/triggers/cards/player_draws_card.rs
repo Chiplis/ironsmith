@@ -56,14 +56,9 @@ impl TriggerMatcher for PlayerDrawsCardTrigger {
         let Some(e) = event.downcast::<CardsDrawnEvent>() else {
             return false;
         };
-        (match &self.player {
-            PlayerFilter::You => e.player == ctx.controller,
-            PlayerFilter::Opponent => e.player != ctx.controller,
-            PlayerFilter::Any => true,
-            PlayerFilter::Active => ctx.game.is_active_player(e.player),
-            PlayerFilter::Specific(id) => e.player == *id,
-            _ => true,
-        }) && if let Some(not_during_turn) = &self.not_during_turn {
+        (e.amount() > 0 && crate::filter::player_filter_matches_game(
+            &self.player, e.player, ctx.game, &ctx.filter_ctx,
+        )) && if let Some(not_during_turn) = &self.not_during_turn {
             !current_turn_matches_player_filter(not_during_turn, ctx, Some(e.player))
         } else {
             true
@@ -84,6 +79,8 @@ impl TriggerMatcher for PlayerDrawsCardTrigger {
             1
         }
     }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> { Some(vec![EventKind::CardsDrawn]) }
 
     fn display(&self) -> String {
         let you = self.player == PlayerFilter::You;

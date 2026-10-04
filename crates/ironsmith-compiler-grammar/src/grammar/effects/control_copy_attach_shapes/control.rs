@@ -14,7 +14,6 @@ pub struct GainControlClauseShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],
     pub duration_tokens: &'a [OwnedLexToken],
     pub delayed_until_end_of_combat: bool,
-    pub dynamic_power_bound: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,9 +75,6 @@ pub fn parse_gain_control_clause_shape(
         target_tokens,
         duration_tokens,
         delayed_until_end_of_combat: delayed.is_some(),
-        dynamic_power_bound: primitives::contains_word(tokens, "power")
-            && primitives::contains_word(tokens, "number")
-            && permission_shapes::contains_tokens(tokens, &["you", "control"]),
     })
 }
 

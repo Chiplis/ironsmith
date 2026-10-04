@@ -269,9 +269,8 @@ pub(super) fn calculate_with_layers(
                 }
                 Modification::SetTextBox(overlay) => {
                     chars.compiled_card_text = overlay.compiled_card_text.clone();
-                    chars.abilities = overlay.abilities.clone().into();
-                    chars.abilities.rebind(effect);
-                    chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
+                    replace_rules_text_abilities(&mut chars, overlay.abilities.to_vec(), Some(effect.into()), false);
+                    chars.static_abilities = extract_static_abilities(&chars.abilities).into();
                 }
                 Modification::SetName(name) => {
                     chars.name = name.clone().into();
@@ -591,7 +590,7 @@ pub(super) fn calculate_with_layers(
                         });
                     }
                 }
-                Modification::RemoveAllAbilities => {
+                Modification::RemoveAllAbilities | Modification::RemoveLandRulesTextAbilities => {
                     remove_all_abilities_for_effect(effect, &mut chars);
                     abilities_removed = true;
                 }
@@ -716,6 +715,7 @@ pub(super) fn apply_layer_7_effects(
     let mut all_effects: Option<Vec<ContinuousEffect>> = None;
 
     // Track P/T through sublayers
+    chars.record_base_pt();
     let mut power = chars.power;
     let mut toughness = chars.toughness;
 
@@ -805,6 +805,8 @@ pub(super) fn apply_layer_7_effects(
         {
             power = Some(level_power);
             toughness = Some(level_toughness);
+            chars.base_power = power;
+            chars.base_toughness = toughness;
             pending_level_pt = None;
             chars.power = power;
             chars.toughness = toughness;
@@ -851,7 +853,7 @@ pub(super) fn apply_layer_7_effects(
         if effect_sublayer == Some(PtSublayer::Modifying) && !counters_applied {
             // Apply counters before this effect if their timestamp is earlier
             if counter_timestamp.is_none_or(|ct| ct <= effect.timestamp) {
-                apply_counter_modifications(object, &mut power, &mut toughness);
+                apply_counter_modifications(object, &mut power, &mut toughness, &mut chars.numeric_range_error);
                 counters_applied = true;
                 chars.power = power;
                 chars.toughness = toughness;
@@ -862,7 +864,7 @@ pub(super) fn apply_layer_7_effects(
         // If we're past sublayer 7c (now in 7d Switching) and counters weren't applied,
         // apply them now (at the end of 7c)
         if effect_sublayer == Some(PtSublayer::Switching) && !counters_applied {
-            apply_counter_modifications(object, &mut power, &mut toughness);
+            apply_counter_modifications(object, &mut power, &mut toughness, &mut chars.numeric_range_error);
             counters_applied = true;
             chars.power = power;
             chars.toughness = toughness;
@@ -905,25 +907,17 @@ pub(super) fn apply_layer_7_effects(
                 ));
             }
             Modification::ModifyPower(delta) => {
-                if let Some(ref mut p) = power {
-                    *p += delta;
-                }
+                add_pt_checked(&mut power, i128::from(*delta), &mut chars.numeric_range_error, "power");
             }
             Modification::ModifyToughness(delta) => {
-                if let Some(ref mut t) = toughness {
-                    *t += delta;
-                }
+                add_pt_checked(&mut toughness, i128::from(*delta), &mut chars.numeric_range_error, "toughness");
             }
             Modification::ModifyPowerToughness {
                 power: dp,
                 toughness: dt,
             } => {
-                if let Some(ref mut p) = power {
-                    *p += dp;
-                }
-                if let Some(ref mut t) = toughness {
-                    *t += dt;
-                }
+                add_pt_checked(&mut power, i128::from(*dp), &mut chars.numeric_range_error, "power");
+                add_pt_checked(&mut toughness, i128::from(*dt), &mut chars.numeric_range_error, "toughness");
             }
             Modification::ModifyPowerToughnessValue {
                 power: power_value,
@@ -937,24 +931,16 @@ pub(super) fn apply_layer_7_effects(
                     effect.source,
                     effect.controller,
                 );
-                if let Some(ref mut p) = power {
-                    *p += dp;
-                }
-                if let Some(ref mut t) = toughness {
-                    *t += dt;
-                }
+                add_pt_checked(&mut power, i128::from(dp), &mut chars.numeric_range_error, "power");
+                add_pt_checked(&mut toughness, i128::from(dt), &mut chars.numeric_range_error, "toughness");
             }
             Modification::ModifyPowerToughnessByColorCount {
                 power_multiplier,
                 toughness_multiplier,
             } => {
                 let color_count = chars.colors.count() as i32;
-                if let Some(ref mut p) = power {
-                    *p += power_multiplier * color_count;
-                }
-                if let Some(ref mut t) = toughness {
-                    *t += toughness_multiplier * color_count;
-                }
+                add_pt_checked(&mut power, i128::from(*power_multiplier) * i128::from(color_count), &mut chars.numeric_range_error, "power");
+                add_pt_checked(&mut toughness, i128::from(*toughness_multiplier) * i128::from(color_count), &mut chars.numeric_range_error, "toughness");
             }
             Modification::SwitchPowerToughness => {
                 std::mem::swap(&mut power, &mut toughness);
@@ -992,24 +978,30 @@ pub(super) fn apply_layer_7_effects(
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
             | Modification::Restriction(_) => {}
         }
 
         chars.power = power;
         chars.toughness = toughness;
+        if effect_sublayer.is_some_and(|layer| layer <= PtSublayer::Setting) {
+            chars.record_base_pt();
+        }
         calc_guard.update(chars);
     }
 
     if let Some((level_power, level_toughness)) = pending_level_pt {
         power = Some(level_power);
         toughness = Some(level_toughness);
+        chars.base_power = power;
+        chars.base_toughness = toughness;
     }
 
     // If counters still haven't been applied (no 7c or 7d effects, or all 7c effects
     // had earlier timestamps), apply them now at the end of 7c
     if !counters_applied {
-        apply_counter_modifications(object, &mut power, &mut toughness);
+        apply_counter_modifications(object, &mut power, &mut toughness, &mut chars.numeric_range_error);
     }
 
     chars.power = power;
@@ -1020,17 +1012,18 @@ pub(super) fn apply_layer_7_effects(
 /// Apply P/T counter modifications to power and toughness.
 /// Per Rule 613.4c, these are part of sublayer 7c.
 pub(super) fn apply_counter_modifications(
-    object: &Object,
-    power: &mut Option<i32>,
-    toughness: &mut Option<i32>,
+    object: &Object, power: &mut Option<i32>, toughness: &mut Option<i32>,
+    error: &mut Option<(&'static str, i128)>,
 ) {
-    let (power_delta, toughness_delta) = object.pt_counter_deltas();
-    if let Some(p) = power {
-        *p += power_delta;
+    let (mut power_delta, mut toughness_delta) = (0i128, 0i128);
+    for (counter, count) in &object.counters {
+        if let Some((power, toughness)) = counter.pt_delta() {
+            power_delta += i128::from(power) * i128::from(*count);
+            toughness_delta += i128::from(toughness) * i128::from(*count);
+        }
     }
-    if let Some(t) = toughness {
-        *t += toughness_delta;
-    }
+    add_pt_checked(power, power_delta, error, "power with counters");
+    add_pt_checked(toughness, toughness_delta, error, "toughness with counters");
 }
 
 /// Check if an effect applies to a specific object.
@@ -1612,6 +1605,7 @@ pub(super) fn effect_can_change_static_ability_presence(effect: &ContinuousEffec
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )
 }

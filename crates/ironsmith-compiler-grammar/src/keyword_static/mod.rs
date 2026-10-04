@@ -1,8 +1,24 @@
+mod characteristic_assertions;
+use characteristic_assertions::parse_supertype_assertion_line;
 use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::PredicateAst;
 use crate::cards::builders::SourcePredicateAst;
 use crate::cards::builders::TurnEventPredicateAst;
+mod dynamic_anthem_values;
+mod blocking_permissions;
+pub use blocking_permissions::parse_blocking_capacity_static_line;
 mod costs_replacements_and_permissions;
+mod alternative_prices;
+pub use alternative_prices::parse_independent_alternative_price_line;
+mod damage_prevention;
+mod damage_redirection;
+pub use damage_redirection::parse_scoped_damage_redirection_line;
+pub(crate) use damage_redirection::redirection_recipient_filters;
+mod prevention_follow_ups;
+mod life_change_replacements;
+pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
+pub use prevention_follow_ups::{parse_prevention_amount_follow_up_line, parse_prevention_proposed_amount_follow_up_line};
+pub use damage_prevention::parse_filtered_damage_prevention_line;
 mod leading_conditional_sentence_chain;
 pub use costs_replacements_and_permissions::*;
 
@@ -441,6 +457,36 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             vec![StaticAbilityLineHeadHint::Single("enchant")]
         }
         "parse_characteristic_defining_pt_line" => Vec::new(),
+        // The complete assignment suffix proves its grammar; its source,
+        // filtered-set and leading-condition subjects have no single head.
+        "parse_filtered_toughness_assignment_line" => Vec::new(),
+        // These rule names describe semantic operations, not the lexical
+        // subjects accepted by their complete grammars. Deriving a head from
+        // the name silently made already-supported static families unreachable.
+        "parse_creatures_assign_combat_damage_using_toughness_line" => vec![
+            StaticAbilityLineHeadHint::Single("each"),
+            StaticAbilityLineHeadHint::Single("this"),
+        ],
+        "parse_attached_prevent_all_damage_dealt_to_and_by_attached_line"
+        | "parse_attached_prevent_all_damage_dealt_by_attached_line"
+        | "parse_attached_prevent_all_combat_damage_dealt_by_attached_line"
+        | "parse_attached_prevent_all_damage_dealt_to_attached_line" => {
+            vec![StaticAbilityLineHeadHint::Single("prevent")]
+        }
+        "parse_scoped_damage_redirection_line" => vec![StaticAbilityLineHeadHint::Single("all"), StaticAbilityLineHeadHint::Single("as")],
+        "parse_damage_redirect_to_source_line" => {
+            vec![StaticAbilityLineHeadHint::Single("all")]
+        }
+        "parse_damage_redirect_to_source_controller_line" => {
+            vec![StaticAbilityLineHeadHint::Single("if")]
+        }
+        "parse_choose_color_as_becomes_attached_line" => {
+            vec![StaticAbilityLineHeadHint::Single("as")]
+        }
+        // A land-animation subject is an arbitrary object filter, including
+        // subtypes such as "Forests". The complete copular animation grammar
+        // supplies the discriminator; no finite lexical head list is complete.
+        "parse_lands_are_pt_creatures_still_lands_line" => Vec::new(),
         "parse_soulbond_shared_line" => vec![
             StaticAbilityLineHeadHint::Single("as"),
             StaticAbilityLineHeadHint::Pair("as", "long"),
@@ -454,6 +500,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("player"),
             StaticAbilityLineHeadHint::Single("players"),
             StaticAbilityLineHeadHint::Single("as"),
+            StaticAbilityLineHeadHint::Pair("the", "chosen"),
         ],
         "parse_can_be_attached_only_to_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
@@ -476,6 +523,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_activate_abilities_as_though_haste_line" => {
             vec![StaticAbilityLineHeadHint::Single("you")]
         }
+        "parse_zero_loyalty_state_based_exception_line" => {
+            vec![StaticAbilityLineHeadHint::Single("planeswalkers")]
+        }
         "parse_loyalty_abilities_any_time_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Single("as"),
@@ -488,7 +538,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("if", "a"),
             StaticAbilityLineHeadHint::Pair("if", "you"),
         ],
-        "parse_prevent_damage_to_source_remove_counter_line"
+        "parse_prevent_damage_to_other_creature_you_control_put_counters_line"
+        | "parse_prevent_damage_to_source_remove_counter_line"
         | "parse_prevent_damage_to_source_put_counters_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "damage"),
@@ -612,13 +663,22 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         ],
         "parse_no_maximum_hand_size_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
-            StaticAbilityLineHeadHint::Pair("you", "have"),
+            StaticAbilityLineHeadHint::Single("players"),
+            StaticAbilityLineHeadHint::Single("each"),
+            StaticAbilityLineHeadHint::Single("your"),
+            StaticAbilityLineHeadHint::Pair("the", "chosen"),
         ],
         "parse_opponents_must_target_flagbearers_line" => {
             vec![StaticAbilityLineHeadHint::Pair("while", "an")]
         }
         "parse_prevent_all_damage_to_you_line" => {
             vec![StaticAbilityLineHeadHint::Pair("prevent", "all")]
+        }
+        "parse_if_you_would_gain_life_replacement_line"
+        | "parse_prevention_proposed_amount_follow_up_line"
+        | "parse_prevention_amount_follow_up_line"
+        | "parse_filtered_damage_prevention_line" => {
+            vec![StaticAbilityLineHeadHint::Single("if")]
         }
         "parse_prevent_damage_to_you_from_source_filter_line" => vec![
             StaticAbilityLineHeadHint::Pair("if", "a"),
@@ -685,6 +745,12 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("during"),
             StaticAbilityLineHeadHint::Pair("during", "your"),
         ],
+        "parse_independent_alternative_price_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+            StaticAbilityLineHeadHint::Single("once"),
+            StaticAbilityLineHeadHint::Pair("once", "each"),
+        ],
         "parse_fixed_mana_cost_instead_of_mana_cost_grant_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -709,6 +775,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("play"),
             StaticAbilityLineHeadHint::Pair("play", "with"),
         ],
+        "parse_self_or_global_hands_revealed_line" => vec![StaticAbilityLineHeadHint::Single("play"), StaticAbilityLineHeadHint::Single("players")],
         "parse_your_opponents_play_with_hands_revealed_line" => vec![
             StaticAbilityLineHeadHint::Single("your"),
             StaticAbilityLineHeadHint::Pair("your", "opponents"),
@@ -756,7 +823,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("the"),
             StaticAbilityLineHeadHint::Pair("the", "legend"),
         ],
-        "parse_lose_game_replacement_line" => {
+        "parse_lose_game_replacement_line" | "parse_token_creation_templates_line" => {
             vec![StaticAbilityLineHeadHint::Single("if")]
         }
         // "Each nonland permanent you control is all colors." (Leyline of the
@@ -907,6 +974,9 @@ fn static_ability_rule_head_discriminator(rule_id: RuleId) -> StaticAbilityLineH
         StaticAbilityLineHeadDiscriminator::Lexical(hints)
     }
 }
+
+#[cfg(test)]
+mod repeated_static_head_tests;
 
 #[cfg(test)]
 mod registry_head_hint_tests {
@@ -1347,6 +1417,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_source_is_chosen_type_in_addition_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_color_line),
         single_static_ability_ast_rule!(parse_double_token_creation_replacement_line),
+        single_static_ability_ast_passthrough_rule!(parse_token_creation_templates_line),
         single_static_ability_ast_rule!(parse_double_counters_replacement_line),
         single_static_ability_ast_passthrough_rule!(parse_lose_game_replacement_line),
         single_static_ability_ast_rule!(parse_keyword_action_replacement_line),
@@ -1360,11 +1431,15 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_prevent_damage_to_source_put_counters_line
         ),
         single_static_ability_ast_rule!(parse_prevent_damage_to_you_from_source_filter_line),
+        single_static_ability_ast_rule!(parse_filtered_damage_prevention_line),
+        single_static_ability_ast_rule!(parse_prevention_amount_follow_up_line),
+        single_static_ability_ast_rule!(parse_prevention_proposed_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_damage_prevention_with_owner_shuffle_line),
         single_static_ability_ast_rule!(parse_replace_damage_with_counters_instead_line),
         single_static_ability_ast_rule!(parse_choose_color_as_enters_line),
         single_static_ability_ast_rule!(parse_damage_redirect_to_source_controller_line),
         single_static_ability_ast_rule!(parse_damage_redirect_to_source_line),
+        single_static_ability_ast_rule!(parse_scoped_damage_redirection_line),
         single_static_ability_ast_rule!(
             parse_no_more_than_creatures_can_attack_or_block_each_combat_line
         ),
@@ -1384,14 +1459,17 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_if_you_would_draw_instead_effects_line),
         single_static_ability_ast_rule!(parse_activate_abilities_as_though_haste_line),
         single_static_ability_ast_rule!(parse_loyalty_abilities_any_time_line),
+        single_static_ability_ast_rule!(parse_zero_loyalty_state_based_exception_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_draw_replacement_skip_empty_library_line),
         single_static_ability_ast_rule!(parse_exile_to_exile_instead_of_graveyard_line),
         single_static_ability_ast_rule!(parse_exile_to_countered_exile_instead_of_graveyard_line),
         single_static_ability_ast_rule!(parse_exile_would_die_instead_line),
         single_static_ability_ast_rule!(parse_redirect_would_enter_line),
+        single_static_ability_ast_rule!(parse_mana_output_rewrite_static_line),
         single_static_ability_ast_rule!(parse_if_source_tapped_for_mana_replacement_line),
         single_static_ability_ast_rule!(parse_if_you_tap_for_mana_multiplier_line),
+        single_static_ability_ast_rule!(parse_if_you_would_gain_life_replacement_line),
         single_static_ability_ast_rule!(parse_if_player_would_change_life_double_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_sacrifice_or_redirect_replacement_line),
@@ -1434,6 +1512,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_as_long_as_condition_can_attack_as_though_no_defender_line
         ),
+        multi_static_ability_ast_passthrough_rule!(parse_filtered_toughness_assignment_line),
         multi_static_ability_ast_passthrough_rule!(parse_filter_has_granted_ability_line),
         multi_static_ability_ast_passthrough_rule!(
             parse_equipped_gets_and_has_activated_ability_line
@@ -1493,6 +1572,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_land_type_addition_line),
         multi_static_ability_ast_rule!(parse_lands_are_pt_creatures_still_lands_line),
         single_static_ability_ast_rule!(parse_remove_snow_line),
+        single_static_ability_ast_rule!(parse_supertype_assertion_line),
         multi_static_ability_ast_rule!(parse_attached_is_legendary_gets_and_has_keywords_line),
         single_static_ability_ast_rule!(parse_landwalk_as_though_block_override_line),
         multi_static_ability_ast_passthrough_rule!(parse_granted_keyword_static_line),
@@ -1611,6 +1691,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
         single_static_ability_ast_rule!(parse_can_block_subtype_as_though_reach_line),
         single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
+        single_static_ability_ast_rule!(parse_independent_alternative_price_line),
         single_static_ability_ast_rule!(parse_fixed_mana_cost_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_mana_value_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_life_mana_value_instead_of_mana_cost_grant_line),
@@ -1631,6 +1712,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_play_from_permission_with_enter_tapped_this_way_line),
         multi_static_ability_ast_rule!(parse_you_may_static_grant_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
+        single_static_ability_ast_rule!(parse_conditional_self_flash_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_during_your_turn_prevent_all_damage_to_source_line),
         single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
@@ -1670,6 +1752,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_players_play_top_card_libraries_revealed_line),
         single_static_ability_ast_rule!(parse_play_top_card_your_library_revealed_line),
         single_static_ability_ast_rule!(parse_your_opponents_play_with_hands_revealed_line),
+        single_static_ability_ast_rule!(parse_self_or_global_hands_revealed_line),
         single_static_ability_ast_rule!(parse_control_opponents_while_searching_libraries_line),
         single_static_ability_ast_rule!(parse_opponent_search_exile_found_cards_line),
         single_static_ability_ast_rule!(parse_cast_this_card_from_library_while_searching_line),
@@ -1677,6 +1760,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_graveyard_cards_have_retrace_line),
         single_static_ability_ast_rule!(parse_cast_spells_from_hand_without_paying_mana_costs_line),
         single_static_ability_ast_rule!(parse_cost_reduction_line),
+        multi_static_ability_ast_rule!(parse_blocking_capacity_static_line),
         single_static_ability_ast_rule!(parse_can_block_additional_creature_each_combat_line),
         single_static_ability_ast_passthrough_rule!(parse_all_creatures_able_to_block_source_line),
         single_static_ability_ast_passthrough_rule!(
@@ -4648,9 +4732,24 @@ pub fn parse_damage_amount_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
-    let Some(spec) = keyword_static_lines::parse_additive_damage_amount_tokens(&tokens) else {
+    let Some(shape) = keyword_static_lines::parse_additive_damage_amount_tokens(&tokens) else {
         return Ok(None);
     };
+    if shape.this_turn { return Ok(None); }
+    let Some(spec) = damage_addition_parts_from_shape(shape)? else { return Ok(None); };
+    let mut display = render_token_slice(&tokens).trim().to_string();
+    if !crate::string_primitives::ends_with_char(&display, '.') { display.push('.'); }
+    let fixed = match spec.delta.unhinted() { Value::Fixed(n) => Some(*n), _ => None };
+    let ability = StaticAbility::modify_damage_amount_replacement_with_noncombat_only(
+        spec.source_filter, spec.target_player_filter, spec.target_object_filter,
+        fixed.unwrap_or(0), spec.noncombat_only, display,
+    );
+    Ok(Some(if fixed.is_some() { ability } else { ability.with_dynamic_damage_delta(spec.delta) }))
+}
+
+pub(crate) fn damage_addition_parts_from_shape(
+    spec: keyword_static_lines::AdditiveDamageAmountSpec<'_>,
+) -> Result<Option<ironsmith_core::RegisterDamageAdditionEffect>, CardTextError> {
     let damaged_words = parser_token_word_refs(spec.damaged_tokens);
     let (target_player_filter, target_object_filter) =
         parse_damage_amount_replacement_target_filters(&damaged_words)?;
@@ -4659,44 +4758,45 @@ pub fn parse_damage_amount_replacement_line(
     }
     if let Some(repeated_target_tokens) = spec.repeated_target_tokens {
         let repeated_words = parser_token_word_refs(repeated_target_tokens);
-        // "to that permanent or player" (Torbran, Thane of Red Fell) only
-        // points back at the damaged object; it repeats no filter of its own.
-        let demonstrative_only = matches!(
-            repeated_words.as_slice(),
-            ["permanent", "or", "player"]
-                | ["player", "or", "permanent"]
-                | ["permanent"]
-                | ["player"]
-                | ["creature"]
-                | ["creature", "or", "player"]
-                | ["player", "or", "creature"]
-        );
+        let demonstrative_only = match repeated_words.as_slice() {
+            ["permanent", "or", "player"] | ["player", "or", "permanent"] =>
+                target_player_filter.is_some() && target_object_filter.is_some(),
+            ["permanent"] => target_object_filter.is_some() && target_player_filter.is_none(),
+            ["player"] => target_player_filter.is_some() && target_object_filter.is_none(),
+            ["creature"] => target_player_filter.is_none()
+                && target_object_filter.as_ref().is_some_and(|filter| filter.card_types == [CardType::Creature]),
+            ["creature", "or", "player"] | ["player", "or", "creature"] =>
+                target_player_filter.is_some()
+                && target_object_filter.as_ref().is_some_and(|filter| filter.card_types == [CardType::Creature]),
+            _ => false,
+        };
         if !demonstrative_only {
             let (repeated_player_filter, repeated_object_filter) =
                 parse_damage_amount_replacement_target_filters(&repeated_words)?;
             if repeated_player_filter.as_ref() != target_player_filter.as_ref()
-                || repeated_object_filter.as_ref() != target_object_filter.as_ref()
-            {
+                || repeated_object_filter.as_ref() != target_object_filter.as_ref() {
                 return Ok(None);
             }
         }
     }
     let source_filter = damage_source_filter_from_shape(spec.source)?;
+    let delta = if let Some(definition) = spec.definition_tokens {
+        let Some(value) = parse_value_binding_clause(definition) else { return Ok(None); };
+        value
+    } else {
+        let words = parser_token_word_refs(spec.delta_tokens);
+        let words = words.strip_prefix(&["an", "amount", "of", "damage", "equal", "to"])
+            .unwrap_or(&words);
+        let Some((value, used)) = parse_value_expr_words(words) else { return Ok(None); };
+        if used != words.len() { return Ok(None); }
+        value
+    };
+    Ok(Some(ironsmith_core::RegisterDamageAdditionEffect {
+        source_filter, target_player_filter, target_object_filter,
+        delta, noncombat_only: spec.noncombat_only,
+        mode: ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,
+    }))
 
-    let mut display = render_token_slice(&tokens).trim().to_string();
-    if !crate::string_primitives::ends_with_char(&display, '.') {
-        display.push('.');
-    }
-    Ok(Some(
-        StaticAbility::modify_damage_amount_replacement_with_noncombat_only(
-            source_filter,
-            target_player_filter,
-            target_object_filter,
-            spec.delta,
-            spec.noncombat_only,
-            display,
-        ),
-    ))
 }
 
 pub fn parse_prevent_half_damage_replacement_line(
@@ -4733,37 +4833,96 @@ pub fn parse_double_damage_amount_replacement_line(
     let Some(spec) = keyword_static_lines::parse_damage_multiplier_tokens(&tokens) else {
         return Ok(None);
     };
-    let (target_player_filter, target_object_filter) =
-        if let Some(damaged_tokens) = spec.damaged_tokens {
-            let damaged_words = parser_token_word_refs(damaged_tokens);
-            let filters = parse_damage_amount_replacement_target_filters(&damaged_words)?;
-            if filters.0.is_none() && filters.1.is_none() {
-                return Ok(None);
-            }
-            filters
-        } else {
-            (Some(PlayerFilter::Any), Some(ObjectFilter::default()))
-        };
-
-    let source_filter = damage_source_filter_from_shape(spec.source)?;
-
+    if spec.this_turn {
+        return Ok(None);
+    }
+    let Some(parts) = damage_multiplier_parts_from_shape(spec)? else {
+        return Ok(None);
+    };
     let mut display = render_token_slice(&tokens).trim().to_string();
     if !crate::string_primitives::ends_with_char(&display, '.') {
         display.push('.');
     }
+    let mut ability = StaticAbility::multiply_damage_amount_replacement(
+        parts.source_filter,
+        parts.target_player_filter,
+        parts.target_object_filter,
+        parts.factor,
+        parts.combat_only,
+        display,
+    );
+    if parts.noncombat_only {
+        ability = ability.with_noncombat_only_damage_multiplier();
+    }
+    if let Some(condition) = spec.condition_tokens {
+        ability = ability.with_condition(parse_static_condition_clause(condition)?);
+    }
+    Ok(Some(ability))
+}
 
-    let ability = StaticAbility::multiply_damage_amount_replacement(
+/// Both static and resolving replacements use the same source/recipient
+/// semantics. The repeated recipient is an anaphor, never a redirection.
+pub(crate) fn damage_multiplier_parts_from_shape(
+    spec: keyword_static_lines::DamageMultiplierSpec<'_>,
+) -> Result<Option<ironsmith_core::RegisterDamageMultiplierEffect>, CardTextError> {
+    let (target_player_filter, target_object_filter) = if let Some(tokens) = spec.damaged_tokens {
+        let words = parser_token_word_refs(tokens);
+        let filters = parse_damage_amount_replacement_target_filters(&words)?;
+        if filters.0.is_none() && filters.1.is_none() {
+            return Ok(None);
+        }
+        if let Some(repeated) = spec.repeated_target_tokens {
+            let repeated = parser_token_word_refs(repeated);
+            let normalized = strip_leading_word_refs_any(&words, &["a", "an", "the"]);
+            let same = repeated == words
+                || repeated.strip_prefix(&["that"]).is_some_and(|tail| {
+                    tail == normalized
+                        || (tail == ["player"] && filters.0.is_some() && filters.1.is_none())
+                        || (tail == ["creature"] && normalized.ends_with(&["creature"]))
+                        || (tail == ["permanent"]
+                            && filters.0.is_none()
+                            && normalized.ends_with(&["permanent"]))
+                        || (filters.0.is_some() && filters.1.is_some()
+                            && matches!(tail, ["player", "or", "permanent"] | ["permanent", "or", "player"]))
+                        || tail == ["target"]
+                });
+            if !same {
+                return Ok(None);
+            }
+        }
+        filters
+    } else {
+        if spec.repeated_target_tokens.is_some() {
+            return Ok(None);
+        }
+        (Some(PlayerFilter::Any), Some(ObjectFilter::default()))
+    };
+    let source_words = parser_token_word_refs(spec.source.filter_tokens);
+    let mut source_filter = damage_source_filter_from_shape(spec.source)?;
+    // "another creature" is relative to the equipped recipient, not the
+    // Equipment that owns the ability. The host is excluded even on a
+    // self-damage event and even if the Equipment is itself a creature.
+    if source_words.starts_with(&["another"])
+        && spec
+            .damaged_tokens
+            .is_some_and(|t| parser_token_word_refs(t) == ["equipped", "creature"])
+    {
+        source_filter.other = false;
+        source_filter.without_attached_object = Some(Box::new(ObjectFilter::source()));
+    }
+    // Intrinsic attachment relations do not fall back to unrelated equipped
+    // creatures when this Equipment is unattached.
+    if source_words == ["equipped", "creature"] {
+        source_filter = { let mut filter = ObjectFilter::creature(); filter.with_attached_object = Some(Box::new(ObjectFilter::source())); filter };
+    }
+    Ok(Some(ironsmith_core::RegisterDamageMultiplierEffect {
         source_filter,
         target_player_filter,
         target_object_filter,
-        spec.factor,
-        spec.combat_only,
-        display,
-    );
-    Ok(Some(if spec.noncombat_only {
-        ability.with_noncombat_only_damage_multiplier()
-    } else {
-        ability
+        factor: spec.factor,
+        combat_only: spec.combat_only,
+        noncombat_only: spec.noncombat_only,
+        mode: ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,
     }))
 }
 
@@ -4857,6 +5016,50 @@ fn damage_source_filter_from_shape(
 fn parse_damage_amount_replacement_target_filters(
     words: &[&str],
 ) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
+    let simple = strip_leading_word_refs_any(words, &["a", "an"]);
+    if matches!(simple, ["player", "or", "battle"] | ["player", "or", "a", "battle"]) {
+        return Ok((Some(PlayerFilter::Any), Some(ObjectFilter::permanent().with_type(CardType::Battle))));
+    }
+    let object = match simple {
+        ["creature"] => Some(ObjectFilter::creature()),
+        ["this", "creature"] | ["this", "permanent"] => Some(ObjectFilter::source()),
+        ["equipped", "creature"] | ["enchanted", "creature"] => {
+            Some({ let mut filter = ObjectFilter::creature(); filter.with_attached_object = Some(Box::new(ObjectFilter::source())); filter })
+        }
+        ["enchanted", "permanent"] => {
+            Some({ let mut filter = ObjectFilter::permanent(); filter.with_attached_object = Some(Box::new(ObjectFilter::source())); filter })
+        }
+        _ => None,
+    };
+    if let Some(object) = object {
+        return Ok((None, Some(object)));
+    }
+    if matches!(
+        simple,
+        [
+            "the",
+            "chosen",
+            "player",
+            "or",
+            "a",
+            "permanent",
+            "they",
+            "control"
+        ] | [
+            "the",
+            "chosen",
+            "player",
+            "or",
+            "permanent",
+            "they",
+            "control"
+        ]
+    ) {
+        return Ok((
+            Some(PlayerFilter::ChosenPlayer),
+            Some(ObjectFilter::permanent().controlled_by(PlayerFilter::ChosenPlayer)),
+        ));
+    }
     #[derive(Clone, Copy)]
     enum DamageReplacementTargetKind {
         You,
@@ -5100,6 +5303,8 @@ pub fn parse_enter_as_copy_as_enters_line(
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     additional_counters: Vec::new(),
+                    additional_x_counters: Vec::new(),
+                    keep_other_source_abilities: false,
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
@@ -5148,6 +5353,8 @@ pub fn parse_enter_as_copy_as_enters_line(
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     additional_counters: Vec::new(),
+                    additional_x_counters: Vec::new(),
+                    keep_other_source_abilities: false,
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
@@ -5203,6 +5410,8 @@ pub fn parse_enter_as_copy_as_enters_line(
             let mut added_abilities = Vec::new();
             let mut additional_counters = Vec::new();
             let mut additional_counters_source_filter = None;
+            let mut additional_x_counters = Vec::new();
+            let mut keep_other_source_abilities = false;
             let mut conditional_additional_counters: Vec<
                 ironsmith_core::ConditionalAdditionalCounters,
             > = Vec::new();
@@ -5238,6 +5447,30 @@ pub fn parse_enter_as_copy_as_enters_line(
                 }
                 for exception in exceptions {
                 match exception {
+                    keyword_static_lines::CopyExceptionShape::OwnOtherAbilities {subject} => {
+                        let words = parser_token_word_refs(subject);
+                        let normalized = crate::util::possessive_normalized_word_refs(&words);
+                        let same_named_source = named_subject_tokens.is_some_and(|name| {
+                            let name = parser_token_word_refs(name);
+                            if normalized == name { return true; }
+                            // The canonical lexer spelling can remove the
+                            // apostrophe while retaining its possessive s.
+                            let mut possessive = name.iter().map(|word| (*word).to_string()).collect::<Vec<_>>();
+                            if let Some(last) = possessive.last_mut() { last.push('s'); }
+                            words == possessive.iter().map(String::as_str).collect::<Vec<_>>()
+                        });
+                        if !same_named_source && crate::util::source_reference_surface_for_possessive_words(&words).is_none() {
+                            return Err(CardTextError::ParseError("copy exception names abilities of an unbound source".into()));
+                        }
+                        keep_other_source_abilities = true;
+                    }
+                    keyword_static_lines::CopyExceptionShape::EntryCounters {counter_type, count, controlled_copy} => {
+                        match count {
+                            Some(count) => additional_counters.push((counter_type, count)),
+                            None => additional_x_counters.push(counter_type),
+                        }
+                        if controlled_copy { additional_counters_source_filter = Some(ObjectFilter::default().you_control()); }
+                    }
                     keyword_static_lines::CopyExceptionShape::ConditionalCounters {
                         entries,
                         remove_legendary,
@@ -5463,6 +5696,8 @@ pub fn parse_enter_as_copy_as_enters_line(
                     set_base_power_toughness,
                     additional_counters,
                     additional_counters_source_filter,
+                    additional_x_counters,
+                    keep_other_source_abilities,
                     added_abilities_source_filter,
                     set_base_power_toughness_from_self,
                     copy_followups: copy_followups.clone(),
@@ -6168,6 +6403,20 @@ pub fn parse_lethal_damage_to_creatures_you_control_uses_power_line(
     Ok(None)
 }
 
+/// A rule exception, not an ability granted to the protected permanents.
+pub fn parse_zero_loyalty_state_based_exception_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    if words == [
+        "planeswalkers", "you", "control", "arent", "put", "into", "their",
+        "owners", "graveyards", "for", "having", "0", "loyalty",
+    ] {
+        return Ok(Some(StaticAbility::planeswalkers_you_control_dont_die_at_zero_loyalty()));
+    }
+    Ok(None)
+}
+
 pub fn parse_players_cant_cycle_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -6384,6 +6633,7 @@ fn parse_target_whose_controller_has_cards_in_graveyard_cost_condition(
 }
 
 mod spell_cost_condition_readings;
+mod spell_cost_event_conditions;
 
 pub fn parse_this_spell_cost_condition(
     tokens: &[OwnedLexToken],
@@ -6623,6 +6873,77 @@ mod imperative_multiplier_source_scope_tests {
             };
             assert_eq!(source_filter.zone, zone, "{text}");
             assert_eq!(source_filter.card_types, vec![CardType::Creature]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod zero_loyalty_exception_tests {
+    use super::*;
+    #[test]
+    fn zero_loyalty_exception_is_typed_and_preserves_the_controller_scope() {
+        let tokens = crate::lexer::lex_line(
+            "Planeswalkers you control aren't put into their owners' graveyards for having 0 loyalty.", 0,
+        ).unwrap();
+        let ParseOutcome::Match(matched) = recognize_static_ability_ast_line_registry(&tokens)
+        else { panic!("zero-loyalty exception must be claimed by its typed rule"); };
+        let abilities = matched.value;
+        assert!(matches!(&abilities[..], [StaticAbilityAst::Static(ability)]
+            if ability.id() == crate::static_abilities::StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty));
+        for text in [
+            "Planeswalkers your opponents control aren't put into their owners' graveyards for having 0 loyalty.",
+            "Planeswalkers you control aren't put into their owners' graveyards for having 1 loyalty.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(
+                parse_zero_loyalty_state_based_exception_line(&tokens)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod damage_multiplier_scope_tests;
+
+#[path = "toughness_assignment.rs"]
+mod toughness_assignment;
+use toughness_assignment::parse_filtered_toughness_assignment_line;
+
+
+#[cfg(test)]
+mod entry_copy_exception_root_tests {
+    use super::*;
+    #[test]
+    fn entry_copy_counter_shapes_keep_x_and_chosen_controller_filters() {
+        for (line, dynamic, controlled) in [
+            ("You may have this creature enter as a copy of any creature on the battlefield, except it enters with X additional +1/+1 counters on it.", true, false),
+            ("You may have this creature enter as a copy of any creature on the battlefield, except it enters with a shield counter on it if you control that creature.", false, true),
+        ] {
+            let ability = parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(line, 0).unwrap()).unwrap().unwrap();
+            let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {spec, ..} = ability.payload else { panic!("missing copy model"); };
+            assert_eq!(!spec.additional_x_counters.is_empty(), dynamic);
+            assert_eq!(spec.additional_counters_source_filter.is_some(), controlled);
+        }
+    }
+    #[test]
+    fn own_other_abilities_reference_is_bound_to_the_named_copy_subject() {
+        let yes = "You may have Prism enter as a copy of another creature you control, except it has Prism's other abilities.";
+        let ability = parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(yes, 0).unwrap()).unwrap().unwrap();
+        let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {spec, ..} = ability.payload else { panic!("missing copy model"); };
+        assert!(spec.keep_other_source_abilities);
+        let no = "You may have Prism enter as a copy of another creature you control, except it has Someone Else's other abilities.";
+        assert!(parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(no, 0).unwrap()).is_err());
+    }
+    #[test]
+    fn copy_exceptions_store_executable_attack_keywords_instead_of_markers() {
+        for keyword in ["myriad", "dethrone"] {
+            let line = format!("You may have this creature enter as a copy of any creature on the battlefield, except it has {keyword}.");
+            let ability = parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(&line, 0).unwrap()).unwrap().unwrap();
+            let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {spec, ..} = ability.payload else { panic!("missing copy model"); };
+            assert_eq!(spec.added_abilities.len(), 1);
+            assert!(matches!(spec.added_abilities[0].kind, crate::model::CompilerAbilityKindCore::Triggered(_)));
         }
     }
 }

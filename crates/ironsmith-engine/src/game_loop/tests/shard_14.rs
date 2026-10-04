@@ -558,7 +558,7 @@ pub(super) fn test_force_of_negation_exiles_nexus_of_fate_instead_of_shuffling_i
         game.stack
             .last()
             .expect("Force of Negation should be on the stack"),
-    );
+    ).unwrap();
     assert!(
         !all_targets_invalid,
         "Nexus of Fate should still be a legal target for Force of Negation at resolution"

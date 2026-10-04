@@ -49,6 +49,7 @@ pub fn parse_prevent_damage_to_source_put_counters_line(
     let display = display_text_for_tokens(tokens, true);
     Ok(Some(match parsed {
         attached_grammar::PutCounterPreventionSpec::General {
+            prevents_damage,
             condition_tokens,
             display_prefix_tokens,
             effect_tokens,
@@ -64,10 +65,17 @@ pub fn parse_prevent_damage_to_source_put_counters_line(
             } else {
                 display
             };
-            let ability = StaticAbility::prevent_damage_to_self_put_counters_instead(
-                crate::object::CounterType::PlusOnePlusOne,
-                display,
-            );
+            let ability = if prevents_damage {
+                self_damage_counter_prevention(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    ironsmith_core::PreventionFollowUpAmount::Proposed,
+                    display,
+                )
+            } else {
+                StaticAbility::prevent_damage_to_self_put_counters_instead(
+                    crate::object::CounterType::PlusOnePlusOne, display,
+                )
+            };
             let ast = StaticAbilityAst::Static(ability);
             if let Some(condition_tokens) = condition_tokens {
                 StaticAbilityAst::ConditionalStaticAbility {
@@ -78,6 +86,10 @@ pub fn parse_prevent_damage_to_source_put_counters_line(
                 ast
             }
         }
+        attached_grammar::PutCounterPreventionSpec::PerPreventedAmount { counter_type } =>
+            StaticAbilityAst::Static(self_damage_counter_prevention(
+                counter_type, ironsmith_core::PreventionFollowUpAmount::Prevented, display,
+            )),
         attached_grammar::PutCounterPreventionSpec::Noncombat => StaticAbilityAst::Static(
             StaticAbility::prevent_constrained_damage_to_self_put_counters_instead(
                 crate::object::CounterType::PlusOnePlusOne,
@@ -168,4 +180,28 @@ pub fn parse_attached_prevent_all_damage_dealt_to_attached_line(
         display,
         condition: None,
     }))
+}
+
+
+fn self_damage_counter_prevention(
+    counter_type: crate::object::CounterType,
+    amount_basis: ironsmith_core::PreventionFollowUpAmount,
+    display: String,
+) -> StaticAbility {
+    StaticAbility::prevent_matching_damage_with_follow_up(
+        ironsmith_core::StaticDamagePreventionFollowUp {
+            source_filter: ObjectFilter::default(),
+            target_player_filter: None,
+            target_object_filter: Some(ObjectFilter::source()),
+            combat_only: false,
+            noncombat_only: false,
+            damage_source_tag: None,
+            effects: vec![crate::cards::builders::EffectAst::subject_verb_put_counters(
+                counter_type, Value::EventValue(EventValueSpec::Amount),
+                crate::cards::builders::TargetAst::Source(None), None, false,
+            )],
+            display,
+            amount_basis,
+        },
+    )
 }

@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Cultivator Drone",
+    "oracle_id": "6e62d553-d0d0-400e-a423-f0c3c1fdc911",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Eldrazi Drone",
+    "oracle_text": "Devoid (This card has no color.)\n{T}: Add {C}. Spend this mana only to cast a colorless spell, activate an ability of a colorless permanent, or pay a cost that contains {C}. ({C} represents colorless mana.)",
+    "power": "2",
+    "toughness": "3",
+    "text": "Mana cost: {2}{U}\nType: Creature — Eldrazi Drone\nPower/Toughness: 2/3\nDevoid (This card has no color.)\n{T}: Add {C}. Spend this mana only to cast a colorless spell, activate an ability of a colorless permanent, or pay a cost that contains {C}. ({C} represents colorless mana.)",
+    "baseline_diagnostic": "compiled text dropped required semantic marker: spend-this-mana-only"
+  },
+  {
+    "name": "Discreet Retreat",
+    "oracle_id": "0158634a-08a3-4eb8-8216-bf85161fd168",
+    "mana_cost": "{3}{B}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant land\nEnchanted land has \"{T}: Add two mana of any one color. Spend this mana only to cast outlaw spells or activate abilities of outlaw sources.\" (Assassins, Mercenaries, Pirates, Rogues, and Warlocks are outlaws.)\nWhenever you cast your first outlaw spell each turn, you draw a card and you lose 1 life.",
+    "text": "Mana cost: {3}{B}\nType: Enchantment — Aura\nEnchant land\nEnchanted land has \"{T}: Add two mana of any one color. Spend this mana only to cast outlaw spells or activate abilities of outlaw sources.\" (Assassins, Mercenaries, Pirates, Rogues, and Warlocks are outlaws.)\nWhenever you cast your first outlaw spell each turn, you draw a card and you lose 1 life.",
+    "baseline_diagnostic": "compiled text dropped required semantic marker: spend-this-mana-only"
+  },
+  {
+    "name": "Overgrown Zealot",
+    "oracle_id": "5146b291-1170-481f-a4b9-709dd5c4b09c",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature — Elf Druid",
+    "oracle_text": "{T}: Add one mana of any color.\n{T}: Add two mana of any one color. Spend this mana only to turn permanents face up.",
+    "power": "0",
+    "toughness": "4",
+    "text": "Mana cost: {1}{G}\nType: Creature — Elf Druid\nPower/Toughness: 0/4\n{T}: Add one mana of any color.\n{T}: Add two mana of any one color. Spend this mana only to turn permanents face up.",
+    "baseline_diagnostic": "compiled text dropped required semantic marker: spend-this-mana-only"
+  },
+  {
+    "name": "Tin Street Gossip",
+    "oracle_id": "19dc29a7-8ccc-4e54-829b-86cc102b082d",
+    "mana_cost": "{2}{R}{G}",
+    "type_line": "Creature — Lizard Advisor",
+    "oracle_text": "Vigilance\n{T}: Add {R}{G}. Spend this mana only to cast face-down spells or to turn creatures face up.",
+    "power": "4",
+    "toughness": "4",
+    "text": "Mana cost: {2}{R}{G}\nType: Creature — Lizard Advisor\nPower/Toughness: 4/4\nVigilance\n{T}: Add {R}{G}. Spend this mana only to cast face-down spells or to turn creatures face up.",
+    "baseline_diagnostic": "compiled text dropped required semantic marker: spend-this-mana-only"
+  }
+]

@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Bramble Elemental",
+    "text": "Mana cost: {3}{G}{G}\nType: Creature \u2014 Elemental\nPower/Toughness: 4/4\nWhenever an Aura becomes attached to this creature, create two 1/1 green Saproling creature tokens.",
+    "oracle_id": "ac5c0078-e2f1-4ac1-8748-575d69e09cf8",
+    "source": "https://scryfall.com/card/pca/59/bramble-elemental?utm_source=api",
+    "baseline_content_hash": "ffce5265fad7724ed80dc84765e9a5976edc161c631e7d956f2dc5babde640f9",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever an Aura becomes attached to this creature, create two 1/1 green Saproling creature tokens.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever an Aura becomes attached to this creature, create two 1/1 green Saproling creature tokens.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Brood Keeper",
+    "text": "Mana cost: {3}{R}\nType: Creature \u2014 Human Shaman\nPower/Toughness: 2/3\nWhenever an Aura becomes attached to this creature, create a 2/2 red Dragon creature token with flying. It has \"{R}: This creature gets +1/+0 until end of turn.\"",
+    "oracle_id": "c123f45d-a8db-405f-93ef-7227e826790c",
+    "source": "https://scryfall.com/card/m15/132/brood-keeper?utm_source=api",
+    "baseline_content_hash": "ba1feedb814c1c3bbdd28475a673145a17c99b4de67e1803b95be634a2cbd529",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever an Aura becomes attached to this creature, create a 2/2 red Dragon creature token with flying. It has \"{R}: This creature gets +1/+0 until end of turn.\"' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever an Aura becomes attached to this creature, create a 2/2 red Dragon creature token with flying. It has \"{R}: This creature gets +1/+0 until end of turn.\"' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Captain's Hook",
+    "text": "Mana cost: {3}\nType: Artifact \u2014 Equipment\nEquipped creature gets +2/+0, has menace, and is a Pirate in addition to its other creature types.\nWhenever this Equipment becomes unattached from a permanent, destroy that permanent.\nEquip {1}",
+    "oracle_id": "25143290-2dd5-4def-a857-a1db6d3ed2eb",
+    "source": "https://scryfall.com/card/rix/177/captains-hook?utm_source=api",
+    "baseline_content_hash": "919ab99ef6eb2624e1c163da218930d6671cafa4f58967d8adaa5af06d8499f4",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever this Equipment becomes unattached from a permanent, destroy that permanent.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever this Equipment becomes unattached from a permanent, destroy that permanent.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Enormous Energy Blade",
+    "text": "Mana cost: {2}{B}\nType: Artifact \u2014 Equipment\nEquipped creature gets +4/+0.\nWhenever this Equipment becomes attached to a creature, tap that creature.\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+    "oracle_id": "7818e900-2f4e-4710-87a4-5a9ac170a677",
+    "source": "https://scryfall.com/card/neo/96/enormous-energy-blade?utm_source=api",
+    "baseline_content_hash": "2fab5c9b15b67af9f995b76712209b2b6ca00856a544002f6b848f90a4797fd4",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever this Equipment becomes attached to a creature, tap that creature.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever this Equipment becomes attached to a creature, tap that creature.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Grafted Exoskeleton",
+    "text": "Mana cost: {4}\nType: Artifact \u2014 Equipment\nEquipped creature gets +2/+2 and has infect. (It deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters.)\nWhenever this Equipment becomes unattached from a permanent, sacrifice that permanent.\nEquip {2}",
+    "oracle_id": "f4350c4e-7e53-4401-b889-14bed27bee9c",
+    "source": "https://scryfall.com/card/plst/ONC-132/grafted-exoskeleton?utm_source=api",
+    "baseline_content_hash": "36e17fddf0f81a9b0663192e9e178ddc5149038ef798cb332604aa6764c53d14",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever this Equipment becomes unattached from a permanent, sacrifice that permanent.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever this Equipment becomes unattached from a permanent, sacrifice that permanent.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Grafted Wargear",
+    "text": "Mana cost: {3}\nType: Artifact \u2014 Equipment\nEquipped creature gets +3/+2.\nWhenever this Equipment becomes unattached from a permanent, sacrifice that permanent.\nEquip {0} ({0}: Attach to target creature you control. Equip only as a sorcery.)",
+    "oracle_id": "c48cf069-eb20-4a61-b58c-b031ec22a5f0",
+    "source": "https://scryfall.com/card/cmr/312/grafted-wargear?utm_source=api",
+    "baseline_content_hash": "57f533149226c0d1d2643071a21f7e126def7b66fcdf1781520ddba26db9d698",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever this Equipment becomes unattached from a permanent, sacrifice that permanent.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever this Equipment becomes unattached from a permanent, sacrifice that permanent.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Siona, Captain of the Pyleas",
+    "text": "Mana cost: {1}{G}{W}\nType: Legendary Creature \u2014 Human Soldier\nPower/Toughness: 2/2\nWhen Siona enters, look at the top seven cards of your library. You may reveal an Aura card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.\nWhenever an Aura you control becomes attached to a creature you control, create a 1/1 white Human Soldier creature token.",
+    "oracle_id": "89e17ccf-cde7-428d-bd64-47e2f79b40d7",
+    "source": "https://scryfall.com/card/woc/144/siona-captain-of-the-pyleas?utm_source=api",
+    "baseline_content_hash": "a98b698d69a30d754ac4b7efcb46870b703de570852d463ec02b83d7145a3788",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever an Aura you control becomes attached to a creature you control, create a 1/1 white Human Soldier creature token.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever an Aura you control becomes attached to a creature you control, create a 1/1 white Human Soldier creature token.' [rule-path=statement-line > triggered-line]"
+  },
+  {
+    "name": "Stitcher's Graft",
+    "text": "Mana cost: {1}\nType: Artifact \u2014 Equipment\nEquipped creature gets +3/+3.\nWhenever equipped creature attacks, it doesn't untap during its controller's next untap step.\nWhenever this Equipment becomes unattached from a permanent, sacrifice that permanent.\nEquip {2}",
+    "oracle_id": "2b73a5ec-c52e-4074-a7cb-78d6eb2adef0",
+    "source": "https://scryfall.com/card/inr/271/stitchers-graft?utm_source=api",
+    "baseline_content_hash": "8b514a220c45de3af9f7335689758b35903be9aec140d4cb16512aa9de72fb5c",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever this Equipment becomes unattached from a permanent, sacrifice that permanent.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever this Equipment becomes unattached from a permanent, sacrifice that permanent.' [rule-path=statement-line > triggered-line]"
+  }
+]

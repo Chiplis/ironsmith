@@ -3,6 +3,15 @@ use ironsmith_compiler_ast::symbols::{Cardinality, ObjectDomain, ReferenceRole};
 pub use ironsmith_core::TagKey;
 pub use ironsmith_core::tag::{TagKeyWalk, tag_keys_of};
 
+/// Compiler-only alias for the current object returned by an earlier
+/// instruction. Unlike an affected-object metric, this follows the explicit
+/// result-object contract of that return into its destination zone.
+pub const RETURNED_THIS_WAY_QUANTITY_TAG: &str = "__returned_this_way_quantity__";
+
+/// Compiler-only live characteristic reference to a prior tap instruction,
+/// or to an imported tap-cost object when no local tap supersedes it.
+pub const PRIOR_TAPPED_OBJECT_QUANTITY_TAG: &str = "__prior_tapped_object_quantity__";
+
 const SENTENCE_HELPER_ROOT: &str = "__sentence_helper_";
 
 pub fn sentence_helper_tag(purpose: &str, line: usize, start: usize, end: usize) -> TagRef {
@@ -49,6 +58,7 @@ pub fn generated_result_tag(purpose: &str, ordinal: u32) -> TagRef {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompilerCostObjectTag {
     Tap,
+    Untap,
     Discard,
     Sacrifice,
     Unattach,
@@ -78,6 +88,7 @@ impl CompilerCostObjectTag {
     const fn stem(self) -> &'static str {
         match self {
             Self::Tap => "tap_cost",
+            Self::Untap => "untap_cost",
             Self::Discard => "discard_cost",
             Self::Sacrifice => "sacrifice_cost",
             Self::Unattach => "unattach_cost",
@@ -384,6 +395,8 @@ pub enum CompilerReferenceTag {
     /// latest coordinated creation ("create a Cat, a Bird, and an Ox"), so a
     /// plural "those tokens" can name every member's result.
     CoordinatedCreatedResult,
+    JobSelectCreated,
+    SourceExiledSelf,
 }
 
 impl CompilerReferenceTag {
@@ -455,6 +468,7 @@ impl CompilerReferenceTag {
             Self::OathCreature => "oath_creature",
             Self::MultiZoneSearchChosen => "multi_zone_search_chosen",
             Self::LivingWeaponCreated => "living_weapon_created",
+            Self::JobSelectCreated => "job_select_created",
             Self::JunkExiledCard => "junk_exiled_card",
             Self::JointDiscardOrSacrifice => "joint_discard_or_sacrifice",
             Self::IterativeLibraryExiled => "iterative_library_exiled",
@@ -487,6 +501,7 @@ impl CompilerReferenceTag {
             Self::GrantingSource => ironsmith_core::GRANTING_SOURCE_TAG,
             Self::WhereXCommanderManaValue => "__where_x_commander_mana_value",
             Self::SourceExiled => "__source_exiled__",
+            Self::SourceExiledSelf => ironsmith_core::tag::SOURCE_EXILED_SELF_TAG,
             Self::SourceDevoured => "__source_devoured__",
             Self::DiscardedCardReference => "__discarded_card__",
             Self::ThoseCardsReference => "__those_cards__",
@@ -601,13 +616,16 @@ impl CompilerReferenceTag {
             Self::PriorExiledCard
             | Self::ExiledThisWay
             | Self::SourceExiled
+            | Self::SourceExiledSelf
             | Self::ExiledByYou
             | Self::HideawayExiled
             | Self::JunkExiledCard
             | Self::IterativeLibraryExiled
             | Self::CostExiledTop
             | Self::ManifestDreadGraveyard => (R::Exiled, D::Card),
-            Self::LivingWeaponCreated | Self::ForMirrodinCreated => (R::Created, D::Object),
+            Self::LivingWeaponCreated | Self::ForMirrodinCreated | Self::JobSelectCreated => {
+                (R::Created, D::Object)
+            }
             Self::CopiedStackObject => (R::Copied, D::Spell),
             Self::PreviousIteratedObjects | Self::IterativeLibraryCurrent => {
                 (R::Iteration, D::Object)

@@ -173,6 +173,7 @@ pub enum CompilerKeywordIdentityAst {
     Gift,
     Exert,
     Exploit,
+    Increment,
 }
 
 #[derive(Debug, Clone, PartialEq)]

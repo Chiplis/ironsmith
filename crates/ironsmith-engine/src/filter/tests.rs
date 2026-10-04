@@ -526,6 +526,7 @@ fn blocked_by_tagged_filter_matches_current_combat_relationship() {
     game.add_object(attacker.clone());
     game.add_object(blocker.clone());
     game.combat = Some(crate::combat_state::CombatState {
+        block_declaration_complete: true,
         attacked_permanent_types: Default::default(),
         attackers: vec![crate::combat_state::AttackerInfo {
             creature: attacker.id,
@@ -576,6 +577,7 @@ fn attacking_alone_counts_attackers_per_controller() {
     game.add_object(second_alice.clone());
     game.add_object(cara_attacker.clone());
     game.combat = Some(crate::combat_state::CombatState {
+        block_declaration_complete: true,
         attackers: vec![
             crate::combat_state::AttackerInfo {
                 creature: first_alice.id,
@@ -2994,6 +2996,7 @@ fn test_filter_matches_creature_dealt_damage_this_turn() {
             cause: crate::events::cause::EventCause::effect(),
             remainder: None,
             target_snapshot: None,
+            received_amounts: None,
         },
         crate::provenance::ProvNodeId::default(),
     );
@@ -3285,4 +3288,50 @@ fn qualified_rider_candidate_owner_filter_binds_live_and_snapshot_subjects() {
     assert!(!filter.matches_snapshot(&snapshot, &outer, &game), "retain snapshot outer owner binding");
     assert!(wrong_controller.matches(game.object(id).unwrap(), &outer, &game));
     assert!(wrong_controller.matches_snapshot(&snapshot, &outer, &game));
+}
+
+#[test]
+fn ring_bearer_filters_read_current_designation_but_snapshots_keep_exact_lki() {
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::ids::CardId;
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let a = PlayerId::from_index(0);
+    let b = PlayerId::from_index(1);
+    let card = CardBuilder::new(CardId::new(), "Designated permanent")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 5))
+        .build();
+    let first = game.create_object_from_card(&card, a, Zone::Battlefield);
+    let second = game.create_object_from_card(&card, a, Zone::Battlefield);
+    let opponent = game.create_object_from_card(&card, b, Zone::Battlefield);
+    game.set_ring_bearer(a, first);
+    game.set_ring_bearer(b, opponent);
+    let filter = ObjectFilter::your_ring_bearer();
+    let ctx = FilterContext::new(a);
+    assert!(filter.matches(game.object(first).unwrap(), &ctx, &game));
+    assert!(!filter.matches(game.object(second).unwrap(), &ctx, &game));
+    assert!(!filter.matches(game.object(opponent).unwrap(), &ctx, &game));
+    let before = ObjectSnapshot::from_object_with_calculated_characteristics(game.object(first).unwrap(), &game);
+    assert_eq!(before.ring_bearer, Some(true));
+    game.set_ring_bearer(a, second);
+    assert!(!filter.matches(game.object(first).unwrap(), &ctx, &game));
+    assert!(filter.matches_snapshot(&before, &ctx, &game));
+    assert!(filter.matches(game.object(second).unwrap(), &ctx, &game));
+    game.object_mut(second).unwrap().card_types = vec![CardType::Artifact].into();
+    game.refresh_continuous_state().unwrap();
+    assert!(filter.matches(game.object(second).unwrap(), &ctx, &game), "designation survives loss of creature type");
+    game.phase_out(second);
+    assert_eq!(game.current_ring_bearer(a), Some(second));
+    assert!(!filter.matches(game.object(second).unwrap(), &ctx, &game));
+    game.phase_in(second);
+    let moved = game.move_object(first, Zone::Exile, crate::events::EventCause::effect()).unwrap();
+    let returned = game.move_object(moved, Zone::Battlefield, crate::events::EventCause::effect()).unwrap();
+    game.set_ring_bearer(a, returned);
+    assert_ne!(returned, first);
+    assert!(filter.matches_snapshot(&before, &ctx, &game));
+    let mut unknown = before.clone();
+    unknown.ring_bearer = None;
+    let restored = before.clone();
+    assert_eq!(restored.ring_bearer, Some(true));
+    assert!(filter.matches_snapshot(&restored, &ctx, &game));
 }

@@ -194,8 +194,11 @@ where
         if ctx.decision_maker.awaiting_choice() {
             return Ok(ManaCreditReceipt { mana: Vec::new(), original_committed: false, outcome: EffectOutcome::count(0) });
         }
-        let snapshot = ctx.source_snapshot.clone().or_else(|| game.object(ctx.source)
-            .map(|object| ObjectSnapshot::from_object(object, game)));
+        let snapshot = if let Some(object) = game.object(ctx.source).filter(|_| !game.is_phased_out(ctx.source)) {
+            let effects = game.try_all_continuous_effects_arc().map_err(ExecutionError::ContinuousDiscovery)?;
+            Some(ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(object, game, &effects))
+        } else { game.turn_store.turn_history.source_last_known_snapshot(ctx.source).cloned()
+            .or_else(|| ctx.source_snapshot.clone()) };
         let event = crate::events::Event::new_with_provenance(
             ManaAddedEvent::new(ctx.source, ctx.controller, player_id, mana)
                 .with_production_provenance(ctx.mana.production_provenance)

@@ -154,6 +154,8 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep) => {
             Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep
         }
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringEventCausedBy { controller, effect_like_only }) =>
+            Condition::TriggeringEventCausedBy { controller: controller.clone(), effect_like_only: *effect_like_only },
         PredicateAst::Triggering(
             TriggeringPredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn,
         ) => Condition::TriggeringObjectBecameTappedFirstTimeThisTurn,
@@ -359,6 +361,10 @@ pub fn resolve_condition_from_predicate(
             even: *even,
             display: display.clone(),
         },
+        PredicateAst::Player(PlayerPredicateAst::PlayerWasMonarchAtTurnStart { player }) => {
+            let player = resolve_non_target_player_filter(*player,&refs)?;
+            Condition::PlayerWasMonarchAtTurnStart {player}
+        }
         PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerIsMonarch { player }
@@ -375,6 +381,7 @@ pub fn resolve_condition_from_predicate(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasEnduringStory { player }
         }
+        PredicateAst::Triggering(TriggeringPredicateAst::YouChoseAnotherRingBearer) => Condition::YouChoseAnotherRingBearer,
         PredicateAst::Source(SourcePredicateAst::SourceIsRingBearer { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::SourceIsRingBearer { player }
@@ -711,6 +718,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::TurnEvents(
             TurnEventPredicateAst::YouAttackedWithNOrMoreCreaturesThisTurn(count),
         ) => Condition::AttackedWithNOrMoreCreaturesThisTurn(*count),
+        PredicateAst::TurnEvents(
+            TurnEventPredicateAst::YouAttackedWithTotalPowerAtLeastThisCombat(power),
+        ) => Condition::AttackedWithTotalPowerAtLeastThisCombat(*power),
         PredicateAst::TurnEvents(
             TurnEventPredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count),
         ) => {

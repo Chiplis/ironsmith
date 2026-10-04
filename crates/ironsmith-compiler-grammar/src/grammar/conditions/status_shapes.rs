@@ -206,6 +206,8 @@ fn parse_subject_status_without_copula(
         search_start = state_token + 1;
     }
     let (state_token, state) = last?;
+    // A status reading owns the entire suffix; never drop an authored tail.
+    primitives::probe_all(&tokens[state_token..], (parse_status_state, parse_end), "complete status suffix")?;
     Some(SubjectStatusConditionAst {
         subject: parse_status_subject(context, &tokens[..state_token])?,
         state,
@@ -263,6 +265,7 @@ fn parse_status_state(input: &mut LexStream<'_>) -> WResult<StatusConditionState
         primitives::phrase(&["attacking", "alone"]).value(StatusConditionStateAst::AttackingAlone),
         primitives::kw("attacking").value(StatusConditionStateAst::Attacking),
         primitives::kw("monstrous").value(StatusConditionStateAst::Monstrous),
+        primitives::kw("modified").value(StatusConditionStateAst::Modified),
     ))
     .parse_next(input)
 }
@@ -272,6 +275,7 @@ fn parse_player_status_tail_lexed(input: &mut LexStream<'_>) -> WResult<PlayerSt
     alt((
         primitives::kw("monarch").value(PlayerStatusAst::Monarch),
         primitives::kw("initiative").value(PlayerStatusAst::Initiative),
+        primitives::kw("poisoned").value(PlayerStatusAst::Poisoned),
         (
             alt((primitives::kw("max"), primitives::kw("maximum"))),
             primitives::kw("speed"),

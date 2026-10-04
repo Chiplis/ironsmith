@@ -722,12 +722,25 @@ impl GameState {
     /// Roll the planar die. Voluntary rolls increase the next roll's cost;
     /// effect-driven rolls pass `voluntary = false` and do not.
     pub fn roll_planar_die(
-        &mut self,
-        player: PlayerId,
-        voluntary: bool,
-    ) -> Result<PlanarDieFace, String> {
+        &mut self, player: PlayerId, voluntary: bool,
+    ) -> Result<PlanarDieFace, crate::effects::ExecutionError> {
         if self.planechase.is_none() {
-            return Err("the planar die exists only during a Planechase game".to_string());
+            return Err(crate::effects::ExecutionError::Impossible("the planar die exists only during a Planechase game".into()));
+        }
+        // Preflight before consuming the action cost/random disclosure. The
+        // complete direct owner also rolls back any later operational failure.
+        self.turn_store.turn_history.check_completed_die_roll_capacity(player, 1)?;
+        let checkpoint = self.clone();
+        let result = self.roll_planar_die_inner(player, voluntary);
+        if result.is_err() { self.restore_execution_checkpoint(checkpoint, false); }
+        result
+    }
+
+    fn roll_planar_die_inner(
+        &mut self, player: PlayerId, voluntary: bool,
+    ) -> Result<PlanarDieFace, crate::effects::ExecutionError> {
+        if self.planechase.is_none() {
+            return Err(crate::effects::ExecutionError::Impossible("the planar die exists only during a Planechase game".into()));
         }
         if voluntary {
             let state = self.planechase.as_mut().expect("checked above");
@@ -766,8 +779,8 @@ impl GameState {
             .find(|object| self.planar_controller_of_face(*object) == Some(face_controller))
             .unwrap_or(ObjectId::from_raw(0));
         let provenance = ProvNodeId::default();
-        let die_event =
-            TriggerEvent::new(DieRolledEvent::new_planar(player, source, raw), provenance);
+        let ordinal = self.turn_store.turn_history.record_completed_die_rolls(player, &[raw], true)?;
+        let die_event = TriggerEvent::new(DieRolledEvent::new_planar(player, source, raw).with_turn_ordinal(ordinal), provenance);
         self.queue_trigger_event(provenance, die_event.clone());
         self.record_ui_effect_event(
             "planar_die_roll",
@@ -787,7 +800,7 @@ impl GameState {
 
         match face {
             PlanarDieFace::Blank => {}
-            PlanarDieFace::Chaos => self.chaos_ensues(player, source)?,
+            PlanarDieFace::Chaos => self.chaos_ensues(player, source).map_err(crate::effects::ExecutionError::InternalError)?,
             PlanarDieFace::Planeswalker => {
                 let AbilityKind::Triggered(ability) = Ability::triggered(
                     Trigger::keyword_action(

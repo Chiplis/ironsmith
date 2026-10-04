@@ -37,6 +37,7 @@ fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+                    alternative_cost: None,
                     tag: cast_tag,
                     player: PlayerAst::You,
                     allow_land: false,

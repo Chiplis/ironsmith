@@ -3677,3 +3677,57 @@ fn where_x_possessive_uses_the_introduced_target_not_the_ability_source() {
         "an explicit `this creature's` stat must remain source-relative: {source_debug}"
     );
 }
+
+#[test]
+fn base_characteristic_values_bind_the_incoming_object_before_the_recipient_tag() {
+    let reference = || {
+        Box::new(ChooseSpec::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+        ))
+    };
+    for ast in [
+        EffectAst::subject_verb_set_base_power(
+            Value::PowerOf(reference()),
+            TargetAst::Source(None),
+            Until::Forever,
+        ),
+        EffectAst::subject_verb_set_base_toughness(
+            Value::PowerOf(reference()),
+            TargetAst::Source(None),
+            Until::Forever,
+        ),
+        EffectAst::subject_verb_set_base_power_toughness(
+            Value::PowerOf(reference()),
+            Value::ToughnessOf(reference()),
+            TargetAst::Source(None),
+            Until::EndOfTurn,
+        ),
+    ] {
+        let mut ctx = EffectLoweringContext::new();
+        ctx.auto_tag_object_targets = true;
+        ctx.last_object_tag = Some("numeric_antecedent".into());
+        let (effects, choices) = compile_effect(&ast, &mut ctx).unwrap();
+        assert!(choices.is_empty());
+        let debug = format!("{effects:?}");
+        assert!(debug.contains("numeric_antecedent"), "{debug}");
+        assert!(
+            debug.contains("resolve_set_pt_values_at_resolution: true"),
+            "{debug}"
+        );
+        assert!(!debug.contains("Tagged(\"it\")"), "{debug}");
+    }
+}
+
+#[test]
+fn unsized_animation_never_invents_or_freezes_a_base_characteristic() {
+    let ast = EffectAst::subject_verb_become_object_template(
+        None, TargetAst::Source(None), vec![CardType::Artifact, CardType::Creature],
+        vec![], vec![], None, vec![], vec![], false, None, None, None, Until::EndOfTurn,
+    );
+    let (effects, choices) = compile_effect(&ast, &mut EffectLoweringContext::new()).unwrap();
+    assert!(choices.is_empty());
+    let debug = format!("{effects:?}");
+    assert!(debug.contains("AddCardTypes"));
+    assert!(!debug.contains("SetPowerToughness"));
+    assert!(!debug.contains("resolve_set_pt_values_at_resolution: true"));
+}

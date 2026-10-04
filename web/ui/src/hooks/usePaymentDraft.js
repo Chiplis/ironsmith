@@ -82,6 +82,7 @@ export default function usePaymentDraft({ payment, dispatch, cancelBackgroundDis
     restore: sourceId => edit(draft => ({ ...draft, excluded_source_ids: draft.excluded_source_ids.filter(id => id !== String(sourceId)) })),
     unpin: sourceId => edit(draft => clearSourcePreferences(draft, sourceId)),
     preserve: sourceId => edit(draft => ({ ...draft, preserved_source_ids: draft.preserved_source_ids.includes(String(sourceId)) ? draft.preserved_source_ids.filter(id => id !== String(sourceId)) : [...draft.preserved_source_ids, String(sourceId)] })),
+    allocateX: allocation => edit(draft => ({ ...draft, x_allocation: allocation })),
     toggleLife: pipId => edit(draft => ({ ...draft, required_life_pips: draft.required_life_pips.includes(pipId) ? draft.required_life_pips.filter(id => id !== pipId) : [...draft.required_life_pips, pipId] })),
     reset: () => edit(() => paymentPreferences({ excluded_source_ids: payment?.fixed_excluded_source_ids || [] })), confirm, activate,
   };

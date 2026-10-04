@@ -8,6 +8,7 @@ use crate::{ColorSet, CounterType, ManaCost, ObjectFilter, Value};
 pub enum DynamicManaDisplayHint {
     Default,
     ManaEqualTo,
+    EnchantedCreatureManaCost,
 }
 
 impl Default for DynamicManaDisplayHint {
@@ -32,6 +33,11 @@ pub struct DynamicManaCost {
     pub additional_generic: Option<Value>,
     pub multiplier: Option<Value>,
     pub display_hint: DynamicManaDisplayHint,
+    /// The exact object whose mana cost is paid. Unlike mana value, this
+    /// preserves colored, hybrid, snow and Phyrexian symbols. Announcement
+    /// binds cost-choice references before the total cost is locked.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mana_cost_of: Option<Box<crate::ChooseSpec>>,
 }
 
 impl DynamicManaCost {
@@ -50,6 +56,7 @@ impl DynamicManaCost {
             additional_generic,
             multiplier,
             display_hint,
+            mana_cost_of: None,
         }
     }
 
@@ -82,11 +89,19 @@ impl DynamicManaCost {
             additional_generic: None,
             multiplier: None,
             display_hint: DynamicManaDisplayHint::Default,
+            mana_cost_of: None,
         }
+    }
+
+    pub fn from_object_mana_cost(object: crate::ChooseSpec) -> Self {
+        let mut cost = Self::new(ManaCost::new(), None, None, None, DynamicManaDisplayHint::Default);
+        cost.mana_cost_of = Some(Box::new(object));
+        cost
     }
 
     pub fn resolved_static_base(&self) -> Option<ManaCost> {
         if !self.source_mana_cost
+            && self.mana_cost_of.is_none()
             && self.source_mana_cost_reduction_condition.is_none()
             && self.x_value.is_none()
             && self.additional_generic.is_none()
@@ -98,6 +113,13 @@ impl DynamicManaCost {
     }
 
     pub fn display(&self) -> String {
+        if self.mana_cost_of.is_some() {
+            if self.x_value.is_none() && self.additional_generic.is_none() && self.multiplier.is_none() {
+                return if self.display_hint == DynamicManaDisplayHint::EnchantedCreatureManaCost {
+                    "enchanted creature's mana cost".into()
+                } else { "its mana cost".into() };
+            }
+        }
         if self.source_mana_cost
             && self.x_value.is_none()
             && self.additional_generic.is_none()
@@ -111,7 +133,7 @@ impl DynamicManaCost {
                     return format!("mana equal to {value:?}");
                 }
             }
-            DynamicManaDisplayHint::Default => {}
+            DynamicManaDisplayHint::Default | DynamicManaDisplayHint::EnchantedCreatureManaCost => {}
         }
 
         let mut text = if self.base.is_empty() {
@@ -515,6 +537,14 @@ pub trait CostComponent: Clone + std::fmt::Debug + PartialEq {
     }
 
     fn is_loyalty_activation_cost(&self) -> bool {
+        false
+    }
+
+    fn discard_details(&self) -> Option<(u32, Option<CardType>)> {
+        None
+    }
+
+    fn exile_from_graveyard_excludes_source(&self) -> bool {
         false
     }
 
@@ -946,6 +976,9 @@ pub enum OptionalCostKind {
     /// A later condition referring to a verified alternative casting method.
     AlternativeCast(AlternativeCostReference),
     CustomUnsupported(String),
+    /// The choice to pay a spell's dash alternative cost (CR 702.109).
+    /// Appended to preserve the indices of existing serialized variants.
+    Dash,
 }
 
 impl OptionalCostKind {
@@ -970,6 +1003,7 @@ impl OptionalCostKind {
             "offering" => Self::Offering,
             "castduringyourmainphase" => Self::CastDuringYourMainPhase,
             "escape" => Self::Escape,
+            "dash" => Self::Dash,
             "blitz" => Self::Blitz,
             "evoke" => Self::Evoke,
             "madness" => Self::Madness,
@@ -1018,6 +1052,7 @@ impl OptionalCostKind {
             Self::Offering => "Offering",
             Self::CastDuringYourMainPhase => "CastDuringYourMainPhase",
             Self::Escape => "Escape",
+            Self::Dash => "Dash",
             Self::Blitz => "Blitz",
             Self::Evoke => "Evoke",
             Self::Madness => "Madness",
@@ -1510,5 +1545,30 @@ mod alternative_cost_reference_tests {
                 AlternativeCostReference::by_mana_cost("Sneak", &other_cost,)
             ),))
         );
+    }
+}
+
+#[cfg(test)]
+mod dash_cost_identity_tests {
+    use super::*;
+
+    #[test]
+    fn dash_cost_identity_is_typed_and_case_insensitive() {
+        let dash = OptionalCostRef::new(OptionalCostKind::Dash);
+        for label in ["Dash", "dash", " DASH "] {
+            assert_eq!(OptionalCostRef::from_label(label), dash);
+        }
+        assert_eq!(dash.display_label(), "Dash");
+        let mut paid = OptionalCostsPaid::default();
+        assert!(!paid.was_paid_label(dash.clone()));
+        paid.mark_label_paid("Dash");
+        assert!(paid.was_paid_label(dash));
+        assert!(paid.was_paid_label("dash"));
+        assert!(!paid.was_paid_label("Blitz"));
+        assert!(!paid.was_paid_label("Kicker"));
+        assert!(matches!(
+            OptionalCostKind::from_label("Unknown cost"),
+            OptionalCostKind::CustomUnsupported(_)
+        ));
     }
 }

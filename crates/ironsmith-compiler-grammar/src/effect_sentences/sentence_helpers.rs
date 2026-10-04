@@ -28,6 +28,7 @@ pub use super::chain_carry::{
 };
 pub use super::clause_pattern_helpers::{
     parse_can_attack_as_though_no_defender_clause,
+    parse_blocking_capacity_this_turn_clause,
     parse_can_block_additional_creature_this_turn_clause, parse_choose_target_and_verb_clause,
     parse_choose_target_prelude_sentence, parse_connive_clause, parse_copy_spell_clause,
     parse_distribute_counters_clause, parse_double_counters_clause, parse_keyword_mechanic_clause,

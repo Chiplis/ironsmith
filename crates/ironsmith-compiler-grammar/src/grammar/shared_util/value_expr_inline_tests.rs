@@ -224,7 +224,13 @@ fn hand_count_preserves_authored_that_player_possessive() {
 fn parses_triggering_cast_mana_and_excess_damage_values() {
     assert_eq!(
         parse_value_expr_words(&["the", "excess"]),
-        Some((Value::EventValue(EventValueSpec::Amount), 2))
+        Some((
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::ExcessDamage,
+            },
+            2
+        ))
     );
     assert_eq!(
         parse_value_expr_words(&[
@@ -242,10 +248,13 @@ fn parses_triggering_cast_mana_and_excess_damage_values() {
             "the", "excess", "damage", "dealt", "to", "that", "creature", "this", "way",
         ]),
         Some((
-            Value::PendingEffectMetric {
-                source: ironsmith_core::EffectMetricSource::Outcome,
-                metric: ironsmith_core::EffectMetric::ExcessDamage,
-            },
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::ExcessDamage,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::DealtDamage)
+            ),
             9,
         ))
     );
@@ -660,4 +669,223 @@ fn whichever_is_greater_builds_an_executable_maximum() {
                         if matches!(minimum.as_ref(), Value::Min(_, _))
                 )
     ));
+}
+
+#[test]
+fn excess_damage_phrases_preserve_explicit_producer_binding() {
+    for text in [
+        "the amount of excess damage dealt to that creature this way",
+        "the amount of excess damage dealt this way",
+        "excess damage dealt to that permanent this way",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+        assert_eq!(used, tokens.len(), "{text}");
+        assert!(
+            matches!(value.unhinted(), Value::PendingPriorEffectMetric(query)
+            if query.action == Some(ironsmith_core::PriorEffectAction::DealtDamage)
+                && query.metric == ironsmith_core::EffectMetric::ExcessDamage)
+        );
+    }
+    for text in [
+        "that excess damage",
+        "that amount of excess damage",
+        "that much excess damage",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+        assert_eq!(used, tokens.len());
+        assert!(matches!(
+            value.unhinted(),
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::ExcessDamage,
+            }
+        ));
+    }
+}
+
+#[test]
+fn greatest_power_is_a_composable_maximum_operand_without_inner_equal_to_hint() {
+    let tokens = lex_line(
+        "2 or the greatest power among Dinosaurs you control, whichever is greater",
+        0,
+    )
+    .unwrap();
+    let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+    assert_eq!(used, tokens.len());
+    assert!(value.has_surface_hint(ValueSurfaceHint::WhicheverIsGreater));
+    let Value::Add(sum, subtract) = value.unhinted() else {
+        panic!("{value:?}");
+    };
+    let Value::Add(left, right) = sum.as_ref() else {
+        panic!("{sum:?}");
+    };
+    assert_eq!(left.as_ref(), &Value::Fixed(2));
+    assert!(!right.has_surface_hint(ValueSurfaceHint::EqualTo));
+    let Value::GreatestPower(filter) = right.unhinted() else {
+        panic!("{right:?}");
+    };
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+    assert_eq!(filter.subtypes, vec![crate::types::Subtype::Dinosaur]);
+    assert!(matches!(subtract.as_ref(), Value::Scaled(minimum, -1)
+        if matches!(minimum.as_ref(), Value::Min(a, b) if a == left && b == right)));
+}
+
+#[test]
+fn total_number_prefix_is_cardinality_and_preserves_owned_zone_union() {
+    let tokens = lex_line(
+        "equal to the total number of instant and sorcery cards you own in exile and in your graveyard",
+        0,
+    ).unwrap();
+    let value =
+        crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
+            &tokens,
+        )
+        .unwrap();
+    let Value::Count(filter) = value.unhinted() else {
+        panic!("{value:?}");
+    };
+    assert_eq!(filter.owner, Some(PlayerFilter::You));
+    assert_eq!(
+        filter.card_types,
+        vec![
+            crate::types::CardType::Instant,
+            crate::types::CardType::Sorcery
+        ]
+    );
+    assert!(filter.all_card_types.is_empty());
+    assert_eq!(filter.any_of.len(), 2);
+    let zones: Vec<_> = filter
+        .any_of
+        .iter()
+        .filter_map(|branch| branch.zone)
+        .collect();
+    assert!(
+        zones.contains(&crate::zone::Zone::Exile) && zones.contains(&crate::zone::Zone::Graveyard)
+    );
+}
+
+#[test]
+fn plural_subtype_union_and_negative_card_types_remain_complete_count_operands() {
+    for (text, wolf) in [
+        ("the number of Wolves and Werewolves you control", true),
+        (
+            "the number of noncreature, nonland cards in your graveyard",
+            false,
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let value =
+            crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
+                &tokens,
+            )
+            .unwrap();
+        let Value::Count(filter) = value.unhinted() else {
+            panic!("{value:?}");
+        };
+        if wolf {
+            assert_eq!(filter.controller, Some(PlayerFilter::You));
+            assert_eq!(
+                filter.subtypes,
+                vec![crate::types::Subtype::Wolf, crate::types::Subtype::Werewolf]
+            );
+            assert!(filter.all_subtypes.is_empty());
+        } else {
+            assert_eq!(filter.zone, Some(crate::zone::Zone::Graveyard));
+            assert!(
+                filter
+                    .excluded_card_types
+                    .contains(&crate::types::CardType::Creature)
+            );
+            assert!(
+                filter
+                    .excluded_card_types
+                    .contains(&crate::types::CardType::Land)
+            );
+        }
+    }
+}
+
+#[test]
+fn coordinated_characteristic_reference_keeps_distinct_axes_of_one_object() {
+    for prefix in ["this creature's", "that creature's"] {
+        let tokens = lex_line(&format!("{prefix} power and toughness"), 0).unwrap();
+        let view = TokenWordView::new(&tokens);
+        let (power, toughness) = parse_power_toughness_value_pair_words(&view.word_refs()).unwrap();
+        let Value::PowerOf(power) = power.unhinted() else {
+            panic!("power");
+        };
+        let Value::ToughnessOf(toughness) = toughness.unhinted() else {
+            panic!("toughness");
+        };
+        assert_eq!(power, toughness);
+    }
+    assert!(
+        parse_power_toughness_value_pair_words(&["its", "power", "and", "toughness", "plus", "1"])
+            .is_none()
+    );
+}
+
+#[test]
+fn named_vote_counts_and_the_highest_life_scalar_remain_composable_values() {
+    for (text, expected) in [
+        (
+            "twice the number of profit votes",
+            Value::Scaled(Box::new(Value::VoteCount("profit".into())), 2),
+        ),
+        (
+            "the number of security votes",
+            Value::VoteCount("security".into()),
+        ),
+        (
+            "the highest life total among all players",
+            Value::MaximumLifeTotal(PlayerFilter::Any),
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+        assert_eq!(used, tokens.len());
+        assert_eq!(value, expected);
+    }
+    // A different maximum scope is not silently widened to every player.
+    assert!(
+        parse_value_expr_words(&["the", "highest", "life", "total", "among", "opponents"])
+            .is_none()
+    );
+}
+
+#[test]
+fn life_extrema_and_fractional_player_counts_keep_their_scopes() {
+    for (text, value) in [
+        (
+            "the highest life total among your opponents",
+            Value::MaximumLifeTotal(PlayerFilter::Opponent),
+        ),
+        (
+            "the highest life total among players",
+            Value::MaximumLifeTotal(PlayerFilter::Any),
+        ),
+        (
+            "the number of opponents whose life total is less than half their starting life total",
+            Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Opponent),
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let (parsed, used) = parse_value_expr_tokens(&tokens).unwrap();
+        assert_eq!(used, tokens.len());
+        assert_eq!(parsed, value);
+    }
+    let words = "half the highest life total among your opponents rounded up"
+        .split_whitespace()
+        .collect::<Vec<_>>();
+    let (value, used) = parse_value_expr_words(&words).unwrap();
+    assert_eq!(used, words.len());
+    assert_eq!(
+        value,
+        Value::HalfRoundedDown(Box::new(Value::Add(
+            Box::new(Value::MaximumLifeTotal(PlayerFilter::Opponent)),
+            Box::new(Value::Fixed(1))
+        )))
+    );
 }

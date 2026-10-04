@@ -3427,7 +3427,7 @@ fn describe_comma_then_sequence(sequence: &crate::effects::SequenceEffect) -> Op
     if let [look_effect, exile_effect, grant_effect] = sequence.effects.as_slice()
         && let Some(look) = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
         && let Some(exile) = exile_effect.downcast_ref::<crate::effects::ExileEffect>()
-        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
         && let Some(compact) =
             describe_look_at_top_exile_face_down_then_play_while_exiled(look, exile, grant)
     {
@@ -4167,6 +4167,9 @@ fn describe_referenced_unblockable_then_characteristics(effects: &[Effect]) -> O
 pub(super) fn describe_coordinated_sequence(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
+    if let Some(text) = describe_reciprocal_group_power_damage(sequence) {
+        return Some(text);
+    }
     if let Some(text) = describe_size_free_animation(sequence) {
         return Some(text);
     }
@@ -4419,7 +4422,7 @@ pub(super) fn describe_coordinated_sequence(
         && let [look_effect, exile_effect, grant_effect] = sequence.effects.as_slice()
         && let Some(look) = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
         && let Some(exile) = exile_effect.downcast_ref::<crate::effects::ExileEffect>()
-        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
         && let Some(compact) =
             describe_look_at_top_exile_face_down_then_play_while_exiled(look, exile, grant)
     {
@@ -9397,6 +9400,12 @@ pub(crate) fn describe_static_ability_with_subject(
                 return describe_loyalty_timing_permission(filter, subject);
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+                let inner = crate::static_abilities::StaticAbility::from_model((**ability).clone());
+                if inner.enter_as_copy_as_enters().is_some() {
+                    return format!("If {}, {}", lowercase_first(&describe_condition(condition)),
+                        lowercase_first(&describe_static_ability_with_subject(&inner, subject)));
+                }
+
                 if let (
                     ironsmith_core::StaticAbilityPayload::RuleRestriction {
                         restriction,
@@ -9516,12 +9525,22 @@ pub(crate) fn describe_static_ability_with_subject(
         static_ability.compiled_model().map(|model| &model.payload)
     {
         let mut filter = filter.clone();
+        let attached_surface = filter.tagged_constraints.iter().any(|constraint| {
+            matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                && matches!(constraint.relation, crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+        });
+        if attached_surface && filter.with_attached_object.as_ref().is_some_and(|inner| **inner == crate::target::ObjectFilter::source()) {
+            // Redundant runtime proof of this exact attachment must not print
+            // as a second unrelated attachment condition.
+            filter.with_attached_object = None;
+        }
+        let singular = filter.source || attached_surface;
         let relation = filter.power_relative_to_source.take();
         let mut affected = capitalize_first(&describe_count_filter_value_subject(&filter));
         if relation == Some(ironsmith_core::SourcePowerRelation::LessThanSource) {
             affected.push_str(&format!(" with power less than {subject}'s power"));
         }
-        return format!("{affected} are goaded");
+        return format!("{affected} {} goaded", if singular { "is" } else { "are" });
     }
     if let Some(tax) = static_ability.attack_cost_model() {
         let mut attackers = tax.attackers().clone();
@@ -9553,6 +9572,7 @@ pub(crate) fn describe_static_ability_with_subject(
             target_object_filter,
             factor,
             combat_only,
+            noncombat_only,
             ..
         } = &ability.payload
         && *source_filter == ObjectFilter::default().you_control()
@@ -9563,6 +9583,8 @@ pub(crate) fn describe_static_ability_with_subject(
         let multiplier = if *factor == 2 { "double" } else { "triple" };
         let damage = if *combat_only {
             "combat damage"
+        } else if *noncombat_only {
+            "noncombat damage"
         } else {
             "damage"
         };
@@ -12499,9 +12521,11 @@ fn describe_optional_self_exile_collect_evidence_then_return(
     };
     let with_id = optional_with_id.downcast_ref::<crate::effects::WithIdEffect>()?;
     let optional = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
-    let [choose_effect, source_exile_effect, evidence_exile_effect] = optional.effects.as_slice()
-    else {
-        return None;
+    let (choose_effect, source_exile_effect, evidence_exile_effect, emission) = match optional.effects.as_slice() {
+        [choose, source_exile, evidence_exile] => (choose, source_exile, evidence_exile, None),
+        [choose, source_exile, evidence_exile, emission] => (choose, source_exile, evidence_exile,
+            Some(emission.downcast_ref::<crate::effects::EmitKeywordActionEffect>()?)),
+        _ => return None,
     };
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let source_exile = source_exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
@@ -12533,6 +12557,8 @@ fn describe_optional_self_exile_collect_evidence_then_return(
         return None;
     };
     if *minimum < 0
+        || emission.is_some_and(|emit| emit.action != crate::events::KeywordActionKind::CollectEvidence
+            || emit.amount != *minimum as u32 || !emit.object_tags.is_empty())
         || choose.filter != expected_evidence_filter
         || !choose.count.is_any_number()
         || choose.count_value.is_some()

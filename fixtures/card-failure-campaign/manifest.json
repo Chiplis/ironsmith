@@ -1,0 +1,22 @@
+{
+  "archive": "cards-20261003.json.xz",
+  "archive_bytes": 10971452,
+  "archive_sha256": "a38a53fb6da122f0f7240800d203386fcaa437190414221476719cb46086e1f0",
+  "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
+  "canonical_card_count": 32209,
+  "canonical_names_sha256": "a87aae7335c88574841edb5e65899b554e61e81a7e3348f005e81339509e7dd0",
+  "compile_measurement_status": "measured",
+  "dataset_bytes": 166747166,
+  "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "entries_without_oracle_id_count": 71,
+  "notes": [
+    "Counts are canonical compile-entry names, not unique physical cards or Oracle IDs.",
+    "All 71 entries without top-level Oracle IDs have reversible_card layout; do not remove them from the audit.",
+    "The archive preserves exact source bytes, including all source metadata and faces."
+  ],
+  "schema_version": 1,
+  "source_entry_count": 32209,
+  "source_face_count": 33127,
+  "source_metadata": "source-metadata.json",
+  "unique_nonnull_oracle_id_count": 32138
+}

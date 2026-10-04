@@ -649,6 +649,25 @@ impl EffectAst {
         Self::subject_verb_prevent_all_damage_to_target_with_source_choice(target, duration, false)
     }
 
+    pub fn subject_verb_prevent_all_combat_damage_to_target(target: TargetAst, duration: Until) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    target,
+                    duration,
+                    combat_only: true,
+                    source_of_your_choice: false,
+                    source_choice_shares_activation_mana_color: false,
+                    source_target: None,
+                    protect_source_target: false,
+                    follow_up_effects: Vec::new(),
+                },
+            ),
+        )
+    }
+
     pub fn subject_verb_prevent_all_damage_to_target_with_source_choice(
         target: TargetAst,
         duration: Until,
@@ -661,9 +680,12 @@ impl EffectAst {
                 DamagePreventionActionAst::PreventAllDamageToTarget {
                     target,
                     duration,
+                    combat_only: false,
                     source_of_your_choice,
                     source_choice_shares_activation_mana_color: false,
                     source_target: None,
+                    protect_source_target: false,
+                    follow_up_effects: Vec::new(),
                 },
             ),
         )
@@ -680,9 +702,12 @@ impl EffectAst {
                 DamagePreventionActionAst::PreventAllDamageToTarget {
                     target,
                     duration,
+                    combat_only: false,
                     source_of_your_choice: true,
                     source_choice_shares_activation_mana_color: true,
                     source_target: None,
+                    protect_source_target: false,
+                    follow_up_effects: Vec::new(),
                 },
             ),
         )
@@ -700,12 +725,42 @@ impl EffectAst {
                 DamagePreventionActionAst::PreventAllDamageToTarget {
                     target,
                     duration,
+                    combat_only: false,
                     source_of_your_choice: false,
                     source_choice_shares_activation_mana_color: false,
                     source_target: Some(source_target),
+                    protect_source_target: false,
+                    follow_up_effects: Vec::new(),
                 },
             ),
         )
+    }
+
+    /// One target declaration binds both directions of the prevention shield.
+    pub fn subject_verb_prevent_all_damage_to_and_by_target(
+        target: TargetAst,
+        duration: Until,
+    ) -> Self {
+        let mut effect = Self::subject_verb_prevent_all_damage_to_target_from_target_source(
+            TargetAst::ObjectOrPlayer(
+                ObjectFilter::default(),
+                crate::target::PlayerFilter::Any,
+                None,
+            ),
+            target,
+            duration,
+        );
+        if let Self::SubjectVerb(subject) = &mut effect
+            && let SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    protect_source_target,
+                    ..
+                },
+            ) = &mut subject.action
+        {
+            *protect_source_target = true;
+        }
+        effect
     }
 
     pub fn subject_verb_prevent_all_damage_to_target_from_source_filter(
@@ -1040,6 +1095,18 @@ impl EffectAst {
         self
     }
 
+    /// Attach one required price to this exact cast/permission action.
+    pub fn with_casting_alternative_cost(mut self, cost: ironsmith_core::TotalCost<crate::model::CompilerCost>) -> Self {
+        if let Self::SubjectVerb(subject) = &mut self {
+            match &mut subject.action {
+                SubjectVerbActionAst::Stack(StackActionAst::CastTagged { alternative_cost, .. })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { alternative_cost, .. }) => *alternative_cost = Some(cost),
+                _ => {},
+            }
+        }
+        self
+    }
+
     pub fn subject_verb_cast_tagged(
         tag: TagRef,
         player: PlayerAst,
@@ -1094,6 +1161,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+                alternative_cost: None,
                 tag,
                 player,
                 allow_land,
@@ -1207,6 +1275,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost: None,
                 tag,
                 player,
                 allow_land,
@@ -1235,6 +1304,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost: None,
                 tag,
                 player,
                 allow_land,
@@ -1262,6 +1332,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost: None,
                 tag,
                 player,
                 allow_land,
@@ -1291,6 +1362,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost: None,
                 tag,
                 player,
                 allow_land,
@@ -2108,6 +2180,27 @@ impl EffectAst {
         animation_duration_surface: Option<ironsmith_core::AnimationDurationSurface>,
         duration: Until,
     ) -> Self {
+        Self::subject_verb_become_object_template(Some((power, toughness)), target, card_types, subtypes, subtype_families,
+            colors, abilities, granted_abilities, preserve_other_types, type_retention_surface,
+            animation_pt_surface, animation_duration_surface, duration)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn subject_verb_become_object_template(
+        base_power_toughness: Option<(Value, Value)>,
+        target: TargetAst,
+        card_types: Vec<CardType>,
+        subtypes: Vec<Subtype>,
+        subtype_families: Vec<SubtypeFamily>,
+        colors: Option<ColorSet>,
+        abilities: Vec<crate::model::CompilerStaticAbilityCore>,
+        granted_abilities: Vec<GrantedAbilityAst>,
+        preserve_other_types: bool,
+        type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
+        animation_pt_surface: Option<ironsmith_core::AnimationPtSurface>,
+        animation_duration_surface: Option<ironsmith_core::AnimationDurationSurface>,
+        duration: Until,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2115,8 +2208,8 @@ impl EffectAst {
                 name_override: None,
                 add_supertypes: Vec::new(),
                 remove_all_abilities: false,
-                power,
-                toughness,
+                remove_other_abilities: false,
+                base_power_toughness,
                 target,
                 card_types,
                 subtypes,
@@ -2125,6 +2218,7 @@ impl EffectAst {
                 abilities,
                 granted_abilities,
                 preserve_other_types,
+                preserve_other_colors: false,
                 type_retention_surface,
                 animation_pt_surface,
                 animation_duration_surface,
@@ -2132,6 +2226,14 @@ impl EffectAst {
                 duration,
             }),
         )
+    }
+
+    /// Colors and card types have independent retention semantics.
+    pub fn with_animation_color_retention(mut self, preserve: bool) -> Self {
+        if let Self::SubjectVerb(subject) = &mut self
+            && let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { preserve_other_colors, .. }) = &mut subject.action
+        { *preserve_other_colors = preserve; }
+        self
     }
 
     /// Preserve an authored plural/set subject on a resolving continuous
@@ -2285,6 +2387,11 @@ impl EffectAst {
                 duration,
             }),
         )
+    }
+
+    pub fn subject_verb_remove_supertypes(target: TargetAst, supertypes: Vec<Supertype>, duration: Until) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { target, supertypes, duration }))
     }
 
     pub fn subject_verb_remove_card_types(
@@ -2498,7 +2605,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration },
+                CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration, allowed_subtypes: Vec::new(), preserve_other_types: false },
             ),
         )
     }
@@ -3107,6 +3214,13 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_scoped_damage_redirection(target: TargetAst, scope: TimedDamageRedirectionAst) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget {
+                player_filter: PlayerFilter::You, object_filter: ObjectFilter::default(), target, scope: Some(scope),
+            }))
+    }
+
     pub fn subject_verb_redirect_all_damage_this_turn_to_target(
         player_filter: PlayerFilter,
         object_filter: ObjectFilter,
@@ -3120,6 +3234,7 @@ impl EffectAst {
                     player_filter,
                     object_filter,
                     target,
+                    scope: None,
                 },
             ),
         )
@@ -3472,8 +3587,20 @@ impl EffectAst {
                 player,
                 replacement_effects,
                 duration,
+                player_target: None,
+                display: None,
             }),
         )
+    }
+
+    pub fn subject_verb_register_timed_draw_replacement(
+        player: PlayerFilter, player_target: Option<TargetAst>, replacement_effects: Vec<Self>,
+        duration: ZoneReplacementDurationAst, display: String,
+    ) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
+                player, replacement_effects, duration, player_target, display: Some(display),
+            }))
     }
 
     pub fn subject_verb_register_counter_placement_replacement(
@@ -3494,6 +3621,12 @@ impl EffectAst {
                 },
             ),
         )
+    }
+
+    pub fn subject_verb_register_mana_rewrite(rule: ironsmith_core::ManaOutputRewrite, target: Option<TargetAst>,
+        mode: crate::effects::ReplacementApplyMode, display: String) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { rule, target, mode, display }))
     }
 
     pub fn subject_verb_register_mana_replacement(
@@ -3758,6 +3891,21 @@ impl EffectAst {
                 action,
                 amount,
             }),
+        )
+    }
+
+    pub fn subject_verb_collect_evidence(amount: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount }),
+        )
+    }
+
+    pub fn subject_verb_empower_jace(amount: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount }),
         )
     }
 
@@ -4994,8 +5142,15 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter }),
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out: None }),
         )
+    }
+
+    pub fn subject_verb_phase_exchange(phase_in: ObjectFilter, phase_out: ObjectFilter) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll {
+                filter: phase_in, simultaneous_phase_out: Some(phase_out),
+            }))
     }
 
     pub fn subject_verb_transform(target: TargetAst) -> Self {
@@ -5994,6 +6149,11 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { target, amount }),
         )
+    }
+
+    pub fn subject_verb_become_blocked(target: TargetAst) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked{target}))
     }
 
     pub fn subject_verb_remove_from_combat(target: TargetAst) -> Self {

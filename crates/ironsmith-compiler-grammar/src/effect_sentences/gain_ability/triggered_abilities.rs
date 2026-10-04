@@ -292,6 +292,12 @@ fn parse_granted_composable_event_trigger(
         return Ok(None);
     }
     let trigger_tokens = &ability_tokens[trigger_intro.body_first..split_idx];
+    // This shortcut composes effect bodies, but does not own frequency
+    // extraction. The complete granted-line reader both strips the event
+    // suffix and retains its typed event-history gate.
+    if trigger_surface::parse_trigger_frequency_tokens(trigger_tokens).first_time_each_or_this_turn {
+        return Ok(None);
+    }
     let trigger = parse_trigger_clause_lexed(trigger_tokens)?;
     if !matches!(
         trigger,
@@ -309,6 +315,7 @@ fn parse_granted_composable_event_trigger(
             | TriggerSpec::BeginningOfEndStep(_)
             | TriggerSpec::BeginningOfTheEndStep
             | TriggerSpec::BeginningOfMonarchEndStep
+            | TriggerSpec::EndOfCombat
     ) {
         return Ok(None);
     }

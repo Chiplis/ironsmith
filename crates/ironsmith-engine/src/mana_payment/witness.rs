@@ -6,7 +6,7 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ManaChoicePurpose { Production, StoredColor }
+pub enum ManaChoicePurpose { Production, StoredColor, ReplacementColor }
 
 /// The actual choice offered by an executing mana instruction.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +25,7 @@ impl std::hash::Hash for ManaProductionChoice {
         // Preserve the previous production-choice digest and therefore existing
         // prepared payment IDs. Only the new decision domain adds a prefix.
         if self.purpose == ManaChoicePurpose::StoredColor { "stored-color-choice-v1".hash(state); }
+        if self.purpose == ManaChoicePurpose::ReplacementColor { "replacement-color-choice-v1".hash(state); }
         self.source.hash(state); self.player.hash(state); self.available.hash(state);
         self.count.hash(state); self.same_type.hash(state); self.distinct.hash(state);
     }
@@ -213,6 +214,16 @@ impl crate::decision::DecisionMaker for WitnessDecisionMaker<'_> {
                     // Confirming one's payment cannot preselect another
                     // player's independent production decision.
                     self.production_recording_supported = false;
+                    if choice.purpose == ManaChoicePurpose::ReplacementColor {
+                        let error = crate::effects::ExecutionError::UnresolvedPlayerDecision {
+                            player: choice.player, decision: "mana replacement color",
+                        };
+                        // The query meter carries typed incompleteness across
+                        // legacy Option/boolean planner adapters. Do not run
+                        // a default chooser and manufacture a complete plan.
+                        _game.record_token_resource_failure(&error);
+                        return Err(error.to_string());
+                    }
                     return Ok(None);
                 }
                 let output = if choice.purpose == ManaChoicePurpose::StoredColor {
@@ -235,7 +246,7 @@ impl crate::decision::DecisionMaker for WitnessDecisionMaker<'_> {
             }
             return self.fallback.planned_mana_output(_game, choice);
         };
-        if choice.purpose == ManaChoicePurpose::StoredColor {
+        if choice.purpose != ManaChoicePurpose::Production {
             return self.fallback.planned_mana_output(_game, choice);
         }
         let record = records.get(self.cursor).ok_or_else(|| "unrecorded mana production choice".to_string())?;

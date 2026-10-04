@@ -149,7 +149,13 @@ pub(super) fn resolve_object_power_for_filter(
     allow_calculated_pt: bool,
 ) -> Option<i32> {
     match reference {
-        PtReference::Base => object_base_power_for_filter(object),
+        PtReference::Base => (if allow_calculated_pt {
+            game.calculated_characteristics(object.id)
+                .and_then(|chars| chars.base_power)
+        } else {
+            None
+        })
+        .or_else(|| object_base_power_for_filter(object)),
         PtReference::Effective => {
             if allow_calculated_pt {
                 game.calculated_power(object.id).or_else(|| object.power())
@@ -168,7 +174,15 @@ pub(super) fn resolve_layered_object_power_for_filter(
     allow_calculated_pt: bool,
 ) -> Option<i32> {
     match reference {
-        PtReference::Base => object_base_power_for_filter(object),
+        PtReference::Base => chars
+            .and_then(|chars| chars.base_power)
+            .or_else(|| {
+                allow_calculated_pt
+                    .then(|| game.calculated_characteristics(object.id))
+                    .flatten()
+                    .and_then(|chars| chars.base_power)
+            })
+            .or_else(|| object_base_power_for_filter(object)),
         PtReference::Effective => {
             if allow_calculated_pt {
                 chars
@@ -190,7 +204,15 @@ pub(super) fn resolve_layered_object_toughness_for_filter(
     allow_calculated_pt: bool,
 ) -> Option<i32> {
     match reference {
-        PtReference::Base => object_base_toughness_for_filter(object),
+        PtReference::Base => chars
+            .and_then(|chars| chars.base_toughness)
+            .or_else(|| {
+                allow_calculated_pt
+                    .then(|| game.calculated_characteristics(object.id))
+                    .flatten()
+                    .and_then(|chars| chars.base_toughness)
+            })
+            .or_else(|| object_base_toughness_for_filter(object)),
         PtReference::Effective => {
             if allow_calculated_pt {
                 chars
@@ -207,18 +229,12 @@ pub(super) fn resolve_layered_object_toughness_for_filter(
 pub(super) fn snapshot_base_power_for_filter(
     snapshot: &crate::snapshot::ObjectSnapshot,
 ) -> Option<i32> {
-    if let Some(power) = snapshot.power {
-        return Some(power - plus_minus_counter_delta(&snapshot.counters));
-    }
     snapshot.base_power
 }
 
 pub(super) fn snapshot_base_toughness_for_filter(
     snapshot: &crate::snapshot::ObjectSnapshot,
 ) -> Option<i32> {
-    if let Some(toughness) = snapshot.toughness {
-        return Some(toughness - plus_minus_counter_delta(&snapshot.counters));
-    }
     snapshot.base_toughness
 }
 
@@ -319,7 +335,7 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
-        PlayerFilter::ControlsMost { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
         PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
@@ -425,7 +441,9 @@ pub fn describe_player_filter(filter: &PlayerFilter) -> String {
             )
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
-        PlayerFilter::ControlsMost { .. } => filter.description(),
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+            filter.description()
+        }
         PlayerFilter::OpponentOf(base) => {
             format!("an opponent of {}", describe_player_filter(base))
         }

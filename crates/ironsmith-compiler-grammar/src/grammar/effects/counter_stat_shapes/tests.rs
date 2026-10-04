@@ -82,3 +82,10 @@ fn parses_normalized_possessive_top_library_owners() {
         assert_eq!(parse_top_library_owner(&tokens), Some(expected), "{text}");
     }
 }
+
+#[test]
+fn unstated_half_life_uses_the_same_downward_default_as_other_fraction_values() {
+    let shape = parse_half_life(&["half", "their", "life"]).unwrap();
+    assert!(shape.rounded_down);
+    assert!(!parse_half_life(&["half", "their", "life", "rounded", "up"]).unwrap().rounded_down);
+}

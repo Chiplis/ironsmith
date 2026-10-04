@@ -1,0 +1,84 @@
+[
+  {
+    "name": "Choking Vines",
+    "oracle_id": "3b6b565e-c0b5-48f9-b3e0-4d5d4b065402",
+    "mana_cost": "{X}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during the declare blockers step.\nX target attacking creatures become blocked. Choking Vines deals 1 damage to each of those creatures. (This spell works on creatures that can't be blocked.)",
+    "proposed_complete": true
+  },
+  {
+    "name": "Curtain of Light",
+    "oracle_id": "d6efbbf9-1449-45ce-b187-30041eb36d93",
+    "mana_cost": "{1}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during combat after blockers are declared.\nTarget unblocked attacking creature becomes blocked. (This spell works on creatures that can't be blocked.)\nDraw a card.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Dazzling Beauty",
+    "oracle_id": "de96ef93-a2e0-409d-9d25-fcb2405039b5",
+    "mana_cost": "{2}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during the declare blockers step.\nTarget unblocked attacking creature becomes blocked. (This spell works on creatures that can't be blocked.)\nDraw a card at the beginning of the next turn's upkeep.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Deep Wood",
+    "oracle_id": "3f01f627-9fbd-470b-8001-974784ccf421",
+    "mana_cost": "{1}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+    "proposed_complete": false
+  },
+  {
+    "name": "Delirium",
+    "oracle_id": "a00e5eb6-b916-4cd6-8ff2-c02f4929abc7",
+    "mana_cost": "{1}{B}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during an opponent's turn.\nTap target creature that player controls. That creature deals damage equal to its power to the player. Prevent all combat damage that would be dealt to and dealt by the creature this turn.",
+    "proposed_complete": false
+  },
+  {
+    "name": "Fog Patch",
+    "oracle_id": "eb8ff6c1-f9b4-4dae-8f46-0f1ad4c05355",
+    "mana_cost": "{1}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during the declare blockers step.\nAttacking creatures become blocked. (This spell works on creatures that can't be blocked.)",
+    "proposed_complete": true
+  },
+  {
+    "name": "Heavy Fog",
+    "oracle_id": "a2006755-8812-4aad-8567-e8df6e8923da",
+    "mana_cost": "{1}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+    "proposed_complete": false
+  },
+  {
+    "name": "Savage Beating",
+    "oracle_id": "89d1cd45-8148-4396-a9b8-e0f495e94b5b",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during combat on your turn.\nChoose one —\n• Creatures you control gain double strike until end of turn.\n• Untap all creatures you control. After this phase, there is an additional combat phase.\nEntwine {1}{R} (Choose both if you pay the entwine cost.)",
+    "proposed_complete": false
+  },
+  {
+    "name": "Seedtime",
+    "oracle_id": "3ba50802-57d0-450e-9e2f-a46a09d2f6bb",
+    "mana_cost": "{1}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during your turn.\nTake an extra turn after this one if an opponent cast a blue spell this turn.",
+    "proposed_complete": false
+  },
+  {
+    "name": "Trap Runner",
+    "oracle_id": "730fbd6a-096c-4d25-9372-c05f90088f83",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Creature — Human Soldier",
+    "oracle_text": "{T}: Target unblocked attacking creature becomes blocked. Activate only during combat after blockers are declared. (This ability works on creatures that can't be blocked.)",
+    "power": "2",
+    "toughness": "3",
+    "proposed_complete": true
+  }
+]

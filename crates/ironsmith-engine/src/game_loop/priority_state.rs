@@ -131,6 +131,10 @@ pub struct PendingCast {
     pub x_value: Option<u32>,
     /// Targets that have been chosen so far.
     pub chosen_targets: Vec<Target>,
+    /// Already-matched CR 601.2c/602.2b target triggers, withheld until this
+    /// action succeeds. Native savepoints clone the entire queue and history;
+    /// cancellation drops it with the pending transaction.
+    pub targeting_announcement: Option<TriggerQueue>,
     /// Target requirement assignments bound to `chosen_targets`.
     pub chosen_target_assignments: Vec<crate::game_state::TargetAssignment>,
     /// Target divisions already announced for the proposed spell.
@@ -155,6 +159,9 @@ pub struct PendingCast {
     /// A resolving effect may impose a mandatory mana cost in addition to the
     /// spell's ordinary and optional costs.
     pub effect_additional_mana_cost: Option<crate::mana::ManaCost>,
+    /// A resolving instruction's selected alternative price. The effect cast
+    /// is replayed atomically if input is pending; this never grants priority.
+    pub effect_alternative_cost: Option<crate::cost::TotalCost>,
     /// Simple additional-cost alternatives announced before targets and total-cost locking.
     /// Each entry replaces one occurrence of an effect-backed cost at payment time.
     pub announced_cost_replacements: Option<Vec<(crate::costs::Cost, Vec<crate::costs::Cost>)>>,
@@ -257,6 +264,7 @@ impl PendingCast {
             stage,
             x_value,
             chosen_targets: Vec::new(),
+            targeting_announcement: None,
             chosen_target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             pending_target_distributions: std::collections::VecDeque::new(),
@@ -267,6 +275,7 @@ impl PendingCast {
             base_mana_cost_waived: false,
             effect_mana_cost_reduction: None,
             effect_additional_mana_cost: None,
+            effect_alternative_cost: None,
             announced_cost_replacements: None,
             cost_resource_announced: false,
             cost_resource: None,
@@ -354,6 +363,8 @@ pub enum ActivationStage {
     PayingMana,
     /// Ready to finalize (costs paid, ability goes on stack).
     ReadyToFinalize,
+    /// Bind a public cost object needed for pricing or target legality. No cost is paid.
+    ChoosingCostReferences,
 }
 
 impl ActivationStage {
@@ -372,6 +383,7 @@ impl ActivationStage {
             ActivationStage::ChoosingCardCost => "choosing card costs",
             ActivationStage::PayingMana => "paying mana",
             ActivationStage::ReadyToFinalize => "ready to finalize",
+            ActivationStage::ChoosingCostReferences => "choosing cost references",
         }
     }
 }
@@ -705,6 +717,7 @@ pub(crate) fn append_activation_cost_steps_from_components(
         if let Some(choose) = components[idx]
             .effect_ref()
             .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && choose.filter.tagged_constraints.is_empty()
             && let Some(next) = components.get(idx + 1)
             && let Some(step) = choose_tagged_cost_step(choose, next)
         {
@@ -845,6 +858,9 @@ pub(crate) fn append_activation_cost_steps_from_cost(
 /// An activated ability being activated that needs decisions.
 #[derive(Debug, Clone)]
 pub struct PendingActivation {
+    /// Identity reserved before target matching; the finalized ability keeps
+    /// this exact ID even if its physical source leaves while paying costs.
+    pub announced_stack_ability: Option<ObjectId>,
     /// The source permanent of the activated ability.
     pub source: ObjectId,
     /// Index of the ability being activated.
@@ -861,6 +877,10 @@ pub struct PendingActivation {
     pub effects: crate::resolution::ResolutionProgram,
     /// Targets that have been chosen so far.
     pub chosen_targets: Vec<Target>,
+    /// Already-matched CR 601.2c/602.2b target triggers, withheld until this
+    /// action succeeds. Native savepoints clone the entire queue and history;
+    /// cancellation drops it with the pending transaction.
+    pub targeting_announcement: Option<TriggerQueue>,
     /// Target requirement assignments bound to `chosen_targets`.
     pub chosen_target_assignments: Vec<crate::game_state::TargetAssignment>,
     /// Target divisions already announced for the proposed ability.
@@ -935,6 +955,12 @@ pub struct PendingActivation {
     pub pending_hybrid_pips: Vec<(usize, Vec<crate::mana::ManaSymbol>)>,
     /// Live state for staged "remove counters from among ..." cost payment.
     pub pending_remove_counters_among: Option<PendingRemoveCountersAmongChoice>,
+    /// Printed total cost retained until its public references are announced.
+    pub cost_reference_base: Option<crate::cost::TotalCost>,
+    pub cost_reference_choices: Vec<crate::effects::ChooseObjectsEffect>,
+    pub announced_cost_objects: crate::cost::prospective_references::CostReferenceBindings,
+    pub cost_references_ready: bool,
+
 }
 
 impl PendingActivation {
@@ -968,6 +994,12 @@ impl PendingActivation {
         pending_hybrid_pips: Vec<(usize, Vec<crate::mana::ManaSymbol>)>,
     ) -> Self {
         Self {
+            announced_stack_ability: None,
+            cost_reference_base: None,
+            cost_reference_choices: Vec::new(),
+            announced_cost_objects: Default::default(),
+            cost_references_ready: true,
+
             source,
             ability_index,
             ability_origin,
@@ -976,6 +1008,7 @@ impl PendingActivation {
             stage,
             effects,
             chosen_targets: Vec::new(),
+            targeting_announcement: None,
             chosen_target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             pending_target_distributions: std::collections::VecDeque::new(),
@@ -1126,6 +1159,15 @@ impl PriorityLoopState {
         self.pending_mana_parents.clear();
         self.pending_continuation = None;
         true
+    }
+
+    /// Wire snapshots without continuation programs cannot discard these
+    /// receipts. Runtime savepoints preserve them through this state's Clone.
+    pub fn has_announced_targeting_receipt(&self) -> bool {
+        self.pending_cast.as_ref().is_some_and(|pending|
+            pending.targeting_announcement.is_some() && !pending.chosen_targets.is_empty())
+            || self.pending_activation.as_ref().is_some_and(|pending|
+                pending.targeting_announcement.is_some() && !pending.chosen_targets.is_empty())
     }
 
     /// Check if there's an active action chain (pending cast or activation).

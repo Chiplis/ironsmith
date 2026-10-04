@@ -1016,6 +1016,12 @@ fn wrap_future_draw_replacement_effects(
     full_parse_tokens: &[OwnedLexToken],
     effects: Vec<EffectAst>,
 ) -> Vec<EffectAst> {
+    // The strict instruction owner already captured the complete future
+    // program, including its later permission sentences. Do not defer twice.
+    if matches!(effects.as_slice(), [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Replacements(
+            crate::model::ast::ReplacementActionAst::RegisterDrawReplacement { .. }), ..
+    })]) { return effects; }
     let Some(player) =
         semantic_grammar::parse_next_draw_replacement_player_tokens(full_parse_tokens)
     else {
@@ -1877,6 +1883,14 @@ fn parse_villainous_choice_statement_chunk(
 
 fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
     let rendered = render_token_slice(tokens);
+    if crate::grammar::statement_shapes::is_extra_die_ignore_lowest(tokens) {
+        return Some(LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(
+                StaticAbility::extra_die_ignore_lowest(PlayerFilter::You, 1, rendered),
+            ),
+        ]));
+    }
+
     let words = crate::lexer::TokenWordView::new(tokens);
     if words.parses_prefix(&["once", "each", "turn", "you", "may", "pay"])
         && crate::word_primitives::parse_sequence_suffix(
@@ -2172,6 +2186,9 @@ fn returned_object_static_followup_effects<S: AsRef<[OwnedLexToken]>>(
 }
 
 fn sentence_is_conditional_self_replacement_effect(sentence: &[OwnedLexToken]) -> bool {
+    if crate::effect_sentences::recognizes_life_gain_replacement_sentence(sentence) {
+        return true;
+    }
     let instead_semantics =
         crate::grammar::effects::classify_instead_followup_semantics_tokens(sentence);
     if instead_semantics != crate::cards::builders::InsteadSemantics::SelfReplacement {

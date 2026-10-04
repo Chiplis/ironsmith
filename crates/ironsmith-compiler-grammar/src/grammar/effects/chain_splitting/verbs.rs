@@ -111,6 +111,7 @@ fn parse_chain_verb_kind(input: &mut &[&str]) -> WResult<ChainVerbKind> {
         "goads" | "goad" => ChainVerbKind::Goad,
         "suspects" | "suspect" => ChainVerbKind::Suspect,
         "ends" | "end" => ChainVerbKind::End,
+        "note" => ChainVerbKind::Note,
         _ => return Err(backtrack()),
     };
     Ok(kind)
@@ -136,5 +137,34 @@ mod tests {
                 word_index: 0,
             })
         );
+    }
+}
+
+#[cfg(test)]
+mod noted_life_dispatch_tests {
+    use super::*;
+    use crate::cards::builders::{EffectAst, LifeResourceActionAst, SubjectVerbActionAst};
+    #[test]
+    fn note_life_is_an_executable_chain_head_with_bounded_subject_and_tail() {
+        let tokens = crate::lexer::lex_line("Note your life total.", 0).unwrap();
+        assert_eq!(
+            find_chain_verb_tokens(&tokens).unwrap().kind,
+            ChainVerbKind::Note
+        );
+        let effects = crate::effect_sentences::parse_effect_chain_lexed(&tokens).unwrap();
+        assert!(
+            matches!(effects.as_slice(),[EffectAst::SubjectVerb(subject)] if matches!(&subject.action,SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)))
+        );
+        for text in [
+            "Note your power.",
+            "Note your life total and its mana value.",
+            "Target player note your life total.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(
+                crate::effect_sentences::parse_effect_chain_lexed(&tokens).is_err(),
+                "{text}"
+            );
+        }
     }
 }

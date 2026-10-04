@@ -296,3 +296,340 @@ fn triggering_die_result_uses_its_event_and_rejects_missing_or_planar_rolls() {
     ));
     assert!(resolve(&value, &EvaluationContext::execution_context(&game, &exec)).is_err());
 }
+
+#[test]
+fn fractional_rounding_uses_a_wide_intermediate_for_representable_results() {
+    let (mut game, source, alice) = fixture();
+    for base in [i32::MIN, -1, 0, 1, i32::MAX] {
+        for divisor in [2, 3, 4, i32::MAX] {
+            let rounded = Value::DividedRoundedDown(
+                Box::new(Value::Add(
+                    Box::new(Value::Fixed(base)),
+                    Box::new(Value::Fixed(divisor - 1)),
+                )),
+                divisor,
+            );
+            let expected =
+                (i64::from(base) + i64::from(divisor) - 1).div_euclid(i64::from(divisor)) as i32;
+            let exec = ExecutionContext::new_default(source, alice);
+            assert_eq!(
+                resolve(
+                    &rounded,
+                    &EvaluationContext::execution_context(&game, &exec)
+                )
+                .unwrap(),
+                expected
+            );
+            assert_eq!(continuous(&rounded, &game, source, alice), expected);
+        }
+    }
+    game.player_mut(alice).unwrap().life = i32::MAX;
+    let exec = ExecutionContext::new_default(source, alice);
+    assert_eq!(
+        resolve(
+            &Value::HalfLifeTotalRoundedUp(PlayerFilter::You),
+            &EvaluationContext::execution_context(&game, &exec)
+        )
+        .unwrap(),
+        1_073_741_824
+    );
+    let half = Value::HalfRoundedDown(Box::new(Value::Add(
+        Box::new(Value::Fixed(i32::MAX)),
+        Box::new(Value::Fixed(1)),
+    )));
+    assert_eq!(continuous(&half, &game, source, alice), 1_073_741_824);
+    let overflow = Value::DividedRoundedDown(Box::new(Value::Fixed(i32::MIN)), -1);
+    assert!(
+        resolve(
+            &overflow,
+            &EvaluationContext::execution_context(&game, &exec)
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn canonical_maximum_evaluates_without_overflowing_its_algebraic_intermediates() {
+    let (game, source, alice) = fixture();
+    let exec = ExecutionContext::new_default(source, alice);
+    for a in [i32::MIN, -3, 0, 2, i32::MAX] {
+        for b in [i32::MIN, -5, 0, 7, i32::MAX] {
+            let value = Value::Add(
+                Box::new(Value::Add(
+                    Box::new(Value::Fixed(a)),
+                    Box::new(Value::Fixed(b)),
+                )),
+                Box::new(Value::Scaled(
+                    Box::new(Value::Min(
+                        Box::new(Value::Fixed(a)),
+                        Box::new(Value::Fixed(b)),
+                    )),
+                    -1,
+                )),
+            );
+            assert_eq!(
+                resolve(&value, &EvaluationContext::execution_context(&game, &exec)).unwrap(),
+                a.max(b)
+            );
+            assert_eq!(continuous(&value, &game, source, alice), a.max(b));
+        }
+    }
+    // A mismatched minimum is ordinary arithmetic, even with that prose hint.
+    let mismatched = Value::Add(
+        Box::new(Value::Add(
+            Box::new(Value::Fixed(4)),
+            Box::new(Value::Fixed(9)),
+        )),
+        Box::new(Value::Scaled(
+            Box::new(Value::Min(
+                Box::new(Value::Fixed(3)),
+                Box::new(Value::Fixed(8)),
+            )),
+            -1,
+        )),
+    )
+    .with_surface_hint(ironsmith_core::ValueSurfaceHint::WhicheverIsGreater);
+    assert_eq!(
+        resolve(
+            &mismatched,
+            &EvaluationContext::execution_context(&game, &exec)
+        )
+        .unwrap(),
+        10
+    );
+}
+
+#[test]
+fn scoped_life_maxima_and_below_half_counts_preserve_sign_scope_ties_and_odd_thresholds() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 41);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let charlie = game.players[2].id;
+    let card = CardBuilder::new(CardId::new(), "Life quantity source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let check = |game: &GameState, value: &Value, controller: PlayerId, expected| {
+        let ctx = ExecutionContext::new_default(source, controller);
+        assert_eq!(
+            resolve(value, &EvaluationContext::execution_context(game, &ctx)).unwrap(),
+            expected
+        );
+        assert_eq!(continuous(value, game, source, controller), expected);
+    };
+    assert!(game.write_life_total(bob, 20));
+    assert!(game.write_life_total(charlie, 21));
+    check(
+        &game,
+        &Value::MaximumLifeTotal(PlayerFilter::Opponent),
+        alice,
+        21,
+    );
+    check(
+        &game,
+        &Value::MaximumLifeTotal(PlayerFilter::Any),
+        alice,
+        41,
+    );
+    check(
+        &game,
+        &Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Opponent),
+        alice,
+        1,
+    );
+    check(
+        &game,
+        &Value::MaximumLifeTotal(PlayerFilter::Opponent),
+        bob,
+        41,
+    );
+    assert!(game.write_life_total(charlie, 20));
+    check(
+        &game,
+        &Value::MaximumLifeTotal(PlayerFilter::Opponent),
+        alice,
+        20,
+    );
+    check(
+        &game,
+        &Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Opponent),
+        alice,
+        2,
+    );
+    assert!(game.write_life_total(bob, -3));
+    assert!(game.write_life_total(charlie, -5));
+    check(
+        &game,
+        &Value::MaximumLifeTotal(PlayerFilter::Opponent),
+        alice,
+        -3,
+    );
+    let ceiling = Value::HalfRoundedDown(Box::new(Value::Add(
+        Box::new(Value::MaximumLifeTotal(PlayerFilter::Opponent)),
+        Box::new(Value::Fixed(1)),
+    )));
+    check(&game, &ceiling, alice, -1);
+    assert!(game.write_life_total(bob, i32::MAX));
+    check(&game, &ceiling, alice, 1_073_741_824);
+    let empty = PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::Any);
+    check(&game, &Value::MaximumLifeTotal(empty.clone()), alice, 0);
+    check(
+        &game,
+        &Value::CountPlayersBelowHalfStartingLifeTotal(empty),
+        alice,
+        0,
+    );
+}
+
+#[test]
+fn absolute_difference_widens_intermediates_without_inventing_an_out_of_range_value() {
+    let (game, source, player) = fixture();
+    let ctx = ExecutionContext::new_default(source, player);
+    for (a, b, expected) in [
+        (i32::MIN, i32::MIN, 0),
+        (-5, 3, 8),
+        (i32::MAX, i32::MAX - 5, 5),
+    ] {
+        let value = Value::absolute_difference(Value::Fixed(a), Value::Fixed(b));
+        assert_eq!(
+            resolve(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(),
+            expected
+        );
+        assert_eq!(continuous(&value, &game, source, player), expected);
+    }
+    let unrepresentable =
+        Value::absolute_difference(Value::Fixed(i32::MIN), Value::Fixed(i32::MAX));
+    assert!(matches!(
+        resolve(
+            &unrepresentable,
+            &EvaluationContext::execution_context(&game, &ctx)
+        ),
+        Err(ExecutionError::UnresolvableValue(_))
+    ));
+}
+
+#[test]
+fn noted_life_prefers_live_re_notes_and_exact_departure_receipts_without_blink_following() {
+    let (mut game, source, alice) = fixture();
+    game.note_life_total_for_source(source, alice).unwrap();
+    let early = crate::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+    let ctx = ExecutionContext::new_default(source, alice).with_source_snapshot(early);
+    game.write_life_total(alice, 18);
+    let before_note =
+        game.cached_object_snapshot_with_calculated_characteristics(game.object(source).unwrap());
+    assert_eq!(before_note.noted_life_total, Some(20));
+    game.note_life_total_for_source(source, alice).unwrap();
+    let after_note =
+        game.cached_object_snapshot_with_calculated_characteristics(game.object(source).unwrap());
+    assert_eq!(
+        after_note.noted_life_total,
+        Some(18),
+        "the note write itself invalidates cached LKI"
+    );
+    assert_eq!(
+        resolve(
+            &Value::LastNotedLifeTotal,
+            &EvaluationContext::execution_context(&game, &ctx)
+        )
+        .unwrap(),
+        18
+    );
+    let graveyard = game
+        .move_object_by_game_rule(source, Zone::Graveyard)
+        .unwrap();
+    assert_eq!(
+        game.noted_life_total_for_source(source),
+        None,
+        "departure still clears the live annotation"
+    );
+    assert_eq!(
+        resolve(
+            &Value::LastNotedLifeTotal,
+            &EvaluationContext::execution_context(&game, &ctx)
+        )
+        .unwrap(),
+        18,
+        "the actual departure receipt supersedes an earlier 20-life source snapshot"
+    );
+    let returned = game
+        .move_object_by_game_rule(graveyard, Zone::Battlefield)
+        .unwrap();
+    game.write_life_total(alice, 30);
+    game.note_life_total_for_source(returned, alice).unwrap();
+    assert_eq!(
+        resolve(
+            &Value::LastNotedLifeTotal,
+            &EvaluationContext::execution_context(&game, &ctx)
+        )
+        .unwrap(),
+        18
+    );
+    game.write_life_total(alice, 19);
+    game.note_life_total_for_source(source, alice).unwrap();
+    assert_eq!(
+        resolve(
+            &Value::LastNotedLifeTotal,
+            &EvaluationContext::execution_context(&game, &ctx)
+        )
+        .unwrap(),
+        19,
+        "an explicit subsequent instruction may re-note for the same departed source identity"
+    );
+    assert_eq!(game.noted_life_total_for_source(returned), Some(30));
+    let wrong = ExecutionContext::new_default(game.new_object_id(), alice)
+        .with_source_snapshot(ctx.source_snapshot.clone().unwrap());
+    assert!(
+        resolve(
+            &Value::LastNotedLifeTotal,
+            &EvaluationContext::execution_context(&game, &wrong)
+        )
+        .is_err(),
+        "a snapshot for another object is not a receipt"
+    );
+}
+
+#[test]
+fn numeric_damage_and_prevention_receipts_check_the_scalar_boundary_before_consumers() {
+    let (game, source, player) = fixture();
+    for amount in [i32::MAX as u32, i32::MAX as u32 + 1, u32::MAX] {
+        let target = crate::events::DamageTarget::Player(player);
+        let events = [
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::DamageEvent::with_cause(source, target, amount, false, crate::events::EventCause::effect()),
+                Default::default(),
+            ),
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::DamagePreventedEvent::new(
+                    source, target, amount, source, player, false,
+                ),
+                Default::default(),
+            ),
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::LifeGainEvent::new(player, amount),
+                Default::default(),
+            ),
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::LifeLossEvent::new(player, amount, false),
+                Default::default(),
+            ),
+        ];
+        for event in events {
+            let context =
+                ExecutionContext::new_default(source, player).with_triggering_event(event);
+            let result = resolve(
+                &Value::EventValue(EventValueSpec::Amount),
+                &EvaluationContext::execution_context(&game, &context),
+            );
+            if amount == i32::MAX as u32 {
+                assert_eq!(result.unwrap(), i32::MAX);
+            } else {
+                let error = result.unwrap_err();
+                assert!(error.is_incomplete_execution());
+                assert!(
+                    matches!(error, ExecutionError::ResourceLimitExceeded { requested, maximum, .. } if requested == u128::from(amount) && maximum == i32::MAX as u128)
+                );
+            }
+        }
+    }
+}

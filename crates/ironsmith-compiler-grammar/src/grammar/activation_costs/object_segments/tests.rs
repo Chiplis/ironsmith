@@ -116,7 +116,7 @@ fn unattach_and_tap_segments_return_typed_filters() {
     assert_eq!(
         parse_tap_chosen_segment_tokens(&tap).unwrap(),
         ActivationCostSegmentCst::TapChosen {
-            count: 2,
+            count: ChoiceCount::exactly(2),
             filter: ObjectFilter {
                 other: true,
                 untapped: true,
@@ -136,4 +136,104 @@ fn unattach_and_tap_segments_return_typed_filters() {
             filter: ObjectFilter::source(),
         }
     );
+}
+
+#[test]
+fn tap_x_untapped_costs_preserve_exact_variable_count_and_filter() {
+    for (text, expected) in [
+        (
+            "Tap X untapped artifacts you control",
+            ObjectFilter::artifact().you_control(),
+        ),
+        (
+            "Tap X untapped creatures you control",
+            ObjectFilter::creature().you_control(),
+        ),
+        (
+            "Tap X untapped Knights you control",
+            ObjectFilter::default()
+                .with_subtype(Subtype::Knight)
+                .you_control(),
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let ActivationCostSegmentCst::TapChosen { count, filter } =
+            parse_tap_chosen_segment_tokens(&tokens).unwrap()
+        else {
+            panic!("expected a tap-chosen cost");
+        };
+        assert_eq!(count, ChoiceCount::dynamic_x());
+        assert_eq!(
+            filter,
+            ObjectFilter {
+                untapped: true,
+                ..expected
+            }
+        );
+    }
+    for text in [
+        "Tap X untapped",
+        "Tap X tapped creatures you control",
+        "Tap X untapped creatures you control at random",
+    ] {
+        assert!(
+            parse_tap_chosen_segment_tokens(&lex_line(text, 0).unwrap()).is_err(),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn chosen_untap_and_attachment_tap_costs_preserve_count_scope_and_identity() {
+    for (text, count, opponent) in [
+        ("Untap a tapped land an opponent controls", 1, true),
+        ("Untap two tapped blue creatures you control", 2, false),
+        ("Untap fifteen tapped creatures you control", 15, false),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let ActivationCostSegmentCst::UntapChosen { count: parsed, filter } = parse_untap_chosen_segment_tokens(&tokens).unwrap() else { panic!("typed untap cost"); };
+        assert_eq!(parsed, ChoiceCount::exactly(count));
+        assert!(filter.tapped);
+        assert!(!filter.untapped);
+        assert_eq!(filter.controller, Some(if opponent { crate::target::PlayerFilter::Opponent } else { crate::target::PlayerFilter::You }));
+    }
+    for (text, expected_tag) in [("Tap enchanted land", "enchanted"), ("Tap enchanted creature", "enchanted"), ("Tap granting permanent", crate::tag::CompilerReferenceTag::GrantingSource.as_str())] {
+        let tokens = lex_line(text, 0).unwrap();
+        let ActivationCostSegmentCst::TapChosen { count, filter } = parse_tap_chosen_segment_tokens(&tokens).unwrap() else { panic!("typed tap cost"); };
+        assert_eq!(count, ChoiceCount::exactly(1));
+        assert!(filter.untapped);
+        assert!(filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == expected_tag));
+    }
+    for text in ["Untap", "Untap two tapped", "Tap enchanted nonsense"] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(if text.starts_with("Untap") { parse_untap_chosen_segment_tokens(&tokens).is_err() } else { parse_tap_chosen_segment_tokens(&tokens).is_err() });
+    }
+}
+
+#[test]
+fn complete_discard_selectors_preserve_color_historic_x_and_other() {
+    let parse = |text| parse_discard_segment_tokens(&lex_line(text, 0).unwrap()).unwrap();
+    let ActivationCostSegmentCst::DiscardFiltered { filter: Some(nonblack), .. } = parse("discard a nonblack card") else { panic!("missing nonblack filter") };
+    assert!(nonblack.excluded_colors.contains(crate::color::Color::Black));
+    let ActivationCostSegmentCst::DiscardFiltered { filter: Some(historic), .. } = parse("discard a historic card") else { panic!("missing historic filter") };
+    assert!(historic.historic);
+    let ActivationCostSegmentCst::DiscardFiltered { filter: Some(mana), count: 1, .. } = parse("discard a card with mana value x") else { panic!("missing X filter") };
+    assert!(matches!(mana.mana_value, Some(crate::filter::Comparison::EqualExpr(value)) if matches!(value.unhinted(), crate::effect::Value::X)));
+    assert!(matches!(parse("discard x cards"), ActivationCostSegmentCst::DiscardValue { count: crate::effect::Value::X, .. }));
+    assert!(matches!(parse("discard another card"), ActivationCostSegmentCst::DiscardFiltered { other: true, .. }));
+    for text in ["discard a card with mana value", "discard a creature from your graveyard", "discard a card and draw a card"] {
+        assert!(parse_discard_segment_tokens(&lex_line(text, 0).unwrap()).is_err(), "{text}");
+    }
+}
+
+#[test]
+fn latest_draw_discard_cost_keeps_exact_player_and_history_predicate() {
+    let tokens = lex_line("Discard the last card you drew this turn", 0).unwrap();
+    let ActivationCostSegmentCst::DiscardFiltered { count, filter: Some(filter), .. } =
+        parse_discard_segment_tokens(&tokens).unwrap() else { panic!("latest-draw filter"); };
+    assert_eq!(count, 1);
+    assert_eq!(filter.zone, Some(Zone::Hand));
+    assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
+    assert_eq!(filter.last_drawn_this_turn, Some(crate::target::PlayerFilter::You));
+    assert!(parse_discard_segment_tokens(&lex_line("Discard the last card you drew this turn or any card", 0).unwrap()).is_err());
 }

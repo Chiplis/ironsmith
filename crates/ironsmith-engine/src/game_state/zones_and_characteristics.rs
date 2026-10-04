@@ -946,36 +946,25 @@ impl GameState {
                 }
                 for tagged_snapshots in entry.tagged_objects.values_mut() {
                     for tagged_snapshot in tagged_snapshots {
-                        if (tagged_snapshot.object_id == old_id
-                            || tagged_snapshot.stable_id == snapshot.stable_id)
+                        // The ability watches this incarnation. An explicit
+                        // movement link may already have updated its object id;
+                        // card identity alone cannot authorize a later blink.
+                        if tagged_snapshot.object_id == old_id
                             && tagged_snapshot.zone == snapshot.zone
                         {
                             *tagged_snapshot = snapshot.clone();
                         }
                     }
                 }
-                if entry.is_ability
-                    && (entry.object_id == old_id
-                        || entry
-                            .source_stable_id
-                            .is_some_and(|id| id == snapshot.stable_id))
-                {
-                    let should_update_source_lki = entry
-                        .source_snapshot
-                        .as_ref()
-                        .is_none_or(|source_snapshot| source_snapshot.zone == snapshot.zone);
-                    if !should_update_source_lki {
-                        continue;
-                    }
-                    entry.source_stable_id = Some(snapshot.stable_id);
-                    entry
-                        .source_name
-                        .get_or_insert_with(|| snapshot.name.to_string());
-                    entry.source_snapshot = Some(snapshot.clone());
-                }
             }
+            self.refresh_pending_ability_source_lki(snapshot);
         }
 
+        if self.object(old_id).is_some_and(|object| object.zone == Zone::Battlefield)
+            && new_zone != Zone::Battlefield
+        {
+            self.detach_relations_for_leaving_object(old_id);
+        }
         self.object_store.changes.record(old_id);
         self.object_store.render_changes.record(old_id);
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
@@ -1238,6 +1227,7 @@ impl GameState {
         }
         if !(old_zone == Zone::Stack && new_zone == Zone::Battlefield) {
             new_object.snow_mana_spent_to_cast = crate::player::ManaPool::default();
+            new_object.mana_spent_on_x = Some(crate::mana::XManaAllocation::default());
         }
         if !preserve_cast_tags {
             new_object.cast_tagged_objects.clear();
@@ -1245,11 +1235,28 @@ impl GameState {
         if !preserve_temporary_static_ability_grants {
             new_object.temporary_static_ability_grants.clear();
         }
+        // A selected land permission attaches its rider to the original
+        // entering object before entry counters or any added programs run.
+        // Redirected / independent replacement moves cannot lend this grant
+        // to another permanent or a later incarnation.
+        if let Some(abilities) = self.runtime_cache.pending_land_permission_grants.remove(&old_id) {
+            if new_zone == Zone::Battlefield
+                && cause.cause_type == crate::events::cause::CauseType::SpecialAction
+                && cause.source == Some(old_id)
+            {
+                for ability in abilities {
+                    new_object.temporary_static_ability_grants.push(crate::object::TemporaryStaticAbilityGrant {
+                        ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: None,
+                    });
+                }
+            }
+        }
         if !preserve_optional_costs_paid {
             new_object.optional_costs_paid = crate::cost::OptionalCostsPaid::default();
         }
         new_object.cast_alternative_method = None;
         new_object.cast_play_from_constraints = None;
+        new_object.cast_price = None;
         // A card cast through a granted "it gains suspend" trigger carries a
         // synthetic "Suspend 0—{0}" permission only for that cast; it isn't a
         // printed ability and must not follow the card (CR 400.7, 702.62a).
@@ -1330,7 +1337,12 @@ impl GameState {
         let sticker_identity = new_object.stable_id;
         self.add_object(new_object);
         if old_zone == Zone::Stack && new_zone == Zone::Battlefield {
-            self.effect_store.continuous_effects.retarget_resolved_permanent_spell(old_id, new_id);
+            self.effect_store
+                .continuous_effects
+                .retarget_resolved_permanent_spell(old_id, new_id);
+            self.effect_store
+                .prevention_effects
+                .link_resolved_permanent_spell(old_id, new_id);
         }
         self.move_stickers_to_new_object(sticker_identity, new_id, new_zone);
         if new_zone == Zone::Battlefield {
@@ -1659,6 +1671,19 @@ impl GameState {
             None,
             initial_enters_tapped,
             None,
+        )
+    }
+
+    /// Original creation instructions belong to every replacement-added token.
+    pub(crate) fn move_created_token_with_entry_instructions(
+        &mut self, old_id: ObjectId, cause: crate::events::cause::EventCause,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+        enters_tapped: bool, choose_aura_attachment: bool,
+        counters: Vec<(crate::object::CounterType, u32)>,
+    ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id, Zone::Battlefield, cause, decision_maker, choose_aura_attachment,
+            counters, None, enters_tapped, None,
         )
     }
 
@@ -3071,9 +3096,7 @@ impl GameState {
             self.set_chosen_named_option(new_id, option);
         }
         if let Some(life_total) = choices.noted_life_total {
-            self.object_annotations_mut()
-                .noted_life_totals
-                .insert(new_id, life_total);
+            self.set_noted_life_total_for_source(new_id, life_total);
         }
         for (power, toughness, abilities) in &choices.power_toughness_choices {
             if let Some(object) = self.object_mut(new_id) {
@@ -3291,9 +3314,6 @@ impl GameState {
                 if !self.attach_object_to_target(new_id, target) {
                     return false;
                 }
-                self.effect_store
-                    .continuous_effects
-                    .record_attachment(new_id);
                 true
             });
             if !attached && let Some(checkpoint) = aura_entry_checkpoint.take() {
@@ -3401,6 +3421,9 @@ impl GameState {
     pub fn remove_object(&mut self, id: ObjectId) {
         if !self.objects.contains_key(&id) {
             return;
+        }
+        if self.object(id).is_some_and(|object| object.zone == Zone::Battlefield) {
+            self.detach_relations_for_leaving_object(id);
         }
         self.battlefield_flags_mut().saga_entry_lore_processed.remove(&id);
         if let Some(stable_id) = self.object(id).map(|object| object.stable_id) {
@@ -3803,102 +3826,6 @@ impl GameState {
         }
     }
 
-    pub fn detach_object_from_current_target(&mut self, attachment_id: ObjectId) -> bool {
-        let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
-        let attachment_snapshot = self
-            .object(attachment_id)
-            .map(|object| self.cached_object_snapshot_with_calculated_characteristics(object));
-        self.mark_continuous_state_dirty();
-        let Some(current_target) = self
-            .object(attachment_id)
-            .and_then(|object| object.attached_to)
-        else {
-            return false;
-        };
-
-        match current_target {
-            AttachmentTarget::Object(id) => {
-                if let Some(parent) = self.object_mut(id) {
-                    parent
-                        .attachments
-                        .retain(|existing| *existing != attachment_id);
-                }
-            }
-            AttachmentTarget::Player(id) => {
-                if let Some(player) = self.player_mut(id) {
-                    player
-                        .attachments
-                        .retain(|existing| *existing != attachment_id);
-                }
-            }
-        }
-
-        if let Some(object) = self.object_mut(attachment_id) {
-            object.attached_to = None;
-        }
-
-        if let Some(snapshot) = attachment_snapshot {
-            let provenance = self
-                .provenance_graph_mut()
-                .alloc_root_event(crate::events::EventKind::ObjectBecameUnattached);
-            let event = crate::triggers::TriggerEvent::new_with_provenance(
-                crate::events::ObjectBecameUnattachedEvent::new(
-                    attachment_id,
-                    current_target,
-                    snapshot.controller,
-                    Some(snapshot),
-                ),
-                provenance,
-            )
-            .with_lookback_source_snapshots(lookback_source_snapshots);
-            self.queue_trigger_event(provenance, event);
-        }
-
-        true
-    }
-
-    pub fn attach_object_to_target(
-        &mut self,
-        attachment_id: ObjectId,
-        target: AttachmentTarget,
-    ) -> bool {
-        self.mark_continuous_state_dirty();
-        if !self
-            .object(attachment_id)
-            .is_some_and(|object| object.zone == Zone::Battlefield)
-            || !self.attachment_target_exists(target)
-        {
-            return false;
-        }
-
-        self.detach_object_from_current_target(attachment_id);
-
-        if let Some(object) = self.object_mut(attachment_id) {
-            object.attached_to = Some(target);
-        } else {
-            return false;
-        }
-
-        match target {
-            AttachmentTarget::Object(id) => {
-                if let Some(parent) = self.object_mut(id)
-                    && !parent.attachments.contains(&attachment_id)
-                {
-                    parent.attachments.push(attachment_id);
-                }
-            }
-            AttachmentTarget::Player(id) => {
-                if let Some(player) = self.player_mut(id)
-                    && !player.attachments.contains(&attachment_id)
-                {
-                    player.attachments.push(attachment_id);
-                }
-            }
-        }
-
-        true
-    }
-
     // =========================================================================
     // Counter Management
     // =========================================================================
@@ -4184,6 +4111,7 @@ impl GameState {
     pub(crate) fn try_all_continuous_effects_arc(
         &self,
     ) -> Result<Arc<Vec<ContinuousEffect>>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        crate::static_ability_processor::validate_mana_scalar_domain(self)?;
         let revision = self.effect_store.continuous_effects.revision();
         if self.continuous_state_is_clean()
             && self.runtime_cache.static_effects_cache.borrow().has_checked_snapshot(revision)
@@ -4471,6 +4399,11 @@ impl GameState {
                     linked_face_mana_value: object.linked_face_mana_value(),
                     compiled_card_text: object.compiled_card_text.clone(),
                     ability_labels: object.ability_labels.clone(),
+                    base_power: object.base_power.as_ref().map(|value| value.base_value()),
+                    base_toughness: object
+                        .base_toughness
+                        .as_ref()
+                        .map(|value| value.base_value()),
                     power: object.power(),
                     toughness: object.toughness(),
                     card_types: object.zone_card_types().to_vec().into(),
@@ -4501,11 +4434,13 @@ impl GameState {
                         )
                         .collect::<Vec<_>>()
                         .into(),
+                    numeric_range_error: None,
                     ability_gain_prohibitions: Vec::new(),
                     aura_attach_filter: object.aura_attach_filter_owned(),
                     controller: self.controller_of(object),
                 });
 
+        if chars.numeric_range_error.is_some() { return None; }
         Self::normalize_current_characteristic_subtypes(object, &mut chars);
 
         Some(chars)
@@ -4544,6 +4479,7 @@ impl GameState {
         let Some(object) = self.object(id) else { return Ok(None); };
         if object.zone == Zone::Battlefield && self.is_phased_out(id) { return Ok(None); }
         if let Some(mut chars) = crate::continuous::in_progress_characteristics(self, id) {
+            chars.validate_numeric_range()?;
             Self::normalize_current_characteristic_subtypes(object, &mut chars);
             return Ok(Some(chars));
         }
@@ -4559,6 +4495,7 @@ impl GameState {
             let mut chars = self.calculated_characteristics_arc(id)
                 .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?
                 .as_ref().clone();
+            chars.validate_numeric_range()?;
             Self::normalize_current_characteristic_subtypes(object, &mut chars);
             return Ok(Some(chars));
         }
@@ -4590,6 +4527,7 @@ impl GameState {
         for id in present {
             let chars = calculated.get_mut(&id).ok_or(
                 crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;
+            chars.validate_numeric_range()?;
             Self::normalize_current_characteristic_subtypes(self.object(id).expect("immutable existing object"), chars);
         }
         Ok(calculated)
@@ -4604,6 +4542,7 @@ impl GameState {
         if object.zone == Zone::Battlefield && self.is_phased_out(id) { return Ok(None); }
         let mut chars = self.calculated_characteristics_with_effects(id, effects)
             .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;
+        chars.validate_numeric_range()?;
         Self::normalize_current_characteristic_subtypes(object, &mut chars);
         Ok(Some(chars))
     }
@@ -5077,6 +5016,8 @@ impl GameState {
         use crate::ability::AbilityKind;
         use crate::static_abilities::StaticAbility;
 
+        self.expire_condition_ended_prevention_shields();
+
         // A duration ends permanently at its first false transition.
         let expired: std::collections::HashSet<usize> = self
             .effect_store
@@ -5143,6 +5084,9 @@ impl GameState {
                 self.objects
                     .iter()
                     .flat_map(|(&object_id, object)| {
+                        // CR 702.26b: phased-out sources do not supply static
+                        // rule restrictions, even on the printed-only fast path.
+                        if self.is_phased_out(object_id) { return Vec::new(); }
                         let zone = object.zone;
                         let controller = self.controller_of(object);
                         let mut abilities = object
@@ -5204,6 +5148,9 @@ impl GameState {
                 self.objects
                     .iter()
                     .flat_map(|(&object_id, object)| {
+                        // CR 702.26b: phased-out sources do not supply static
+                        // rule restrictions, even on the printed-only fast path.
+                        if self.is_phased_out(object_id) { return Vec::new(); }
                         let zone = object.zone;
                         let controller = self.controller_of(object);
                         match zone {
@@ -5434,6 +5381,7 @@ impl GameState {
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+        | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana => true,
             Modification::AddAbility(static_ability) => {
                 Self::static_ability_requires_cant_update(static_ability)
@@ -5564,6 +5512,7 @@ impl GameState {
                 | StaticAbilityId::Improvise
                 | StaticAbilityId::BlackManaMayBePaidWithLife
                 | StaticAbilityId::MinimumSpellTotalMana
+                | StaticAbilityId::SpellManaSpendingRestriction
         )
     }
 

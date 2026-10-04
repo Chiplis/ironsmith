@@ -46,7 +46,7 @@ fn player_filter_references_identity(
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
         }
-        PlayerFilter::ControlsMost { filter } => {
+        PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } => {
             object_filter_references_identity(filter, identity)
         }
         PlayerFilter::Excluding { base, excluded } => {
@@ -147,6 +147,18 @@ fn choose_spec_references_identity(
 
 fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'_>) -> bool {
     match value.unhinted() {
+        Value::DamageHistory(query) => {
+            query
+                .reference_specs()
+                .any(|spec| choose_spec_references_identity(spec, identity))
+                || query
+                    .object_filters()
+                    .any(|filter| object_filter_references_identity(filter, identity))
+                || query
+                    .player_filter()
+                    .is_some_and(|player| player_filter_references_identity(player, identity))
+        }
+
         Value::Add(left, right) | Value::Min(left, right) => {
             value_references_identity(left, identity) || value_references_identity(right, identity)
         }
@@ -189,6 +201,8 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
+        | Value::MaximumLifeTotal(player)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player)
         | Value::UnspentMana(player)
@@ -257,7 +271,8 @@ fn restriction_references_identity(
         | Restriction::BeTargetedPlayer(player) => {
             player_filter_references_identity(player, identity)
         }
-        Restriction::CastSpellsMatching(player, filter)
+        Restriction::PlayLandsMatching(player, filter)
+        | Restriction::CastSpellsMatching(player, filter)
         | Restriction::CastMoreThanOneSpellEachTurn(player, filter) => {
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
@@ -284,13 +299,15 @@ fn restriction_references_identity(
                     .as_ref()
                     .is_some_and(|source| object_filter_references_identity(source, identity))
         }
-        Restriction::ActivateAbilitiesOf(filter)
+        Restriction::ActivateLoyaltyAbilitiesOf(filter)
+        | Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)
         | Restriction::ActivateNonManaAbilitiesOf(filter)
         | Restriction::Attack(filter)
         | Restriction::AttackAlone(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
+        | Restriction::MustAttack(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
@@ -310,6 +327,7 @@ fn restriction_references_identity(
         | Restriction::AttackOrBlockAlone(filter) => {
             object_filter_references_identity(filter, identity)
         }
+        Restriction::PreventDamageFrom { sources, .. } => object_filter_references_identity(sources, identity),
         Restriction::PreventDamage
         | Restriction::PreventCombatDamage
         | Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => false,
@@ -359,11 +377,20 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
         return choose_spec_references_identity(&fight.creature1, identity)
             || choose_spec_references_identity(&fight.creature2, identity);
     }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageBySourcesEffect>() {
+        return damage
+            .sources
+            .iter()
+            .chain(&damage.source_declarations)
+            .any(|spec| choose_spec_references_identity(spec, identity))
+            || choose_spec_references_identity(&damage.target, identity)
+            || value_references_identity(&damage.amount, identity);
+    }
     if let Some(execute) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
         return choose_spec_references_identity(&execute.source, identity)
             || effect_references_identity(&execute.effect, identity);
     }
-    if let Some(cast) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {
+    if let Some(cast) = effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none()) {
         return identity.tag.is_some_and(|tag| cast.tag == *tag)
             || player_filter_references_identity(&cast.player, identity);
     }
@@ -375,7 +402,7 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
         return value_references_identity(&create.count, identity)
             || player_filter_references_identity(&create.controller, identity);
     }
-    if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>() {
+    if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none()) {
         return identity.tag.is_some_and(|tag| grant.tag == *tag)
             || player_filter_references_identity(&grant.player, identity);
     }
@@ -757,7 +784,7 @@ fn effect_tree_has_same_name_reference(effect: &Effect, tag: &TagKey) -> bool {
 fn effect_tree_casts_tag(effect: &Effect, tag: &TagKey) -> bool {
     let effect = structural_unwrap_render_wrappers(effect);
     if effect
-        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
         .is_some_and(|cast| cast.tag == *tag)
     {
         return true;
@@ -832,6 +859,16 @@ fn describe_target_player_token_creation(
 /// Multiple consumers retain the declaration so their shared tag remains
 /// visible and unambiguous.
 pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect]) -> Option<String> {
+    if let Some(last)=effects.last()
+        && let Some(damage)=structural_unwrap_render_wrappers(last).downcast_ref::<crate::effects::DealDamageBySourcesEffect>()
+        && effects.len()==damage.sources.len()+1
+        && damage.sources.len()==damage.source_declarations.len()
+        && effects[..effects.len()-1].iter().zip(damage.sources.iter().zip(&damage.source_declarations)).all(|(effect,(source,declaration))| {
+            let Some(target)=structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::TargetOnlyEffect>() else {return false;};
+            !target.explicit_declaration && target.chooser.is_none() && &target.target==declaration
+                && matches!(source.base(),ChooseSpec::Tagged(tag) if wrapped_effect_tag(effect)==Some(tag))
+        })
+    {return Some(describe_effect(last));}
     let (target_index, identity, consumer_index) = single_synthetic_target_consumer(effects)?;
     let consumer = &effects[consumer_index];
 

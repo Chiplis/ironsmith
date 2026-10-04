@@ -49,6 +49,78 @@ pub struct PreventAllDamageToSelfFromSourcesMatchingSpec {
     pub display: String,
 }
 
+/// The destination of a persistent redirection is resolved at the damage event.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum StaticDamageRedirectDestination {
+    Source,
+    AttachedPermanent,
+    DamagedPermanentController,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct StaticDamageRedirectionSpec {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: Option<PlayerFilter>,
+    pub target_object_filter: Option<ObjectFilter>,
+    pub combat_only: bool,
+    pub source_must_be_untapped: bool,
+    pub destination: StaticDamageRedirectDestination,
+    pub display: String,
+}
+
+/// A prevention amount retains prevention semantics, including unpreventable damage.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum StaticDamagePreventionAmount {
+    All,
+    Amount(Value),
+    /// Prevent the portion above this amount, not a damage-setting replacement.
+    AllBut(u32),
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct PreventMatchingDamageSpec {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: Option<PlayerFilter>,
+    pub target_object_filter: Option<ObjectFilter>,
+    pub combat_only: bool,
+    pub noncombat_only: bool,
+    pub maximum_damage: Option<u32>,
+    pub amount: StaticDamagePreventionAmount,
+    pub display: String,
+}
+
+/// The amount referenced by a prevention effect's additional action.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub enum PreventionFollowUpAmount {
+    /// "The damage prevented this way"; zero when prevention is prohibited.
+    #[default]
+    Prevented,
+    /// "That many" referring to the damage proposed before this prevention.
+    Proposed,
+}
+
+/// A complete all-damage prevention with additional effects. Amount-bearing
+/// follow-ups explicitly distinguish actual prevention from proposed damage.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct StaticDamagePreventionFollowUp<E> {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: Option<PlayerFilter>,
+    pub target_object_filter: Option<ObjectFilter>,
+    pub combat_only: bool,
+    pub noncombat_only: bool,
+    pub damage_source_tag: Option<crate::tag::TagKey>,
+    pub effects: Vec<E>,
+    pub display: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub amount_basis: PreventionFollowUpAmount,
+}
+
 /// A scoped rule permission to ignore one targeting-protection ability.
 /// The permission changes targeting legality; it does not remove the ability.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -58,6 +130,16 @@ pub struct TargetingAsThoughNoAbilitySpec {
     pub players: Option<PlayerFilter>,
     pub sources_controlled_by: PlayerFilter,
     pub ignored_ability: StaticAbilityId,
+    pub display: String,
+}
+
+/// A permission to ignore landwalk only while determining legal blockers.
+/// `None` ignores all landwalk kinds; `Some` ignores only the named kind.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct BlockingAsThoughNoLandwalkSpec {
+    pub objects: ObjectFilter,
+    pub landwalk: Option<LandwalkKind>,
     pub display: String,
 }
 
@@ -147,6 +229,11 @@ pub enum AdditionalTokenKind {
     /// 1/1 green Squirrel creature token (Chatterfang, Squirrel General).
     Squirrel,
 }
+
+/// How complete token templates modify the matching groups of one creation event.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum TokenCreationTemplateMode { AppendOnce, AppendForEach, ReplaceEach }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
@@ -289,13 +376,22 @@ impl CompanionDeckCondition {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ThisSpellCastRestrictionKind {
     pub label: String,
+    /// New cast-time facts are typed; old label-only artifacts retain their
+    /// legacy conversion without changing their serialized representation.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub timing: Option<crate::ThisSpellCastTiming>,
 }
 
 impl ThisSpellCastRestrictionKind {
     fn named(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
+            timing: None,
         }
+    }
+
+    pub fn timing(timing: crate::ThisSpellCastTiming) -> Self {
+        Self { label: "typed cast timing".into(), timing: Some(timing) }
     }
 
     pub fn during_declare_attackers_step() -> Self {
@@ -884,6 +980,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         activator: Option<PlayerFilter>,
         non_mana_only: bool,
         condition: Option<ICond>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        ability_condition: Option<ActivatedAbilityCostCondition>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        display: Option<String>,
     },
     ChooseColorAsEnters {
         excluded: Option<Color>,
@@ -1003,6 +1103,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         delta: i32,
+        /// When present, evaluated in the replacement source context at application.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        dynamic_delta: Option<Value>,
         noncombat_only: bool,
         display: String,
     },
@@ -1300,6 +1403,37 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         subtypes: Vec<Subtype>,
     },
     EntersUnderChosenControl(PlayerFilter),
+    // Append new payloads so existing serialized variant positions stay stable.
+    BlockingAsThoughNoLandwalk(BlockingAsThoughNoLandwalkSpec),
+    CanBlockAdditionalForEach { additional: u32, filter: ObjectFilter },
+    PreventMatchingDamage(PreventMatchingDamageSpec),
+    PreventMatchingDamageWithFollowUp(StaticDamagePreventionFollowUp<E>),
+    AddLifeGainReplacement { player: PlayerFilter, additional: i32, display: String },
+    TokenCreationTemplates {
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        templates: Vec<E>,
+        mode: TokenCreationTemplateMode,
+        choose_one: bool,
+        optional: bool,
+        display: String,
+    },
+    ActorCountersAddition {
+        filter: ObjectFilter,
+        player_filter: Option<PlayerFilter>,
+        actor: PlayerFilter,
+        counter_type: Option<CounterType>,
+        additional: i64,
+        display: String,
+    },
+    RedirectMatchingDamage(StaticDamageRedirectionSpec),
+    NoMaximumHandSizeFor(PlayerFilter),
+    MaximumHandSizeFromSourceCounters { player: PlayerFilter, counter_type: CounterType },
+    SpellManaSpendingRestriction(crate::mana::ManaSpendingRestriction),
+    ManaProductionRewrite { rule: crate::mana::ManaOutputRewrite, display: String },
+    /// Replaces a numerical roll batch with extra dice, ignoring that many low rolls.
+    ExtraDieIgnoreLowest { player: PlayerFilter, additional: u32 },
+    ConvertUnspentMana { player: PlayerFilter, symbol: crate::mana::ManaSymbol },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1566,6 +1700,9 @@ where
                     Grantable::DerivedAlternativeCast(map_derived_alternative_cast(spec, map_cost)?)
                 }
                 Grantable::PlayFrom => Grantable::PlayFrom,
+                Grantable::AlternativePrice { costs, origin } => Grantable::AlternativePrice {
+                    costs: costs.into_iter().map(&mut *map_cost).collect::<Result<_, _>>()?, origin,
+                },
             })
         }
 
@@ -1599,13 +1736,32 @@ where
                 )?,
                 filter: spec.filter,
                 zone: spec.zone,
+                additional_zones: spec.additional_zones,
                 beneficiary: spec.beneficiary,
                 usage_limit: spec.usage_limit,
                 max_plays: spec.max_plays,
                 cast_this_way_filter: spec.cast_this_way_filter,
+                on_use_effects: spec.on_use_effects.into_iter().map(&mut *map_effect).collect::<Result<_, _>>()?,
                 source_exiled_surface: spec.source_exiled_surface,
+                filtered_zone_surface: spec.filtered_zone_surface,
+                top_card_only: spec.top_card_only,
+                instant_timing: spec.instant_timing,
+                may_look_at_top: spec.may_look_at_top,
                 cast_this_way_grants: spec
                     .cast_this_way_grants
+                    .into_iter()
+                    .map(|ability| {
+                        map_static_ability(
+                            ability,
+                            map_trigger,
+                            map_effect,
+                            map_cost,
+                            map_intervening,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                permanent_this_way_grants: spec
+                    .permanent_this_way_grants
                     .into_iter()
                     .map(|ability| {
                         map_static_ability(
@@ -1816,6 +1972,9 @@ where
             StaticAbilityPayload::DieRollResultAdjustment(spec) => {
                 StaticAbilityPayload::DieRollResultAdjustment(spec)
             }
+            StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional } => {
+                StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional }
+            }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
                 let mut abilities = Vec::with_capacity(level.abilities.len());
@@ -1904,6 +2063,9 @@ where
             StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count)
             }
+            StaticAbilityPayload::CanBlockAdditionalForEach { additional, filter } => {
+                StaticAbilityPayload::CanBlockAdditionalForEach { additional, filter }
+            }
             StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
                 StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype)
             }
@@ -1915,6 +2077,9 @@ where
             }
             StaticAbilityPayload::TargetingAsThoughNoAbility(spec) => {
                 StaticAbilityPayload::TargetingAsThoughNoAbility(spec)
+            }
+            StaticAbilityPayload::BlockingAsThoughNoLandwalk(spec) => {
+                StaticAbilityPayload::BlockingAsThoughNoLandwalk(spec)
             }
             StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
                 StaticAbilityPayload::CantBeBlockedByMoreThan(count)
@@ -2063,6 +2228,9 @@ where
             StaticAbilityPayload::SetChosenColor { filter, display } => {
                 StaticAbilityPayload::SetChosenColor { filter, display }
             }
+            StaticAbilityPayload::NoMaximumHandSizeFor(player) => StaticAbilityPayload::NoMaximumHandSizeFor(player),
+            StaticAbilityPayload::MaximumHandSizeFromSourceCounters { player, counter_type } =>
+                StaticAbilityPayload::MaximumHandSizeFromSourceCounters { player, counter_type },
             StaticAbilityPayload::SetMaximumHandSize { player, amount } => {
                 StaticAbilityPayload::SetMaximumHandSize { player, amount }
             }
@@ -2291,12 +2459,16 @@ where
                 activator,
                 non_mana_only,
                 condition,
+                ability_condition,
+                display,
             } => StaticAbilityPayload::ActivatedAbilityCostIncrease {
                 filter,
                 increase: map_total_cost(increase, map_cost)?,
                 activator,
                 non_mana_only,
                 condition: condition.map(&mut *map_intervening).transpose()?,
+                ability_condition,
+                display,
             },
             StaticAbilityPayload::ChooseColorAsEnters { excluded, display } => {
                 StaticAbilityPayload::ChooseColorAsEnters { excluded, display }
@@ -2401,6 +2573,8 @@ where
                         added_abilities,
                         set_base_power_toughness: spec.set_base_power_toughness,
                         additional_counters: spec.additional_counters.clone(),
+                        additional_x_counters: spec.additional_x_counters.clone(),
+                        keep_other_source_abilities: spec.keep_other_source_abilities,
                         additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec
@@ -2513,6 +2687,7 @@ where
                 target_player_filter,
                 target_object_filter,
                 delta,
+                dynamic_delta,
                 noncombat_only,
                 display,
             } => StaticAbilityPayload::ModifyDamageAmountReplacement {
@@ -2520,6 +2695,7 @@ where
                 target_player_filter,
                 target_object_filter,
                 delta,
+                dynamic_delta,
                 noncombat_only,
                 display,
             },
@@ -2555,6 +2731,24 @@ where
                 noncombat_only,
                 display,
             },
+            StaticAbilityPayload::SpellManaSpendingRestriction(rule) =>
+                StaticAbilityPayload::SpellManaSpendingRestriction(rule),
+            StaticAbilityPayload::RedirectMatchingDamage(spec) =>
+                StaticAbilityPayload::RedirectMatchingDamage(spec),
+            StaticAbilityPayload::PreventMatchingDamage(spec) =>
+                StaticAbilityPayload::PreventMatchingDamage(spec),
+            StaticAbilityPayload::PreventMatchingDamageWithFollowUp(spec) =>
+                StaticAbilityPayload::PreventMatchingDamageWithFollowUp(StaticDamagePreventionFollowUp {
+                    source_filter: spec.source_filter,
+                    target_player_filter: spec.target_player_filter,
+                    target_object_filter: spec.target_object_filter,
+                    combat_only: spec.combat_only,
+                    noncombat_only: spec.noncombat_only,
+                    damage_source_tag: spec.damage_source_tag,
+                    amount_basis: spec.amount_basis,
+                    effects: spec.effects.into_iter().map(map_effect).collect::<Result<Vec<_>, _>>()?,
+                    display: spec.display,
+                }),
             StaticAbilityPayload::PreventHalfDamageReplacement {
                 source_filter,
                 target_player_filter,
@@ -2787,6 +2981,10 @@ where
                 factor,
                 display,
             },
+            StaticAbilityPayload::ConvertUnspentMana { player, symbol } =>
+                StaticAbilityPayload::ConvertUnspentMana { player, symbol },
+            StaticAbilityPayload::ManaProductionRewrite { rule, display } =>
+                StaticAbilityPayload::ManaProductionRewrite { rule, display },
             StaticAbilityPayload::ManaProductionReplacement {
                 source_filter,
                 minimum_amount,
@@ -2798,6 +2996,16 @@ where
                 replacement_mana,
                 display,
             },
+            StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display } =>
+                StaticAbilityPayload::TokenCreationTemplates {
+                    controller, token_filter,
+                    templates: templates.into_iter().map(map_effect).collect::<Result<Vec<_>, _>>()?,
+                    mode, choose_one, optional, display,
+                },
+            StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display } =>
+                StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display },
+            StaticAbilityPayload::AddLifeGainReplacement { player, additional, display } =>
+                StaticAbilityPayload::AddLifeGainReplacement { player, additional, display },
             StaticAbilityPayload::DoubleLifeChangeReplacement {
                 player,
                 loss,
@@ -3202,6 +3410,14 @@ impl<
             id: Some(StaticAbilityId::ThisSpellXMinimum),
             label: display.clone(),
             payload: StaticAbilityPayload::ThisSpellXMinimum { minimum, display },
+        }
+    }
+
+    pub fn extra_die_ignore_lowest(player: PlayerFilter, additional: u32, display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ExtraDieIgnoreLowest),
+            label: display.into(),
+            payload: StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional },
         }
     }
 
@@ -3767,6 +3983,18 @@ impl<
         }
     }
 
+    pub fn can_block_additional_for_each(additional: u32, filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CanBlockAdditionalForEach),
+            label: "can block additional creatures per matching permanent".to_string(),
+            payload: StaticAbilityPayload::CanBlockAdditionalForEach { additional, filter },
+        }
+    }
+
+    pub fn can_block_any_number() -> Self {
+        Self::identified(StaticAbilityId::CanBlockAnyNumber, "can block any number of creatures")
+    }
+
     pub fn can_block_additional_creature_each_combat(additional: usize) -> Self {
         Self {
             id: Some(StaticAbilityId::CanBlockAdditionalCreatureEachCombat),
@@ -3815,6 +4043,14 @@ impl<
             id: Some(StaticAbilityId::CanAttackAsThoughNoDefender),
             label: "This creature can attack players who attacked you during their last turn as though it didn't have defender".to_string(),
             payload: StaticAbilityPayload::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender,
+        }
+    }
+
+    pub fn blocking_as_though_no_landwalk(spec: BlockingAsThoughNoLandwalkSpec) -> Self {
+        Self {
+            id: Some(StaticAbilityId::BlockingAsThoughNoLandwalk),
+            label: spec.display.clone(),
+            payload: StaticAbilityPayload::BlockingAsThoughNoLandwalk(spec),
         }
     }
 
@@ -4057,6 +4293,8 @@ impl<
                 activator,
                 non_mana_only,
                 condition: existing,
+                ability_condition,
+                display,
             } => StaticAbility {
                 id: self.id,
                 label: self.label,
@@ -4065,6 +4303,8 @@ impl<
                     increase,
                     activator,
                     non_mana_only,
+                    ability_condition,
+                    display,
                     condition: Some(match existing {
                         Some(existing) => existing.and(condition),
                         None => condition,
@@ -4248,6 +4488,22 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn spell_mana_spending_rule(&self) -> Option<&crate::mana::ManaSpendingRestriction> {
+        match &self.payload {
+            StaticAbilityPayload::SpellManaSpendingRestriction(rule) => Some(rule),
+            StaticAbilityPayload::Conditional { ability, .. } => ability.spell_mana_spending_rule(),
+            _ => None,
+        }
+    }
+
+    pub fn spell_mana_spending_restriction(rule: crate::mana::ManaSpendingRestriction, display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SpellManaSpendingRestriction),
+            label: display.into(),
+            payload: StaticAbilityPayload::SpellManaSpendingRestriction(rule),
+        }
+    }
+
     pub fn minimum_spell_total_mana(amount: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::MinimumSpellTotalMana),
@@ -4411,19 +4667,25 @@ impl<
             },
         }
     }
-    /// Attach an activation condition to an activated-ability cost
-    /// reduction; other payloads are returned unchanged.
+    /// Add an independent gate without losing an existing target/ability gate.
     pub fn with_activated_ability_cost_condition(
         mut self,
         condition: ActivatedAbilityCostCondition,
     ) -> Self {
-        if let StaticAbilityPayload::ActivatedAbilityCostReduction {
-            condition: existing,
-            ..
-        } = &mut self.payload
-        {
-            *existing = Some(condition);
+        fn add<T, E, C, Cond, ICond>(ability: &mut StaticAbility<T, E, C, Cond, ICond>, condition: ActivatedAbilityCostCondition) {
+            let existing = match &mut ability.payload {
+                StaticAbilityPayload::ActivatedAbilityCostReduction { condition, .. } => condition,
+                StaticAbilityPayload::ActivatedAbilityCostIncrease { ability_condition, .. } => ability_condition,
+                StaticAbilityPayload::Conditional { ability, .. } => { add(ability, condition); return; }
+                _ => return,
+            };
+            *existing = Some(match existing.take() {
+                None => condition,
+                Some(old) if old == condition => old,
+                Some(old) => ActivatedAbilityCostCondition::All(vec![old, condition]),
+            });
         }
+        add(&mut self, condition);
         self
     }
     pub fn reduce_activated_ability_costs_if_targets(
@@ -4745,7 +5007,7 @@ impl<
     }
     pub fn grant_object_ability_for_filter(
         filter: ObjectFilter,
-        ability: AbilityModel<T, E, C, Cond>,
+        ability: AbilityModel<T, E, C, Cond, ICond>,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
@@ -4936,6 +5198,9 @@ impl<
                 display,
             },
         }
+    }
+    pub fn cant_be_copied() -> Self {
+        Self::identified(StaticAbilityId::CantBeCopied, "This spell can't be copied")
     }
     pub fn cant_be_countered_ability() -> Self {
         Self::identified(
@@ -5166,6 +5431,8 @@ impl<
                 activator: None,
                 non_mana_only: false,
                 condition: None,
+                ability_condition: None,
+                display: None,
             },
         }
     }
@@ -5184,6 +5451,8 @@ impl<
                 activator: None,
                 non_mana_only: true,
                 condition: None,
+                ability_condition: None,
+                display: None,
             },
         }
     }
@@ -5201,6 +5470,8 @@ impl<
                 activator: Some(activator),
                 non_mana_only,
                 condition: None,
+                ability_condition: None,
+                display: None,
             },
         }
     }
@@ -5671,19 +5942,19 @@ impl<
     pub fn creatures_assign_combat_damage_using_toughness() -> Self {
         Self::identified(
             StaticAbilityId::CreaturesAssignCombatDamageUsingToughness,
-            "creatures assign combat damage using toughness",
+            "Each creature assigns combat damage equal to its toughness rather than its power",
         )
     }
     pub fn this_creature_assigns_combat_damage_using_toughness() -> Self {
         Self::identified(
             StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness,
-            "this creature assigns combat damage using toughness",
+            "This creature assigns combat damage equal to its toughness rather than its power",
         )
     }
     pub fn creatures_you_control_assign_combat_damage_using_toughness() -> Self {
         Self {
             id: Some(StaticAbilityId::CreaturesYouControlAssignCombatDamageUsingToughness),
-            label: "creatures you control assign damage using toughness".into(),
+            label: "Each creature you control assigns combat damage equal to its toughness rather than its power".into(),
             payload: StaticAbilityPayload::None,
         }
     }
@@ -5691,6 +5962,12 @@ impl<
         Self::identified(
             StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
             "lethal damage to creatures you control uses power",
+        )
+    }
+    pub fn planeswalkers_you_control_dont_die_at_zero_loyalty() -> Self {
+        Self::identified(
+            StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty,
+            "Planeswalkers you control aren't put into their owners' graveyards for having 0 loyalty",
         )
     }
     pub fn players_cant_cycle() -> Self {
@@ -6042,6 +6319,14 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn controller_plays_with_hand_revealed() -> Self {
+        Self { id: Some(StaticAbilityId::ControllerPlaysWithHandRevealed),
+            label: "Play with your hand revealed.".into(), payload: StaticAbilityPayload::None }
+    }
+    pub fn players_play_with_hands_revealed() -> Self {
+        Self { id: Some(StaticAbilityId::PlayersPlayWithHandsRevealed),
+            label: "Players play with their hands revealed.".into(), payload: StaticAbilityPayload::None }
+    }
     pub fn opponents_play_with_hands_revealed() -> Self {
         Self {
             id: Some(StaticAbilityId::OpponentsPlayWithHandsRevealed),
@@ -6077,6 +6362,14 @@ impl<
             label: "additional land plays".to_string(),
             payload: StaticAbilityPayload::AdditionalLandPlays(count),
         }
+    }
+    pub fn no_maximum_hand_size_for(player: PlayerFilter) -> Self {
+        Self { id: Some(StaticAbilityId::NoMaximumHandSize), label: "scoped no maximum hand size".into(),
+            payload: StaticAbilityPayload::NoMaximumHandSizeFor(player) }
+    }
+    pub fn maximum_hand_size_from_source_counters(player: PlayerFilter, counter_type: CounterType) -> Self {
+        Self { id: Some(StaticAbilityId::SetMaximumHandSize), label: "maximum hand size from source counters".into(),
+            payload: StaticAbilityPayload::MaximumHandSizeFromSourceCounters { player, counter_type } }
     }
     pub fn no_maximum_hand_size() -> Self {
         Self {
@@ -6513,10 +6806,18 @@ impl<
                 target_player_filter,
                 target_object_filter,
                 delta,
+                dynamic_delta: None,
                 noncombat_only,
                 display,
             },
         }
+    }
+    /// A live additive bonus is distinct from a resolving, captured X bonus.
+    pub fn with_dynamic_damage_delta(mut self, value: Value) -> Self {
+        if let StaticAbilityPayload::ModifyDamageAmountReplacement { dynamic_delta, .. } = &mut self.payload {
+            *dynamic_delta = Some(value);
+        }
+        self
     }
     /// Restrict a multiplied-damage replacement to noncombat damage
     /// ("would deal noncombat damage", Solphim, Mayhem Dominus).
@@ -6587,6 +6888,30 @@ impl<
                 noncombat_only: false,
                 display,
             },
+        }
+    }
+
+    pub fn prevent_matching_damage_with_follow_up(spec: StaticDamagePreventionFollowUp<E>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventMatchingDamage),
+            label: spec.display.clone(),
+            payload: StaticAbilityPayload::PreventMatchingDamageWithFollowUp(spec),
+        }
+    }
+
+    pub fn redirect_matching_damage(spec: StaticDamageRedirectionSpec) -> Self {
+        Self {
+            id: Some(StaticAbilityId::RedirectMatchingDamage),
+            label: spec.display.clone(),
+            payload: StaticAbilityPayload::RedirectMatchingDamage(spec),
+        }
+    }
+
+    pub fn prevent_matching_damage(spec: PreventMatchingDamageSpec) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventMatchingDamage),
+            label: spec.display.clone(),
+            payload: StaticAbilityPayload::PreventMatchingDamage(spec),
         }
     }
 
@@ -6683,6 +7008,17 @@ impl<
                 display,
             },
         }
+    }
+
+    pub fn actor_counters_addition_replacement(
+        filter: ObjectFilter, player_filter: Option<PlayerFilter>, actor: PlayerFilter,
+        counter_type: Option<CounterType>, additional: impl Into<i64>, display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::AddCountersPlacementReplacement), label: display.clone(),
+            payload: StaticAbilityPayload::ActorCountersAddition {
+                filter, player_filter, actor, counter_type, additional: additional.into(), display,
+            } }
     }
 
     pub fn add_counters_placement_replacement(
@@ -6929,6 +7265,18 @@ impl<
             },
         }
     }
+    pub fn convert_unspent_mana(player: PlayerFilter, symbol: crate::mana::ManaSymbol) -> Self {
+        Self { id: Some(StaticAbilityId::ConvertUnspentMana),
+            label: format!("If {} would lose unspent mana, that mana becomes {} instead", player.description(), format!("{symbol:?}").to_ascii_lowercase()),
+            payload: StaticAbilityPayload::ConvertUnspentMana { player, symbol } }
+    }
+
+    pub fn mana_production_rewrite(rule: crate::mana::ManaOutputRewrite, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::ManaProductionRewrite), label: display.clone(),
+            payload: StaticAbilityPayload::ManaProductionRewrite { rule, display } }
+    }
+
     pub fn mana_production_replacement(
         source_filter: ObjectFilter,
         minimum_amount: u32,
@@ -6947,6 +7295,24 @@ impl<
             },
         }
     }
+    pub fn token_creation_templates(
+        controller: PlayerFilter, token_filter: ObjectFilter, templates: Vec<E>,
+        mode: TokenCreationTemplateMode, choose_one: bool, optional: bool, display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::TokenCreationTemplates), label: display.clone(),
+            payload: StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display } }
+    }
+
+    pub fn add_life_gain_replacement(player: PlayerFilter, additional: i32, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddLifeGainReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddLifeGainReplacement { player, additional, display },
+        }
+    }
+
     pub fn double_life_change_replacement(
         player: PlayerFilter,
         loss: bool,
@@ -7197,3 +7563,14 @@ impl<
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test,feature="serde"))]
+mod cast_timing_payload_tests {
+    #[test]
+    fn old_label_only_payload_stays_stable_and_new_timing_is_typed() {
+        let old=super::ThisSpellCastRestrictionKind::during_combat();let value=serde_json::to_value(&old).unwrap();assert!(value.get("timing").is_none());
+        let restored:super::ThisSpellCastRestrictionKind=serde_json::from_value(value).unwrap();assert_eq!(restored,old);
+        let new=super::ThisSpellCastRestrictionKind::timing(crate::ThisSpellCastTiming::DuringDeclareBlockersStep);
+        let restored:super::ThisSpellCastRestrictionKind=serde_json::from_str(&serde_json::to_string(&new).unwrap()).unwrap();assert_eq!(restored.timing,Some(crate::ThisSpellCastTiming::DuringDeclareBlockersStep));
+    }
+}

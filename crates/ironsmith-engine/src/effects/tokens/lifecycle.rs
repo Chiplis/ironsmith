@@ -1,6 +1,5 @@
 //! Shared token lifecycle helpers.
 
-#[cfg(test)]
 use crate::ability::Ability;
 use crate::effect::Effect;
 use crate::effects::{EnterAttackingEffect, SacrificeTargetEffect, ScheduleDelayedTriggerEffect};
@@ -8,7 +7,6 @@ use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_e
 use crate::events::EnterBattlefieldEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-#[cfg(test)]
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::{Trigger, TriggerEvent};
@@ -17,6 +15,18 @@ use crate::zone::Zone;
 /// Token creation, entry choices and replacement payloads are one instruction.
 /// Keep prompt/answer state but restore game and resolution memory on suspension.
 pub(crate) fn execute_token_instruction_atomically<'a>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    execute: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>) -> Result<crate::effect::EffectOutcome, ExecutionError>,
+) -> Result<crate::effect::EffectOutcome, ExecutionError> {
+    execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+        let (_, meter) = game.begin_token_resource_scope();
+        let _guard = super::resources::TokenInstructionGuard::enter(meter)?;
+        execute(game, ctx)
+    })
+}
+
+pub(crate) fn execute_resource_transaction_atomically<'a>(
     game: &mut GameState,
     ctx: &mut ExecutionContext<'a>,
     execute: impl FnOnce(
@@ -28,22 +38,26 @@ pub(crate) fn execute_token_instruction_atomically<'a>(
         return Ok(crate::effect::EffectOutcome::with_objects(Vec::new()));
     }
     game.clear_pending_decision_controllers();
+    let (root, meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::context::ExecutionContextCheckpoint::capture(ctx);
-    let result = execute(game, ctx);
+    let mut result = match game.token_resource_failure() {
+        Some(error) => Err(error),
+        None => execute(game, ctx),
+    };
+    if let Err(error) = &result { game.record_token_resource_failure(error); }
+    if let Some(error) = game.token_resource_failure() { result = Err(error); }
     let pending = ctx.decision_maker.awaiting_choice();
     if pending || result.is_err() {
         game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
         context_checkpoint.restore(ctx);
     }
+    game.end_token_resource_scope(root, &meter);
     if pending && result.is_ok() {
         return Ok(crate::effect::EffectOutcome::with_objects(Vec::new()));
     }
     result
 }
-
-/// Ported MAGE scenarios assume a per-player cap on token permanents.
-pub(crate) const TOKEN_PER_PLAYER_LIMIT: usize = 500;
 
 /// Entry-processing options for newly created tokens.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -57,20 +71,6 @@ impl TokenEntryOptions {
             enters_attacking,
         }
     }
-}
-
-pub(crate) fn remaining_token_slots(game: &GameState, controller: PlayerId) -> usize {
-    let existing = game
-        .battlefield
-        .iter()
-        .filter(|object_id| {
-            game.object(**object_id).is_some_and(|object| {
-                object.kind == crate::object::ObjectKind::Token
-                    && game.current_controller(**object_id) == Some(controller)
-            })
-        })
-        .count();
-    TOKEN_PER_PLAYER_LIMIT.saturating_sub(existing)
 }
 
 /// Keep the complete entry receipt while exposing only its original arrival
@@ -103,60 +103,110 @@ pub(crate) fn retain_token_entry_receipt(
     Ok(arrival)
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct AdditionalTokenInstructions {
+    pub enters_tapped: bool,
+    pub suppress_aura_attachment_choice: bool,
+    pub entry: TokenEntryOptions,
+    pub attack_player: Option<PlayerId>,
+    pub attack_player_only: bool,
+    /// One preselected destination per attempted added token, in group order.
+    /// `Some` disables all destination prompts during original commitment.
+    pub prepared_attack_targets: Option<Vec<Option<crate::combat_state::AttackTarget>>>,
+    pub blocking_attacker: Option<ObjectId>,
+    pub initial_counters: Vec<(crate::object::CounterType, u32)>,
+    pub cleanup: Option<TokenCleanupOptions>,
+    pub linked_exiles: Vec<ObjectId>,
+    pub gains_haste: bool,
+}
+
+/// Commit every added/substituted group as part of its original creation.
+/// Update the same event with actual counts; the owner publishes it once.
 pub(crate) fn create_replacement_additional_tokens(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     controller_id: PlayerId,
-    additional_tokens: &[(ironsmith_core::AdditionalTokenKind, u32)],
+    creation: &mut crate::events::CreateTokensEvent,
+    instructions: &AdditionalTokenInstructions,
     events: &mut Vec<TriggerEvent>,
     receipts: &mut Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
+    use crate::events::tokens::TokenGroupKey;
+    use super::create_token_copy::{attack_targets_for_player, choose_attack_target};
     let mut created_ids = Vec::new();
-    for (token_kind, requested_count) in additional_tokens {
-        let token_definition =
-            crate::events::tokens::additional_token_definition(*token_kind);
-        let count = (*requested_count as usize).min(remaining_token_slots(game, controller_id));
+    let mut attack_index = 0usize;
+    for key in creation.group_keys() {
+        let definition = match key {
+            TokenGroupKey::Original => continue,
+            TokenGroupKey::Named(index) => crate::events::tokens::additional_token_definition(creation.additional_tokens[index].0),
+            TokenGroupKey::Template(index) => creation.additional_templates[index].definition.clone(),
+        };
+        let count = creation.group_count(key) as usize;
+        let mut actual = 0u32;
         for _ in 0..count {
+            let prepared_attack = instructions.prepared_attack_targets.as_ref().map(|targets| {
+                targets.get(attack_index).cloned().ok_or_else(||
+                    ExecutionError::InternalError("added token lost its prepared attack destination".into()))
+            }).transpose()?;
+            attack_index += 1;
             let id = game.new_object_id();
-            let mut token_obj =
-                game.object_from_token_definition(id, &token_definition, controller_id);
-            token_obj.zone = Zone::Command;
-            let token_is_creature = token_obj.is_creature();
-
-            game.add_object(token_obj);
-            let entry_result = game.move_object_with_etb_processing_with_dm(
-                id,
-                Zone::Battlefield,
-                &mut ctx.decision_maker,
+            let mut token = game.object_from_token_definition(id, &definition, controller_id);
+            token.zone = Zone::Command;
+            let is_creature = token.is_creature();
+            game.commit_token_resource_slot()?;
+        game.add_object(token);
+            let entry = game.move_created_token_with_entry_instructions(
+                id, ctx.cause.clone(), &mut ctx.decision_maker, instructions.enters_tapped,
+                !instructions.suppress_aura_attachment_choice, instructions.initial_counters.clone(),
             )?;
             if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
-            let Some(entry_result) = retain_token_entry_receipt(game, id, entry_result, receipts)? else {
-                game.remove_object(id);
-                continue;
+            let Some(entry) = retain_token_entry_receipt(game, id, entry, receipts)? else {
+                game.remove_object(id); continue;
             };
-            let entered_id = entry_result.new_id;
-            created_ids.push(entered_id);
-
-            if game
-                .object(entered_id)
-                .is_some_and(|obj| obj.zone == Zone::Battlefield)
-            {
-                apply_token_battlefield_entry(
-                    game,
-                    ctx,
-                    entered_id,
-                    controller_id,
-                    token_is_creature,
-                    TokenEntryOptions::default(),
-                    Zone::Command,
-                    entry_result.enters_tapped,
-                    events,
-                )?;
+            let entered = entry.new_id;
+            actual += 1; created_ids.push(entered);
+            for &exiled in &instructions.linked_exiles { game.add_exiled_with_source_link(entered, exiled); }
+            if game.object(entered).is_some_and(|object| object.zone == Zone::Battlefield) {
+                apply_token_battlefield_entry(game, ctx, entered, controller_id, is_creature,
+                    if instructions.prepared_attack_targets.is_some() { TokenEntryOptions::default() } else { instructions.entry },
+                    Zone::Command, entry.enters_tapped, events)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+                if let Some(target) = prepared_attack {
+                    if let Some(target) = target
+                        && crate::effects::combat::can_enter_attacking(game, entered) {
+                        game.add_entering_attacker(entered, target);
+                    }
+                } else if let Some(player) = instructions.attack_player
+                    && crate::effects::combat::can_enter_attacking(game, entered)
+                {
+                    let target = if instructions.attack_player_only {
+                        game.player(player).is_some_and(|player| player.is_in_game())
+                            .then_some(crate::combat_state::AttackTarget::Player(player))
+                    } else {
+                        let targets = attack_targets_for_player(game, player);
+                        (!targets.is_empty()).then(|| choose_attack_target(game, ctx, player, &targets)).flatten()
+                    };
+                    if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+                    if let Some(target) = target { game.add_entering_attacker(entered, target); }
+                }
+                if let Some(attacker) = instructions.blocking_attacker {
+                    crate::effects::combat::put_onto_battlefield_blocking(game, entered, attacker);
+                }
+                if instructions.gains_haste { grant_token_static_abilities(game, ctx, entered, &[StaticAbility::haste()])?; }
+                if let Some(cleanup) = &instructions.cleanup { schedule_token_cleanup(game, ctx, entered, controller_id, cleanup.clone())?; }
                 if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
             }
         }
+        *creation.group_count_mut(key) = actual;
     }
     Ok(created_ids)
+}
+
+pub(crate) fn publish_created_token_groups(_game: &mut GameState, ctx: &ExecutionContext, creation: crate::events::CreateTokensEvent, reported: &mut Vec<TriggerEvent>) {
+    if creation.total_count() > 0 {
+        let event = TriggerEvent::new_with_provenance(creation, ctx.provenance);
+        reported.push(event);
+    }
 }
 
 /// Apply common post-create entry processing for a token that entered the battlefield.
@@ -210,7 +260,6 @@ pub(crate) fn apply_token_battlefield_entry(
 }
 
 /// Grant a sequence of static abilities to a created token.
-#[cfg(test)]
 pub(crate) fn grant_token_static_abilities(
     game: &mut GameState,
     ctx: &mut ExecutionContext,

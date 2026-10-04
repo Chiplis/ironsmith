@@ -517,6 +517,7 @@ fn parse_exile_top_library_then_play_bundle(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                    alternative_cost,
                     tag: _,
                     player,
                     allow_land,
@@ -534,6 +535,7 @@ fn parse_exile_top_library_then_play_bundle(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost,
                 tag: permission_tag,
                 player,
                 allow_land,

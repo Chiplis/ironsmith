@@ -92,6 +92,9 @@ impl std::ops::Index<usize> for TurnEventRecords {
 /// Unified owner for turn-scoped bookkeeping and history.
 #[derive(Debug, Clone, Default)]
 pub struct TurnHistory {
+    /// Exact public holder when this turn began. Fresh games have no monarch;
+    /// authoritative restore requires a presence-bearing carrier for this fact.
+    pub monarch_at_turn_start: Option<PlayerId>,
     /// Per-player snapshot taken before the untap step begins.
     pub untapped_lands_at_turn_start: HashMap<PlayerId, u32>,
     pub activated_abilities_this_turn: HashSet<(ObjectId, usize)>,
@@ -114,6 +117,9 @@ pub struct TurnHistory {
     /// than retroactively counting counters received earlier in the turn.
     pub player_counter_locks_this_turn: HashSet<(PlayerId, crate::object::CounterType)>,
     pub die_rolls_this_turn: HashMap<PlayerId, Vec<u32>>,
+    /// Completed physical rolls, including nonnumeric planar rolls. Ignored
+    /// and superseded rerolls never enter this ordinal history.
+    pub completed_die_rolls_this_turn: HashMap<PlayerId, u32>,
     pub die_roll_result_adjustments_this_turn: HashSet<(ObjectId, StaticAbilityInstanceId)>,
     /// Source/player pairs for attached-object rule restrictions that player
     /// has paid to ignore until the turn ends.
@@ -142,6 +148,9 @@ pub struct TurnHistory {
     pub spell_warped_this_turn: bool,
     /// Spells each player has cast this game (never cleared between turns).
     pub spells_cast_this_game: HashMap<PlayerId, u32>,
+    /// Completed unqualified target history restored without fabricating old
+    /// event records. Exact incarnations remain distinct after a zone change.
+    checkpoint_targeted_objects: HashSet<ObjectId>,
     pub event_records: TurnEventRecords,
     pub staged_event_records: TurnEventRecords,
     /// Index into `event_records` where the simultaneous action whose events
@@ -156,6 +165,7 @@ impl TurnHistory {
     pub fn clear_for_new_turn(&mut self) -> u32 {
         let spells_cast_last_turn_total = self.total_spells_cast_this_turn();
 
+        self.monarch_at_turn_start=None;
         self.activated_abilities_this_turn.clear();
         self.loyalty_abilities_activated_this_turn.clear();
         self.activated_abilities_resolved_this_turn.clear();
@@ -171,6 +181,7 @@ impl TurnHistory {
         self.untapped_lands_at_turn_start.clear();
         self.player_counter_locks_this_turn.clear();
         self.die_rolls_this_turn.clear();
+        self.completed_die_rolls_this_turn.clear();
         self.die_roll_result_adjustments_this_turn.clear();
         self.players_ignoring_attached_static_restrictions_this_turn
             .clear();
@@ -185,6 +196,7 @@ impl TurnHistory {
         self.crew_abilities_resolved_this_turn.clear();
         self.saddled_this_turn.clear();
         self.spell_warped_this_turn = false;
+        self.checkpoint_targeted_objects.clear();
         self.event_records.clear();
         self.staged_event_records.clear();
         self.simultaneous_batch_start = None;
@@ -203,10 +215,49 @@ impl TurnHistory {
         self.simultaneous_batch_start = previous;
     }
 
+    /// Plain completed first-target facts. Provisional copy targets are not
+    /// included: publication must finish before a continuation-free checkpoint.
+    pub fn targeted_object_history_for_checkpoint(&self) -> Vec<ObjectId> {
+        let mut ids = self.checkpoint_targeted_objects.clone();
+        ids.extend(self.event_records.iter().filter_map(|record|
+            record.event.downcast::<crate::events::BecomesTargetedEvent>()
+                .and_then(|targeted| targeted.target_object())));
+        let mut ids: Vec<_> = ids.into_iter().collect(); ids.sort(); ids
+    }
+
+    pub fn restore_targeted_object_history(&mut self, ids: Vec<ObjectId>) -> Result<(), String> {
+        let unique: HashSet<_> = ids.iter().copied().collect();
+        if unique.len() != ids.len() { return Err("duplicate exact object in completed target history".into()); }
+        self.checkpoint_targeted_objects = unique; Ok(())
+    }
+
+    pub(crate) fn object_was_targeted_before_checkpoint(&self, id: ObjectId) -> bool {
+        self.checkpoint_targeted_objects.contains(&id)
+    }
+
     pub(crate) fn projected_records(&self) -> impl DoubleEndedIterator<Item = &TurnEventRecord> {
         self.event_records
             .iter()
             .chain(self.staged_event_records.iter())
+    }
+
+    /// The power of creatures this player actually declared as attackers in
+    /// one combat, using the immutable event snapshots. Later power changes,
+    /// control changes, leaving the battlefield, or token disappearance do
+    /// not change that fact. Put-onto-the-battlefield-attacking creatures
+    /// produce no declaration events and therefore do not contribute.
+    pub fn declared_attack_power_in_combat(&self, combat_phase: u32, player: PlayerId) -> i64 {
+        let mut seen = HashSet::new();
+        self.projected_records()
+            .filter_map(|record| {
+                let attack = record.event.downcast::<CreatureAttackedEvent>()?;
+                let snapshot = record.object_snapshot.as_ref()?;
+                (attack.combat_phase == Some(combat_phase)
+                    && snapshot.controller == player
+                    && seen.insert(attack.attacker))
+                .then_some(i64::from(snapshot.power.unwrap_or(0)))
+            })
+            .sum()
     }
 
     pub fn remove_staged_event(&mut self, provenance: ProvNodeId) {
@@ -347,6 +398,17 @@ impl TurnHistory {
             .sum()
     }
 
+    /// The latest actual draw, not the latest attempted draw. Empty/replaced
+    /// draws contribute no identity. Preserve this historical identity even if
+    /// its current object later leaves Hand; consumers must not choose an older
+    /// draw as a substitute.
+    pub fn last_card_drawn_by_player(&self, player: PlayerId) -> Option<ObjectId> {
+        self.projected_records().rev()
+            .filter_map(|record| record.event.downcast::<CardsDrawnEvent>())
+            .filter(|event| event.player == player)
+            .find_map(|event| event.cards.last().copied())
+    }
+
     pub fn object_was_drawn_this_turn(&self, object: ObjectId) -> bool {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<CardsDrawnEvent>())
@@ -364,7 +426,7 @@ impl TurnHistory {
     pub fn max_die_rolls_for_players(&self, players: &[PlayerId]) -> u32 {
         players
             .iter()
-            .map(|player| self.die_rolls_this_turn.get(player).map_or(0, Vec::len) as u32)
+            .map(|player| self.completed_die_roll_count(*player))
             .max()
             .unwrap_or(0)
     }
@@ -699,6 +761,37 @@ impl TurnHistory {
         })
     }
 
+    /// Whether this exact graveyard incarnation arrived this turn, optionally
+    /// from a specific zone. Live-card filters must use destination object IDs:
+    /// under CR 400.7, leaving and reentering a graveyard creates a new object
+    /// that cannot inherit an earlier incarnation's battlefield/library origin.
+    /// Stable-ID history queries above intentionally retain historical facts.
+    pub fn graveyard_incarnation_entered_this_turn(
+        &self,
+        object_id: ObjectId,
+        from: Option<Zone>,
+    ) -> bool {
+        self.projected_records().any(|record| {
+            record
+                .event
+                .downcast::<ZoneChangeEvent>()
+                .is_some_and(|event| {
+                    event.to == Zone::Graveyard
+                        && from.is_none_or(|from| event.from == from)
+                        && event.destination_objects().contains(&object_id)
+                })
+        })
+    }
+
+    /// Mill is a keyword action, not every library-to-graveyard movement.
+    /// Destination IDs reject a later incarnation that returned to the graveyard.
+    pub fn graveyard_incarnation_was_milled_this_turn(&self, object_id: ObjectId) -> bool {
+        self.projected_records().any(|record| record.event
+            .downcast::<crate::events::other::CardMilledEvent>()
+            .is_some_and(|event| event.card == object_id
+                && event.snapshot.as_ref().is_some_and(|snapshot| snapshot.zone == Zone::Graveyard)))
+    }
+
     /// Counts the number of times a player descended this turn.
     ///
     /// Descend looks at the card's last known characteristics and owner when it
@@ -768,6 +861,36 @@ impl TurnHistory {
                 .snapshots()
                 .iter()
                 .find(|snapshot| snapshot.object_id == object)
+        })
+    }
+
+    /// A true departure receipt for an exact object incarnation. Phasing does
+    /// not make a new object or freeze later noncopiable choices on that object.
+    pub fn source_departure_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
+        self.projected_records().rev().find_map(|record| {
+            if let Some(event) = record
+                .event
+                .downcast::<crate::events::zones::ObjectLeavesGameEvent>()
+            {
+                return (event.object == object).then_some(&event.snapshot);
+            }
+            let event = record.event.downcast::<ZoneChangeEvent>()?;
+            event.snapshots().iter().find(|snapshot| snapshot.object_id == object)
+        })
+    }
+
+    /// Characteristics immediately before this source left its zone, left the
+    /// game, or phased out this turn. Timed programs can outlive these transitions.
+    pub fn source_last_known_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
+        self.projected_records().rev().find_map(|record| {
+            if let Some(event) = record.event.downcast::<crate::events::PermanentPhasedOutEvent>() {
+                return (event.permanent == object).then_some(event.snapshot.as_ref()).flatten();
+            }
+            if let Some(event) = record.event.downcast::<crate::events::zones::ObjectLeavesGameEvent>() {
+                return (event.object == object).then_some(&event.snapshot);
+            }
+            let event = record.event.downcast::<ZoneChangeEvent>()?;
+            event.snapshots().iter().find(|snapshot| snapshot.object_id == object)
         })
     }
 
@@ -1101,6 +1224,13 @@ impl TurnHistory {
         })
     }
 
+    pub fn creature_was_blocked_this_turn(&self, creature: ObjectId) -> bool {
+        self.projected_records().any(|record| {
+            record.event.downcast::<crate::events::CreatureBecameBlockedEvent>().is_some_and(|event| event.attacker == creature)
+                || record.event.downcast::<CreatureBlockedEvent>().is_some_and(|event| event.attacker == creature)
+        })
+    }
+
     pub fn creature_blocked_this_turn(&self, creature: ObjectId) -> bool {
         self.projected_records().any(|record| {
             record
@@ -1116,6 +1246,18 @@ impl TurnHistory {
                 .event
                 .downcast::<CreatureBlockedEvent>()
                 .is_some_and(|event| event.attacker == attacker && event.blocker == blocker)
+        })
+    }
+
+    /// Current-combat LKI for a source that left after an ability triggered.
+    /// The object IDs deliberately remain the declaration identities, so a
+    /// leave-and-return is not mistaken for the creature from that combat.
+    pub fn creature_was_blocked_by_in_combat(&self, attacker: ObjectId, blocker: ObjectId, combat_phase: u32) -> bool {
+        self.projected_records().any(|record| {
+            record.event.downcast::<CreatureBlockedEvent>().is_some_and(|event| {
+                event.attacker == attacker && event.blocker == blocker
+                    && event.combat_phase.is_none_or(|phase| phase == combat_phase)
+            })
         })
     }
 
@@ -1137,6 +1279,37 @@ impl TurnHistory {
                     event.player == player && event.action == KeywordActionKind::CommitCrime
                 })
         })
+    }
+
+    pub fn completed_die_roll_count(&self, player: PlayerId) -> u32 {
+        self.completed_die_rolls_this_turn.get(&player).copied().unwrap_or(0)
+            .max(self.die_rolls_this_turn.get(&player).map_or(0, Vec::len) as u32)
+    }
+
+    /// Commit the whole completed roll batch together, after all reroll/result
+    /// choices. Returns its first ordinal; callers preserve each exact result.
+    pub(crate) fn check_completed_die_roll_capacity(&self, player: PlayerId, count: usize)
+        -> Result<(u32,u32), crate::effects::ExecutionError> {
+        let before = self.completed_die_roll_count(player);
+        let total = u128::from(before) + count as u128;
+        let after = i32::try_from(total).map_err(|_|crate::effects::ExecutionError::ResourceLimitExceeded {
+            resource: "completed die-roll ordinal", requested: total, maximum: i32::MAX as u128,
+        })? as u32;
+        Ok((before,after))
+    }
+
+    pub(crate) fn record_completed_die_rolls(&mut self, player: PlayerId, results: &[u32], planar: bool)
+        -> Result<u32, crate::effects::ExecutionError> {
+        let (before,after) = self.check_completed_die_roll_capacity(player, results.len())?;
+        if !planar {
+            let history = self.die_rolls_this_turn.entry(player).or_default();
+            history.try_reserve(results.len()).map_err(|_|crate::effects::ExecutionError::ResourceAllocationFailed {
+                resource: "completed die-roll history", requested: results.len(),
+            })?;
+            history.extend_from_slice(results);
+        }
+        self.completed_die_rolls_this_turn.insert(player, after);
+        Ok(before + 1)
     }
 
     pub fn record_die_roll(&mut self, player: PlayerId, result: u32) {
@@ -1367,6 +1540,50 @@ fn snapshot_is_permanent_card(snapshot: &ObjectSnapshot) -> bool {
             .any(|card_type| PERMANENT_CARD_TYPES.contains(card_type))
 }
 
+/// One entry can publish a zone notification and an ETB notification. Prefer
+/// the latter's completed characteristics and count its exact destination
+/// incarnation once. A later leave/reenter has a new ID and counts again.
+fn completed_entry_snapshots(history: &TurnHistory) -> Vec<&ObjectSnapshot> {
+    let mut entries: HashMap<ObjectId, (bool, &ObjectSnapshot)> = HashMap::new();
+    for record in history.projected_records() {
+        if let Some(event) = record.event.downcast::<EnterBattlefieldEvent>() {
+            if let Some(snapshot) = event.completed_snapshot.as_ref().or(record.object_snapshot.as_ref())
+                .filter(|snapshot| snapshot.zone == Zone::Battlefield && snapshot.object_id == event.object) {
+                match entries.entry(event.object) {
+                    std::collections::hash_map::Entry::Vacant(entry) => { entry.insert((true, snapshot)); }
+                    std::collections::hash_map::Entry::Occupied(mut entry) if !entry.get().0 => { entry.insert((true, snapshot)); }
+                    _ => {}
+                }
+            }
+        } else if let Some(event) = record.event.downcast::<ZoneChangeEvent>().filter(|event| event.is_etb()) {
+            let destinations = if event.result_objects.is_empty() { &event.objects } else { &event.result_objects };
+            if let Some(snapshot) = record.object_snapshot.as_ref().filter(|snapshot|
+                snapshot.zone == Zone::Battlefield && destinations.contains(&snapshot.object_id)) {
+                entries.entry(snapshot.object_id).or_insert((false, snapshot));
+            }
+        }
+    }
+    entries.into_values().map(|(_, snapshot)| snapshot).collect()
+}
+
+fn historical_cause_matches(
+    requested: &crate::events::cause::CauseFilter,
+    actual: &crate::events::cause::EventCause,
+    source_snapshot: Option<&ObjectSnapshot>,
+    game: &GameState,
+    ctx: &crate::target::FilterContext,
+) -> bool {
+    use crate::events::cause::CauseFilterRuntimeExt;
+    let Some(you) = ctx.you else { return false; };
+    // Never reopen a later live incarnation to satisfy a historical cause.
+    if let Some(filter) = &requested.source_filter
+        && !source_snapshot.is_some_and(|snapshot| filter.matches_snapshot(snapshot, ctx, game)) {
+        return false;
+    }
+    let mut without_source = requested.clone(); without_source.source_filter = None;
+    without_source.matches_with_context_controller(actual, game, you, you)
+}
+
 /// Resolve a typed turn-history count against event snapshots.  This is shared
 /// by ordinary effect values and continuous/static values so both paths use the
 /// same retained-event semantics.
@@ -1379,6 +1596,48 @@ pub(crate) fn resolve_turn_history_count(
     let history = &game.turn_store.turn_history;
 
     match query {
+        TurnHistoryCount::LibrarySearches { player, own_library_only } => history.projected_records()
+            .filter_map(|record| record.event.downcast::<SearchLibraryEvent>())
+            .filter(|event| player.matches_player(event.player, filter_ctx)
+                && (!*own_library_only || event.library_owner == Some(event.player)))
+            .count() as i32,
+        TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter } => {
+            let mut historical_filter = filter.clone(); historical_filter.zone = None;
+            let mut counts: HashMap<PlayerId, i32> = HashMap::new();
+            for snapshot in completed_entry_snapshots(history) {
+                if player.matches_player(snapshot.controller, filter_ctx)
+                    && historical_filter.matches_snapshot(snapshot, filter_ctx, game) {
+                    let count = counts.entry(snapshot.controller).or_default();
+                    *count = count.saturating_add(1);
+                }
+            }
+            counts.into_values().max().unwrap_or(0)
+        }
+        TurnHistoryCount::DestroyedBy { filter, cause } => {
+            history.projected_records().filter(|record| {
+                let Some(event) = record.event.downcast::<crate::events::DestroyEvent>() else { return false; };
+                event.final_zone.is_some()
+                    && event.snapshot.as_ref().is_some_and(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game))
+                    && event.cause.as_ref().is_some_and(|actual| historical_cause_matches(cause, actual, record.source_snapshot.as_ref(), game, filter_ctx))
+            }).count() as i32
+        }
+        TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => {
+            let mut casts = HashSet::new(); let mut countered = HashSet::new();
+            for record in history.projected_records() {
+                if let Some(event) = record.event.downcast::<SpellCastEvent>() {
+                    if caster.matches_player(event.caster, filter_ctx) { casts.insert(event.spell); }
+                    continue;
+                }
+                let Some(event) = record.event.downcast::<crate::events::SpellCounteredEvent>() else { continue; };
+                if casts.contains(&event.spell)
+                    && event.snapshot.as_ref().or(record.object_snapshot.as_ref()).is_some_and(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game))
+                    && event.cause.as_ref().is_some_and(|actual| historical_cause_matches(cause, actual, record.source_snapshot.as_ref(), game, filter_ctx)) {
+                    countered.insert(event.spell);
+                }
+            }
+            countered.len() as i32
+        }
+
         TurnHistoryCount::Died { filter, .. } => {
             let mut historical_filter = filter.clone();
             historical_filter.zone = None;
@@ -1391,34 +1650,8 @@ pub(crate) fn resolve_turn_history_count(
                 .count() as i32
         }
         TurnHistoryCount::EnteredBattlefield(filter) => {
-            let mut historical_filter = filter.clone();
-            historical_filter.zone = None;
-            history
-                .projected_records()
-                .filter_map(|record| {
-                    if let Some(event) = record.event.downcast::<ZoneChangeEvent>() {
-                        if !event.is_etb() {
-                            return None;
-                        }
-                        if !event.snapshots().is_empty() {
-                            return Some(event.snapshots().to_vec());
-                        }
-                        return record
-                            .object_snapshot
-                            .clone()
-                            .map(|snapshot| vec![snapshot]);
-                    }
-
-                    if record.event.downcast::<EnterBattlefieldEvent>().is_some() {
-                        return record
-                            .object_snapshot
-                            .clone()
-                            .map(|snapshot| vec![snapshot]);
-                    }
-
-                    None
-                })
-                .flatten()
+            let mut historical_filter = filter.clone(); historical_filter.zone = None;
+            completed_entry_snapshots(history).into_iter()
                 .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
                 .count() as i32
         }
@@ -1431,15 +1664,7 @@ pub(crate) fn resolve_turn_history_count(
             .projected_records()
             .filter_map(|record| record.event.downcast::<CreateTokensEvent>())
             .filter(|event| player_filter.matches_player(event.controller, filter_ctx))
-            .map(|event| {
-                event.count.saturating_add(
-                    event
-                        .additional_tokens
-                        .iter()
-                        .map(|(_, count)| *count)
-                        .sum::<u32>(),
-                )
-            })
+            .map(|event| u32::try_from(event.total_count()).expect("published token groups passed checked creation preflight"))
             .sum::<u32>() as i32,
         TurnHistoryCount::PutIntoGraveyard { owner, from } => history
             .projected_records()
@@ -1749,32 +1974,15 @@ pub(crate) fn resolve_turn_history_count(
             .map(|event| event.amount)
             .sum::<u32>() as i32,
         TurnHistoryCount::DamageDealtToSource => {
-            let source_object = filter_ctx.source;
-            let source_stable_id = source_object
-                .and_then(|source| game.object(source).map(|object| object.stable_id))
-                .or_else(|| {
-                    filter_ctx
-                        .source_snapshot
-                        .as_ref()
-                        .map(|snapshot| snapshot.stable_id)
-                });
-
-            history
-                .projected_records()
+            let source_object = filter_ctx.source.or_else(|| {
+                filter_ctx
+                    .source_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.object_id)
+            });
+            history.projected_records()
                 .filter_map(|record| record.event.downcast::<DamageEvent>())
-                .filter(|event| event.amount > 0)
-                .filter(|event| match event.target {
-                    DamageTarget::Object(target) => {
-                        source_object == Some(target)
-                            || source_stable_id.is_some_and(|stable_id| {
-                                event
-                                    .target_snapshot
-                                    .as_ref()
-                                    .is_some_and(|snapshot| snapshot.stable_id == stable_id)
-                            })
-                    }
-                    DamageTarget::Player(_) => false,
-                })
+                .filter(|event| matches!(event.target,DamageTarget::Object(target) if source_object == Some(target)))
                 .map(|event| event.amount)
                 .sum::<u32>() as i32
         }
@@ -2097,7 +2305,40 @@ mod tests {
     }
 
     #[test]
-    fn source_damage_history_count_follows_stable_identity_after_zone_change() {
+    fn graveyard_incarnation_history_does_not_reuse_an_earlier_origin() {
+        for origin in [Zone::Battlefield, Zone::Library] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let card = CardDefinitionBuilder::new(CardId::new(), "History Creature")
+                .card_types(vec![CardType::Creature])
+                .build();
+            let original = game.create_object_from_definition(&card, alice, origin);
+            let stable = game.object(original).unwrap().stable_id;
+            let first = game.move_object_by_effect(original, Zone::Graveyard).unwrap();
+            assert!(game.turn_store.turn_history
+                .graveyard_incarnation_entered_this_turn(first, Some(origin)));
+            let hand = game.move_object_by_effect(first, Zone::Hand).unwrap();
+            let second = game.move_object_by_effect(hand, Zone::Graveyard).unwrap();
+            assert_ne!(first, second);
+            assert!(!game.turn_store.turn_history
+                .graveyard_incarnation_entered_this_turn(second, Some(origin)));
+            assert!(game.turn_store.turn_history
+                .graveyard_incarnation_entered_this_turn(second, Some(Zone::Hand)));
+            assert!(game.turn_store.turn_history
+                .graveyard_incarnation_entered_this_turn(second, None));
+            assert!(game.turn_store.turn_history
+                .object_was_put_into_graveyard_from_zone_this_turn(stable, origin),
+                "historical stable-ID facts remain true after the card leaves");
+            game.take_pending_trigger_events();
+            game.turn_store.turn_history.clear_for_new_turn();
+            assert!(!game.turn_store.turn_history
+                .graveyard_incarnation_entered_this_turn(second, None));
+        }
+    }
+
+    #[test]
+    fn source_damage_history_count_uses_exact_incarnation_even_when_snapshots_share_card_identity()
+    {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let alice = PlayerId::from_index(0);
         let creature = CardDefinitionBuilder::new(CardId::new(), "History Creature")
@@ -2145,7 +2386,27 @@ mod tests {
         ctx.source_snapshot = Some(source_snapshot);
         assert_eq!(
             resolve_turn_history_count(&game, &TurnHistoryCount::DamageDealtToSource, &ctx, None,),
-            5
+            2
+        );
+        let graveyard = game.move_object_by_effect(source, Zone::Graveyard).unwrap();
+        let returned = game
+            .move_object_by_effect(graveyard, Zone::Battlefield)
+            .unwrap();
+        assert_eq!(
+            resolve_turn_history_count(&game, &TurnHistoryCount::DamageDealtToSource, &ctx, None),
+            2,
+            "the old source snapshot still names the departed incarnation"
+        );
+        let returned_ctx = game.filter_context_for(alice, Some(returned));
+        assert_eq!(
+            resolve_turn_history_count(
+                &game,
+                &TurnHistoryCount::DamageDealtToSource,
+                &returned_ctx,
+                None
+            ),
+            0,
+            "the returned card is a new source with no damage history"
         );
     }
 }
@@ -2157,4 +2418,25 @@ fn snapshot_had_subtype(snapshot: &ObjectSnapshot, subtype: Subtype) -> bool {
         || (subtype.is_creature_type()
             && snapshot.card_types.contains(&CardType::Creature)
             && snapshot.has_static_ability_id(crate::static_abilities::StaticAbilityId::Changeling))
+}
+
+#[cfg(test)]
+mod passive_blocked_history_tests {
+    use super::*;
+    #[test]
+    fn passive_history_uses_attacker_identity_and_expires_at_turn_boundary() {
+        let mut history = TurnHistory::default();
+        let attacker = ObjectId::from_raw(101); let blocker = ObjectId::from_raw(102);
+        let event = TriggerEvent::new_with_provenance(CreatureBlockedEvent::new(blocker, attacker), ProvNodeId::default());
+        history.record_event(&event, None, None);
+        assert!(history.creature_was_blocked_this_turn(attacker));
+        assert!(!history.creature_was_blocked_this_turn(blocker));
+        assert!(history.creature_blocked_this_turn(blocker));
+        assert!(!history.creature_was_blocked_this_turn(ObjectId::from_raw(103)), "new incarnation has no earlier block");
+        history.clear_for_new_turn();
+        assert!(!history.creature_was_blocked_this_turn(attacker));
+        let event = TriggerEvent::new_with_provenance(crate::events::CreatureBecameBlockedEvent::new(attacker, 0), ProvNodeId::default());
+        history.record_event(&event, None, None);
+        assert!(history.creature_was_blocked_this_turn(attacker), "an effect can make an attacker blocked without a blocker");
+    }
 }

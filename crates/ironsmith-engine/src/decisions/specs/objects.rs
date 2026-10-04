@@ -117,6 +117,7 @@ pub struct ChooseObjectsSpec {
     pub max: Option<usize>,
     /// Optional aggregate characteristic bound for the complete selection.
     pub aggregate_constraint: Option<crate::effect::ChoiceAggregateConstraint>,
+    pub relation_filter: Option<crate::filter::ObjectFilter>,
     /// Whether the chooser may submit fewer than `min`.
     pub allow_partial_completion: bool,
     /// Whether the decision must be offered even when one required candidate exists.
@@ -147,6 +148,7 @@ impl ChooseObjectsSpec {
             min,
             max,
             aggregate_constraint: None,
+            relation_filter: None,
             allow_partial_completion: false,
             require_explicit_choice: false,
             hidden_card_visibility: DecisionHiddenCardVisibility::None,
@@ -168,6 +170,11 @@ impl ChooseObjectsSpec {
 
     pub fn require_explicit_choice(mut self) -> Self {
         self.require_explicit_choice = true;
+        self
+    }
+
+    pub fn with_relation_filter(mut self, filter: crate::filter::ObjectFilter) -> Self {
+        self.relation_filter = Some(filter);
         self
     }
 
@@ -237,6 +244,7 @@ impl DecisionSpec for ChooseObjectsSpec {
         } else {
             ctx
         };
+        let ctx = if let Some(filter) = self.relation_filter.clone() { ctx.with_relation_filter(filter) } else { ctx };
         let ctx = if self.allow_partial_completion {
             ctx.allow_partial_completion()
         } else {

@@ -8,6 +8,7 @@ use super::{ErasedPayload, decode_as};
 
 pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, String> {
     match kind {
+        "CollectEvidenceEffect" => decode_as::<ironsmith_core::CollectEvidenceEffect>(payload).map(Some),
         "ClashEffect" => decode_as::<ironsmith_core::ClashEffect>(payload).map(Some),
         "ConniveEffect" => decode_as::<ironsmith_core::ConniveEffect>(payload).map(Some),
         "ConsultTopOfLibraryEffect" => {
@@ -138,6 +139,9 @@ pub(super) fn map_card_ids(
     context: &super::card_graph::Context<'_>,
 ) -> Result<Option<Value>, String> {
     match kind {
+        "CollectEvidenceEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::CollectEvidenceEffect>(payload, context).map(Some)
+        }
         "ClashEffect" => {
             super::card_graph::map_payload_as::<ironsmith_core::ClashEffect>(payload, context)
                 .map(Some)

@@ -26,6 +26,33 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             ExecutionError::UnresolvableValue("missing triggering event".to_string())
         })?;
 
+        // A typed attachment trigger has two participants. Its ordinary
+        // demonstrative is the recipient, never the Aura/Equipment itself.
+        if matches!(event.kind(), crate::events::EventKind::ObjectBecameAttached | crate::events::EventKind::ObjectBecameUnattached)
+            && let Some(recipient) = ctx.get_tagged_all(ironsmith_core::tag::TRIGGER_ATTACHMENT_RECIPIENT_TAG).cloned() {
+            let count = recipient.len() as i32;
+            set_triggering_object_tags(ctx, self.tag.as_str(), recipient);
+            return Ok(EffectOutcome::count(count));
+        }
+
+        if let Some(discard) = event.downcast::<crate::events::other::CardDiscardedEvent>() {
+            let origins = ctx.get_tagged_all(ironsmith_core::ZONE_CHANGE_GROUP_TAG)
+                .filter(|group| !group.is_empty()).cloned()
+                .unwrap_or_else(|| discard.snapshot.iter().cloned().collect());
+            let tagged = origins.into_iter().map(|origin| {
+                discard.destination(origin.object_id)
+                    .and_then(|receipt| receipt.object.and_then(|id| game.object(id))
+                        .filter(|object| object.zone == receipt.zone && object.stable_id == origin.stable_id))
+                    .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+                    // Keep historical characteristics if the arrival has gone;
+                    // movement helpers cannot substitute a later incarnation.
+                    .unwrap_or(origin)
+            }).collect::<Vec<_>>();
+            let count = tagged.len() as i32;
+            set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
+            return Ok(EffectOutcome::count(count));
+        }
+
         if let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>() {
             // CR 603.2c: a "one or more" trigger's "them" / "those cards" is
             // every object of the simultaneous event that matched it, not the
@@ -138,6 +165,10 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             .is_some()
         {
             Some(ironsmith_core::ATTACKING_GROUP_TAG)
+        } else if matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped) {
+            Some(ironsmith_core::TAP_STATE_GROUP_TAG)
+        } else if matches!(event.kind(), crate::events::EventKind::PermanentPhasedIn | crate::events::EventKind::PermanentPhasedOut) {
+            Some(ironsmith_core::tag::PHASING_GROUP_TAG)
         } else if event
             .downcast::<crate::events::other::CardDiscardedEvent>()
             .is_some()
@@ -201,7 +232,14 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             return Ok(EffectOutcome::count(1));
         }
 
-        if let Some(snapshot) = event.snapshot() {
+        if let Some(snapshot) = event.snapshot().or_else(|| {
+            // A chapter-resolution event names its Saga as both object and
+            // source. Its outer source LKI survives the final-chapter sacrifice.
+            // Do not borrow another event's distinct damage/ability source.
+            event
+                .source_snapshot()
+                .filter(|snapshot| snapshot.object_id == object_id)
+        }) {
             // Zone-change events are handled above. For any other event (an
             // attack, a block, a tap, a discard) the event's object has left
             // since; keep its recorded identity and last known information
@@ -621,6 +659,7 @@ mod tests {
                 Some(ObjectSnapshot {
                     chosen_subtype: None,
                     secret_chosen_subtype: None,
+                    noted_life_total: None,
                     chosen_object: None,
                     object_id: ObjectId::from_raw(999),
                     stable_id: StableId::from(ObjectId::from_raw(999)),
@@ -653,6 +692,8 @@ mod tests {
                     x_value: None,
                     cast_order_this_turn: None,
                     mana_spent_to_cast: crate::player::ManaPool::default(),
+                    caster_mana_spent_to_cast: None,
+                    mana_spent_on_x: None,
                     snow_mana_spent_to_cast: crate::player::ManaPool::default(),
                     mana_sources_spent_to_cast: Vec::new(),
                     optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
@@ -661,6 +702,7 @@ mod tests {
                     tapped: false,
                     attacking: false,
                     goaded: Some(false),
+            ring_bearer: None,
                     flipped: false,
                     face_down: false,
                     transform_count: 0,

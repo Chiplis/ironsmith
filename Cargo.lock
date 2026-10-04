@@ -1381,6 +1381,7 @@ name = "ironsmith-compiler-resolve"
 version = "0.1.0"
 dependencies = [
  "ironsmith-compiler-semantic",
+ "ironsmith-compiler-source",
  "ironsmith-core",
 ]
 
@@ -1390,6 +1391,7 @@ version = "0.1.0"
 dependencies = [
  "ironsmith-compiled-artifact",
  "ironsmith-compiler",
+ "ironsmith-core",
  "ironsmith-engine",
  "ironsmith-runtime-catalog",
  "ironsmith-text",
@@ -1445,6 +1447,7 @@ version = "0.1.0"
 dependencies = [
  "ironsmith-tag-walk-derive",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

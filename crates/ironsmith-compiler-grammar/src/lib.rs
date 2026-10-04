@@ -243,6 +243,7 @@ pub mod keyword_families;
 pub mod keyword_payloads;
 pub mod keyword_registry;
 pub mod keyword_static;
+pub(crate) mod consumer_mana;
 pub mod keyword_static_helpers;
 pub mod line_info;
 pub mod modal_helpers;

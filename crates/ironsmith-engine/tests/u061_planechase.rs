@@ -466,7 +466,7 @@ fn u061_phenomenon_waits_for_its_encounter_trigger_then_planeswalks_as_an_sba() 
     );
 
     put_on_top(&mut game, alice, next_plane);
-    assert!(apply_state_based_actions(&mut game));
+    assert!(apply_state_based_actions(&mut game).unwrap());
     assert_eq!(game.face_up_planar_objects(), &[next_plane]);
 }
 
@@ -483,7 +483,7 @@ fn u061_controller_rotation_departure_and_communal_ownership_are_preserved() {
     put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
     assert_eq!(game.stack.len(), 1);
     assert_eq!(game.stack[0].controller, alice);
-    assert!(game.leave_game(alice));
+    assert!(game.leave_game(alice).expect("checked designation/departure fixture"));
     assert_eq!(game.planar_controller(), Some(bob));
     assert_eq!(game.face_up_planar_objects(), &[bob_plane]);
     // CR 901.10b: only abilities from phenomena survive their owner leaving;
@@ -523,7 +523,7 @@ fn u061_controller_rotation_departure_and_communal_ownership_are_preserved() {
             .keys()
             .all(|id| communal.object(*id).unwrap().owner == bob)
     );
-    assert!(communal.leave_game(bob));
+    assert!(communal.leave_game(bob).expect("checked designation/departure fixture"));
     assert_eq!(communal.planar_controller(), Some(alice));
     assert_eq!(communal.planechase.as_ref().unwrap().card_kinds.len(), 20);
 }

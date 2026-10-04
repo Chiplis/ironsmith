@@ -6,11 +6,12 @@ pub(super) fn parse_keyword_mechanic_lexed<'a>(
     opt(primitives::kw("then")).parse_next(input)?;
     opt(primitives::kw("you")).parse_next(input)?;
     alt((
-        parse_amass,
+        alt((parse_amass, parse_empower_jace, parse_collect_evidence)),
         parse_forage,
         parse_harness,
         parse_roll_d6,
         parse_odd_even_result,
+        parse_simultaneous_phase_exchange,
         parse_phase,
         parse_open_attraction,
         alt((

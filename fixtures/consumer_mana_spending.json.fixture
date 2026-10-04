@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Atalya, Samite Master",
+    "oracle_id": "84587724-af96-4396-a0b3-1133d492d915",
+    "text": "Mana cost: {3}{W}{W}\nType: Legendary Creature \u2014 Human Cleric\nPower/Toughness: 2/3\n{X}, {T}: Choose one \u2014\n\u2022 Prevent the next X damage that would be dealt to target creature this turn. Spend only white mana on X.\n\u2022 You gain X life. Spend only white mana on X.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "remaining_blocker": null
+  },
+  {
+    "name": "Consume Spirit",
+    "oracle_id": "861fa80d-99e0-4332-a2b8-5aa959fd41a4",
+    "text": "Mana cost: {X}{1}{B}\nType: Sorcery\nSpend only black mana on X.\nConsume Spirit deals X damage to any target and you gain X life.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "remaining_blocker": null
+  },
+  {
+    "name": "Crimson Hellkite",
+    "oracle_id": "37a1f340-10d5-407e-bf2b-cbbbb6cab985",
+    "text": "Mana cost: {6}{R}{R}{R}\nType: Creature \u2014 Dragon\nPower/Toughness: 6/6\nFlying\n{X}, {T}: This creature deals X damage to target creature. Spend only red mana on X.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "remaining_blocker": null
+  },
+  {
+    "name": "Crypt Rats",
+    "oracle_id": "104095ed-55e3-408e-bf70-4fe06bb16d2f",
+    "text": "Mana cost: {2}{B}\nType: Creature \u2014 Rat\nPower/Toughness: 1/1\n{X}: This creature deals X damage to each creature and each player. Spend only black mana on X.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "remaining_blocker": null
+  },
+  {
+    "name": "Drain Life",
+    "oracle_id": "e75ba79f-4cc2-4ede-8641-559ab94e7e36",
+    "text": "Mana cost: {X}{1}{B}\nType: Sorcery\nSpend only black mana on X.\nDrain Life deals X damage to any target. You gain life equal to the damage dealt, but not more life than the player's life total before the damage was dealt, the planeswalker's loyalty before the damage was dealt, or the creature's toughness.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "remaining_blocker": null
+  },
+  {
+    "name": "Emblazoned Golem",
+    "oracle_id": "fbeafc81-1ddb-4b54-8f86-e6afd5f81db8",
+    "text": "Mana cost: {2}\nType: Artifact Creature \u2014 Golem\nPower/Toughness: 1/2\nKicker {X} (You may pay an additional {X} as you cast this spell.)\nSpend only colored mana on X. No more than one mana of each color may be spent this way.\nIf this creature was kicked, it enters with X +1/+1 counters on it.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "remaining_blocker": null
+  },
+  {
+    "name": "Imperiosaur",
+    "oracle_id": "e9ced5d8-8337-403f-86a3-bddb9c77d658",
+    "text": "Mana cost: {2}{G}{G}\nType: Creature \u2014 Dinosaur\nPower/Toughness: 5/5\nSpend only mana produced by basic lands to cast this spell.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "remaining_blocker": null
+  },
+  {
+    "name": "Myr Superion",
+    "oracle_id": "43dac6fa-4cdf-49ec-9e11-2e5e8f9f928b",
+    "text": "Mana cost: {2}\nType: Artifact Creature \u2014 Myr\nPower/Toughness: 5/6\nSpend only mana produced by creatures to cast this spell.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "remaining_blocker": null
+  },
+  {
+    "name": "Security Rhox",
+    "oracle_id": "dffc6785-31b0-487c-b9a0-980bca39753d",
+    "text": "Mana cost: {2}{R}{G}\nType: Creature \u2014 Rhino Warrior\nPower/Toughness: 5/4\nYou may pay {R}{G} rather than pay this spell's mana cost. Spend only mana produced by Treasures to cast it this way.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "remaining_blocker": null
+  },
+  {
+    "name": "Soul Burn",
+    "oracle_id": "063b0f5d-af27-4681-87b9-b553f6887061",
+    "text": "Mana cost: {X}{2}{B}\nType: Sorcery\nSpend only black and/or red mana on X.\nSoul Burn deals X damage to any target. You gain life equal to the damage dealt, but not more than the amount of {B} spent on X, the player's life total before the damage was dealt, the planeswalker's loyalty before the damage was dealt, or the creature's toughness.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "remaining_blocker": null
+  }
+]

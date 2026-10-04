@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Mirko, Obsessive Theorist",
+    "oracle_id": "1692f19e-4906-4808-965f-5f0284004f55",
+    "mana_cost": "{1}{U}{B}",
+    "type_line": "Legendary Creature — Vampire Detective",
+    "power": "1",
+    "toughness": "3",
+    "oracle_text": "Flying, vigilance\nWhenever you surveil, put a +1/+1 counter on Mirko.\nAt the beginning of your end step, you may return target creature card with power less than Mirko's from your graveyard to the battlefield with a finality counter on it. (If it would die, exile it instead.)"
+  },
+  {
+    "name": "Winter Soldier, Reborn Avenger",
+    "oracle_id": "df81ecf2-b49e-4be2-8757-ee2050784c9e",
+    "mana_cost": "{4}{W}",
+    "type_line": "Legendary Creature — Human Soldier Hero",
+    "power": "3",
+    "toughness": "5",
+    "oracle_text": "Whenever Winter Soldier attacks, return target creature card with mana value less than or equal to Winter Soldier's power from your graveyard to the battlefield. If a Hero enters this way, it enters with an additional +1/+1 counter on it."
+  }
+]

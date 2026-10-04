@@ -100,7 +100,7 @@ function castingMethodPreference(action) {
   const kind = String(method?.kind || "");
   if (kind === "normal") return 0;
   if (kind === "play_from" && method?.use_alternative == null) return 0;
-  if (kind === "split_other_half") return 1;
+  if (kind === "split_other_half" || (kind === "split_other_half_play_from" && method?.use_alternative == null)) return 1;
   if (kind === "fuse") return 2;
   return 10;
 }

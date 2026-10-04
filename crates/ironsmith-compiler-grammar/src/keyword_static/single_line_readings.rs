@@ -305,6 +305,7 @@ fn read_must_be_blocked_if_able(
             PredicateAst::Source(SourcePredicateAst::SourceIsEquipped)
                 | PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted)
                 | PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous)
+                | PredicateAst::Source(SourcePredicateAst::SourceIsRingBearer { .. })
         ) {
             return Ok(Some(vec![StaticAbilityAst::ConditionalStaticAbility {
                 ability: Box::new(StaticAbilityAst::Static(StaticAbility::restriction(
@@ -389,4 +390,18 @@ fn read_fixed_prefix_condition(
         return Ok(Some(conditioned));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod ring_bearer_requirement_tests {
+    use super::*;
+    #[test]
+    fn typed_current_bearer_condition_retains_the_source_blocking_requirement() {
+        let tokens = crate::lexer::lex_line("As long as this creature is your Ring-bearer, it must be blocked if able.", 0).unwrap();
+        let parsed = parse_static_ability_ast_line_lexed(&tokens).unwrap().unwrap();
+        let debug = format!("{parsed:?}");
+        assert!(debug.contains("ConditionalStaticAbility"), "{debug}");
+        assert!(debug.contains("SourceIsRingBearer"), "{debug}");
+        assert!(debug.contains("MustBeBlocked"), "{debug}");
+    }
 }

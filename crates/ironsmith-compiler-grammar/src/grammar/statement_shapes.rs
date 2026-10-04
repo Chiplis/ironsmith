@@ -43,6 +43,15 @@ fn surface_starts_with(tokens: &[OwnedLexToken], sequence: &'static [&'static st
     primitives::parse_prefix(tokens, primitives::phrase(sequence)).is_some()
 }
 
+/// Own the complete bounded replacement instruction before conditional/action
+/// splitting. In particular an unknown trailing instruction is never discarded.
+pub fn is_extra_die_ignore_lowest(tokens: &[OwnedLexToken]) -> bool {
+    crate::lexer::parser_token_word_refs(tokens) == [
+        "if", "you", "would", "roll", "one", "or", "more", "dice", "instead", "roll",
+        "that", "many", "dice", "plus", "one", "and", "ignore", "the", "lowest", "roll",
+    ]
+}
+
 pub fn parse_die_roll_adjustment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DieRollAdjustmentShape> {

@@ -187,6 +187,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
         .unwrap_or_else(|| ObjectSnapshot {
             chosen_subtype: None,
             secret_chosen_subtype: None,
+            noted_life_total: None,
             chosen_object: None,
             object_id: memory.object_id,
             stable_id: memory.stable_id,
@@ -223,6 +224,8 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: crate::player::ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: None,
             snow_mana_spent_to_cast: crate::player::ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
             optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
@@ -231,6 +234,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             tapped: false,
             attacking: false,
             goaded: None,
+            ring_bearer: None,
             flipped: false,
             face_down: false,
             transform_count: 0,
@@ -454,6 +458,14 @@ pub(crate) fn queue_reflexive_trigger(
     effects: Vec<Effect>,
     tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
 ) {
+    queue_reflexive_trigger_with_source_snapshot(game, source, controller, effects, tagged_objects, None);
+}
+
+pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
+    game: &mut GameState, source: crate::ids::ObjectId, controller: crate::ids::PlayerId,
+    effects: Vec<Effect>, tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    fallback_snapshot: Option<ObjectSnapshot>,
+) {
     let id = game.effect_store.next_reflexive_trigger_id;
     game.effect_store.next_reflexive_trigger_id += 1;
     let trigger_identity = {
@@ -463,7 +475,8 @@ pub(crate) fn queue_reflexive_trigger(
         id.hash(&mut hasher);
         crate::triggers::TriggerIdentity(hasher.finish())
     };
-    let (source_stable_id, source_name, source_snapshot) = match game.object(source) {
+    let fallback_snapshot = fallback_snapshot.or_else(|| game.turn_store.turn_history.source_last_known_snapshot(source).cloned());
+    let (source_stable_id, source_name, source_snapshot) = match game.object(source).filter(|_| !game.is_phased_out(source)) {
         Some(object) => (
             object.stable_id,
             object.name.to_string(),
@@ -471,11 +484,10 @@ pub(crate) fn queue_reflexive_trigger(
                 object, game,
             )),
         ),
-        None => (
-            crate::ids::StableId::from(source),
-            "Reflexive trigger".to_string(),
-            None,
-        ),
+        None => match fallback_snapshot {
+            Some(snapshot) => (snapshot.stable_id, snapshot.name.to_string(), Some(snapshot)),
+            None => (crate::ids::StableId::from(source), "Reflexive trigger".to_string(), None),
+        },
     };
     game.effect_store
         .pending_reflexive_triggers

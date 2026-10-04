@@ -292,6 +292,15 @@ pub(crate) fn can_block_with_view(
         .iter()
         .filter_map(|ability| ability.landwalk_kind())
     {
+        // CR 609.4: this permission changes only this blocking check. The
+        // attacker keeps landwalk for every other characteristic query.
+        if game
+            .effect_store
+            .cant_effects
+            .ignores_landwalk_for_blocking(game, attacker.id, landwalk_kind)
+        {
+            continue;
+        }
         let blocker_controller = game.current_controller(blocker.id);
         let defending_has_required_land = game
             .battlefield
@@ -626,13 +635,48 @@ pub(crate) fn can_attack_defending_player_with_view(
     game: &crate::game_state::GameState,
     view: &DerivedGameView<'_>,
 ) -> bool {
-    if !can_attack_with_view(creature, game, view) {
-        return false;
-    }
+    can_attack_defender_kind_with_view(creature, defending_player, false, game, view)
+}
 
-    if !game.can_attack_defending_player(creature.id, defending_player) {
-        return false;
-    }
+/// Attack-target-aware restriction owner. A battle's protector is still its
+/// defending player for landwalk and other defender rules, but a prohibition
+/// on attacking that player or their planeswalkers does not prohibit a battle.
+pub(crate) fn can_attack_target_with_view(
+    creature: &Object,
+    defending_player: crate::ids::PlayerId,
+    target: &crate::combat_state::AttackTarget,
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if matches!(target, crate::combat_state::AttackTarget::Player(_))
+        && !game.can_attack_player_directly(creature.id, defending_player) { return false; }
+    can_attack_defender_kind_with_view(creature, defending_player,
+        matches!(target, crate::combat_state::AttackTarget::Battle(_)), game, view)
+}
+
+pub fn can_attack_target(
+    creature: &Object,
+    defending_player: crate::ids::PlayerId,
+    target: &crate::combat_state::AttackTarget,
+    game: &crate::game_state::GameState,
+) -> bool {
+    can_attack_target_with_view(creature, defending_player, target, game, &DerivedGameView::new(game))
+}
+
+fn can_attack_defender_kind_with_view(
+    creature: &Object,
+    defending_player: crate::ids::PlayerId,
+    battle: bool,
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if !can_attack_with_view(creature, game, view) { return false; }
+    let allowed = if battle {
+        game.are_opponents(game.controller_of(creature), defending_player)
+            && game.attack_direction_allows_defender(game.controller_of(creature), defending_player)
+            && game.can_attack(creature.id)
+    } else { game.can_attack_defending_player(creature.id, defending_player) };
+    if !allowed { return false; }
 
     let abilities = view
         .calculated_characteristics(creature.id)
@@ -673,6 +717,11 @@ pub(crate) fn must_attack_with_view(
     view: &DerivedGameView<'_>,
 ) -> bool {
     view.object_has_static_ability_id(creature.id, StaticAbilityId::MustAttack)
+        || game
+            .effect_store
+            .cant_effects
+            .must_attack
+            .contains_key(&creature.id)
         || game.is_goaded(creature.id)
 }
 
@@ -829,10 +878,13 @@ mod tests {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: vec![].into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: None,
             snow_mana_spent_to_cast: crate::player::ManaPool::default(),
             temporary_static_ability_grants: crate::object::TemporaryStaticAbilityGrants::new(ObjectId::from_raw(raw)),
             x_value: None,
@@ -1430,13 +1482,13 @@ mod tests {
         );
 
         game.add_object(attacker.clone());
-        game.set_monarch(None);
+        game.set_monarch(None).expect("checked designation/departure fixture");
         assert!(!can_attack_defending_player(&attacker, bob, &game));
 
-        game.set_monarch(Some(alice));
+        game.set_monarch(Some(alice)).expect("checked designation/departure fixture");
         assert!(!can_attack_defending_player(&attacker, bob, &game));
 
-        game.set_monarch(Some(bob));
+        game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
         assert!(can_attack_defending_player(&attacker, bob, &game));
     }
 

@@ -671,6 +671,7 @@ enum CompilerActivationCostObjectReference {
 #[derive(Default)]
 struct CompilerActivationCostTagCounters {
     tap: usize,
+    untap: usize,
     discard: usize,
     sacrifice: usize,
     exile: usize,
@@ -696,6 +697,11 @@ fn compiler_activation_cost_component_reference(
             Some(CompilerActivationCostObjectReference::Tagged(
                 tag.key.clone(),
             ))
+        }
+        CompilerCost::UntapChosen { .. } => {
+            let tag = crate::tag::CompilerCostObjectTag::Untap.key(counters.untap);
+            counters.untap += 1;
+            Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()))
         }
         CompilerCost::Blight { .. } => {
             // Cost materialization shares the tap counter with its private
@@ -1131,45 +1137,7 @@ pub fn parser_trace_stack(stage: &str, tokens: &[OwnedLexToken]) {
     eprintln!("{}", std::backtrace::Backtrace::force_capture());
 }
 
-pub fn map_span_to_original(
-    span: TextSpan,
-    normalized_line: &str,
-    original_line: &str,
-    char_map: &[usize],
-) -> TextSpan {
-    fn byte_to_char_index(text: &str, byte_idx: usize) -> usize {
-        if byte_idx == 0 {
-            return 0;
-        }
-        let clamped = byte_idx.min(text.len());
-        text[..clamped].chars().count()
-    }
-
-    let start_char = byte_to_char_index(normalized_line, span.start);
-    let end_char = byte_to_char_index(normalized_line, span.end);
-    if start_char >= char_map.len() {
-        return span;
-    }
-    let start_orig = char_map[start_char];
-    let end_orig = if end_char == 0 || end_char > char_map.len() {
-        start_orig
-    } else {
-        let last_char_idx = end_char - 1;
-        let last_orig = char_map[last_char_idx];
-        let last_len = original_line[last_orig..]
-            .chars()
-            .next()
-            .map(|ch| ch.len_utf8())
-            .unwrap_or(0);
-        last_orig + last_len
-    };
-
-    TextSpan {
-        line: span.line,
-        start: start_orig,
-        end: end_orig,
-    }
-}
+pub use ironsmith_compiler_source::map_span_to_original;
 
 pub fn parse_card_type(word: &str) -> Option<CardType> {
     crate::grammar::primitives::probe_shape(leaf::parse_leaf_card_type_complete(word))

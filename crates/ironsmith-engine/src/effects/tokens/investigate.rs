@@ -42,14 +42,16 @@ impl EffectExecutor for InvestigateEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        super::lifecycle::execute_token_instruction_atomically(game, ctx, |game, ctx| {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         if count == 0 {
             return Ok(EffectOutcome::resolved());
         }
 
-        let mut outcomes = Vec::with_capacity(count);
-        let mut action_events = Vec::with_capacity(count);
+        game.reserve_token_repetition_work(count)?;
+        let mut outcomes = super::resources::buffer(count)?;
+        let mut action_events = super::resources::buffer(count)?;
         for _ in 0..count {
             let effect = CreateTokenEffect::new(
                 clue_token_definition(),
@@ -57,6 +59,7 @@ impl EffectExecutor for InvestigateEffect {
                 PlayerFilter::Specific(player_id),
             );
             outcomes.push(effect.execute(game, ctx)?);
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
             action_events.push(TriggerEvent::new_with_provenance(
                 KeywordActionEvent::new(KeywordActionKind::Investigate, player_id, ctx.source, 1),
                 ctx.provenance,
@@ -70,6 +73,7 @@ impl EffectExecutor for InvestigateEffect {
         let mut outcome = EffectOutcome::aggregate(outcomes).with_events(action_events);
         outcome.set_value(crate::effect::OutcomeValue::Count(created_clues));
         Ok(outcome)
+        })
     }
 }
 

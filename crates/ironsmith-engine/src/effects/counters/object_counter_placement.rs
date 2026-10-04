@@ -79,10 +79,17 @@ fn commit_object_counter_placement(
     ctx: &mut ExecutionContext,
     processed: TraitEventResult,
 ) -> Result<EffectOutcome, ExecutionError> {
+    commit_object_counter_placement_with_frame(game,ctx,processed,None)
+}
+
+pub(super) fn commit_object_counter_placement_with_frame(
+    game: &mut GameState, ctx: &mut ExecutionContext, processed: TraitEventResult,
+    before: Option<&GameState>,
+) -> Result<EffectOutcome, ExecutionError> {
     match processed {
         expanded @ TraitEventResult::Expanded { .. } =>
             crate::effects::replacement::execute_event_expansion_with_targets(
-                game, ctx, expanded, commit_object_counter_placement,
+                game, ctx, expanded, |game,ctx,result|commit_object_counter_placement_with_frame(game,ctx,result,before),
                 |_game, context, _original_outcome| {
                     let captured = downcast_event::<PutCountersEvent>(context.event.inner())
                         .ok_or_else(|| ExecutionError::InternalError("added counter program lost its captured event".into()))?;
@@ -104,7 +111,7 @@ fn commit_object_counter_placement(
                     "object counter replacement returned an incompatible recipient".into(),
                 ));
             };
-            if !game.can_have_counter_type_placed(object, resolved.counter_type) {
+            if !before.unwrap_or(game).can_have_counter_type_placed(object, resolved.counter_type) {
                 return Ok(prevented());
             }
             let before = game.counter_count(object, resolved.counter_type);

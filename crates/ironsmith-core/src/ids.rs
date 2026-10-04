@@ -46,7 +46,7 @@ impl PlayerId {
     }
 
     /// Create a player ID from a specific index (for when you need explicit control).
-    pub fn from_index(index: u8) -> Self {
+    pub const fn from_index(index: u8) -> Self {
         Self(index)
     }
 

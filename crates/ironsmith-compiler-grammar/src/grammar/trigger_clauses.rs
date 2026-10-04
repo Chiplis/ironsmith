@@ -26,6 +26,15 @@ use token_helpers::*;
 mod life_loss;
 pub use life_loss::*;
 
+mod passive_damage;
+pub use passive_damage::*;
+
+mod zone_changes;
+pub use zone_changes::*;
+
+mod keyword_alternatives;
+pub use keyword_alternatives::*;
+
 #[cfg(test)]
 #[path = "trigger_clauses/tests.rs"]
 mod tests;
@@ -165,6 +174,10 @@ pub enum RollResultShape {
     Fixed(u32),
     UnspecifiedDie,
     OneOrMoreDice,
+    Natural(u32),
+    AtLeast(u32),
+    Either(u32, u32),
+    Nth(u32),
 }
 
 pub fn parse_not_during_turn_draw_suffix_words(words: &[&str]) -> Option<PlayerFilter> {
@@ -216,6 +229,24 @@ pub fn parse_opponents_each_lose_exact_life_words(words: &[&str]) -> Option<u32>
 }
 
 pub fn parse_roll_result_words(words: &[&str]) -> Option<RollResultShape> {
+    let bounded = words.strip_prefix(&["a"]).unwrap_or(words);
+    let number = |words: &[&str]| primitives::parse_full_word_slice(words, parse_fixed_number_word_slice);
+    if let Some(words) = bounded.strip_prefix(&["natural"]) {
+        return number(words).map(RollResultShape::Natural);
+    }
+    if let Some(words) = bounded.strip_suffix(&["or", "higher"]) {
+        return number(words).map(RollResultShape::AtLeast);
+    }
+    if let Some(words) = bounded.strip_prefix(&["your"]).or_else(||bounded.strip_prefix(&["their"]))
+        && let Some(words) = words.strip_suffix(&["die", "each", "turn"])
+        && let Some((ordinal, used)) = ironsmith_core::parse_ordinal_words(words)
+        && used == words.len() && ordinal > 0 {
+        return Some(RollResultShape::Nth(ordinal));
+    }
+    if let Some(or) = bounded.iter().position(|word|*word == "or")
+        && let (Some(left), Some(right)) = (number(&bounded[..or]), number(&bounded[or+1..])) {
+        return Some(RollResultShape::Either(left,right));
+    }
     primitives::parse_full_word_slice(words, parse_roll_result_word_slice)
 }
 

@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Benthic Explorers",
+    "oracle_id": "bc0518fc-d34b-474a-92c5-2cb013828396",
+    "text": "Mana cost: {3}{U}\nType: Creature — Merfolk Scout\nPower/Toughness: 2/4\n{T}, Untap a tapped land an opponent controls: Add one mana of any type that land could produce.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Crackleburr",
+    "oracle_id": "59a6cb4e-1646-42b5-b482-da641c0f7f6f",
+    "text": "Mana cost: {1}{U/R}{U/R}\nType: Creature — Elemental\nPower/Toughness: 2/2\n{U/R}{U/R}, {T}, Tap two untapped red creatures you control: This creature deals 3 damage to any target.\n{U/R}{U/R}, {Q}, Untap two tapped blue creatures you control: Return target creature to its owner's hand. ({Q} is the untap symbol.)",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Halo Fountain",
+    "oracle_id": "36a9de4c-8073-475d-8679-e50844eef09e",
+    "text": "Mana cost: {2}{W}\nType: Artifact\n{W}, {T}, Untap a tapped creature you control: Create a 1/1 green and white Citizen creature token.\n{W}{W}, {T}, Untap two tapped creatures you control: Draw a card.\n{W}{W}{W}{W}{W}, {T}, Untap fifteen tapped creatures you control: You win the game.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Earthlore",
+    "oracle_id": "91fbffd1-0886-45fa-bf3e-4c9864458431",
+    "text": "Mana cost: {G}\nType: Enchantment — Aura\nEnchant land you control\nTap enchanted land: Target blocking creature gets +1/+2 until end of turn. Activate only if enchanted land is untapped.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Nature's Chosen",
+    "oracle_id": "7f425406-2746-45a1-86bf-f9645015ffc2",
+    "text": "Mana cost: {G}\nType: Enchantment — Aura\nEnchant creature you control\n{0}: Untap enchanted creature. Activate only during your turn and only once each turn.\nTap enchanted creature: Untap target artifact, creature, or land. Activate only if enchanted creature is white and untapped and only once each turn.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Tourach's Gate",
+    "oracle_id": "03e27ebd-6141-4002-b41f-0bf9d6ec2908",
+    "text": "Mana cost: {1}{B}{B}\nType: Enchantment — Aura\nEnchant land you control\nSacrifice a Thrull: Put three time counters on this Aura.\nAt the beginning of your upkeep, remove a time counter from this Aura. If there are no time counters on this Aura, sacrifice it.\nTap enchanted land: Attacking creatures you control get +2/-1 until end of turn. Activate only if enchanted land is untapped.",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Veteran's Voice",
+    "oracle_id": "68d25ba4-d710-4090-bceb-5cfbd6bb63a1",
+    "text": "Mana cost: {R}\nType: Enchantment — Aura\nEnchant creature you control\nTap enchanted creature: Target creature other than the creature tapped this way gets +2/+1 until end of turn. Activate only if enchanted creature is untapped.",
+    "proposed_coverage": "complete",
+    "source_closure": "prospective_cost_references.json.fixture; UNVALIDATED"
+  },
+  {
+    "name": "Fishing Pole",
+    "oracle_id": "2c1d3e9e-213e-492a-ad5a-91139d70bc0f",
+    "text": "Mana cost: {1}\nType: Artifact — Equipment\nEquipped creature has \"{1}, {T}, Tap Fishing Pole: Put a bait counter on Fishing Pole.\"\nWhenever equipped creature becomes untapped, remove a bait counter from this Equipment. If you do, create a 1/1 blue Fish creature token.\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+    "proposed_coverage": "complete",
+    "source_closure": "prospective_cost_references.json.fixture; UNVALIDATED"
+  },
+  {
+    "name": "Krovikan Plague",
+    "oracle_id": "609c3b1c-d9ad-4616-b685-52b85528fde8",
+    "text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nEnchant non-Wall creature you control\nWhen this Aura enters, draw a card at the beginning of the next turn's upkeep.\nTap enchanted creature: This Aura deals 1 damage to any target. Put a -0/-1 counter on enchanted creature. Activate only if enchanted creature is untapped.",
+    "proposed_coverage": "complete"
+  }
+]

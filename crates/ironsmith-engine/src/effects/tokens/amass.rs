@@ -62,6 +62,7 @@ impl EffectExecutor for AmassEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        super::lifecycle::execute_token_instruction_atomically(game, ctx, |game, ctx| {
         let amass_subtype = amass_token_subtype(self);
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
         let mut outcomes = Vec::new();
@@ -71,6 +72,7 @@ impl EffectExecutor for AmassEffect {
             let create_outcome = CreateTokenEffect::you(army_token_definition(amass_subtype), 1)
                 .execute(game, ctx)?;
             outcomes.push(create_outcome);
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
             army_candidates = army_creature_candidates(game, ctx.controller);
         }
 
@@ -104,6 +106,7 @@ impl EffectExecutor for AmassEffect {
                 Some(ctx.source),
                 spec,
             );
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
             let selected = normalize_object_selection(chosen, &army_candidates, 1);
             selected.first().copied().unwrap_or(army_candidates[0])
         };
@@ -117,6 +120,7 @@ impl EffectExecutor for AmassEffect {
         )
         .execute(game, ctx)?;
         outcomes.push(counters_outcome);
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
 
         // "Amass <Subtype>" causes the chosen Army creature to become that subtype
         // in addition to its other types if it doesn't already have it. That is
@@ -140,6 +144,7 @@ impl EffectExecutor for AmassEffect {
         Ok(EffectOutcome::aggregate(outcomes)
             .with_execution_fact(ExecutionFact::ChosenObjects(vec![chosen_army]))
             .with_event(action_event))
+        })
     }
 }
 

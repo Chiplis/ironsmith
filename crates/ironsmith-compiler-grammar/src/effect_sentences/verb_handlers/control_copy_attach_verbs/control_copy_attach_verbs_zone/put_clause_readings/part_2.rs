@@ -294,6 +294,33 @@ pub(super) fn read_into_destination(
         };
 
         if let Some(zone) = zone {
+            if zone != Zone::Battlefield
+                && let Some(crate::grammar::effects::ExileLibraryCardsShape {
+                    player: crate::grammar::effects::ExileLibraryPlayerShape::Player(library_player),
+                    ..
+                }) = crate::grammar::effects::parse_exile_bottom_library_shape(shape.target_tokens, player)
+            {
+                // A positional source is a deterministic boundary selection,
+                // not an unrestricted choice from that player's library.
+                let tag = crate::util::helper_tag_for_tokens(shape.target_tokens, "bottom_card");
+                let filter = ObjectFilter::default().in_zone(Zone::Library)
+                    .owned_by(PlayerFilter::IteratedPlayer);
+                return Ok(Some(EffectAst::Sequence { effects: vec![
+                    EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+                        filter,
+                        count: crate::effect::ChoiceCount::exactly(1),
+                        count_value: None,
+                        player: library_player,
+                        tag: tag.clone(),
+                    }),
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(tag, None), zone, false,
+                        ReturnControllerAst::Preserve, false, None,
+                    ).with_destination_player_surface(destination_player_surface)
+                     .with_destination_player_reference_surface(destination_player_reference_surface)
+                     .with_move_to_zone_actor_surface(player),
+                ] }));
+            }
             let delayed_hand_timing = if zone == Zone::Hand {
                 parse_put_into_hand_delayed_timing(tokens)
             } else {

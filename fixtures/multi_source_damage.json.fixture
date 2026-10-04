@@ -1,0 +1,65 @@
+[
+  {
+    "name": "Allies at Last",
+    "mana_cost": "{2}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Affinity for Allies (This spell costs {1} less to cast for each Ally you control.)\nUp to two target creatures you control each deal damage equal to their power to target creature an opponent controls.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Band Together",
+    "mana_cost": "{2}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Up to two target creatures you control each deal damage equal to their power to another target creature.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Combo Attack",
+    "mana_cost": "{2}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Two target creatures your team controls each deal damage equal to their power to target creature.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Coordinated Clobbering",
+    "mana_cost": "{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Tap one or two target untapped creatures you control. They each deal damage equal to their power to target creature an opponent controls.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Friendly Rivalry",
+    "mana_cost": "{R}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Target creature you control and up to one other target legendary creature you control each deal damage equal to their power to target creature you don't control.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Graceful Takedown",
+    "mana_cost": "{1}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Any number of target enchanted creatures you control and up to one other target creature you control each deal damage equal to their power to target creature you don't control.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Tandem Takedown",
+    "mana_cost": "{1}{G}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Up to two target creatures you control each get +1/+0 until end of turn. They each deal damage equal to their power to another target creature, planeswalker, or battle.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Terrific Team-Up",
+    "mana_cost": "{3}{G}",
+    "type_line": "Instant",
+    "oracle_text": "This spell costs {2} less to cast if you control a permanent with mana value 4 or greater.\nOne or two target creatures you control each get +1/+0 until end of turn. They each deal damage equal to their power to target creature an opponent controls.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Alpha Brawl",
+    "mana_cost": "{6}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target creature an opponent controls deals damage equal to its power to each other creature that player controls, then each of those creatures deals damage equal to its power to that creature.",
+    "coverage_status": "proposed_complete"
+  }
+]

@@ -6,6 +6,32 @@ pub fn parse_discard(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
+    if let Some((denominator, your_hand, rounded_up)) =
+        sacrifice_discard_grammar::parse_fraction_hand_discard(tokens)
+    {
+        let owner = if your_hand {
+            PlayerFilter::You
+        } else {
+            discard_subject_owner_filter(subject).unwrap_or(PlayerFilter::IteratedPlayer)
+        };
+        let mut hand = Value::CardsInHand(owner);
+        if rounded_up {
+            hand = Value::Add(Box::new(hand), Box::new(Value::Fixed(denominator - 1)));
+        }
+        return Ok(EffectAst::subject_verb_discard(
+            player,
+            if denominator == 2 {
+                Value::HalfRoundedDown(Box::new(hand))
+            } else {
+                Value::DividedRoundedDown(Box::new(hand), denominator)
+            },
+            false,
+            false,
+            None,
+            None,
+        ));
+    }
+
     let clause_words = crate::lexer::token_word_refs(tokens);
     let clause_shape = sacrifice_discard_grammar::parse_discard_clause_shape(tokens).map_err(
         |error| match error {
@@ -102,6 +128,19 @@ pub fn parse_discard(
     let uses_all_count = cards_shape.uses_all_count;
     let mut count = cards_shape.count;
     let any_number = cards_shape.any_number;
+    // A live comparison belongs to the complete card phrase. Parsing only
+    // its trailing relation would discard qualifiers such as "nonland".
+    if let Some(start) = tokens.len().checked_sub(
+        cards_shape.qualifier_tokens.len() + 1 + cards_shape.trailing_tokens.len(),
+    ) && let Some(result) = crate::grammar::filters::parse_live_name_relation(&tokens[start..], false) {
+        let mut filter = result?;
+        filter.zone = Some(Zone::Hand);
+        if uses_all_count && let Some(owner) = discard_subject_owner_filter(subject) {
+            filter.owner = Some(owner);
+        }
+        if uses_all_count { count = Value::Count(filter.clone()); }
+        return Ok(EffectAst::subject_verb_discard(player, count, false, any_number, Some(filter), None));
+    }
     // "an instant or sorcery card or a creature card with flying": a
     // trailing "or ... card" arm continues the card selector itself, so the
     // whole list is one disjunctive filter rather than a trailing qualifier

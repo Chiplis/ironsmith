@@ -5,6 +5,11 @@ pub(in super::super) fn parse_object_filter_inner(
     other: bool,
     strict: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(filter) = crate::grammar::filters::simple::parse_simple_object_filter_lexed(tokens, other)
+        && filter.ring_bearer
+    {
+        return Ok(filter);
+    }
     let (tokens, vote_winners_only) = trim_vote_winner_suffix(tokens);
     let trailing_couldnt_attack_exception = tokens.len() >= 6
         && tokens[tokens.len() - 6].is_word("except")
@@ -667,6 +672,9 @@ pub(in super::super) fn parse_object_filter_inner(
 
     try_apply_could_be_targeted_by_that_spell_clause(&mut filter, &mut all_words);
 
+    // Preserve the direction and time scope before the generic "blocked"
+    // adjective reader can widen it to every blocked attacker.
+    try_apply_directional_source_block_clause(&mut filter, &mut all_words, &mut segment_tokens);
     try_apply_blocked_or_was_blocked_by_this_turn_clause(
         &mut filter,
         &mut all_words,
@@ -1765,6 +1773,31 @@ pub(in super::super) fn parse_object_filter_inner(
             // line HARD-FAILS ("parser does not yet support line family"),
             // meaning the predicate route that used to claim it is gone;
             // find that regression before re-adding the guard.
+            "equipped"
+                if !is_negated_word
+                    && all_words
+                        .get(idx + 1)
+                        .is_some_and(|noun| matches!(*noun, "creatures" | "permanents")) =>
+            {
+                // Plural equipped permanents are a state-qualified group,
+                // not the one permanent carrying this source Equipment.
+                // Keep a pre-existing attachment condition conjunctive: an
+                // Aura and an Equipment may be different attached objects.
+                let equipment = ObjectFilter {
+                    subtypes: vec![Subtype::Equipment],
+                    ..ObjectFilter::default()
+                };
+                if filter.with_attached_object.is_none() {
+                    filter.with_attached_object = Some(Box::new(equipment));
+                } else {
+                    let previous_union = std::mem::take(&mut filter.any_of);
+                    filter.any_of = vec![ObjectFilter {
+                        with_attached_object: Some(Box::new(equipment)),
+                        any_of: previous_union,
+                        ..ObjectFilter::default()
+                    }];
+                }
+            }
             "equipped" if !is_negated_word => {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
                     tag: (crate::tag::CompilerReferenceTag::Equipped.bind()).into(),
@@ -2827,4 +2860,55 @@ pub(super) fn try_apply_shared_creature_type_with_source_clause(
         return true;
     }
     false
+}
+
+#[cfg(test)]
+mod equipped_plural_tests {
+    use super::*;
+    fn parse(text: &str) -> ObjectFilter {
+        parse_object_filter_inner(&crate::lexer::lex_line(text, 0).unwrap(), false, true).unwrap()
+    }
+    #[test]
+    fn plural_equipped_creatures_select_hosts_while_singular_keeps_source_attachment() {
+        let plural = parse("equipped creatures you control");
+        assert_eq!(plural.controller, Some(PlayerFilter::You));
+        assert!(plural.card_types.contains(&CardType::Creature));
+        assert_eq!(
+            plural.with_attached_object.as_ref().unwrap().subtypes,
+            vec![Subtype::Equipment]
+        );
+        assert!(
+            !plural
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str()
+                    == crate::tag::CompilerReferenceTag::Equipped.as_str())
+        );
+        let singular = parse("equipped creature");
+        assert!(
+            singular
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str()
+                    == crate::tag::CompilerReferenceTag::Equipped.as_str())
+        );
+        assert!(singular.with_attached_object.is_none());
+    }
+    #[test]
+    fn equipment_state_does_not_overwrite_an_existing_aura_attachment_predicate() {
+        let both = parse("equipped creatures with an Aura attached to it");
+        assert_eq!(
+            both.with_attached_object.as_ref().unwrap().subtypes,
+            vec![Subtype::Aura]
+        );
+        assert_eq!(both.any_of.len(), 1);
+        assert_eq!(
+            both.any_of[0]
+                .with_attached_object
+                .as_ref()
+                .unwrap()
+                .subtypes,
+            vec![Subtype::Equipment]
+        );
+    }
 }

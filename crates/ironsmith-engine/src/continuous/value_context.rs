@@ -126,6 +126,16 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             visitor,
         )
     }
+    /// Numeric aggregates have an explicit empty-set identity, unlike a
+    /// scalar player reference that must designate an available player.
+    pub fn aggregate_players(&self, filter: &PlayerFilter) -> Vec<PlayerId> {
+        super::layer_resolution::continuous_value_players(
+            self.calculation,
+            filter,
+            self.controller,
+            self.source,
+        )
+    }
     pub fn players(&self, value: &Value, filter: &PlayerFilter) -> Vec<PlayerId> {
         required_continuous_value_players(
             value,
@@ -358,9 +368,30 @@ impl LayerValueContext<'_, '_> {
     ) -> i32 {
         use crate::effects::helpers::value_eval::NumericProperty;
         let ctx = self.calculation;
+        if matches!(property, NumericProperty::ManaValue) {
+            let Some(object) = ctx.objects.get(&id) else {
+                return 0;
+            };
+            // Layer-1 copies, face-down values and linked-face rules are
+            // already present in the in-progress view at the P/T layer.
+            // Reading the printed object here loses that mana cost.
+            return in_progress_characteristics(ctx.game, id)
+                .or_else(|| {
+                    ctx.effects.calculate_characteristics(
+                        id,
+                        ctx.objects,
+                        ctx.battlefield,
+                        ctx.game,
+                    )
+                })
+                .map_or_else(
+                    || crate::filter::object_mana_value_for_filter(object),
+                    |chars| crate::filter::calculated_mana_value_for_filter(object, &chars),
+                );
+        }
         if matches!(
             property,
-            NumericProperty::ManaValue | NumericProperty::ManaSpent
+            NumericProperty::ManaSpent | NumericProperty::KickerCount
         ) {
             return ctx
                 .objects

@@ -70,13 +70,7 @@ fn draw_number_window(
         return None;
     }
     let e = event.downcast::<CardsDrawnEvent>()?;
-    let player_matches = match player {
-        PlayerFilter::You => e.player == ctx.controller,
-        PlayerFilter::Opponent => e.player != ctx.controller,
-        PlayerFilter::Any => true,
-        PlayerFilter::Specific(id) => e.player == *id,
-        _ => true,
-    };
+    let player_matches = crate::filter::player_filter_matches_game(player, e.player, ctx.game, &ctx.filter_ctx);
     if !player_matches {
         return None;
     }

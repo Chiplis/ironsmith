@@ -8,6 +8,95 @@ use crate::model::CompilerAlternativeCastingMethod as AlternativeCastingMethod;
 use crate::static_abilities::ThisSpellCostCondition;
 use crate::util::trim_edge_punctuation;
 
+/// An intrinsic permission to cast this exact card from its owner's
+/// graveyard for a complete alternative price. It does not grant a price to
+/// other cards or make any other casting zone available.
+pub fn parse_self_zone_alternative_cost(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let view = TokenWordView::new(&tokens);
+    let words = view.word_refs();
+    let Some(subject_start) = permission_shapes::find_words(&words, &["you", "may", "cast", "this"]) else {
+        return Ok(None);
+    };
+    let head = &words[subject_start..];
+    if !matches!(head.get(4), Some(&("card" | "creature" | "spell")))
+        || !head.get(5..9).is_some_and(|tail| tail == ["from", "your", "graveyard", "by"])
+    {
+        return Ok(None);
+    }
+    let condition = if subject_start == 0 {
+        None
+    } else if words.starts_with(&["as", "long", "as"]) {
+        let start = view.token_start_indices()[3];
+        let end = view.token_start_indices()[subject_start];
+        let condition_tokens = trim_edge_punctuation(&tokens[start..end]);
+        Some(parse_this_spell_cost_condition(&condition_tokens).ok_or_else(||
+            CardTextError::ParseError("unsupported intrinsic graveyard-cast condition".into()))?)
+    } else {
+        return Ok(None);
+    };
+    let Some(relative_rather) = permission_shapes::find_words(head, &["rather", "than"]) else {
+        return Ok(None);
+    };
+    let rather = subject_start + relative_rather;
+    let tail = &words[rather + 2..];
+    let cost_tail_len = if matches!(tail, ["pay" | "paying", "its", "mana", "cost", ..]) {
+        4
+    } else if matches!(tail, ["pay" | "paying", "this", "cards" | "spells", "mana", "cost", ..]) {
+        5
+    } else {
+        return Ok(None);
+    };
+    let after_cost_word = rather + 2 + cost_tail_len;
+    let exile_rider = &words[after_cost_word..];
+    let mut entry_counters = Vec::new();
+    let exiles_after_resolution = if exile_rider.is_empty() {
+        false
+    } else if exile_rider == ["if", "you", "cast", "this", "card", "this", "way", "and", "it", "would", "be", "put", "into", "your", "graveyard", "exile", "it", "instead"] {
+        true
+    } else if exile_rider.starts_with(&["if", "you", "do", "it", "enters", "with"]) {
+        let entry_start = view.token_start_indices()[after_cost_word + 4];
+        let mut entry_tokens = crate::lexer::synthetic_word_tokens(["this", "creature"]);
+        entry_tokens.extend_from_slice(&tokens[entry_start..]);
+        let entries = crate::keyword_static::parse_enters_with_counters_line(&entry_tokens)?.ok_or_else(||
+            CardTextError::ParseError("unsupported alternative-cost entry counter rider".into()))?;
+        for ability in entries {
+            let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } = ability.payload else {
+                return Err(CardTextError::ParseError("alternative-cost entry rider must only place counters".into()));
+            };
+            let crate::effect::Value::Fixed(amount) = count.unhinted() else {
+                return Err(CardTextError::ParseError("dynamic alternative-cost entry counter amount is unsupported".into()));
+            };
+            let amount = u32::try_from(*amount).map_err(|_| CardTextError::ParseError("negative entry counter count".into()))?;
+            entry_counters.push((counter, amount));
+        }
+        false
+    } else {
+        return Err(CardTextError::ParseError("unsupported intrinsic graveyard-cast follow-up".into()));
+    };
+    let cost_start = view.token_start_indices()[subject_start + 8] + 1;
+    let cost_end = view.token_start_indices()[rather];
+    let mut cost_tokens = tokens[cost_start..cost_end].to_vec();
+    // Preserve the typed payment parser and original source spans. Only
+    // grammatical cost heads change tense, never arbitrary object words.
+    for index in 0..cost_tokens.len() {
+        if index == 0 || cost_tokens[index - 1].is_word("and") {
+            for (gerund, verb) in [("paying", "pay"), ("sacrificing", "sacrifice"),
+                ("exiling", "exile"), ("discarding", "discard"), ("returning", "return")] {
+                if cost_tokens[index].is_word(gerund) { cost_tokens[index].replace_word(verb); }
+            }
+        }
+    }
+    let total_cost = parse_payment_clause_as_total_cost(&cost_tokens)?.ok_or_else(||
+        CardTextError::ParseError("unsupported intrinsic graveyard alternative price".into()))?;
+    Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+        "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard,
+        total_cost, condition, exiles_after_resolution,
+    ).with_entry_counters(entry_counters)))
+}
+
 pub fn parse_self_free_cast(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {
     let words = TokenWordView::new(tokens).word_refs();
     if !exact_one_of(
@@ -62,6 +151,11 @@ pub fn parse_you_may_rather_than_spell_cost(
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     let word_view = TokenWordView::new(tokens);
     let words = word_view.word_refs();
+    if permission_shapes::prefix_words(&words, &["you", "may", "cast", "this"])
+        && permission_shapes::find_words(&words, &["from", "your", "graveyard", "by"]).is_some()
+    {
+        return Ok(None);
+    }
     if !permission_shapes::prefix_words(&words, &["you", "may"]) {
         return Ok(None);
     }
@@ -85,6 +179,7 @@ pub fn parse_you_may_rather_than_spell_cost(
             ))
         })?;
     let trailing_tokens = trim_edge_punctuation(&tokens[cost_clause_end + 1..]);
+    let spending_rule = crate::consumer_mana::source_spending_rule(&trailing_tokens, true);
     // "You may pay {B} rather than pay this spell's mana cost if there are
     // thirteen or more creatures on the battlefield." (Blasphemous Edict)
     let trailing_condition = if trailing_tokens
@@ -102,6 +197,8 @@ pub fn parse_you_may_rather_than_spell_cost(
                     ))
                 })?,
         )
+    } else if spending_rule.is_some() {
+        None
     } else if !TokenWordView::new(&trailing_tokens).word_refs().is_empty() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing clause after alternative cost (line: '{}', trailing: '{}')",
@@ -124,6 +221,15 @@ pub fn parse_you_may_rather_than_spell_cost(
             render_token_slice(cost_tokens).trim()
         ))
     })?;
+    let total_cost = if let Some(rule) = spending_rule {
+        total_cost.try_map(|cost| -> Result<_, CardTextError> {
+            Ok(match cost {
+                crate::model::CompilerCost::Mana(mana) =>
+                    crate::model::CompilerCost::Mana(mana.with_spending_restriction(rule.clone())),
+                _ => return Err(CardTextError::ParseError("source-restricted alternative requires a mana cost".into())),
+            })
+        })?
+    } else { total_cost };
     let method = AlternativeCastingMethod::Composed {
         name: "Parsed alternative cost".into(),
         total_cost,
@@ -426,5 +532,42 @@ mod tests {
         let tokens = lex_line("you may cast this spell without paying its mana cost", 0)
             .expect("lex fixture");
         assert!(parse_self_free_cast(&tokens).is_some());
+    }
+}
+
+#[cfg(test)]
+mod intrinsic_zone_alternative_tests {
+    use super::*;
+    fn parse(text: &str) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+        let mut tokens = lex_line(text, 0).unwrap();
+        for token in &mut tokens { token.lowercase_word(); }
+        parse_self_zone_alternative_cost(&tokens)
+    }
+    #[test]
+    fn intrinsic_zone_reader_preserves_price_condition_and_exile_rider() {
+        for text in [
+            "You may cast this card from your graveyard by paying {2}{W} rather than paying its mana cost.",
+            "You may cast this creature from your graveyard by paying {B}{B} and sacrificing two creatures rather than paying its mana cost.",
+            "You may cast this card from your graveyard by paying {3}{R} and exiling four other cards from your graveyard rather than paying its mana cost.",
+        ] {
+            let method = parse(text).unwrap().unwrap();
+            assert_eq!(method.cast_from_zone(), crate::zone::Zone::Graveyard);
+            assert!(!method.exiles_after_resolution());
+            assert!(method.total_cost().is_some());
+        }
+        let method = parse("As long as you control a Giant, you may cast this card from your graveyard by paying {U} rather than paying its mana cost. If you cast this card this way and it would be put into your graveyard, exile it instead.").unwrap().unwrap();
+        assert!(method.cast_condition().is_some());
+        assert!(method.exiles_after_resolution());
+    }
+    #[test]
+    fn intrinsic_zone_reader_rejects_unknown_riders_and_does_not_claim_static_price_grants() {
+        let entry = parse("You may cast this card from your graveyard by paying {3}{R} rather than paying its mana cost. If you do, it enters with two +1/+1 counters on it.").unwrap().unwrap();
+        assert_eq!(entry.entry_counters(), &[(ironsmith_core::CounterType::PlusOnePlusOne, 2)]);
+        assert!(parse("You may cast this card from your graveyard by paying {3}{R} rather than paying its mana cost. If you do, it enters with two +1/+1 counters on it and you draw a card.").is_err());
+        for text in [
+            "You may pay {0} rather than pay the mana cost for spells you cast.",
+            "You may cast spells from your graveyard by paying {2} rather than paying their mana costs.",
+            "You may cast this card from your graveyard by paying 2 life in addition to paying its other costs.",
+        ] { assert!(parse(text).unwrap().is_none(), "{text}"); }
     }
 }

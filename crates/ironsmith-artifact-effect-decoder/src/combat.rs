@@ -12,6 +12,15 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::AssignNoCombatDamageEffect>(payload).map(Some)
         }
         "DealDamageEffect" => decode_as::<ironsmith_core::DealDamageEffect>(payload).map(Some),
+        "DealDamageEachEffect" => {
+            decode_as::<ironsmith_core::DealDamageEachEffect>(payload).map(Some)
+        }
+        "DealDamageBySourcesEffect" => {
+            decode_as::<ironsmith_core::DealDamageBySourcesEffect>(payload).map(Some)
+        }
+        "DealDamageToRecipientsEffect" => {
+            decode_as::<ironsmith_core::DealDamageToRecipientsEffect>(payload).map(Some)
+        }
         "DealDistributedDamageEffect" => {
             decode_as::<ironsmith_core::DealDistributedDamageEffect>(payload).map(Some)
         }
@@ -36,7 +45,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::PreventAllCombatDamageEffect>(payload).map(Some)
         }
         "PreventAllDamageEffect" => {
-            decode_as::<ironsmith_core::PreventAllDamageEffect>(payload).map(Some)
+            decode_as::<ironsmith_core::PreventAllDamageEffect<wire::WireEffect>>(payload).map(Some)
         }
         "PreventAllDamageToTargetEffect" => {
             decode_as::<ironsmith_core::PreventAllDamageToTargetEffect<wire::WireEffect>>(payload)
@@ -58,6 +67,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RedirectNextTimeDamageToSourceEffect" => {
             decode_as::<ironsmith_core::RedirectNextTimeDamageToSourceEffect>(payload).map(Some)
         }
+        "BecomeBlockedEffect" => decode_as::<ironsmith_core::BecomeBlockedEffect>(payload).map(Some),
         "RemoveFromCombatEffect" => {
             decode_as::<ironsmith_core::RemoveFromCombatEffect>(payload).map(Some)
         }
@@ -80,6 +90,18 @@ pub(super) fn map_card_ids(
     match kind {
         "AssignNoCombatDamageEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::AssignNoCombatDamageEffect,
+        >(payload, context)
+        .map(Some),
+        "DealDamageEachEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::DealDamageEachEffect,
+        >(payload, context)
+        .map(Some),
+        "DealDamageBySourcesEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::DealDamageBySourcesEffect,
+        >(payload, context)
+        .map(Some),
+        "DealDamageToRecipientsEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::DealDamageToRecipientsEffect,
         >(payload, context)
         .map(Some),
         "DealDamageEffect" => {
@@ -127,7 +149,7 @@ pub(super) fn map_card_ids(
         >(payload, context)
         .map(Some),
         "PreventAllDamageEffect" => super::card_graph::map_payload_as::<
-            ironsmith_core::PreventAllDamageEffect,
+            ironsmith_core::PreventAllDamageEffect<wire::WireEffect>,
         >(payload, context)
         .map(Some),
         "PreventAllDamageToTargetEffect" => super::card_graph::map_payload_as::<

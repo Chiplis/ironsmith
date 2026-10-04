@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Time and Tide",
+    "text": "Mana cost: {U}{U}\nType: Instant\nSimultaneously, all phased-out creatures phase in and all creatures with phasing phase out.",
+    "oracle_id": "b6fee94a-30b8-415e-8567-ad03ccb1d658",
+    "source": "https://scryfall.com/card/vis/46/time-and-tide?utm_source=api",
+    "baseline_content_hash": "e6ca5d0b0f2ff116c09b32a580f6fe5b644824a76d5acd0c250d881a71464249",
+    "baseline_diagnostic": null
+  }
+]

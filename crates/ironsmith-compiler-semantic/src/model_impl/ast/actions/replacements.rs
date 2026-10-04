@@ -32,6 +32,8 @@ pub enum ReplacementActionAst {
         player: PlayerFilter,
         replacement_effects: Vec<EffectAst>,
         duration: ZoneReplacementDurationAst,
+        player_target: Option<TargetAst>,
+        display: Option<String>,
     },
     RegisterManaReplacement {
         source_filter: ObjectFilter,
@@ -72,4 +74,17 @@ pub enum ReplacementActionAst {
         counter_type: CounterType,
         count: Value,
     },
+    RegisterDamageMultiplier {
+        spec: ironsmith_core::RegisterDamageMultiplierEffect,
+    },
+    RegisterDamageAddition {
+        spec: ironsmith_core::RegisterDamageAdditionEffect,
+    },
+    RegisterManaRewrite {
+        rule: ironsmith_core::ManaOutputRewrite,
+        target: Option<TargetAst>,
+        mode: crate::effects::ReplacementApplyMode,
+        display: String,
+    },
+    RegisterManaSpendPermission { permission: ironsmith_core::ManaSpendPermission, until: Until, display: String },
 }

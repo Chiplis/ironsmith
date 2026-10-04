@@ -79,6 +79,12 @@ pub struct AdditionalCounterShape {
     pub descriptor: CounterDescriptorShape,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConditionalAdditionalCounterShape {
+    pub descriptor: CounterDescriptorShape,
+    pub object_filter: ObjectFilter,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConditionalEntryCounterArmShape {
     pub descriptor: CounterDescriptorShape,
@@ -167,8 +173,7 @@ fn parse_counter_descriptor_lexed<'a>(
     let additional = opt(primitives::kw("additional"))
         .parse_next(input)?
         .is_some();
-    let fewer = !additional
-        && opt(primitives::kw("fewer")).parse_next(input)?.is_some();
+    let fewer = !additional && opt(primitives::kw("fewer")).parse_next(input)?.is_some();
     let counter_type_tokens = (
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(counter_noun)).void(),
         counter_noun,
@@ -624,38 +629,55 @@ fn additional_descriptor_on_tagged<'a>(
     Ok(descriptor)
 }
 
-fn supported_enters_predicate<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+fn entry_object_kind<'a>(input: &mut LexStream<'a>) -> WResult<ObjectFilter> {
+    primitives::word_parser_text
+        .verify_map(|word| {
+            parse_card_type(word)
+                .map(|kind| ObjectFilter::default().with_type(kind))
+                .or_else(|| {
+                    crate::util::parse_subtype_flexible(word)
+                        .map(|kind| ObjectFilter::default().with_subtype(kind))
+                })
+        })
+        .parse_next(input)
+}
+
+fn supported_enters_predicate<'a>(input: &mut LexStream<'a>) -> WResult<ObjectFilter> {
     alt((
         (
             opt(primitives::kw("a")),
-            primitives::phrase(&["creature", "enters", "this", "way"]),
+            entry_object_kind,
+            primitives::phrase(&["enters", "this", "way"]),
         )
-            .void(),
+            .map(|(_, filter, _)| filter),
         (
             primitives::phrase(&["it", "enters", "as"]),
             opt(primitives::kw("a")),
-            primitives::kw("creature"),
+            entry_object_kind,
         )
-            .void(),
+            .map(|(_, _, filter)| filter),
     ))
     .parse_next(input)
 }
 
 fn parse_if_enters_additional_lexed<'a>(
     input: &mut LexStream<'a>,
-) -> WResult<AdditionalCounterShape> {
+) -> WResult<ConditionalAdditionalCounterShape> {
     primitives::kw("if").parse_next(input)?;
-    supported_enters_predicate.parse_next(input)?;
+    let object_filter = supported_enters_predicate.parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
     primitives::phrase(&["it", "enters", "with"]).parse_next(input)?;
     let descriptor = additional_descriptor_on_tagged.parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
-    Ok(AdditionalCounterShape { descriptor })
+    Ok(ConditionalAdditionalCounterShape {
+        descriptor,
+        object_filter,
+    })
 }
 
 pub fn parse_if_enters_additional_tokens(
     tokens: &[OwnedLexToken],
-) -> Option<AdditionalCounterShape> {
+) -> Option<ConditionalAdditionalCounterShape> {
     crate::grammar::primitives::probe_all(
         tokens,
         parse_if_enters_additional_lexed,
@@ -1170,3 +1192,32 @@ pub fn parse_counter_placement_sequence_tokens(
 #[cfg(test)]
 #[path = "counter_marker_shapes_inline_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod qualified_entry_counter_tests {
+    use super::*;
+    #[test]
+    fn conditional_additional_entry_counter_keeps_card_type_or_subtype() {
+        for (noun, hero) in [("creature", false), ("Hero", true)] {
+            let text = format!(
+                "If a {noun} enters this way, it enters with an additional +1/+1 counter on it."
+            );
+            let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+            let shape = parse_if_enters_additional_tokens(&tokens).unwrap();
+            assert_eq!(shape.descriptor.counter_type, CounterType::PlusOnePlusOne);
+            assert!(shape.descriptor.additional);
+            if hero {
+                assert_eq!(shape.object_filter.subtypes, [Subtype::Hero]);
+                assert!(shape.object_filter.card_types.is_empty());
+            } else {
+                assert_eq!(shape.object_filter.card_types, [CardType::Creature]);
+            }
+        }
+        let tokens = crate::lexer::lex_line(
+            "If a mystery enters this way, it enters with an additional +1/+1 counter on it.",
+            0,
+        )
+        .unwrap();
+        assert!(parse_if_enters_additional_tokens(&tokens).is_none());
+    }
+}

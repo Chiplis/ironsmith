@@ -1,3 +1,6 @@
+#[path = "dispatch_entry/temporary_damage_addition.rs"]
+mod temporary_damage_addition;
+mod temporary_damage_multiplier;
 use self::subject_verb_followups::{
     PostParseFollowupResult, PreParseFollowupResult, is_conditional_token_entry_followup_sentence,
     run_post_parse_followup_registry, run_pre_parse_followup_registry,
@@ -1633,8 +1636,8 @@ fn maybe_append_trailing_that_much_life_loss(
     }
 }
 
-/// "Round up each time." follows a sentence whose halves state no rounding.
-/// Such a half defaults to rounding down, so lift each one to rounding up.
+/// "Round up each time." follows a sentence whose unit fractions state no
+/// rounding. Lift their default downward division to upward division.
 fn round_up_unstated_half_values_in_effects(effects: &mut [EffectAst]) {
     fn round_up(value: &mut Value) {
         match value {
@@ -1649,6 +1652,15 @@ fn round_up_unstated_half_values_in_effects(effects: &mut [EffectAst]) {
                     **base = Value::Add(Box::new(inner), Box::new(Value::Fixed(1)));
                 }
             }
+            Value::DividedRoundedDown(base, denominator) if *denominator > 1 => {
+                let offset = *denominator - 1;
+                let already_up = matches!(base.as_ref(), Value::Add(_, amount)
+                    if matches!(amount.as_ref(), Value::Fixed(value) if *value == offset));
+                if !already_up {
+                    let inner = std::mem::replace(base.as_mut(), Value::Fixed(0));
+                    **base = Value::Add(Box::new(inner), Box::new(Value::Fixed(offset)));
+                }
+            }
             Value::HalfLifeTotalRoundedDown(player) => {
                 let player = player.clone();
                 *value = Value::HalfLifeTotalRoundedUp(player);
@@ -1657,6 +1669,13 @@ fn round_up_unstated_half_values_in_effects(effects: &mut [EffectAst]) {
         }
     }
     for effect in effects.iter_mut() {
+        if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            count_value: Some(value),
+            ..
+        }) = effect
+        {
+            round_up(value);
+        }
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
             match action {
                 SubjectVerbActionAst::LifeResources(
@@ -2425,6 +2444,12 @@ fn parse_effect_sentences_from_sentence_inputs(
             || super::chain_carry::bind_return_exiled_to_owners_hands(&mut effects, sentence)
         {
             parser_trace("parse_effect_sentences:rider:bound-followup", sentence);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+        if let Some(effect) = temporary_damage_addition::parse(authored_sentence)?.or(temporary_damage_multiplier::parse(authored_sentence)?) {
+            effects.push(effect);
             carried_context = None;
             sentence_idx += 1;
             continue;
@@ -3221,7 +3246,7 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
         if sentence_effects.is_empty() && is_round_up_each_time_sentence(&parse_plan.tokens) {
             // "... draws cards equal to half ... and loses half their life.
-            // Round up each time.": every unstated half rounds up.
+            // Round up each time.": every unstated unit fraction rounds up.
             round_up_unstated_half_values_in_effects(&mut effects);
         }
         for effect in &mut sentence_effects {
@@ -3897,6 +3922,12 @@ pub(crate) fn parse_complete_investigate_statement(
 pub(crate) fn parse_complete_simple_subject_verb_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effect) = super::duration_source_prevention::parse(tokens)? {
+        return Ok(Some(effect));
+    }
+    if let Some(effect) = super::temporary_attack_requirement::parse(tokens)? {
+        return Ok(Some(effect));
+    }
     // A relative player subject remains the actor of its simple action.
     // Select the current leader at resolution instead of discarding the
     // qualifier and falling back to the ability controller.
@@ -6038,6 +6069,15 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = super::timed_draw_replacement::parse_timed_draw_replacement_sentence(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effect) = temporary_damage_addition::parse(tokens)?.or(temporary_damage_multiplier::parse(tokens)?) {
+        return Ok(vec![effect]);
+    }
     if let Some(effect) = parse_temporary_counter_placement_replacement(tokens) {
         return Ok(vec![effect]);
     }
@@ -6199,6 +6239,18 @@ fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [Ef
 fn parse_effect_sentences_lexed_unfinalized(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // A grammar-proven complete mana rewrite is one instruction. Claim its
+    // first sentence before generic if/and decomposition; independently parse
+    // every following sentence so additional riders cannot be discarded.
+    let mana_sentences = split_lexed_sentences(tokens);
+    if let Some(first) = mana_sentences.first()
+        && let Some(effect) = read_typed_mana_output_sentence(first)? {
+        let mut effects = vec![effect];
+        for sentence in mana_sentences.iter().skip(1) {
+            effects.extend(parse_effect_sentences_lexed(sentence)?);
+        }
+        return Ok(effects);
+    }
     if let Some(effect) = crate::permission_helpers::parse_forage_cast_permission(tokens)? {
         return Ok(vec![effect]);
     }
@@ -8202,14 +8254,29 @@ fn parse_turn_scoped_enter_tapped_replacement(
     ))
 }
 
-/// Parse a resolving effect that establishes a turn-long cost for each
-/// creature declared as a blocker. The affected creature filter remains live
-/// for the duration, while the activation's X value is captured at resolution.
-/// "Until end of turn, if you tap a land you control for mana, it produces
-/// {U} instead of any other type." (Deep Water) — a whole-sentence shape that
-/// registers a turn-scoped mana-production replacement. The clause carries
-/// its own scope and duration, so it must not be split into a generic
-/// conditional around a verb clause.
+/// Complete mana rewriting, color selection, and temporary spending sentences
+/// have typed owners before generic conditional/action-chain decomposition.
+fn read_typed_mana_output_sentence(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(symbol) = crate::grammar::effects::parse_temporary_symbol_spend_permission_shape(tokens) {
+        let mut permission = crate::effect::ManaSpendPermission::mana_symbol_as_any_color_other_as_colorless(
+            crate::target::PlayerFilter::You, symbol);
+        permission.other_mana_only_as_colorless = false;
+        return Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission {
+                permission, until: crate::effect::Until::EndOfTurn, display: crate::lexer::render_token_slice(tokens),
+            }))));
+    }
+    if let Some(parsed) = crate::keyword_static::parse_mana_output_rewrite_definition(tokens)? {
+        return Ok(Some(EffectAst::subject_verb_register_mana_rewrite(parsed.rule, parsed.target,
+            parsed.mode.unwrap_or(crate::effects::ReplacementApplyMode::Resolution), parsed.display)));
+    }
+    if crate::word_primitives::parse_sequence_complete(&crate::lexer::token_word_refs(tokens),
+        &["that", "player", "chooses", "a", "color"]) {
+        return Ok(Some(EffectAst::subject_verb_choose_color(PlayerAst::That)));
+    }
+    Ok(None)
+}
+
 fn parse_tapped_land_mana_replacement(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let spec = effect_grammar::parse_mana_replacement_clause_spec_lexed(tokens)?;
     Some(EffectAst::SubjectVerb(
@@ -10031,7 +10098,7 @@ mod tests {
             .unwrap_or_else(|| panic!("expected typed animation, got {parsed:#?}"));
 
         assert_eq!(*duration_surface, None);
-        assert_eq!(*duration, crate::effect::Until::ThisLeavesTheBattlefield);
+        assert_eq!(*duration, crate::effect::Until::while_source_remains_on_battlefield());
     }
 
     #[test]
@@ -11657,7 +11724,14 @@ pub fn replace_unbound_x_in_damage_effect(
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 amount, ..
             })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => {
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
+            }) => {
                 if value_contains_unbound_x(amount) {
                     *amount = replace_unbound_x_with_value(amount.clone(), replacement, clause)?;
                 } else if amount.unhinted() == replacement.unhinted()
@@ -12014,6 +12088,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             replace_in_filter(filter, replacement, clause)?;
         }
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { base_power_toughness: None, .. }) => {},
             // The where-X value also fixes a dynamic target count ("deals 1
             // damage to each of up to X target creatures, where X is ...").
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, target, .. })
@@ -12042,7 +12117,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate {
                 count: amount,
             })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
@@ -12059,6 +12136,13 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
+            })
             | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
                 amount,
                 ..
@@ -12188,7 +12272,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             )
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeBasePtCreature {
-                    power, toughness, ..
+                    base_power_toughness: Some((power, toughness)), ..
                 },
             )
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
@@ -12338,6 +12422,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
@@ -12374,6 +12459,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 TurnStructureActionAst::SkipCombatPhasesThisTurn,
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
@@ -12405,6 +12491,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
+                ..
+            })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                 ..
             })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
@@ -12535,11 +12624,16 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
                 ..
             })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 ..
             })
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
+            )
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterDamageMultiplier { .. },
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
@@ -12590,6 +12684,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                 ..
             })
@@ -12733,6 +12828,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     clause,
                     false,
                 )?;
+            }
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => {
+                replace_value(&mut spec.delta, replacement, clause)?;
             }
             SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterEnterWithCountersReplacement { count, .. },
@@ -13008,6 +13106,9 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                     target: effect_target,
                 })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
+                    target: effect_target,
+                })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                     target: effect_target,
                 })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip {
@@ -14074,4 +14175,38 @@ fn parse_each_player_who_lost_life_sentence(
         _ => return Ok(None),
     };
     Ok(Some(vec![narrowed]))
+}
+
+#[cfg(test)]
+mod ordinal_rounding_tests {
+    use super::*;
+    #[test]
+    fn sentence_wide_round_up_reaches_fractional_choice_counts_once() {
+        let mut effects = vec![EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjects {
+                filter: ObjectFilter::creature().you_control(),
+                count: crate::effect::ChoiceCount::dynamic_x(),
+                count_value: Some(Value::DividedRoundedDown(
+                    Box::new(Value::Count(ObjectFilter::creature().you_control())),
+                    3,
+                )),
+                player: PlayerAst::You,
+                tag: crate::tag::declared_key("ordinal_choice"),
+            },
+        )];
+        round_up_unstated_half_values_in_effects(&mut effects);
+        let once = effects.clone();
+        round_up_unstated_half_values_in_effects(&mut effects);
+        assert_eq!(effects, once);
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            count_value: Some(Value::DividedRoundedDown(base, 3)),
+            ..
+        }) = &effects[0]
+        else {
+            panic!("fractional choice")
+        };
+        assert!(
+            matches!(base.as_ref(), Value::Add(_, offset) if offset.as_ref() == &Value::Fixed(2))
+        );
+    }
 }

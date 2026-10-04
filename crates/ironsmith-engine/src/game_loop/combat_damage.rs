@@ -7,6 +7,9 @@ use super::*;
 /// Combat damage event for trigger processing.
 #[derive(Debug, Clone)]
 pub struct CombatDamageEvent {
+    /// Exact completed damage notification, including batch totals and proof
+    /// when observers were captured before replacement/prevention additions.
+    pub damage_receipt: Option<TriggerEvent>,
     /// Event-time characteristics when prevention follow-ups can move objects.
     pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     pub target_snapshot: Option<crate::snapshot::ObjectSnapshot>,
@@ -210,6 +213,7 @@ pub(crate) fn try_execute_combat_damage_step_with_dm_and_first_step_snapshot(
                 .has_pending_follow_ups()
                 && let Ok(events) = &mut result
             {
+                capture_combat_consequence_triggers(game, events, dm)?;
                 for event in events.iter_mut().filter(|event| event.amount > 0) {
                     if let Some(snapshot) = game.object(event.source).map(|obj| {
                         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
@@ -590,129 +594,32 @@ fn execute_general_combat_damage_batch_path(
         );
     }
 
-    // CR 120.10: excess damage is judged against each permanent's state
-    // before this step's damage is dealt.
-    let excess_capacities = CombatExcessCapacities::before_damage(
-        game,
-        processed
-            .iter()
-            .filter(|processed| !processed.replacement_prevented)
-            .flat_map(|processed| processed.assignments.iter())
-            .filter_map(|assignment| match assignment.target {
-                EventDamageTarget::Object(object) => Some(object),
-                EventDamageTarget::Player(_) => None,
-            }),
-    );
+    commit_combat_damage_batch(game, planned, processed, dm)
+}
 
-    let mut events = Vec::with_capacity(planned.len());
-    let mut lifelink_totals = CombatLifelinkTotals::default();
-    let mut additions = Vec::new();
-    for (planned, processed) in planned.into_iter().zip(processed) {
-        if !processed.programs.is_empty() {
-            additions.push((events.len(), planned.source, planned.controller,
-                planned.source_snapshot.clone(), planned.cause.clone(), processed.programs));
-        }
-        let keywords = crate::rules::damage::SourceDamageKeywords {
-            has_deathtouch: planned.result.has_deathtouch,
-            has_infect: planned.result.has_infect,
-            has_wither: planned.result.has_wither,
-            has_lifelink: planned.result.has_lifelink,
-        };
-        let mut damage_to_original = 0u32;
-        let mut life_lost_to_original = 0u32;
-        let mut consequence_outcomes = processed.payload_outcome.into_iter().collect::<Vec<_>>();
-        let mut total_damage_dealt = 0u32;
-        let mut redirected = Vec::new();
-        if !processed.replacement_prevented {
-            for assignment in processed.assignments {
-                let mut applied = crate::rules::damage::apply_processed_damage_assignment_with_dm(
-                    game,
-                    planned.source,
-                    assignment.target,
-                    assignment.amount,
-                    keywords,
-                    planned.cause.clone(),
-                    dm,
-                )
-                .map_err(|error| CombatDamageAssignmentError::execution(planned.source, error))?;
-                if dm.awaiting_choice() {
-                    game.turn_store.combat_damage_assignments = assignments_checkpoint;
-                    return Ok(Vec::new());
-                }
-                if !applied.applied {
-                    continue;
-                }
-                total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
-                if let EventDamageTarget::Player(player) = assignment.target {
-                    game.record_commander_damage(player, planned.source, assignment.amount);
-                    if let Some(toxic_outcome) = apply_combat_toxic(game, planned.source, &planned.source_snapshot, player, dm)
-                        .map_err(|error| CombatDamageAssignmentError::execution(planned.source, error))? {
-                        applied.consequence_outcome = Some(crate::effect::EffectOutcome::aggregate(
-                            applied.consequence_outcome.into_iter().chain(std::iter::once(toxic_outcome)),
-                        ));
-                    }
-                    if dm.awaiting_choice() {
-                        game.turn_store.combat_damage_assignments = assignments_checkpoint;
-                        return Ok(Vec::new());
-                    }
-                }
-                if assignment.target == planned.target {
-                    damage_to_original = damage_to_original.saturating_add(assignment.amount);
-                    life_lost_to_original = life_lost_to_original.saturating_add(applied.life_lost);
-                    consequence_outcomes.extend(applied.consequence_outcome);
-                } else {
-                    redirected.push((
-                        assignment.target,
-                        assignment.amount,
-                        applied.life_lost,
-                        applied.consequence_outcome,
-                    ));
-                }
-            }
-        }
-        lifelink_totals.record(
-            planned.source,
-            planned.controller,
-            planned.result.has_lifelink,
-            total_damage_dealt,
-            events.len(),
-        );
-        let event_target = match planned.target {
-            EventDamageTarget::Player(player) => DamageEventTarget::Player(player),
-            EventDamageTarget::Object(object) => DamageEventTarget::Object(object),
-        };
-        events.push(CombatDamageEvent {
-            source_snapshot: Some(planned.source_snapshot.clone()),
-            target_snapshot: None,
-            source: planned.source,
-            target: event_target,
-            amount: damage_to_original,
-            life_lost: life_lost_to_original,
-            consequence_outcome: Some(crate::effect::EffectOutcome::aggregate(
-                consequence_outcomes,
-            )),
-            result: planned.result.clone(),
-            lifelink_outcome: None,
-        });
-        push_redirected_combat_damage_events(
-            &mut events,
-            &planned.result,
-            planned.source,
-            redirected,
-        );
-    }
-    lifelink_totals.apply(game, &mut events, dm)?;
-    if dm.awaiting_choice() {
-        game.turn_store.combat_damage_assignments = assignments_checkpoint;
-        return Ok(Vec::new());
-    }
-    excess_capacities.assign_excess(&mut events);
-    finish_combat_damage_additions(game, &mut events, additions, dm)?;
-    if dm.awaiting_choice() {
-        game.turn_store.combat_damage_assignments = assignments_checkpoint;
-        return Ok(Vec::new());
-    }
-    Ok(events)
+#[path = "combat_damage/commit_batch.rs"]
+mod commit_batch;
+use commit_batch::commit_combat_damage_batch;
+
+/// Combat keeps actual life/counter receipts until later publication. Capture
+/// their conditions before damage additions or prevention follow-ups can alter
+/// the board, without discarding their amounts or object evidence.
+fn capture_combat_consequence_triggers(
+    game: &mut GameState, events: &mut [CombatDamageEvent],
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> Result<(), CombatDamageAssignmentError> {
+    super::turn_execution::prepare_combat_damage_receipts(game, events);
+    let Some(first) = events.first() else { return Ok(()); };
+    let source = first.source;
+    let controller = first.source_snapshot.as_ref().map(|snapshot| snapshot.controller)
+        .or_else(|| game.current_controller(source)).unwrap_or(game.turn.active_player);
+    let ctx = crate::effects::ExecutionContext::new(source, controller, dm);
+    crate::effects::capture_triggers_before_added_program(game, &ctx, None,
+        events.iter_mut().flat_map(|event| event.damage_receipt.iter_mut().chain(
+            event.consequence_outcome.iter_mut().chain(event.lifelink_outcome.iter_mut())
+                .flat_map(|outcome| outcome.events.iter_mut()))))
+        .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
+    Ok(())
 }
 
 type CombatDamageAdditions = Vec<(usize, ObjectId, crate::ids::PlayerId,
@@ -725,6 +632,9 @@ fn finish_combat_damage_additions(
     additions: CombatDamageAdditions,
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<(), CombatDamageAssignmentError> {
+    if !additions.is_empty() {
+        capture_combat_consequence_triggers(game, events, dm)?;
+    }
     // Freeze every original target before any added instruction can move it.
     for event in events.iter_mut().filter(|event| event.amount > 0) {
         if let DamageEventTarget::Object(target) = event.target {
@@ -770,7 +680,7 @@ impl CombatExcessCapacities {
                 .then(|| {
                     game.calculated_toughness(target)
                         .or_else(|| object.toughness())
-                        .map(|toughness| (toughness - game.damage_on(target) as i32).max(0) as u32)
+                        .map(|toughness| (i64::from(toughness) - i64::from(game.damage_on(target))).max(0) as u32)
                 })
                 .flatten();
             let loyalty = game
@@ -808,11 +718,12 @@ impl CombatExcessCapacities {
             let Some(capacity) = [lethal, loyalty, defense].into_iter().flatten().min() else {
                 continue;
             };
-            let mut dealt = 0u32;
+            let mut dealt = 0u128;
             for event in events.iter_mut().filter(|event| dealt_to_target(event)) {
-                let before = dealt.max(capacity);
-                dealt = dealt.saturating_add(event.amount);
-                event.result.excess_damage = dealt.saturating_sub(before);
+                let before = dealt.max(u128::from(capacity));
+                dealt += u128::from(event.amount);
+                // One contribution's excess never exceeds its u32 amount.
+                event.result.excess_damage = dealt.saturating_sub(before) as u32;
             }
         }
     }
@@ -997,250 +908,46 @@ fn plan_unblocked_player_damage(
     planned
 }
 
+fn unblocked_plan_as_general(planned: PlannedUnblockedPlayerDamage) -> PlannedCombatDamage {
+    PlannedCombatDamage { source: planned.source, source_snapshot: planned.source_snapshot,
+        target: EventDamageTarget::Player(planned.target), controller: planned.controller,
+        amount: planned.amount, result: planned.result, cause: planned.cause }
+}
+
 fn execute_unblocked_player_damage_fast_path(
-    game: &mut GameState,
-    combat: &CombatState,
-    first_strike: bool,
+    game: &mut GameState, combat: &CombatState, first_strike: bool,
     first_step_strikers: Option<&std::collections::HashSet<ObjectId>>,
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<Vec<CombatDamageEvent>, CombatDamageAssignmentError> {
-    let planned = plan_unblocked_player_damage(game, combat, first_strike, first_step_strikers);
-
-    let mut events = Vec::with_capacity(planned.len());
-    for planned in planned {
-        let Some(event) = apply_planned_unblocked_player_damage(game, planned, dm)? else {
-            return Ok(Vec::new());
-        };
-        events.push(event);
-    }
-
-    // Damage/life/counter application dirties derived state. The caller checks
-    // one trigger event per assignment immediately after this function returns;
-    // make those checks share one refreshed, prewarmed state instead of each
-    // falling back to dirty single-object characteristic calculation.
-    game.refresh_continuous_state();
-    let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
-    view.prewarm_characteristics(&game.battlefield);
-    Ok(events)
+    let planned=plan_unblocked_player_damage(game,combat,first_strike,first_step_strikers)
+        .into_iter().map(unblocked_plan_as_general).collect::<Vec<_>>();
+    let processed=planned.iter().map(|plan| {
+        // Preserve the proposal provenance of the replacement-free fast path.
+        game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::Damage);
+        crate::events::processing::ProcessedDamageResult {
+            assignments:vec![crate::events::processing::ProcessedDamageAssignment {target:plan.target,amount:plan.amount}],
+            replacement_prevented:false,payload_outcome:None,programs:Vec::new(),
+        }
+    }).collect();
+    commit_combat_damage_batch(game,planned,processed,dm)
 }
 
 fn execute_unblocked_player_damage_batch_path(
-    game: &mut GameState,
-    combat: &CombatState,
-    first_strike: bool,
+    game: &mut GameState, combat: &CombatState, first_strike: bool,
     first_step_strikers: Option<&std::collections::HashSet<ObjectId>>,
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<Vec<CombatDamageEvent>, CombatDamageAssignmentError> {
-    let mut planned = plan_unblocked_player_damage(game, combat, first_strike, first_step_strikers);
-    let batch = planned
-        .iter()
-        .map(
-            |planned| crate::events::processing::SimultaneousDamageEvent {
-                source: planned.source,
-                target: crate::events::DamageTarget::Player(planned.target),
-                amount: planned.amount,
-                is_combat: true,
-                unpreventable: false,
-                cause: planned.cause.clone(),
-                source_snapshot: Some(planned.source_snapshot.clone()),
-            },
-        )
-        .collect::<Vec<_>>();
-    let processed =
-        crate::events::processing::process_simultaneous_damage_assignments_with_event_with_dm(
-            game, &batch, dm,
-        )
+    let mut planned=plan_unblocked_player_damage(game,combat,first_strike,first_step_strikers)
+        .into_iter().map(unblocked_plan_as_general).collect::<Vec<_>>();
+    let proposals=planned.iter().map(|plan|crate::events::processing::SimultaneousDamageEvent {
+        source:plan.source,target:plan.target,amount:plan.amount,is_combat:true,unpreventable:false,
+        cause:plan.cause.clone(),source_snapshot:Some(plan.source_snapshot.clone()),
+    }).collect::<Vec<_>>();
+    let processed=crate::events::processing::process_simultaneous_damage_assignments_with_event_with_dm(game,&proposals,dm)
         .map_err(CombatDamageAssignmentError::from)?;
-
-    if dm.awaiting_choice() {
-        return Ok(Vec::new());
-    }
-    for proposal in &mut planned {
-        proposal.source_snapshot = combat_damage_source_snapshot(
-            game, proposal.source, &proposal.source_snapshot,
-        );
-    }
-    for proposal in &mut planned {
-        proposal.source_snapshot = combat_damage_source_snapshot(
-            game, proposal.source, &proposal.source_snapshot,
-        );
-    }
-
-
-
-    // Replacement/prevention is collected for the entire batch first. Only
-    // after every source has a final assignment do we commit actual damage.
-    let mut events = Vec::with_capacity(planned.len());
-    let mut lifelink_totals = CombatLifelinkTotals::default();
-    let mut additions = Vec::new();
-    for (planned, processed) in planned.into_iter().zip(processed) {
-        if !processed.programs.is_empty() {
-            additions.push((events.len(), planned.source, planned.controller,
-                planned.source_snapshot.clone(), planned.cause.clone(), processed.programs));
-        }
-        let keywords = crate::rules::damage::SourceDamageKeywords {
-            has_deathtouch: planned.result.has_deathtouch,
-            has_infect: planned.result.has_infect,
-            has_wither: planned.result.has_wither,
-            has_lifelink: planned.result.has_lifelink,
-        };
-        let mut damage_to_original = 0u32;
-        let mut life_lost_to_original = 0u32;
-        let mut consequence_outcomes = processed.payload_outcome.into_iter().collect::<Vec<_>>();
-        let mut total_damage_dealt = 0u32;
-        let mut redirected = Vec::new();
-        if !processed.replacement_prevented {
-            for assignment in processed.assignments {
-                let mut applied = crate::rules::damage::apply_processed_damage_assignment_with_dm(
-                    game,
-                    planned.source,
-                    assignment.target,
-                    assignment.amount,
-                    keywords,
-                    planned.cause.clone(),
-                    dm,
-                )
-                .map_err(|error| CombatDamageAssignmentError::execution(planned.source, error))?;
-                if dm.awaiting_choice() {
-                    return Ok(Vec::new());
-                }
-                if !applied.applied {
-                    continue;
-                }
-                total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
-                if let crate::events::DamageTarget::Player(player) = assignment.target {
-                    game.record_commander_damage(player, planned.source, assignment.amount);
-                    if let Some(toxic_outcome) = apply_combat_toxic(game, planned.source, &planned.source_snapshot, player, dm)
-                        .map_err(|error| CombatDamageAssignmentError::execution(planned.source, error))? {
-                        applied.consequence_outcome = Some(crate::effect::EffectOutcome::aggregate(
-                            applied.consequence_outcome.into_iter().chain(std::iter::once(toxic_outcome)),
-                        ));
-                    }
-                    if dm.awaiting_choice() {
-                        return Ok(Vec::new());
-                    }
-                }
-                if assignment.target == crate::events::DamageTarget::Player(planned.target) {
-                    damage_to_original = damage_to_original.saturating_add(assignment.amount);
-                    life_lost_to_original = life_lost_to_original.saturating_add(applied.life_lost);
-                    consequence_outcomes.extend(applied.consequence_outcome);
-                } else {
-                    redirected.push((
-                        assignment.target,
-                        assignment.amount,
-                        applied.life_lost,
-                        applied.consequence_outcome,
-                    ));
-                }
-            }
-        }
-        lifelink_totals.record(
-            planned.source,
-            planned.controller,
-            planned.result.has_lifelink,
-            total_damage_dealt,
-            events.len(),
-        );
-        events.push(CombatDamageEvent {
-            source_snapshot: Some(planned.source_snapshot.clone()),
-            target_snapshot: None,
-            source: planned.source,
-            target: DamageEventTarget::Player(planned.target),
-            amount: damage_to_original,
-            life_lost: life_lost_to_original,
-            consequence_outcome: Some(crate::effect::EffectOutcome::aggregate(
-                consequence_outcomes,
-            )),
-            result: planned.result.clone(),
-            lifelink_outcome: None,
-        });
-        push_redirected_combat_damage_events(
-            &mut events,
-            &planned.result,
-            planned.source,
-            redirected,
-        );
-    }
-    lifelink_totals.apply(game, &mut events, dm)?;
-    if dm.awaiting_choice() {
-        return Ok(Vec::new());
-    }
-
-    finish_combat_damage_additions(game, &mut events, additions, dm)?;
-    if dm.awaiting_choice() { return Ok(Vec::new()); }
-    game.refresh_continuous_state();
-    let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
-    view.prewarm_characteristics(&game.battlefield);
-    Ok(events)
-}
-
-fn apply_planned_unblocked_player_damage(
-    game: &mut GameState,
-    planned: PlannedUnblockedPlayerDamage,
-    dm: &mut dyn crate::decision::DecisionMaker,
-) -> Result<Option<CombatDamageEvent>, CombatDamageAssignmentError> {
-    // The normal replacement pipeline allocates one provenance root before it
-    // discovers that no effect applies. Preserve that deterministic graph
-    // progression even though this guarded path can skip event processing.
-    let _damage_provenance = game
-        .provenance_graph_mut()
-        .alloc_root_event(crate::events::EventKind::Damage);
-    let keywords = crate::rules::damage::SourceDamageKeywords {
-        has_deathtouch: planned.result.has_deathtouch,
-        has_infect: planned.result.has_infect,
-        has_wither: planned.result.has_wither,
-        has_lifelink: planned.result.has_lifelink,
-    };
-    let mut applied = crate::rules::damage::apply_processed_damage_assignment_with_dm(
-        game,
-        planned.source,
-        crate::events::DamageTarget::Player(planned.target),
-        planned.amount,
-        keywords,
-        planned.cause,
-        dm,
-    )
-    .map_err(|error| CombatDamageAssignmentError::execution(planned.source, error))?;
-    if dm.awaiting_choice() {
-        return Ok(None);
-    }
-    let total_damage_dealt = if applied.applied { planned.amount } else { 0 };
-    if applied.applied {
-        game.record_commander_damage(planned.target, planned.source, planned.amount);
-        if let Some(toxic_outcome) = apply_combat_toxic(game, planned.source, &planned.source_snapshot, planned.target, dm)
-                        .map_err(|error| CombatDamageAssignmentError::execution(planned.source, error))? {
-                        applied.consequence_outcome = Some(crate::effect::EffectOutcome::aggregate(
-                            applied.consequence_outcome.into_iter().chain(std::iter::once(toxic_outcome)),
-                        ));
-                    }
-        if dm.awaiting_choice() {
-            return Ok(None);
-        }
-    }
-    let lifelink_outcome = apply_combat_lifelink_with_dm(
-        game,
-        planned.source,
-        planned.controller,
-        &planned.result,
-        total_damage_dealt,
-        dm,
-    )
-    .map_err(|error| CombatDamageAssignmentError::execution(planned.source, error))?;
-    if dm.awaiting_choice() {
-        return Ok(None);
-    }
-
-    Ok(Some(CombatDamageEvent {
-        source_snapshot: Some(planned.source_snapshot.clone()),
-        target_snapshot: None,
-        source: planned.source,
-        target: DamageEventTarget::Player(planned.target),
-        amount: total_damage_dealt,
-        life_lost: applied.life_lost,
-        consequence_outcome: applied.consequence_outcome,
-        result: planned.result,
-        lifelink_outcome,
-    }))
+    if dm.awaiting_choice(){return Ok(Vec::new());}
+    for plan in &mut planned {plan.source_snapshot=combat_damage_source_snapshot(game,plan.source,&plan.source_snapshot);}
+    commit_combat_damage_batch(game,planned,processed,dm)
 }
 
 pub(super) fn static_abilities_for_object(
@@ -1378,17 +1085,17 @@ fn combat_damage_source_snapshot(
 /// CR 702.164c: combat damage dealt to a player by a creature with toxic
 /// causes that creature's controller to give the player poison counters equal
 /// to its total toxic value, in addition to the damage's other results.
-fn apply_combat_toxic(
+fn prepare_combat_toxic(
     game: &mut GameState,
     source: ObjectId,
     source_snapshot: &crate::snapshot::ObjectSnapshot,
     player: PlayerId,
     dm: &mut dyn crate::decision::DecisionMaker,
-) -> Result<Option<crate::effect::EffectOutcome>, crate::effects::ExecutionError> {
+) -> Result<Option<crate::effects::counters::PreparedCounterPlacement>, crate::effects::ExecutionError> {
     // The damage event's characteristics were frozen before applying its
     // results. A life-loss replacement may subsequently move or change the
     // source without changing this damage event's toxic result.
-    let toxic: u32 = source_snapshot
+    let toxic: u128 = source_snapshot
         .abilities
         .iter()
         .filter_map(|ability| {
@@ -1398,7 +1105,8 @@ fn apply_combat_toxic(
                 None
             }
         })
-        .fold(0u32, u32::saturating_add);
+        .map(u128::from).sum();
+    let toxic = crate::events::damage::checked_damage_amount(toxic, "combat toxic total")?;
     if toxic == 0 {
         return Ok(None);
     }
@@ -1413,50 +1121,11 @@ fn apply_combat_toxic(
         toxic,
         cause,
     );
-    crate::effects::counters::execute_player_counter_placement(game, &mut ctx, event).map(Some)
+    crate::effects::counters::prepare_counter_placement(game, &mut ctx, event).map(Some)
 }
 
 /// Per-source lifelink totals for one simultaneous combat-damage batch.
-///
-/// CR 702.15b / 120.3f: a lifelink source that deals damage to several
-/// recipients at once causes a single life gain equal to the total.
-/// CR 614.9 / 510.2: damage a replacement effect redirected to another
-/// recipient is still combat damage dealt by the source, so each applied
-/// redirected assignment gets its own event (damage and, for players, life
-/// loss triggers and turn history see it).
-fn push_redirected_combat_damage_events(
-    events: &mut Vec<CombatDamageEvent>,
-    result: &DamageResult,
-    source: ObjectId,
-    redirected: Vec<(
-        crate::events::DamageTarget,
-        u32,
-        u32,
-        Option<crate::effect::EffectOutcome>,
-    )>,
-) {
-    for (target, amount, life_lost, consequence_outcome) in redirected {
-        if amount == 0 {
-            continue;
-        }
-        let target = match target {
-            crate::events::DamageTarget::Player(player) => DamageEventTarget::Player(player),
-            crate::events::DamageTarget::Object(object) => DamageEventTarget::Object(object),
-        };
-        events.push(CombatDamageEvent {
-            source_snapshot: None,
-            target_snapshot: None,
-            source,
-            target,
-            amount,
-            life_lost,
-            consequence_outcome,
-            result: result.clone(),
-            lifelink_outcome: None,
-        });
-    }
-}
-
+/// A source dealing to multiple recipients still produces one life gain.
 #[derive(Default)]
 struct CombatLifelinkTotals {
     /// (source, controller, total damage dealt, index of the source's first event)
@@ -1471,40 +1140,84 @@ impl CombatLifelinkTotals {
         has_lifelink: bool,
         damage_dealt: u32,
         event_index: usize,
-    ) {
+    ) -> Result<(), crate::effects::ExecutionError> {
         if !has_lifelink {
-            return;
+            return Ok(());
         }
         if let Some(entry) = self.sources.iter_mut().find(|entry| entry.0 == source) {
-            entry.2 = entry.2.saturating_add(damage_dealt);
+            entry.2 = crate::events::damage::checked_damage_amount(u128::from(entry.2) + u128::from(damage_dealt), "combat lifelink total")?;
         } else {
             self.sources
                 .push((source, controller, damage_dealt, event_index));
         }
+        Ok(())
     }
 
-    fn apply(
+    fn prepare(
         self,
         game: &mut GameState,
         events: &mut [CombatDamageEvent],
         dm: &mut dyn crate::decision::DecisionMaker,
-    ) -> Result<(), CombatDamageAssignmentError> {
-        for (source, controller, total, event_index) in self.sources {
-            let Some(event) = events.get_mut(event_index) else {
-                continue;
-            };
-            let result = DamageResult {
-                has_lifelink: true,
-                ..DamageResult::default()
-            };
-            event.lifelink_outcome = apply_combat_lifelink_with_dm(game, source, controller, &result, total, dm)
-                .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
-            if dm.awaiting_choice() {
-                return Ok(());
-            }
+    ) -> Result<Vec<PreparedCombatLifelink>, CombatDamageAssignmentError> {
+        // All sources' lifelink is a consequence of the same simultaneous
+        // damage event. Commit every original gain before any appended program
+        // can remove another source's qualifying artifact or change life.
+        let mut prepared = Vec::new();
+        for (source, controller, total, index) in self.sources {
+            if total == 0 || index >= events.len() { continue; }
+            let snapshot = events[index].source_snapshot.clone().or_else(|| game.object(source).map(|object|
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)));
+            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
+            ctx.source_snapshot = snapshot.clone();
+            ctx.cause = crate::events::cause::EventCause::from_combat_damage(source, controller);
+            let event = crate::events::Event::new_with_provenance(
+                crate::events::LifeGainEvent::new(controller, total).with_source(source), ctx.provenance);
+            let result = crate::effects::life::life_change::prepare_life_change(
+                game, &mut ctx, event,
+            ).map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+            prepared.push((source, controller, index, snapshot, result));
         }
-        Ok(())
+        Ok(prepared)
     }
+}
+
+type PreparedCombatLifelink = (ObjectId, PlayerId, usize, Option<crate::snapshot::ObjectSnapshot>, crate::events::processing::TraitEventResult);
+type CombatLifelinkReceipt = (ObjectId, PlayerId, usize, Option<crate::snapshot::ObjectSnapshot>, crate::effects::SimultaneousEffectCommit);
+
+fn commit_prepared_combat_lifelink(
+    game: &mut GameState, prepared: Vec<PreparedCombatLifelink>,
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> Result<Vec<CombatLifelinkReceipt>, CombatDamageAssignmentError> {
+        let mut receipts = Vec::new();
+        for (source, controller, index, snapshot, prepared) in prepared {
+            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
+            ctx.source_snapshot = snapshot.clone();
+            ctx.cause = crate::events::cause::EventCause::from_combat_damage(source, controller);
+            let receipt = crate::effects::life::life_change::commit_prepared_life_original(game, &mut ctx, prepared)
+                .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+            receipts.push((source, controller, index, snapshot, receipt));
+        }
+    Ok(receipts)
+}
+
+fn complete_combat_lifelink(
+    game: &mut GameState, events: &mut [CombatDamageEvent], receipts: Vec<CombatLifelinkReceipt>,
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> Result<(), CombatDamageAssignmentError> {
+    for (source, controller, index, snapshot, receipt) in receipts {
+        let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
+        ctx.source_snapshot = snapshot;
+        ctx.cause = crate::events::cause::EventCause::from_combat_damage(source, controller);
+        let outcome = if let Some(completion) = receipt.completion {
+            completion.complete(game, &mut ctx, receipt.outcome)
+                .map_err(|error| CombatDamageAssignmentError::execution(source, error))?
+        } else { receipt.outcome };
+        if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+        events[index].lifelink_outcome = Some(outcome);
+    }
+    Ok(())
 }
 
 fn combat_damage_cause(game: &GameState, source_id: ObjectId) -> crate::events::cause::EventCause {

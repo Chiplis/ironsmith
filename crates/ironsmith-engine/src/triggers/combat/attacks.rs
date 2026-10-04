@@ -893,7 +893,7 @@ fn defending_player_for_attack_target(
     crate::combat_state::defending_player_for_attack_target(game, target)
 }
 
-fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
+pub(crate) fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
     if subject == "creature" {
         return "creatures".to_string();
     }

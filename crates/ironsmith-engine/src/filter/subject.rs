@@ -105,6 +105,17 @@ impl<'a> ObjectSubject<'a> {
             Self::Snapshot(snapshot) => snapshot.tapped,
         }
     }
+    pub(crate) fn ring_bearer(self, game: &GameState) -> bool {
+        let current = || {
+            game.players
+                .iter()
+                .any(|player| game.current_ring_bearer(player.id) == Some(self.object_id()))
+        };
+        match self {
+            Self::Live(_) => current(),
+            Self::Snapshot(snapshot) => snapshot.ring_bearer.unwrap_or_else(current),
+        }
+    }
     pub(crate) fn goaded(self, game: &GameState) -> bool {
         match self {
             Self::Live(object) => game.is_goaded(object.id),
@@ -357,7 +368,9 @@ impl<'a> ObjectSubject<'a> {
     }
 
     // Outer None is an unavailable/mismatched zone; inner None means the
-    // predicate has no live stack entry (always the case for historical reads).
+    // predicate has no live stack entry. A historical read normally has none;
+    // an explicit exact stack-entry context may instead describe an ability
+    // whose physical source has departed while the ability remains on stack.
     pub(super) fn stack_context<'g>(
         self,
         filter: &ObjectFilter,
@@ -373,7 +386,9 @@ impl<'a> ObjectSubject<'a> {
             || filter.targets_player.is_some()
             || filter.targets_object.is_some()
             || (filter.zone.is_some_and(|zone| zone != Zone::Stack) && self.zone() == Zone::Stack);
-        let entry = if self.is_live() && wants_stack {
+        let explicit_retained_entry = self.is_snapshot() && ctx.stack_entry.is_some();
+        let has_stack_subject = self.is_live() || explicit_retained_entry;
+        let entry = if has_stack_subject && wants_stack {
             // Abilities share their source's object ID (a storm trigger has
             // its spell's ID), so a kind-restricted filter looks at the entry
             // of that kind, the most recent first (CR 701.6a, 113.1a).
@@ -383,7 +398,9 @@ impl<'a> ObjectSubject<'a> {
                 let entry = game
                     .stack
                     .iter()
-                    .find(|entry| entry.object_id == object_id && entry.target_id() == target_id);
+                    .find(|entry| entry.target_id() == target_id
+                        && (entry.object_id == object_id || (explicit_retained_entry && entry.is_ability
+                            && entry.source_snapshot.as_ref().is_some_and(|source| source.object_id == object_id))));
                 if entry.is_none() {
                     return None;
                 }
@@ -402,7 +419,7 @@ impl<'a> ObjectSubject<'a> {
         } else {
             None
         };
-        if self.is_live() && wants_stack {
+        if has_stack_subject && wants_stack {
             let prospective_spell = (self.zone() == Zone::Stack
                 || ctx.prospective_cast == Some(self.object_id()))
                 && filter.stack_kind == Some(StackObjectKind::Spell)
@@ -425,7 +442,7 @@ impl<'a> ObjectSubject<'a> {
             // A live stack filter is established by its entry above. Historical
             // snapshots require their retained zone. Non-stack filters on a
             // spell mean its cast origin, with the original live-history fallback.
-            let live_stack_entry = self.is_live() && zone == Zone::Stack;
+            let live_stack_entry = (self.is_live() || (explicit_retained_entry && entry.is_some())) && zone == Zone::Stack;
             let cast_from_zone = self.zone() == Zone::Stack
                 && zone != Zone::Stack
                 && (filter.stack_kind == Some(StackObjectKind::Spell)
@@ -447,7 +464,7 @@ impl<'a> ObjectSubject<'a> {
         {
             return None;
         }
-        if self.is_live()
+        if has_stack_subject
             && let Some(kind) = filter.stack_kind
         {
             if let Some(entry) = entry {

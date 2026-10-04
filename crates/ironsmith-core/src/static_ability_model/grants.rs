@@ -884,6 +884,8 @@ pub enum ActivatedAbilityCostCondition {
     /// abilities. `None` until lowering binds the preceding activated ability;
     /// an unbound condition applies to every activated ability of the source.
     ThisAbility { ability_index: Option<usize> },
+    /// Independent gates on the same priced activation. Appended for artifact compatibility.
+    All(Vec<ActivatedAbilityCostCondition>),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1003,6 +1005,10 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond = Condition> {
     /// Add the extra abilities only when the chosen copy source matches this filter.
     #[cfg_attr(feature = "serde", serde(default))]
     pub additional_counters: Vec<(crate::CounterType, u32)>,
+    /// Additional batches use the entering object’s own announced X (zero when uncast).
+    pub additional_x_counters: Vec<crate::CounterType>,
+    /// Retain other copiable abilities of this source, excluding this copy occurrence.
+    pub keep_other_source_abilities: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub additional_counters_source_filter: Option<ObjectFilter>,
     #[cfg_attr(feature = "serde", serde(default))]

@@ -27,7 +27,7 @@ pub(in crate::compiled_text) fn describe_optional_source_exiled_copy_then_cast_p
     let [cast_effect] = optional_cast.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
 
     if optional_choice.decider != Some(PlayerFilter::You)
         || optional_choice.fallback != crate::decision::FallbackStrategy::Decline

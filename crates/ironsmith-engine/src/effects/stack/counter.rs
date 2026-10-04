@@ -202,15 +202,19 @@ fn counter_one_stack_object_of_kind_inner(
                     None,
                 );
                 if countered_spell {
-                    let event = crate::triggers::TriggerEvent::new_with_provenance(
+                    let mut event = crate::triggers::TriggerEvent::new_with_provenance(
                         crate::events::SpellCounteredEvent::new(
                             target_id,
                             controller,
                             countered_snapshot,
-                        ),
+                        ).with_cause(ctx.cause.clone()).with_complete_source_lookback(),
                         ctx.provenance,
                     )
                     .with_lookback_source_snapshots(lookback_source_snapshots);
+                    if game.object(ctx.source).is_none()
+                        && let Some(snapshot) = ctx.source_snapshot.clone() {
+                        event = event.with_source_snapshot(snapshot);
+                    }
                     return Ok(EffectOutcome::resolved().with_event(event));
                 }
             }
@@ -921,7 +925,7 @@ mod tests {
                 &ManaCost::from_symbols(vec![ManaSymbol::Blue]),
                 0,
                 crate::costs::PaymentReason::CastSpell,
-            ),
+            ).expect("checked fixture mana payment"),
             "bob should be able to pay for the spell before it is countered"
         );
         let stack_spell = game

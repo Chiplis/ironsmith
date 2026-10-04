@@ -125,6 +125,19 @@ pub(super) fn try_parse_modal_bullet_block(
             &line.tokens,
         )
         .unwrap_or_else(|| line.tokens.clone())
+    } else if let Some(colon) = line.tokens.iter().position(|token| token.kind == TokenKind::Colon)
+        && !line.tokens[..colon].iter().any(|token| token.kind == TokenKind::Quote)
+    {
+        // Direct modal activation costs have the same self-reference scope as
+        // ordinary activation costs. Normalize only the cost prefix: names in
+        // effect/target clauses and quoted granted abilities have other scopes.
+        let mut tokens = super::normalize_named_source_tokens_for_builder(
+            &preprocessed.card,
+            &line.tokens[..colon],
+        )
+        .unwrap_or_else(|| line.tokens[..colon].to_vec());
+        tokens.extend_from_slice(&line.tokens[colon..]);
+        tokens
     } else {
         line.tokens.clone()
     };
@@ -143,6 +156,7 @@ pub(super) fn try_parse_modal_bullet_block(
             break;
         }
         bullet_modes.push(recognize_modal_mode(
+            &preprocessed.card,
             next_line,
             header_has_common_target_suffix,
         )?);

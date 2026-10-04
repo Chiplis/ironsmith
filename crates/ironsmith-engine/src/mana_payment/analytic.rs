@@ -99,6 +99,9 @@ fn try_candidates_inner(
 /// Each of these is expressible in principle; leaving them to the search keeps
 /// the fast path's edge predicate simple enough to be obviously correct.
 fn request_shape_is_supported(request: &ManaPaymentRequest) -> bool {
+    // A simple bipartite matching does not represent the X/base allocation
+    // or shared per-color caps. Let the complete assignment owner decide.
+    if request.cost.has_x_spending_restriction() || request.assist_completion.is_some() { return false; }
     if !request.allow_mana_abilities {
         return false;
     }
@@ -758,6 +761,7 @@ mod tests {
             if restricted {
                 game.player_mut(alice).unwrap().add_restricted_mana(
                     crate::ability::RestrictedManaUnit {
+                        source_controller: None,
                         symbol: ManaSymbol::Blue,
                         source: land,
                         source_chosen_creature_type: None,

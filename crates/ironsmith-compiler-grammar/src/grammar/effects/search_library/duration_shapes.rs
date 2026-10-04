@@ -19,6 +19,22 @@ pub enum SearchRestrictionDurationPlacement {
     Suffix,
 }
 
+fn until_source_leaves<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    use winnow::combinator::{alt, opt};
+    primitives::kw("until").parse_next(input)?;
+    alt((
+        (primitives::kw("this"), opt(alt((
+            primitives::kw("creature"), primitives::kw("artifact"), primitives::kw("enchantment"),
+            primitives::kw("permanent"), primitives::kw("source"), primitives::kw("land"),
+        )))).void(),
+        primitives::kw("source").void(),
+    )).parse_next(input)?;
+    primitives::kw("leaves").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("battlefield").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)
+}
+
 fn as_long_as_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::phrase(&["for", "as", "long", "as"])
         .void()
@@ -55,9 +71,8 @@ fn as_long_as_source_remains_tapped(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn as_long_as_source_remains_on_battlefield(tokens: &[OwnedLexToken]) -> bool {
-    marker_present(tokens, "remains")
-        && marker_present(tokens, "battlefield")
-        && source_reference_present(tokens)
+    crate::grammar::effects::control_copy_attach_shapes::parse_permanent_control_duration_shape(tokens)
+        .is_some_and(|shape| shape.until == Until::while_source_remains_on_battlefield())
 }
 
 fn comma_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -115,6 +130,17 @@ pub fn parse_search_restriction_duration_shape_lexed(
         }));
     }
 
+    if let Some((start, (), rest)) = primitives::find_prefix(tokens, || until_source_leaves)
+        && rest.is_empty() && start > 0
+        && tokens[..start].iter().filter(|token| token.is_quote()).count() % 2 == 0
+    {
+        return Ok(Some(SearchRestrictionDurationShape {
+            duration: Until::ThisLeavesTheBattlefield,
+            remainder: trim_lexed_commas(&tokens[..start]).to_vec(),
+            placement: SearchRestrictionDurationPlacement::Suffix,
+        }));
+    }
+
     if let Some(parsed) = leaf::parse_leaf_restriction_duration_suffix_tokens(tokens) {
         let remainder = trim_lexed_commas(parsed.rest).to_vec();
         if !remainder.is_empty() {
@@ -131,7 +157,7 @@ pub fn parse_search_restriction_duration_shape_lexed(
         let duration = if as_long_as_source_remains_tapped(suffix) {
             Some(Until::SourceUntaps)
         } else if as_long_as_source_remains_on_battlefield(suffix) {
-            Some(Until::ThisLeavesTheBattlefield)
+            Some(Until::while_source_remains_on_battlefield())
         } else if as_long_as_you_control_source(suffix) {
             Some(Until::YouStopControllingThis)
         } else {
@@ -164,3 +190,17 @@ pub fn parse_search_restriction_duration_shape_lexed(
 #[cfg(test)]
 #[path = "duration_shapes_inline_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod exact_source_departure_tests {
+    use super::*;
+    #[test]
+    fn until_source_leaves_is_complete_and_never_a_quoted_inner_duration() {
+        let lex=|text|crate::lexer::lex_line(text,0).unwrap();
+        let parsed=parse_search_restriction_duration_shape_lexed(&lex("a Forest until this creature leaves the battlefield.")).unwrap().unwrap();
+        assert_eq!(parsed.duration,Until::ThisLeavesTheBattlefield);
+        for text in ["a Forest until target creature leaves the battlefield", "a Forest until this creature leaves the battlefield and draw a card", "a creature with \"It becomes a Forest until this creature leaves the battlefield.\""] {
+            assert!(parse_search_restriction_duration_shape_lexed(&lex(text)).unwrap().is_none(),"{text}");
+        }
+    }
+}

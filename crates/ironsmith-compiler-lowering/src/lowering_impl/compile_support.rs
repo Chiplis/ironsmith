@@ -171,6 +171,12 @@ pub fn compile_effects(
         &ReferenceImports::from_lowering_frame(&ctx.lowering_frame()),
         EffectReferenceResolutionConfig {
             allow_life_event_value: ctx.allow_life_event_value,
+            allow_excess_damage_event_value: ctx.allow_excess_damage_event_value,
+            milling_event_filter: ctx.milling_event_filter.clone(),
+            dice_event_grouped: ctx.dice_event_grouped,
+            life_event_binding: ctx.life_event_binding.clone(),
+            life_amount_producers: ctx.life_amount_producers.clone(),
+            die_result_producers: ctx.die_result_producers.clone(),
             bind_unbound_x_to_last_effect: ctx.bind_unbound_x_to_last_effect,
             initial_last_effect_id: ctx.last_effect_id,
             initial_iterated_player: ctx.iterated_player,
@@ -961,6 +967,18 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
     player_filter: &PlayerFilter,
 ) {
     match value {
+        Value::DamageHistory(query) => {
+            for spec in query.reference_specs_mut() {
+                bind_relative_iterated_player_in_choose_spec_to_player_filter(spec, player_filter);
+            }
+            for filter in query.object_filters_mut() {
+                bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+            }
+            if let Some(player) = query.player_filter_mut() {
+                bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
+            }
+        }
+
         Value::SurfaceHinted { value, .. } => {
             bind_relative_iterated_player_in_value_to_player_filter(value, player_filter);
         }
@@ -1015,7 +1033,8 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 | TurnHistoryCount::EnteredBattlefield(filter) => {
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
-                TurnHistoryCount::TokensCreated(player)
+                TurnHistoryCount::LibrarySearches { player, .. }
+                | TurnHistoryCount::TokensCreated(player)
                 | TurnHistoryCount::TurnedFaceUp(player)
                 | TurnHistoryCount::PlayersAttackedThisCombat(player)
                 | TurnHistoryCount::OpponentsAttacked(player)
@@ -1050,7 +1069,8 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 TurnHistoryCount::MovedZones { filter, .. } => {
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
-                TurnHistoryCount::Sacrificed { player, filter }
+                TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter }
+                | TurnHistoryCount::Sacrificed { player, filter }
                 | TurnHistoryCount::SacrificedCardTypes { player, filter }
                 | TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
@@ -1064,6 +1084,15 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
+                TurnHistoryCount::DestroyedBy { filter, cause } => {
+                    bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+                    if let Some(filter) = cause.source_filter.as_mut() { bind_relative_iterated_player_filters_to_chooser(filter, player_filter); }
+                }
+                TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => {
+                    bind_relative_iterated_player_filter_to_player_filter(caster, player_filter);
+                    bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+                    if let Some(filter) = cause.source_filter.as_mut() { bind_relative_iterated_player_filters_to_chooser(filter, player_filter); }
+                }
                 TurnHistoryCount::DamageDealtToSource | TurnHistoryCount::DamageDealtBySource => {}
             }
         }
@@ -1074,6 +1103,8 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
+        | Value::MaximumLifeTotal(player)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player)
         | Value::UnspentMana(player)
@@ -1128,6 +1159,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
             bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
@@ -3062,6 +3094,12 @@ fn build_builtin_token_definition(shape: token_grammar::BuiltinTokenShape) -> Ca
         token_grammar::BuiltinTokenShape::Powerstone => {
             crate::cards::tokens::powerstone_token_definition()
         }
+        token_grammar::BuiltinTokenShape::Heartwood => crate::cards::tokens::heartwood_token_definition(),
+        token_grammar::BuiltinTokenShape::Vibranium => crate::cards::tokens::vibranium_token_definition(),
+        token_grammar::BuiltinTokenShape::Gingerbrute => crate::cards::tokens::gingerbrute_token_definition(),
+        token_grammar::BuiltinTokenShape::Mutavault => crate::cards::tokens::mutavault_token_definition(),
+        token_grammar::BuiltinTokenShape::SpellgorgerWeird => crate::cards::tokens::spellgorger_weird_token_definition(),
+        token_grammar::BuiltinTokenShape::Tarmogoyf => crate::cards::tokens::tarmogoyf_token_definition(),
     }
 }
 

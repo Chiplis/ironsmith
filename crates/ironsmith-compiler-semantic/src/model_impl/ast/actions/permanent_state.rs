@@ -41,6 +41,7 @@ pub enum PermanentStateActionAst {
     },
     PhaseInAll {
         filter: ObjectFilter,
+        simultaneous_phase_out: Option<ObjectFilter>,
     },
     Transform {
         target: TargetAst,
@@ -65,4 +66,5 @@ pub enum PermanentStateActionAst {
     Flip {
         target: TargetAst,
     },
+    BecomeBlocked { target: TargetAst },
 }

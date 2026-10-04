@@ -13,11 +13,12 @@ struct PayableManaUnit {
 struct ManaPaymentPlan {
     pip_payments: Vec<ManaPipCommit>,
     life_to_pay: u32,
+    x_allocation: Option<ironsmith_core::mana::XManaAllocation>,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum ManaPipCommit {
-    ManaUnit(usize),
+    ManaUnit { index: usize, generic: bool },
     Life(u32),
 }
 
@@ -48,6 +49,7 @@ impl GameState {
         &mut self,
         limits: crate::static_ability_processor::StaticEffectDiscoveryLimits,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        crate::static_ability_processor::validate_mana_scalar_domain(self)?;
         let revision = self.effect_store.continuous_effects.revision();
         if self.continuous_state_is_clean()
             && self.runtime_cache.static_effects_cache.borrow().has_checked_snapshot(revision)
@@ -84,9 +86,9 @@ impl GameState {
         // Other zones retain their printed/granted source abilities.
         for effect in effects {
             let decline = effect.optional_decline_effect();
-            self.effect_store
-                .replacement_effects
-                .add_static_ability_effect(effect);
+            for alternative in effect.token_template_alternatives() {
+                self.effect_store.replacement_effects.add_static_ability_effect(alternative);
+            }
             if let Some(decline) = decline {
                 self.effect_store
                     .replacement_effects
@@ -119,10 +121,13 @@ impl GameState {
     /// - "Can't" effect tracking
     pub fn refresh_continuous_state(&mut self)
         -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        crate::static_ability_processor::validate_mana_scalar_domain(self)?;
         let revision = self.effect_store.continuous_effects.revision();
         if self.continuous_state_is_clean()
+            && !self.battlefield_flags.control_transition_pending
             && self.runtime_cache.static_effects_cache.borrow().has_refreshed_snapshot(revision)
         {
+            self.publish_completed_control_transitions();
             return Ok(());
         }
         let checkpoint = self.clone();
@@ -174,6 +179,7 @@ impl GameState {
         {
             self.refresh_continuous_state()?;
         }
+            self.publish_completed_control_transitions();
             let revision = self.effect_store.continuous_effects.revision();
             self.runtime_cache.static_effects_cache.borrow_mut().mark_refreshed_snapshot(revision);
             Ok(())
@@ -212,6 +218,11 @@ impl GameState {
     /// only in "gain control" executors: static abilities and expired effects
     /// can change a permanent's controller without executing such an effect.
     pub(crate) fn reconcile_continuous_control_changes(&mut self) {
+        if self.control_transition_boundary_is_held() {
+            self.battlefield_flags_mut().control_transition_pending = true;
+            return;
+        }
+        self.battlefield_flags_mut().control_transition_pending = false;
         let controllers = self
             .battlefield
             .iter()
@@ -255,6 +266,7 @@ impl GameState {
         self.battlefield_flags_mut().controller_at_last_refresh = controllers;
         self.remember_face_down_exile_source_controllers();
         for &id in &changed {
+            self.clear_soulbond_pair(id);
             self.set_summoning_sick(id);
         }
         self.reconcile_combat_membership(&changed);
@@ -591,6 +603,32 @@ impl GameState {
         self.exile_tracking.cast_origin_snapshots.get(&stack_id)
     }
 
+    /// Commit the original incarnation only after every casting cost was paid.
+    /// Proposal snapshots alone must not expire a land's usable mana ability.
+    pub(crate) fn record_completed_cast_origin(&mut self, stack_id: ObjectId, from_zone: Zone) {
+        let Some(origin) = self.cast_origin_snapshot(stack_id)
+            .filter(|origin| origin.zone == from_zone)
+            .map(|origin| origin.object_id) else { return; };
+        self.exile_tracking_mut().completed_cast_origins.insert(origin, from_zone);
+        self.mark_continuous_state_dirty();
+    }
+
+    pub fn object_completed_cast_from(&self, original: ObjectId, from_zone: Zone) -> bool {
+        self.exile_tracking.completed_cast_origins.get(&original) == Some(&from_zone)
+    }
+
+    pub fn completed_cast_origins(&self) -> Vec<(ObjectId, Zone)> {
+        let mut origins = self.exile_tracking.completed_cast_origins.iter()
+            .map(|(&object, &zone)| (object, zone)).collect::<Vec<_>>();
+        origins.sort_by_key(|(object, _)| *object);
+        origins
+    }
+
+    pub fn restore_completed_cast_origins(&mut self, origins: impl IntoIterator<Item = (ObjectId, Zone)>) {
+        self.exile_tracking_mut().completed_cast_origins = origins.into_iter().collect();
+        self.mark_continuous_state_dirty();
+    }
+
     pub fn set_cast_origin_snapshot(&mut self, stack_id: ObjectId, snapshot: ObjectSnapshot) {
         self.exile_tracking_mut()
             .cast_origin_snapshots
@@ -874,6 +912,7 @@ impl GameState {
             | Modification::SetAbilities(_)
             | Modification::CopyStaticAbilityVariants { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
             | Modification::RemoveStaticAbilityFamily(_) => true,
             Modification::AddAbility(static_ability)
@@ -1300,10 +1339,9 @@ impl GameState {
             return false;
         }
 
-        let Some(mana_source) = self.object(unit.source) else {
+        let Some(controller) = unit.source_controller.or_else(|| self.current_controller(unit.source)) else {
             return false;
         };
-        let controller = self.controller_of(mana_source);
         let filter_ctx = self
             .filter_context_for(controller, Some(unit.source))
             .with_caster(Some(controller));
@@ -1334,11 +1372,10 @@ impl GameState {
             return false;
         }
 
-        let Some(mana_source) = self.object(unit.source) else {
+        let Some(controller) = unit.source_controller.or_else(|| self.current_controller(unit.source)) else {
             return false;
         };
-        let filter_ctx =
-            self.filter_context_for(self.controller_of(mana_source), Some(unit.source));
+        let filter_ctx = self.filter_context_for(controller, Some(unit.source));
         filter.matches(source_obj, &filter_ctx, self)
     }
 
@@ -1385,9 +1422,8 @@ impl GameState {
                 let Some(source_obj) = self.object(source_id) else {
                     return false;
                 };
-                let controller = self
-                    .object(unit.source)
-                    .map(|mana_source| self.controller_of(mana_source))
+                let controller = unit.source_controller
+                    .or_else(|| self.current_controller(unit.source))
                     .unwrap_or_else(|| self.controller_of(source_obj));
                 let filter_ctx = self.filter_context_for(controller, Some(unit.source));
                 filter.matches(source_obj, &filter_ctx, self)
@@ -1647,6 +1683,9 @@ impl GameState {
                 continue;
             }
 
+            if !crate::mana_payment::resources::production_satisfies_cost(cost, provenance.snapshot.as_ref()) {
+                continue;
+            }
             units.push(PayableManaUnit {
                 symbol: provenance.symbol,
                 source: Some(provenance.source),
@@ -1657,6 +1696,7 @@ impl GameState {
         }
 
         for symbol in SYMBOLS {
+            if !crate::mana_payment::resources::production_satisfies_cost(cost, None) { continue; }
             if required_pool_symbol.is_some_and(|required| required != symbol) {
                 continue;
             }
@@ -1913,6 +1953,8 @@ impl GameState {
         payment_source: Option<ObjectId>,
         reason: crate::costs::PaymentReason,
         pips: &[Vec<crate::mana::ManaSymbol>],
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
         pip_index: usize,
         units: &[PayableManaUnit],
         used: &mut [bool],
@@ -1921,16 +1963,36 @@ impl GameState {
         base_policy: &crate::player::ManaSpendPolicy,
         allow_life_payment: bool,
         prefer_life_payment: bool,
+        accept: &mut dyn FnMut(&[PayableManaUnit], &ManaPaymentPlan) -> bool,
     ) -> Option<ManaPaymentPlan> {
         use crate::mana::ManaSymbol;
 
         if pip_index == pips.len() {
-            return self
-                .can_pay_life_with_reason(payer, life_to_pay, reason)
-                .then(|| ManaPaymentPlan {
-                    pip_payments: selected.clone(),
-                    life_to_pay,
-                });
+            let generic = selected.iter().filter_map(|payment| match payment {
+                ManaPipCommit::ManaUnit { index, generic: true } => units.get(*index).map(|unit| unit.symbol),
+                _ => None,
+            }).collect::<Vec<_>>();
+            let x_allocation = cost.allocate_mana_to_x(&generic, x_value)?;
+            if let Some(required) = cost.required_actual_payment() {
+                let actual = ironsmith_core::mana::ActualManaAllocation::from_symbols(selected.iter().filter_map(|payment|
+                    match payment { ManaPipCommit::ManaUnit { index, .. } => units.get(*index).map(|unit| unit.symbol), _ => None }))?;
+                if actual != required { return None; }
+            }
+            let plan = ManaPaymentPlan { pip_payments: selected.clone(), life_to_pay, x_allocation };
+            return (self.can_pay_life_with_reason(payer, life_to_pay, reason) && accept(units, &plan)).then_some(plan);
+        }
+
+        if cost.has_x_spending_restriction()
+            && pips[pip_index..].iter().all(|pip| pip.as_slice() == [ManaSymbol::Generic(1)]) {
+            let paid = selected.iter().filter_map(|payment| match payment {
+                ManaPipCommit::ManaUnit { index, generic: true } => Some(units[*index].symbol), _ => None,
+            }).collect::<Vec<_>>();
+            let available = units.iter().enumerate().filter(|(index, unit)| !used[*index]
+                && self.mana_unit_can_pay(payer, payment_source, base_policy, unit, ManaSymbol::Generic(1)))
+                .map(|(_, unit)| unit.symbol).collect::<Vec<_>>();
+            if !cost.x_payment_can_complete_generic_suffix(&paid, &available, pips.len() - pip_index, x_value) {
+                return None;
+            }
         }
 
         let mut alternatives = pips[pip_index].clone();
@@ -1949,6 +2011,8 @@ impl GameState {
                     payment_source,
                     reason,
                     pips,
+                    cost,
+                    x_value,
                     pip_index + 1,
                     units,
                     used,
@@ -1957,6 +2021,7 @@ impl GameState {
                     base_policy,
                     allow_life_payment,
                     prefer_life_payment,
+                    accept,
                 ) {
                     return Some(plan);
                 }
@@ -1993,12 +2058,16 @@ impl GameState {
                     continue;
                 }
                 used[unit_index] = true;
-                selected.push(ManaPipCommit::ManaUnit(unit_index));
+                selected.push(ManaPipCommit::ManaUnit {
+                    index: unit_index, generic: matches!(alternative, ManaSymbol::Generic(_)),
+                });
                 if let Some(plan) = self.search_mana_payment_plan(
                     payer,
                     payment_source,
                     reason,
                     pips,
+                    cost,
+                    x_value,
                     pip_index + 1,
                     units,
                     used,
@@ -2007,6 +2076,7 @@ impl GameState {
                     base_policy,
                     allow_life_payment,
                     prefer_life_payment,
+                    accept,
                 ) {
                     return Some(plan);
                 }
@@ -2026,6 +2096,21 @@ impl GameState {
         reason: crate::costs::PaymentReason,
         policy_override: Option<&crate::player::ManaSpendPolicy>,
         life_options: Option<(bool, bool, bool)>,
+    ) -> Option<(Vec<PayableManaUnit>, ManaPaymentPlan)> {
+        self.mana_payment_plan_matching(payer, source, cost, x_value, reason, policy_override,
+            life_options, &mut |_, _| true)
+    }
+
+    fn mana_payment_plan_matching(
+        &self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        reason: crate::costs::PaymentReason,
+        policy_override: Option<&crate::player::ManaSpendPolicy>,
+        life_options: Option<(bool, bool, bool)>,
+        accept: &mut dyn FnMut(&[PayableManaUnit], &ManaPaymentPlan) -> bool,
     ) -> Option<(Vec<PayableManaUnit>, ManaPaymentPlan)> {
         let default_policy = self.mana_spend_policy(payer, source);
         let policy = policy_override.unwrap_or(&default_policy);
@@ -2055,6 +2140,8 @@ impl GameState {
             source,
             reason,
             &pips,
+            cost,
+            x_value,
             0,
             &units,
             &mut used,
@@ -2063,6 +2150,7 @@ impl GameState {
             policy,
             allow_life_payment,
             prefer_life_payment,
+            accept,
         )?;
         Some((units, plan))
     }
@@ -2161,7 +2249,7 @@ impl GameState {
             .zip(plan.pip_payments.iter())
             .map(|(alternatives, payment)| {
                 let payment = match payment {
-                    ManaPipCommit::ManaUnit(index) => {
+                    ManaPipCommit::ManaUnit { index, .. } => {
                         crate::mana_payment::PlannedPipPayment::Mana(units.get(*index)?.symbol)
                     }
                     ManaPipCommit::Life(amount) => {
@@ -2174,6 +2262,55 @@ impl GameState {
         Some((allocations, plan.life_to_pay))
     }
 
+    /// The same exact assignment used by preview and final payment. Keeping
+    /// this on the bulk payer prevents a planner from attributing fixed black
+    /// pips to X or applying an as-though permission to actual color evidence.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn preview_x_mana_allocation(
+        &self, payer: PlayerId, source: Option<ObjectId>, cost: &crate::mana::ManaCost,
+        x_value: u32, reason: crate::costs::PaymentReason,
+        policy: &crate::player::ManaSpendPolicy, allow_life_payment: bool,
+        allow_black_life: bool, prefer_life_payment: bool,
+    ) -> Option<Option<ironsmith_core::mana::XManaAllocation>> {
+        self.mana_payment_plan(payer, source, cost, x_value, reason, Some(policy),
+            Some((allow_life_payment, prefer_life_payment, allow_black_life)))
+            .map(|(_, plan)| plan.x_allocation)
+    }
+
+    /// Find an actual payment whose committed speculative state satisfies a
+    /// linked obligation. The returned cost locks the selected actual colors;
+    /// final payment still revalidates all source/restriction/provenance rules.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn mana_cost_with_payable_continuation(
+        &self, payer: PlayerId, source: Option<ObjectId>, cost: &crate::mana::ManaCost,
+        x_value: u32, reason: crate::costs::PaymentReason,
+        policy: &crate::player::ManaSpendPolicy, allow_life_payment: bool,
+        allow_black_life: bool, prefer_life_payment: bool,
+        mut continuation: impl FnMut(&GameState, ironsmith_core::mana::ActualManaAllocation) -> bool,
+    ) -> Result<Option<crate::mana::ManaCost>, crate::effects::ExecutionError> {
+        let mut result = None;
+        let mut failure = None;
+        self.mana_payment_plan_matching(payer, source, cost, x_value, reason, Some(policy),
+            Some((allow_life_payment, prefer_life_payment, allow_black_life)),
+            &mut |units, plan| {
+                let Some(actual) = ironsmith_core::mana::ActualManaAllocation::from_symbols(
+                    plan.pip_payments.iter().filter_map(|payment| match payment {
+                        ManaPipCommit::ManaUnit { index, .. } => units.get(*index).map(|unit| unit.symbol),
+                        _ => None,
+                    })) else { return false; };
+                let mut staged = self.clone();
+                let paid = match staged.commit_mana_payment_plan(payer, source, reason, units, plan) {
+                    Ok(paid) => paid,
+                    Err(error) => { staged.record_token_resource_failure(&error); failure = Some(error); return false; }
+                };
+                if !paid || !continuation(&staged, actual) { return false; }
+                result = Some(cost.clone().with_required_actual_payment(Some(actual)));
+                true
+            });
+        if let Some(error) = failure { self.record_token_resource_failure(&error); return Err(error); }
+        Ok(result)
+    }
+
     /// Attempt to pay a mana cost, accounting for "spend as though any color".
     pub fn try_pay_mana_cost(
         &mut self,
@@ -2181,7 +2318,7 @@ impl GameState {
         source: Option<ObjectId>,
         cost: &crate::mana::ManaCost,
         x_value: u32,
-    ) -> bool {
+    ) -> Result<bool, crate::effects::ExecutionError> {
         self.try_pay_mana_cost_with_reason(
             payer,
             source,
@@ -2199,9 +2336,19 @@ impl GameState {
         cost: &crate::mana::ManaCost,
         x_value: u32,
         reason: crate::costs::PaymentReason,
-    ) -> bool {
-        let policy = self.mana_spend_policy(payer, source);
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        let checked = self.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        let policy = checked.mana_spend_policy(payer, source);
         self.try_pay_mana_cost_with_policy(payer, source, cost, x_value, reason, &policy)
+    }
+
+    pub fn try_pay_mana_cost_with_reason_and_dm(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, cost: &crate::mana::ManaCost,
+        x_value: u32, reason: crate::costs::PaymentReason, decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        let checked = self.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        let policy = checked.mana_spend_policy(payer, source);
+        self.try_pay_mana_cost_with_payment_options_and_dm(payer, source, cost, x_value, reason, &policy, true, true, false, decision_maker)
     }
 
     /// Commit a payment using a transaction-local spend policy.
@@ -2213,7 +2360,7 @@ impl GameState {
         x_value: u32,
         reason: crate::costs::PaymentReason,
         policy: &crate::player::ManaSpendPolicy,
-    ) -> bool {
+    ) -> Result<bool, crate::effects::ExecutionError> {
         self.try_pay_mana_cost_with_payment_options(
             payer, source, cost, x_value, reason, policy, true, true, false,
         )
@@ -2232,7 +2379,31 @@ impl GameState {
         allow_life_payment: bool,
         allow_black_life: bool,
         prefer_life_payment: bool,
-    ) -> bool {
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.try_pay_mana_cost_with_payment_options_and_dm(payer, source, cost, x_value, reason, policy,
+            allow_life_payment, allow_black_life, prefer_life_payment, &mut crate::decision::SelectFirstDecisionMaker)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_pay_mana_cost_with_payment_options_and_dm(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, cost: &crate::mana::ManaCost,
+        x_value: u32, reason: crate::costs::PaymentReason, policy: &crate::player::ManaSpendPolicy,
+        allow_life_payment: bool, allow_black_life: bool, prefer_life_payment: bool,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.try_pay_mana_cost_with_payment_options_in_context(payer, source, cost, x_value, reason, policy,
+            allow_life_payment, allow_black_life, prefer_life_payment, decision_maker, None)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn try_pay_mana_cost_with_payment_options_in_context(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, cost: &crate::mana::ManaCost,
+        x_value: u32, reason: crate::costs::PaymentReason, policy: &crate::player::ManaSpendPolicy,
+        allow_life_payment: bool, allow_black_life: bool, prefer_life_payment: bool,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+        execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        let checkpoint = self.clone();
+        let result = (|| {
+        self.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         let Some((units, plan)) = self.mana_payment_plan(
             payer,
             source,
@@ -2242,10 +2413,41 @@ impl GameState {
             Some(policy),
             Some((allow_life_payment, prefer_life_payment, allow_black_life)),
         ) else {
-            return false;
+            return Ok(false);
         };
+        self.commit_mana_payment_plan_with_dm(payer, source, reason, &units, &plan, decision_maker, execution)
+        })();
+        if !matches!(result, Ok(true)) { self.restore_execution_checkpoint(checkpoint, result.is_ok() && decision_maker.awaiting_choice()); }
+        result
+    }
+
+    fn commit_mana_payment_plan(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, reason: crate::costs::PaymentReason,
+        units: &[PayableManaUnit], plan: &ManaPaymentPlan,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.commit_mana_payment_plan_with_dm(payer, source, reason, units, plan, &mut crate::decision::SelectFirstDecisionMaker, None)
+    }
+    fn commit_mana_payment_plan_with_dm(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, reason: crate::costs::PaymentReason,
+        units: &[PayableManaUnit], plan: &ManaPaymentPlan, decision_maker: &mut dyn crate::decision::DecisionMaker,
+        execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        let checkpoint = self.clone();
+        let result = (|| {
+            self.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            self.commit_mana_payment_plan_inner(payer, source, reason, units, plan, decision_maker, execution)
+        })();
+        if !matches!(result, Ok(true)) { self.restore_execution_checkpoint(checkpoint, result.is_ok() && decision_maker.awaiting_choice()); }
+        result
+    }
+
+    fn commit_mana_payment_plan_inner(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, reason: crate::costs::PaymentReason,
+        units: &[PayableManaUnit], plan: &ManaPaymentPlan, decision_maker: &mut dyn crate::decision::DecisionMaker,
+        execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+    ) -> Result<bool, crate::effects::ExecutionError> {
         let Some(player) = self.player(payer) else {
-            return false;
+            return Ok(false);
         };
         let original_pool = player.mana_pool.clone();
         let original_restricted = player.restricted_mana.clone();
@@ -2255,7 +2457,7 @@ impl GameState {
             .pip_payments
             .iter()
             .filter_map(|payment| match payment {
-                ManaPipCommit::ManaUnit(index) => units.get(*index),
+                ManaPipCommit::ManaUnit { index, .. } => units.get(*index),
                 ManaPipCommit::Life(_) => None,
             })
             .cloned()
@@ -2263,10 +2465,10 @@ impl GameState {
         let selected_count = plan
             .pip_payments
             .iter()
-            .filter(|payment| matches!(payment, ManaPipCommit::ManaUnit(_)))
+            .filter(|payment| matches!(payment, ManaPipCommit::ManaUnit { .. }))
             .count();
         if selected.len() != selected_count {
-            return false;
+            return Ok(false);
         }
         let spent_units = selected
             .iter()
@@ -2313,18 +2515,32 @@ impl GameState {
         } else {
             false
         };
-        if !committed || (plan.life_to_pay > 0 && !self.pay_life(payer, plan.life_to_pay)) {
+        let life_paid = if committed && plan.life_to_pay > 0 {
+            let mut ctx = crate::effects::ExecutionContext::new(source.unwrap_or(ObjectId::from_raw(0)), payer, decision_maker);
+            if let Some(execution) = execution { execution.restore_ref(&mut ctx); }
+            ctx.mana.payment_reason = Some(reason);
+            self.pay_life_with_context(payer, plan.life_to_pay, &mut ctx)?.is_some()
+        } else { committed };
+        if !committed || !life_paid {
             if let Some(player) = self.player_mut(payer) {
                 player.mana_pool = original_pool;
                 player.restricted_mana = original_restricted;
                 player.mana_source_provenance = original_provenance;
             }
-            return false;
+            return Ok(false);
+        }
+
+        if reason == crate::costs::PaymentReason::CastSpell
+            && let Some(allocation) = plan.x_allocation
+            && let Some(source) = source
+            && let Some(spell) = self.object_mut(source)
+            && spell.zone == Zone::Stack {
+            spell.mana_spent_on_x = Some(allocation);
         }
 
         self.publish_spent_mana_units(payer, source, reason, spent_units);
         self.record_bulk_mana_sources_spent_to_cast(payer, source, reason, &original_provenance);
-        true
+        Ok(true)
     }
 
     fn publish_spent_mana_units(
@@ -3073,23 +3289,6 @@ impl GameState {
             .insert(object_id);
     }
 
-    /// Set the current monarch designation holder.
-    ///
-    /// Use `None` to clear the designation.
-    pub fn set_monarch(&mut self, monarch: Option<PlayerId>) {
-        let changed = monarch != self.monarch;
-        if changed {
-            self.mark_continuous_state_dirty();
-        }
-        if monarch.is_some() && changed {
-            self.record_ui_effect_event("monarch", monarch, None, Vec::new(), None, None);
-        }
-        self.monarch = monarch;
-        if changed && let Some(monarch) = monarch {
-            self.return_exiled_for_opponent_becoming_monarch(monarch);
-        }
-    }
-
     /// Set the current initiative designation holder.
     ///
     /// Use `None` to clear the designation.
@@ -3218,6 +3417,9 @@ impl GameState {
             .entry(player)
             .or_default()
             .push(dungeon_name.into());
+        // Completion is a persistent input to conditional static abilities.
+        // Auxiliary tracking alone does not invalidate their cached snapshot.
+        self.mark_continuous_state_dirty();
     }
 
     /// Returns the names of dungeons the player has completed this game.
@@ -3377,6 +3579,10 @@ impl GameState {
         if let Some(lookback) = self.simultaneous_event_lookback() {
             return lookback.to_vec();
         }
+        self.current_trigger_source_snapshots()
+    }
+
+    pub(crate) fn current_trigger_source_snapshots(&self) -> Vec<ObjectSnapshot> {
         let all_effects = self.all_continuous_effects();
         let ability_effects_can_add_triggers = all_effects
             .iter()
@@ -3435,6 +3641,7 @@ impl GameState {
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana => true,
             Modification::AddAbilityGeneric(ability)
             | Modification::RemoveAbilityGeneric { ability, .. } => {

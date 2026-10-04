@@ -122,6 +122,7 @@ impl StaticAbilityKind for RedirectDamageToSourceController {
                 combat_only: false,
                 noncombat_only: false,
                 amount_less_than: None,
+                maximum_damage: None,
             },
             ReplacementAction::Redirect {
                 target: RedirectTarget::ToSourceController,
@@ -137,6 +138,7 @@ pub struct ModifyDamageAmountReplacement {
     pub target_player_filter: Option<PlayerFilter>,
     pub target_object_filter: Option<ObjectFilter>,
     pub delta: i32,
+    pub dynamic_delta: Option<Value>,
     pub noncombat_only: bool,
     pub display: String,
     pub condition: Option<crate::ConditionExpr>,
@@ -155,10 +157,16 @@ impl ModifyDamageAmountReplacement {
             target_player_filter,
             target_object_filter,
             delta,
+            dynamic_delta: None,
             noncombat_only: false,
             display: display.into(),
             condition: None,
         }
+    }
+
+    pub fn with_dynamic_delta(mut self, value: Value) -> Self {
+        self.dynamic_delta = Some(value);
+        self
     }
 
     pub fn with_noncombat_only(mut self, noncombat_only: bool) -> Self {
@@ -167,7 +175,10 @@ impl ModifyDamageAmountReplacement {
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
         self
     }
 }
@@ -203,14 +214,15 @@ impl MinimumDamageAmountReplacement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct DamageAmountReplacementMatcher {
-    source_filter: ObjectFilter,
-    target_player_filter: Option<PlayerFilter>,
-    target_object_filter: Option<ObjectFilter>,
-    condition: Option<crate::ConditionExpr>,
-    combat_only: bool,
-    noncombat_only: bool,
-    amount_less_than: Option<Value>,
+pub(crate) struct DamageAmountReplacementMatcher {
+    pub(crate) source_filter: ObjectFilter,
+    pub(crate) target_player_filter: Option<PlayerFilter>,
+    pub(crate) target_object_filter: Option<ObjectFilter>,
+    pub(crate) condition: Option<crate::ConditionExpr>,
+    pub(crate) combat_only: bool,
+    pub(crate) noncombat_only: bool,
+    pub(crate) amount_less_than: Option<Value>,
+    pub(crate) maximum_damage: Option<u32>,
 }
 
 impl DamageAmountReplacementMatcher {
@@ -219,10 +231,22 @@ impl DamageAmountReplacementMatcher {
         damage: &DamageEvent,
         ctx: &crate::events::context::EventContext<'_>,
     ) -> bool {
+        // A resolved source target retains its exact identity rather than
+        // requiring that object to remain in its old zone or combat role.
+        if self.source_filter == ObjectFilter::specific(damage.source) { return true; }
+        // Unblocked is current combat status, not a characteristic whose
+        // absent snapshot predicate may be silently ignored.
+        if self.source_filter.unblocked && !ctx.game.combat.as_ref().is_some_and(|combat|
+            crate::combat_state::is_unblocked(combat, damage.source)) { return false; }
+        // An unconstrained source predicate requires no characteristics or LKI.
+        // The source of damage may already have left its former zone.
+        if self.source_filter == ObjectFilter::default() {
+            return true;
+        }
         // Use LKI only when the source no longer exists. A still-live source
         // may have changed controller or types since its ability was put on
         // the stack; an older snapshot cannot make it match again.
-        if let Some(source) = ctx.game.object(damage.source) {
+        if let Some(source) = ctx.game.object(damage.source).filter(|_| !ctx.game.is_phased_out(damage.source)) {
             let filter_ctx = if source.zone == Zone::Stack {
                 ctx.filter_ctx
                     .clone()
@@ -299,6 +323,9 @@ impl DamageAmountReplacementMatcher {
             return false;
         }
         if self.noncombat_only && damage.is_combat {
+            return false;
+        }
+        if self.maximum_damage.is_some_and(|maximum| damage.amount > maximum) {
             return false;
         }
         let Some(value) = &self.amount_less_than else {
@@ -384,7 +411,7 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
-        if self.delta == 0 {
+        if self.dynamic_delta.is_none() && self.delta == 0 {
             return None;
         }
         Some(ReplacementEffect::with_matcher(
@@ -398,8 +425,12 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
                 combat_only: false,
                 noncombat_only: self.noncombat_only,
                 amount_less_than: None,
+                maximum_damage: None,
             },
-            ReplacementAction::Modify(EventModification::Add(self.delta)),
+            ReplacementAction::Modify(match &self.dynamic_delta {
+                Some(value) => EventModification::AddDynamic(value.clone()),
+                None => EventModification::Add(self.delta),
+            }),
         ))
     }
 }
@@ -429,6 +460,7 @@ impl StaticAbilityKind for MinimumDamageAmountReplacement {
                 combat_only: false,
                 noncombat_only: self.noncombat_only,
                 amount_less_than: Some(self.floor.clone()),
+                maximum_damage: None,
             },
             ReplacementAction::Modify(EventModification::SetToAtLeast(self.floor.clone())),
         ))
@@ -444,6 +476,7 @@ pub struct DoubleDamageAmountReplacement {
     pub combat_only: bool,
     pub noncombat_only: bool,
     pub display: String,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl DoubleDamageAmountReplacement {
@@ -463,6 +496,7 @@ impl DoubleDamageAmountReplacement {
             combat_only,
             noncombat_only: false,
             display: display.into(),
+            condition: None,
         }
     }
 
@@ -481,6 +515,18 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
         self.display.clone()
     }
 
+    fn with_static_condition(
+        &self,
+        condition: crate::ConditionExpr,
+    ) -> Option<super::StaticAbility> {
+        let mut ability = self.clone();
+        ability.condition = Some(match ability.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
+        Some(super::StaticAbility::new(ability))
+    }
+
     fn generate_replacement_effect(
         &self,
         source: ObjectId,
@@ -493,10 +539,11 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
                 source_filter: self.source_filter.clone(),
                 target_player_filter: self.target_player_filter.clone(),
                 target_object_filter: self.target_object_filter.clone(),
-                condition: None,
+                condition: self.condition.clone(),
                 combat_only: self.combat_only,
                 noncombat_only: self.noncombat_only,
                 amount_less_than: None,
+                maximum_damage: None,
             },
             ReplacementAction::Modify(EventModification::Multiply(self.factor)),
         ))
@@ -557,6 +604,7 @@ impl StaticAbilityKind for PreventHalfDamageReplacement {
                 combat_only: false,
                 noncombat_only: false,
                 amount_less_than: None,
+                maximum_damage: None,
             },
             ReplacementAction::PreventHalfDamage {
                 round_up: self.round_up,
@@ -793,6 +841,8 @@ pub struct AddCountersPlacementReplacement {
     pub player_filter: Option<PlayerFilter>,
     pub counter_type: Option<CounterType>,
     pub additional: i64,
+    pub actor: Option<PlayerFilter>,
+    pub includes_permanents: bool,
     pub display: String,
 }
 
@@ -808,6 +858,8 @@ impl AddCountersPlacementReplacement {
             player_filter: None,
             counter_type,
             additional: additional.into(),
+            actor: None,
+            includes_permanents: false,
             display,
         }
     }
@@ -842,8 +894,8 @@ impl StaticAbilityKind for AddCountersPlacementReplacement {
                 filter: self.filter.clone(),
                 player_filter: self.player_filter.clone(),
                 counter_type: self.counter_type,
-                actor: None,
-                includes_permanents: false,
+                actor: self.actor.clone(),
+                includes_permanents: self.includes_permanents,
                 effect_only: false,
             },
             ReplacementAction::AddCountersToPlacement {
@@ -1163,7 +1215,10 @@ impl Grants {
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
         self
     }
 }
@@ -1299,6 +1354,56 @@ impl StaticAbilityKind for NoMaximumHandSize {
     }
 }
 
+/// Player scope belongs to the rule source, including its chosen player.
+fn hand_size_players(game: &GameState, player: &PlayerFilter, source: ObjectId, controller: PlayerId) -> Vec<PlayerId> {
+    let context = game.filter_context_for(controller, Some(source));
+    game.players.iter().filter(|p| p.is_in_game() && crate::filter::player_filter_matches_game(player, p.id, game, &context)).map(|p| p.id).collect()
+}
+fn hand_size_possessive(player: &PlayerFilter) -> String {
+    match player {
+        PlayerFilter::You => "Your".into(),
+        PlayerFilter::Opponent => "Each opponent's".into(),
+        PlayerFilter::Any => "Each player's".into(),
+        PlayerFilter::ChosenPlayer => "The chosen player's".into(),
+        _ => format!("{}'s", capitalize_first(&player.description())),
+    }
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScopedNoMaximumHandSize { pub player: PlayerFilter }
+impl StaticAbilityKind for ScopedNoMaximumHandSize {
+    fn may_generate_continuous_effects(&self) -> bool { false }
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::NoMaximumHandSize }
+    fn display(&self) -> String {
+        match &self.player {
+            PlayerFilter::You => "You have no maximum hand size.".into(),
+            PlayerFilter::Any => "Players have no maximum hand size.".into(),
+            PlayerFilter::Opponent => "Your opponents have no maximum hand size.".into(),
+            player => format!("{} has no maximum hand size.", capitalize_first(&player.description())),
+        }
+    }
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        for id in hand_size_players(game, &self.player, source, controller) {
+            if let Some(player)=game.players.get_mut_for_derived_update().get_mut(id.index()) { player.max_hand_size=i32::MAX; }
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaximumHandSizeFromSourceCounters { pub player: PlayerFilter, pub counter_type: CounterType }
+impl StaticAbilityKind for MaximumHandSizeFromSourceCounters {
+    fn may_generate_continuous_effects(&self) -> bool { false }
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::SetMaximumHandSize }
+    fn display(&self) -> String {
+        format!("{} maximum hand size is equal to the number of {} counters on this permanent.", hand_size_possessive(&self.player), self.counter_type.description())
+    }
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        // Finite source counters are queried in the current rule-source frame.
+        let amount=game.counter_count(source,self.counter_type).min(i32::MAX as u32) as i32;
+        for id in hand_size_players(game,&self.player,source,controller) {
+            if let Some(player)=game.players.get_mut_for_derived_update().get_mut(id.index()) { player.max_hand_size=amount; }
+        }
+    }
+}
+
 /// "Your/Each opponent's maximum hand size is N."
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetMaximumHandSize {
@@ -1329,14 +1434,14 @@ impl StaticAbilityKind for SetMaximumHandSize {
                 format!("Each opponent's maximum hand size is {amount}.")
             }
             PlayerFilter::Any => format!("Each player's maximum hand size is {amount}."),
-            _ => format!("Maximum hand size is {amount}."),
+            _ => format!("{} maximum hand size is {amount}.",hand_size_possessive(&self.player)),
         }
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
-        for player_id in player_ids_for_filter(game, self.player.clone(), controller) {
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        for player_id in hand_size_players(game, &self.player, source, controller) {
             if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
-                player.max_hand_size = self.amount as i32;
+                player.max_hand_size = self.amount.min(i32::MAX as u32) as i32;
             }
         }
     }
@@ -1385,30 +1490,13 @@ impl StaticAbilityKind for ReduceMaximumHandSize {
         }
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
-        use crate::game_loop::player_matches_filter_with_combat;
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        let affected = hand_size_players(game, &self.player, source, controller);
 
-        let combat = game.combat.as_ref();
-        let affected: Vec<PlayerId> = game
-            .players
-            .iter()
-            .filter(|player| {
-                player.is_in_game()
-                    && player_matches_filter_with_combat(
-                        player.id,
-                        &self.player,
-                        game,
-                        controller,
-                        combat,
-                    )
-            })
-            .map(|player| player.id)
-            .collect();
-
-        let reduction = self.amount as i32;
+        let reduction = self.amount.min(i32::MAX as u32) as i32;
         for player_id in affected {
             if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
-                player.max_hand_size = player.max_hand_size.saturating_sub(reduction);
+                if player.max_hand_size != i32::MAX { player.max_hand_size = player.max_hand_size.saturating_sub(reduction); }
             }
         }
     }
@@ -1450,30 +1538,13 @@ impl StaticAbilityKind for IncreaseMaximumHandSize {
         }
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
-        use crate::game_loop::player_matches_filter_with_combat;
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        let affected = hand_size_players(game, &self.player, source, controller);
 
-        let combat = game.combat.as_ref();
-        let affected: Vec<PlayerId> = game
-            .players
-            .iter()
-            .filter(|player| {
-                player.is_in_game()
-                    && player_matches_filter_with_combat(
-                        player.id,
-                        &self.player,
-                        game,
-                        controller,
-                        combat,
-                    )
-            })
-            .map(|player| player.id)
-            .collect();
-
-        let increase = self.amount as i32;
+        let increase = self.amount.min(i32::MAX as u32) as i32;
         for player_id in affected {
             if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
-                player.max_hand_size = player.max_hand_size.saturating_add(increase);
+                if player.max_hand_size != i32::MAX { player.max_hand_size = player.max_hand_size.saturating_add(increase); }
             }
         }
     }
@@ -4394,6 +4465,21 @@ impl StaticAbilityKind for AllPlayersLookAtYourTopLibraryCard {
     }
 }
 
+/// Public hand visibility is enforced by both the live sync view and cached
+/// UI snapshot. These scopes do not reveal an unrelated player's library.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControllerPlaysWithHandRevealed;
+impl StaticAbilityKind for ControllerPlaysWithHandRevealed {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::ControllerPlaysWithHandRevealed }
+    fn display(&self) -> String { "Play with your hand revealed.".into() }
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayersPlayWithHandsRevealed;
+impl StaticAbilityKind for PlayersPlayWithHandsRevealed {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::PlayersPlayWithHandsRevealed }
+    fn display(&self) -> String { "Players play with their hands revealed.".into() }
+}
+
 /// Makes the controller's opponents play with revealed hands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpponentsPlayWithHandsRevealed;
@@ -4521,5 +4607,219 @@ impl StaticAbilityKind for UnsupportedParserLine {
             self.raw_line.trim(),
             self.reason
         )
+    }
+}
+
+/// One typed prevention family, preserving live source/recipient filters.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventMatchingDamage {
+    pub spec: ironsmith_core::PreventMatchingDamageSpec,
+}
+
+impl StaticAbilityKind for PreventMatchingDamage {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventMatchingDamage
+    }
+
+    fn display(&self) -> String {
+        self.spec.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.spec.source_filter.clone(),
+                target_player_filter: self.spec.target_player_filter.clone(),
+                target_object_filter: self.spec.target_object_filter.clone(),
+                condition: None,
+                combat_only: self.spec.combat_only,
+                noncombat_only: self.spec.noncombat_only,
+                amount_less_than: None,
+                maximum_damage: self.spec.maximum_damage,
+            },
+            ReplacementAction::PreventDamageByRule(self.spec.amount.clone()),
+        ))
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventMatchingDamageWithFollowUp {
+    pub spec: ironsmith_core::StaticDamagePreventionFollowUp<Effect>,
+}
+
+impl StaticAbilityKind for PreventMatchingDamageWithFollowUp {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::PreventMatchingDamage }
+    fn display(&self) -> String { self.spec.display.clone() }
+
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        let mut effects = Vec::new();
+        if let Some(tag) = &self.spec.damage_source_tag {
+            effects.push(Effect::tag_triggering_source(tag.clone()));
+        }
+        effects.extend(self.spec.effects.iter().cloned());
+        Some(ReplacementEffect::with_matcher(
+            source, controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.spec.source_filter.clone(),
+                target_player_filter: self.spec.target_player_filter.clone(),
+                target_object_filter: self.spec.target_object_filter.clone(),
+                condition: None,
+                combat_only: self.spec.combat_only,
+                noncombat_only: self.spec.noncombat_only,
+                amount_less_than: None,
+                maximum_damage: None,
+            },
+            match self.spec.amount_basis {
+                ironsmith_core::PreventionFollowUpAmount::Prevented =>
+                    ReplacementAction::PreventDamageThen(effects),
+                ironsmith_core::PreventionFollowUpAmount::Proposed =>
+                    ReplacementAction::PreventDamageThenFromProposedAmount(effects),
+            },
+        ))
+    }
+}
+
+
+/// One additive life-gain replacement, participating in the ordinary CR 616
+/// ordering and replacement-application identity machinery.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddLifeGainReplacement {
+    pub player: PlayerFilter,
+    pub additional: i32,
+    pub condition: Option<Condition>,
+    pub display: String,
+}
+
+impl StaticAbilityKind for AddLifeGainReplacement {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::AddLifeGainReplacement }
+    fn display(&self) -> String { self.display.clone() }
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let mut combined = self.clone();
+        combined.condition = Some(match combined.condition.take() {
+            Some(existing) => Condition::And(Box::new(condition), Box::new(existing)),
+            None => condition,
+        });
+        Some(StaticAbility::new(combined))
+    }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(source, controller,
+            ConditionalWouldChangeLifeMatcher {
+                player: self.player.clone(), loss: false,
+                condition: self.condition.clone(), display: self.display.clone(),
+            },
+            ReplacementAction::Modify(EventModification::Add(self.additional)),
+        ))
+    }
+}
+
+/// Fixed token additions/substitutions retain complete lowered definitions.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TokenCreationTemplates {
+    pub controller: PlayerFilter,
+    pub token_filter: ObjectFilter,
+    pub templates: Vec<crate::effect::Effect>,
+    pub mode: ironsmith_core::TokenCreationTemplateMode,
+    pub optional: bool,
+    pub choose_one: bool,
+    pub display: String,
+    pub condition: Option<crate::ConditionExpr>,
+}
+impl StaticAbilityKind for TokenCreationTemplates {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::TokenCreationTemplates }
+    fn display(&self) -> String { self.display.clone() }
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let mut next = self.clone();
+        next.condition = Some(match next.condition { Some(old) => crate::ConditionExpr::And(Box::new(old), Box::new(condition)), None => condition });
+        Some(StaticAbility::new(next))
+    }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        let effect = ReplacementEffect::with_matcher(source, controller,
+            crate::events::tokens::matchers::WouldCreateTokensUnderControlMatcher::new(self.controller.clone())
+                .with_token_filter(self.token_filter.clone()).with_condition(self.condition.clone()),
+            ReplacementAction::TokenCreationTemplates { templates: self.templates.clone(), mode: self.mode, choose_one: self.choose_one, choice_parent: None });
+        Some(if self.optional { effect.optional() } else { effect })
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RedirectMatchingDamage {
+    pub spec: ironsmith_core::StaticDamageRedirectionSpec,
+    pub condition: Option<crate::ConditionExpr>,
+}
+impl StaticAbilityKind for RedirectMatchingDamage {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::RedirectMatchingDamage }
+    fn display(&self) -> String { self.spec.display.clone() }
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let mut next = self.clone();
+        next.condition = Some(match next.condition.take() {
+            Some(old) => crate::ConditionExpr::And(Box::new(old), Box::new(condition)),
+            None => condition,
+        });
+        Some(StaticAbility::new(next))
+    }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        let mut condition = self.condition.clone();
+        if self.spec.source_must_be_untapped {
+            condition = Some(match condition {
+                Some(old) => crate::ConditionExpr::And(Box::new(old), Box::new(crate::ConditionExpr::SourceIsUntapped)),
+                None => crate::ConditionExpr::SourceIsUntapped,
+            });
+        }
+        let target = match self.spec.destination {
+            ironsmith_core::StaticDamageRedirectDestination::Source => RedirectTarget::ToObject(source),
+            ironsmith_core::StaticDamageRedirectDestination::AttachedPermanent => RedirectTarget::ToAttachedPermanent(source),
+            ironsmith_core::StaticDamageRedirectDestination::DamagedPermanentController => RedirectTarget::ToRecipientController,
+        };
+        Some(ReplacementEffect::with_matcher(source, controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.spec.source_filter.clone(),
+                target_player_filter: self.spec.target_player_filter.clone(),
+                target_object_filter: self.spec.target_object_filter.clone(),
+                condition, combat_only: self.spec.combat_only, noncombat_only: false,
+                amount_less_than: None, maximum_damage: None,
+            },
+            ReplacementAction::Redirect { target, which: RedirectWhich::First },
+        ))
+    }
+}
+
+/// Typed mana-production rewriting. Live static occurrence discovery owns the
+/// supplying host's zones, controller and phase-out; this matcher owns the
+/// distinct production source/controller and its recorded provenance.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaProductionRewrite {
+    pub rule: ironsmith_core::ManaOutputRewrite,
+    pub display: String,
+}
+impl StaticAbilityKind for ManaProductionRewrite {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::ManaProductionRewrite }
+    fn display(&self) -> String { self.display.clone() }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(source, controller,
+            crate::events::mana::matchers::ManaRewriteMatcher {rule: self.rule.clone()},
+            ReplacementAction::RewriteMana {input: self.rule.input, output: self.rule.output,
+                quantity: self.rule.quantity}))
+    }
+}
+
+/// CR 106.4 / 106.6: conversion changes the existing mana's type. It does not produce
+/// new mana and does not discard source restrictions or producer snapshots.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConvertUnspentMana { pub player: crate::target::PlayerFilter, pub symbol: crate::mana::ManaSymbol }
+impl StaticAbilityKind for ConvertUnspentMana {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::ConvertUnspentMana }
+    fn display(&self) -> String { format!("If {} would lose unspent mana, that mana becomes {} instead", self.player.description(), format!("{:?}", self.symbol).to_ascii_lowercase()) }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(source, controller,
+            crate::events::mana::matchers::ManaLossMatcher { player: self.player.clone() },
+            ReplacementAction::ConvertUnspentMana(self.symbol)))
     }
 }

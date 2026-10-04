@@ -60,6 +60,7 @@ enum SimpleObjectFilterAtom {
     Transformed,
     Stickered,
     Goaded,
+    RingBearer,
     Tapped,
     Untapped,
     Colorless,
@@ -420,6 +421,12 @@ fn parse_simple_object_filter_words_with_list_marker(
     other: bool,
     saw_type_list_separator: bool,
 ) -> Option<ObjectFilter> {
+    if input_words.first() == Some(&"your") && matches!(&input_words[1..], ["ring", "bearer" | "bearers"] | ["ring-bearer" | "ring-bearers"]) {
+        let mut filter = ObjectFilter::default().ring_bearer().you_control();
+        filter.zone = Some(Zone::Battlefield);
+        filter.other = other;
+        return Some(filter);
+    }
     if input_words.starts_with(&["one", "or", "more"]) {
         let mut filter = parse_simple_object_filter_words_with_list_marker(
             &input_words[3..],
@@ -514,6 +521,10 @@ fn parse_simple_filter_body(
                 filter.sticker = Some(crate::events::KeywordActionKind::Sticker);
             }
             SimpleObjectFilterAtom::Goaded => filter.goaded = true,
+            SimpleObjectFilterAtom::RingBearer => {
+                filter.ring_bearer = true;
+                filter.zone.get_or_insert(Zone::Battlefield);
+            }
             SimpleObjectFilterAtom::Tapped => filter.tapped = true,
             SimpleObjectFilterAtom::Untapped => filter.untapped = true,
             SimpleObjectFilterAtom::Colorless => filter.colorless = true,
@@ -647,10 +658,10 @@ fn parse_simple_filter_body(
 
 fn parse_simple_object_filter_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
     alt((
-        parse_type_list_separator,
-        parse_of_named_atom,
+        alt((parse_type_list_separator, parse_of_named_atom)),
         parse_alternative_cast_atom,
         parse_filter_face_state.map(SimpleObjectFilterAtom::FaceState),
+        parse_ring_bearer_atom,
         parse_simple_flag_atom,
         parse_named_object_filter_atom.map(SimpleObjectFilterAtom::Named),
         parse_split_non_atom,
@@ -796,6 +807,16 @@ fn parse_alternative_cast_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjec
     }
     *input = &input[consumed..];
     Ok(SimpleObjectFilterAtom::AlternativeCast(kind))
+}
+
+fn parse_ring_bearer_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
+    let consumed = match *input {
+        ["ring", "bearer" | "bearers", ..] => 2,
+        ["ring-bearer" | "ring-bearers", ..] => 1,
+        _ => return Err(primitives::backtrack_err("Ring-bearer noun", "Ring-bearer")),
+    };
+    *input = &input[consumed..];
+    Ok(SimpleObjectFilterAtom::RingBearer)
 }
 
 fn parse_simple_flag_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {

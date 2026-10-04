@@ -1,0 +1,74 @@
+[
+  {
+    "name": "Ambitious Augmenter",
+    "text": "Mana cost: {G}\nType: Creature \u2014 Turtle Wizard\nPower/Toughness: 1/1\nIncrement (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)\nWhen this creature dies, if it had one or more counters on it, create a 0/0 green and blue Fractal creature token, then put this creature's counters on that token.",
+    "oracle_id": "d87f0e52-486e-49b4-9cf1-12e238857340",
+    "source": "https://scryfall.com/card/sos/337/ambitious-augmenter?utm_source=api",
+    "baseline_content_hash": "dc05d9072382438ae2da44a6605ad2b8aff7c687451388139e814353816ae1cd",
+    "baseline_diagnostic": "parser does not yet support line family: 'Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Increment' [rule-path=unsupported-line-family]"
+  },
+  {
+    "name": "Berta, Wise Extrapolator",
+    "text": "Mana cost: {2}{G}{U}\nType: Legendary Creature \u2014 Frog Druid\nPower/Toughness: 1/4\nIncrement (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)\nWhenever one or more +1/+1 counters are put on Berta, add one mana of any color.\n{X}, {T}: Create a 0/0 green and blue Fractal creature token and put X +1/+1 counters on it.",
+    "oracle_id": "715f0832-696c-4111-b418-d9b6da403159",
+    "source": "https://scryfall.com/card/sos/346/berta-wise-extrapolator?utm_source=api",
+    "baseline_content_hash": "47b62b215b417c155351d1012d372ad5f4a4ba2aaa56d703a0f08ea9aec412f9",
+    "baseline_diagnostic": "parser does not yet support line family: 'Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Increment' [rule-path=unsupported-line-family]"
+  },
+  {
+    "name": "Cuboid Colony",
+    "text": "Mana cost: {G}{U}\nType: Creature \u2014 Insect\nPower/Toughness: 1/1\nFlash\nFlying, trample\nIncrement (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)",
+    "oracle_id": "20f3388f-0931-4a09-bcda-96deb01e1787",
+    "source": "https://scryfall.com/card/sos/183/cuboid-colony?utm_source=api",
+    "baseline_content_hash": "3202bd4de3be0e254fd86a1402b738a06b0ff47655dda1cb9095d7e1dcaf02db",
+    "baseline_diagnostic": "parser does not yet support line family: 'Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Increment' [rule-path=unsupported-line-family]"
+  },
+  {
+    "name": "Fractal Tender",
+    "text": "Mana cost: {3}{G}{U}\nType: Creature \u2014 Elf Wizard\nPower/Toughness: 3/3\nWard {2}\nIncrement (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)\nAt the beginning of each end step, if you put a counter on this creature this turn, create a 0/0 green and blue Fractal creature token and put three +1/+1 counters on it.",
+    "oracle_id": "cb45860a-1937-4803-b6d8-331a35be39fd",
+    "source": "https://scryfall.com/card/sos/190/fractal-tender?utm_source=api",
+    "baseline_content_hash": "d52f7a5456ec0a2b3c80f69804504253d0f17f3491ab24b1e52747f41c590846",
+    "baseline_diagnostic": "parser does not yet support line family: 'Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Increment' [rule-path=unsupported-line-family]"
+  },
+  {
+    "name": "Hungry Graffalon",
+    "text": "Mana cost: {3}{G}\nType: Creature \u2014 Giraffe\nPower/Toughness: 3/4\nReach\nIncrement (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)",
+    "oracle_id": "9494c499-6ead-491f-aeb0-6dbfac4d960c",
+    "source": "https://scryfall.com/card/sos/151/hungry-graffalon?utm_source=api",
+    "baseline_content_hash": "94ca1630cb729e74e69ee083ac836ce4bf01d152effd3394d3184b5e825f74d0",
+    "baseline_diagnostic": "parser does not yet support line family: 'Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Increment' [rule-path=unsupported-line-family]"
+  },
+  {
+    "name": "Pensive Professor",
+    "text": "Mana cost: {1}{U}{U}\nType: Creature \u2014 Human Wizard\nPower/Toughness: 0/2\nIncrement (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)\nWhenever one or more +1/+1 counters are put on this creature, draw a card.",
+    "oracle_id": "4b8736e2-fc41-4a25-bb6c-7351afc40981",
+    "source": "https://scryfall.com/card/sos/63/pensive-professor?utm_source=api",
+    "baseline_content_hash": "776ccef305d873dfb3571a3592ed0b92aaccecb832ebe79b423e72de8d6ccf6d",
+    "baseline_diagnostic": "parser does not yet support line family: 'Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Increment' [rule-path=unsupported-line-family]"
+  },
+  {
+    "name": "Tester of the Tangential",
+    "text": "Mana cost: {1}{U}\nType: Creature \u2014 Djinn Wizard\nPower/Toughness: 1/1\nIncrement (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)\nAt the beginning of combat on your turn, you may pay {X}. When you do, move X +1/+1 counters from this creature onto another target creature.",
+    "oracle_id": "a30a2b96-4a8c-4d18-b276-5005b8aff7ed",
+    "source": "https://scryfall.com/card/sos/69/tester-of-the-tangential?utm_source=api",
+    "baseline_content_hash": "d65140cdd14653b333b8616ff35ee3baa510a43d9ef9fde92b09135f833885ea",
+    "baseline_diagnostic": "parser does not yet support line family: 'Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Increment' [rule-path=unsupported-line-family]"
+  },
+  {
+    "name": "Textbook Tabulator",
+    "text": "Mana cost: {2}{U}\nType: Creature \u2014 Frog Wizard\nPower/Toughness: 0/3\nIncrement (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)\nWhen this creature enters, surveil 2. (Look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)",
+    "oracle_id": "ebb40a50-cfbc-4ec1-9c54-26a1bc2e7a6e",
+    "source": "https://scryfall.com/card/sos/70/textbook-tabulator?utm_source=api",
+    "baseline_content_hash": "75fe27c890bc620d9beeacd567f0cd0946da96bbb2aa33d953a2915b25fa3d33",
+    "baseline_diagnostic": "parser does not yet support line family: 'Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Increment' [rule-path=unsupported-line-family]"
+  },
+  {
+    "name": "Topiary Lecturer",
+    "text": "Mana cost: {2}{G}\nType: Creature \u2014 Elf Druid\nPower/Toughness: 1/2\nIncrement (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)\n{T}: Add an amount of {G} equal to this creature's power.",
+    "oracle_id": "5f5fe039-4be4-42ae-9fa4-4392328aa665",
+    "source": "https://scryfall.com/card/sos/165/topiary-lecturer?utm_source=api",
+    "baseline_content_hash": "8fc990c8ffdfe1847d444c408d8caf9a2fc14527f02f9e77391b7db21af66ad5",
+    "baseline_diagnostic": "parser does not yet support line family: 'Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Increment' [rule-path=unsupported-line-family]"
+  }
+]

@@ -19,6 +19,7 @@ use crate::util::parse_value;
 
 const SIMPLE_HEAD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
     ("evolve", KeywordAction::Evolve),
+    ("increment", KeywordAction::Increment),
     ("mentor", KeywordAction::Mentor),
     ("training", KeywordAction::Training),
     ("soulbond", KeywordAction::Soulbond),
@@ -35,6 +36,7 @@ enum KeywordAmountKind {
     Firebending,
     Fading,
     Graft,
+    Ripple,
     Modular,
     Renown,
     Soulshift,
@@ -49,6 +51,7 @@ const NUMERIC_KEYWORD_ACTIONS: &[(&str, KeywordAmountKind)] = &[
     ("firebending", KeywordAmountKind::Firebending),
     ("fading", KeywordAmountKind::Fading),
     ("graft", KeywordAmountKind::Graft),
+    ("ripple", KeywordAmountKind::Ripple),
     ("modular", KeywordAmountKind::Modular),
     ("renown", KeywordAmountKind::Renown),
     ("soulshift", KeywordAmountKind::Soulshift),
@@ -191,6 +194,7 @@ const SINGLE_WORD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
     ("dethrone", KeywordAction::Dethrone),
     ("enlist", KeywordAction::Enlist),
     ("evolve", KeywordAction::Evolve),
+    ("increment", KeywordAction::Increment),
     ("extort", KeywordAction::Extort),
     ("haunt", KeywordAction::Haunt),
     ("ingest", KeywordAction::Ingest),
@@ -288,6 +292,7 @@ fn numeric_keyword_action(head: &str, amount: &str) -> Option<KeywordAction> {
             KeywordAmountKind::Firebending => KeywordAction::Firebending(value),
             KeywordAmountKind::Fading => KeywordAction::Fading(value),
             KeywordAmountKind::Graft => KeywordAction::Graft(value),
+            KeywordAmountKind::Ripple => KeywordAction::Ripple(value),
             KeywordAmountKind::Modular => KeywordAction::Modular(value),
             KeywordAmountKind::Renown => KeywordAction::Renown(value),
             KeywordAmountKind::Soulshift => KeywordAction::Soulshift(value),
@@ -592,6 +597,9 @@ pub fn parse_payment_clause_as_total_cost(
             return parse_conjoined_payment_clause_as_total_cost(&trimmed);
         }
         DynamicPaymentParse::NotRecognized => {}
+    }
+    if let Some(cost) = parse_conjoined_payment_clause_as_total_cost(&trimmed)? {
+        return Ok(Some(cost));
     }
     let input = payment_cost_readings::PaymentClause { tokens: &trimmed };
     match payment_cost_readings::read(&input) {
@@ -1010,6 +1018,7 @@ enum ExactAbilityPhrase {
     ProtectionFromColorless,
     ProtectionFromEverything,
     ProtectionFromColoredSpells,
+    JobSelect,
 }
 
 const EXACT_ABILITY_PHRASES: &[(&[&str], ExactAbilityPhrase)] = &[
@@ -1025,6 +1034,7 @@ const EXACT_ABILITY_PHRASES: &[(&[&str], ExactAbilityPhrase)] = &[
     ),
     (&["for", "mirrodin"], ExactAbilityPhrase::ForMirrodin),
     (&["living", "weapon"], ExactAbilityPhrase::LivingWeapon),
+    (&["job", "select"], ExactAbilityPhrase::JobSelect),
     (
         &["modular", "sunburst"],
         ExactAbilityPhrase::ModularSunburst,
@@ -1069,6 +1079,7 @@ fn exact_ability_phrase_action(kind: ExactAbilityPhrase) -> KeywordAction {
         ExactAbilityPhrase::TrampleOverPlaneswalkers => KeywordAction::TrampleOverPlaneswalkers,
         ExactAbilityPhrase::ForMirrodin => KeywordAction::ForMirrodin,
         ExactAbilityPhrase::LivingWeapon => KeywordAction::LivingWeapon,
+        ExactAbilityPhrase::JobSelect => KeywordAction::JobSelect,
         ExactAbilityPhrase::ModularSunburst => KeywordAction::ModularSunburst,
         ExactAbilityPhrase::ProtectionFromAllColors => KeywordAction::ProtectionFromAllColors,
         ExactAbilityPhrase::ProtectionFromColorless => KeywordAction::ProtectionFromColorless,
@@ -1440,9 +1451,6 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     if matches!(&surface.head, KeywordAbilityHead::EmergeFrom) {
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
-    if matches!(&surface.head, KeywordAbilityHead::JobSelect) {
-        return Some(KeywordAction::MarkerText("Job select".to_string()));
-    }
     if matches!(&surface.head, KeywordAbilityHead::UmbraArmor) {
         return Some(KeywordAction::UmbraArmor);
     }
@@ -1540,6 +1548,7 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     if let Some(action) = match &surface.head {
         KeywordAbilityHead::ForMirrodin => Some(KeywordAction::ForMirrodin),
         KeywordAbilityHead::LivingWeapon => Some(KeywordAction::LivingWeapon),
+        KeywordAbilityHead::JobSelect => Some(KeywordAction::JobSelect),
         KeywordAbilityHead::BattleCry => Some(KeywordAction::BattleCry),
         KeywordAbilityHead::SplitSecond => Some(KeywordAction::SplitSecond),
         KeywordAbilityHead::ReadAhead => Some(KeywordAction::ReadAhead),
@@ -1701,6 +1710,37 @@ mod tests {
     }
 
     #[test]
+    fn job_select_is_a_typed_keyword_with_or_without_reminder_text() {
+        for text in [
+            "Job select",
+            "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)",
+        ] {
+            let tokens = lex(text);
+            assert_eq!(
+                parse_ability_phrase(&tokens),
+                Some(KeywordAction::JobSelect)
+            );
+            // The document pipeline removes reminder text before the
+            // keyword-line reader. Exercise that actual contract here;
+            // parse_ability_phrase above independently accepts raw reminders.
+            let document = crate::preprocess::preprocess_document(
+                ironsmith_core::card::CardBuilder::new(crate::ids::CardId::new(), "Job fixture"),
+                text,
+            )
+            .unwrap();
+            let crate::preprocess::PreprocessedItem::Line(line) = &document.items[0] else {
+                panic!("expected a rules line");
+            };
+            assert_eq!(
+                crate::clause_support::parse_ability_line_lexed(&line.info.source_tokens),
+                Some(vec![KeywordAction::JobSelect]),
+                "{text}"
+            );
+        }
+        assert_eq!(KeywordAction::JobSelect.display_text(), "Job select");
+    }
+
+    #[test]
     fn cumulative_upkeep_accepts_single_graveyard_bottom_library_payment() {
         let tokens = crate::lexer::lex_line(
             "Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
@@ -1792,5 +1832,30 @@ mod tests {
                 .expect("coordinated discard objects should inherit the verb");
         assert_eq!(total.costs().len(), 2, "{total:#?}");
         assert!(format!("{total:#?}").contains("Island"));
+    }
+}
+
+#[cfg(test)]
+mod increment_tests {
+    use super::*;
+    #[test]
+    fn increment_registers_as_a_real_typed_keyword_action() {
+        assert_eq!(parse_single_word_keyword_action("increment"), Some(KeywordAction::Increment));
+        assert_eq!(simple_keyword_action_for_head("increment"), Some(KeywordAction::Increment));
+        assert!(is_known_keyword_action_head("increment"));
+        assert_eq!(parse_single_word_keyword_action("incremental"), None);
+    }
+}
+
+#[cfg(test)]
+mod ripple_numeric_keyword_tests {
+    use super::*;
+    #[test]
+    fn ripple_is_a_typed_exact_numeric_keyword_and_not_an_unsupported_marker() {
+        assert_eq!(numeric_keyword_action("ripple","4"),Some(KeywordAction::Ripple(4)));
+        assert_eq!(numeric_keyword_action("ripple","0"),Some(KeywordAction::Ripple(0)));
+        assert!(numeric_keyword_action("ripple","x").is_none());
+        assert!(numeric_keyword_action("ripple","4 extra").is_none());
+        assert!(is_known_keyword_action_head("ripple"));
     }
 }

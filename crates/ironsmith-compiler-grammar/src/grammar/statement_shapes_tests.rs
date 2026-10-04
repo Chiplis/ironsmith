@@ -56,3 +56,17 @@ fn recognizes_statement_surfaces() {
         })
     );
 }
+
+#[test]
+fn extra_die_replacement_owns_the_complete_lowest_ignore_instruction() {
+    let text = "If you would roll one or more dice, instead roll that many dice plus one and ignore the lowest roll.";
+    assert!(is_extra_die_ignore_lowest(&lex_line(text, 0).unwrap()));
+    for text in [
+        "If you would roll one or more dice, instead roll that many dice plus one.",
+        "If you would roll one or more dice, instead roll that many dice plus one and ignore the highest roll.",
+        "If you would roll one or more dice, instead roll that many dice plus one and ignore the lowest roll and draw a card.",
+        "If an opponent would roll one or more dice, instead roll that many dice plus one and ignore the lowest roll.",
+    ] {
+        assert!(!is_extra_die_ignore_lowest(&lex_line(text, 0).unwrap()));
+    }
+}

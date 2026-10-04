@@ -98,6 +98,13 @@ pub fn parse_put_counter_segment_tokens(
 pub fn parse_remove_counter_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    parse_remove_counter_segment_tokens_with_source(tokens, &|_| false)
+}
+
+pub fn parse_remove_counter_segment_tokens_with_source(
+    tokens: &[OwnedLexToken],
+    is_contextual_source: &impl Fn(&[&str]) -> bool,
+) -> Result<ActivationCostSegmentCst, CardTextError> {
     let clause = primitives::parse_all(
         tokens,
         parse_remove_counter_clause_lexed,
@@ -122,7 +129,15 @@ pub fn parse_remove_counter_segment_tokens(
     } else {
         (false, target)
     };
-    let filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)?;
+    // Resolve the complete source operand before sending it to the ordinary
+    // object-filter parser. A card's short source name is an identity, not an
+    // unknown subtype or an invitation to choose another permanent.
+    let source_target = !target_among && (
+        primitives::parse_all(target, parse_remove_counter_source_lexed, "remove-counter-source").is_ok()
+            || is_contextual_source(&crate::lexer::parser_token_word_refs(filter_tokens))
+    );
+    let filter = if source_target { crate::target::ObjectFilter::source() }
+        else { filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)? };
     let (count, display_x, dynamic, remove_all) = match parsed.quantity {
         RemovalQuantity::Fixed(count) => (count, false, false, false),
         RemovalQuantity::DynamicX => (0, true, true, false),
@@ -131,12 +146,6 @@ pub fn parse_remove_counter_segment_tokens(
         RemovalQuantity::OneOrMore => (1, false, true, false),
     };
 
-    let source_target = primitives::parse_all(
-        target,
-        parse_remove_counter_source_lexed,
-        "remove-counter-source",
-    )
-    .is_ok();
     if dynamic {
         return if !target_among && source_target && count == 0 {
             Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
@@ -441,5 +450,58 @@ mod tests {
                     ]
                 && filter.controller == Some(crate::target::PlayerFilter::You)
         ));
+    }
+}
+
+#[cfg(test)]
+mod contextual_removal_source_tests {
+    use super::*;
+    #[test]
+    fn complete_contextual_counter_sources_use_existing_source_cost_payloads() {
+        let source = |words: &[&str]| words == ["crest", "keeper"];
+        for (text, dynamic) in [
+            ("Remove a +1/+1 counter from Crest Keeper", false),
+            ("Remove X +1/+1 counters from Crest Keeper", true),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let parsed = parse_remove_counter_segment_tokens_with_source(&tokens, &source).unwrap();
+            if dynamic {
+                assert!(matches!(
+                    parsed,
+                    ActivationCostSegmentCst::RemoveCountersDynamic {
+                        counter_type: Some(CounterType::PlusOnePlusOne),
+                        display_x: true,
+                        remove_all: false
+                    }
+                ));
+            } else {
+                assert_eq!(
+                    parsed,
+                    ActivationCostSegmentCst::RemoveCounters {
+                        counter_type: CounterType::PlusOnePlusOne,
+                        count: 1
+                    }
+                );
+            }
+        }
+        let source_tokens =
+            crate::lexer::lex_line("Remove a +1/+1 counter from this creature", 0).unwrap();
+        assert_eq!(
+            parse_remove_counter_segment_tokens(&source_tokens).unwrap(),
+            parse_remove_counter_segment_tokens_with_source(&source_tokens, &source).unwrap()
+        );
+        let unrelated =
+            crate::lexer::lex_line("Remove a +1/+1 counter from a creature you control", 0)
+                .unwrap();
+        assert!(matches!(
+            parse_remove_counter_segment_tokens_with_source(&unrelated, &source).unwrap(),
+            ActivationCostSegmentCst::RemoveCountersAmong {
+                single_object: true,
+                ..
+            }
+        ));
+        let tail =
+            crate::lexer::lex_line("Remove a +1/+1 counter from Crest Keeper banana", 0).unwrap();
+        assert!(parse_remove_counter_segment_tokens_with_source(&tail, &source).is_err());
     }
 }

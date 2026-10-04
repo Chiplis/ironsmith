@@ -251,6 +251,18 @@ fn parse_direct_simple_effect_ability(
 pub fn parse_activated_line_with_raw(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
+    if let Some(split) = activated_line_grammar::parse_activated_line_split_tokens(tokens) {
+        let (body, rules) = crate::consumer_mana::split_x_spending_sentences(split.after_colon);
+        if !rules.is_empty() {
+            let colon = tokens.len() - split.after_colon.len();
+            let mut rewritten = tokens[..colon].to_vec(); rewritten.extend(body);
+            let Some(mut parsed) = parse_activated_line_with_raw(&rewritten)? else { return Ok(None); };
+            if let crate::model::CompilerAbilityKindCore::Activated(ability) = parsed.kind_mut() {
+                ability.mana_cost = crate::consumer_mana::constrain_activation_cost(ability.mana_cost.clone(), &rules);
+            }
+            return Ok(Some(parsed));
+        }
+    }
     if let Some(parsed) = parse_direct_simple_effect_ability(tokens)? {
         return Ok(Some(parsed));
     }
@@ -970,45 +982,6 @@ pub fn parse_activation_cost(
 pub fn parse_compiler_activation_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<ironsmith_core::TotalCost<crate::model::CompilerCost>, CardTextError> {
-    if let Some(index) = tokens.iter().position(|token| token.is_word("collect")) {
-        let words = crate::lexer::parser_token_word_refs(&tokens[index..]);
-        if let ["collect", "evidence", amount] = words.as_slice() {
-            let minimum = if *amount == "x" {
-                Value::X
-            } else {
-                Value::Fixed(crate::util::parse_number_word_u32(amount).ok_or_else(|| {
-                    CardTextError::ParseError("collect evidence requires a number or X".into())
-                })? as i32)
-            };
-            let mut filter = ObjectFilter::default()
-                .in_zone(Zone::Graveyard)
-                .owned_by(PlayerFilter::You);
-            filter.other = true;
-            filter.target_set_aggregate_constraint = Some(Box::new(
-                ironsmith_core::ChoiceAggregateConstraint::total_mana_value_at_least(minimum),
-            ));
-            let prefix_end = if index > 0 && tokens[index - 1].is_comma() {
-                index - 1
-            } else {
-                index
-            };
-            let mut costs = if prefix_end == 0 {
-                Vec::new()
-            } else {
-                parse_compiler_activation_cost(&tokens[..prefix_end])?
-                    .costs()
-                    .to_vec()
-            };
-            costs.push(crate::model::CompilerCost::ExileChosen {
-                count: ChoiceCount::any_number(),
-                filter,
-                top_only: false,
-                turn_face_up: false,
-                binding: None,
-            });
-            return Ok(ironsmith_core::TotalCost::from_costs(costs));
-        }
-    }
     if let Some(cost) =
         super::keyword_action_costs::parse_single_graveyard_bottom_library_compiler_payment(tokens)
     {
@@ -1167,9 +1140,13 @@ pub fn parse_enters_tapped_line(
     }
 }
 
+#[path = "activated_line_core/typed_cost_modifiers.rs"]
+mod typed_cost_modifiers;
+
 pub fn parse_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some(ability) = typed_cost_modifiers::parse(tokens)? { return Ok(Some(ability)); }
     let this_ability = matches!(
         activated_line_grammar::parse_cost_reduction_line_head_tokens(tokens),
         Some(CostReductionLineHead::ThisAbility { .. })
@@ -1179,14 +1156,7 @@ pub fn parse_cost_reduction_line(
     // ability printed with it, not to every activated ability of the source.
     // Lowering binds the ability index of the preceding activated ability.
     Ok(parsed.map(|ability| {
-        let unconditional = matches!(
-            &ability.payload,
-            ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction {
-                condition: None,
-                ..
-            }
-        );
-        if this_ability && unconditional {
+        if this_ability {
             ability.with_activated_ability_cost_condition(
                 crate::static_abilities::ActivatedAbilityCostCondition::ThisAbility {
                     ability_index: None,

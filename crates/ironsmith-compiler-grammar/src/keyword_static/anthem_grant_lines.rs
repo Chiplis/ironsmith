@@ -402,7 +402,7 @@ pub fn parse_landwalk_as_though_block_override_line(
     let Some(parsed) = parse_landwalk_block_override_clause(tokens) else {
         return Ok(None);
     };
-    if !is_landwalk_ability_word(parsed.ability_word) {
+    if !parsed.all_landwalk && !is_landwalk_ability_word(parsed.ability_word) {
         return Ok(None);
     }
 
@@ -410,9 +410,35 @@ pub fn parse_landwalk_as_though_block_override_line(
         return Ok(None);
     };
 
-    let removed = StaticAbility::keyword_marker(parsed.ability_word);
+    let landwalk = if parsed.all_landwalk {
+        None
+    } else if let Some(KeywordAction::Landwalk(kind)) =
+        parse_single_word_keyword_action(parsed.ability_word)
+    {
+        Some(kind)
+    } else {
+        return Ok(None);
+    };
+    let display = if parsed.all_landwalk {
+        format!(
+            "{} with landwalk abilities can be blocked as though they didn't have those abilities",
+            render_token_slice(parsed.subject_tokens)
+        )
+    } else {
+        format!(
+            "{} can be blocked as though they didn't have {}",
+            render_token_slice(parsed.subject_tokens),
+            parsed.ability_word
+        )
+    };
     Ok(Some(StaticAbilityAst::Static(
-        StaticAbility::remove_ability(filter, removed),
+        StaticAbility::blocking_as_though_no_landwalk(
+            ironsmith_core::static_ability_model::BlockingAsThoughNoLandwalkSpec {
+                objects: filter,
+                landwalk,
+                display,
+            },
+        ),
     )))
 }
 
@@ -1055,6 +1081,20 @@ fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<Object
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // A complete attack-permission effect owns its hypothetical `have`.
+    // In particular, `this turn` belongs to the duration, not to a subject
+    // that may be recovered as the suffix `it didn't`. Do not let either
+    // broad grant reader reinterpret that comparison as granting defender.
+    if crate::grammar::effects::clause_pattern_shapes::parse_can_attack_no_defender_subject_tokens(tokens)
+        .is_some_and(|subject| {
+            // A preceding real grant still owns a compound tail, e.g.
+            // `it has trample and can attack as though ...`. Only a
+            // hypothetical `have` without such a grant is inapplicable.
+            !subject.iter().any(|token| token.is_any_word(&["has", "have"]))
+        })
+    {
+        return Ok(None);
+    }
     // A "where X is ..." inside a quoted granted ability belongs to that
     // ability (Archery Training), not to this grant's own X threshold.
     let mut inside_quotes = false;
@@ -2995,7 +3035,19 @@ pub fn parse_static_condition_clause(
             "missing condition clause after 'as long as'".to_string(),
         ));
     }
+    if let Some(minimum) = crate::grammar::effects::parse_unspent_mana_threshold(&tokens) {
+        let minimum = i32::try_from(minimum).map_err(|_| CardTextError::ParseError("unspent-mana threshold exceeds the value domain".into()))?;
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::UnspentMana(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(minimum),
+        });
+    }
     let display = clause_words.join(" ");
+    if let Some(condition) = toughness_assignment::attached_axis_condition(&tokens) {
+        return Ok(condition);
+    }
+
 
     // "you control a Human creature and a non-Human creature" (Of One Mind):
     // two separate control requirements, not one object matching both.
@@ -3870,6 +3922,15 @@ pub fn parse_anthem_clause(
     }
     if explicit_values.is_none() && !anthem_tail_tokens.is_empty() {
         match anthem_grant_grammar::parse_tail_shape(anthem_tail_tokens) {
+            Some(anthem_grant_grammar::AnthemTailShape::ForEvery { divisor, filter_tokens }) => {
+                let filter = parse_object_filter_lexed(filter_tokens, false)?;
+                let divisor = i32::try_from(divisor).map_err(|_| CardTextError::ParseError("anthem grouping exceeds numeric representation".into()))?;
+                let value = Value::DividedRoundedDown(Box::new(Value::Count(filter)), divisor);
+                if !dynamic_anthem_values::supports_game_state_binding(&value) {
+                    return Err(CardTextError::ParseError("unsupported grouped static count".into()));
+                }
+                value_scale = Some(value);
+            }
             Some(anthem_grant_grammar::AnthemTailShape::ForEach(tail)) => {
                 if anthem_for_each_prefers_specialized_parser(tail) {
                     scale = Some(parse_anthem_for_each_expression(tail)?);
@@ -3888,6 +3949,7 @@ pub fn parse_anthem_clause(
                                     | Value::DistinctNames(_)
                                     | Value::DistinctManaValues(_)
                                     | Value::DistinctPowers(_)
+                                    | Value::CountPlayersBelowHalfStartingLifeTotal(_)
                             )
                         {
                             value_scale = Some(
@@ -3913,32 +3975,30 @@ pub fn parse_anthem_clause(
                         crate::lexer::token_word_refs(tokens).join(" ")
                     ))
                 })?;
-                if matches!(x_value.unhinted(), Value::PartySize(_)) {
+                let x_value = dynamic_anthem_values::bind_affected_mana_value(x_value, &subject_tokens);
+                let count = match &x_value {
+                    Value::GreatestManaValue(filter) => Some(AnthemCountExpression::GreatestManaValueAmong(filter.clone())),
+                    Value::BasicLandTypesAmong(filter) => Some(AnthemCountExpression::BasicLandTypesAmong(filter.clone())),
+                    Value::CreatureTypesAmong(filter) => Some(AnthemCountExpression::CreatureTypesAmong(filter.clone())),
+                    Value::Speed(player) => Some(AnthemCountExpression::PlayerSpeed(player.clone())),
+                    _ => anthem_count_expression_from_value(x_value.clone()),
+                };
+                if let Some(count) = count {
+                    // Keep established count-specific execution and rendering.
+                    scale = Some(count);
+                } else if matches!(x_value.unhinted(), Value::PartySize(_))
+                    || dynamic_anthem_values::supports_game_state_binding(&x_value)
+                {
+                    // The shared binding is already typed. Retain its complete
+                    // expression rather than forcing it into the narrower
+                    // count enum; component signs are applied exactly once by
+                    // resolve_anthem_value below.
                     value_scale = Some(x_value);
                 } else {
-                    scale = Some(match x_value {
-                        Value::Count(filter) => AnthemCountExpression::MatchingFilter(filter),
-                        Value::GreatestManaValue(filter) => {
-                            AnthemCountExpression::GreatestManaValueAmong(filter)
-                        }
-                        value if anthem_count_expression_from_value(value.clone()).is_some() => {
-                            anthem_count_expression_from_value(value)
-                                .expect("checked anthem count expression")
-                        }
-                        Value::BasicLandTypesAmong(filter) => {
-                            AnthemCountExpression::BasicLandTypesAmong(filter)
-                        }
-                        Value::CreatureTypesAmong(filter) => {
-                            AnthemCountExpression::CreatureTypesAmong(filter)
-                        }
-                        Value::Speed(player) => AnthemCountExpression::PlayerSpeed(player),
-                        _ => {
-                            return Err(CardTextError::ParseError(format!(
-                                "unsupported where-x anthem value (clause: '{}')",
-                                crate::lexer::token_word_refs(tokens).join(" ")
-                            )));
-                        }
-                    });
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported where-x anthem value (clause: '{}')",
+                        crate::lexer::token_word_refs(tokens).join(" ")
+                    )));
                 }
             }
             Some(anthem_grant_grammar::AnthemTailShape::AsLongAs { condition_tokens }) => {

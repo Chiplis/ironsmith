@@ -52,3 +52,13 @@ test("changing a repeatable row replaces only its exact activation", () => {
   assert.deepEqual(draft.required_activations.map(value => value.color_restriction).sort(), [["blue"], ["red"]]);
   assert.equal(selectPaymentSource(draft, blue).required_activations.length, 3);
 });
+
+test("actual X allocation survives unrelated edits and reset removes only the choice", () => {
+  const allocation = [0, 0, 2, 1, 0];
+  const draft = paymentPreferences({ x_allocation: allocation });
+  assert.deepEqual(draft.x_allocation, allocation);
+  assert.notEqual(draft.x_allocation, allocation);
+  assert.deepEqual(selectPaymentSource(draft, source).x_allocation, allocation);
+  assert.equal(Object.hasOwn(paymentPreferences(), "x_allocation"), false);
+  assert.equal(Object.hasOwn(paymentPreferences({ x_allocation: null }), "x_allocation"), false);
+});

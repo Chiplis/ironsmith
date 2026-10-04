@@ -117,7 +117,7 @@ fn snow_cast_entry_requires_matching_snow_mana_and_survives_source_removal() {
                 &cost,
                 0,
                 crate::costs::PaymentReason::CastSpell
-            ));
+            ).expect("checked fixture mana payment"));
             game.object_mut(spell).unwrap().mana_spent_to_cast = spent;
             let event = crate::triggers::TriggerEvent::new_with_provenance(
                 crate::events::SpellCastEvent::new_with_snapshot(

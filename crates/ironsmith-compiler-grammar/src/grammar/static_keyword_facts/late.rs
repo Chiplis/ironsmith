@@ -565,6 +565,33 @@ fn parse_draw_replacement_exile_top_and_play_lexed(input: &mut LexStream<'_>) ->
     Ok(count)
 }
 
+/// An explicitly prefixed replacement instruction for an empty-library draw.
+/// The existing tail-"instead" win/skip forms retain their original readers.
+pub fn parse_empty_library_draw_effect_replacement_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    let (_, rest) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&[
+            "if", "you", "would", "draw", "a", "card", "while", "your", "library", "has", "no",
+            "cards", "in", "it",
+        ])
+        .void(),
+    )?;
+    let rest = trim_lexed_commas(rest);
+    let (_, rest) = primitives::parse_prefix(rest, primitives::kw("instead").void())?;
+    let mut body = trim_lexed_commas(rest);
+    while body.last().is_some_and(OwnedLexToken::is_period) {
+        body = &body[..body.len() - 1];
+    }
+    if body.first().is_some_and(|token| token.is_word("instead"))
+        || body.last().is_some_and(|token| token.is_word("instead"))
+    {
+        return None;
+    }
+    (!body.is_empty()).then_some(body)
+}
+
 pub fn parse_conditional_draw_replacement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalDrawReplacementFact<'_>> {
@@ -577,16 +604,23 @@ fn parse_conditional_draw_replacement_lexed<'a>(
     semantic_phrase(&["if", "you", "would", "draw"]).parse_next(input)?;
     opt(semantic_kw("a")).parse_next(input)?;
     semantic_phrase(&["card", "while"]).parse_next(input)?;
-    let condition_tokens = repeat_till(1.., any.void(), peek(semantic_kw("instead")))
+    let condition_tokens = repeat_till(1.., any.void(), peek(alt((primitives::comma().void(), semantic_kw("instead")))))
         .map(|((), ())| ())
         .take()
         .parse_next(input)?;
-    semantic_kw("instead").parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    let leading_instead = opt(semantic_kw("instead")).parse_next(input)?.is_some();
     opt(semantic_kw("you")).parse_next(input)?;
     semantic_kw("draw").parse_next(input)?;
     let draw_count = semantic_number_token.parse_next(input)?;
+    if i32::try_from(draw_count).is_err() {
+        return Err(primitives::backtrack_err("conditional draw replacement", "signed executable count"));
+    }
     alt((semantic_kw("card"), semantic_kw("cards"))).parse_next(input)?;
-    opt(semantic_kw("instead")).parse_next(input)?;
+    let trailing_instead = opt(semantic_kw("instead")).parse_next(input)?.is_some();
+    if leading_instead == trailing_instead {
+        return Err(primitives::backtrack_err("conditional draw replacement", "one instead marker"));
+    }
     let life_loss = opt((
         semantic_phrase(&["and", "you", "lose"]),
         semantic_number_token,
@@ -1058,4 +1092,18 @@ mod tests {
         assert!(parsed.once_each_turn_word_start.is_some());
         assert!(parsed.filter_end_token < tokens.len());
     }
+}
+
+
+#[test]
+fn empty_library_effect_replacement_requires_one_leading_instead() {
+    use crate::lexer::lex_line;
+    let valid = "If you would draw a card while your library has no cards in it, instead put five +1/+1 counters on this creature.";
+    assert!(parse_empty_library_draw_effect_replacement_tokens(&lex_line(valid, 0).unwrap()).is_some());
+    for text in [
+        "If you would draw a card while your library has no cards in it, put five +1/+1 counters on this creature.",
+        "If you would draw a card while your library has no cards in it, instead instead put five +1/+1 counters on this creature.",
+        "If you would draw a card while your library has no cards in it, instead put five +1/+1 counters on this creature instead.",
+        "If you would draw a card while your library has no cards in it, instead.",
+    ] { assert!(parse_empty_library_draw_effect_replacement_tokens(&lex_line(text, 0).unwrap()).is_none(), "{text}"); }
 }

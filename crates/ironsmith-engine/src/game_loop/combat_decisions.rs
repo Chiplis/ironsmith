@@ -88,21 +88,26 @@ fn attack_requirement_score_for_target(
         .count();
 
     score += game
+        .effect_store
+        .cant_effects
+        .must_attack
+        .get(&attacker.id)
+        .copied()
+        .unwrap_or(0);
+
+    score += game
         .required_attack_players_this_turn(attacker.id)
         .filter(|player| matches!(target, AttackTarget::Player(defender) if defender == player))
         .count();
 
-    for effect in &game.effect_store.goad_effects {
-        if effect.creature == attacker.id && effect.is_active(game, game.turn.turn_number) {
-            score += 1;
-            score += usize::from(attacks_player_other_than(effect.goaded_by));
-        }
+    // Use the same authoritative designation set as legal-attack previews.
+    // Static matching predicates (including attached and same-name subjects)
+    // impose both goad requirements without granting an ability to the victim.
+    for goading_player in game.active_goaders_for(attacker.id) {
+        score += 1;
+        score += usize::from(attacks_player_other_than(goading_player));
     }
     for ability in abilities {
-        if let Some(goading_player) = ability.goaded_by_player(game, attacker.id, controller) {
-            score += 1;
-            score += usize::from(attacks_player_other_than(goading_player));
-        }
         if let Some(required_player) = ability.required_attack_player(game, attacker.id, controller)
         {
             score += usize::from(
@@ -268,9 +273,10 @@ fn required_attack_cost_message_for_unpreviewed_attack(
     let creature = game.object(creature_id)?;
     let defending_player = crate::combat_state::defending_player_for_attack_target(game, target)?;
     let view = DerivedGameView::new(game);
-    if !crate::rules::combat::can_attack_defending_player_with_view(
+    if !crate::rules::combat::can_attack_target_with_view(
         creature,
         defending_player,
+        target,
         game,
         &view,
     ) {
@@ -848,6 +854,7 @@ fn tap_prepared_attackers(
     // CR 508.1f taps every chosen attacker before attack costs are paid. Use
     // the pre-cost vigilance result prepared from the same derived state as
     // attack legality; paying a cost can remove the source of that ability.
+    let before = crate::events::other::before_tap_state_snapshots(game);
     let mut tapped_events = Vec::new();
     for prepared_decl in &prepared.declarations {
         let creature = prepared_decl.declaration.creature;
@@ -863,10 +870,13 @@ fn tap_prepared_attackers(
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::PermanentTapped);
         tapped_events.push(TriggerEvent::new_with_provenance(
-            crate::events::PermanentTappedEvent::new(creature),
+            crate::events::PermanentTappedEvent::capture(game, creature, Some(game.turn.active_player)),
             event_provenance,
         ));
     }
+
+    crate::events::other::bind_before_tap_state_snapshots(&mut tapped_events, &before);
+    crate::events::other::group_tap_state_events(game, &mut tapped_events, Default::default());
 
     // If costs can change the battlefield or other trigger-relevant state,
     // match the simultaneous tap events against the pre-cost state. Otherwise
@@ -875,9 +885,7 @@ fn tap_prepared_attackers(
         prepared.has_post_tap_attack_costs && !tapped_events.is_empty();
     if queued_tapped_events_before_costs {
         game.refresh_continuous_state();
-        for event in tapped_events.iter().cloned() {
-            queue_triggers_from_event(game, trigger_queue, event, true);
-        }
+        super::targeting::queue_triggers_from_reported_events(game, trigger_queue, tapped_events.clone(), true);
     }
 
     (tapped_events, queued_tapped_events_before_costs)
@@ -1011,11 +1019,10 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
                 )
             })
         };
-        result.map_err(|error| {
-            ResponseError::InvalidAttackers(format!(
-                "Cannot pay required attack cost ({}): {error}",
-                locked.display
-            ))
+        result.map_err(|error| match error {
+            crate::cost::CostPaymentError::ExecutionFailed(error) => GameLoopError::ExecutionFailed(error),
+            error => ResponseError::InvalidAttackers(format!(
+                "Cannot pay required attack cost ({}): {error}", locked.display)).into(),
         })?;
     }
 
@@ -1112,9 +1119,7 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     game.refresh_continuous_state();
 
     if !queued_tapped_events_before_costs {
-        for event in tapped_events {
-            queue_triggers_from_event(game, trigger_queue, event, true);
-        }
+        super::targeting::queue_triggers_from_reported_events(game, trigger_queue, tapped_events, true);
     }
 
     let total_attackers = surviving_declarations.len();
@@ -1127,10 +1132,16 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
             })
             .collect();
     let mut attack_events = Vec::with_capacity(total_attackers);
+    let mut attacked_player_pairs = Vec::new();
     for prepared_decl in surviving_declarations {
         let decl = &prepared_decl.declaration;
 
         let event_target = AttackEventTarget::from(&decl.target);
+        if let crate::combat_state::AttackTarget::Player(defender) = decl.target
+            && !attacked_player_pairs.contains(&(prepared_decl.controller, defender))
+        {
+            attacked_player_pairs.push((prepared_decl.controller, defender));
+        }
 
         let event_provenance = game
             .provenance_graph_mut()
@@ -1141,10 +1152,27 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
                 event_target,
                 total_attackers,
             )
-            .with_declared_attackers(declared_attackers.clone()),
+            .with_declared_attackers(declared_attackers.clone())
+            .with_combat_phase(game.turn_store.combat_phases_started_this_turn),
             event_provenance,
         );
         attack_events.push(event);
+    }
+    // CR 508.3b/e: player-level conditions observe declarations, not every
+    // creature and not objects entering already attacking. Freeze both roles
+    // before any attack trigger can change control or remove a participant.
+    for (attacker, defender) in attacked_player_pairs {
+        let provenance = game.provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::PlayerAttackDeclaration);
+        attack_events.push(TriggerEvent::new_with_provenance(
+            crate::events::PlayerAttackDeclarationEvent {
+                attacker,
+                defender,
+                turn_number: game.turn.turn_number,
+                combat_phase: game.turn_store.combat_phases_started_this_turn,
+            },
+            provenance,
+        ));
     }
     queue_triggers_for_simultaneous_events(game, trigger_queue, attack_events);
 
@@ -1902,6 +1930,9 @@ fn prepare_blocker_declarations(
         return Err(ResponseError::InvalidBlockers(err.to_string()).into());
     }
 
+    // Validation alone is not CR 509.1h completion. Mana abilities can run
+    // while paying blocking costs, before attackers become unblocked.
+    next_combat.block_declaration_complete = combat.block_declaration_complete;
     // CR 509.1d: determine and lock every cost only after the complete proposed
     // declaration is legal. A single ability charges a blocking creature once,
     // even if that creature is blocking more than one attacker.
@@ -1929,6 +1960,11 @@ fn apply_prepared_blocker_declarations(
     let pairs = prepared.pairs.clone();
     let defending_player = prepared.defending_player;
     apply_prepared_blocker_declaration_state(game, combat, prepared, decision_maker)?;
+    if defending_player.is_none() {
+        combat.block_declaration_complete = true;
+        game.combat = Some(combat.clone());
+        game.mark_continuous_state_dirty();
+    }
     queue_block_declaration_events(game, combat, trigger_queue, &pairs, defending_player);
     Ok(())
 }
@@ -2060,6 +2096,7 @@ pub fn queue_block_declaration_events(
             }
             _ => CreatureBlockedEvent::new(*blocker, *attacker),
         };
+        let blocked_event = blocked_event.with_combat_phase(game.turn_store.combat_phases_started_this_turn);
         let event = TriggerEvent::new_with_provenance(blocked_event, event_provenance);
         block_events.push(event);
     }

@@ -114,6 +114,16 @@ pub enum AbilityOrigin {
 }
 
 impl AbilityOrigin {
+    /// Independent grants materialized before the layer loop. Text/copy
+    /// replacement must not erase them; ordinary layer-six clearing still can.
+    pub(crate) fn is_independent_early_grant(&self) -> bool {
+        match self {
+            Self::Temporary(_) | Self::Counter { .. } => true,
+            Self::Level { parent, .. } => parent.is_independent_early_grant(),
+            _ => false,
+        }
+    }
+
     /// Return the permanent whose effect supplied this ability, when the
     /// ability was granted by a continuous effect.
     pub(crate) fn effect_source(&self) -> Option<ObjectId> {
@@ -192,11 +202,14 @@ impl CalculatedAbilities {
         self.origins.push(origin);
     }
     pub fn retain(&mut self, mut predicate: impl FnMut(&Ability) -> bool) {
+        self.retain_with_origin(|ability, _| predicate(ability));
+    }
+    pub(crate) fn retain_with_origin(&mut self, mut predicate: impl FnMut(&Ability, &AbilityOrigin) -> bool) {
         let origins = &self.origins;
         let mut retained = Vec::new();
         let mut index = 0;
         self.definitions.retain(|ability| {
-            let keep = predicate(ability);
+            let keep = predicate(ability, &origins[index]);
             if keep {
                 retained.push(origins[index].clone());
             }

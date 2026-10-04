@@ -114,7 +114,14 @@ pub fn parse_effect_with_verb(
         Verb::Investigate => parse_investigate(tokens, subject),
         Verb::Incubate => parse_incubate(tokens, subject),
         Verb::Proliferate => parse_proliferate(tokens),
-        Verb::Tap => parse_tap(tokens),
+        Verb::Tap => {
+            let player = extract_subject_player(subject);
+            let mut effect = parse_tap(tokens)?;
+            if let Some(player) = player {
+                super::bind_implicit_player_context(&mut effect, player);
+            }
+            Ok(effect)
+        }
         Verb::Attach => {
             let player = extract_subject_player(subject);
             let mut effect = parse_attach(tokens)?;
@@ -124,7 +131,14 @@ pub fn parse_effect_with_verb(
             Ok(effect)
         }
         Verb::Unattach => parse_unattach(tokens),
-        Verb::Untap => parse_untap(tokens),
+        Verb::Untap => {
+            let player = extract_subject_player(subject);
+            let mut effect = parse_untap(tokens)?;
+            if let Some(player) = player {
+                super::bind_implicit_player_context(&mut effect, player);
+            }
+            Ok(effect)
+        }
         Verb::Unlock => parse_unlock_room_door(tokens, subject),
         Verb::Scry => parse_scry(tokens, subject),
         Verb::Discard => parse_discard(tokens, subject),
@@ -228,7 +242,7 @@ pub fn parse_effect_with_verb(
         ))),
         Verb::Goad => parse_goad(tokens),
         Verb::Suspect => parse_suspect(tokens),
-        Verb::Note => parse_note(tokens),
+        Verb::Note => parse_note(tokens, subject),
         Verb::End => parse_end(tokens, subject),
     }
 }
@@ -297,8 +311,13 @@ fn parse_reverse(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     )))
 }
 
-fn parse_note(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    if resource_grammar::parse_resource_note_life_total_shape(tokens) {
+fn parse_note(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    if matches!(subject, None | Some(SubjectAst::Player(PlayerAst::You)))
+        && resource_grammar::parse_resource_note_life_total_shape(tokens)
+    {
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
@@ -631,6 +650,16 @@ pub fn parse_shuffle(
             }
             let target = parse_target_phrase(&target_tokens)?;
             Ok(shuffle_into_owner_library(target))
+        }
+        ResourceShuffleShape::GraveyardIntoLibrary { player, explicit_all_cards_from } => {
+            Ok(EffectAst::subject_verb_shuffle_graveyard_into_library_with_surface(player, explicit_all_cards_from))
+        }
+        ResourceShuffleShape::ObjectsIntoSubjectLibrary { target_len, player, all } => {
+            let mut target = parse_target_phrase(&trim_commas(&tokens[..target_len]))?;
+            super::zone_counter_helpers::apply_shuffle_subject_graveyard_owner_context(
+                &mut target, SubjectAst::Player(player));
+            Ok(if all { EffectAst::subject_verb_shuffle_all_objects_into_library(player, target) }
+                else { EffectAst::subject_verb_shuffle_objects_into_library(player, target) })
         }
         ResourceShuffleShape::HandIntoLibrary { player } => {
             let owner = crate::grammar::effects::zone_counter_shapes::player_filter_for_half_reference(player)

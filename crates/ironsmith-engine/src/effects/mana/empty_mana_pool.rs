@@ -20,27 +20,6 @@ impl EmptyManaPoolEffect {
     }
 }
 
-#[derive(Debug)]
-struct EmptyManaPoolProposal {
-    player: crate::ids::PlayerId,
-}
-
-impl SimultaneousEffectProposal for EmptyManaPoolProposal {
-    fn commit(
-        self: Box<Self>,
-        game: &mut GameState,
-        _ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(player) = game.player_mut(self.player) else {
-            return Err(ExecutionError::InvalidTarget);
-        };
-        player.mana_pool.empty();
-        player.restricted_mana.clear();
-        player.clear_mana_source_provenance();
-        Ok(EffectOutcome::default())
-    }
-}
-
 impl EffectExecutor for EmptyManaPoolEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         true
@@ -55,7 +34,7 @@ impl EffectExecutor for EmptyManaPoolEffect {
         if game.player(player).is_none() {
             return Err(ExecutionError::InvalidTarget);
         }
-        Ok(Box::new(EmptyManaPoolProposal { player }))
+        Ok(Box::new(super::mana_loss::ManaLossProposal::new(game, player, false)?))
     }
 
     fn execute(
@@ -63,8 +42,8 @@ impl EffectExecutor for EmptyManaPoolEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        self.prepare_simultaneous_player_action(game, ctx)?
-            .commit(game, ctx)
+        let player = resolve_player_filter(game, &self.player, ctx)?;
+        super::mana_loss::execute_mana_losses(game, ctx, vec![player], false)
     }
 }
 
@@ -83,6 +62,7 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
         let restricted = RestrictedManaUnit {
+            source_controller: None,
             symbol: ManaSymbol::Red,
             source: ObjectId::from_raw(99),
             source_chosen_creature_type: None,

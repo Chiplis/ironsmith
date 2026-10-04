@@ -1,0 +1,73 @@
+[
+  {
+    "name": "Fraying Omnipotence",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Each player loses half their life, then discards half the cards in their hand, then sacrifices half the creatures they control of their choice. Round up each time."
+  },
+  {
+    "name": "Lord Xander, the Collector",
+    "mana_cost": "{4}{U}{B}{R}",
+    "type_line": "Legendary Creature \u2014 Vampire Demon Noble",
+    "power": "6",
+    "toughness": "6",
+    "oracle_text": "When Lord Xander enters, target opponent discards half the cards in their hand, rounded down.\nWhenever Lord Xander attacks, defending player mills half their library, rounded down.\nWhen Lord Xander dies, target opponent sacrifices half the nonland permanents they control of their choice, rounded down."
+  },
+  {
+    "name": "Pox Plague",
+    "mana_cost": "{B}{B}{B}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Each player loses half their life, then discards half the cards in their hand, then sacrifices half the permanents they control of their choice. Round down each time."
+  },
+  {
+    "name": "Rush of Dread",
+    "mana_cost": "{1}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Spree (Choose one or more additional costs.)\n+ {1} \u2014 Target opponent sacrifices half the creatures they control of their choice, rounded up.\n+ {2} \u2014 Target opponent discards half the cards in their hand, rounded up.\n+ {2} \u2014 Target opponent loses half their life, rounded up."
+  },
+  {
+    "name": "Balance of Power",
+    "mana_cost": "{3}{U}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "If target opponent has more cards in hand than you, draw cards equal to the difference."
+  },
+  {
+    "name": "Sandstone Oracle",
+    "mana_cost": "{7}",
+    "type_line": "Artifact Creature \u2014 Sphinx",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Flying\nWhen this creature enters, choose an opponent. If that player has more cards in hand than you, draw cards equal to the difference."
+  },
+  {
+    "name": "Slithermuse",
+    "mana_cost": "{2}{U}{U}",
+    "type_line": "Creature \u2014 Elemental",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "When this creature leaves the battlefield, choose an opponent. If that player has more cards in hand than you, draw cards equal to the difference.\nEvoke {3}{U} (You may cast this spell for its evoke cost. If you do, it's sacrificed when it enters.)"
+  },
+  {
+    "name": "Skull Raid",
+    "mana_cost": "{3}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target opponent discards two cards. If fewer than two cards were discarded this way, you draw cards equal to the difference.\nForetell {1}{B} (During your turn, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its foretell cost.)"
+  },
+  {
+    "name": "Heed the Mists",
+    "mana_cost": "{3}{U}{U}",
+    "type_line": "Sorcery \u2014 Arcane",
+    "oracle_text": "Mill a card, then draw cards equal to the milled card's mana value."
+  },
+  {
+    "name": "Kozilek, the Great Distortion",
+    "mana_cost": "{8}{C}{C}",
+    "type_line": "Legendary Creature \u2014 Eldrazi",
+    "power": "12",
+    "toughness": "12",
+    "oracle_text": "When you cast this spell, if you have fewer than seven cards in hand, draw cards equal to the difference.\nMenace\nDiscard a card with mana value X: Counter target spell with mana value X.",
+    "coverage_dependency": "Joint closure: discard-cost commit 6e29de42 plus this quantity family",
+    "proposed_coverage": "partial",
+    "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up."
+  }
+]

@@ -179,7 +179,9 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             )
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
-        PlayerFilter::ControlsMost { .. } => filter.description(),
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+            filter.description()
+        }
         PlayerFilter::OpponentOf(base) => {
             format!("an opponent of {}", describe_player_filter(base))
         }
@@ -214,6 +216,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller".to_string()
         }
+        PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => "opponent attacking that player".into(),
         PlayerFilter::Excluding { base, excluded }
             if matches!(base.as_ref(), PlayerFilter::Opponent)
                 && !matches!(excluded.as_ref(), PlayerFilter::You) =>

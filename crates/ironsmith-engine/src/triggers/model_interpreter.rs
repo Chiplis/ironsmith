@@ -1,3 +1,4 @@
+use crate::triggers::Trigger;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TriggerModelConversionError {
     pub detail: String,
@@ -273,6 +274,9 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::ThisBecomesBlocked => crate::triggers::Trigger::this_becomes_blocked(),
         TriggerKind::BecomesBlocked { filter } => crate::triggers::Trigger::becomes_blocked(filter),
+        TriggerKind::BecomesBlockedOneOrMore { filter } => crate::triggers::Trigger::becomes_blocked_one_or_more(filter),
+        TriggerKind::AttacksPlayerAlone { filter } => crate::triggers::Trigger::attacks_player_alone(filter),
+        TriggerKind::KeywordActionMatchingObjectOneOrMore { action, player, filter } => crate::triggers::Trigger::keyword_action_matching_object_one_or_more(action, player, filter),
         TriggerKind::ThisBecomesBlockedByObject { filter } => {
             crate::triggers::Trigger::this_becomes_blocked_by_object(filter)
         }
@@ -287,6 +291,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisLeavesBattlefield => crate::triggers::Trigger::this_leaves_battlefield(),
         TriggerKind::ThisPhasesOut => crate::triggers::Trigger::this_phases_out(),
         TriggerKind::ThisMutates => crate::triggers::Trigger::this_mutates(),
+        TriggerKind::PermanentMutates { filter } => crate::triggers::Trigger::permanent_mutates(filter),
+        TriggerKind::PlayerTurnsFaceUp { player, filter } => crate::triggers::Trigger::player_turns_face_up(player, filter),
+        TriggerKind::PermanentTransformsInto { filter, destination } => crate::triggers::Trigger::permanent_transforms_into(filter, destination),
         TriggerKind::LeavesBattlefield { filter } => {
             crate::triggers::Trigger::leaves_battlefield(filter)
         }
@@ -294,14 +301,34 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ClassBecomesLevel { level } => {
             crate::triggers::Trigger::class_becomes_level(level)
         }
+        TriggerKind::PlayerChangesTapState { player, filter, tapped, one_or_more, during_untap_step } => {
+            crate::triggers::Trigger::new(crate::triggers::PlayerChangesTapStateTrigger {
+                player, filter, tapped, one_or_more, during_untap_step,
+            })
+        }
+        TriggerKind::ControlChanged(trigger) => crate::triggers::Trigger::new(trigger),
+        TriggerKind::RingBearerChosen { player } => crate::triggers::Trigger::new(crate::triggers::RingBearerChosenTrigger { player }),
+        TriggerKind::AttachmentChanged { attachment, recipient, attached } => crate::triggers::Trigger::new(crate::triggers::AttachmentChangedTrigger { attachment, recipient, attached }),
+        TriggerKind::PlayerAttackDeclaration { attacker, defender, grouping } => crate::triggers::Trigger::new(crate::triggers::PlayerAttackDeclarationTrigger { attacker, defender, grouping }),
+        TriggerKind::CardsMilled { player, filter, one_or_more, per_player } => crate::triggers::Trigger::new(crate::triggers::CardsMilledTrigger { player, filter, one_or_more, per_player }),
+        TriggerKind::PhasingChanged { filter, phased_in, one_or_more } => crate::triggers::Trigger::new(crate::triggers::PhasingChangedTrigger { filter, phased_in, one_or_more }),
         TriggerKind::BecomesTapped => crate::triggers::Trigger::becomes_tapped(),
-        TriggerKind::PermanentBecomesTapped { filter } => {
-            crate::triggers::Trigger::permanent_becomes_tapped(filter)
+        TriggerKind::PermanentBecomesTapped { filter, one_or_more } => {
+            if one_or_more {
+                crate::triggers::Trigger::permanent_becomes_tapped_one_or_more(filter)
+            } else {
+                crate::triggers::Trigger::permanent_becomes_tapped(filter)
+            }
         }
         TriggerKind::BecomesUntapped => crate::triggers::Trigger::becomes_untapped(),
+        TriggerKind::PermanentBecomesUntapped { filter, one_or_more } => {
+            crate::triggers::Trigger::permanent_becomes_untapped(filter, one_or_more)
+        }
         TriggerKind::ThisIsTurnedFaceUp => crate::triggers::Trigger::this_is_turned_face_up(),
         TriggerKind::TurnedFaceUp { filter } => crate::triggers::Trigger::turned_face_up(filter),
         TriggerKind::BecomesTargeted => crate::triggers::Trigger::becomes_targeted(),
+        TriggerKind::BecomesTargetedByAbilitySource { target, source } => Trigger::new(crate::triggers::BecomesTargetedByAbilitySourceTrigger { target_filter: target.clone(), source_filter: source.clone() }),
+        TriggerKind::PlayerBecomesTargeted { player, source_controller, source_kind } => crate::triggers::Trigger::new(crate::triggers::PlayerBecomesTargetedTrigger { player_filter: player, source_controller, source_kind }),
         TriggerKind::BecomesTargetedObject { filter } => {
             crate::triggers::Trigger::becomes_targeted_object(filter)
         }
@@ -455,6 +482,10 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerRollsToVisitAttractions { player } => {
             crate::triggers::Trigger::player_rolls_to_visit_attractions(player)
         }
+        TriggerKind::PlayerRollsResultMatching { player, result, natural } => crate::triggers::Trigger::new(
+            crate::triggers::other::QualifiedDieRollTrigger { player, result: Some(result), natural, ordinal: None }),
+        TriggerKind::PlayerRollsNthDie { player, ordinal } => crate::triggers::Trigger::new(
+            crate::triggers::other::QualifiedDieRollTrigger { player, result: None, natural: false, ordinal: Some(ordinal) }),
         TriggerKind::PlayerRollsResult { player, result } => {
             crate::triggers::Trigger::player_rolls_result(player, result)
         }
@@ -498,22 +529,13 @@ pub(crate) fn interpret_trigger_model(
                 crate::triggers::Trigger::ability_triggers()
             }
         }
-        TriggerKind::IsDealtDamage {
-            target,
-            combat_only,
-            noncombat_only,
-            excess_only,
-        } => {
-            if excess_only && noncombat_only {
-                crate::triggers::Trigger::is_dealt_excess_noncombat_damage(target)
-            } else if excess_only {
-                crate::triggers::Trigger::is_dealt_excess_damage(target, combat_only)
-            } else if combat_only {
-                crate::triggers::Trigger::is_dealt_combat_damage(target)
-            } else {
-                crate::triggers::Trigger::is_dealt_damage(target)
-            }
+        TriggerKind::IsDealtDamage { target, combat_only, noncombat_only, excess_only, minimum, single_source } => {
+            crate::triggers::Trigger::new(crate::triggers::IsDealtDamageTrigger {
+                target, combat_only, noncombat_only, excess_only, minimum, single_source,
+            })
         }
+        TriggerKind::PlayerGainsLife { player, during_turn } => crate::triggers::Trigger::new(
+            crate::triggers::PlayerGainsLifeTrigger { player, during_turn }),
         TriggerKind::YouGainLife => crate::triggers::Trigger::you_gain_life(),
         TriggerKind::YouGainLifeCausedBy { source } => {
             crate::triggers::Trigger::you_gain_life_caused_by(source)
@@ -521,6 +543,7 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::YouGainLifeDuringTurn { during_turn } => {
             crate::triggers::Trigger::you_gain_life_during_turn(during_turn)
         }
+        TriggerKind::PlayerPaysLife { player } => crate::triggers::Trigger::player_pays_life(player),
         TriggerKind::PlayerLosesLife { player } => {
             crate::triggers::Trigger::player_loses_life(player)
         }
@@ -530,6 +553,7 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::OpponentsEachLoseExactLife { amount } => {
             crate::triggers::Trigger::opponents_each_lose_exact_life(amount)
         }
+        TriggerKind::PlayerBecomesMonarch {player} => crate::triggers::Trigger::player_becomes_monarch(player),
         TriggerKind::PlayerLosesGame { player } => {
             crate::triggers::Trigger::player_loses_game(player)
         }
@@ -542,6 +566,8 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::YouDrawCard => crate::triggers::Trigger::you_draw_card(),
         TriggerKind::Miracle => crate::triggers::Trigger::miracle(),
+        TriggerKind::PlayerDrawsCardDuringTurn { player, during_turn } => crate::triggers::Trigger::new(crate::triggers::QualifiedPlayerDrawTrigger { player, during_turn: Some(during_turn), first_in_own_draw_step: false }),
+        TriggerKind::PlayerDrawsFirstCardInOwnDrawStep { player } => crate::triggers::Trigger::new(crate::triggers::QualifiedPlayerDrawTrigger { player, during_turn: None, first_in_own_draw_step: true }),
         TriggerKind::PlayerDrawsCard { player } => {
             crate::triggers::Trigger::player_draws_card(player)
         }
@@ -565,12 +591,13 @@ pub(crate) fn interpret_trigger_model(
             filter,
             controller,
             effect_like_only,
-        } => crate::triggers::Trigger::player_discards_card_caused_by_controller(
-            player,
-            filter,
-            controller,
-            effect_like_only,
-        ),
+            one_or_more,
+        } => {
+            let mut trigger = crate::triggers::YouDiscardCardTrigger::new(player, filter).caused_by_controller(controller);
+            if effect_like_only { trigger = trigger.effect_like_only(); }
+            if one_or_more { trigger = trigger.one_or_more(); }
+            crate::triggers::Trigger::new(trigger)
+        },
         TriggerKind::PlayerDiscardsCard {
             player,
             filter,
@@ -887,6 +914,8 @@ impl super::Trigger {
                 Self::beginning_of_postcombat_main_phase(player)
             }
             ironsmith_core::DelayedTriggerSpec::EndOfCombat => Self::end_of_combat(),
+            ironsmith_core::DelayedTriggerSpec::ControlChanged(trigger) => Self::new(trigger),
+            ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped { filter } => Self::new(crate::triggers::PermanentBecomesUntappedTrigger { filter, one_or_more: false }),
             ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {
                 source_description,
             } => Self::source_controller_loses_control(source_description),
@@ -1041,6 +1070,22 @@ impl super::Trigger {
             ),
             ironsmith_core::DelayedTriggerSpec::PlayerPlaysLand { player, filter } => {
                 Self::player_plays_land(player, filter)
+            }
+            ironsmith_core::DelayedTriggerSpec::LifeChanged { player, gained, during_turn } => {
+                if gained {
+                    Self::new(super::PlayerGainsLifeTrigger { player, during_turn })
+                } else if let Some(turn) = during_turn {
+                    Self::player_loses_life_during_turn(player, turn)
+                } else {
+                    Self::player_loses_life(player)
+                }
+            }
+            ironsmith_core::DelayedTriggerSpec::PlayerDiscardsCard { player, filter, cause_controller, effect_like_only, one_or_more } => {
+                let mut trigger = crate::triggers::YouDiscardCardTrigger::new(player, filter);
+                if let Some(controller) = cause_controller { trigger = trigger.caused_by_controller(controller); }
+                if effect_like_only { trigger = trigger.effect_like_only(); }
+                if one_or_more { trigger = trigger.one_or_more(); }
+                Self::new(trigger)
             }
             ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(player) => {
                 Self::player_draws_card(player)

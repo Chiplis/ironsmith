@@ -62,7 +62,7 @@ pub(super) fn describe_cast_from_hand_consult_source_exiled_cleanup(
         return None;
     };
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if may.decider != Some(PlayerFilter::IteratedPlayer)
         || may.fallback != crate::decision::FallbackStrategy::Decline
         || cast.tag != consult.match_tag

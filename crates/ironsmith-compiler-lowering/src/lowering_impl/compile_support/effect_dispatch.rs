@@ -1938,6 +1938,9 @@ fn compile_compiler_control_flow(
                         | SubjectVerbActionAst::StatChanges(
                             StatChangeActionAst::RemoveCardTypes { duration, .. },
                         )
+                        | SubjectVerbActionAst::StatChanges(
+                            StatChangeActionAst::RemoveSupertypes { duration, .. },
+                        )
                         | SubjectVerbActionAst::Characteristics(
                             CharacteristicActionAst::AddSubtypes { duration, .. },
                         )
@@ -2227,6 +2230,38 @@ fn compile_subject_verb_effect(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
+    // An explicitly targeted grammatical subject owns the local possessive
+    // references in its instruction: "Target player untaps lands they
+    // control" and "Target opponent puts their hand ...". Establish that
+    // declaration before the action reads its filters, rather than waiting
+    // for the next sentence's reference frame. This is a lexical scope, not
+    // a fallback for unrelated unbound player references.
+    if matches!(subject_verb.subject.player, PlayerAst::Target | PlayerAst::TargetOpponent) {
+        let subject = resolve_subject_verb_subject(
+            subject_verb_role(subject_verb.subject.role),
+            subject_verb.subject.player,
+            ctx,
+            true,
+            true,
+            true,
+        )?;
+        let outer_iteration = ctx.iterated_player;
+        ctx.iterated_player = false;
+        let result = compile_subject_verb_action(subject_verb, ctx);
+        ctx.iterated_player = outer_iteration;
+        let (effects, mut choices) = result?;
+        for choice in subject.into_choices() {
+            push_choice(&mut choices, choice);
+        }
+        return Ok((effects, choices));
+    }
+    compile_subject_verb_action(subject_verb, ctx)
+}
+
+fn compile_subject_verb_action(
+    subject_verb: &SubjectVerbEffectAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<EffectCompileOutcome, CardTextError> {
     if matches!(
         subject_verb.action,
         SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
@@ -2440,10 +2475,7 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
     };
     let mut move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top)
         .with_verb_surface(*verb_surface);
-    if !matches!(
-        subject_verb.subject.player,
-        PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
-    ) {
+    if !matches!(subject_verb.subject.player, PlayerAst::Implicit) {
         move_effect = move_effect.with_actor_surface(resolve_non_target_player_filter(
             subject_verb.subject.player,
             &current_reference_env(ctx),
@@ -2567,13 +2599,12 @@ fn compile_become_copy(
         }
         (spec, _) => spec,
     };
-    let granted_modifications = lower_granted_ability_grant_modifications(granted_abilities)?;
+    let copiable_abilities = lower_granted_abilities_ast_to_object_abilities(granted_abilities)?;
     let apply_target_spec = declared_copy_target
         .as_ref()
         .map(|tag| ChooseSpec::Tagged(tag.as_str().into()))
         .unwrap_or_else(|| target_spec.clone());
-    let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
-        apply_target_spec,
+    let runtime_copy = if copiable_abilities.is_empty() {
         crate::effects::continuous::RuntimeModification::CopyOf {
             source: source_spec,
             preserve_source_abilities: *preserve_source_abilities,
@@ -2581,7 +2612,21 @@ fn compile_become_copy(
             name_override_surface: name_override_surface.clone(),
             add_supertypes: add_supertypes.clone(),
             copy_exception_surface: copy_exception_surface.clone(),
-        },
+        }
+    } else {
+        crate::effects::continuous::RuntimeModification::CopyOfWithAbilities {
+            source: source_spec,
+            preserve_source_abilities: *preserve_source_abilities,
+            name_override: name_override.clone(),
+            name_override_surface: name_override_surface.clone(),
+            add_supertypes: add_supertypes.clone(),
+            copy_exception_surface: copy_exception_surface.clone(),
+            abilities: copiable_abilities,
+        }
+    };
+    let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
+        apply_target_spec,
+        runtime_copy,
         duration.clone(),
     )
     .lock_filter_at_resolution();
@@ -2627,9 +2672,6 @@ fn compile_become_copy(
                 sublayer: crate::continuous::PtSublayer::Setting,
             })
             .resolve_set_pt_values_at_resolution();
-    }
-    for modification in granted_modifications {
-        apply = apply.with_additional_modification(modification);
     }
     let effect = Effect::new(apply);
     let effect = if let Some(tag) = declared_copy_target {
@@ -2968,6 +3010,18 @@ pub(super) fn player_target_choice_matches_filter(choice: &ChooseSpec, player: &
 
 fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSpec>) {
     match value {
+        Value::DamageHistory(query) => {
+            for spec in query.reference_specs() {
+                collect_choose_spec_player_target_choices(spec, choices);
+            }
+            for filter in query.object_filters() {
+                collect_object_filter_player_target_choices(filter, choices);
+            }
+            if let Some(player) = query.player_filter() {
+                collect_player_filter_target_choice(player, choices);
+            }
+        }
+
         Value::SurfaceHinted { value, .. } => collect_value_player_target_choices(value, choices),
         Value::Add(left, right) | Value::Min(left, right) => {
             collect_value_player_target_choices(left, choices);
@@ -3025,6 +3079,8 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
+        | Value::MaximumLifeTotal(player)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player)
         | Value::Speed(player)
@@ -3067,6 +3123,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
             collect_player_filter_target_choice(owner, choices);
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
@@ -3114,6 +3171,7 @@ pub(super) fn collect_object_filter_player_target_choices(
             .as_ref()
             .map(|constraint| &constraint.source_controller),
         filter.dealt_damage_to_player_this_turn.as_ref(),
+        filter.last_drawn_this_turn.as_ref(),
     ]
     .into_iter()
     .flatten()
@@ -3153,6 +3211,7 @@ fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {
             value_object_target_spec(left).or_else(|| value_object_target_spec(right))
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)

@@ -1,0 +1,63 @@
+[
+  {
+    "name": "Curse of Bounty",
+    "text": "Mana cost: {1}{G}\nType: Enchantment \u2014 Aura Curse\nEnchant player\nWhenever enchanted player is attacked, untap all nonland permanents you control. Each opponent attacking that player untaps all nonland permanents they control.",
+    "oracle_id": "b6689782-08d8-48e1-a05d-cd040dfe85bc",
+    "source": "https://scryfall.com/card/scd/178/curse-of-bounty?utm_source=api",
+    "baseline_content_hash": "62bc333e3c7b36eead6d9b4a28437b18b02e636811a05d501cbbbcae46dab5fa",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever enchanted player is attacked, untap all nonland permanents you control. Each opponent attacking that player untaps all nonland permanents they control.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever enchanted player is attacked, untap all nonland permanents you control. Each opponent attacking that player untaps all nonland permanents they control.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source only, no build or test execution."
+  },
+  {
+    "name": "Curse of Disturbance",
+    "text": "Mana cost: {2}{B}\nType: Enchantment \u2014 Aura Curse\nEnchant player\nWhenever enchanted player is attacked, create a 2/2 black Zombie creature token. Each opponent attacking that player does the same.",
+    "oracle_id": "6cbd36d9-de47-41b0-9ef4-a72ca01adccd",
+    "source": "https://scryfall.com/card/plst/SCD-74/curse-of-disturbance?utm_source=api",
+    "baseline_content_hash": "84e8570b9bf0dd98ccd6a82dc9d69a3bf556aeb2b43c8a1b7d6d180b99c2d5df",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever enchanted player is attacked, create a 2/2 black Zombie creature token. Each opponent attacking that player does the same.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever enchanted player is attacked, create a 2/2 black Zombie creature token. Each opponent attacking that player does the same.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source only, no build or test execution."
+  },
+  {
+    "name": "Curse of Opulence",
+    "text": "Mana cost: {R}\nType: Enchantment \u2014 Aura Curse\nEnchant player\nWhenever enchanted player is attacked, create a Gold token. Each opponent attacking that player does the same. (A Gold token is an artifact with \"Sacrifice this token: Add one mana of any color.\")",
+    "oracle_id": "ba0d3df2-3acf-46d7-8d64-8d67d1579adc",
+    "source": "https://scryfall.com/card/tdc/209/curse-of-opulence?utm_source=api",
+    "baseline_content_hash": "af8645604f9b85ff76e7a9e42bc004d994fabf10591756a7d7ca01d287c2927f",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever enchanted player is attacked, create a Gold token. Each opponent attacking that player does the same. (A Gold token is an artifact with \"Sacrifice this token: Add one mana of any color.\")' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever enchanted player is attacked, create a Gold token. Each opponent attacking that player does the same.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source only, no build or test execution."
+  },
+  {
+    "name": "Curse of Verbosity",
+    "text": "Mana cost: {2}{U}\nType: Enchantment \u2014 Aura Curse\nEnchant player\nWhenever enchanted player is attacked, you draw a card. Each opponent attacking that player does the same.",
+    "oracle_id": "c6f76fa7-095e-4bfe-a38c-5c4531880880",
+    "source": "https://scryfall.com/card/plst/C17-9/curse-of-verbosity?utm_source=api",
+    "baseline_content_hash": "ea3b14897aca35b7e9c936ab917cc33f6db5bf9399224831c6940b2af1fb6bf3",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever enchanted player is attacked, you draw a card. Each opponent attacking that player does the same.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever enchanted player is attacked, you draw a card. Each opponent attacking that player does the same.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source only, no build or test execution."
+  },
+  {
+    "name": "Curse of Vitality",
+    "text": "Mana cost: {2}{W}\nType: Enchantment \u2014 Aura Curse\nEnchant player\nWhenever enchanted player is attacked, you gain 2 life. Each opponent attacking that player does the same.",
+    "oracle_id": "6d2eb412-e09b-4ab3-8653-b458e9f38eff",
+    "source": "https://scryfall.com/card/c17/3/curse-of-vitality?utm_source=api",
+    "baseline_content_hash": "687ee1fed3c08e36bd6bd21b2655c2773b09a96da7d167da6e2b9bc21e710000",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever enchanted player is attacked, you gain 2 life. Each opponent attacking that player does the same.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever enchanted player is attacked, you gain 2 life. Each opponent attacking that player does the same.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source only, no build or test execution."
+  },
+  {
+    "name": "Jolene, the Plunder Queen",
+    "text": "Mana cost: {2}{R}{G}\nType: Legendary Creature \u2014 Human Warrior\nPower/Toughness: 2/2\nWhenever a player attacks one or more of your opponents, that attacking player creates a Treasure token.\nIf you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.\nSacrifice five Treasures: Put five +1/+1 counters on Jolene.",
+    "oracle_id": "8215f4a2-7131-426b-ad9c-6427caabd715",
+    "source": "https://scryfall.com/card/plst/NCC-73/jolene-the-plunder-queen?utm_source=api",
+    "baseline_content_hash": "268c870311804a74e1f39f929384532cefdf3f8b9b7b8eda2a868ee557d1dc5f",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a player attacks one or more of your opponents, that attacking player creates a Treasure token.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a player attacks one or more of your opponents, that attacking player creates a Treasure token.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": false,
+    "validation_status": "UNVALIDATED: source only, no build or test execution.",
+    "remaining_source_gap": "Token-creation replacement and sacrifice secondary body owned by token-creation worker; full card requires both source batches."
+  }
+]

@@ -314,6 +314,24 @@ impl Effect {
     }
 
     pub fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        fn visit_price(cost: &crate::cost::TotalCost, visitor: &mut dyn FnMut(&Effect)) {
+            match cost.kind() {
+                ironsmith_core::TotalCostKind::All(costs) => {
+                    for cost in costs { if let Some(effect) = cost.effect_ref() { visitor(effect); } }
+                }
+                ironsmith_core::TotalCostKind::OneOf(branches) => {
+                    for branch in branches { visit_price(branch, visitor); }
+                }
+            }
+        }
+        if let Some(cast) = self.downcast_ref::<crate::effects::CastTaggedEffect>() {
+            if let Some(cost) = &cast.alternative_cost { visit_price(cost, visitor); }
+            return;
+        }
+        if let Some(grant) = self.downcast_ref::<crate::effects::GrantPlayTaggedEffect>() {
+            if let Some(cost) = &grant.alternative_cost { visit_price(cost, visitor); }
+            return;
+        }
         if let Some(sequence) = self.downcast_ref::<crate::effects::SequenceEffect>() {
             for effect in &sequence.effects {
                 visitor(effect);
@@ -466,6 +484,12 @@ impl Effect {
         }
         if let Some(haunt) = self.downcast_ref::<crate::effects::HauntExileEffect>() {
             for effect in &haunt.haunt_effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(prevent) = self.downcast_ref::<crate::effects::PreventAllDamageEffect>() {
+            for effect in &prevent.follow_up_effects {
                 visitor(effect);
             }
             return;
@@ -2312,6 +2336,7 @@ impl Effect {
         cost_reduction: Option<crate::mana::ManaCost>,
         mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
         alternative_payment: Option<ironsmith_core::CastTaggedAlternativePayment>,
+        alternative_cost: Option<crate::cost::TotalCost>,
     ) -> Self {
         Self::new(crate::effects::CastTaggedEffect {
             tag,
@@ -2325,6 +2350,7 @@ impl Effect {
             cost_reduction,
             mana_spend_mode,
             alternative_payment,
+            alternative_cost,
         })
     }
 
@@ -2760,4 +2786,29 @@ fn reflexive_intervening_condition(
         .condition
         .for_each_tag_key(&mut |_| references_tag = true);
     (!references_tag).then(|| conditional.condition.clone())
+}
+
+#[cfg(test)]
+mod effect_cast_price_child_tests {
+    use super::*;
+    #[test]
+    fn immediate_and_temporary_prices_visit_effect_children_in_every_cost_branch() {
+        let payment = Effect::pay_life(Value::Fixed(2));
+        let price = crate::cost::TotalCost::one_of(vec![
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(payment.clone())),
+            crate::cost::TotalCost::one_of(vec![crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(payment))]),
+        ]);
+        let effects = [
+            Effect::new(crate::effects::CastTaggedEffect::new("card", crate::target::PlayerFilter::You).with_alternative_cost(price.clone())),
+            Effect::new(crate::effects::GrantPlayTaggedEffect::new("card".into(), crate::target::PlayerFilter::You,
+                crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn, false, false).with_alternative_cost(price)),
+        ];
+        for effect in effects {
+            let mut seen = 0;
+            effect.visit_child_effects(&mut |child| {
+                assert!(child.downcast_ref::<crate::effects::PayLifeEffect>().is_some()); seen += 1;
+            });
+            assert_eq!(seen, 2);
+        }
+    }
 }

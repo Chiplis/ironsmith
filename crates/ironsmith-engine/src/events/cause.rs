@@ -169,3 +169,33 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod trigger_cause_tests {
+    use super::*;
+    use crate::condition_eval::{ExternalEvaluationContext, evaluate_condition_external};
+    use crate::ids::ObjectId;
+    use crate::triggers::TriggerEvent;
+    #[test]
+    fn trigger_cause_controller_is_frozen_distinct_from_victim_and_respects_teams_and_action_kind() {
+        let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into(), "D".into()], 20);
+        let [a,b,c,d] = [0,1,2,3].map(PlayerId::from_index);
+        game.set_teams(vec![vec![a,b],vec![c,d]]).unwrap();
+        let condition = crate::effect::Condition::TriggeringEventCausedBy { controller: crate::target::PlayerFilter::Opponent, effect_like_only: true };
+        for (cause, expected) in [
+            (Some(EventCause::from_effect(ObjectId::from_raw(77), c)), true),
+            (Some(EventCause::from_effect(ObjectId::from_raw(77), b)), false),
+            (Some(EventCause::from_cost(ObjectId::from_raw(77), c)), false),
+            (Some(EventCause::from_sba()), false),
+            (None, false),
+        ] {
+            let mut event = crate::events::SpellCounteredEvent::new(ObjectId::from_raw(88), a, None);
+            event.cause = cause;
+            let event = TriggerEvent::new_with_provenance(event, Default::default());
+            let context = ExternalEvaluationContext { controller: a, source: ObjectId::from_raw(99), triggering_event: Some(&event), ..Default::default() };
+            assert_eq!(evaluate_condition_external(&game, &condition, &context), expected);
+            // No live object 77 exists: the causing spell/ability's captured
+            // controller cannot be replaced by the affected spell's controller.
+        }
+    }
+}

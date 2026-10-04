@@ -514,6 +514,7 @@ pub fn lower_parsed_modal(
                     .once_per_turn
                     .then(|| "Activate only once each turn.".to_string())
                     .into_iter()
+                    .chain(activated.x_cant_be_zero.then(|| "X can't be 0.".to_string()))
                     .collect(),
                 // The header recorded what the text restricted; binding it
                 // happens here, where the runtime ability is built.

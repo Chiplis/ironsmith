@@ -293,13 +293,14 @@ impl ContinuousEffectId {
 /// static, so it applies before every other ability-layer effect and keyword
 /// counter, whatever their timestamps.
 pub(crate) fn is_land_type_rules_text_ability_loss(effect: &ContinuousEffect) -> bool {
-    matches!(effect.modification, Modification::RemoveAllAbilities)
+    matches!(effect.modification, Modification::RemoveLandRulesTextAbilities)
+        || (matches!(effect.modification, Modification::RemoveAllAbilities)
         && effect
             .originating_static_ability
             .as_ref()
             .is_some_and(|ability| {
                 ability.id() == crate::static_abilities::StaticAbilityId::SetLandSubtypes
-            })
+            }))
 }
 
 /// Order class of an effect within its layer, applied before timestamps and
@@ -734,6 +735,10 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
 
     /// Switch power and toughness (7e)
     SwitchPowerToughness,
+
+    /// CR305.7 rules-text/copy ability loss caused by setting basic land types.
+    /// Other continuous grants survive; appended for serialized ordinal stability.
+    RemoveLandRulesTextAbilities,
 }
 
 impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
@@ -862,6 +867,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 ContinuousModification::RemoveStaticAbilityFamily(value)
             }
             Self::RemoveAllAbilities => ContinuousModification::RemoveAllAbilities,
+            Self::RemoveLandRulesTextAbilities => ContinuousModification::RemoveLandRulesTextAbilities,
             Self::RemoveAllAbilitiesExceptMana => {
                 ContinuousModification::RemoveAllAbilitiesExceptMana
             }
@@ -986,6 +992,7 @@ impl Modification {
             },
             ironsmith_core::CompiledContinuousModification::DoesntUntap => Self::restriction(RestrictionKind::DoesntUntap),
             ironsmith_core::CompiledContinuousModification::MakeColorless => Self::MakeColorless,
+            ironsmith_core::CompiledContinuousModification::RemoveAllAbilities => Self::RemoveAllAbilities,
             ironsmith_core::CompiledContinuousModification::SwitchPowerToughness => {
                 Self::SwitchPowerToughness
             }
@@ -1033,6 +1040,7 @@ impl Modification {
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
             | Modification::Restriction(_) => Layer::Ability,
 
@@ -1344,6 +1352,35 @@ impl ContinuousEffectManager {
     fn expire_latched_duration(&self, id: ContinuousEffectId) {
         if let Some(state) = self.latched_duration_states.borrow_mut().get_mut(&id) {
             *state = LatchedDurationState::Expired;
+        }
+    }
+
+    /// CR 702.26e: a battlefield-presence duration ends when its exact object
+    /// phases out, even if no characteristic query occurs before it phases in.
+    /// This transition proof requires no recursive characteristic discovery.
+    pub(crate) fn expire_presence_durations_for_phased_objects(&self, objects: &[ObjectId]) {
+        fn loses_presence(
+            predicate: &ironsmith_core::ContinuousDurationPredicate,
+            objects: &[ObjectId],
+        ) -> bool {
+            use ironsmith_core::{
+                ContinuousDurationObject as Object, ContinuousDurationPredicate as Predicate,
+            };
+            match predicate {
+                Predicate::All(parts) => parts.iter().any(|part| loses_presence(part, objects)),
+                Predicate::ObjectOnBattlefield(Object::Specific(id)) => objects.contains(id),
+                _ => false,
+            }
+        }
+        for effect in self.effects.iter() {
+            let ends = match &effect.duration {
+                Until::ForAsLongAs(predicate) => loses_presence(predicate, objects),
+                Until::YouStopControllingThis => objects.contains(&effect.source),
+                _ => false,
+            };
+            if ends {
+                self.expire_latched_duration(effect.id);
+            }
         }
     }
 
@@ -1953,6 +1990,9 @@ impl ContinuousEffect {
 /// Calculated characteristics for an object after applying continuous effects.
 #[derive(Debug, Clone)]
 pub struct CalculatedCharacteristics {
+    /// A provisional layer computation that could not fit the native signed
+    /// P/T domain. Checked owners reject it before publishing any snapshot.
+    pub(crate) numeric_range_error: Option<(&'static str, i128)>,
     pub name: SharedStr,
     pub mana_cost: Option<ManaCost>,
     /// Noncopiable linked-face mana value of the current view. Copy and
@@ -1963,6 +2003,10 @@ pub struct CalculatedCharacteristics {
     pub ability_labels: SharedVec<String>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
+    /// P/T after characteristic-defining and setting effects (7a/7b),
+    /// before modifiers, counters, or switching. Not the printed numbers.
+    pub base_power: Option<i32>,
+    pub base_toughness: Option<i32>,
     pub card_types: SharedVec<CardType>,
     pub subtypes: SharedVec<Subtype>,
     pub supertypes: SharedVec<Supertype>,
@@ -1983,6 +2027,30 @@ pub struct CalculatedCharacteristics {
     pub(crate) ability_gain_prohibitions: Vec<Ability>,
     pub aura_attach_filter: Option<crate::object::AuraAttachmentFilter>,
     pub controller: PlayerId,
+}
+
+impl CalculatedCharacteristics {
+    pub(crate) fn validate_numeric_range(&self) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if let Some((resource, value)) = self.numeric_range_error {
+            Err(crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange { resource, value })
+        } else { Ok(()) }
+    }
+
+    pub(crate) fn record_base_pt(&mut self) {
+        self.base_power = self.power;
+        self.base_toughness = self.toughness;
+    }
+}
+
+/// Provisional P/T is never wrapped or saturated. The error marker travels
+/// with the computed characteristics to the authoritative checked owner.
+fn add_pt_checked(value: &mut Option<i32>, delta: i128, error: &mut Option<(&'static str, i128)>, axis: &'static str) {
+    let Some(current) = value else { return; };
+    let exact = i128::from(*current) + delta;
+    match i32::try_from(exact) {
+        Ok(next) => *current = next,
+        Err(_) => { error.get_or_insert((axis, exact)); }
+    }
 }
 
 fn card_types_support_subtype(card_types: &[CardType], subtype: Subtype) -> bool {
@@ -2223,6 +2291,8 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         linked_face_mana_value: object.linked_face_mana_value(),
         compiled_card_text: object.compiled_card_text.clone(),
         ability_labels: object.ability_labels.clone(),
+        base_power: object.base_power.as_ref().map(|p| p.base_value()),
+        base_toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         card_types: split_combined
@@ -2236,10 +2306,12 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         defense: object.base_defense,
         abilities: abilities.clone().into(),
         static_abilities: extract_static_abilities(&abilities).into(),
+        numeric_range_error: None,
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.initial_controller,
     };
+    chars.record_base_pt();
     chars
 }
 
@@ -2312,6 +2384,27 @@ fn apply_copy_effect_exceptions(
     }
 }
 
+fn replace_rules_text_abilities(
+    chars: &mut CalculatedCharacteristics,
+    abilities: Vec<Ability>,
+    origin: Option<AbilityEffectOrigin>,
+    preserve_source_abilities: bool,
+) {
+    let previous = chars.abilities.clone();
+    chars.abilities = abilities.into();
+    chars.abilities.rebind_origin(origin);
+    for (index, ability) in previous.iter().enumerate() {
+        let old_origin = previous.origin(index).expect("paired ability occurrence");
+        let independent = old_origin.is_independent_early_grant();
+        let already_present = if independent {
+            chars.abilities.iter().enumerate().any(|(slot, _)| chars.abilities.origin(slot) == Some(old_origin))
+        } else { chars.abilities.contains(ability) };
+        if (independent || preserve_source_abilities) && !already_present {
+            chars.abilities.push_with_origin(ability.clone(), old_origin.clone());
+        }
+    }
+}
+
 fn copy_characteristics_from_copiable_values(
     values: &CopiableValues,
     chars: &mut CalculatedCharacteristics,
@@ -2321,8 +2414,6 @@ fn copy_characteristics_from_copiable_values(
     add_supertypes: &[Supertype],
     origin: Option<AbilityEffectOrigin>,
 ) {
-    let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
-
     chars.name = values.name.clone().into();
     chars.mana_cost = values.mana_cost.clone();
     chars.linked_face_mana_value = None;
@@ -2336,21 +2427,9 @@ fn copy_characteristics_from_copiable_values(
     chars.colors = values.colors;
     chars.loyalty = values.loyalty;
     chars.defense = values.defense;
-    chars.abilities = values.abilities.as_ref().clone().into();
-    chars.abilities.rebind_origin(origin);
+    replace_rules_text_abilities(chars, values.abilities.as_ref().clone(), origin, preserve_source_abilities);
     chars.aura_attach_filter = values.aura_attach_filter.clone();
     install_enchant_metadata(chars);
-
-    if let Some(preserved_abilities) = preserved_abilities {
-        for (index, ability) in preserved_abilities.iter().enumerate() {
-            if !chars.abilities.contains(ability) {
-                chars.abilities.push_with_origin(
-                    ability.clone(),
-                    preserved_abilities.origin(index).unwrap().clone(),
-                );
-            }
-        }
-    }
 
     apply_copy_effect_exceptions(chars, name_override, name_override_surface, add_supertypes);
     chars.static_abilities = extract_static_abilities(&chars.abilities).into();
@@ -2517,11 +2596,20 @@ fn add_intrinsic_abilities(chars: &mut CalculatedCharacteristics) {
 
 // Share this operation across all layer routes: the CR 305.7 type-rule
 // loss supplies new-type mana before ordinary layer-six grants and losses.
+pub(crate) fn remove_land_rules_text_abilities(chars: &mut CalculatedCharacteristics) {
+    // Ordinary continuous grants run after this precedence class. Earlier
+    // Effect origins include layer1 copy exceptions/text boxes and are removed.
+    chars.abilities.retain_with_origin(|_, origin| origin.is_independent_early_grant());
+    chars.static_abilities = extract_static_abilities(&chars.abilities).into();
+    add_intrinsic_abilities(chars);
+}
+
 fn remove_all_abilities_for_effect(effect: &ContinuousEffect, chars: &mut CalculatedCharacteristics) {
-    chars.abilities.clear();
-    chars.static_abilities.clear();
     if is_land_type_rules_text_ability_loss(effect) {
-        add_intrinsic_abilities(chars);
+        remove_land_rules_text_abilities(chars);
+    } else {
+        chars.abilities.clear();
+        chars.static_abilities.clear();
     }
 }
 
@@ -3035,6 +3123,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         let Some(chars) = chars_by_id.get_mut(&id) else {
             continue;
         };
+        chars.record_base_pt();
         // CR 711.2b: level P/T is a 7b effect with the leveler's timestamp;
         // it's applied in timestamp order with the other P/T effects below.
         if let Some((lp, lt)) = get_level_ability_pt(object, &chars.abilities) {
@@ -3131,6 +3220,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 {
                     chars.power = Some(lp);
                     chars.toughness = Some(lt);
+                    chars.record_base_pt();
                     pending_level_pt.remove(id);
                 }
                 // CR 613.4c/613.4d: counters are part of 7c, so they apply
@@ -3138,7 +3228,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 if effect.modification.pt_sublayer() == Some(PtSublayer::Switching)
                     && counters_applied_before_switch.insert(*id)
                 {
-                    apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+                    apply_counter_modifications(object, &mut chars.power, &mut chars.toughness, &mut chars.numeric_range_error);
                 }
                 let mut removed = abilities_removed.contains(id);
                 apply_modification_to_chars(
@@ -3182,12 +3272,13 @@ fn calculate_characteristics_layer_batch_with_effects(
         if let Some((lp, lt, _)) = pending_level_pt.remove(&id) {
             chars.power = Some(lp);
             chars.toughness = Some(lt);
+            chars.record_base_pt();
         }
         apply_reconfigure_attached_type_rule(object, chars);
         guards[idx].update(chars);
 
         if !counters_applied_before_switch.contains(&id) {
-            apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+            apply_counter_modifications(object, &mut chars.power, &mut chars.toughness, &mut chars.numeric_range_error);
         }
         guards[idx].update(chars);
 
@@ -3543,9 +3634,8 @@ fn apply_text_box_modification_to_chars(
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.ability_labels = overlay.ability_labels.clone();
-            chars.abilities = overlay.abilities.clone().into();
-            chars.abilities.rebind(effect);
-            chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
+            replace_rules_text_abilities(chars, overlay.abilities.to_vec(), Some(effect.into()), false);
+            chars.static_abilities = extract_static_abilities(&chars.abilities).into();
         }
         Modification::SetName(name) => {
             chars.name = name.clone().into();
@@ -3827,6 +3917,7 @@ fn calculate_with_layers_direct_internal(
     // Layer 7: Power/Toughness with proper sublayer handling
     // Process in sublayer order: 7a, 7b, 7c, 7d
 
+    chars.record_base_pt();
     // Level abilities apply in 7b with the leveler's timestamp (CR 711.2b);
     // they're interleaved with the other P/T effects by timestamp below.
     let mut pending_level_pt = None;
@@ -3949,6 +4040,7 @@ fn calculate_with_layers_direct_internal(
             {
                 chars.power = Some(lp);
                 chars.toughness = Some(lt);
+                chars.record_base_pt();
                 pending_level_pt = None;
             }
             // CR 613.4c/613.4d: counters are part of 7c, so they apply before
@@ -3956,7 +4048,7 @@ fn calculate_with_layers_direct_internal(
             if !counters_applied
                 && effect.modification.pt_sublayer() == Some(PtSublayer::Switching)
             {
-                apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+                apply_counter_modifications(object, &mut chars.power, &mut chars.toughness, &mut chars.numeric_range_error);
                 counters_applied = true;
             }
             apply_modification_to_chars(
@@ -3979,6 +4071,7 @@ fn calculate_with_layers_direct_internal(
     if let Some((lp, lt, _)) = pending_level_pt {
         chars.power = Some(lp);
         chars.toughness = Some(lt);
+        chars.record_base_pt();
     }
     apply_reconfigure_attached_type_rule(object, &mut chars);
     calc_guard.update(&chars);
@@ -3986,7 +4079,7 @@ fn calculate_with_layers_direct_internal(
     // Apply counter modifications for Layer 7c (after other 7c effects by
     // timestamp) unless a 7d switch already needed them.
     if !counters_applied {
-        apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+        apply_counter_modifications(object, &mut chars.power, &mut chars.toughness, &mut chars.numeric_range_error);
     }
     calc_guard.update(&chars);
 
@@ -4532,7 +4625,8 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         // source-relative object constraints, so it is never safe to share an
         // applicability cache entry across effects.
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
-        | PlayerFilter::ControlsMost { .. } => false,
+        | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. } => false,
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_source_independent(base) && player_filter_source_independent(excluded)
         }
@@ -4559,6 +4653,10 @@ fn continuous_effect_duration_is_active(
     game: &crate::game_state::GameState,
 ) -> bool {
     match effect.duration {
+        Until::ObjectIsCast { ref object, from_zone } => {
+            continuous_duration_object_id(object)
+                .is_some_and(|object| !game.object_completed_cast_from(object, from_zone))
+        }
         Until::YourNextTurn => {
             !(game.turn.turn_number > effect.expires_end_of_turn
                 && game.is_active_player(effect.controller))
@@ -5175,8 +5273,10 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.excluded_any_chosen_creature_type
         || filter.sticker.is_some()
         || filter.modified
+        || filter.ring_bearer
         || filter.attacking
         || filter.attacked_this_turn
+        || filter.was_blocked_this_turn
         || filter.didnt_attack_this_turn
         || filter.could_have_attacked_this_turn
         || filter
@@ -5207,6 +5307,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.entered_graveyard_this_turn
         || filter.entered_graveyard_from_battlefield_this_turn
         || filter.entered_graveyard_from_library_this_turn
+            || filter.milled_into_graveyard_this_turn
         || filter.surveilled_this_turn
         || filter.fought_this_turn
         || filter.counters_put_on_this_turn.is_some()
@@ -5217,8 +5318,10 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.was_dealt_damage_by_source_this_game
         || filter.dealt_damage_to_player_this_turn.is_some()
         || filter.drawn_this_turn
+        || filter.last_drawn_this_turn.is_some()
         || filter.power_parity.is_some()
         || filter.power_greater_than_base_power
+        || filter.power_comparison_to_base.is_some()
         || filter.total_power_toughness.is_some()
         || filter.mana_value_parity.is_some()
         || filter.mana_value_eq_counters_on_source.is_some()
@@ -5228,6 +5331,8 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.distinct_powers
         || filter.distinct_creature_types
         || filter.shares_land_type
+        || filter.shares_name
+        || filter.shares_color
         || filter.one_per_card_type
         || !filter.any_of.is_empty()
         || filter.source_surface.is_some()
@@ -5589,9 +5694,8 @@ fn apply_modification_to_chars(
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.ability_labels = overlay.ability_labels.clone();
-            chars.abilities = overlay.abilities.clone().into();
-            chars.abilities.rebind(effect);
-            chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
+            replace_rules_text_abilities(chars, overlay.abilities.to_vec(), Some(effect.into()), false);
+            chars.static_abilities = extract_static_abilities(&chars.abilities).into();
         }
         Modification::SetName(name) => {
             chars.name = name.clone().into();
@@ -5898,7 +6002,7 @@ fn apply_modification_to_chars(
                 .static_abilities
                 .retain(|candidate| candidate.id() != *id);
         }
-        Modification::RemoveAllAbilities => {
+        Modification::RemoveAllAbilities | Modification::RemoveLandRulesTextAbilities => {
             remove_all_abilities_for_effect(effect, chars);
             *abilities_removed = true;
         }
@@ -6020,25 +6124,17 @@ fn apply_modification_to_chars(
 
         // Layer 7c: Modifying P/T
         Modification::ModifyPower(delta) => {
-            if let Some(ref mut p) = chars.power {
-                *p += delta;
-            }
+            add_pt_checked(&mut chars.power, i128::from(*delta), &mut chars.numeric_range_error, "power");
         }
         Modification::ModifyToughness(delta) => {
-            if let Some(ref mut t) = chars.toughness {
-                *t += delta;
-            }
+            add_pt_checked(&mut chars.toughness, i128::from(*delta), &mut chars.numeric_range_error, "toughness");
         }
         Modification::ModifyPowerToughness {
             power: p_delta,
             toughness: t_delta,
         } => {
-            if let Some(ref mut p) = chars.power {
-                *p += p_delta;
-            }
-            if let Some(ref mut t) = chars.toughness {
-                *t += t_delta;
-            }
+            add_pt_checked(&mut chars.power, i128::from(*p_delta), &mut chars.numeric_range_error, "power");
+            add_pt_checked(&mut chars.toughness, i128::from(*t_delta), &mut chars.numeric_range_error, "toughness");
         }
         Modification::ModifyPowerToughnessValue {
             power: power_value,
@@ -6064,24 +6160,16 @@ fn apply_modification_to_chars(
                 effect_controller,
                 game,
             );
-            if let Some(ref mut p) = chars.power {
-                *p += p_delta;
-            }
-            if let Some(ref mut t) = chars.toughness {
-                *t += t_delta;
-            }
+            add_pt_checked(&mut chars.power, i128::from(p_delta), &mut chars.numeric_range_error, "power");
+            add_pt_checked(&mut chars.toughness, i128::from(t_delta), &mut chars.numeric_range_error, "toughness");
         }
         Modification::ModifyPowerToughnessByColorCount {
             power_multiplier,
             toughness_multiplier,
         } => {
             let color_count = chars.colors.count() as i32;
-            if let Some(ref mut p) = chars.power {
-                *p += power_multiplier * color_count;
-            }
-            if let Some(ref mut t) = chars.toughness {
-                *t += toughness_multiplier * color_count;
-            }
+            add_pt_checked(&mut chars.power, i128::from(*power_multiplier) * i128::from(color_count), &mut chars.numeric_range_error, "power");
+            add_pt_checked(&mut chars.toughness, i128::from(*toughness_multiplier) * i128::from(color_count), &mut chars.numeric_range_error, "toughness");
         }
 
         // Layer 7e: Switching P/T
@@ -6124,6 +6212,13 @@ fn apply_modification_to_chars(
         }
     }
     enforce_ability_gain_prohibitions(chars, &effect.modification);
+    if effect
+        .modification
+        .pt_sublayer()
+        .is_some_and(|layer| layer <= PtSublayer::Setting)
+    {
+        chars.record_base_pt();
+    }
 }
 
 /// Blank underscore lines are not words (CR 123.6); punctuation inside a word is.

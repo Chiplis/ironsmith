@@ -1,3 +1,9 @@
+pub(crate) mod effect_cast_prices;
+#[path = "permission_helpers/graveyard_turn_permissions.rs"]
+mod graveyard_turn_permissions;
+#[path = "permission_helpers/filtered_zone_permissions.rs"]
+mod filtered_zone_permissions;
+pub(crate) use filtered_zone_permissions::parse_top_look_and_permission;
 use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
 use super::grammar::permission_facts::{
     graveyard_source as permission_graveyard_facts,
@@ -185,6 +191,9 @@ fn tagged_permission_object_surface(
     match surface {
         permission_tagged_facts::TaggedPermissionTargetSurface::It => {
             Some(ironsmith_core::GrantPlayTaggedObjectSurface::It)
+        }
+        permission_tagged_facts::TaggedPermissionTargetSurface::ThisCard => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThisCard)
         }
         permission_tagged_facts::TaggedPermissionTargetSurface::ThatCard => {
             Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)
@@ -576,6 +585,9 @@ fn parse_tagged_cast_or_play_target_tokens(
         permission_tagged_facts::TaggedPermissionReference::SourceExiled => {
             crate::tag::CompilerReferenceTag::SourceExiled.bind()
         }
+        permission_tagged_facts::TaggedPermissionReference::SourceExiledSelf => {
+            crate::tag::CompilerReferenceTag::SourceExiledSelf.bind()
+        }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
             crate::tag::CompilerReferenceTag::LastRevealed.bind()
         }
@@ -606,6 +618,9 @@ fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Opt
         }
         permission_tagged_facts::TaggedPermissionReference::SourceExiled => {
             crate::tag::CompilerReferenceTag::SourceExiled.bind()
+        }
+        permission_tagged_facts::TaggedPermissionReference::SourceExiledSelf => {
+            crate::tag::CompilerReferenceTag::SourceExiledSelf.bind()
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
             crate::tag::CompilerReferenceTag::LastRevealed.bind()
@@ -871,40 +886,76 @@ pub fn parse_unsupported_play_cast_permission_clause(
 
 fn parse_graveyard_cast_additional_cost_tokens(
     tokens: &[OwnedLexToken],
-) -> Result<Option<crate::model::CompilerCost>, CardTextError> {
+) -> Result<Option<Vec<crate::model::CompilerCost>>, CardTextError> {
+    use crate::model::CompilerCost;
+    use permission_graveyard_facts::GraveyardAdditionalCostFact;
     let Some(fact) = permission_graveyard_facts::parse_graveyard_additional_cost_tokens(tokens)
     else {
         return Ok(None);
     };
-    match fact {
-        permission_graveyard_facts::GraveyardAdditionalCostFact::Sacrifice { filter_tokens } => {
+    let cost = match fact {
+        GraveyardAdditionalCostFact::Discard { count } => CompilerCost::Discard {
+            count,
+            card_types: Vec::new(),
+            supertypes: Vec::new(),
+            filter: None,
+            random: false,
+            name: None,
+            other: false,
+            binding: None,
+        },
+        GraveyardAdditionalCostFact::PayLife {
+            amount,
+            remaining_tokens,
+        } => {
+            let mut costs = vec![CompilerCost::Life(Value::Fixed(amount as i32))];
+            if let Some(remaining_tokens) = remaining_tokens {
+                let Some(remaining) =
+                    parse_graveyard_cast_additional_cost_tokens(remaining_tokens)?
+                else {
+                    return Ok(None);
+                };
+                costs.extend(remaining);
+            }
+            return Ok(Some(costs));
+        }
+        GraveyardAdditionalCostFact::Sacrifice { filter_tokens } => {
             let Some(filter) =
                 permission_subject_facts::parse_permission_subject_filter_tokens(filter_tokens)?
             else {
                 return Ok(None);
             };
-            Ok(Some(crate::model::CompilerCost::Sacrifice {
+            if !matches!(filter.controller, None | Some(PlayerFilter::You))
+                || !matches!(filter.zone, None | Some(Zone::Battlefield))
+            {
+                return Ok(None);
+            }
+            CompilerCost::Sacrifice {
                 count: crate::cards::builders::ChoiceCount::exactly(1),
                 filter: filter.you_control(),
                 all: false,
                 binding: None,
-            }))
+            }
         }
-        permission_graveyard_facts::GraveyardAdditionalCostFact::ExileCards {
+        GraveyardAdditionalCostFact::ExileCards {
             count,
             card_types,
-        } => Ok(Some(crate::model::CompilerCost::ExileChosen {
+            other,
+        } => CompilerCost::ExileChosen {
             count: crate::cards::builders::ChoiceCount::exactly(count as usize),
             filter: ObjectFilter {
                 zone: Some(Zone::Graveyard),
+                owner: Some(PlayerFilter::You),
                 card_types,
+                other,
                 ..ObjectFilter::default()
             },
             top_only: false,
             turn_face_up: false,
             binding: None,
-        })),
-    }
+        },
+    };
+    Ok(Some(vec![cost]))
 }
 
 fn parse_source_graveyard_cast_additional_cost_tokens<'a>(
@@ -943,10 +994,10 @@ fn parse_once_each_turn_graveyard_cast_permission(
     };
 
     let additional_costs = if let Some(cost_tokens) = parsed.cost_tokens {
-        let Some(cost) = parse_graveyard_cast_additional_cost_tokens(cost_tokens)? else {
+        let Some(costs) = parse_graveyard_cast_additional_cost_tokens(cost_tokens)? else {
             return Ok(None);
         };
-        vec![cost]
+        costs
     } else {
         Vec::new()
     };
@@ -959,18 +1010,22 @@ fn parse_once_each_turn_graveyard_cast_permission(
 
     let mut spec = crate::model::CompilerGrantSpecCore::new(grantable, filter, Zone::Graveyard);
     if let Some(subject) = parsed.exile_rider_subject_tokens {
-        let Some(rider_filter) = permission_subject_facts::parse_permission_subject_filter_tokens(subject)? else {
+        let Some(rider_filter) =
+            permission_subject_facts::parse_permission_subject_filter_tokens(subject)?
+        else {
             return Ok(None);
         };
         // This permission casts from the caster's own graveyard. Bind the
         // destination to the spell's owner, so changing its controller later
         // cannot rebind the authored "your graveyard" condition.
-        spec = spec.with_cast_this_way_filter(rider_filter).with_cast_this_way_grant(
-            crate::model::CompilerStaticAbilityCore::exile_to_exile_instead_of_graveyard(
-                crate::filter::ObjectFilter::source(),
-                crate::filter::PlayerFilter::OwnerOf(crate::filter::ObjectRef::FilterCandidate),
-            ),
-        );
+        spec = spec
+            .with_cast_this_way_filter(rider_filter)
+            .with_cast_this_way_grant(
+                crate::model::CompilerStaticAbilityCore::exile_to_exile_instead_of_graveyard(
+                    crate::filter::ObjectFilter::source(),
+                    crate::filter::PlayerFilter::OwnerOf(crate::filter::ObjectRef::FilterCandidate),
+                ),
+            );
     }
     Ok(Some(PermissionClauseSpec::GrantBySpec {
         player: PlayerAst::You,
@@ -1009,7 +1064,7 @@ fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
             crate::model::CompilerGrantableCore::play_from(),
             filter,
             Zone::Library,
-        )
+        ).with_top_card_only()
         .with_usage_limit(crate::grant::GrantUsageLimit::OnceEachTurn),
         lifetime: PermissionLifetime::Static,
     })
@@ -1030,6 +1085,25 @@ pub fn parse_permission_clause_spec_lexed(
     let clause_refs = token_word_refs(tokens);
     if clause_refs.is_empty() {
         return Ok(None);
+    }
+
+    if let Some(spec) = graveyard_turn_permissions::parse_permanent_permission_rider(tokens)? {
+        return Ok(Some(spec));
+    }
+    if let Some(spec) = filtered_zone_permissions::parse_permission_with_token_follow_up(tokens)? {
+        return Ok(Some(spec));
+    }
+    if let Some(spec) = filtered_zone_permissions::parse_shared_hand_top_free_cast(tokens)? {
+        return Ok(Some(spec));
+    }
+    if let Some(spec) = filtered_zone_permissions::parse_timed_top_look_and_permission(tokens)? {
+        return Ok(Some(spec));
+    }
+    if let Some(spec) = filtered_zone_permissions::parse_recent_graveyard_permission(tokens)? {
+        return Ok(Some(spec));
+    }
+    if let Some(spec) = filtered_zone_permissions::parse_filtered_zone_permission(tokens)? {
+        return Ok(Some(spec));
     }
 
     if let Some(spec) = parse_once_each_turn_graveyard_cast_permission(tokens)? {
@@ -1330,15 +1404,19 @@ pub fn parse_permission_clause_spec_lexed(
     }
 
     if let Some(parsed) = parse_source_graveyard_cast_additional_cost_tokens(rest_tokens) {
-        let Some(cost) = parse_graveyard_cast_additional_cost_tokens(parsed.cost_tokens)? else {
+        // This reader produces a printed static self-cast permission. Do not
+        // turn an authored temporary permission into an unbounded grant.
+        if prefixed_lifetime.is_some() || allow_land {
+            return Ok(None);
+        }
+        let Some(costs) = parse_graveyard_cast_additional_cost_tokens(parsed.cost_tokens)? else {
             return Ok(None);
         };
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec: crate::model::CompilerGrantSpecCore::new(
                 crate::model::CompilerGrantableCore::graveyard_cast_from_cards_mana_cost(
-                    vec![cost],
-                    false,
+                    costs, false,
                 ),
                 ObjectFilter::source(),
                 Zone::Graveyard,
@@ -1524,19 +1602,19 @@ pub fn parse_permission_clause_spec_lexed(
                 if permission_subject_facts::parse_exact_permission_subject(parsed.filter_tokens)
                     == Some(permission_subject_facts::ExactPermissionSubject::GenericSpells)
                 {
-                    crate::model::CompilerGrantSpecCore::flash_to_spells()
+                    crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(ObjectFilter::nonland())
                 } else if permission_subject_facts::parse_exact_permission_subject(
                     parsed.filter_tokens,
                 ) == Some(
                     permission_subject_facts::ExactPermissionSubject::NoncreatureSpells,
                 ) {
-                    crate::model::CompilerGrantSpecCore::flash_to_noncreature_spells()
+                    crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(ObjectFilter::noncreature_spell())
                 } else if let Some(filter) =
                     permission_subject_facts::parse_permission_subject_filter_tokens(
                         parsed.filter_tokens,
                     )?
                 {
-                    crate::model::CompilerGrantSpecCore::flash_to_spells_matching(filter)
+                    crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(filter)
                 } else {
                     return Ok(None);
                 };
@@ -2160,6 +2238,7 @@ mod tagged_permission_readings;
 pub fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effect) = effect_cast_prices::parse(tokens)? { return Ok(Some(effect)); }
     let trimmed_tokens = trim_commas(tokens);
     let mut trimmed = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
     if let Some(((), rest)) = crate::grammar::primitives::parse_prefix(
@@ -2485,22 +2564,23 @@ pub fn parse_cast_or_play_tagged_clause(
             without_paying_mana_cost,
             lifetime: PermissionLifetime::ForAsLongAsExiled,
             filter,
+            surface,
             ..
         }) if matches!(
             player,
             PlayerAst::Implicit | PlayerAst::You | PlayerAst::ItsOwner
         ) =>
         {
-            Ok(Some(
-                EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-                    crate::tag::TagRef::of(tag),
-                    player,
-                    allow_land,
-                    without_paying_mana_cost,
-                    mana_spend_mode,
-                    filter,
-                ),
-            ))
+            let mut effect = EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+                crate::tag::TagRef::of(tag), player, allow_land,
+                without_paying_mana_cost, mana_spend_mode, filter,
+            );
+            if let EffectAst::SubjectVerb(subject) = &mut effect
+                && let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    surface: grant_surface, ..
+                }) = &mut subject.action
+            { *grant_surface = surface; }
+            Ok(Some(effect))
         }
         Some(PermissionClauseSpec::Tagged {
             tag,
@@ -2747,4 +2827,26 @@ pub fn parse_forage_cast_permission(
         PlayerAst::You,
         crate::grant::GrantDuration::UntilEndOfTurn,
     )))
+}
+
+#[cfg(test)]
+mod graveyard_additional_cost_tests {
+    use super::*;
+    use crate::lexer::lex_line;
+
+    #[test]
+    fn graveyard_cost_permission_does_not_swallow_duration_or_partial_payment() {
+        for line in [
+            "Until end of turn, you may cast this card from your graveyard by discarding a card in addition to paying its other costs.",
+            "You may cast this card from your graveyard by paying 3 life and sacrificing two creatures in addition to paying its other costs.",
+            "You may cast this card from your graveyard by paying 3 life and discarding a creature card in addition to paying its other costs.",
+        ] {
+            assert!(
+                parse_permission_clause_spec(&lex_line(line, 0).unwrap())
+                    .unwrap()
+                    .is_none(),
+                "{line}"
+            );
+        }
+    }
 }

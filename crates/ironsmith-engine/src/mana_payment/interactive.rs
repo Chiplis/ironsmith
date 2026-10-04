@@ -7,14 +7,13 @@ use crate::ids::{ObjectId, PlayerId};
 
 /// Unlike planner simulations, this includes sources whose costs need player choices
 /// or mana from other sources. Every entry is checked again when activated.
-pub fn manual_mana_abilities(
-    game: &GameState,
-    request: &ManaPaymentRequest,
-) -> Vec<(ObjectId, usize)> {
-    if !request.allow_mana_abilities {
-        return Vec::new();
-    }
-    super::planner::useful_manual_mana_abilities(game, request)
+pub fn manual_mana_abilities(game: &GameState, request: &ManaPaymentRequest) -> Vec<(ObjectId, usize)> {
+    manual_mana_abilities_checked(game, request).unwrap_or_default()
+}
+
+pub fn manual_mana_abilities_checked(game: &GameState, request: &ManaPaymentRequest) -> Result<Vec<(ObjectId, usize)>, crate::effects::ExecutionError> {
+    if !request.allow_mana_abilities { return Ok(Vec::new()); }
+    super::planner::with_inventory_query(game, |query| super::planner::useful_manual_mana_abilities(query, request))
 }
 
 /// False means the activation was cancelled or needs replay with another answer.
@@ -26,7 +25,27 @@ pub(crate) fn activate_mana_during_payment(
     ability_index: usize,
     dm: &mut dyn DecisionMaker,
 ) -> Result<bool, crate::special_actions::ActionError> {
-    if !manual_mana_abilities(game, request).contains(&(source, ability_index)) {
+    let (root, meter) = game.begin_token_resource_scope();
+    let checkpoint = game.clone();
+    let mut result = activate_mana_during_payment_inner(game, request, source, ability_index, dm);
+    if let Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) = &result {
+        game.record_token_resource_failure(error);
+    }
+    if let Some(error) = game.token_resource_failure() {
+        result = Err(crate::special_actions::ActionError::ExecutionFailure { source, error });
+        game.restore_execution_checkpoint(checkpoint, false);
+    }
+    game.end_token_resource_scope(root, &meter);
+    result
+}
+
+fn activate_mana_during_payment_inner(
+    game: &mut GameState, request: &ManaPaymentRequest, source: ObjectId,
+    ability_index: usize, dm: &mut dyn DecisionMaker,
+) -> Result<bool, crate::special_actions::ActionError> {
+    let manual = manual_mana_abilities_checked(game, request)
+        .map_err(|error| crate::special_actions::ActionError::ExecutionFailure { source, error })?;
+    if !manual.contains(&(source, ability_index)) {
         return Err(crate::special_actions::ActionError::CantPayCost);
     }
     let checkpoint = game.clone();
@@ -54,11 +73,14 @@ pub(crate) fn activate_mana_during_payment(
     if dm.awaiting_choice() {
         return Ok(false);
     }
-    if result.is_err() {
-        *game = checkpoint;
-        return Ok(false);
-    }
-    for event in result.unwrap() {
+    let events = match result {
+        Ok(events) => events,
+        Err(error @ crate::special_actions::ActionError::ExecutionFailure { .. }) => {
+            *game = checkpoint; return Err(error);
+        }
+        Err(_) => { *game = checkpoint; return Ok(false); }
+    };
+    for event in events {
         game.queue_trigger_event(event.provenance(), event);
     }
     let provenance = game
@@ -85,6 +107,14 @@ pub(crate) fn pay_mana_interactively(
     exclusions: Vec<ObjectId>,
     dm: &mut dyn DecisionMaker,
 ) -> Result<(), CostPaymentError> {
+    pay_mana_interactively_in_context(game, payer, source, cost, reason, exclusions, dm, None)
+}
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn pay_mana_interactively_in_context(
+    game: &mut GameState, payer: PlayerId, source: ObjectId, cost: crate::mana::ManaCost,
+    reason: crate::costs::PaymentReason, exclusions: Vec<ObjectId>, dm: &mut dyn DecisionMaker,
+    execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+) -> Result<(), CostPaymentError> {
     if cost.is_empty() {
         return Ok(());
     }
@@ -96,9 +126,11 @@ pub(crate) fn pay_mana_interactively(
     loop {
         // Foreground prompts need one executable proposal. Source selection
         // remains available through constrained replanning below.
-        let plan = plan_first_mana_payment(game, &request)
-            .ok()
-            .unwrap_or_else(|| unfunded_mana_payment_plan(game, &request));
+        let plan = match plan_first_mana_payment(game, &request) {
+            Ok(plan) => plan,
+            Err(ManaPaymentFailure::EffectExecutionFailed(error)) => return Err(CostPaymentError::ExecutionFailed(error)),
+            Err(_) => unfunded_mana_payment_plan(game, &request),
+        };
         let subject = game
             .object(source)
             .map(|object| object.name.to_string())
@@ -128,7 +160,10 @@ pub(crate) fn pay_mana_interactively(
                 ability_index,
             } => {
                 activate_mana_during_payment(game, &request, source, ability_index, dm)
-                    .map_err(|_| CostPaymentError::InsufficientMana)?;
+                    .map_err(|error| match error {
+                        crate::special_actions::ActionError::ExecutionFailure { error, .. } => CostPaymentError::ExecutionFailed(error),
+                        _ => CostPaymentError::InsufficientMana,
+                    })?;
                 if dm.awaiting_choice() {
                     return Err(CostPaymentError::InsufficientMana);
                 }
@@ -137,8 +172,9 @@ pub(crate) fn pay_mana_interactively(
                 plan_id,
                 request_hash,
             } if plan.payable && plan_id == plan.id && request_hash == plan.request_hash => {
-                return match execute_mana_payment_plan(game, &request, &plan, dm) {
+                return match super::execute_mana_payment_plan_in_context(game, &request, &plan, dm, execution) {
                     Ok(ManaPaymentExecution::Paid) => Ok(()),
+                    Err(ManaPaymentFailure::EffectExecutionFailed(error)) => Err(CostPaymentError::ExecutionFailed(error)),
                     _ => Err(CostPaymentError::InsufficientMana),
                 };
             }

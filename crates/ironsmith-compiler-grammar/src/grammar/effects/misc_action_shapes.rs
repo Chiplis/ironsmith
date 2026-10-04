@@ -36,6 +36,7 @@ pub struct SwitchPowerToughnessShape<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkipActionKind {
+    Scheduled { kind: ironsmith_core::ScheduledSkipKind, count: u32 },
     NextCombatPhaseThisTurn,
     CombatPhases,
     DrawStep,
@@ -162,37 +163,44 @@ fn skip_player_prefix(input: &mut LexStream<'_>) -> WResult<(PlayerAst, bool)> {
     .parse_next(input)
 }
 
-fn contains_word(tokens: &[OwnedLexToken], word: &'static str) -> bool {
-    primitives::find_prefix(tokens, || primitives::kw(word).void()).is_some()
-}
-
+/// Match the whole schedule phrase. A possessive agrees with the already
+/// parsed subject; it must not replace a target-player selection with `That`.
 pub fn parse_skip_action_tokens(
     tokens: &[OwnedLexToken],
     subject_player: Option<PlayerAst>,
 ) -> Option<SkipActionShape> {
+    use ironsmith_core::ScheduledSkipKind as K;
     let (player, action_tokens) = if let Some(player) = subject_player {
-        (player, tokens)
+        let tail = primitives::parse_prefix(tokens, skip_player_prefix)
+            .filter(|((_, keep), _)| !keep).map(|(_, tail)| tail).unwrap_or(tokens);
+        (player, tail)
     } else {
         let ((player, keep_prefix), tail) = primitives::parse_prefix(tokens, skip_player_prefix)?;
         (player, if keep_prefix { tokens } else { tail })
     };
-
-    let action = if ["combat", "phase", "next", "this", "turn"]
-        .iter()
-        .all(|word| contains_word(action_tokens, word))
-    {
-        SkipActionKind::NextCombatPhaseThisTurn
-    } else if contains_word(action_tokens, "combat")
-        && contains_word(action_tokens, "turn")
-        && (contains_word(action_tokens, "phase") || contains_word(action_tokens, "phases"))
-    {
-        SkipActionKind::CombatPhases
-    } else if contains_word(action_tokens, "draw") && contains_word(action_tokens, "step") {
-        SkipActionKind::DrawStep
-    } else if contains_word(action_tokens, "turn") {
-        SkipActionKind::Turn
-    } else {
-        return None;
+    let words = TokenWordView::new(action_tokens).word_refs();
+    let action = match words.as_slice() {
+        ["next", "combat", "phase", "this", "turn"] => SkipActionKind::NextCombatPhaseThisTurn,
+        ["all", "combat", "phases", "of", "your" | "their", "next", "turn"]
+        | ["all", "combat", "phases", "of", "the", "next", "turn"]
+        | ["combat", "phases", "of", "your" | "their", "next", "turn"] => SkipActionKind::CombatPhases,
+        ["draw", "step"] | ["draw", "step", "this", "turn"] => SkipActionKind::DrawStep,
+        ["turn"] | ["that", "turn"] => SkipActionKind::Turn,
+        _ => {
+            let rest = words.strip_prefix(&["next"])?;
+            let (count, unit) = if let Some((number, consumed)) = ironsmith_core::parse_cardinal_words(rest) {
+                (number, &rest[consumed..])
+            } else { (1, rest) };
+            if count == 0 { return None; }
+            let kind = match unit {
+                ["untap", "step" | "steps"] => K::UntapStep,
+                ["combat", "phase" | "phases"] => K::CombatPhase,
+                ["turn" | "turns"] => K::Turn,
+                ["draw", "step" | "steps"] => K::DrawStep,
+                _ => return None,
+            };
+            SkipActionKind::Scheduled { kind, count }
+        }
     };
     Some(SkipActionShape { player, action })
 }
@@ -519,5 +527,31 @@ mod tests {
             .expect("equal-to mill parse")
             .expect("equal-to mill shape");
         assert!(equal_to.count.has_surface_hint(ValueSurfaceHint::EqualTo));
+    }
+}
+
+#[cfg(test)]
+mod scheduled_skip_tests {
+    use super::*;
+    use ironsmith_core::ScheduledSkipKind as K;
+    #[test]
+    fn complete_skip_phrases_preserve_subject_count_and_scope() {
+        for (text, subject, player, kind, count) in [
+            ("your next untap step", Some(PlayerAst::You), PlayerAst::You, K::UntapStep, 1),
+            ("their next combat phase", Some(PlayerAst::TargetOpponent), PlayerAst::TargetOpponent, K::CombatPhase, 1),
+            ("your next two turns", None, PlayerAst::You, K::Turn, 2),
+            ("their next untap step", Some(PlayerAst::That), PlayerAst::That, K::UntapStep, 1),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert_eq!(parse_skip_action_tokens(&tokens, subject), Some(SkipActionShape { player, action: SkipActionKind::Scheduled { kind, count } }));
+        }
+        for text in ["your next combat phase unless you pay 3 life", "your next untap step and win the game", "your next zero turns", "your next two turns instead of drawing"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_skip_action_tokens(&tokens, None).is_none(), "{text}");
+        }
+        for text in ["your next combat phase this turn", "all combat phases of their next turn", "your draw step this turn"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_skip_action_tokens(&tokens, Some(PlayerAst::You)).is_some(), "{text}");
+        }
     }
 }

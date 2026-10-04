@@ -10,11 +10,15 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 #[derive(Debug, Clone, PartialEq)]
 pub struct PermanentBecomesTappedTrigger {
     pub filter: ObjectFilter,
+    pub one_or_more: bool,
 }
 
 impl PermanentBecomesTappedTrigger {
     pub fn new(filter: ObjectFilter) -> Self {
-        Self { filter }
+        Self {
+            filter,
+            one_or_more: false,
+        }
     }
 }
 
@@ -26,11 +30,27 @@ impl TriggerMatcher for PermanentBecomesTappedTrigger {
         let Some(e) = event.downcast::<PermanentTappedEvent>() else {
             return false;
         };
-        if let Some(obj) = ctx.game.object(e.permanent) {
+        if let Some(snapshot) = &e.snapshot {
+            self.filter
+                .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+        } else if let Some(obj) = ctx.game.object(e.permanent) {
             self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
         } else {
             false
         }
+    }
+
+    fn simultaneous_trigger_key(
+        &self,
+        event: &TriggerEvent,
+    ) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        (self.one_or_more && event.kind() == EventKind::PermanentTapped).then_some(
+            crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { tapped: true },
+        )
+    }
+
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        self.matches(event, ctx).then_some(1)
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
@@ -38,7 +58,16 @@ impl TriggerMatcher for PermanentBecomesTappedTrigger {
     }
 
     fn display(&self) -> String {
-        format!("Whenever {} becomes tapped", self.filter.description())
+        if self.one_or_more {
+            let mut filter = self.filter.clone();
+            filter.set_plural_object_noun_surface(true);
+            format!(
+                "Whenever one or more {} become tapped",
+                filter.description()
+            )
+        } else {
+            format!("Whenever {} becomes tapped", self.filter.description())
+        }
     }
 }
 

@@ -15,6 +15,7 @@ pub struct WouldCreateTokensUnderControlMatcher {
     pub controller_filter: PlayerFilter,
     pub cause_filter: CauseFilter,
     pub token_filter: Option<ObjectFilter>,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl WouldCreateTokensUnderControlMatcher {
@@ -23,12 +24,17 @@ impl WouldCreateTokensUnderControlMatcher {
             controller_filter,
             cause_filter: CauseFilter::effect_like(),
             token_filter: None,
+            condition: None,
         }
     }
 
     pub fn with_cause_filter(mut self, cause_filter: CauseFilter) -> Self {
         self.cause_filter = cause_filter;
         self
+    }
+
+    pub fn with_condition(mut self, condition: Option<crate::ConditionExpr>) -> Self {
+        self.condition = condition; self
     }
 
     pub fn with_token_filter(mut self, token_filter: ObjectFilter) -> Self {
@@ -61,23 +67,23 @@ impl ReplacementMatcher for WouldCreateTokensUnderControlMatcher {
             return false;
         }
 
+        if let Some(condition) = &self.condition {
+            let Some(source) = ctx.source else { return false; };
+            let context = crate::condition_eval::ExternalEvaluationContext {
+                controller: ctx.controller, source, defending_player: None, attacking_player: None,
+                filter_source: Some(source), iterated_player: None, triggering_event: None,
+                trigger_identity: None, ability_index: None, options: Default::default(),
+            };
+            if !crate::condition_eval::evaluate_condition_external(ctx.game, condition, &context) { return false; }
+        }
+
         if let Some(token_filter) = &self.token_filter {
             // Tokens an earlier replacement added are part of the event too
             // (CR 616.1), so any matching group makes this apply.
-            return (create_tokens.count > 0
-                && create_tokens.token.as_ref()
-                    .is_some_and(|token| token_filter.matches(token, &ctx.filter_ctx, ctx.game)))
-                || create_tokens.additional_tokens.iter().any(|(kind, count)| {
-                    *count > 0
-                        && token_filter.matches(
-                            &super::create_tokens::additional_token_object(
-                                *kind,
-                                create_tokens.controller,
-                            ),
-                            &ctx.filter_ctx,
-                            ctx.game,
-                        )
-                });
+            return create_tokens.group_keys().into_iter().any(|key| {
+                create_tokens.group_count(key) > 0 && create_tokens.group_object(key)
+                    .is_some_and(|token| token_filter.matches(&token, &ctx.filter_ctx, ctx.game))
+            });
         }
 
         true

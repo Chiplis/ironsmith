@@ -817,19 +817,13 @@ pub(super) fn rewrite_lexed_effect_entrypoint_supports_investigate_once_for_each
 }
 
 #[test]
-pub(super) fn rewrite_cost_reduction_line_rejects_unmodeled_activate_if_condition() {
-    let tokens = lex_line(
-        "this ability costs 1 less to activate if you control an artifact.",
-        0,
-    )
-    .expect("rewrite lexer should classify activated cost reduction");
-    let err = parse_cost_reduction_line(&tokens)
-        .expect_err("unmodeled activated cost reduction condition should fail");
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported activated-ability cost reduction condition"),
-        "expected explicit unsupported cost reduction condition, got {message}"
-    );
+pub(super) fn rewrite_cost_reduction_line_preserves_typed_activate_if_condition() {
+    let tokens = lex_line("this ability costs 1 less to activate if you control an artifact.", 0).unwrap();
+    let ability = parse_cost_reduction_line(&tokens).unwrap().unwrap();
+    let debug = format!("{ability:?}");
+    assert!(debug.contains("Conditional") && debug.contains("ThisAbility"), "{debug}");
+    let tokens = lex_line("this ability costs 1 less to activate if elephants dance.", 0).unwrap();
+    assert!(parse_cost_reduction_line(&tokens).is_err());
 }
 
 #[test]
@@ -1645,9 +1639,9 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
     assert!(matches!(
         tap_cst.segments.as_slice(),
         [crate::grammar::activation_costs::ActivationCostSegmentCst::TapChosen {
-            count: 1,
+            count,
             filter,
-        }] if filter.card_types == [CardType::Creature]
+        }] if *count == ChoiceCount::exactly(1) && filter.card_types == [CardType::Creature]
             && filter.controller == Some(crate::target::PlayerFilter::You)
             && filter.untapped
             && filter.other
@@ -4386,4 +4380,56 @@ pub(super) fn chroma_full_cards_keep_filtered_mana_symbol_aggregates() {
             && !bombardment_compact.contains("ManaSymbolsInManaCostOf{spec:All("),
         "{bombardment}"
     );
+}
+
+#[test]
+pub(super) fn player_only_target_events_keep_target_actor_and_stack_kind_separate() -> Result<(), CardTextError> {
+    for (tail, kind, controller) in [
+        ("a spell", "Spell", "Any"),
+        ("a spell or ability an opponent controls", "SpellOrAbility", "Opponent"),
+        ("an ability you control", "Ability", "You"),
+    ] {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Player observer").card_types(vec![CardType::Artifact]);
+        let (doc, _) = parse_text_to_semantic_document(builder.split_face().0,
+            format!("Whenever you become the target of {tail}, draw a card."), false)?;
+        let [item] = doc.items.as_slice() else { panic!("one trigger"); };
+        let (trigger, _, _) = rewrite_direct_triggered_chunk(item).unwrap();
+        let debug = format!("{trigger:?}");
+        assert!(debug.contains("PlayerBecomesTargeted") && debug.contains("player: You")
+            && debug.contains(&format!("source_kind: {kind}")) && debug.contains(&format!("source_controller: {controller}")), "{debug}");
+    }
+    Ok(())
+}
+
+#[test]
+pub(super) fn target_event_source_qualification_is_a_physical_source_filter() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Source observer").card_types(vec![CardType::Creature]);
+    let (doc, _) = parse_text_to_semantic_document(builder.split_face().0,
+        "Whenever another creature becomes the target of an ability of a land you control named Test Location, draw a card.".into(), false)?;
+    let [item] = doc.items.as_slice() else { panic!("one trigger"); };
+    let (trigger, _, _) = rewrite_direct_triggered_chunk(item).unwrap();
+    let debug = format!("{trigger:?}");
+    assert!(debug.contains("BecomesTargetedByAbilitySource") && debug.contains("other: true")
+        && debug.contains("Land") && debug.contains("controller: Some(You)") && debug.contains("Test Location"), "{debug}");
+    for text in [
+        "Whenever another creature becomes the target of an ability of, draw a card.",
+        "Whenever an unknown participant becomes the target of an ability of a land, draw a card.",
+    ] {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Invalid observer").card_types(vec![CardType::Creature]);
+        assert!(parse_text_to_semantic_document(builder.split_face().0, text.into(), false).is_err(), "{text}");
+    }
+    Ok(())
+}
+
+#[test]
+pub(super) fn targeting_only_it_is_not_a_literal_single_target_count() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Only target observer").card_types(vec![CardType::Creature]);
+    let (doc, _) = parse_text_to_semantic_document(builder.split_face().0,
+        "Whenever this creature becomes the target of an ability that targets only it, draw a card.".into(), false)?;
+    let [item] = doc.items.as_slice() else { panic!("one trigger"); };
+    let (trigger, _, _) = rewrite_direct_triggered_chunk(item).unwrap();
+    let debug = format!("{trigger:?}");
+    assert!(debug.contains("ThisBecomesTargetedByStackObject") && debug.contains("target_count: None")
+        && debug.contains("targets_only_object: Some"), "{debug}");
+    Ok(())
 }

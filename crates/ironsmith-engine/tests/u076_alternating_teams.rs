@@ -217,7 +217,7 @@ fn u076_left_and_right_options_do_not_skip_an_empty_physical_seat() {
         assert!(game.attack_direction_allows_defender(seats[0], seats[expected]));
         assert!(!game.attack_direction_allows_defender(seats[0], seats[other]));
 
-        assert!(game.mark_player_lost(seats[expected]));
+        assert!(game.mark_player_lost(seats[expected]).expect("checked designation/departure fixture"));
         assert!(
             !game.attack_direction_allows_defender(seats[0], seats[other]),
             "a vacated adjacent seat remains part of the physical seat map",
@@ -251,7 +251,7 @@ fn u076_resources_turns_and_information_remain_individual_but_victory_is_by_team
     assert_eq!(game.turn_store.turn_order.len(), 6);
 
     for loser in [seats[0], seats[2], seats[3], seats[4], seats[5]] {
-        assert!(game.mark_player_lost(loser));
+        assert!(game.mark_player_lost(loser).expect("checked designation/departure fixture"));
     }
     let result = advance_priority(&mut game, &mut TriggerQueue::new()).unwrap();
     let GameProgress::GameOver(GameResult::Remaining(winners)) = result else {

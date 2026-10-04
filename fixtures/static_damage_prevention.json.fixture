@@ -1,0 +1,178 @@
+[
+  {
+    "name": "Daunting Defender",
+    "oracle_id": "618f29e1-0ea0-4457-91a6-7210f7619c9a",
+    "mana_cost": "{4}{W}",
+    "type_line": "Creature — Human Cleric",
+    "oracle_text": "If a source would deal damage to a Cleric creature you control, prevent 1 of that damage.",
+    "power": "3",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/ons/21/daunting-defender?utm_source=api"
+  },
+  {
+    "name": "Djeru, With Eyes Open",
+    "oracle_id": "5d520dd4-7986-41fa-ab94-9226da751668",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Legendary Creature — Human Warrior",
+    "oracle_text": "Vigilance\nWhen Djeru enters, you may search your library for a planeswalker card, reveal it, put it into your hand, then shuffle.\nIf a source would deal damage to a planeswalker you control, prevent 1 of that damage.",
+    "power": "4",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/phou/10s/djeru-with-eyes-open?utm_source=api"
+  },
+  {
+    "name": "Shield of the Realm",
+    "oracle_id": "d669ed30-efe9-4455-813a-c747b123333f",
+    "mana_cost": "{2}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "If a source would deal damage to equipped creature, prevent 2 of that damage.\nEquip {1}",
+    "scryfall_uri": "https://scryfall.com/card/dom/228/shield-of-the-realm?utm_source=api"
+  },
+  {
+    "name": "Temple Altisaur",
+    "oracle_id": "1f499d39-b963-45c0-9604-d3cab98c9e05",
+    "mana_cost": "{4}{W}",
+    "type_line": "Creature — Dinosaur",
+    "oracle_text": "If a source would deal damage to another Dinosaur you control, prevent all but 1 of that damage.",
+    "power": "3",
+    "toughness": "4",
+    "scryfall_uri": "https://scryfall.com/card/lcc/138/temple-altisaur?utm_source=api"
+  },
+  {
+    "name": "Hyperion, Supreme Hero",
+    "oracle_id": "4f4a5966-3713-45c7-acc2-9ddb4ff73eab",
+    "mana_cost": "{4}{W}{W}{W}",
+    "type_line": "Legendary Creature — Eternal Hero",
+    "oracle_text": "Flash\nFlying\nIf a source would deal damage to you or a Hero you control, prevent all but 1 of that damage.",
+    "power": "7",
+    "toughness": "7",
+    "scryfall_uri": "https://scryfall.com/card/msc/599/hyperion-supreme-hero?utm_source=api"
+  },
+  {
+    "name": "Callous Giant",
+    "oracle_id": "7a2336ff-c8ed-4daa-b182-403c21bc8133",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Creature — Giant",
+    "oracle_text": "If a source would deal 3 or less damage to this creature, prevent that damage.",
+    "power": "4",
+    "toughness": "4",
+    "scryfall_uri": "https://scryfall.com/card/inv/139/callous-giant?utm_source=api"
+  },
+  {
+    "name": "Shield of the Avatar",
+    "oracle_id": "a4433da6-78b7-4669-a0dd-e7ea9672b0bc",
+    "mana_cost": "{1}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "If a source would deal damage to equipped creature, prevent X of that damage, where X is the number of creatures you control.\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+    "scryfall_uri": "https://scryfall.com/card/m15/230/shield-of-the-avatar?utm_source=api"
+  },
+  {
+    "name": "Hedron-Field Purists",
+    "oracle_id": "ecc3e2ac-6534-4350-92f4-2c1f578d854e",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Human Cleric",
+    "oracle_text": "Level up {2}{W} ({2}{W}: Put a level counter on this. Level up only as a sorcery.)\nLEVEL 1-4\n1/4\nIf a source would deal damage to you or a creature you control, prevent 1 of that damage.\nLEVEL 5+\n2/5\nIf a source would deal damage to you or a creature you control, prevent 2 of that damage.",
+    "power": "0",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/roe/25/hedron-field-purists?utm_source=api"
+  },
+  {
+    "name": "Rem Karolus, Stalwart Slayer",
+    "oracle_id": "21971c8b-ff9b-40f8-8c9a-93d26c2615b7",
+    "mana_cost": "{1}{R}{W}",
+    "type_line": "Legendary Creature — Human Knight",
+    "oracle_text": "Flying, haste\nIf a spell would deal damage to you or another permanent you control, prevent that damage.\nIf a spell would deal damage to an opponent or a permanent an opponent controls, it deals that much damage plus 1 instead.",
+    "power": "2",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/dbl/235/rem-karolus-stalwart-slayer?utm_source=api"
+  },
+  {
+    "name": "Plated Pegasus",
+    "oracle_id": "30b99bee-c16e-4936-b688-1a256dd0c196",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Pegasus",
+    "oracle_text": "Flash (You may cast this spell any time you could cast an instant.)\nFlying\nIf a spell would deal damage to a permanent or player, prevent 1 damage that spell would deal to that permanent or player.",
+    "power": "1",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/tsp/34/plated-pegasus?utm_source=api"
+  },
+  {
+    "name": "Vigor",
+    "oracle_id": "70787d8b-0a40-43ea-837a-9617dc13e7e5",
+    "mana_cost": "{3}{G}{G}{G}",
+    "type_line": "Creature — Elemental Incarnation",
+    "oracle_text": "Trample\nIf damage would be dealt to another creature you control, prevent that damage. Put a +1/+1 counter on that creature for each 1 damage prevented this way.\nWhen Vigor is put into a graveyard from anywhere, shuffle it into its owner's library.",
+    "power": "6",
+    "toughness": "6",
+    "scryfall_uri": "https://scryfall.com/card/tmc/53/vigor?utm_source=api"
+  },
+  {
+    "name": "Phyrexian Hydra",
+    "oracle_id": "b16085d5-6d00-4d47-ab8b-d18d55c72141",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Creature — Phyrexian Hydra",
+    "oracle_text": "Infect (This creature deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters.)\nIf damage would be dealt to this creature, prevent that damage. Put a -1/-1 counter on this creature for each 1 damage prevented this way.",
+    "power": "7",
+    "toughness": "7",
+    "scryfall_uri": "https://scryfall.com/card/mbs/85/phyrexian-hydra?utm_source=api"
+  },
+  {
+    "name": "Purity",
+    "oracle_id": "23ef92b0-2298-4e8d-bf64-46d096c84a9d",
+    "mana_cost": "{3}{W}{W}{W}",
+    "type_line": "Creature — Elemental Incarnation",
+    "oracle_text": "Flying\nIf noncombat damage would be dealt to you, prevent that damage. You gain life equal to the damage prevented this way.\nWhen Purity is put into a graveyard from anywhere, shuffle it into its owner's library.",
+    "power": "6",
+    "toughness": "6",
+    "scryfall_uri": "https://scryfall.com/card/lrw/37/purity?utm_source=api"
+  },
+  {
+    "name": "Swans of Bryn Argoll",
+    "oracle_id": "b187aeeb-5cf5-4b73-a3ef-f39188d2ba33",
+    "mana_cost": "{2}{W/U}{W/U}",
+    "type_line": "Creature — Bird Spirit",
+    "oracle_text": "Flying\nIf a source would deal damage to this creature, prevent that damage. The source's controller draws cards equal to the damage prevented this way.",
+    "power": "4",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/plst/MM2-199/swans-of-bryn-argoll?utm_source=api"
+  },
+  {
+    "name": "Hostility",
+    "oracle_id": "be16e9d8-aa73-448b-919c-7d02e2e15911",
+    "mana_cost": "{3}{R}{R}{R}",
+    "type_line": "Creature — Elemental Incarnation",
+    "oracle_text": "Haste\nIf a spell you control would deal damage to an opponent, prevent that damage. Create a 3/1 red Elemental Shaman creature token with haste for each 1 damage prevented this way.\nWhen Hostility is put into a graveyard from anywhere, shuffle it into its owner's library.",
+    "power": "6",
+    "toughness": "6",
+    "scryfall_uri": "https://scryfall.com/card/cm2/105/hostility?utm_source=api"
+  },
+  {
+    "name": "Angel of Suffering",
+    "oracle_id": "92380c57-0a92-48eb-b562-2be149b5792a",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Creature — Nightmare Angel",
+    "oracle_text": "Flying\nIf damage would be dealt to you, prevent that damage and mill twice that many cards.",
+    "power": "5",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/snc/67/angel-of-suffering?utm_source=api"
+  },
+  {
+    "name": "The Mindskinner",
+    "oracle_id": "2e3ec514-fc9e-4964-a493-2a6cc9e63630",
+    "mana_cost": "{U}{U}{U}",
+    "type_line": "Legendary Enchantment Creature — Nightmare",
+    "oracle_text": "The Mindskinner can't be blocked.\nIf a source you control would deal damage to an opponent, prevent that damage and each opponent mills that many cards.",
+    "power": "10",
+    "toughness": "1",
+    "scryfall_uri": "https://scryfall.com/card/plst/DSK-66/the-mindskinner?utm_source=api"
+  },
+  {
+    "name": "Unbreathing Horde",
+    "oracle_id": "e6cd9203-e4d3-4d9f-b59f-4e454fc5a477",
+    "mana_cost": "{2}{B}",
+    "type_line": "Creature — Zombie",
+    "oracle_text": "This creature enters with a +1/+1 counter on it for each other Zombie you control and each Zombie card in your graveyard.\nIf this creature would be dealt damage, prevent that damage and remove a +1/+1 counter from it.",
+    "power": "0",
+    "toughness": "0",
+    "scryfall_uri": "https://scryfall.com/card/scd/113/unbreathing-horde?utm_source=api"
+  }
+]

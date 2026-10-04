@@ -355,11 +355,14 @@ pub fn parse_get_for_each_count_value(
     let authored_filter =
         crate::grammar::primitives::probe_shape(parse_object_filter(shape.target_tokens, false));
     let words = LexedClause::new(tokens).word_refs();
-    let Some((value, _)) = parse_for_each_count_value_words(&words) else {
+    let Some((value, used)) = parse_for_each_count_value_words(&words) else {
         return Err(CardTextError::ParseError(
             "missing filter after 'for each' in gets clause".to_string(),
         ));
     };
+    if crate::effect_sentences::life_unit_programs::is_life_unit_count(&value) && used != words.len() {
+        return Err(CardTextError::ParseError("unconsumed per-unit life quantity qualification".into()));
+    }
     let exact_surface_filter = |original: ObjectFilter| {
         let Some(authored) = authored_filter.clone() else {
             return original;

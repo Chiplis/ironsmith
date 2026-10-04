@@ -45,6 +45,8 @@ pub enum KeywordSubjectShape<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeywordMechanicShape<'a> {
+    EmpowerJace { amount_and_binding_tokens: &'a [OwnedLexToken] },
+    CollectEvidence { amount_and_binding_tokens: &'a [OwnedLexToken] },
     Amass {
         subtype: Option<Subtype>,
         amount_and_binding_tokens: &'a [OwnedLexToken],
@@ -61,6 +63,10 @@ pub enum KeywordMechanicShape<'a> {
     Phase {
         direction: PhaseDirectionShape,
         subject: PhaseSubjectShape<'a>,
+    },
+    PhaseExchange {
+        phase_in: &'a [OwnedLexToken],
+        phase_out: &'a [OwnedLexToken],
     },
     OpenAttraction {
         reminder: bool,
@@ -165,6 +171,20 @@ fn classify_subject(tokens: &[OwnedLexToken]) -> KeywordSubjectShape<'_> {
     }
 }
 
+fn parse_collect_evidence<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::phrase(&["collect", "evidence"]).parse_next(input)?;
+    let amount_and_binding_tokens = tokens_before(input, 1, primitives::sentence_end())?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::CollectEvidence { amount_and_binding_tokens })
+}
+
+fn parse_empower_jace<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::phrase(&["empower", "jace"]).parse_next(input)?;
+    let amount_and_binding_tokens = tokens_before(input, 1, primitives::sentence_end())?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::EmpowerJace { amount_and_binding_tokens })
+}
+
 fn parse_amass<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
     primitives::kw("amass").parse_next(input)?;
     let subtype = opt(parse_creature_subtype).parse_next(input)?;
@@ -264,12 +284,8 @@ fn parse_all_phase_subject(
     direction: PhaseDirectionShape,
 ) -> Option<&[OwnedLexToken]> {
     let mut input = LexStream::new(tokens);
-    let simultaneously =
-        crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("simultaneously")))?
-            .is_some();
-    if simultaneously {
-        crate::grammar::primitives::take_leaf(&mut input, opt(primitives::comma()))?;
-    }
+    let simultaneous = crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("simultaneously")))?.is_some();
+    if simultaneous { crate::grammar::primitives::take_leaf(&mut input, opt(primitives::comma()))?; }
     crate::grammar::primitives::take_leaf(&mut input, primitives::kw("all"))?;
     if direction == PhaseDirectionShape::In {
         crate::grammar::primitives::take_leaf(&mut input, opt(phased_word))?;
@@ -283,12 +299,24 @@ fn parse_all_phase_subject(
 
 fn parse_target_phase_subject(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let mut input = LexStream::new(tokens);
-    crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("simultaneously")))?;
     let target_tokens = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
         tokens_before(input, 1, eof.void())
     })?;
     crate::grammar::primitives::take_leaf(&mut input, primitives::end_of_block())?;
     Some(target_tokens)
+}
+
+fn parse_simultaneous_phase_exchange<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::kw("simultaneously").parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("all").parse_next(input)?;
+    phased_word.parse_next(input)?;
+    let phase_in = tokens_before(input, 1, primitives::phrase(&["phase", "in"]).void())?;
+    primitives::phrase(&["phase", "in", "and", "all"]).parse_next(input)?;
+    let phase_out = tokens_before(input, 1, primitives::phrase(&["phase", "out"]).void())?;
+    primitives::phrase(&["phase", "out"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::PhaseExchange { phase_in, phase_out })
 }
 
 fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
@@ -585,3 +613,21 @@ use ability_programs::parse_keyword_mechanic_lexed;
 #[path = "keywords/core.rs"]
 mod core_programs;
 use core_programs::{parse_endure, parse_explore};
+
+#[cfg(test)]
+mod empower_jace_tests {
+    use super::*;
+    use crate::lexer::lex_line;
+
+    #[test]
+    fn empower_jace_keeps_amount_and_where_binding_in_one_typed_clause() {
+        for text in ["Empower Jace 2.", "Empower Jace X.", "Empower Jace X, where X is the number of Islands you control."] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert!(matches!(super::super::parse_keyword_mechanic_tokens(&tokens),
+                Some(KeywordMechanicShape::EmpowerJace { .. })), "{text}");
+        }
+        for text in ["Empower Jace.", "Empower Chandra 2."] {
+            assert!(super::super::parse_keyword_mechanic_tokens(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+        }
+    }
+}

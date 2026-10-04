@@ -863,7 +863,8 @@ impl StaticAbilityKind for EnlistAttack {
             .provenance_graph_mut()
             .alloc_root_event(EventKind::PermanentTapped);
         let tap_event = TriggerEvent::new_with_provenance(
-            crate::events::PermanentTappedEvent::new(enlisted),
+            crate::events::PermanentTappedEvent::capture(game, enlisted, Some(controller))
+                .with_before_snapshot(enlisted_snapshot.clone()),
             provenance,
         );
         game.queue_trigger_event(provenance, tap_event.clone());
@@ -900,6 +901,32 @@ impl StaticAbilityKind for EnlistAttack {
             trigger_identity: crate::triggers::compute_trigger_identity(&self.linked_trigger),
         });
         Some(Ok(()))
+    }
+}
+
+/// A live per-permanent blocking allowance, evaluated for the actual blocker.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CanBlockAdditionalForEach {
+    pub additional: u32,
+    pub filter: ObjectFilter,
+}
+
+impl StaticAbilityKind for CanBlockAdditionalForEach {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::CanBlockAdditionalForEach }
+
+    fn display(&self) -> String {
+        let count = if self.additional == 1 { "an additional creature".to_string() }
+            else { format!("{} additional creatures", self.additional) };
+        format!("Can block {count} each combat for each {}", self.filter.description())
+    }
+
+    fn additional_blockable_attackers_for_source(&self, game: &GameState, source: ObjectId) -> Option<usize> {
+        let controller = game.controller_of_id(source)?;
+        let context = game.filter_context_for(controller, Some(source));
+        let count = game.battlefield.iter().filter(|id| {
+            game.object(**id).is_some_and(|object| self.filter.matches(object, &context, game))
+        }).count();
+        Some(count.saturating_mul(self.additional as usize))
     }
 }
 
@@ -1361,6 +1388,13 @@ impl StaticAbilityKind for CantBeBlockedExceptByNOrMore {
         Some(self.min_blockers)
     }
 }
+
+// This permission changes capacity, not individual blocking restrictions.
+define_combat_ability!(
+    CanBlockAnyNumber,
+    CanBlockAnyNumber,
+    "Can block any number of creatures"
+);
 
 // Can attack as though it didn't have defender.
 define_combat_ability!(
@@ -2949,7 +2983,7 @@ mod tests {
             ability.can_attack_specific_defender(&game, ObjectId::new(), alice, bob),
             Some(false)
         );
-        game.set_monarch(Some(bob));
+        game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
         assert_eq!(
             ability.can_attack_specific_defender(&game, ObjectId::new(), alice, bob),
             Some(true)

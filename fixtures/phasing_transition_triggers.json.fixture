@@ -1,0 +1,48 @@
+[
+  {
+    "name": "King of the Oathbreakers",
+    "text": "Mana cost: {2}{W}{B}\nType: Legendary Creature \u2014 Spirit Noble\nPower/Toughness: 3/3\nFlying\nWhenever King of the Oathbreakers or another Spirit you control becomes the target of a spell, it phases out. (Treat it and anything attached to it as though they don't exist until your next turn.)\nWhenever King of the Oathbreakers or another Spirit you control phases in, create a tapped 1/1 white Spirit creature token with flying.",
+    "oracle_id": "3ee451e7-2b2f-4ce7-af96-540bba555c60",
+    "source": "https://scryfall.com/card/ltr/780/king-of-the-oathbreakers?utm_source=api",
+    "baseline_content_hash": "40850ac777336feae1a74a1235c8891560c582dbbb421718d0f259ae4d1ffe42",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever King of the Oathbreakers or another Spirit you control phases in, create a tapped 1/1 white Spirit creature token with flying.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever King of the Oathbreakers or another Spirit you control phases in, create a tapped 1/1 white Spirit creature token with flying.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true
+  },
+  {
+    "name": "Shimmering Efreet",
+    "text": "Mana cost: {2}{U}\nType: Creature \u2014 Efreet\nPower/Toughness: 2/2\nFlying\nPhasing (This phases in or out before you untap during each of your untap steps. While it's phased out, it's treated as though it doesn't exist.)\nWhenever this creature phases in, target creature phases out. (It phases in before its controller untaps during their next untap step.)",
+    "oracle_id": "34f52d00-301d-4065-a86b-8393b4c6e99d",
+    "source": "https://scryfall.com/card/vis/42/shimmering-efreet?utm_source=api",
+    "baseline_content_hash": "da69b9925023f882ee54c475b2d600b5bd6db3922e488d8808fcf84fa8d69b8f",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever this creature phases in, target creature phases out. (It phases in before its controller untaps during their next untap step.)' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever this creature phases in, target creature phases out.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true
+  },
+  {
+    "name": "Teferi's Imp",
+    "text": "Mana cost: {2}{U}\nType: Creature \u2014 Imp\nPower/Toughness: 1/1\nFlying\nPhasing (This phases in or out before you untap during each of your untap steps. While it's phased out, it's treated as though it doesn't exist.)\nWhenever this creature phases out, discard a card.\nWhenever this creature phases in, draw a card.",
+    "oracle_id": "e4826967-b2f9-4f32-8411-d243edf41082",
+    "source": "https://scryfall.com/card/mir/98/teferis-imp?utm_source=api",
+    "baseline_content_hash": "73df572e037aa9949c7789503b632c6bda7c14a652fbf1f436667fff9921aa24",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever this creature phases in, draw a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever this creature phases in, draw a card.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true
+  },
+  {
+    "name": "Warping Wurm",
+    "text": "Mana cost: {2}{G}{U}\nType: Creature \u2014 Wurm\nPower/Toughness: 1/1\nPhasing (This phases in or out before you untap during each of your untap steps. While it's phased out, it's treated as though it doesn't exist.)\nAt the beginning of your upkeep, this creature phases out unless you pay {2}{G}{U}.\nWhenever this creature phases in, put a +1/+1 counter on it.",
+    "oracle_id": "c54c1517-cf7c-4afb-92f8-70c9d1591b45",
+    "source": "https://scryfall.com/card/mir/287/warping-wurm?utm_source=api",
+    "baseline_content_hash": "bf2b63026966731e6713f035d87c302307c91ef9f1295372aa4032cf1db017f3",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever this creature phases in, put a +1/+1 counter on it.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever this creature phases in, put a +1/+1 counter on it.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true
+  },
+  {
+    "name": "The War Doctor",
+    "text": "Mana cost: {2}{R}{W}\nType: Legendary Creature \u2014 Time Lord Doctor\nPower/Toughness: 3/5\nWhenever one or more other permanents phase out and whenever one or more other cards are put into exile from anywhere, put a time counter on The War Doctor.\nWhenever The War Doctor attacks, it deals damage equal to the number of time counters on it to any target. If a creature dealt damage this way would die this turn, exile it instead.",
+    "oracle_id": "d97553bf-6763-4a7b-8d82-1b438a22aa62",
+    "source": "https://scryfall.com/card/who/772/the-war-doctor?utm_source=api",
+    "baseline_content_hash": "57a426174bc0e3b8b876825113df2275120c1a4cdefa8b1b3005b9d50bb58ca4",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more other permanents phase out and whenever one or more other cards are put into exile from anywhere, put a time counter on The War Doctor.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more other permanents phase out and whenever one or more other cards are put into exile from anywhere, put a time counter on The War Doctor.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "source_closure": "Explicit simultaneous phase exchange, including supported Time and Tide control; all validation deferred."
+  }
+]

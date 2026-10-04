@@ -31,7 +31,7 @@ BidLifeEffect	ironsmith_core::BidLifeEffect<wire::WireEffect>	composition-a-l
 BolsterEffect	ironsmith_core::BolsterEffect	composition-a-l
 CantEffect	ironsmith_core::CantEffect	stack-event
 CastSourceEffect	ironsmith_core::CastSourceEffect	player
-CastTaggedEffect	ironsmith_core::CastTaggedEffect	player
+CastTaggedEffect	ironsmith_core::CastTaggedEffect<wire::WireCost>	player
 ChooseCardNameEffect	ironsmith_core::ChooseCardNameEffect	player
 ChooseCardTypeEffect	ironsmith_core::ChooseCardTypeEffect	player
 ChooseColorEffect	ironsmith_core::ChooseColorEffect	player
@@ -120,7 +120,7 @@ GrantBySpecEffect	ironsmith_core::GrantBySpecEffect<wire::WireGrantSpec, wire::W
 GrantEffect	ironsmith_core::GrantEffect<wire::WireGrantable, wire::WireGrantDuration>	player
 GrantNextSpellAbilityEffect	ironsmith_core::GrantNextSpellAbilityEffect<wire::WireAbility>	player
 GrantNextSpellCostReductionEffect	ironsmith_core::GrantNextSpellCostReductionEffect	player
-GrantPlayTaggedEffect	ironsmith_core::GrantPlayTaggedEffect	player
+GrantPlayTaggedEffect	ironsmith_core::GrantPlayTaggedEffect<wire::WireCost>	player
 GrantRepeatableManaPaymentActionUntilEndOfTurnEffect	ironsmith_core::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect<wire::WireEffect>	composition-a-l
 GrantTaggedSpellFreeCastUntilEndOfTurnEffect	ironsmith_core::GrantTaggedSpellFreeCastUntilEndOfTurnEffect	player
 GrantTaggedSpellLifeCostByManaValueEffect	ironsmith_core::GrantTaggedSpellLifeCostByManaValueEffect	player
@@ -173,7 +173,7 @@ PoisonCountersEffect	ironsmith_core::PoisonCountersEffect	player
 PopulateEffect	ironsmith_core::PopulateEffect	composition-m-z
 PrepareEffect	ironsmith_core::PrepareEffect	permanent
 PreventAllCombatDamageEffect	ironsmith_core::PreventAllCombatDamageEffect	combat
-PreventAllDamageEffect	ironsmith_core::PreventAllDamageEffect	combat
+PreventAllDamageEffect	ironsmith_core::PreventAllDamageEffect<wire::WireEffect>	combat
 PreventAllDamageToTargetEffect	ironsmith_core::PreventAllDamageToTargetEffect<wire::WireEffect>	combat
 PreventDamageEffect	ironsmith_core::PreventDamageEffect<wire::WireEffect>	combat
 PreventNextTimeDamageEffect	ironsmith_core::PreventNextTimeDamageEffect<wire::WireEffect>	combat
@@ -197,6 +197,8 @@ RegisterEnterTappedReplacementEffect	ironsmith_core::RegisterEnterTappedReplacem
 RegisterEnterUnderControlReplacementEffect	ironsmith_core::RegisterEnterUnderControlReplacementEffect	stack-event
 RegisterFutureZoneReplacementEffect	ironsmith_core::RegisterFutureZoneReplacementEffect	stack-event
 RegisterManaReplacementEffect	ironsmith_core::RegisterManaReplacementEffect	stack-event
+RegisterManaRewriteEffect	ironsmith_core::RegisterManaRewriteEffect	stack-event
+RegisterManaSpendPermissionEffect	ironsmith_core::RegisterManaSpendPermissionEffect	stack-event
 RegisterCounterPlacementReplacementEffect	ironsmith_core::RegisterCounterPlacementReplacementEffect	stack-event
 RegisterEnterWithCountersReplacementEffect	ironsmith_core::RegisterEnterWithCountersReplacementEffect	stack-event
 RegisterNextBatchEnterWithCountersEffect	ironsmith_core::RegisterNextBatchEnterWithCountersEffect	stack-event
@@ -296,3 +298,14 @@ AddManaOfNotedTypeEffect	ironsmith_core::AddManaOfNotedTypeEffect	resources
 NoteActivationManaTypeEffect	ironsmith_core::NoteActivationManaTypeEffect	resources
 MayCastForMiracleCostEffect	ironsmith_core::MayCastForMiracleCostEffect	player
 ResolvesDespiteIllegalTargetsEffect	ironsmith_core::ResolvesDespiteIllegalTargetsEffect	composition-m-z
+BecomeBlockedEffect	ironsmith_core::BecomeBlockedEffect	combat
+ChooseNumberEffect	ironsmith_core::ChooseNumberEffect	player
+CollectEvidenceEffect	ironsmith_core::CollectEvidenceEffect	zone-library
+DealDamageBySourcesEffect	ironsmith_core::DealDamageBySourcesEffect	combat
+DealDamageEachEffect	ironsmith_core::DealDamageEachEffect	combat
+DealDamageToRecipientsEffect	ironsmith_core::DealDamageToRecipientsEffect	combat
+EmpowerJaceEffect	ironsmith_core::EmpowerJaceEffect	permanent
+RegisterDamageMultiplierEffect	ironsmith_core::RegisterDamageMultiplierEffect	stack-event
+SkipScheduledEffect	ironsmith_core::SkipScheduledEffect	player
+RippleEffect	ironsmith_core::RippleEffect	player
+RegisterDamageAdditionEffect	ironsmith_core::RegisterDamageAdditionEffect	stack-event

@@ -1,0 +1,53 @@
+[
+  {
+    "name": "Words of War",
+    "oracle_id": "76d6d4cc-607f-4a33-a964-a38b5dbfe710",
+    "mana_cost": "{2}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "{1}: The next time you would draw a card this turn, this enchantment deals 2 damage to any target instead."
+  },
+  {
+    "name": "Words of Waste",
+    "oracle_id": "3fe5cfcd-b25f-49d8-9f60-8b4c388a9c68",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "{1}: The next time you would draw a card this turn, each opponent discards a card instead."
+  },
+  {
+    "name": "Words of Wilding",
+    "oracle_id": "888582df-4fe2-4d05-9b62-10c90aaa76f2",
+    "mana_cost": "{2}{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "{1}: The next time you would draw a card this turn, create a 2/2 green Bear creature token instead."
+  },
+  {
+    "name": "Words of Wind",
+    "oracle_id": "523d3e3d-8fdf-44f8-868d-7b00995e4577",
+    "mana_cost": "{2}{U}",
+    "type_line": "Enchantment",
+    "oracle_text": "{1}: The next time you would draw a card this turn, each player returns a permanent they control to its owner's hand instead."
+  },
+  {
+    "name": "Words of Worship",
+    "oracle_id": "f1fad5ab-d087-4912-b1b9-42733fa34707",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "{1}: The next time you would draw a card this turn, you gain 5 life instead."
+  },
+  {
+    "name": "Plagiarize",
+    "oracle_id": "ba4f9450-d468-4686-9f48-00fa08c6ac52",
+    "mana_cost": "{3}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Until end of turn, if target player would draw a card, instead that player skips that draw and you draw a card."
+  },
+  {
+    "name": "Urabrask, Heretic Praetor",
+    "oracle_id": "3fe61a65-b1c0-4d15-b379-e4ce22c96941",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Legendary Creature — Phyrexian Praetor",
+    "oracle_text": "Haste\nAt the beginning of your upkeep, exile the top card of your library. You may play it this turn.\nAt the beginning of each opponent's upkeep, the next time they would draw a card this turn, instead they exile the top card of their library. They may play it this turn.",
+    "power": "4",
+    "toughness": "4"
+  }
+]

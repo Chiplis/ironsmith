@@ -1,3 +1,4 @@
+use crate::filter::TaggedOpbjectRelation;
 use super::*;
 
 pub(super) fn normalize_redundant_short_name_etb_surface(
@@ -510,6 +511,31 @@ fn describe_effect_cost_program(effect: &Effect) -> Option<String> {
     while index < sequence.effects.len() {
         let member = structural_unwrap_render_wrappers(&sequence.effects[index]);
         if let Some(choose) = member.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && (choose.filter.distinct_names || choose.filter.shares_name || choose.filter.shares_color)
+            && choose.chooser == PlayerFilter::You
+            && choose.count_value.is_none()
+            && choose.aggregate_constraint.is_none()
+            && let Some(next) = sequence.effects.get(index + 1) {
+            let next = structural_unwrap_render_wrappers(next);
+            let reveal = next.downcast_ref::<crate::effects::RevealTaggedEffect>()
+                .is_some_and(|reveal| reveal.tag == choose.tag);
+            let discard = next.downcast_ref::<crate::effects::DiscardEffect>().is_some_and(|discard|
+                !discard.random && !discard.any_number && discard.player == PlayerFilter::You
+                    && matches!(&discard.count, Value::Count(count_filter) if discard.card_filter.as_ref() == Some(count_filter))
+                    && discard.card_filter.as_ref().is_some_and(|filter| filter.tagged_constraints.len() == 1
+                        && filter.tagged_constraints[0].tag == choose.tag
+                        && filter.tagged_constraints[0].relation == TaggedOpbjectRelation::IsTaggedObject));
+            if reveal || discard {
+                let mut display = choose.clone();
+                display.filter.owner = None;
+                if discard { display.filter.zone = None; display.zone = None; }
+                parts.push(format!("{} {}", if reveal { "Reveal" } else { "Discard" }, describe_choose_selection(&display)));
+                compacted_choice = true;
+                index += 2;
+                continue;
+            }
+        }
+        if let Some(choose) = member.downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && choose_exact_count(choose) == Some(1)
             && choose.count_value.is_none()
             && choose.aggregate_constraint.is_none()
@@ -771,6 +797,11 @@ pub(super) fn describe_simple_discard_cost(
         return None;
     };
     let count = count.max(0) as u32;
+    if count == 1 && discard.card_filter.as_ref().is_some_and(|filter|
+        *filter == ObjectFilter { zone: Some(Zone::Hand), owner: Some(PlayerFilter::You),
+            last_drawn_this_turn: Some(PlayerFilter::You), ..Default::default() }) {
+        return Some("Discard the last card you drew this turn".into());
+    }
     if count == 1
         && let Some(filter) = discard.card_filter.as_ref()
         && filter.colors.is_some()
@@ -1030,6 +1061,7 @@ fn describe_dynamic_mana_cost_with_target(
     dynamic: &ironsmith_core::DynamicManaCost,
     enclosing_target: Option<&ChooseSpec>,
 ) -> String {
+    if dynamic.mana_cost_of.is_some() { return dynamic.display(); }
     if dynamic.source_mana_cost
         && dynamic.x_value.is_none()
         && dynamic.additional_generic.is_none()
@@ -1615,6 +1647,19 @@ fn describe_cost_component_parts_with_target(
                 .and_then(|effect| effect.downcast_ref::<crate::effects::MoveToZoneEffect>())
             && let Some(compact) =
                 describe_choose_then_put_on_top_of_library_cost(choose, move_to_zone)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < costs.len()
+            && let Some(choose) = costs[idx]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && let Some(untap) = costs[idx + 1]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::UntapEffect>())
+            && let Some(compact) = describe_choose_then_tap_state_cost(choose, &untap.target, "Untap")
         {
             parts.push(compact);
             idx += 2;
@@ -6870,27 +6915,29 @@ pub(crate) fn describe_choose_then_tap_cost(
     choose: &crate::effects::ChooseObjectsEffect,
     tap: &crate::effects::TapEffect,
 ) -> Option<String> {
+    describe_choose_then_tap_state_cost(choose, &tap.target, "Tap")
+}
+
+fn describe_choose_then_tap_state_cost(
+    choose: &crate::effects::ChooseObjectsEffect,
+    spec: &ChooseSpec,
+    verb: &str,
+) -> Option<String> {
     if choose_primary_zone(choose) != Some(Zone::Battlefield) || choose.is_search {
         return None;
     }
-    if !tap_uses_chosen_tag(&tap.target, choose.tag.as_str()) {
+    if !tap_uses_chosen_tag(spec, choose.tag.as_str()) {
         return None;
     }
-
-    if choose.count.is_single() {
-        return Some(format!(
-            "Tap {}",
-            with_indefinite_article(&choose.filter.description())
-        ));
+    if choose.count.dynamic_x {
+        return Some(format!("{verb} X {}", pluralize_noun_phrase(&choose.filter.description())));
     }
-
+    if choose.count.is_single() {
+        return Some(format!("{verb} {}", with_indefinite_article(&choose.filter.description())));
+    }
     let exact = choose.count.max.filter(|max| *max == choose.count.min)?;
     let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
-    Some(format!(
-        "Tap {} {}",
-        count_text,
-        pluralize_noun_phrase(&choose.filter.description())
-    ))
+    Some(format!("{verb} {count_text} {}", pluralize_noun_phrase(&choose.filter.description())))
 }
 
 pub(crate) fn exile_uses_chosen_tag(spec: &ChooseSpec, tag: &str) -> bool {
@@ -7254,4 +7301,22 @@ mod choice_slot_regression_tests {
             "{players:#?}"
         );
     }
+}
+
+/// Gerund payment phrase for an explicit CR 118.9 substitution.
+pub(super) fn describe_casting_price_payment(cost: &crate::cost::TotalCost) -> String {
+    if let Some([component]) = cost.as_all() {
+        if let Some(effect) = component.effect_ref() {
+            let amount = effect.downcast_ref::<crate::effects::PayLifeEffect>().map(|life| &life.amount)
+                .or_else(|| effect.downcast_ref::<crate::effects::LoseLifeEffect>().map(|life| &life.amount));
+            if amount.is_some_and(|amount| matches!(amount.unhinted(), Value::ManaValueOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source))) {
+                return "paying life equal to the spell's mana value".into();
+            }
+        }
+    }
+    let payment = describe_total_cost_payment(cost);
+    for (verb, gerund) in [("Discard ", "discarding "), ("Sacrifice ", "sacrificing "), ("Exile ", "exiling ")] {
+        if let Some(tail) = payment.strip_prefix(verb) { return format!("{gerund}{tail}"); }
+    }
+    format!("paying {}", lowercase_first(&payment))
 }

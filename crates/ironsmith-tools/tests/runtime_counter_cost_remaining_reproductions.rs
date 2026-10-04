@@ -145,10 +145,10 @@ impl DecisionMaker for Choices {
         let mut needed = c.max_total;
         let mut s = vec![];
         for (kind, n) in &c.available_counters {
-            let take = needed.min(*n);
+            let take = u32::try_from(needed.min(u64::from(*n))).unwrap();
             if take > 0 {
                 s.push((*kind, take));
-                needed -= take;
+                needed -= u64::from(take);
             }
         }
         self.trace.push(json!({"choice":"counters","context":format!("{c:?}"),"selected":format!("{s:?}"),"unavailable_required":needed}));

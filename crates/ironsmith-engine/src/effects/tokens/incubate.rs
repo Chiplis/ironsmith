@@ -14,7 +14,6 @@ use crate::zone::Zone;
 
 use super::lifecycle::{
     TokenEntryOptions, apply_token_battlefield_entry, create_replacement_additional_tokens,
-    remaining_token_slots,
 };
 
 pub type IncubateEffect = ironsmith_core::IncubateEffect;
@@ -28,8 +27,9 @@ fn execute_token_instruction(
     let amount = resolve_value(game, &effect.amount, ctx)?.max(0) as u32;
     let count = resolve_value(game, &effect.count, ctx)?.max(0) as usize;
 
-    let mut created_ids = Vec::with_capacity(count);
-    let mut events = Vec::with_capacity(count * 2);
+    game.reserve_token_repetition_work(count)?;
+    let mut created_ids = super::resources::buffer(count)?;
+    let mut events = super::resources::buffer(count * 2)?;
     let mut replacement_outcomes = Vec::new();
     let mut committed_outcomes = Vec::new();
     let entry_options = TokenEntryOptions::default();
@@ -41,7 +41,7 @@ fn execute_token_instruction(
 
         // CR 701.53a: incubating creates an Incubator token, so token
         // creation replacements (Doubling Season, Parallel Lives, ...)
-        // and token limits apply (CR 111.1, 614.1).
+        // apply (CR 111.1, 614.1). Host exhaustion is an error, not a rule.
         let token_preview = game.object_from_token_definition(
             crate::ids::ObjectId::from_raw(0),
             &front,
@@ -64,17 +64,18 @@ fn execute_token_instruction(
     let mut entry_receipts = Vec::new();
         let controller_id = replacement.controller;
         let token_preview = replacement.token.clone().unwrap_or(token_preview);
-        let token_count =
-            (replacement.count as usize).min(remaining_token_slots(game, controller_id));
+        game.reserve_token_creation(replacement.total_count())?;
+        let token_count = replacement.count as usize;
 
-        let mut incubated_ids = Vec::with_capacity(token_count);
+        let mut incubated_ids = super::resources::buffer(token_count)?;
         for _ in 0..token_count {
             let id = game.new_object_id();
             let mut token_obj = game.object_from_token_definition(id, &front, controller_id);
             token_obj.zone = Zone::Command;
             let token_is_creature = token_obj.is_creature();
 
-            game.add_object(token_obj);
+            game.commit_token_resource_slot()?;
+        game.add_object(token_obj);
 
             let initial_counters = if amount > 0 {
                 vec![(CounterType::PlusOnePlusOne, amount)]
@@ -121,26 +122,20 @@ fn execute_token_instruction(
             }
         }
 
-        if !incubated_ids.is_empty() {
-            game.queue_trigger_event(
-                ctx.provenance,
-                TriggerEvent::new_with_provenance(
-                    crate::events::CreateTokensEvent::with_token_cause(
-                        controller_id,
-                        incubated_ids.len() as u32,
-                        token_preview,
-                        ctx.cause.clone(),
-                    ),
-                    ctx.provenance,
-                ),
-            );
-        }
+        let mut actual_creation = replacement.clone();
+        actual_creation.count = incubated_ids.len() as u32;
+        actual_creation.token = Some(token_preview);
         let mut iteration_ids = incubated_ids;
         let additional_ids = create_replacement_additional_tokens(
             game,
             ctx,
             controller_id,
-            &replacement.additional_tokens,
+            &mut actual_creation,
+            &super::lifecycle::AdditionalTokenInstructions {
+                entry: entry_options,
+                initial_counters: if amount > 0 { vec![(CounterType::PlusOnePlusOne, amount)] } else { Vec::new() },
+                ..Default::default()
+            },
             &mut events,
         &mut entry_receipts,
         )?;
@@ -148,6 +143,7 @@ fn execute_token_instruction(
             return Ok(EffectOutcome::with_objects(Vec::new()));
         }
         iteration_ids.extend(additional_ids);
+        super::lifecycle::publish_created_token_groups(game, ctx, actual_creation, &mut events);
 
         events.push(TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(

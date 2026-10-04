@@ -39,7 +39,7 @@ impl EffectExecutor for EpicSpellCopyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let copy_id = create_stack_copy_from_object(
+        let Some(copy_id) = create_stack_copy_from_object(
             game,
             &self.spell,
             self.entry.object_id,
@@ -48,7 +48,7 @@ impl EffectExecutor for EpicSpellCopyEffect {
             &[],
             remove_epic_ability,
             None,
-        )?;
+        )? else { return Ok(EffectOutcome::protected()); };
 
         game.queue_trigger_event(
             ctx.provenance,

@@ -1,5 +1,7 @@
 use std::ops::Range;
 
+use crate::diagnostics::TextSpan;
+
 /// Metadata lines that sit above rules text in the compiler input model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MetadataLine {
@@ -59,13 +61,68 @@ impl NormalizedSourceMap {
     }
 }
 
+/// Maps a normalized UTF-8 byte span back to authored UTF-8 bytes.
+///
+/// `char_map` maps normalized Unicode scalar indexes to original Unicode scalar
+/// indexes, not byte offsets. Nonempty spans include every character they touch;
+/// invalid byte boundaries are rounded outward and out-of-range offsets are
+/// clamped. Empty (or reversed) spans stay empty at the preceding character
+/// boundary. End-of-line anchors follow the last mapped source character rather
+/// than returning an offset in the normalized coordinate system.
+///
+/// The result starts at the first mapped source character and ends just after
+/// the last. Do not extend it to the next mapping: that can include source text
+/// removed between tokens. Replacements must map both of their source endpoints.
+pub fn map_span_to_original(
+    span: TextSpan,
+    normalized_line: &str,
+    original_line: &str,
+    char_map: &[usize],
+) -> TextSpan {
+    let start = span.start.min(normalized_line.len());
+    let end = span.end.min(normalized_line.len());
+    let start_char = normalized_line
+        .char_indices()
+        .take_while(|(byte, ch)| byte + ch.len_utf8() <= start)
+        .count();
+    let source_anchor = |index: usize| {
+        char_map
+            .get(index)
+            .copied()
+            .unwrap_or_else(|| char_map.last().map_or(0, |last| last.saturating_add(1)))
+    };
+    let source_byte = |index: usize| {
+        original_line
+            .char_indices()
+            .nth(index)
+            .map_or(original_line.len(), |(byte, _)| byte)
+    };
+    let start_orig = source_byte(source_anchor(start_char));
+    let end_orig = if end <= start {
+        start_orig
+    } else {
+        let end_char = normalized_line
+            .char_indices()
+            .take_while(|(byte, _)| *byte < end)
+            .count();
+        let last_orig = source_anchor(end_char.saturating_sub(1));
+        source_byte(last_orig.saturating_add(1)).max(start_orig)
+    };
+    TextSpan {
+        line: span.line,
+        start: start_orig,
+        end: end_orig,
+    }
+}
+
 /// A normalized compiler line plus an exact, reversible source view.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedLine {
     pub original: String,
     pub normalized: String,
-    /// Compatibility character map retained for callers that have not moved
-    /// to byte-precise source segments yet.
+    /// Normalized Unicode scalar index -> original Unicode scalar index.
+    /// These values are not UTF-8 byte offsets; callers needing byte ranges
+    /// should use the source map or `map_span_to_original`.
     pub char_map: Vec<usize>,
     pub source_map: NormalizedSourceMap,
 }
@@ -192,3 +249,7 @@ mod tests {
         assert!(line.source_map.omitted_source_bytes.is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "span_mapping_tests.rs"]
+mod span_mapping_tests;

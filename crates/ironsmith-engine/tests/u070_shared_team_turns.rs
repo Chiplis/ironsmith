@@ -343,7 +343,7 @@ fn u070_restart_and_subgame_preserve_shared_turn_identity() {
     assert_eq!(game.turn.active_player, bob);
     assert_eq!(game.active_players(), vec![bob, alice]);
 
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
     game.restart_game(alice, &[]);
     assert_eq!(game.turn.active_player, alice);
     assert_eq!(game.active_players(), vec![alice]);
@@ -386,7 +386,7 @@ fn u070_departing_primary_player_keeps_the_turn_and_priority_with_the_team() {
     enable_shared(&mut game, players);
     game.turn.priority_player = Some(bob);
 
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
     assert_eq!(game.turn.active_player, alice);
     assert_eq!(game.turn.priority_player, Some(alice));
     assert_eq!(game.active_players(), vec![alice]);

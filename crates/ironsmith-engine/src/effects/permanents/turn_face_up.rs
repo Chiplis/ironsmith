@@ -47,6 +47,7 @@ impl EffectExecutor for TurnFaceUpEffect {
             }
 
             let mut turned = 0;
+            let mut completed = Vec::new();
             for object_id in targets {
                 let Some(object) = game.object(object_id) else {
                     continue;
@@ -83,16 +84,17 @@ impl EffectExecutor for TurnFaceUpEffect {
                         ctx.provenance,
                         crate::events::EventKind::TurnedFaceUp,
                     );
-                    game.queue_trigger_event(
-                        ctx.provenance,
-                        TriggerEvent::new_with_provenance(
-                            crate::events::TurnedFaceUpEvent::new(object_id, ctx.controller),
-                            event_provenance,
-                        ),
-                    );
+                    completed.push(TriggerEvent::new_with_provenance(
+                        crate::events::TurnedFaceUpEvent::new(object_id, ctx.controller),
+                        event_provenance,
+                    ));
                 }
             }
 
+            // One instruction changes all selected permanents before any of
+            // its event filters observe the completed characteristics.
+            crate::events::other::freeze_completed_lifecycle_events(game, &mut completed)?;
+            for event in completed { game.queue_trigger_event(ctx.provenance, event); }
             Ok(EffectOutcome::count(turned))
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {

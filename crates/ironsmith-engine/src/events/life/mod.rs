@@ -6,3 +6,6 @@ pub mod matchers;
 
 pub use life_gain::LifeGainEvent;
 pub use life_loss::LifeLossEvent;
+
+mod life_paid;
+pub use life_paid::LifePaidEvent;

@@ -228,7 +228,7 @@ fn u063_sba_waits_for_every_scheme_trigger_and_abandon_recycles_ongoing_scheme()
     assert!(check_state_based_actions(&game).contains(&StateBasedAction::RecycleScheme(ordinary)));
     assert!(!check_state_based_actions(&game).contains(&StateBasedAction::RecycleScheme(ongoing)));
     let ordinary_stable = game.object(ordinary).unwrap().stable_id;
-    assert!(apply_state_based_actions(&mut game));
+    assert!(apply_state_based_actions(&mut game).unwrap());
     let recycled_ordinary = game.scheme_deck(alice).unwrap()[0];
     assert_ne!(recycled_ordinary, ordinary);
     assert_eq!(
@@ -311,7 +311,7 @@ fn u063_restart_rebuilds_face_down_deck_and_departure_removes_owned_schemes() {
 
     let departing_top = *game.scheme_deck(alice).unwrap().last().unwrap();
     game.set_scheme_in_motion(alice).unwrap();
-    assert!(game.leave_game(alice));
+    assert!(game.leave_game(alice).expect("checked designation/departure fixture"));
     assert!(game.archenemy.as_ref().unwrap().archenemies.is_empty());
     assert!(game.scheme_deck(alice).is_none());
     assert!(game.face_up_schemes().is_empty());

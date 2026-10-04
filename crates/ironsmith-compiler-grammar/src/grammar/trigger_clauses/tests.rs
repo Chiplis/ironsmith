@@ -2284,3 +2284,117 @@ fn play_or_cast_trigger_inherits_the_player_subject() {
         }
     }
 }
+
+#[test]
+fn end_of_combat_is_a_typed_phase_event_without_an_object_antecedent() {
+    for text in ["end of combat", "at end of combat", "the end of combat"] {
+        let tokens = tokenize_line(text, 0);
+        let trigger = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
+        assert_eq!(trigger, crate::model::ast::TriggerSpec::EndOfCombat);
+        assert!(ironsmith_compiler_semantic::trigger_references::phase_step_trigger_has_no_object_reference(&trigger));
+    }
+    for text in ["end of combat on your turn", "end of combat during an opponent's turn"] {
+        let tokens = tokenize_line(text, 0);
+        assert!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).is_err(), "a turn qualifier must not be dropped: {text}");
+    }
+}
+
+#[test]
+fn end_combat_directional_object_relations_do_not_widen_to_all_blocked_creatures() {
+    let blocked = crate::object_filters::parse_object_filter(&tokenize_line("creatures blocked by this creature", 0), false).unwrap();
+    assert!(blocked.blocked_by_source);
+    assert!(!blocked.blocked_source_this_turn);
+    assert!(!blocked.blocked);
+    let blockers = crate::object_filters::parse_object_filter(&tokenize_line("creatures that blocked this creature this turn", 0), false).unwrap();
+    assert!(blockers.blocked_source_this_turn);
+    assert!(!blockers.blocked_by_source);
+    assert!(!blockers.blocked);
+}
+
+#[test]
+fn entry_or_face_up_retains_the_same_complete_subject_and_object_reference() {
+    use crate::model::ast::TriggerSpec;
+    for text in ["a Detective you control enters or is turned face up", "a green creature with power 2 or greater you control enters or is turned face up"] {
+        let tokens = tokenize_line(text, 0);
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
+        let TriggerSpec::Either(left, right) = &parsed else { panic!("{parsed:?}"); };
+        let (TriggerSpec::EntersBattlefield { filter, .. }, TriggerSpec::TurnedFaceUp(face_up)) = (&**left, &**right) else { panic!("{parsed:?}"); };
+        assert_eq!(filter, face_up);
+        assert_eq!(filter.controller, Some(crate::target::PlayerFilter::You));
+        assert_eq!(ironsmith_compiler_semantic::trigger_references::default_trigger_last_object_tag(&parsed),
+            ironsmith_compiler_semantic::trigger_references::default_trigger_last_object_tag(left));
+    }
+}
+
+#[test]
+fn qualified_die_heads_retain_numeric_natural_and_ordinal_distinctions() {
+    use crate::model::ast::TriggerSpec;
+    for (text, natural) in [("you roll a natural 20", true), ("you roll a 3 or higher", false), ("you roll a 1 or 2", false)] {
+        let trigger = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokenize_line(text, 0)).unwrap();
+        assert!(matches!(trigger, TriggerSpec::PlayerRollsResultMatching { natural: actual, .. } if actual == natural), "{text}");
+    }
+    let trigger = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokenize_line("you roll your third die each turn", 0)).unwrap();
+    assert!(matches!(trigger, TriggerSpec::PlayerRollsNthDie { player: PlayerFilter::You, ordinal: 3 }));
+    for words in [vec!["natural", "twenty", "and", "draw"], vec!["3", "or", "higher", "this", "turn"], vec!["your", "third", "card", "each", "turn"]] {
+        assert!(parse_roll_result_words(&words).is_none());
+    }
+}
+
+#[test]
+fn combat_declaration_shapes_preserve_grouping_direction_and_direct_player_alone() {
+    let parse = |text: &str| crate::activation_and_restrictions::parse_trigger_clause_lexed(&crate::lexer::lex_line(text,0).unwrap()).unwrap();
+    let grouped = parse("one or more creatures you control become blocked");
+    assert!(matches!(grouped, crate::model::ast::TriggerSpec::BecomesBlockedOneOrMore(filter) if filter.controller == Some(crate::target::PlayerFilter::You)));
+    let fight = parse("one or more creatures you control fight or become blocked");
+    let crate::model::ast::TriggerSpec::Either(fight,blocked) = fight else {panic!("not a union")};
+    assert!(matches!(*fight,crate::model::ast::TriggerSpec::KeywordActionOneOrMore {action:crate::events::KeywordActionKind::Fight,..}));
+    assert!(matches!(*blocked,crate::model::ast::TriggerSpec::BecomesBlockedOneOrMore(_)));
+    assert!(matches!(parse("a creature you control attacks a player alone"),crate::model::ast::TriggerSpec::AttacksPlayerAlone(_)));
+    let crate::model::ast::TriggerSpec::BlocksObject {blocker, blocked} = parse("a creature blocks a black or red creature") else {panic!("lost directional pair")};
+    assert!(blocker.colors.is_none());
+    assert!(!blocked.any_of.is_empty() || blocked.colors.is_some());
+}
+
+#[test]
+fn paid_upkeep_triggers_require_a_complete_authenticated_source_and_distinct_paid_kind() {
+    use crate::model::ast::TriggerSpec;
+    use crate::events::KeywordActionKind;
+    for (text,expected) in [
+        ("you pay this enchantment's cumulative upkeep",KeywordActionKind::CumulativeUpkeepPaid),
+        ("this creature's echo cost is paid",KeywordActionKind::EchoCostPaid),
+        ("you pay this permanent's echo cost",KeywordActionKind::EchoCostPaid),
+        ("you don't pay this creature's cumulative upkeep",KeywordActionKind::CumulativeUpkeepNotPaid),
+    ] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        assert!(matches!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap(),TriggerSpec::KeywordActionFromSource{action,..} if action==expected));
+    }
+    for text in ["you pay unknown object's cumulative upkeep", "you pay this enchantment's cumulative upkeep and draw a card"] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        assert!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).is_err());
+    }
+
+}
+
+#[test]
+fn life_payment_trigger_has_a_complete_player_subject_and_does_not_accept_loss_or_trailing_costs() {
+    use crate::model::ast::TriggerSpec;
+    for (text,player) in [("you pay life",PlayerFilter::You),("an opponent pays life",PlayerFilter::Opponent),("a player pays life",PlayerFilter::Any)] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        assert_eq!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap(),TriggerSpec::PlayerPaysLife(player));
+    }
+    for text in ["unknown participants pay life","you pay life and sacrifice a creature","you choose to lose life"] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        assert!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).is_err(),"{text}");
+    }
+}
+
+#[test]
+fn monarch_change_trigger_retains_exact_player_and_complete_event_boundary(){
+    use crate::model::ast::TriggerSpec;
+    for (text,player) in [("you become the monarch",PlayerFilter::You),("an opponent becomes the monarch",PlayerFilter::Opponent),("a player becomes the monarch",PlayerFilter::Any)] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();assert_eq!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap(),TriggerSpec::PlayerBecomesMonarch(player));
+    }
+    for text in ["unknown subjects become the monarch","you become the monarch and draw a card"]{
+        let tokens=crate::lexer::lex_line(text,0).unwrap();assert!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).is_err());
+    }
+}

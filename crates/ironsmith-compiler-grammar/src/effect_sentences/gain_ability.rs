@@ -1760,10 +1760,29 @@ fn named_source_target_from_granted_ability_surface(
     ))
 }
 
+/// A complete base-P/T assignment is a characteristic effect, not a keyword
+/// grant named "base power and toughness X/X". Keep the announced X and the
+/// absence of a duration (a lasting layer-7b assignment).
+fn parse_complete_source_base_pt_assignment(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let shape = gain_shapes::parse_simple_gain_ability_shape(tokens)?;
+    if !shape.complete { return None; }
+    let ability_tokens = trim_edge_punctuation(shape.ability_tokens);
+    let words = GainAbilityWordView::new(&ability_tokens).to_word_refs();
+    let base = gain_shapes::parse_gain_base_pt_after_has_shape(&words).ok()??;
+    let subject = trim_commas(shape.subject_tokens);
+    let words = GainAbilityWordView::new(&subject).to_word_refs();
+    let target = source_target_from_subject_tokens(&subject).or_else(|| {
+        let facts = gain_shapes::classify_gain_subject(&words);
+        (facts.pronoun || facts.demonstrative_object).then(|| tagged_subject_target(&subject))
+    })?;
+    Some(EffectAst::subject_verb_set_base_power_toughness(base.power, base.toughness, target, shape.duration))
+}
+
 fn parse_simple_ability_modifier_clause_lexed(
     tokens: &[OwnedLexToken],
     losing: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if !losing && let Some(effect) = parse_complete_source_base_pt_assignment(tokens) { return Ok(Some(effect)); }
     if tokens
         .first()
         .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))
@@ -2209,6 +2228,7 @@ pub fn parse_gain_ability_sentence(
 fn parse_complete_simple_source_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effect) = parse_complete_source_base_pt_assignment(tokens) { return Ok(Some(vec![effect])); }
     if tokens
         .first()
         .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))
@@ -2484,3 +2504,24 @@ use triggered_abilities::{
 #[path = "gain_ability/ability_validation.rs"]
 mod ability_validation;
 use ability_validation::reject_unsupported_lost_abilities;
+
+#[cfg(test)]
+mod lasting_base_pt_assignment_tests {
+    use super::*;
+    #[test]
+    fn source_base_pt_assignment_retains_x_and_exact_duration() {
+        for (line, duration) in [("This creature has base power and toughness X/X.", "Forever"),
+            ("This creature has base power and toughness 5/7 until end of turn.", "EndOfTurn")] {
+            let tokens = crate::lexer::lex_line(line, 0).unwrap();
+            let effect = parse_complete_source_base_pt_assignment(&tokens).expect(line);
+            let debug = format!("{effect:?}");
+            assert!(debug.contains("SetBasePowerToughness"), "{debug}");
+            assert!(debug.contains(duration), "{debug}");
+        }
+        for line in ["This creature has base power and toughness X/X beyond time.",
+            "This creature has base power and toughness X/X and unmodeled nonsense.",
+            "This creature loses base power and toughness X/X."] {
+            assert!(parse_complete_source_base_pt_assignment(&crate::lexer::lex_line(line, 0).unwrap()).is_none(), "{line}");
+        }
+    }
+}

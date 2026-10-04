@@ -507,6 +507,7 @@ impl GrantObjectAbilityForFilter {
                 "{subject} can attack as though {} didn't have defender",
                 if singular_subject { "it" } else { "they" }
             ),
+            StaticAbilityId::CanBlockAnyNumber | StaticAbilityId::CanBlockAdditionalCreatureEachCombat | StaticAbilityId::CanBlockAdditionalForEach => format!("{subject} {ability_text_lower}"),
             StaticAbilityId::Unblockable => format!("{subject} can't be blocked"),
             StaticAbilityId::CantAttack => format!("{subject} can't attack"),
             StaticAbilityId::CantBlock => format!("{subject} can't block"),
@@ -640,7 +641,10 @@ impl GrantObjectAbilityForFilter {
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
         self
     }
 
@@ -930,8 +934,11 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
                 self.effect_target(source),
                 // "Creatures you control have protection from the chosen card
                 // type": the choice is the granting permanent's (CR 702.16a).
-                Modification::AddAbilityGeneric(self.ability.clone())
-                    .bind_chosen_protection_qualities(game, source),
+                Modification::AddAbilityGeneric(super::materialize_named_granting_source(
+                    &self.ability,
+                    source,
+                ))
+                .bind_chosen_protection_qualities(game, source),
             )
             .with_source_type(EffectSourceType::StaticAbility),
             &self.condition,
@@ -942,8 +949,10 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
                     source,
                     controller,
                     self.effect_target(source),
-                    Modification::AddAbilityGeneric(ability)
-                        .bind_chosen_protection_qualities(game, source),
+                    Modification::AddAbilityGeneric(super::materialize_named_granting_source(
+                        &ability, source,
+                    ))
+                    .bind_chosen_protection_qualities(game, source),
                 )
                 .with_source_type(EffectSourceType::StaticAbility),
                 &self.condition,

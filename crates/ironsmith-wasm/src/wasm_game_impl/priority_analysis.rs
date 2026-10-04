@@ -36,6 +36,12 @@ impl WasmGame {
         restore_id_counters(id_counters);
         self.last_analysis_slice_nodes = candidate.session.last_slice_nodes();
         candidate.work_units = candidate.work_units.saturating_add(self.last_analysis_slice_nodes);
+        if let Some(error) = candidate.session.failure().cloned() {
+            // A failed candidate cannot become a completed negative entry or
+            // a permanently pending retry. Leave the published menu explicitly
+            // incomplete and surface the original typed error to the host.
+            return Err(ironsmith::game_loop::GameLoopError::from(error));
+        }
         let actions = actions.map_err(ironsmith::game_loop::GameLoopError::from)?;
         if complete {
             if !job.candidates.iter().any(|other| other.source == candidate.source) {
@@ -349,6 +355,43 @@ mod priority_analysis_tests {
             wasm.pending_decision = Some(DecisionContext::Priority(ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
             wasm.refresh_priority_affordability_display().unwrap();
             assert!(!has_spell(&wasm), "cached negative stays unavailable during recheck");
+        });
+    }
+
+    #[test]
+    fn resource_failed_priority_candidate_never_completes_as_unpayable() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            let (mut wasm, _restore) = fixture();
+            let (mut game, player, source, _) = crate::resource_payment_test_fixture();
+            let spell = ironsmith::CardBuilder::new(ironsmith::CardId::new(), "Resource priority spell")
+                .card_types(vec![ironsmith::CardType::Creature])
+                .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ManaSymbol::Green])).build();
+            let spell = game.create_object_from_card(&spell, player, Zone::Hand);
+            game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+            wasm.game = game;
+            let mut context = ironsmith::decisions::context::PriorityContext::new(&wasm.game, player, vec![LegalAction::PassPriority]).unwrap();
+            context.analysis_complete = false;
+            wasm.pending_decision = Some(DecisionContext::Priority(context));
+            wasm.priority_analysis_job = Some(Box::new(PriorityAnalysisJob {
+                token: "resource".into(), key: wasm.priority_analysis_key(), game: wasm.game.clone(), player,
+                candidates: std::collections::VecDeque::from([PriorityCandidate { player, source: Some(spell), session: Default::default(), work_units: 0 }]),
+                actions: vec![LegalAction::PassPriority],
+                provisional_actions: Vec::new(),
+            }));
+            let mut failed = false;
+            for _ in 0..256 {
+                match wasm.advance_priority_analysis("resource", 1) {
+                    Err(ironsmith::game_loop::GameLoopError::ExecutionFailed(ironsmith::effects::ExecutionError::ResourceLimitExceeded { .. })) => { failed = true; break; }
+                    Ok(Some(false)) => {}
+                    result => panic!("incomplete calculation misreported: {result:?}"),
+                }
+            }
+            assert!(failed); assert!(wasm.priority_analysis_job.is_none());
+            let Some(DecisionContext::Priority(context)) = wasm.pending_decision.as_ref() else { panic!() };
+            assert!(!context.analysis_complete);
+            assert_eq!(&*context.actions, &[LegalAction::PassPriority]);
+            assert!(!wasm.game.is_tapped(source)); assert!(wasm.game.player(player).unwrap().hand.contains(&spell));
         });
     }
 

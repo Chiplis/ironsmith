@@ -2,15 +2,15 @@ use crate::effect::Effect;
 pub use ironsmith_core::{
     AdaptEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect, AddManaOfAnyColorEffect,
     AddManaOfAnyOneColorEffect, AddManaOfLandProducedTypesEffect, AddManaOfNotedTypeEffect,
-    AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AmassEffect, AmplifyEffect,
+    AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AmassEffect, EmpowerJaceEffect, CollectEvidenceEffect, AmplifyEffect,
     AssignNoCombatDamageEffect, AttachObjectsEffect, AttachToEffect, AuraSwapEffect, BackupEffect,
     BattlefieldController, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
     BecomeCreatureTypeChoiceEffect, BecomeMonarchEffect, BecomePlottedEffect,
     BecomeSaddledUntilEotEffect, BeholdEffect, BidLifeEffect as CoreBidLifeEffect, BolsterEffect,
-    CantEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
+    CantEffect, CastSourceEffect, CastTaggedEffect as CoreCastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
     ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
     ChooseModeEffect as CoreChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
-    ChooseNumberAtRandomEffect, ChooseObjectsEffect, ChoosePlayerEffect,
+    RippleEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClearGoadEffect, ClearSuspectedEffect,
     CombatDamagePreventionTarget, ConditionalEffect as CoreConditionalEffect, ConniveEffect,
     ConspireCostEffect, ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule,
@@ -37,7 +37,7 @@ pub use ironsmith_core::{
     GrantAbilitiesTargetEffect as CoreGrantAbilitiesTargetEffect,
     GrantBySpecEffect as CoreGrantBySpecEffect, GrantEffect as CoreGrantEffect,
     GrantEndThisEffectPaymentEffect, GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration,
-    GrantPlayTaggedEffect,
+    GrantPlayTaggedEffect as CoreGrantPlayTaggedEffect,
     GrantRepeatableManaPaymentActionUntilEndOfTurnEffect as CoreGrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
     HauntExileEffect as CoreHauntExileEffect, HealDamageEffect, IfEffect as CoreIfEffect,
@@ -55,7 +55,8 @@ pub use ironsmith_core::{
     NoteActivationManaTypeEffect, NoteLifeTotalEffect, OpenAttractionEffect, PayAnyEnergyEffect,
     PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect, PayManaEffect, PhaseInEffect,
     PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect, PoisonCountersEffect, PopulateEffect,
-    PrepareEffect, PreventAllCombatDamageEffect, PreventAllDamageEffect,
+    PrepareEffect, PreventAllCombatDamageEffect,
+    PreventAllDamageEffect as CorePreventAllDamageEffect,
     PreventAllDamageToTargetEffect as CorePreventAllDamageToTargetEffect,
     PreventDamageEffect as CorePreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, ProliferateEffect,
@@ -68,10 +69,10 @@ pub use ironsmith_core::{
     RegisterDamagedBySourceZoneReplacementEffect,
     RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
-    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
+    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect, RegisterManaRewriteEffect, RegisterManaSpendPermissionEffect,
     RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect,
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
-    RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
+    BecomeBlockedEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReorderTopPlanarDeckEffect,
     RepeatProcessPromptEffect,
     ReplaceNextDamageToTargetEffect as CoreReplaceNextDamageToTargetEffect, ReplacementApplyMode,
@@ -90,7 +91,7 @@ pub use ironsmith_core::{
     SetClassLevelEffect, SetLifeTotalEffect, SharedTypeConstraint,
     ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,
-    SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
+    SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipScheduledEffect, ScheduledSkipKind, SkipMainPhasesThisTurnEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SneakCostEffect, SolveCaseEffect,
     SoulbondPairEffect, SupportEffect, SurveilEffect, SuspectEffect, TagAttachedToSourceEffect,
     TagMatchingObjectsEffect, TagOtherBlockParticipantEffect, TagTriggeringAttackerEffect,
@@ -116,6 +117,7 @@ pub type IfEffect = CoreIfEffect<Effect>;
 pub type LocalRewriteEffect = CoreLocalRewriteEffect<Effect>;
 pub type ManaRestrictedEffect = CoreManaRestrictedEffect<Effect>;
 pub type ManaRetainedEffect = CoreManaRetainedEffect<Effect>;
+pub type PreventAllDamageEffect = CorePreventAllDamageEffect<Effect>;
 pub type PreventDamageEffect = CorePreventDamageEffect<Effect>;
 pub type PreventAllDamageToTargetEffect = CorePreventAllDamageToTargetEffect<Effect>;
 pub type ReplaceNextDamageToTargetEffect = CoreReplaceNextDamageToTargetEffect<Effect>;
@@ -202,6 +204,16 @@ pub mod continuous {
         RemoveAllAbilities,
         RemoveThisAbility,
         SetAuraAttachmentFilter(crate::AuraAttachmentFilter),
+        /// Abilities added as copiable exceptions, applied in layer 1 rather than ordinary grants.
+        CopyOfWithAbilities {
+            source: crate::target::ChooseSpec,
+            preserve_source_abilities: bool,
+            name_override: Option<String>,
+            name_override_surface: Option<crate::target::SourceReferenceSurface>,
+            add_supertypes: Vec<crate::types::Supertype>,
+            copy_exception_surface: Option<String>,
+            abilities: Vec<crate::ability::Ability>,
+        },
     }
 }
 
@@ -219,3 +231,15 @@ pub mod mana {
         AddOneManaOfAnyColorAmongEffect, AddScaledManaEffect,
     };
 }
+
+pub use ironsmith_core::RegisterDamageMultiplierEffect;
+pub use ironsmith_core::RegisterDamageAdditionEffect;
+
+pub use ironsmith_core::DealDamageBySourcesEffect;
+
+pub use ironsmith_core::DealDamageEachEffect;
+
+pub type CastTaggedEffect = CoreCastTaggedEffect<crate::costs::Cost>;
+pub type GrantPlayTaggedEffect = CoreGrantPlayTaggedEffect<crate::costs::Cost>;
+
+pub use ironsmith_core::DealDamageToRecipientsEffect;

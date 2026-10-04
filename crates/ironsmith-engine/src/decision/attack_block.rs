@@ -48,30 +48,6 @@ fn required_attack_players_for_attack_preview(
         .collect()
 }
 
-fn active_goaders_for_attack_preview(
-    game: &GameState,
-    attacker: &crate::object::Object,
-    abilities: &[crate::static_abilities::StaticAbility],
-) -> std::collections::HashSet<PlayerId> {
-    let current_turn = game.turn.turn_number;
-    let mut goaders = game
-        .effect_store
-        .goad_effects
-        .iter()
-        .filter(|effect| effect.creature == attacker.id && effect.is_active(game, current_turn))
-        .map(|effect| effect.goaded_by)
-        .collect::<std::collections::HashSet<_>>();
-
-    let controller = game.controller_of(attacker);
-    for ability in abilities {
-        if let Some(player) = ability.goaded_by_player(game, attacker.id, controller) {
-            goaders.insert(player);
-        }
-    }
-
-    goaders
-}
-
 fn generic_attack_tax_preview(
     game: &GameState,
     target: &AttackTarget,
@@ -159,9 +135,10 @@ fn can_declare_attack_target_preview(
     {
         return false;
     }
-    if !crate::rules::combat::can_attack_defending_player_with_view(
+    if !crate::rules::combat::can_attack_target_with_view(
         attacker,
         defending_player,
+        target,
         game,
         view,
     ) {
@@ -322,7 +299,7 @@ pub(crate) fn compute_legal_attackers_with_view(
         }
 
         let abilities = static_abilities_for_attack_preview(view, perm);
-        let goaded_by = active_goaders_for_attack_preview(game, perm, &abilities);
+        let goaded_by = game.active_goaders_for(perm.id);
         let attack_targets = attack_targets_for_player(game, game.controller_of(perm), view);
 
         // Determine valid attack targets
@@ -402,6 +379,7 @@ pub(crate) fn compute_legal_attackers_with_view(
         let must_attack = abilities
             .iter()
             .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::MustAttack)
+            || game.effect_store.cant_effects.must_attack.contains_key(&perm_id)
             || !goaded_by.is_empty()
             || has_required_attack_target
             || valid_targets.iter().any(|target| matches!(target, AttackTarget::Player(player) if assigned_players.contains(player)));

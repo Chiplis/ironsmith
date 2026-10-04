@@ -191,6 +191,8 @@ pub(crate) fn shield_duration_is_active(
     use crate::game_state::{Phase, Step};
     use crate::zone::Zone;
     match &shield.duration {
+        Until::EndOfCombat => matches!(game.turn.phase, Phase::Combat)
+            && game.turn.turn_number == shield.created_turn,
         Until::YourNextTurn => {
             !(game.turn.turn_number > shield.created_turn
                 && game.is_active_player(shield.controller))
@@ -219,6 +221,31 @@ pub(crate) fn shield_duration_is_active(
             crate::continuous::continuous_duration_predicate_matches(predicate, game)
         }
         _ => true,
+    }
+}
+
+impl crate::game_state::GameState {
+    /// A conditional duration ends at its first false state, including phasing.
+    /// Removing the existing shield keeps its ordinary prevention owner and
+    /// prevents the same incarnation from reviving it when it phases back in.
+    pub(crate) fn expire_condition_ended_prevention_shields(&mut self) {
+        let expired: Vec<_> = self
+            .effect_store
+            .prevention_effects
+            .shields()
+            .iter()
+            .filter(|shield| {
+                matches!(
+                    shield.duration,
+                    Until::ForAsLongAs(_) | Until::YouStopControllingThis
+                )
+            })
+            .filter(|shield| !shield_duration_is_active(shield, self))
+            .map(|shield| shield.id)
+            .collect();
+        for id in expired {
+            self.effect_store.prevention_effects.remove_shield(id);
+        }
     }
 }
 
@@ -268,6 +295,8 @@ pub struct PreventionFollowUp {
 pub struct PendingPreventionFollowUp {
     pub(crate) replacement_scope: crate::effects::ReplacementExecutionContext,
     pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    /// LKI of the damage source, distinct from the prevention ability's source.
+    pub damage_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     pub follow_up: PreventionFollowUp,
     pub damage: crate::events::DamageEvent,
     pub provenance: crate::provenance::ProvNodeId,
@@ -373,9 +402,21 @@ impl PreventionEffectManager {
         provenance: crate::provenance::ProvNodeId,
         source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     ) {
+        self.queue_follow_up_with_snapshots(follow_up, damage, provenance, source_snapshot, None);
+    }
+
+    pub(crate) fn queue_follow_up_with_snapshots(
+        &mut self,
+        follow_up: PreventionFollowUp,
+        damage: crate::events::DamageEvent,
+        provenance: crate::provenance::ProvNodeId,
+        source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+        damage_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    ) {
         self.pending_follow_ups.push(PendingPreventionFollowUp {
             replacement_scope: self.follow_up_replacement_scopes.last().cloned().unwrap_or_default(),
             source_snapshot,
+            damage_source_snapshot,
             follow_up,
             damage,
             provenance,
@@ -434,6 +475,18 @@ impl PreventionEffectManager {
         id
     }
 
+    /// Retain the explicit CR 400.7c exception without allowing another zone
+    /// change (including a later blink) to refresh the chosen source identity.
+    pub(crate) fn link_resolved_permanent_spell(&mut self, spell: ObjectId, permanent: ObjectId) {
+        for shield in &mut self.shields {
+            if shield.damage_filter.from_specific_source == Some(spell)
+                && shield.damage_filter.resolved_permanent_source.is_none()
+            {
+                shield.damage_filter.resolved_permanent_source = Some(permanent);
+            }
+        }
+    }
+
     /// Remove a shield by ID.
     pub fn remove_shield(&mut self, id: PreventionShieldId) {
         self.shields.retain(|s| s.id != id);
@@ -449,10 +502,21 @@ impl PreventionEffectManager {
         self.shields.retain(|s| !s.is_exhausted());
     }
 
+    /// Remove shields at the actual combat boundary, retaining metrics still
+    /// owned by later delayed effects. Pending additional actions are separate.
+    pub fn cleanup_end_of_combat_retaining_metrics(
+        &mut self,
+        retained_metrics: &std::collections::HashSet<PreventionShieldId>,
+    ) {
+        self.shields.retain(|shield| !matches!(shield.duration, Until::EndOfCombat));
+        let active = self.shields.iter().map(|shield| shield.id).collect::<Vec<_>>();
+        self.prevented_totals.retain(|id, _| active.contains(id) || retained_metrics.contains(id));
+    }
+
     /// Clean up shields at end of turn.
     pub fn cleanup_end_of_turn(&mut self) {
         self.shields
-            .retain(|s| !matches!(s.duration, Until::EndOfTurn));
+            .retain(|s| !matches!(s.duration, Until::EndOfTurn | Until::EndOfCombat));
         let active = self
             .shields
             .iter()
@@ -468,7 +532,7 @@ impl PreventionEffectManager {
         retained_metrics: &std::collections::HashSet<PreventionShieldId>,
     ) {
         self.shields
-            .retain(|s| !matches!(s.duration, Until::EndOfTurn));
+            .retain(|s| !matches!(s.duration, Until::EndOfTurn | Until::EndOfCombat));
         let active = self
             .shields
             .iter()
@@ -1211,5 +1275,34 @@ mod tests {
         // First shield exhausted (3), second shield used 2
         assert_eq!(manager.shields().len(), 1); // One exhausted and removed
         assert_eq!(manager.shields()[0].amount_remaining, Some(1));
+    }
+}
+
+#[cfg(test)]
+mod combat_expiry_tests {
+    use super::*;
+
+    #[test]
+    fn combat_expiry_preserves_only_owned_metrics_and_noncombat_durations() {
+        let mut manager = PreventionEffectManager::new();
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(1401);
+        let combat = manager.add_shield(PreventionShield::new(source, alice, PreventionTarget::You, None, Until::EndOfCombat));
+        let turn = manager.add_shield(PreventionShield::new(source, alice, PreventionTarget::You, None, Until::EndOfTurn));
+        manager.record_prevented(combat, 3);
+        let mut retained = std::collections::HashSet::new();
+        retained.insert(combat);
+        manager.cleanup_end_of_combat_retaining_metrics(&retained);
+        assert_eq!(manager.shields().len(), 1);
+        assert_eq!(manager.shields()[0].id, turn);
+        assert_eq!(manager.prevented_by_shield(combat), 3);
+        manager.cleanup_end_of_turn_retaining_metrics(&std::collections::HashSet::new());
+        assert_eq!(manager.prevented_by_shield(combat), 0);
+        assert!(manager.shields().is_empty());
+        // A combat duration restored outside normal combat advancement must
+        // still be removed by the turn cleanup backstop.
+        manager.add_shield(PreventionShield::new(source, alice, PreventionTarget::You, None, Until::EndOfCombat));
+        manager.cleanup_end_of_turn();
+        assert!(manager.shields().is_empty());
     }
 }

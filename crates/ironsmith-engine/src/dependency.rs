@@ -227,6 +227,7 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && !filter.shares_creature_type_with_source
         && filter.no_shared_creature_types_with.is_empty()
         && filter.characteristic_relations.is_empty()
+        && !filter.ring_bearer
         && !filter.is_commander
         && !filter.noncommander
         && !filter.has_tap_activated_ability
@@ -770,7 +771,7 @@ fn evaluate_value(
             }
             ValueEval::Scalar(total)
         }
-        Value::PowerOf(target) | Value::ToughnessOf(target) => {
+        Value::PowerOf(target) | Value::BasePowerOf(target) | Value::ToughnessOf(target) => {
             use crate::target::ChooseSpec;
             let mut values = Vec::new();
             match target.as_ref() {
@@ -780,6 +781,7 @@ fn evaluate_value(
                     {
                         let v = match value {
                             Value::PowerOf(_) => chars.power,
+                            Value::BasePowerOf(_) => chars.base_power,
                             Value::ToughnessOf(_) => chars.toughness,
                             _ => {
                                 unreachable!("Value::PowerOf/ToughnessOf arm received non-PT value")
@@ -794,6 +796,7 @@ fn evaluate_value(
                     if let Some(chars) = baseline.get(&source) {
                         let v = match value {
                             Value::PowerOf(_) => chars.power,
+                            Value::BasePowerOf(_) => chars.base_power,
                             Value::ToughnessOf(_) => chars.toughness,
                             _ => {
                                 unreachable!("Value::PowerOf/ToughnessOf arm received non-PT value")
@@ -820,6 +823,7 @@ fn evaluate_value(
                         }
                         let v = match value {
                             Value::PowerOf(_) => chars.power,
+                            Value::BasePowerOf(_) => chars.base_power,
                             Value::ToughnessOf(_) => chars.toughness,
                             _ => {
                                 unreachable!("Value::PowerOf/ToughnessOf arm received non-PT value")
@@ -1016,6 +1020,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::HasMoreLifeThanYou { .. }
             | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
             | PlayerFilter::ControlsMost { .. }
+            | PlayerFilter::ControlsFewestTied { .. }
             | PlayerFilter::OpponentOf(_)
             | PlayerFilter::MaxSpeed { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
@@ -1326,15 +1331,7 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
                 && !types.is_empty()
                 && types.iter().all(|subtype| subtype.is_basic_land_type())
             {
-                chars.abilities.clear();
-                chars.static_abilities.clear();
-                for subtype in types {
-                    if let Some(ability) = Ability::basic_land_mana(*subtype)
-                        && !chars.abilities.contains(&ability)
-                    {
-                        chars.abilities.push(ability);
-                    }
-                }
+                crate::continuous::remove_land_rules_text_abilities(chars);
             }
         }
         Modification::AddSupertypes(types) => {
@@ -1461,9 +1458,13 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
             }
         }
         Modification::RemoveAllAbilities => {
-            chars.abilities.clear();
-            chars.static_abilities.clear();
+            if crate::continuous::is_land_type_rules_text_ability_loss(effect) {
+                crate::continuous::remove_land_rules_text_abilities(chars);
+            } else {
+                chars.abilities.clear(); chars.static_abilities.clear();
+            }
         }
+        Modification::RemoveLandRulesTextAbilities => crate::continuous::remove_land_rules_text_abilities(chars),
         Modification::RemoveAllAbilitiesExceptMana => {
             chars
                 .abilities
@@ -1545,7 +1546,7 @@ fn value_references_pt(value: &Value) -> bool {
         Value::SurfaceHinted { value, .. } => value_references_pt(value),
         // These directly reference P/T of objects
         Value::SourcePower | Value::SourceToughness => true,
-        Value::PowerOf(_) | Value::ToughnessOf(_) => true,
+        Value::PowerOf(_) | Value::BasePowerOf(_) | Value::ToughnessOf(_) => true,
         Value::TotalPower(_)
         | Value::TotalToughness(_)
         | Value::GreatestPower(_)
@@ -1629,7 +1630,10 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaSymbolSpentToCastThisSpell { .. }
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
         | Value::ManaSpentToCast(_)
+        | Value::KicksPaidOf(_)
         | Value::ManaSpentToCastTriggeringObject
+        | Value::CasterManaSpentToCastTriggeringObject
+        | Value::ManaSpentOnX(_)
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
@@ -1637,6 +1641,9 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaSymbolsInManaCostOf { .. }
         | Value::NameStickerCharacterCountOnSource { .. }
         | Value::LifeTotal(_)
+        | Value::MaximumLifeTotal(_)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(_)
+        | Value::DamageHistory(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
         | Value::LastNotedLifeTotal
@@ -2089,10 +2096,12 @@ pub(crate) fn condition_could_be_affected_by(
         | C::PlayerHasNoOpponentWithMoreLifeThan { .. }
         | C::PlayerHasMoreLifeThanEachOtherPlayer { .. }
         | C::PlayerIsMonarch { .. }
+        | C::PlayerWasMonarchAtTurnStart { .. }
         | C::PlayerHasInitiative { .. }
         | C::PlayerHasCitysBlessing { .. }
         | C::PlayerHasEnduringStory { .. }
         | C::SourceIsRingBearer { .. }
+        | C::YouChoseAnotherRingBearer
         | C::PlayerRingTemptedThisGameOrMore { .. }
         | C::PlayerCommittedCrimeThisTurn { .. }
         | C::PlayerRolledResultThisTurn { .. }
@@ -2118,6 +2127,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::PlayerCastSpellsThisTurnOrMore { .. }
         | C::AttackedThisTurn
         | C::AttackedWithNOrMoreCreaturesThisTurn(_)
+        | C::AttackedWithTotalPowerAtLeastThisCombat(_)
         | C::OpponentLostLifeThisTurn
         | C::AnyPlayerLostLifeThisTurnOrMore { .. }
         | C::OpponentWasDealtDamageThisTurn
@@ -2188,6 +2198,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::MaxTimesEachTurn(_)
         | C::DoThisMaxTimesEachTurn(_)
         | C::TriggeringObjectWasEnchanted
+        | C::TriggeringEventCausedBy { .. }
         | C::TriggeringObjectBecameTappedFirstTimeThisTurn
         | C::TriggeringObjectHadCountersPutFirstTimeThisTurn
         | C::TriggeringObjectHadToAttackThisCombat
@@ -2196,6 +2207,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TriggeringObjectEnteredTransformed
         | C::EvolveEnteringCreatureIsLarger
         | C::SoulbondPairingPossible
+        | C::SourceCaseSolved
         | C::SourceClassLevelAtLeast(_)
         | C::TriggeringObjectHadCounters { .. }
         | C::SourceIsInZone(_)
@@ -2278,6 +2290,9 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::PlayerVoteCount(_)
         | Value::ObjectVoteCount(_)
         | Value::LifeTotal(_)
+        | Value::MaximumLifeTotal(_)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(_)
+        | Value::DamageHistory(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
         | Value::LastNotedLifeTotal
@@ -2319,7 +2334,10 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::ManaSymbolSpentToCastThisSpell { .. }
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
         | Value::ManaSpentToCast(_)
+        | Value::KicksPaidOf(_)
         | Value::ManaSpentToCastTriggeringObject
+        | Value::CasterManaSpentToCastTriggeringObject
+        | Value::ManaSpentOnX(_)
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::WasKicked
@@ -2397,7 +2415,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
             matches!(modification.layer(), Layer::Color | Layer::Copy)
                 || modification_can_affect_filter(modification, filter)
         }
-        Value::PowerOf(_) | Value::ToughnessOf(_) => pt_affected,
+        Value::PowerOf(_) | Value::BasePowerOf(_) | Value::ToughnessOf(_) => pt_affected,
         Value::ManaValueOf(_) | Value::ManaSymbolsInManaCostOf { .. } => {
             matches!(modification.layer(), Layer::Copy)
         }
@@ -2451,6 +2469,7 @@ fn modification_can_remove_static_ability_presence(modification: &Modification) 
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )
 }
@@ -2543,6 +2562,7 @@ fn modification_can_change_abilities_or_matching_characteristics(
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )
 }
@@ -2591,6 +2611,8 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                     || filter.excluded_name.is_some()
                     || filter.name_originally_printed_in_set.is_some()
                     || filter.distinct_names
+                    || filter.shares_name
+                    || filter.characteristic_relations.iter().any(|relation| relation.characteristics.contains(&crate::ObjectCharacteristic::Name))
             }
             Modification::AddCardTypes(types) | Modification::RemoveCardTypes(types) => {
                 filter_mentions_card_types(filter, types)
@@ -2637,6 +2659,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana => {
                 filter_uses_ability_characteristics(filter)
             }
@@ -2707,7 +2730,7 @@ fn filter_uses_type_characteristics(filter: &ObjectFilter) -> bool {
 }
 
 fn filter_uses_color_characteristics(filter: &ObjectFilter) -> bool {
-    filter.colors.is_some()
+    filter.shares_color || filter.colors.is_some()
         || filter.required_colors.is_some()
         || filter.chosen_color
         || !filter.excluded_colors.is_empty()
@@ -3399,6 +3422,8 @@ mod tests {
                 linked_face_mana_value: object.linked_face_mana_value(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 ability_labels: object.ability_labels.clone(),
+                base_power: object.base_power.as_ref().map(|p| p.base_value()),
+                base_toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
                 power: object.base_power.as_ref().map(|p| p.base_value()),
                 toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: object.card_types.clone(),
@@ -3410,6 +3435,7 @@ mod tests {
                 defense: object.base_defense,
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                numeric_range_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
@@ -3458,6 +3484,8 @@ mod tests {
                 linked_face_mana_value: land.linked_face_mana_value(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 ability_labels: land.ability_labels.clone(),
+                base_power: land.base_power.as_ref().map(|p| p.base_value()),
+                base_toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
@@ -3469,6 +3497,7 @@ mod tests {
                 defense: land.base_defense,
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                numeric_range_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
@@ -3582,6 +3611,8 @@ mod tests {
                 linked_face_mana_value: land.linked_face_mana_value(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 ability_labels: land.ability_labels.clone(),
+                base_power: land.base_power.as_ref().map(|p| p.base_value()),
+                base_toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
@@ -3593,6 +3624,7 @@ mod tests {
                 defense: land.base_defense,
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                numeric_range_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
@@ -3760,6 +3792,11 @@ mod tests {
                 linked_face_mana_value: object.linked_face_mana_value(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 ability_labels: object.ability_labels.clone(),
+                base_power: object.base_power.as_ref().map(|power| power.base_value()),
+                base_toughness: object
+                    .base_toughness
+                    .as_ref()
+                    .map(|toughness| toughness.base_value()),
                 power: object.base_power.as_ref().map(|power| power.base_value()),
                 toughness: object
                     .base_toughness
@@ -3774,6 +3811,7 @@ mod tests {
                 defense: object.base_defense,
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                numeric_range_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
@@ -3985,6 +4023,11 @@ mod tests {
             linked_face_mana_value: object.linked_face_mana_value(),
             compiled_card_text: object.compiled_card_text.clone(),
             ability_labels: object.ability_labels.clone(),
+            base_power: object.base_power.as_ref().map(|power| power.base_value()),
+            base_toughness: object
+                .base_toughness
+                .as_ref()
+                .map(|toughness| toughness.base_value()),
             power: object.base_power.as_ref().map(|power| power.base_value()),
             toughness: object
                 .base_toughness
@@ -3999,6 +4042,7 @@ mod tests {
             defense: object.base_defense,
             abilities: object.abilities.clone().into(),
             static_abilities: Vec::new().into(),
+            numeric_range_error: None,
             ability_gain_prohibitions: Vec::new(),
             aura_attach_filter: object.aura_attach_filter_owned(),
             controller: object.owner,

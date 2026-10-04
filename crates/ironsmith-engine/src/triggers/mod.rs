@@ -40,6 +40,7 @@
 //! // Check if a trigger matches an event
 //! let matches = trigger.matches(&event, &ctx);
 //! ```
+use crate::events::KeywordActionKind;
 
 pub mod check;
 pub mod event;
@@ -138,6 +139,7 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
@@ -188,6 +190,7 @@ pub fn describe_player_filter_possessive(filter: &PlayerFilter) -> String {
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
@@ -270,6 +273,8 @@ impl PartialEq for Trigger {
 }
 
 impl Trigger {
+    pub fn player_becomes_monarch(player:PlayerFilter)->Self{Self::new(other::PlayerBecomesMonarchTrigger{player})}
+
     /// Process-local identity for immutable runtime cache eligibility. This is
     /// never a checkpoint reference or a substitute for a retained wire model.
     pub(crate) fn runtime_matcher_identity(&self) -> usize {
@@ -840,6 +845,16 @@ impl Trigger {
     }
 
     /// Create a "when [filter] attacks alone" trigger.
+    pub fn attacks_player_alone(filter: ObjectFilter) -> Self {
+        Self::new(AttacksAloneTrigger::against_player(filter))
+    }
+    pub fn becomes_blocked_one_or_more(filter: ObjectFilter) -> Self {
+        Self::new(BecomesBlockedTrigger::one_or_more(filter))
+    }
+    pub fn keyword_action_matching_object_one_or_more(action: KeywordActionKind, player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::new(KeywordActionTrigger::matching_object(action, player, filter).one_or_more())
+    }
+
     pub fn attacks_alone(filter: ObjectFilter) -> Self {
         Self::new(AttacksAloneTrigger::new(filter))
     }
@@ -1151,6 +1166,7 @@ impl Trigger {
     }
 
     /// Create a "whenever [player] loses life" trigger.
+    pub fn player_pays_life(player: PlayerFilter) -> Self { Self::new(life_damage::PlayerPaysLifeTrigger::new(player)) }
     pub fn player_loses_life(player: PlayerFilter) -> Self {
         Self::new(PlayerLosesLifeTrigger::new(player))
     }
@@ -1182,6 +1198,9 @@ impl Trigger {
     }
 
     /// Create a "when [target] is dealt damage" trigger.
+    pub fn damage_received(target: ChooseSpec, combat: Option<bool>, minimum: Option<u32>, single_source: bool) -> Self {
+        Self::new(IsDealtDamageTrigger { target, combat_only: combat == Some(true), noncombat_only: combat == Some(false), excess_only: false, minimum, single_source })
+    }
     pub fn is_dealt_damage(target: ChooseSpec) -> Self {
         Self::new(IsDealtDamageTrigger::new(target))
     }
@@ -1627,6 +1646,14 @@ impl Trigger {
         Self::new(PermanentBecomesTappedTrigger::new(filter))
     }
 
+    pub fn permanent_becomes_tapped_one_or_more(filter: ObjectFilter) -> Self {
+        Self::new(PermanentBecomesTappedTrigger { filter, one_or_more: true })
+    }
+
+    pub fn permanent_becomes_untapped(filter: ObjectFilter, one_or_more: bool) -> Self {
+        Self::new(PermanentBecomesUntappedTrigger { filter, one_or_more })
+    }
+
     /// Create a "when a player sacrifices [filter]" trigger.
     pub fn player_sacrifices(player: PlayerFilter, filter: ObjectFilter) -> Self {
         Self::player_sacrifices_with_surface(player, filter, false)
@@ -1667,6 +1694,15 @@ impl Trigger {
     }
 
     /// "Whenever a permanent you control transforms": any matching permanent.
+    pub fn permanent_mutates(filter: ObjectFilter) -> Self {
+        Self::new(PermanentMutatesTrigger { filter })
+    }
+    pub fn player_turns_face_up(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::new(PermanentTurnedFaceUpTrigger { filter, player: Some(player) })
+    }
+    pub fn permanent_transforms_into(filter: ObjectFilter, destination: ObjectFilter) -> Self {
+        Self::new(TransformsTrigger::new().permanent_filter(filter).destination_filter(destination))
+    }
     pub fn permanent_transforms(filter: crate::target::ObjectFilter) -> Self {
         Self::new(TransformsTrigger::new().permanent_filter(filter))
     }

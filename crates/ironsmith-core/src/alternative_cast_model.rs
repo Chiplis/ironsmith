@@ -126,6 +126,10 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         total_cost: TotalCost<C>,
         condition: Option<Cond>,
         exiles_after_resolution: bool,
+        /// Entry replacement instructions belonging only to this chosen cost.
+        /// Spell copies retain the alternative-cost choice (CR 707.10).
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+        entry_counters: Vec<(crate::CounterType, u32)>,
     },
     Trap {
         name: crate::InternedStr,
@@ -432,7 +436,17 @@ where
             total_cost,
             condition,
             exiles_after_resolution,
+            entry_counters: Vec::new(),
         }
+    }
+
+    pub fn with_entry_counters(mut self, counters: Vec<(crate::CounterType, u32)>) -> Self {
+        if let Self::FromZone { entry_counters, .. } = &mut self { *entry_counters = counters; }
+        self
+    }
+
+    pub fn entry_counters(&self) -> &[(crate::CounterType, u32)] {
+        match self { Self::FromZone { entry_counters, .. } => entry_counters, _ => &[] }
     }
 
     pub fn flash_with_additional_cost(additional_cost: ManaCost, total_cost: TotalCost<C>) -> Self {
@@ -668,12 +682,14 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 total_cost,
                 condition,
                 exiles_after_resolution,
+                entry_counters,
             } => AlternativeCastingMethod::FromZone {
                 name,
                 zone,
                 total_cost: map_total_cost(total_cost)?,
                 condition,
                 exiles_after_resolution,
+                entry_counters,
             },
             Self::Trap {
                 name,

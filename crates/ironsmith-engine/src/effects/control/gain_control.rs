@@ -1,14 +1,14 @@
 //! Gain control effect implementation.
+#[cfg(test)]
+use crate::events::ControlChangedEvent;
 
 use crate::continuous::{EffectTarget, Modification};
 use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
-use crate::events::ControlChangedEvent;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
-use crate::triggers::TriggerEvent;
 
 /// Effect that gains control of a target permanent.
 ///
@@ -76,8 +76,8 @@ impl EffectExecutor for GainControlEffect {
         let _obj = game
             .object(target_id)
             .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-        let previous_controller = game.current_controller(target_id);
-        let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
+        game.establish_control_transition_boundary().map_err(ExecutionError::ContinuousDiscovery)?;
+        let pending_start = game.effect_store.pending_trigger_events.len();
 
         let apply = ApplyContinuousEffect::new(
             EffectTarget::Specific(target_id),
@@ -86,28 +86,11 @@ impl EffectExecutor for GainControlEffect {
         );
 
         let mut outcome = execute_effect(game, &Effect::new(apply), ctx)?;
-        if let Some(previous_controller) = previous_controller
-            && previous_controller != ctx.controller
-        {
-            game.clear_soulbond_pair(target_id);
-            if let Some(stable_id) = game.object(target_id).map(|o| o.stable_id) {
-                game.record_ui_effect_event(
-                    "control_change",
-                    Some(ctx.controller),
-                    Some(previous_controller),
-                    vec![stable_id],
-                    None,
-                    None,
-                );
-            }
-            outcome = outcome.with_event(
-                TriggerEvent::new_with_provenance(
-                    ControlChangedEvent::new(target_id, previous_controller, ctx.controller),
-                    ctx.provenance,
-                )
-                .with_lookback_source_snapshots(lookback_source_snapshots),
-            );
-        }
+        // The shared derived-state owner only publishes actual transitions,
+        // including those induced on other permanents by this control change.
+        // Return those same receipts rather than manufacturing a second event.
+        outcome.events.extend(game.remove_pending_trigger_events_matching_from(pending_start,
+            |event| event.kind() == crate::events::EventKind::ControlChanged));
         Ok(outcome)
     }
 
@@ -125,6 +108,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effects::ResolvedTarget;
+    use crate::events::ControlChangedEvent;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
@@ -259,5 +243,45 @@ mod tests {
     fn test_gain_control_get_target_spec() {
         let effect = GainControlEffect::until_end_of_turn(ChooseSpec::creature());
         assert!(effect.get_target_spec().is_some());
+    }
+}
+
+#[cfg(test)]
+mod false_duration_receipt_tests {
+    use super::*;
+    #[test]
+    fn false_initial_control_duration_emits_no_control_change_and_does_not_break_soulbond() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = crate::ids::PlayerId::from_index(0);
+        let b = crate::ids::PlayerId::from_index(1);
+        let definition =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Control witness")
+                .card_types(vec![crate::types::CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .build();
+        let source =
+            game.create_object_from_definition(&definition, a, crate::zone::Zone::Battlefield);
+        let target =
+            game.create_object_from_definition(&definition, b, crate::zone::Zone::Battlefield);
+        let partner =
+            game.create_object_from_definition(&definition, b, crate::zone::Zone::Battlefield);
+        game.set_soulbond_pair(target, partner);
+        let effect = GainControlEffect::new(
+            ChooseSpec::SpecificObject(target),
+            Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::ObjectTapped(
+                ironsmith_core::ContinuousDurationObject::Source,
+            )),
+        );
+        let outcome = effect
+            .execute(&mut game, &mut ExecutionContext::new_default(source, a))
+            .unwrap();
+        assert_eq!(game.current_controller(target), Some(b));
+        assert_eq!(game.soulbond_partner(target), Some(partner));
+        assert!(
+            !outcome
+                .events
+                .iter()
+                .any(|event| event.downcast::<ControlChangedEvent>().is_some())
+        );
     }
 }

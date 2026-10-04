@@ -94,8 +94,15 @@ impl ironsmith_core::CostComponent for CompilerCost {
             Self::DynamicMana(cost) => cost.base.to_oracle(),
             Self::VariableMana { generic } => format!("{{{generic}}}"),
             Self::Tap => "{T}".to_string(),
-            Self::TapChosen { count, .. } => format!("tap {count} chosen permanent(s)"),
+            Self::TapChosen { count, .. } => format!(
+                "tap {} chosen permanent(s)",
+                if count.dynamic_x { "X".to_string() } else { count.min.to_string() },
+            ),
             Self::Untap => "{Q}".to_string(),
+            Self::UntapChosen { count, .. } => format!(
+                "untap {} chosen permanent(s)",
+                if count.dynamic_x { "X".to_string() } else { count.min.to_string() },
+            ),
             Self::Life(amount) => format!("pay {amount:?} life"),
             Self::Energy(amount) => format!("pay {amount} energy"),
             Self::DiscardSource => "discard this card".to_string(),
@@ -138,6 +145,7 @@ impl ironsmith_core::CostComponent for CompilerCost {
             Self::MoveSelfToLibraryBottom { .. } => {
                 "put this permanent on the bottom of its owner's library".to_string()
             }
+            Self::MoveChosenToZone { destination, .. } => format!("put a chosen card into its owner's {destination:?}"),
             Self::MoveOpponentOwnedExiledCardToGraveyard => {
                 "put an opponent-owned exiled card into its owner's graveyard".to_string()
             }
@@ -175,6 +183,51 @@ impl ironsmith_core::CostComponent for CompilerCost {
             Self::Sacrifice { filter, .. } => Some(filter),
             _ => None,
         }
+    }
+
+    fn life_amount(&self) -> Option<u32> {
+        match self {
+            Self::Life(Value::Fixed(amount)) if *amount >= 0 => Some(*amount as u32),
+            _ => None,
+        }
+    }
+
+    fn discard_details(&self) -> Option<(u32, Option<ironsmith_core::CardType>)> {
+        match self {
+            Self::Discard {
+                count,
+                card_types,
+                supertypes,
+                filter: None,
+                random: false,
+                name: None,
+                other: false,
+                ..
+            } if supertypes.is_empty() => match card_types.as_slice() {
+                [] => Some((*count, None)),
+                [card_type] => Some((*count, Some(*card_type))),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn exile_from_graveyard_details(&self) -> Option<(u32, &[ironsmith_core::CardType])> {
+        match self {
+            Self::ExileChosen { count, filter, .. }
+                if filter.zone == Some(ironsmith_core::Zone::Graveyard)
+                    && count.min > 0
+                    && count.max == Some(count.min) =>
+            {
+                Some((count.min as u32, &filter.card_types))
+            }
+            _ => None,
+        }
+    }
+
+    fn exile_from_graveyard_excludes_source(&self) -> bool {
+        matches!(self, Self::ExileChosen { filter, .. }
+            if filter.zone == Some(ironsmith_core::Zone::Graveyard) && filter.other)
     }
 
     fn is_mana_cost(&self) -> bool {
@@ -229,10 +282,14 @@ pub enum CompilerCost {
     },
     Tap,
     TapChosen {
-        count: u32,
+        count: ChoiceCount,
         filter: ObjectFilter,
     },
     Untap,
+    UntapChosen {
+        count: ChoiceCount,
+        filter: ObjectFilter,
+    },
     Life(Value),
     Energy(u32),
     DiscardSource,
@@ -347,6 +404,10 @@ pub enum CompilerCost {
     Behold {
         subtype: Subtype,
         count: u32,
+    },
+    MoveChosenToZone {
+        filter: ObjectFilter,
+        destination: crate::zone::Zone,
     },
 }
 

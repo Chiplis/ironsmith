@@ -383,7 +383,7 @@ fn replace_names_with_map(
     short_name: &SelfReferenceName,
     preserve_source_surfaces: bool,
     typed_subject: &str,
-    base_offset: usize,
+    base_char_offset: usize,
 ) -> (String, Vec<usize>) {
     fn has_word_boundaries_at(bytes: &[u8], idx: usize, len: usize) -> bool {
         // A byte at or above 0x80 belongs to a multibyte letter: "omer" inside
@@ -820,6 +820,13 @@ fn replace_names_with_map(
             })
     }
 
+    // The planeswalker type in the named keyword action is not a self
+    // reference, even on a source with that short name (CR 701.71).
+    fn is_empower_jace_subtype(bytes: &[u8], idx: usize, len: usize) -> bool {
+        previous_word(bytes, idx) == Some(b"empower".as_slice())
+            && bytes[idx..idx + len].eq_ignore_ascii_case(b"jace")
+    }
+
     /// "Target Assembly-Worker creature" on a card named Assembly-Worker: a
     /// name spelled as a subtype between a selecting word and a type noun
     /// describes a class of objects, not this object.
@@ -900,10 +907,12 @@ fn replace_names_with_map(
         name_len: usize,
     ) {
         let name_len = name_len.max(1);
-        let len = replacement.chars().count().max(1);
+        let len = replacement.chars().count();
         for (j, ch) in replacement.chars().enumerate() {
             out.push(ch);
-            map.push(base + (j * name_len / len).min(name_len - 1));
+            // Retain both endpoints, including when the replacement ends the
+            // line: its final character must still cover the name's suffix.
+            map.push(base + j * (name_len - 1) / len.saturating_sub(1).max(1));
         }
     }
 
@@ -936,8 +945,9 @@ fn replace_names_with_map(
         };
         // "{T}, Sacrifice Blazing Torch:" also names the granting attachment:
         // the equipped creature is the ability's source, and the cost
-        // sacrifices the Equipment.
-        if verb == b"sacrifice" {
+        // sacrifices the Equipment. Written tap/untap costs name that same
+        // granting object, while {T}/{Q} still refer to the ability's source.
+        if matches!(verb, b"sacrifice" | b"tap" | b"untap") {
             return true;
         }
         let rest = &bytes[idx + len..];
@@ -979,6 +989,7 @@ fn replace_names_with_map(
     let mut out = String::new();
     let mut map = Vec::new();
     let mut idx = 0;
+    let mut source_char = base_char_offset;
 
     while idx < bytes.len() {
         let full_typed_override = preserve_source_surfaces
@@ -1001,22 +1012,20 @@ fn replace_names_with_map(
         if let Some(name_len) = attachment_name_len
             && let Some((replacement, labeled)) = quoted_attachment_grant_host(bytes, idx)
         {
+            let name_chars = lower[idx..idx + name_len].chars().count();
             if labeled {
                 // An ability-word line is re-read from its authored tokens;
                 // keep the name so the token-level source normalizer
                 // rewrites it there without shifting the source map.
-                for (offset, ch) in lower[idx..idx + name_len].char_indices() {
+                for (offset, ch) in lower[idx..idx + name_len].chars().enumerate() {
                     out.push(ch);
-                    map.push(base_offset + idx + offset);
+                    map.push(source_char + offset);
                 }
             } else {
-                let replacement_len = replacement.len();
-                for (j, ch) in replacement.chars().enumerate() {
-                    out.push(ch);
-                    map.push(base_offset + idx + (j * name_len / replacement_len));
-                }
+                push_replacement(&mut out, &mut map, replacement, source_char, name_chars);
             }
             idx += name_len;
+            source_char += name_chars;
             continue;
         }
         if !full_bytes.is_empty()
@@ -1033,6 +1042,7 @@ fn replace_names_with_map(
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
+            && !is_empower_jace_subtype(bytes, idx, full_bytes.len())
             && !is_subtype_descriptor_usage(bytes, idx, full_bytes.len())
             && !(preserve_source_surfaces
                 && should_preserve_source_surface_context(
@@ -1049,24 +1059,15 @@ fn replace_names_with_map(
                 full_name,
             )
         {
-            if full_typed_override {
-                push_replacement(
-                    &mut out,
-                    &mut map,
-                    typed_subject,
-                    base_offset + idx,
-                    full_bytes.len(),
-                );
-                idx += full_bytes.len();
-                continue;
-            }
-            let name_len = full_bytes.len().max(1);
-            for j in 0..4 {
-                out.push("this".chars().nth(j).unwrap());
-                let mapped = base_offset + idx + (j * name_len / 4);
-                map.push(mapped);
-            }
+            let name_chars = lower[idx..idx + full_bytes.len()].chars().count();
+            let replacement = if full_typed_override {
+                typed_subject
+            } else {
+                "this"
+            };
+            push_replacement(&mut out, &mut map, replacement, source_char, name_chars);
             idx += full_bytes.len();
+            source_char += name_chars;
             continue;
         }
         if !short_bytes.is_empty()
@@ -1087,6 +1088,7 @@ fn replace_names_with_map(
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
+            && !is_empower_jace_subtype(bytes, idx, short_bytes.len())
             && (is_short_name_self_reference_context(bytes, idx, short_bytes.len())
                 || is_result_optional_companion_short_name_context(
                     bytes,
@@ -1109,30 +1111,22 @@ fn replace_names_with_map(
                 short_name,
             )
         {
-            if short_typed_override {
-                push_replacement(
-                    &mut out,
-                    &mut map,
-                    typed_subject,
-                    base_offset + idx,
-                    short_bytes.len(),
-                );
-                idx += short_bytes.len();
-                continue;
-            }
-            let name_len = short_bytes.len().max(1);
-            for j in 0..4 {
-                out.push("this".chars().nth(j).unwrap());
-                let mapped = base_offset + idx + (j * name_len / 4);
-                map.push(mapped);
-            }
+            let name_chars = lower[idx..idx + short_bytes.len()].chars().count();
+            let replacement = if short_typed_override {
+                typed_subject
+            } else {
+                "this"
+            };
+            push_replacement(&mut out, &mut map, replacement, source_char, name_chars);
             idx += short_bytes.len();
+            source_char += name_chars;
             continue;
         }
         let ch = lower[idx..].chars().next().unwrap();
         out.push(ch);
-        map.push(base_offset + idx);
+        map.push(source_char);
         idx += ch.len_utf8();
+        source_char += 1;
     }
 
     (out, map)
@@ -1196,10 +1190,10 @@ fn strip_resolution_timing_tail_with_map(text: &str, map: &[usize]) -> (String, 
     let kept_tokens = tokens_within(&tokens, 0..surface.tail_start);
     if surface.terminal_period && !preprocess_grammar::parse_terminal_period_tokens(kept_tokens) {
         out.push('.');
-        out_map.push(
-            *map.get(surface.tail_start)
-                .unwrap_or_else(|| map.last().unwrap_or(&0)),
-        );
+        let period_source = tokens
+            .last()
+            .and_then(|token| map.get(text[..token.span.start].chars().count()));
+        out_map.push(*period_source.unwrap_or_else(|| map.last().unwrap_or(&0)));
     }
     (out, out_map)
 }
@@ -1257,7 +1251,7 @@ fn normalize_line_for_parse(
             short_name,
             preserve_source_surfaces,
             typed_subject,
-            wrapped.inner_start,
+            trimmed[..wrapped.inner_start].chars().count(),
         );
         return Some(NormalizedLine::from_char_map(
             trimmed,
@@ -1385,6 +1379,54 @@ fn rewrite_any_type_cast_rider_line(text: &str) -> String {
 /// "him" is left alone for the same reason as "her" — the operand grammar
 /// reads `it | him | her` directly, and rewriting only the masculine form
 /// erased the authored surface that the feminine one keeps.
+fn personal_pronoun_replacement(core: &str, opens_activated_effect: bool) -> Option<&'static str> {
+    match core {
+        // The effect-opening pronoun names the ability's source, not a cost object.
+        "he" | "she" if opens_activated_effect => Some("this"),
+        "he" | "she" => Some("it"),
+        "he's" | "she's" => Some("it's"),
+        "himself" | "herself" => Some("itself"),
+        _ => None,
+    }
+}
+
+/// Contextual recognition may revisit the authored stream to recover a card
+/// name. Retain the same pronoun vocabulary as preprocessing without rendering
+/// and re-lexing that stream or replacing its original source spans.
+pub(super) fn rewrite_personal_pronouns_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut previous_ends_activation_cost = false;
+    tokens
+        .iter()
+        .enumerate()
+        .map(|(index, token)| {
+            // The text pass leaves quote-adjacent words untouched, including
+            // literal names such as `named "He"`.
+            let quote_adjacent = index
+                .checked_sub(1)
+                .and_then(|previous| tokens.get(previous))
+                .is_some_and(|previous| previous.kind == TokenKind::Quote)
+                || tokens
+                    .get(index + 1)
+                    .is_some_and(|next| next.kind == TokenKind::Quote);
+            let replacement = (!quote_adjacent)
+                .then(|| {
+                    token.as_word().and_then(|word| {
+                        personal_pronoun_replacement(
+                            &word.to_ascii_lowercase(),
+                            previous_ends_activation_cost,
+                        )
+                    })
+                })
+                .flatten();
+            previous_ends_activation_cost = token.kind == TokenKind::Colon;
+            replacement.map_or_else(
+                || token.clone(),
+                |word| OwnedLexToken::word(word, token.span),
+            )
+        })
+        .collect()
+}
+
 fn rewrite_personal_pronouns_line(text: &str) -> String {
     let words: Vec<&str> = text.split(' ').collect();
     if !words.iter().any(|word| {
@@ -1405,18 +1447,7 @@ fn rewrite_personal_pronouns_line(text: &str) -> String {
         let (core, trailing) = word.split_at(word.len() - trailing_len);
         let opens_activated_effect = previous_ends_activation_cost;
         previous_ends_activation_cost = trailing.contains(':');
-        let replacement = match core {
-            // A gendered subject pronoun names the character the card
-            // depicts. Opening an activated ability's effect, the only
-            // earlier objects are cost objects, which it never names ("{3},
-            // Unattach an Equipment from Captain America: He deals damage
-            // ..."); read it exactly like the card's own name there.
-            "he" | "she" if opens_activated_effect => Some("this"),
-            "he" | "she" => Some("it"),
-            "he's" | "she's" => Some("it's"),
-            "himself" | "herself" => Some("itself"),
-            _ => None,
-        };
+        let replacement = personal_pronoun_replacement(core, opens_activated_effect);
         match replacement {
             Some(replacement) => rewritten.push(format!("{replacement}{trailing}")),
             None => rewritten.push(word.to_string()),
@@ -2358,6 +2389,19 @@ mod tests {
     }
 
     #[test]
+    fn preprocess_preserves_empower_jace_keyword_subtype_on_a_jace_source() {
+        let line = normalize_line_for_parse_text(
+            "Empower Jace X, where X is the number of Islands you control.",
+            "jace, reality sculptor", "jace", false,
+        ).unwrap();
+        assert!(line.normalized.starts_with("empower jace x"), "{}", line.normalized);
+        let ordinary = normalize_line_for_parse_text(
+            "Put a loyalty counter on Jace.", "jace, reality sculptor", "jace", false,
+        ).unwrap();
+        assert!(!ordinary.normalized.contains("on jace"), "ordinary source references still normalize");
+    }
+
+    #[test]
     fn preprocess_preserves_typed_multiword_keyword_action_matching_card_name() {
         let document = preprocess_document(
             CardBuilder::new(CardId::new(), "Manifest Dread"),
@@ -2477,4 +2521,23 @@ mod tests {
             );
         }
     }
+}
+
+#[cfg(test)]
+#[path = "preprocess_unicode_tests.rs"]
+mod unicode_tests;
+
+#[cfg(test)]
+#[test]
+fn authored_pronoun_retry_keeps_original_spans_and_literal_names() {
+    let tokens = lex_line("When Madame Masque enters, she connives.", 7).unwrap();
+    let rewritten = rewrite_personal_pronouns_tokens(&tokens);
+    assert_eq!(tokens.len(), rewritten.len());
+    for (before, after) in tokens.iter().zip(&rewritten) {
+        assert_eq!(before.span, after.span);
+    }
+    assert!(rewritten.iter().any(|token| token.is_word("it")));
+    assert!(!rewritten.iter().any(|token| token.is_word("she")));
+    let tokens = lex_line("Create a token named \"He\".", 0).unwrap();
+    assert_eq!(rewrite_personal_pronouns_tokens(&tokens), tokens);
 }

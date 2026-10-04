@@ -384,7 +384,7 @@
         && let Some(exile_top) = unwrap_tag_wrappers(exile_top_effect)
             .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
         && let Some(grant_play) = unwrap_tag_wrappers(grant_play_effect)
-            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
         && let Some(grant_free_cast) = unwrap_tag_wrappers(grant_free_cast_effect)
             .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(
         )
@@ -521,7 +521,7 @@
         && let Some(for_players) =
             for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()
         && let Some(look) = look_effect.downcast_ref::<crate::effects::LookAtObjectsEffect>()
-        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
         && let Some(compact) =
             describe_for_players_bottom_library_exile_then_look_cast(for_players, look, grant)
     {

@@ -1,0 +1,129 @@
+{
+  "audit_mode": "authoritative_full_corpus",
+  "build_manifest": {
+    "binary_sha256": "244bac21b8405b75529b9339903cd7c9c62dd2308f00a23daabf4bb18a774f9b",
+    "build_command": [
+      "cargo",
+      "build",
+      "--locked",
+      "--release",
+      "-p",
+      "ironsmith-tools",
+      "--bin",
+      "sync_card_status_db",
+      "--bin",
+      "compile_oracle_text"
+    ],
+    "build_log_sha256": "f5b86d6a249df2fca25a433b6e40255e8c425e4ccb48fae1e407f8c45c93850c",
+    "completed_at": "2026-10-03T19:11:34.663583+00:00",
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "256",
+      "CARGO_PROFILE_RELEASE_DEBUG": "0",
+      "CARGO_PROFILE_RELEASE_OPT_LEVEL": "1"
+    },
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "source": {
+      "commit": "bc9e56e2cf228f158060631927cab8f42d9b6ebc",
+      "status": "",
+      "tree": "dee7621f460db33d6c7e2e3ce13fbc6bfb849c92"
+    }
+  },
+  "cargo_version": "cargo 1.99.0 (5f94df478 2026-08-27)",
+  "checkout_state_at_start": {
+    "commit": "bc9e56e2cf228f158060631927cab8f42d9b6ebc",
+    "status": "",
+    "tree": "dee7621f460db33d6c7e2e3ce13fbc6bfb849c92"
+  },
+  "cleared_ironsmith_environment_keys": [],
+  "command": null,
+  "completed": true,
+  "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "environment": {
+    "CARGO_BUILD_JOBS": "1",
+    "CARGO_PROFILE_DEV_DEBUG": "0",
+    "CARGO_PROFILE_RELEASE_DEBUG": null,
+    "CARGO_TARGET_DIR": "/workspace/shared/ironsmith-card-target",
+    "RAYON_NUM_THREADS": "1",
+    "RUSTFLAGS": null
+  },
+  "exit_code": 0,
+  "finished_at": "2026-10-03T19:21:05.027953+00:00",
+  "processes": 4,
+  "repo": "/workspace/shared/ironsmith-card-campaign",
+  "rustc_version": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "schema_version": 1,
+  "shards": [
+    {
+      "canonical_names_sha256": "5166d083e85c34ce8e21fa9c570f3b8fa32f73f8493663ba4db89d4e967117de",
+      "card_count": 8053,
+      "command": [
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2-bin/sync_card_status_db",
+        "--cards",
+        "/workspace/shared/ironsmith-card-campaign/cards.json",
+        "--db-path",
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-000/status.sqlite3",
+        "--names-file",
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-000/cards.names"
+      ],
+      "directory": "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-000",
+      "exit_code": 0,
+      "index": 0
+    },
+    {
+      "canonical_names_sha256": "3880db6ed4b1cfca3693b14261ac146aee231824ca7a555a90211ef7edbf0c5d",
+      "card_count": 8052,
+      "command": [
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2-bin/sync_card_status_db",
+        "--cards",
+        "/workspace/shared/ironsmith-card-campaign/cards.json",
+        "--db-path",
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-001/status.sqlite3",
+        "--names-file",
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-001/cards.names"
+      ],
+      "directory": "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-001",
+      "exit_code": 0,
+      "index": 1
+    },
+    {
+      "canonical_names_sha256": "b54f66b651881bc1a4f19b4c6063788305770ac10d60533776a5fd9f0f49b9bf",
+      "card_count": 8052,
+      "command": [
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2-bin/sync_card_status_db",
+        "--cards",
+        "/workspace/shared/ironsmith-card-campaign/cards.json",
+        "--db-path",
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-002/status.sqlite3",
+        "--names-file",
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-002/cards.names"
+      ],
+      "directory": "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-002",
+      "exit_code": 0,
+      "index": 2
+    },
+    {
+      "canonical_names_sha256": "c076ff1fb0727cc057d9d4a7ace35d27e6547859108681d9687ce4e49eac8973",
+      "card_count": 8052,
+      "command": [
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2-bin/sync_card_status_db",
+        "--cards",
+        "/workspace/shared/ironsmith-card-campaign/cards.json",
+        "--db-path",
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-003/status.sqlite3",
+        "--names-file",
+        "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-003/cards.names"
+      ],
+      "directory": "/workspace/shared/ironsmith-card-data/stack07-bc9e56e2/shard-003",
+      "exit_code": 0,
+      "index": 3
+    }
+  ],
+  "snapshot_sha256": "554a707de82982857e3bc50bfd25e83dda52c6d01b786db466ccfacc76e226bc",
+  "source": {
+    "commit": "bc9e56e2cf228f158060631927cab8f42d9b6ebc",
+    "status": "",
+    "tree": "dee7621f460db33d6c7e2e3ce13fbc6bfb849c92"
+  },
+  "started_at": "2026-10-03T19:11:39.011600+00:00"
+}

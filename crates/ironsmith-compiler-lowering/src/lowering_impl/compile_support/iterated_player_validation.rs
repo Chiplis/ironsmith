@@ -45,6 +45,7 @@ pub fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
             .map(|constraint| &constraint.source_controller),
         filter.discarded_or_cycled_this_turn_by.as_ref(),
         filter.dealt_damage_to_player_this_turn.as_ref(),
+        filter.last_drawn_this_turn.as_ref(),
     ]
     .into_iter()
     .flatten()
@@ -164,6 +165,18 @@ fn choose_spec_contains_pending_effect_metric(spec: &ChooseSpec) -> bool {
 
 pub fn value_mentions_iterated_player(value: &Value) -> bool {
     match value {
+        Value::DamageHistory(query) => {
+            query
+                .reference_specs()
+                .any(choose_spec_mentions_iterated_player)
+                || query
+                    .object_filters()
+                    .any(object_filter_mentions_iterated_player)
+                || query
+                    .player_filter()
+                    .is_some_and(PlayerFilter::mentions_iterated_player)
+        }
+
         Value::SurfaceHinted { value, .. }
         | Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
@@ -214,6 +227,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                     .is_some_and(PlayerFilter::mentions_iterated_player)
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
@@ -226,6 +240,8 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
+        | Value::MaximumLifeTotal(player)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player)
         | Value::UnspentMana(player)
@@ -281,7 +297,8 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                         .is_some_and(|player| player.mentions_iterated_player())
                         || object_filter_mentions_iterated_player(filter)
                 }
-                TurnHistoryCount::TokensCreated(player)
+                TurnHistoryCount::LibrarySearches { player, .. }
+                | TurnHistoryCount::TokensCreated(player)
                 | TurnHistoryCount::TurnedFaceUp(player)
                 | TurnHistoryCount::PlayersAttackedThisCombat(player)
                 | TurnHistoryCount::OpponentsAttacked(player)
@@ -300,7 +317,8 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 TurnHistoryCount::PutIntoGraveyard { owner, .. } => {
                     owner.mentions_iterated_player()
                 }
-                TurnHistoryCount::Sacrificed { player, filter }
+                TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter }
+                | TurnHistoryCount::Sacrificed { player, filter }
                 | TurnHistoryCount::SacrificedCardTypes { player, filter }
                 | TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
                     player.mentions_iterated_player()
@@ -314,6 +332,11 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                     player.mentions_iterated_player()
                         || object_filter_mentions_iterated_player(filter)
                 }
+                TurnHistoryCount::DestroyedBy { filter, cause } => object_filter_mentions_iterated_player(filter)
+                    || cause.source_filter.as_ref().is_some_and(object_filter_mentions_iterated_player),
+                TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => caster.mentions_iterated_player()
+                    || object_filter_mentions_iterated_player(filter)
+                    || cause.source_filter.as_ref().is_some_and(object_filter_mentions_iterated_player),
                 TurnHistoryCount::DamageDealtToSource | TurnHistoryCount::DamageDealtBySource => {
                     false
                 }
@@ -325,6 +348,15 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
 
 pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
     match value {
+        Value::DamageHistory(query) => {
+            query
+                .reference_specs()
+                .any(choose_spec_contains_pending_effect_metric)
+                || query
+                    .object_filters()
+                    .any(object_filter_contains_pending_effect_metric)
+        }
+
         Value::PendingEffectMetric { .. }
         | Value::PendingEffectMetricOffset { .. }
         | Value::PendingComparisonLeft
@@ -372,6 +404,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
             object_filter_contains_pending_effect_metric(filter)
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
@@ -400,6 +433,7 @@ fn anthem_count_mentions_iterated_player(count: &ironsmith_core::AnthemCountExpr
         }
         AnthemCountExpression::CommanderCastCount(player)
         | AnthemCountExpression::PlayerSpeed(player)
+        | AnthemCountExpression::TotalUnspentMana(player)
         | AnthemCountExpression::UnspentMana { player, .. } => player.mentions_iterated_player(),
         AnthemCountExpression::GraveyardsWithAtLeastCards { .. } => false,
         _ => false,
@@ -450,6 +484,7 @@ pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
         | PlayerHasNoOpponentWithMoreLifeThan { player }
         | PlayerHasMoreLifeThanEachOtherPlayer { player }
         | PlayerIsMonarch { player }
+        | PlayerWasMonarchAtTurnStart {player}
         | PlayerHasInitiative { player }
         | PlayerHasCitysBlessing { player }
         | PlayerHasEnduringStory { player }
@@ -510,7 +545,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | BecomeMonarch(player)
         | LoseUnspentMana(player, _)
         | BeTargetedPlayer(player) => player.mentions_iterated_player(),
-        CastSpellsMatching(player, filter) | CastMoreThanOneSpellEachTurn(player, filter) => {
+        PlayLandsMatching(player, filter) | CastSpellsMatching(player, filter) | CastMoreThanOneSpellEachTurn(player, filter) => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
         }
         BeSacrificedByCause { filter, cause } => {
@@ -520,9 +555,11 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
                     .as_ref()
                     .is_some_and(object_filter_mentions_iterated_player)
         }
-        ActivateAbilitiesOf(filter)
+        ActivateLoyaltyAbilitiesOf(filter)
+        | ActivateAbilitiesOf(filter)
         | ActivateTapAbilitiesOf(filter)
         | ActivateNonManaAbilitiesOf(filter)
+        | MustAttack(filter)
         | Attack(filter)
         | AttackAlone(filter)
         | Block(filter)
@@ -557,6 +594,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         BeTargetedPlayerFrom(player, source) => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(source)
         }
+        PreventDamageFrom { sources, .. } => object_filter_mentions_iterated_player(sources),
         PreventDamage | PreventCombatDamage | AttackYouUnlessControllerPaysPerAttacker(..) => false,
     }
 }

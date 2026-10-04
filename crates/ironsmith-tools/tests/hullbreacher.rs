@@ -102,8 +102,7 @@ fn opponents_first_draw_step_draw_is_kept_and_later_draws_become_treasures() {
 
     // An additional draw during that same draw step is replaced.
     game.turn.step = Some(Step::Draw);
-    game.turn_store.tracked_draw_step_player = Some(bob());
-    game.turn_store.cards_drawn_this_draw_step = 1;
+    game.turn_store.cards_drawn_this_draw_step.insert(bob(), 1);
     draw(&mut game, bob(), bob_source, 2);
     assert_eq!(
         hand_size(&game, bob()),

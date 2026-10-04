@@ -602,7 +602,7 @@ mod independent_occurrence_gameplay_tests {
                     for (ability, expiry) in [(haste.clone(), turn), (doubling.clone(), turn+1), (doubling.clone(), turn+1)] {
                         game.object_mut(source).unwrap().temporary_static_ability_grants.push(
                             crate::object::TemporaryStaticAbilityGrant { ability: ability.id(),
-                                ability_payload: Some(ability), expires_end_of_turn: expiry });
+                                ability_payload: Some(ability), expires_end_of_turn: Some(expiry) });
                     }
                 } else {
                     for ability in [haste, doubling.clone(), doubling.clone()] {

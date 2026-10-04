@@ -70,7 +70,7 @@ pub(crate) fn execute_player_counter_placement(
     result
 }
 
-fn commit_player_counter_placement(
+pub(super) fn commit_player_counter_placement(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     processed: TraitEventResult,

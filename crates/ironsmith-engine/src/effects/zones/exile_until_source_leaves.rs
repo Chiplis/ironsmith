@@ -453,7 +453,7 @@ mod tests {
             "leaving Palace Jailer must not end its monarch-event duration"
         );
 
-        game.set_monarch(Some(alice));
+        game.set_monarch(Some(alice)).expect("checked designation/departure fixture");
         assert!(
             game.exile.iter().any(|id| game
                 .object(*id)
@@ -461,7 +461,7 @@ mod tests {
             "the effect controller becoming monarch is not the duration event"
         );
 
-        game.set_monarch(Some(bob));
+        game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
         game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker).expect("replacement operation must execute successfully in this scenario");
         assert!(game.exile.is_empty());
         let returned = game

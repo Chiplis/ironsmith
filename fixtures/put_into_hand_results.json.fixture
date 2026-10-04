@@ -1,0 +1,46 @@
+[
+  {
+    "name": "Blossom Prancer",
+    "oracle_id": "69e92c4f-df05-4297-a453-8e4644c31a90",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Creature \u2014 Spirit",
+    "oracle_text": "Reach\nWhen this creature enters, look at the top five cards of your library. You may reveal a creature or enchantment card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you didn't put a card into your hand this way, you gain 4 life.",
+    "power": "4",
+    "toughness": "4",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; independent bounded source review through86f7f33a6"
+  },
+  {
+    "name": "Contagious Vorrac",
+    "oracle_id": "1b6da140-0d91-4fae-a3ee-33e6808acf34",
+    "mana_cost": "{2}{G}",
+    "type_line": "Creature \u2014 Phyrexian Boar Beast",
+    "oracle_text": "When this creature enters, look at the top four cards of your library. You may reveal a land card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you didn't put a card into your hand this way, proliferate. (Choose any number of permanents and/or players, then give each another counter of each kind already there.)",
+    "power": "3",
+    "toughness": "3",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; independent bounded source review through86f7f33a6"
+  },
+  {
+    "name": "Pulsar Squadron Ace",
+    "oracle_id": "8019e879-cfea-40a2-ac0d-86b47ec02b48",
+    "mana_cost": "{1}{W}",
+    "type_line": "Creature \u2014 Human Pilot",
+    "oracle_text": "When this creature enters, look at the top five cards of your library. You may reveal a Spacecraft card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you didn't put a card into your hand this way, put a +1/+1 counter on this creature.",
+    "power": "1",
+    "toughness": "2",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; independent bounded source review through86f7f33a6"
+  },
+  {
+    "name": "Rosecot Knight",
+    "oracle_id": "b81a9cf5-4059-45fb-a4e1-f2fe6aa3c841",
+    "mana_cost": "{4}{W}",
+    "type_line": "Creature \u2014 Human Knight",
+    "oracle_text": "Vigilance\nWhen this creature enters, look at the top six cards of your library. You may reveal an artifact or enchantment card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you didn't put a card into your hand this way, put a +1/+1 counter on this creature.",
+    "power": "3",
+    "toughness": "4",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; independent bounded source review through86f7f33a6"
+  }
+]

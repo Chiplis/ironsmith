@@ -12,6 +12,17 @@ pub enum CountMode {
     OneOrMore,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum PlayerAttackGrouping {
+    /// One event per attacking player, across all qualifying defenders.
+    Attacker,
+    /// One event per directly attacked player, across attacking teammates.
+    Defender,
+    /// One event for each separately declared attacking/defending player pair.
+    Pair,
+}
+
 /// Oracle surface for an end-step trigger whose runtime player filter is Any.
 ///
 /// Both forms fire at every end step; this distinction only preserves whether
@@ -281,6 +292,8 @@ pub enum TriggerKind {
     BecomesTapped,
     PermanentBecomesTapped {
         filter: ObjectFilter,
+        #[cfg_attr(feature = "serde", serde(default))]
+        one_or_more: bool,
     },
     BecomesUntapped,
     ThisIsTurnedFaceUp,
@@ -433,6 +446,10 @@ pub enum TriggerKind {
         combat_only: bool,
         noncombat_only: bool,
         excess_only: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        minimum: Option<u32>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        single_source: bool,
     },
     YouGainLife,
     YouGainLifeCausedBy {
@@ -489,6 +506,8 @@ pub enum TriggerKind {
         filter: Option<ObjectFilter>,
         controller: PlayerFilter,
         effect_like_only: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        one_or_more: bool,
     },
     PlayerDiscardsCard {
         player: PlayerFilter,
@@ -687,7 +706,80 @@ pub enum TriggerKind {
     PlayerRollsToVisitAttractions {
         player: PlayerFilter,
     },
+    PermanentBecomesUntapped {
+        filter: ObjectFilter,
+        #[cfg_attr(feature = "serde", serde(default))]
+        one_or_more: bool,
+    },
+    PlayerChangesTapState {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        tapped: bool,
+        one_or_more: bool,
+        during_untap_step: Option<PlayerFilter>,
+    },
+    AttachmentChanged {
+        attachment: ObjectFilter,
+        recipient: ObjectFilter,
+        attached: bool,
+    },
+    PhasingChanged { filter: ObjectFilter, phased_in: bool, one_or_more: bool },
+    /// An actual mill action, distinct from an arbitrary library-zone change.
+    CardsMilled {
+        player: PlayerFilter,
+        filter: Option<ObjectFilter>,
+        one_or_more: bool,
+        per_player: bool,
+    },
+    PlayerAttackDeclaration {
+        attacker: PlayerFilter,
+        defender: PlayerFilter,
+        grouping: PlayerAttackGrouping,
+    },
+    PlayerGainsLife {
+        player: PlayerFilter,
+        during_turn: Option<PlayerFilter>,
+    },
+    PlayerDrawsCardDuringTurn { player: PlayerFilter, during_turn: PlayerFilter },
+    PlayerDrawsFirstCardInOwnDrawStep { player: PlayerFilter },
+    ControlChanged(ControlChangeTrigger),
+    RingBearerChosen { player: PlayerFilter },
+    /// A player target is distinct from a targeted permanent.
+    PlayerBecomesTargeted { player: PlayerFilter, source_controller: PlayerFilter, source_kind: crate::filter_model::StackObjectKind },
+    /// Targets of an ability whose physical source has these characteristics.
+    /// The source's controller is not necessarily the ability's controller.
+    BecomesTargetedByAbilitySource { target: ObjectFilter, source: ObjectFilter },
+    /// Completed post-transformation characteristics, distinct from the subject surface.
+    PermanentTransformsInto { filter: ObjectFilter, destination: ObjectFilter },
+    PermanentMutates { filter: ObjectFilter },
+    /// The actor need not control the permanent they turn face up.
+    PlayerTurnsFaceUp { player: PlayerFilter, filter: ObjectFilter },
+    PlayerRollsResultMatching { player: PlayerFilter, result: Comparison, natural: bool },
+    PlayerRollsNthDie { player: PlayerFilter, ordinal: u32 },
+    /// CR506.6: alone relative to this directly attacked player.
+    AttacksPlayerAlone { filter: ObjectFilter },
+    BecomesBlockedOneOrMore { filter: ObjectFilter },
+    KeywordActionMatchingObjectOneOrMore { action: KeywordActionKind, player: PlayerFilter, filter: ObjectFilter },
+    PlayerPaysLife { player: PlayerFilter },
+    PlayerBecomesMonarch { player: PlayerFilter },
 }
+
+/// The player mentioned as gaining or losing control is distinct from the
+/// permanent's owner, and a gain may further qualify its previous controller.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum ControlChangeDirection {
+    Gained { player: PlayerFilter, from: Option<PlayerFilter> },
+    Lost { player: PlayerFilter },
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ControlChangeTrigger {
+    pub filter: ObjectFilter,
+    pub change: ControlChangeDirection,
+}
+
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
@@ -716,6 +808,8 @@ pub struct Trigger {
 }
 
 impl Trigger {
+    pub fn player_becomes_monarch(player:PlayerFilter)->Self{Self::typed("player_becomes_monarch",TriggerKind::PlayerBecomesMonarch{player})}
+
     pub fn new<T: CompilerTriggerMatcher>(matcher: T) -> Self {
         matcher.into_trigger()
     }
@@ -984,6 +1078,16 @@ impl Trigger {
             },
         )
     }
+    pub fn attacks_player_alone(filter: ObjectFilter) -> Self {
+        Self::typed("attacks_player_alone", TriggerKind::AttacksPlayerAlone { filter })
+    }
+    pub fn becomes_blocked_one_or_more(filter: ObjectFilter) -> Self {
+        Self::typed("becomes_blocked_one_or_more", TriggerKind::BecomesBlockedOneOrMore { filter })
+    }
+    pub fn keyword_action_matching_object_one_or_more(action: KeywordActionKind, player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::typed("keyword_action_matching_object_one_or_more", TriggerKind::KeywordActionMatchingObjectOneOrMore { action, player, filter })
+    }
+
     pub fn attacks_alone(filter: ObjectFilter) -> Self {
         Self::typed("attacks_alone", TriggerKind::AttacksAlone { filter })
     }
@@ -1086,6 +1190,23 @@ impl Trigger {
             TriggerKind::ThisLeavesBattlefield,
         )
     }
+    pub fn player_attack_declaration(
+        attacker: PlayerFilter,
+        defender: PlayerFilter,
+        grouping: PlayerAttackGrouping,
+    ) -> Self {
+        Self::typed(
+            "player_attack_declaration",
+            TriggerKind::PlayerAttackDeclaration { attacker, defender, grouping },
+        )
+    }
+    pub fn cards_milled(player: PlayerFilter, filter: Option<ObjectFilter>, one_or_more: bool, per_player: bool) -> Self {
+        Self::typed("cards_milled", TriggerKind::CardsMilled { player, filter, one_or_more, per_player })
+    }
+
+    pub fn phasing_changed(filter: ObjectFilter, phased_in: bool, one_or_more: bool) -> Self {
+        Self::typed("phasing_changed", TriggerKind::PhasingChanged { filter, phased_in, one_or_more })
+    }
     pub fn this_phases_out() -> Self {
         Self::typed("When this phases out", TriggerKind::ThisPhasesOut)
     }
@@ -1107,17 +1228,56 @@ impl Trigger {
             TriggerKind::ClassBecomesLevel { level },
         )
     }
+    pub fn player_changes_tap_state(
+        player: PlayerFilter, filter: ObjectFilter, tapped: bool, one_or_more: bool,
+        during_untap_step: Option<PlayerFilter>,
+    ) -> Self {
+        Self::typed("player_changes_tap_state", TriggerKind::PlayerChangesTapState {
+            player, filter, tapped, one_or_more, during_untap_step,
+        })
+    }
+    pub fn becomes_targeted_by_ability_source(target: ObjectFilter, source: ObjectFilter) -> Self {
+        Self::typed("becomes_targeted_by_ability_source", TriggerKind::BecomesTargetedByAbilitySource { target, source })
+    }
+
+    pub fn player_becomes_targeted(player: PlayerFilter, source_controller: PlayerFilter, source_kind: crate::filter_model::StackObjectKind) -> Self {
+        Self::typed("player_becomes_targeted", TriggerKind::PlayerBecomesTargeted { player, source_controller, source_kind })
+    }
+    pub fn ring_bearer_chosen(player: PlayerFilter) -> Self {
+        Self::typed("ring_bearer_chosen", TriggerKind::RingBearerChosen { player })
+    }
+    pub fn control_changed(trigger: ControlChangeTrigger) -> Self {
+        Self::typed("control_changed", TriggerKind::ControlChanged(trigger))
+    }
+    pub fn attachment_changed(attachment: ObjectFilter, recipient: ObjectFilter, attached: bool) -> Self {
+        Self::typed("attachment_changed", TriggerKind::AttachmentChanged { attachment, recipient, attached })
+    }
     pub fn becomes_tapped() -> Self {
         Self::typed("becomes_tapped", TriggerKind::BecomesTapped)
     }
     pub fn permanent_becomes_tapped(filter: ObjectFilter) -> Self {
         Self::typed(
             "permanent_becomes_tapped",
-            TriggerKind::PermanentBecomesTapped { filter },
+            TriggerKind::PermanentBecomesTapped {
+                filter,
+                one_or_more: false,
+            },
         )
     }
     pub fn becomes_untapped() -> Self {
         Self::typed("becomes_untapped", TriggerKind::BecomesUntapped)
+    }
+    pub fn permanent_becomes_tapped_one_or_more(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "permanent_becomes_tapped",
+            TriggerKind::PermanentBecomesTapped { filter, one_or_more: true },
+        )
+    }
+    pub fn permanent_becomes_untapped(filter: ObjectFilter, one_or_more: bool) -> Self {
+        Self::typed(
+            "permanent_becomes_untapped",
+            TriggerKind::PermanentBecomesUntapped { filter, one_or_more },
+        )
     }
     pub fn this_is_turned_face_up() -> Self {
         Self::typed("this_is_turned_face_up", TriggerKind::ThisIsTurnedFaceUp)
@@ -1503,6 +1663,12 @@ impl Trigger {
             TriggerKind::PlayerRollsToVisitAttractions { player },
         )
     }
+    pub fn player_rolls_result_matching(player: PlayerFilter, result: Comparison, natural: bool) -> Self {
+        Self::typed("player_rolls_result_matching", TriggerKind::PlayerRollsResultMatching { player, result, natural })
+    }
+    pub fn player_rolls_nth_die(player: PlayerFilter, ordinal: u32) -> Self {
+        Self::typed("player_rolls_nth_die", TriggerKind::PlayerRollsNthDie { player, ordinal })
+    }
     pub fn player_rolls_result(player: PlayerFilter, result: u32) -> Self {
         Self::typed(
             "player_rolls_result",
@@ -1587,6 +1753,12 @@ impl Trigger {
             },
         )
     }
+    pub fn damage_received(target: ChooseSpec, combat: Option<bool>, minimum: Option<u32>, single_source: bool) -> Self {
+        Self::typed("is_dealt_damage", TriggerKind::IsDealtDamage {
+            target, combat_only: combat == Some(true), noncombat_only: combat == Some(false),
+            excess_only: false, minimum, single_source,
+        })
+    }
     pub fn is_dealt_damage(target: ChooseSpec) -> Self {
         Self::typed(
             "is_dealt_damage",
@@ -1595,6 +1767,7 @@ impl Trigger {
                 combat_only: false,
                 noncombat_only: false,
                 excess_only: false,
+                minimum: None, single_source: false,
             },
         )
     }
@@ -1606,6 +1779,7 @@ impl Trigger {
                 combat_only: true,
                 noncombat_only: false,
                 excess_only: false,
+                minimum: None, single_source: false,
             },
         )
     }
@@ -1617,6 +1791,7 @@ impl Trigger {
                 combat_only: false,
                 noncombat_only: true,
                 excess_only: true,
+                minimum: None, single_source: false,
             },
         )
     }
@@ -1655,6 +1830,13 @@ impl Trigger {
             TriggerKind::YouGainLifeDuringTurn { during_turn },
         )
     }
+    pub fn player_gains_life(player: PlayerFilter, during_turn: Option<PlayerFilter>) -> Self {
+        Self::typed(
+            "player_gains_life",
+            TriggerKind::PlayerGainsLife { player, during_turn },
+        )
+    }
+    pub fn player_pays_life(player: PlayerFilter) -> Self { Self::typed("player_pays_life",TriggerKind::PlayerPaysLife { player }) }
     pub fn player_loses_life(player: PlayerFilter) -> Self {
         Self::typed("player_loses_life", TriggerKind::PlayerLosesLife { player })
     }
@@ -1693,6 +1875,12 @@ impl Trigger {
     }
     pub fn miracle() -> Self {
         Self::typed("miracle", TriggerKind::Miracle)
+    }
+    pub fn player_draws_card_during_turn(player: PlayerFilter, during_turn: PlayerFilter) -> Self {
+        Self::typed("player_draws_card_during_turn", TriggerKind::PlayerDrawsCardDuringTurn { player, during_turn })
+    }
+    pub fn player_draws_first_card_in_own_draw_step(player: PlayerFilter) -> Self {
+        Self::typed("player_draws_first_card_in_own_draw_step", TriggerKind::PlayerDrawsFirstCardInOwnDrawStep { player })
     }
     pub fn player_draws_card(player: PlayerFilter) -> Self {
         Self::typed("player_draws_card", TriggerKind::PlayerDrawsCard { player })
@@ -1755,8 +1943,16 @@ impl Trigger {
                 filter,
                 controller,
                 effect_like_only,
+                one_or_more: false,
             },
         )
+    }
+    pub fn player_discards_cards_caused_by_controller(
+        player: PlayerFilter, filter: Option<ObjectFilter>, controller: PlayerFilter, effect_like_only: bool,
+    ) -> Self {
+        Self::typed("player_discards_cards_caused_by_controller", TriggerKind::PlayerDiscardsCardCausedByController {
+            player, filter, controller, effect_like_only, one_or_more: true,
+        })
     }
     pub fn player_discards_card(player: PlayerFilter, filter: Option<ObjectFilter>) -> Self {
         Self::typed(
@@ -2149,6 +2345,15 @@ impl Trigger {
                 destination_name,
             },
         )
+    }
+    pub fn permanent_transforms_into(filter: ObjectFilter, destination: ObjectFilter) -> Self {
+        Self::typed("permanent_transforms_into", TriggerKind::PermanentTransformsInto { filter, destination })
+    }
+    pub fn permanent_mutates(filter: ObjectFilter) -> Self {
+        Self::typed("permanent_mutates", TriggerKind::PermanentMutates { filter })
+    }
+    pub fn player_turns_face_up(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::typed("player_turns_face_up", TriggerKind::PlayerTurnsFaceUp { player, filter })
     }
     pub fn permanent_transforms(filter: ObjectFilter) -> Self {
         Self::typed("permanent_transforms", TriggerKind::PermanentTransforms { filter })

@@ -508,6 +508,13 @@ impl TriggerQueue {
         self.entries.push(entry);
     }
 
+    /// Publish a successful action's pre-cost queue without creating new
+    /// AbilityTriggered notifications for the same captured occurrences.
+    pub(crate) fn append_captured(&mut self, mut captured: Self) {
+        self.entries.append(&mut captured.entries);
+        self.ability_triggered_events.append(&mut captured.ability_triggered_events);
+    }
+
     /// Restore an already-announced trigger after an interactive choice paused stacking.
     pub(crate) fn requeue(&mut self, entry: TriggeredAbilityEntry) {
         self.entries.push(entry);
@@ -524,6 +531,13 @@ impl TriggerQueue {
     /// Returns true if the queue is empty.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// No queued ability programs or still-undelivered AbilityTriggered
+    /// notifications. Recovery boundaries must not use the entries-only
+    /// `is_empty` check after entries have been drained for ordering.
+    pub fn is_fully_empty(&self) -> bool {
+        self.entries.is_empty() && self.ability_triggered_events.is_empty()
     }
 
     /// Clear all entries from the queue.
@@ -1703,13 +1717,15 @@ fn add_ward_triggers(
     // A copy whose new targets were chosen as it was created reports its
     // original targets too; those it no longer has never became targeted.
     let Some(targeting_entry) = game.stack.iter().rev().find(|entry| {
-        entry.object_id == targeted.source
-            && entry.is_ability == targeted.by_ability
+        entry.is_ability == targeted.by_ability
+            && (if targeted.by_ability {
+                targeted.stack_ability.is_some_and(|id| entry.target_id() == id)
+            } else { entry.object_id == targeted.source })
             && entry.targets.contains(&targeted.target)
     }) else {
         return;
     };
-    let targeting_stack_id = targeting_entry.ability_id;
+    let targeting_stack_id = targeting_entry.is_ability.then(|| targeting_entry.target_id());
     let wards = crate::targeting::get_ward_costs(game, target, targeted.source_controller);
     if wards.is_empty() {
         return;
@@ -1930,6 +1946,17 @@ fn tagged_objects_for_matched_trigger_with_view(
         trigger_event,
         trigger_requires_other_attacker_tag(trigger),
     );
+    if matches!(trigger.simultaneous_trigger_key(trigger_event), Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::PhasingBatch { .. }))
+        && let Some(snapshot) = trigger_event.snapshot()
+    {
+        tagged.insert(crate::tag::TagKey::from(ironsmith_core::tag::PHASING_GROUP_TAG), vec![snapshot.clone()]);
+    }
+    if let Some(attachment_trigger) = trigger.downcast_ref::<crate::triggers::AttachmentChangedTrigger>()
+        && let Some((attachment, recipient)) = attachment_trigger.participants(trigger_event)
+    {
+        tagged.insert(crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG), vec![attachment.clone()]);
+        tagged.insert(crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_RECIPIENT_TAG), vec![recipient.clone()]);
+    }
     if let Some(attacks) = trigger.downcast_ref::<crate::triggers::AttacksTrigger>()
         && attacks.one_or_more
         && let Some(attacked) =
@@ -1956,6 +1983,16 @@ fn tagged_objects_for_matched_trigger_with_view(
                 attackers,
             );
         }
+    }
+    if matches!(
+        trigger.simultaneous_trigger_key(trigger_event),
+        Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { .. }
+            | crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerTapStateBatch { .. })
+    ) && let Some(snapshot) = trigger_event.snapshot().cloned().or_else(|| {
+        trigger_event.object_id().and_then(|id| game.object(id))
+            .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+    }) {
+        tagged.insert(crate::tag::TagKey::from(ironsmith_core::TAP_STATE_GROUP_TAG), vec![snapshot]);
     }
     if let Some(zone_change) =
         trigger.downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
@@ -2539,6 +2576,29 @@ fn skip_post_event_source_discovery(
         // (from LKI) and the newly face-up plane (from the current state).
         return false;
     }
+    // During a simultaneous in/out exchange, an observer that only phased
+    // in did not exist before the phase-out event (CR 603.10). A complete
+    // producer snapshot already enumerated every eligible old source.
+    if trigger_event.downcast::<crate::events::PermanentPhasedOutEvent>()
+        .is_some_and(|event| event.complete_source_lookback)
+        && trigger_ability.trigger.looks_back_for_source(trigger_event)
+    {
+        return true;
+    }
+    if trigger_event.downcast::<crate::events::ControlChangedEvent>()
+        .is_some_and(|event| event.complete_source_lookback)
+        && trigger_ability.trigger.looks_back_for_source(trigger_event)
+    {
+        return true;
+    }
+    if trigger_event.downcast::<crate::events::DestroyEvent>()
+        .is_some_and(|event| event.complete_source_lookback)
+        && trigger_ability.trigger.looks_back_for_source(trigger_event)
+    { return true; }
+    if trigger_event.downcast::<crate::events::SpellCounteredEvent>()
+        .is_some_and(|event| event.complete_source_lookback)
+        && trigger_ability.trigger.looks_back_for_source(trigger_event)
+    { return true; }
     // A look-back matcher describes which abilities can function from an
     // object's LKI; it does not mean every still-present permanent with that
     // matcher must be skipped. Only suppress the current-state copy when this
@@ -2713,6 +2773,7 @@ fn check_triggers_with_view_and_registry(
     view: &crate::derived_view::DerivedGameView<'_>,
     registry: &TriggerRegistry,
 ) -> Vec<TriggeredAbilityEntry> {
+    if trigger_event.triggers_captured() { return Vec::new(); }
     if suppresses_creature_etb_triggers_with_effects(game, trigger_event, Some(view.effects())) {
         return Vec::new();
     }
@@ -3470,6 +3531,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
     // untapping. They are not triggered abilities and must never be queued.
     let events = trigger_events
         .iter()
+        .filter(|event| !event.triggers_captured())
         .filter(|event| event.kind() != crate::events::EventKind::PermanentsUntapStep)
         .filter(|event| !suppresses_creature_etb_triggers(game, event))
         .collect::<Vec<_>>();
@@ -3664,7 +3726,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                                     });
                                 }
                             }
-                            for (tag, snapshots) in tagged_objects_for_trigger_event(game, trigger_event) {
+                            for (tag, snapshots) in tagged_objects_for_matched_trigger(game, trigger_event, &delayed.trigger, &ctx) {
                                 tagged.entry(tag).or_default().extend(snapshots);
                             }
                             tagged
@@ -3891,7 +3953,8 @@ pub fn player_filter_matches_with_context(
                     .is_some_and(|(candidate, you)| candidate.life > you.life)
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
-        | PlayerFilter::ControlsMost { .. } => {
+        | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. } => {
             let mut filter_ctx = game.filter_context_for(controller, None);
             filter_ctx.defending_player = defending_player;
             player_filter_matches_game(spec, player, game, &filter_ctx)
@@ -4098,6 +4161,14 @@ pub(crate) fn first_time_this_turn_event(
     {
         return true;
     }
+    // A completed checkpoint can retain this exact unqualified event fact
+    // without inventing a prior spell/ability or any historical characteristics.
+    // Filtered source/target triggers still require their full event history.
+    if trigger_ability.trigger.downcast_ref::<crate::triggers::BecomesTargetedTrigger>().is_some()
+        && trigger_event.downcast::<crate::events::BecomesTargetedEvent>()
+            .and_then(|event| event.target_object()) == Some(ctx.source_id)
+        && game.turn_store.turn_history.object_was_targeted_before_checkpoint(ctx.source_id)
+    { return false; }
     // Only events recorded before this one count; events of the same
     // simultaneous action recorded after it are not "earlier".
     let records = &game.turn_store.turn_history.event_records;
@@ -5215,7 +5286,7 @@ mod tests {
         );
         let source_stable_id = game.object(source).expect("source exists").stable_id;
 
-        assert!(game.mark_player_lost(bob));
+        assert!(game.mark_player_lost(bob).expect("checked designation/departure fixture"));
         let events = game.take_pending_trigger_events();
         let event = events
             .iter()

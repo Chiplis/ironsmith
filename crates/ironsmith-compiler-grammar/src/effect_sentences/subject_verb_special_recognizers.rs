@@ -333,7 +333,7 @@ pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<Effect
     LexRuleDef {
         metadata: RegistryRuleMetadata::distinct(
             RuleId::new("redirect-next-damage"),
-            HeadDiscriminator::words(&["the", "all"]),
+            HeadDiscriminator::words(&["the", "all", "until"]),
         ),
         shape_mask: 0,
         run: LexRuleHandler::Structured(parse_redirect_next_damage_sentence_rule_lexed),

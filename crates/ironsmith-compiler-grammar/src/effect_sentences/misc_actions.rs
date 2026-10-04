@@ -2,7 +2,7 @@ use super::*;
 use crate::cards::builders::DelayedEffectAst;
 use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::{
-    ChooseOneModeAst, KeywordActionAst, LibraryActionAst, SubjectVerbActionAst,
+    ChooseOneModeAst, KeywordActionAst, LibraryActionAst, SubjectVerbActionAst, TurnStructureActionAst,
     SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
 };
 use crate::grammar::effects::for_each_shapes::parse_fixed_pt_alternative_shape;
@@ -182,6 +182,10 @@ pub fn parse_skip(
             ))
         })?;
     Ok(match shape.action {
+        SkipActionKind::Scheduled { kind, count } => EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer, shape.player,
+            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { kind, count }),
+        ),
         SkipActionKind::NextCombatPhaseThisTurn => {
             EffectAst::subject_verb_skip_next_combat_phase_this_turn(shape.player)
         }

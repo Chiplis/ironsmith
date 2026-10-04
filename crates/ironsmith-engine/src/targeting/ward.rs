@@ -230,15 +230,14 @@ pub struct WardCounterEffect {
 }
 
 impl WardCounterEffect {
-    /// Locate the stack object the ward trigger refers to. Abilities share
-    /// their source's ID, so prefer the newest matching entry that still
-    /// targets the ward permanent.
+    /// Locate the exact stack object retained by the ward trigger. An
+    /// ability copy may use its object id as its independent stack identity.
     fn stack_index(&self, game: &GameState) -> Option<usize> {
         if let Some(ability_id) = self.targeting_ability_id {
             return game
                 .stack
                 .iter()
-                .position(|entry| entry.ability_id == Some(ability_id));
+                .position(|entry| entry.is_ability && entry.target_id() == ability_id);
         }
         let matches = |entry: &crate::game_state::StackEntry| {
             entry.object_id == self.targeting_source && entry.is_ability == self.by_ability

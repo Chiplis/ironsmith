@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Alpha Brawl",
+    "oracle_id": "cfc023e0-9e9d-48ac-bfb5-74bfd5977dee",
+    "text": "Mana cost: {6}{R}{R}\nType: Sorcery\nTarget creature an opponent controls deals damage equal to its power to each other creature that player controls, then each of those creatures deals damage equal to its power to that creature.",
+    "proposed_coverage": "partial_not_counted"
+  },
+  {
+    "name": "Barroom Brawl",
+    "oracle_id": "d1ce7fcf-42f8-4b35-9ba1-55033c65c43e",
+    "text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control fights target creature the opponent to your left controls. Then that player may copy this spell and may choose new targets for the copy.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Breaking of the Fellowship",
+    "oracle_id": "96e081d2-ec72-41fc-ad81-2e31ab823ae0",
+    "text": "Mana cost: {1}{R}\nType: Sorcery\nTarget creature an opponent controls deals damage equal to its power to another target creature that player controls. The Ring tempts you.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Cellar Door",
+    "oracle_id": "a2f79037-86c0-430c-ba91-62ac807a44ce",
+    "text": "Mana cost: {2}\nType: Artifact\n{3}, {T}: Target player puts the bottom card of their library into their graveyard. If it's a creature card, you create a 2/2 black Zombie creature token.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Early Harvest",
+    "oracle_id": "32001382-3079-4bbe-8d86-05da654c0d1a",
+    "text": "Mana cost: {1}{G}{G}\nType: Instant\nTarget player untaps all basic lands they control.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Ember Gale",
+    "oracle_id": "d93633d6-8433-43c8-9224-a25b411bfd96",
+    "text": "Mana cost: {3}{R}\nType: Sorcery\nCreatures target player controls can't block this turn. Ember Gale deals 1 damage to each white and/or blue creature that player controls.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Head Games",
+    "oracle_id": "671a8509-3b6e-499c-a744-ff8b3c2b6e6a",
+    "text": "Mana cost: {3}{B}{B}\nType: Sorcery\nTarget opponent puts the cards from their hand on top of their library. Search that player's library for that many cards. The player puts those cards into their hand, then shuffles.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Inquisition",
+    "oracle_id": "9178253e-0d89-450d-a93b-ed4765e945db",
+    "text": "Mana cost: {2}{B}\nType: Sorcery\nTarget player reveals their hand. Inquisition deals damage to that player equal to the number of white cards in their hand.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Isildur's Fateful Strike",
+    "oracle_id": "a43e98d1-684a-4198-bc7e-877b9f6d5357",
+    "text": "Mana cost: {2}{B}{B}\nType: Legendary Instant\n(You may cast a legendary instant only if you control a legendary creature or planeswalker.)\nDestroy target creature. If its controller has more than four cards in hand, they exile cards from their hand equal to the difference.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Jester's Mask",
+    "oracle_id": "bcc797b9-d2e5-4fde-8d80-c890c871f344",
+    "text": "Mana cost: {5}\nType: Artifact\nThis artifact enters tapped.\n{1}, {T}, Sacrifice this artifact: Target opponent puts the cards from their hand on top of their library. Search that player's library for that many cards. That player puts those cards into their hand, then shuffles.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Keeper of the Dead",
+    "oracle_id": "50ddd513-e06e-4728-b6cd-981839d0fba6",
+    "text": "Mana cost: {B}{B}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\n{B}, {T}: Choose target opponent who has at least two fewer creature cards in their graveyard than you do as you activate this ability. Destroy target nonblack creature that player controls.",
+    "proposed_coverage": "partial_not_counted"
+  },
+  {
+    "name": "Meletis Charlatan",
+    "oracle_id": "11dfe74c-bc8e-4d58-b526-41ea5b409135",
+    "text": "Mana cost: {2}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/3\n{2}{U}, {T}: The controller of target instant or sorcery spell copies it. That player may choose new targets for the copy.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Mutiny",
+    "oracle_id": "647b4cb4-569d-4938-b56c-31a70e68ee41",
+    "text": "Mana cost: {R}\nType: Sorcery\nTarget creature an opponent controls deals damage equal to its power to another target creature that player controls.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Roiling Terrain",
+    "oracle_id": "5e90f187-42fe-4f32-ad75-302e6709192d",
+    "text": "Mana cost: {2}{R}{R}\nType: Sorcery\nDestroy target land, then Roiling Terrain deals damage to that land's controller equal to the number of land cards in that player's graveyard.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Volrath's Dungeon",
+    "oracle_id": "a8b968ea-76f3-4ee7-9d53-d251d8a9faf6",
+    "text": "Mana cost: {2}{B}{B}\nType: Enchantment\nPay 5 life: Destroy this enchantment. Any player may activate this ability but only during their turn.\nDiscard a card: Target player puts a card from their hand on top of their library. Activate only as a sorcery.",
+    "proposed_coverage": "source_complete_unvalidated"
+  }
+]

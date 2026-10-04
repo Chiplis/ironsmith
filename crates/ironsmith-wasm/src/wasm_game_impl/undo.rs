@@ -11,6 +11,7 @@ fn loaded_deck_sample_index(_len: usize) -> usize {
 
 impl WasmGame {
     pub(super) fn is_cancelable(&self) -> bool {
+        if self.payment_disclosure.is_some() { return false; }
         if let Some(replay) = self.pending_replay_action.as_ref() {
             return self.is_replay_chain_cancelable(replay);
         }
@@ -25,9 +26,11 @@ impl WasmGame {
         }
 
         if let Some(checkpoint) = self.pending_action_checkpoint.as_ref() {
-            return !self.has_irreversible_mana_undo_lock()
+            return self.payment_disclosure_generation == checkpoint.payment_disclosure_generation
+                && !self.has_irreversible_mana_undo_lock()
                 && !self.has_irreversible_library_change_since(checkpoint)
-                && !self.has_irreversible_random_change_since(checkpoint);
+                && !self.has_irreversible_random_change_since(checkpoint)
+                && !self.has_irreversible_hand_disclosure_since(checkpoint);
         }
 
         let Some(epoch) = self.priority_epoch_checkpoint.as_ref() else {
@@ -35,10 +38,12 @@ impl WasmGame {
         };
 
         self.priority_epoch_has_undoable_action
+            && !self.priority_epoch_undo_locked_by_disclosure
             && !self.has_irreversible_mana_undo_lock()
             && !self.has_land_play_since(epoch)
             && !self.has_irreversible_library_change_since(epoch)
             && !self.has_irreversible_random_change_since(epoch)
+            && !self.has_irreversible_hand_disclosure_since(epoch)
     }
 
     fn response_starts_cancelable_action_chain(response: &PriorityResponse) -> bool {
@@ -82,6 +87,9 @@ impl WasmGame {
     }
 
     fn is_replay_chain_cancelable(&self, replay: &PendingReplayAction) -> bool {
+        if self.payment_disclosure_generation != replay.checkpoint.payment_disclosure_generation {
+            return false;
+        }
         let ReplayRoot::Response(response) = &replay.root else {
             return false;
         };
@@ -118,6 +126,7 @@ impl WasmGame {
 
         !self.has_irreversible_library_change_since(&replay.checkpoint)
             && !self.has_irreversible_random_change_since(&replay.checkpoint)
+            && !self.has_irreversible_hand_disclosure_since(&replay.checkpoint)
     }
 
     fn priority_action_chain_still_pending(&self) -> bool {
@@ -135,7 +144,7 @@ impl WasmGame {
             .is_some_and(|pending| {
                 matches!(
                     pending.stage,
-                    ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost
+                    ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost | ActivationStage::ChoosingCostReferences
                 )
             })
             || self
@@ -490,6 +499,89 @@ impl WasmGame {
         }
 
         false
+    }
+
+    /// Identities disclosed by hand payments are irreversible even when no
+    /// library changed and a reveal left every card in the same zone. Event
+    /// observations survive completed-action cleanup; public audit views also
+    /// cover reveal prefixes before their events are drained into history.
+    fn public_hand_disclosure_identities(&self) -> HashSet<(PlayerId, ObjectId)> {
+        fn collect_game(game: &GameState, identities: &mut HashSet<(PlayerId, ObjectId)>) {
+            for record in game
+                .turn_store
+                .turn_history
+                .event_records
+                .iter()
+                .chain(game.turn_store.turn_history.staged_event_records.iter())
+            {
+                if let Some(discard) = record
+                    .event
+                    .downcast::<ironsmith::events::other::CardDiscardedEvent>()
+                    && discard.cause.as_ref().is_some_and(|cause| {
+                        cause.cause_type == ironsmith::events::cause::CauseType::Cost
+                    })
+                {
+                    identities.insert((discard.player, discard.card));
+                }
+                if let Some(moved) = record.event.downcast::<ironsmith::events::zones::ZoneChangeEvent>()
+                    && moved.from == Zone::Hand
+                    && moved.to.is_public()
+                    && moved.cause.cause_type == ironsmith::events::cause::CauseType::Cost
+                {
+                    // Self-exile payments publish their source through the
+                    // activation command, without an intermediate discard or
+                    // reveal choice. Face-down public-zone objects do not
+                    // establish a disclosed identity by movement alone.
+                    for (index, original) in moved.objects.iter().enumerate() {
+                        let destination = moved.result_objects.get(index).copied().unwrap_or(*original);
+                        if game.object(destination).is_some_and(|object|
+                            object.zone.is_public() && !game.is_face_down(destination))
+                        {
+                            if let Some(snapshot) = moved.snapshots.iter()
+                                .chain(moved.snapshot.iter()).find(|snapshot| snapshot.object_id == *original)
+                            {
+                                identities.insert((snapshot.owner, *original));
+                            }
+                        }
+                    }
+                }
+                if let Some(reveal) = record
+                    .event
+                    .downcast::<ironsmith::events::CardRevealedEvent>()
+                    && reveal.zone == Zone::Hand
+                {
+                    identities.insert((reveal.player, reveal.card));
+                }
+            }
+            for id in game.publicly_revealed_hidden_cards() {
+                if let Some(card) = game.object(id)
+                    && card.zone == Zone::Hand
+                {
+                    identities.insert((card.owner, id));
+                }
+            }
+        }
+        let mut identities = HashSet::new();
+        collect_game(&self.game, &mut identities);
+        if let Some(pending) = self.pending_decision_game.as_deref() {
+            collect_game(pending, &mut identities);
+        }
+        for view in self
+            .active_audit_viewed_cards
+            .iter()
+            .chain(self.active_viewed_cards.iter())
+        {
+            if view.public && view.zone == Zone::Hand {
+                identities.extend(view.cards.iter().map(|id| (view.subject, *id)));
+            }
+        }
+        identities
+    }
+
+    fn has_irreversible_hand_disclosure_since(&self, checkpoint: &ReplayCheckpoint) -> bool {
+        self.public_hand_disclosure_identities()
+            .iter()
+            .any(|identity| !checkpoint.public_hand_disclosures.contains(identity))
     }
 
     fn has_irreversible_random_change_since(&self, checkpoint: &ReplayCheckpoint) -> bool {

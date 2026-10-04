@@ -4,7 +4,43 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.is_empty() {
         return None;
     }
+    if let Some(quantity) = capped_damage_quantities::parse(words) { return Some(quantity); }
+    if let Some(quantity) = extrema_quantities::parse(words) {
+        return Some(quantity);
+    }
+    if let Some(quantity) = referenced_object_quantities::parse(words) {
+        return Some(quantity);
+    }
+    if let Some(quantity) = scalar_counter_quantities::parse(words) {
+        return Some(quantity);
+    }
+    if let Some(quantity) = opponent_history_quantities::parse(words) {
+        return Some(quantity);
+    }
+    if let Some(quantity) = damage_history_quantities::parse(words) {
+        return Some(quantity);
+    }
     let offset = usize::from(words.first() == Some(&"the"));
+    if words.get(offset..offset+2) == Some(&["chosen", "number"][..]) {
+        return Some((Value::PendingPriorEffectMetric(ironsmith_core::PriorEffectMetricQuery::new(ironsmith_core::EffectMetricSource::Outcome, ironsmith_core::EffectMetric::Count).with_action(ironsmith_core::PriorEffectAction::ChosenNumber)), offset+2));
+    }
+    // A named option is a vote-result scalar, not an object filter. Keeping
+    // it as a Value lets ordinary arithmetic compose ("twice ... profit votes").
+    if let Some(["number", "of", option, "vote" | "votes", ..]) = words.get(offset..)
+        && !option.is_empty()
+        && option
+            .chars()
+            .all(|character| character.is_alphabetic() || character == '-')
+    {
+        return Some((Value::VoteCount((*option).to_string()), offset + 4));
+    }
+    if let Some(quantity) = parse_life_total_quantity_words(words) {
+        return Some(quantity);
+    }
+    if words.get(offset) == Some(&"difference") {
+        return Some((Value::PendingComparisonDifference, offset + 1));
+    }
+
     if permission_shapes::starts_at_words(
         words,
         offset,
@@ -126,18 +162,88 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         ));
     }
 
+    // Explicit "this way" reads the preceding damage instruction's numeric
+    // execution fact, even inside another damage-triggered ability.
     if let Some(used) = prefix_len(
         words,
         &[
+            &[
+                "the", "amount", "of", "excess", "damage", "dealt", "to", "that", "creature",
+                "this", "way",
+            ],
+            &[
+                "the",
+                "amount",
+                "of",
+                "excess",
+                "damage",
+                "dealt",
+                "to",
+                "that",
+                "permanent",
+                "this",
+                "way",
+            ],
+            &[
+                "the", "amount", "of", "excess", "damage", "dealt", "this", "way",
+            ],
+            &[
+                "amount", "of", "excess", "damage", "dealt", "to", "that", "creature", "this",
+                "way",
+            ],
+            &["amount", "of", "excess", "damage", "dealt", "this", "way"],
             &[
                 "the", "excess", "damage", "dealt", "to", "that", "creature", "this", "way",
             ],
             &[
                 "excess", "damage", "dealt", "to", "that", "creature", "this", "way",
             ],
+            &[
+                "the",
+                "excess",
+                "damage",
+                "dealt",
+                "to",
+                "that",
+                "permanent",
+                "this",
+                "way",
+            ],
+            &[
+                "excess",
+                "damage",
+                "dealt",
+                "to",
+                "that",
+                "permanent",
+                "this",
+                "way",
+            ],
             &["the", "excess", "damage", "dealt", "this", "way"],
             &["excess", "damage", "dealt", "this", "way"],
+        ],
+    ) {
+        return Some((
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::ExcessDamage,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::DealtDamage),
+            ),
+            used,
+        ));
+    }
+    // The resolver chooses an actual prior damage result or a typed excess
+    // trigger's ambient amount. It never treats ordinary damage as excess.
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &["that", "excess", "damage"],
             &["that", "amount", "of", "excess", "damage"],
+            &["that", "much", "excess", "damage"],
+            &["the", "excess", "damage"],
+            &["the", "excess"],
         ],
     ) {
         return Some((
@@ -235,25 +341,19 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if permission_shapes::prefix_words(words, &["twice", "x"]) {
         return Some((Value::XTimes(2), 2));
     }
-    // "two times X life" (Debt to the Deathless), "five times X damage"
-    // (Crackle with Power)
+    // Integer scalar composition: retain the existing XTimes form for X,
+    // and compose the same checked term grammar for a characteristic operand.
     if words.len() >= 3
         && words[1] == "times"
-        && words[2] == "x"
-        && let Some(multiplier) = match words[0] {
-            "two" => Some(2),
-            "three" => Some(3),
-            "four" => Some(4),
-            "five" => Some(5),
-            "six" => Some(6),
-            "seven" => Some(7),
-            "eight" => Some(8),
-            "nine" => Some(9),
-            "ten" => Some(10),
-            _ => None,
-        }
+        && let Ok(multiplier) = leaf::parse_number_i32_complete(words[0])
+        && multiplier >= 0
+        && let Some((base, used)) = parse_value_expr_term_words(&words[2..])
     {
-        return Some((Value::XTimes(multiplier), 3));
+        let value = match base {
+            Value::X => Value::XTimes(multiplier),
+            value => Value::Scaled(Box::new(value), multiplier),
+        };
+        return Some((value, used + 2));
     }
     if permission_shapes::prefix_words(words, &["twice"]) {
         let (value, used) = parse_value_expr_term_words(&words[1..])?;
@@ -407,6 +507,12 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     for source_len in (1..words.len()).rev() {
         if let Some(surface) = source_reference_surface_for_possessive_words(&words[..source_len]) {
             match words.get(source_len).copied() {
+                Some("base") if words.get(source_len + 1) == Some(&"power") => {
+                    return Some((
+                        Value::BasePowerOf(Box::new(source_choose_spec_for_surface(surface))),
+                        source_len + 2,
+                    ));
+                }
                 Some("power") => {
                     return Some((
                         Value::PowerOf(Box::new(source_choose_spec_for_surface(surface))),
@@ -416,6 +522,15 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
                 Some("toughness") => {
                     return Some((
                         Value::ToughnessOf(Box::new(source_choose_spec_for_surface(surface))),
+                        source_len + 1,
+                    ));
+                }
+                Some("loyalty") => {
+                    return Some((
+                        Value::CountersOn(
+                            Box::new(source_choose_spec_for_surface(surface)),
+                            Some(crate::object::CounterType::Loyalty),
+                        ),
                         source_len + 1,
                     ));
                 }
@@ -674,6 +789,20 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             used,
         ));
     }
+    // Numeric aggregates compose with arithmetic and maximum alternatives.
+    // Reuse the full reader so historical/prior-action scopes do not turn
+    // into ordinary live object filters merely because they are nested.
+    if value_helper_shapes::parse_aggregate_prefix(words).is_some() {
+        let end = value_boundary(words);
+        let tokens = crate::lexer::synthetic_word_tokens(&words[..end]);
+        if let Some(value) =
+            crate::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value(
+                &tokens,
+            )
+        {
+            return Some((value.without_surface_hint(ValueSurfaceHint::EqualTo), end));
+        }
+    }
     if let Some(value) = value_helper_shapes::parse_aggregate_scope_value_words(words) {
         return Some((value, words.len()));
     }
@@ -686,6 +815,11 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
 
 pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     let mut idx = usize::from(permission_shapes::prefix_words(words, &["the"]));
+    // "the total number of ..." has the same cardinality semantics. The
+    // existing complete object-filter reader still owns every domain/scope.
+    if words.get(idx) == Some(&"total") {
+        idx += 1;
+    }
     if !permission_shapes::starts_at_words(words, idx, &["number", "of"]) {
         return None;
     }

@@ -203,6 +203,27 @@ fn is_full_hand_discard(words: &[&str]) -> bool {
     common::exact_any(rest, HAND_REFERENCES)
 }
 
+/// A half-hand discard carries its own card noun. Keep its recipient-relative
+/// hand distinct from an explicitly authored "your hand".
+pub fn parse_half_hand_discard(tokens: &[OwnedLexToken]) -> Option<(bool, bool)> {
+    let (denominator, your_hand, up) = parse_fraction_hand_discard(tokens)?;
+    (denominator == 2).then_some((your_hand, up))
+}
+
+pub fn parse_fraction_hand_discard(tokens: &[OwnedLexToken]) -> Option<(i32, bool, bool)> {
+    use crate::grammar::shared_util::fraction_shapes;
+    let words = parser_token_word_refs(tokens);
+    let (body, up) = fraction_shapes::without_rounding_suffix(&words);
+    let (denominator, used) = fraction_shapes::unit_fraction_prefix(body)?;
+    let rest = body[used..].strip_prefix(&["the", "cards", "in"])?;
+    let your_hand = match rest {
+        ["your", "hand"] => true,
+        ["their", "hand"] | ["that", "players", "hand"] | ["that", "player's", "hand"] => false,
+        _ => return None,
+    };
+    Some((denominator, your_hand, up))
+}
+
 pub fn parse_discard_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<DiscardClauseShape<'_>, DiscardShapeError> {
@@ -365,3 +386,27 @@ pub fn parse_discard_unless_shape(tokens: &[OwnedLexToken]) -> DiscardUnlessShap
 #[cfg(test)]
 #[path = "discard_inline_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod relative_hand_tests {
+    use super::*;
+    #[test]
+    fn half_hand_preserves_owner_rounding_and_complete_shape() {
+        for (text, expected) in [
+            ("half the cards in their hand", Some((false, false))),
+            (
+                "half the cards in their hand, rounded up",
+                Some((false, true)),
+            ),
+            (
+                "half the cards in your hand, rounded down",
+                Some((true, false)),
+            ),
+            ("half the cards in their graveyard", None),
+            ("half the cards in their hand with flying", None),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert_eq!(parse_half_hand_discard(&tokens), expected, "{text}");
+        }
+    }
+}

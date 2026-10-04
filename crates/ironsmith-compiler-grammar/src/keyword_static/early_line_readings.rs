@@ -150,6 +150,13 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_lose_all_abilities_and_base_pt_line(input)),
     },
     Reading {
+        id: RuleId::new("spell-mana-source-spending-restriction"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(Ok(crate::consumer_mana::spell_source_spending_ability(input.tokens)
+            .map(|ability| vec![ability.into()]))),
+    },
+    Reading {
         id: RuleId::new("minimum-spell-total-mana-three-line"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -368,6 +375,9 @@ fn read_can_block_additional_creature_each_combat_line(
     input: &EarlyLine<'_>,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(abilities) = parse_blocking_capacity_static_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(ability) = parse_can_block_additional_creature_each_combat_line(tokens)? {
         return Ok(Some(vec![ability.into()]));
     }

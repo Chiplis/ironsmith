@@ -359,7 +359,7 @@
                 && apply.runtime_modifications.iter().any(|modification| {
                     matches!(
                         modification,
-                        crate::effects::continuous::RuntimeModification::CopyOf { .. }
+                        crate::effects::continuous::RuntimeModification::CopyOf { .. } | crate::effects::continuous::RuntimeModification::CopyOfWithAbilities { .. }
                     )
                 })
                 && matches!(
@@ -1544,6 +1544,13 @@
             .collect::<Vec<_>>();
         return format!("{chooser} {choose_verb} {}", join_with_or(&options));
     }
+    if let Some(ripple) = effect.downcast_ref::<crate::effects::RippleEffect>() {
+        return format!("you may reveal the top {} cards of your library; you may cast any revealed cards with the same name as this spell without paying their mana costs, then put all revealed cards not cast this way on the bottom in any order", ripple.amount);
+    }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseNumberEffect>() {
+        let chooser = describe_player_filter(&choose.chooser);
+        return format!("{chooser} {} a number between {} and {}", player_verb(&chooser, "choose", "chooses"), choose.min, choose.max);
+    }
     if let Some(choose_named_option) =
         effect.downcast_ref::<crate::effects::ChooseNamedOptionEffect>()
     {
@@ -2696,8 +2703,7 @@
         return format!("Destroy {target}{where_clause}");
     }
     if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
-        if let Some(deal_damage) = with_source
-            .effect
+        if let Some(deal_damage) = unwrap_basic_tag_wrappers(&with_source.effect)
             .downcast_ref::<crate::effects::DealDamageEffect>()
             && let Some(redirect) = &deal_damage.excess_to_controller
         {
@@ -2736,8 +2742,7 @@
             }
             return format!("{subject} becomes saddled until end of turn");
         }
-        if let Some(deal_damage) = with_source
-            .effect
+        if let Some(deal_damage) = unwrap_basic_tag_wrappers(&with_source.effect)
             .downcast_ref::<crate::effects::DealDamageEffect>()
         {
             let has_explicit_source_surface =
@@ -2946,6 +2951,72 @@
             return text;
         }
         return describe_effect(&with_source.effect);
+    }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEachEffect>() {
+        let target = describe_damage_target(&ChooseSpec::All(damage.filter.clone()));
+        let (amount, where_x) = describe_damage_amount_clause(&damage.amount);
+        let mut text = format!("This deals {amount} to {target}");
+        if let Some(where_x) = where_x {
+            text.push_str(&format!(", where X is {where_x}"));
+        }
+        return text;
+    }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageBySourcesEffect>() {
+        let declarations=if damage.source_declarations.is_empty(){&damage.sources}else{&damage.source_declarations};
+        let subjects = declarations
+            .iter()
+            .map(describe_choose_spec)
+            .collect::<Vec<_>>()
+            .join(" and ");
+        let source_power = matches!(damage.amount.unhinted(), Value::SourcePower)
+            || matches!(damage.amount.unhinted(), Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Source));
+        let text = if damage.recipient_binding
+            == ironsmith_core::DamageRecipientSetBinding::EachSource
+        {
+            let amount = if source_power {
+                "its power".to_string()
+            } else {
+                describe_value(&damage.amount)
+            };
+            if let [source] = declarations.as_slice()
+                && let ChooseSpec::All(filter) = source.base()
+            {
+                format!(
+                    "Each {} deals damage to itself equal to {amount}",
+                    strip_leading_article(&describe_object_filter_with_fixed_pt_shorthand(filter))
+                )
+            } else {
+                format!(
+                    "{} each deal damage to themselves equal to {}",
+                    capitalize_first(&subjects),
+                    if source_power {
+                        "their power".to_string()
+                    } else {
+                        amount
+                    }
+                )
+            }
+        } else {
+            let amount = if source_power {
+                "their power".to_string()
+            } else {
+                describe_value(&damage.amount)
+            };
+            format!(
+                "{} each deal damage equal to {amount} to {}",
+                capitalize_first(&subjects),
+                describe_choose_spec(&damage.target)
+            )
+        };
+        return if damage.unpreventable {
+            format!("{text}. The damage can't be prevented")
+        } else {
+            text
+        };
+    }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageToRecipientsEffect>() {
+        let recipients=damage.recipients.iter().map(describe_choose_spec).collect::<Vec<_>>().join(" and ");
+        return format!("This deals damage to {recipients} equal to {}", describe_value(&damage.amount));
     }
     if let Some(deal_damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
         if let Some(redirect) = &deal_damage.excess_to_controller {
@@ -5037,11 +5108,19 @@
     }
     if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
         if let Some(text) = describe_dynamic_count_tap(tap) {
+            if let Some(actor) = &tap.actor {
+                let player = describe_player_filter(actor);
+                return format!("{} {} {}", player, player_verb(&player, "tap", "taps"), text.strip_prefix("Tap ").unwrap_or(&text));
+            }
             return text;
         }
         let where_clause = choose_spec_dynamic_count_value_where_clause(&tap.target)
             .or_else(|| choose_spec_filter_where_x_clause(&tap.target))
             .unwrap_or_default();
+        if let Some(actor) = &tap.actor {
+            let player = describe_player_filter(actor);
+            return format!("{} {} {}{where_clause}", player, player_verb(&player, "tap", "taps"), describe_choose_spec(&tap.target));
+        }
         return format!("Tap {}{where_clause}", describe_choose_spec(&tap.target));
     }
     if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {
@@ -5056,6 +5135,10 @@
             }
             _ => describe_choose_spec(&untap.target),
         };
+        if let Some(actor) = &untap.actor {
+            let player = describe_player_filter(actor);
+            return format!("{} {} {target}{where_clause}", player, player_verb(&player, "untap", "untaps"));
+        }
         return format!("Untap {target}{where_clause}");
     }
     if let Some(phase_out) = effect.downcast_ref::<crate::effects::PhaseOutEffect>() {
@@ -5089,6 +5172,12 @@
         return format!("Phase out {target}");
     }
     if let Some(phase_in) = effect.downcast_ref::<crate::effects::PhaseInEffect>() {
+        if let Some(out) = &phase_in.simultaneous_phase_out {
+            let incoming = describe_choose_spec(&phase_in.spec);
+            let outgoing = describe_choose_spec(&ChooseSpec::all(out.clone()));
+            let incoming = incoming.strip_prefix("all ").unwrap_or(&incoming);
+            return format!("Simultaneously, all phased-out {incoming} phase in and {outgoing} phase out");
+        }
         if matches!(phase_in.spec.base(), ChooseSpec::All(_)) {
             let desc = describe_choose_spec(&phase_in.spec);
             let base = desc.strip_prefix("all ").unwrap_or(desc.as_str());
@@ -5988,6 +6077,14 @@
     }
     if let Some(grant_target) = effect.downcast_ref::<crate::effects::GrantAbilitiesTargetEffect>()
     {
+        if grant_target.abilities.len() == 1
+            && matches!(grant_target.abilities[0].id(), crate::static_abilities::StaticAbilityId::CanBlockAnyNumber | crate::static_abilities::StaticAbilityId::CanBlockAdditionalCreatureEachCombat)
+            && matches!(grant_target.duration, Until::EndOfTurn)
+        {
+            let target = capitalize_first(&describe_choose_spec(&grant_target.target));
+            let rule = lowercase_first(&grant_target.abilities[0].display());
+            return format!("{target} {} this turn", rule.trim_end_matches(" each combat"));
+        }
         if grant_target.abilities.len() == 1
             && grant_target.abilities[0].id()
                 == crate::static_abilities::StaticAbilityId::CanAttackAsThoughNoDefender
@@ -7047,6 +7144,11 @@
         return format!("{condition}, {triggered}");
     }
     if let Some(cast_tagged) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {
+        if let Some(price) = &cast_tagged.alternative_cost {
+            let mut cast = cast_tagged.clone(); cast.alternative_cost = None;
+            return format!("{} by {} rather than paying its mana cost",
+                describe_effect(&Effect::new(cast)), describe_casting_price_payment(price));
+        }
         let verb = if cast_tagged.allow_land {
             "play"
         } else {
@@ -7064,7 +7166,8 @@
             || crate::cards::is_sentence_helper_tag(tag, "revealed")
             || crate::cards::is_sentence_helper_tag(tag, "looked")
             || crate::cards::is_sentence_helper_tag(tag, "chosen")
-            || crate::cards::is_sentence_helper_tag(tag, "searched");
+            || crate::cards::is_sentence_helper_tag(tag, "searched")
+            || crate::cards::is_sentence_helper_tag(tag, "consult_match");
         let spec = crate::target::ChooseSpec::Tagged(cast_tagged.tag.clone());
         let target = if cast_tagged.as_copy {
             let tag_is_numbered = tag.rsplit_once('_').is_some_and(|(_, suffix)| {
@@ -7353,7 +7456,7 @@
 
         if may.effects.len() == 1
             && let Some(cast_tagged) =
-                may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()
+                may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && cast_tagged.as_copy
         {
             // Sentence-helper provenance identifies the copied card, but the

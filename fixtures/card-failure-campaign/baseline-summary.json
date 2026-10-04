@@ -1,0 +1,39 @@
+{
+  "canonical_card_count": 32209,
+  "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "diagnostic_group_count": 1262,
+  "diagnostic_route_counts": {
+    "oracle_only:compiled": 35,
+    "oracle_only:failed": 3078,
+    "parse_input:failed": 3113
+  },
+  "diagnostic_route_record_count": 6226,
+  "failed_alias_entries": 5,
+  "failing_card_count": 3238,
+  "failure_category_counts": {
+    "compiler_panic": 1,
+    "lossy_compilation": 41,
+    "parser_failure": 3078,
+    "semantic_output_failure": 85,
+    "strict_compiled": 28971,
+    "unsupported_mechanic": 33
+  },
+  "parse_lossy_card_count": 3119,
+  "parse_status_counts": {
+    "parse_failed": 3197,
+    "strict_compiled": 29012
+  },
+  "parser_route_count": null,
+  "parser_route_count_note": "The status DB does not record parser-route identities; diagnostic groups are not routes.",
+  "semantic_mismatch_card_count": 508,
+  "snapshots": {
+    "baseline-e8740178.snapshot.json.gz": {
+      "bytes": 6024013,
+      "sha256": "c34c06c92ca2a1e1b92d8cf8b1c9480ef2f2445aa7efcba28b8099d5f754cd12"
+    }
+  },
+  "source_commit": "e8740178a7f7367ffa3147e7642607042079237c",
+  "supported_card_count": 28971,
+  "unique_oracle_parse_failures": 3192,
+  "unique_oracle_unresolved": 3233
+}

@@ -366,6 +366,31 @@ pub enum StaticAbilityId {
     /// Trample over planeswalkers (CR 702.19c). A variant of trample, not an
     /// instance of it: "has trample" checks don't match it.
     TrampleOverPlaneswalkers,
+    /// A blocking-only permission that preserves the attacker's landwalk abilities.
+    BlockingAsThoughNoLandwalk,
+    /// Unbounded blocker capacity; appended to preserve serialized variant ordinals.
+    CanBlockAnyNumber,
+    /// Additional capacity scaled by a live typed permanent filter.
+    CanBlockAdditionalForEach,
+    /// Filtered, amount-based damage prevention. Appended for wire compatibility.
+    PreventMatchingDamage,
+    /// A controller-scoped exception to CR 704.5i.
+    PlaneswalkersYouControlDontDieAtZeroLoyalty,
+    /// Add to one life-gain event; appended for serialized ID compatibility.
+    AddLifeGainReplacement,
+    TokenCreationTemplates,
+    ControllerPlaysWithHandRevealed,
+    PlayersPlayWithHandsRevealed,
+    /// A spell-only copy prohibition; appended for wire compatibility.
+    CantBeCopied,
+    RedirectMatchingDamage,
+    SpellManaSpendingRestriction,
+    /// Typed mana output rewrite; appended to preserve existing ordinals.
+    ManaProductionRewrite,
+    /// Extra numerical dice with ignored low rolls, appended for wire stability.
+    ExtraDieIgnoreLowest,
+    /// Conversion of mana that would be lost, preserving the existing units.
+    ConvertUnspentMana,
 }
 
 impl StaticAbilityId {
@@ -445,6 +470,8 @@ impl StaticAbilityId {
             | CanBlockAsThoughNoShadow
             | CanBlockOnlyFlying
             | CanBlockAdditionalCreatureEachCombat
+            | CanBlockAnyNumber
+            | CanBlockAdditionalForEach
             | MaxCreaturesCanAttackEachCombat
             | MaxCreaturesCanAttackYouEachCombat
             | MaxCreaturesCanBlockEachCombat
@@ -546,6 +573,7 @@ impl StaticAbilityId {
             | CounterLimit
             | CountersRemainAcrossZoneChanges
             | CantBeCountered
+            | CantBeCopied
             | PlayersCantCycle
             | PlayersSkipUpkeep
             | PlayerSkipsDrawStep
@@ -570,6 +598,7 @@ impl StaticAbilityId {
             | FirstEquipCostAlternative
             | EquipAbilitiesAnyTime
             | LoyaltyAbilitiesAnyTime
+            | PlaneswalkersYouControlDontDieAtZeroLoyalty
             | ExhaustAbilitiesAsThoughUnactivatedThisTurn
             | VoteAdditionalTimeWhileVoting
             | VoteAdditionalVoteWhileVoting
@@ -642,6 +671,8 @@ impl StaticAbilityId {
             | AllPlayersLookAtTopCardsOfLibraries
             | AllPlayersLookAtYourTopLibraryCard
             | OpponentsPlayWithHandsRevealed
+            | ControllerPlaysWithHandRevealed
+            | PlayersPlayWithHandsRevealed
             | ControlOpponentsWhileSearchingLibraries
             | OpponentSearchExileFoundCards
             | CastThisCardFromLibraryWhileSearching
@@ -662,6 +693,12 @@ impl StaticAbilityId {
             | RedirectZoneChange
             | ModifyDamageAmountReplacement
             | PreventHalfDamageReplacement
+            | PreventMatchingDamage
+            | SpellManaSpendingRestriction
+            | ExtraDieIgnoreLowest
+            | RedirectMatchingDamage
+            | AddLifeGainReplacement
+            | TokenCreationTemplates
             | DoubleCountersReplacement
             | AddCountersPlacementReplacement
             | PlayerCounterPerTurnLimitReplacement
@@ -688,12 +725,15 @@ impl StaticAbilityId {
             | SpendManaAsAnyColorActivationCosts
             | RuleRestriction
             | TargetingAsThoughNoAbility
+            | BlockingAsThoughNoLandwalk
             | DiscardOrRedirectReplacement
             | SacrificeOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
             | RevealCardOrEnterTappedReplacement
             | RedirectWouldEnterReplacement
             | ManaProductionReplacement
+            | ConvertUnspentMana
+            | ManaProductionRewrite
             | ManaProductionMultiplierReplacement
             | DoubleLifeChangeReplacement
             | PregameAction
@@ -839,7 +879,10 @@ impl StaticAbilityId {
                 | FlyingOnlyRestriction
                 | CanBlockFlying
                 | CanBlockAsThoughNoShadow
+                | BlockingAsThoughNoLandwalk
                 | CanBlockOnlyFlying
+                | CanBlockAnyNumber
+                | CanBlockAdditionalForEach
                 | MaxCreaturesCanAttackEachCombat
                 | MaxCreaturesCanBlockEachCombat
                 | CantBeBlockedByPowerOrLess

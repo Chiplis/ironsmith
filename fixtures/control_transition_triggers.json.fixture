@@ -1,0 +1,68 @@
+[
+  {
+    "name": "Coffin Queen",
+    "text": "Mana cost: {2}{B}\nType: Creature \u2014 Zombie Wizard\nPower/Toughness: 1/1\nYou may choose not to untap this creature during your untap step.\n{2}{B}, {T}: Put target creature card from a graveyard onto the battlefield under your control. When this creature becomes untapped or you lose control of this creature, exile that creature.",
+    "oracle_id": "c19ec6aa-aadd-4767-b695-384fd07b4ded",
+    "source": "https://scryfall.com/card/plst/TPR-87/coffin-queen?utm_source=api",
+    "baseline_content_hash": "dbb65e188e7b053adb7f3cdb3c2d63755e7df5da7c0dda8c8b0de6ed0810b49d",
+    "baseline_diagnostic": "unrecognized target or selection phrase 'when this creature'; oracle-only fallback also failed: unrecognized target or selection phrase 'when this creature'",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes."
+  },
+  {
+    "name": "Duplicity",
+    "text": "Mana cost: {3}{U}{U}\nType: Enchantment\nWhen this enchantment enters, exile the top five cards of your library face down.\nAt the beginning of your upkeep, you may exile all cards from your hand face down. If you do, put all other cards you own exiled with this enchantment into your hand.\nAt the beginning of your end step, discard a card.\nWhen you lose control of this enchantment, put all cards exiled with this enchantment into their owner's graveyard.",
+    "oracle_id": "01072a45-ab1c-4d19-b493-76cf4aae351e",
+    "source": "https://scryfall.com/card/tmp/60/duplicity?utm_source=api",
+    "baseline_content_hash": "dbbbb203983917b58c456a0f85cd40aaca71e6658289178c01b3f4ebb29135ca",
+    "baseline_diagnostic": "unsupported triggered line: 'When you lose control of this enchantment, put all cards exiled with this enchantment into their owner's graveyard.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'When you lose control of this enchantment, put all cards exiled with this enchantment into their owner's graveyard.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes."
+  },
+  {
+    "name": "Gustha's Scepter",
+    "text": "Mana cost: {0}\nType: Artifact\n{T}: Exile a card from your hand face down. You may look at it for as long as it remains exiled.\n{T}: Return a card you own exiled with this artifact to your hand.\nWhen you lose control of this artifact, put all cards exiled with this artifact into their owner's graveyard.",
+    "oracle_id": "120e9013-b07b-49d9-8b86-f6c26315581d",
+    "source": "https://scryfall.com/card/all/120/gusthas-scepter?utm_source=api",
+    "baseline_content_hash": "f0d0aa503f5e6cc5e92bd428df465f7c3e0a80aaad23a704c19c13be50835462",
+    "baseline_diagnostic": "unsupported triggered line: 'When you lose control of this artifact, put all cards exiled with this artifact into their owner's graveyard.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'When you lose control of this artifact, put all cards exiled with this artifact into their owner's graveyard.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes."
+  },
+  {
+    "name": "Ogre Geargrabber",
+    "text": "Mana cost: {4}{R}{R}\nType: Creature \u2014 Ogre Warrior\nPower/Toughness: 4/4\nWhenever this creature attacks, gain control of target Equipment an opponent controls until end of turn. Attach it to this creature. When you lose control of that Equipment, unattach it.",
+    "oracle_id": "a483b1fd-751a-447e-8e4f-a54b1c194d2c",
+    "source": "https://scryfall.com/card/som/99/ogre-geargrabber?utm_source=api",
+    "baseline_content_hash": "04bb5679bd998e7417c68078e8675f17db30f07ca6a1490831933b474326d7f1",
+    "baseline_diagnostic": "unsupported triggered line: 'when you lose control of that equipment, unattach it' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'when you lose control of that equipment, unattach it' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes."
+  },
+  {
+    "name": "Risky Move",
+    "text": "Mana cost: {3}{R}{R}{R}\nType: Enchantment\nAt the beginning of each player's upkeep, that player gains control of this enchantment.\nWhen you gain control of this enchantment from another player, choose a creature you control and an opponent. Flip a coin. If you lose the flip, that opponent gains control of that creature.",
+    "oracle_id": "1a4c03ab-519a-4840-893a-769dfc5cf161",
+    "source": "https://scryfall.com/card/plst/ONS-223/risky-move?utm_source=api",
+    "baseline_content_hash": "0a6e6f761f3dcbb0cc6692c2b31e33dc570f777a1f561452ab27613c144b52d5",
+    "baseline_diagnostic": "unsupported triggered line: 'When you gain control of this enchantment from another player, choose a creature you control and an opponent. Flip a coin. If you lose the flip, that opponent gains control of that creature.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'When you gain control of this enchantment from another player, choose a creature you control and an opponent. Flip a coin. If you lose the flip, that opponent gains control of that creature.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes."
+  },
+  {
+    "name": "Zidane, Tantalus Thief",
+    "text": "Mana cost: {3}{R}{W}\nType: Legendary Creature \u2014 Human Mutant Scout\nPower/Toughness: 3/3\nWhen Zidane enters, gain control of target creature an opponent controls until end of turn. Untap it. It gains lifelink and haste until end of turn.\nWhenever an opponent gains control of a permanent from you, you create a Treasure token.",
+    "oracle_id": "f267fb54-1881-464c-81af-9e03c3f3b41d",
+    "source": "https://scryfall.com/card/pmei/2025-26/zidane-tantalus-thief?utm_source=api",
+    "baseline_content_hash": "8a7a0dab496089cb88cc44f1d95c565f2ec52e0fcf02692b66c931266c9aa377",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever an opponent gains control of a permanent from you, you create a Treasure token.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever an opponent gains control of a permanent from you, you create a Treasure token.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes."
+  }
+]

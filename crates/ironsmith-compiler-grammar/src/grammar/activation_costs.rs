@@ -40,6 +40,9 @@ pub use object_segments::*;
 mod exile_segments;
 pub use exile_segments::*;
 
+#[path = "activation_costs/grouped_hand.rs"]
+mod grouped_hand;
+
 #[path = "activation_costs/components.rs"]
 mod program;
 pub use program::*;
@@ -56,14 +59,33 @@ pub struct ActivationCostCst {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivationCostSegmentCst {
     Mana(ManaCost),
+    DynamicMana(ironsmith_core::DynamicManaCost),
     Tap,
     TapChosen {
-        count: u32,
+        count: ChoiceCount,
         filter: ObjectFilter,
     },
     Untap,
+    UntapChosen {
+        count: ChoiceCount,
+        filter: ObjectFilter,
+    },
+    Forage,
+    CollectEvidence { amount: Value },
     Life(Value),
     Energy(u32),
+    EnergyValue(Value),
+    GroupedHandSelection {
+        count: u32,
+        filter: ObjectFilter,
+        reveal: bool,
+        tag: crate::tag::TagRef,
+    },
+    DiscardValue {
+        count: Value,
+        filter: ObjectFilter,
+        random: bool,
+    },
     DiscardSource,
     DiscardHand,
     DiscardCard(u32),
@@ -174,6 +196,10 @@ pub enum ActivationCostSegmentCst {
         subtype: Subtype,
         count: u32,
     },
+    MoveChosenToZone {
+        filter: ObjectFilter,
+        destination: crate::zone::Zone,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,8 +210,11 @@ pub enum ActivationCostSegmentKind {
     Sacrifice,
     Unattach,
     TapChosen,
+    UntapChosen,
     Behold,
     Blight,
+    Forage,
+    CollectEvidence,
     Exile,
     Reveal,
     Return,
@@ -220,28 +249,19 @@ pub fn parse_activation_cost_segment_kind_lexed<'a>(
         "unattach" => ActivationCostSegmentKind::Unattach,
         "behold" => ActivationCostSegmentKind::Behold,
         "blight" => ActivationCostSegmentKind::Blight,
+        "forage" => ActivationCostSegmentKind::Forage,
+        "collect" => ActivationCostSegmentKind::CollectEvidence,
         "exile" => ActivationCostSegmentKind::Exile,
         "reveal" => ActivationCostSegmentKind::Reveal,
         "return" => ActivationCostSegmentKind::Return,
         "exert" => ActivationCostSegmentKind::Exert,
         "put" => ActivationCostSegmentKind::PutCounter,
         "remove" => ActivationCostSegmentKind::RemoveCounter,
-        "tap" if token_words_include(&tokens, "untapped") => ActivationCostSegmentKind::TapChosen,
+        "tap" if tokens.len() > 1 => ActivationCostSegmentKind::TapChosen,
+        "untap" if tokens.len() > 1 => ActivationCostSegmentKind::UntapChosen,
         _ => ActivationCostSegmentKind::BareSymbol,
     };
     Ok(kind)
-}
-
-fn token_words_include(tokens: &[&OwnedLexToken], expected: &str) -> bool {
-    for token in tokens {
-        if token
-            .as_word()
-            .is_some_and(|word| word.eq_ignore_ascii_case(expected))
-        {
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(test)]
@@ -264,4 +284,29 @@ mod tests {
             assert_eq!(parse_activation_cost_segment_kind_tokens(&tokens), expected);
         }
     }
+}
+
+
+#[test]
+fn collect_evidence_cost_components_preserve_comma_boundaries_and_thresholds() {
+    use crate::lexer::lex_line;
+    for text in ["{T}, Collect evidence 3", "{1}{W}, Collect evidence 2", "Collect evidence X"] {
+        let parsed = parse_activation_cost_tokens(&lex_line(text, 0).unwrap()).unwrap();
+        let last = parsed.segments.last().unwrap();
+        assert!(matches!(last, ActivationCostSegmentCst::CollectEvidence { amount }
+            if matches!(amount, Value::Fixed(2 | 3) | Value::X)));
+    }
+    for text in ["Collect evidence", "Collect evidence three cards", "Collect clues 3"] {
+        assert!(parse_activation_cost_tokens(&lex_line(text, 0).unwrap()).is_err());
+    }
+}
+
+
+#[test]
+fn half_life_rounding_clause_is_inside_one_cost_segment() {
+    use crate::lexer::lex_line;
+    let parsed = parse_activation_cost_tokens(&lex_line("{B}{B}, Pay half your life, rounded up", 0).unwrap()).unwrap();
+    assert_eq!(parsed.segments.len(), 2);
+    assert!(matches!(parsed.segments[0], ActivationCostSegmentCst::Mana(_)));
+    assert!(matches!(parsed.segments[1], ActivationCostSegmentCst::Life(Value::HalfLifeTotalRoundedUp(_))));
 }

@@ -33,8 +33,60 @@ function createFakeGame() {
   let latePublicOpenDispatched = false;
   let omitOwnerOpenedLandPosition = false;
   let failOpenedLandExport = false;
+  let failCheckpointExport = false;
   let includeOpenedLandInCheckpointHand = false;
   const syncEvents = [];
+  const readCommittedFixtureState = () => {
+      const openedLandVisibleToLocal = Number(perspective) === 0 || ziffleOpenedLandRevealed;
+      const openedLandHiddenCard = openedLandVisibleToLocal
+        ? {
+            owner: 0,
+            slot: ZIFFLE_OPENED_LAND_ORIGINAL_SLOT,
+            commitment: privateCommitmentForSlot(0, ZIFFLE_OPENED_LAND_ORIGINAL_SLOT),
+            ...(!omitOwnerOpenedLandPosition
+              ? {
+                  publicSlot: ZIFFLE_OPENED_LAND_POSITION,
+                  publicCommitment: ziffleCommitmentForPosition(ZIFFLE_OPENED_LAND_POSITION),
+                }
+              : {}),
+          }
+        : {
+            owner: 0,
+            slot: ZIFFLE_OPENED_LAND_POSITION,
+            commitment: ziffleCommitmentForPosition(ZIFFLE_OPENED_LAND_POSITION),
+          };
+      return {
+        matchConfig: JSON.parse(JSON.stringify(matchConfig || {})),
+        perspective,
+        actionSequence,
+        players: (matchConfig?.playerNames || ["Host", "Guest"]).map((_, index) => ({
+          id: index,
+          hand: includeOpenedLandInCheckpointHand && index === 0
+            ? [ZIFFLE_OPENED_LAND_OBJECT_ID]
+            : [],
+          library: index === 0 ? [ZIFFLE_PUBLIC_OPEN_OBJECT_ID, ZIFFLE_OPENED_LAND_OBJECT_ID] : [],
+        })),
+        objects: [
+          {
+            id: ZIFFLE_PUBLIC_OPEN_OBJECT_ID,
+            owner: 0,
+            zone: "library",
+            hiddenCard: {
+              owner: 0,
+              slot: ZIFFLE_PUBLIC_OPEN_POSITION,
+              commitment: zifflePublicOpenCommitment(),
+            },
+          },
+          {
+            id: ZIFFLE_OPENED_LAND_OBJECT_ID,
+            owner: 0,
+            zone: "hand",
+            hiddenCard: openedLandHiddenCard,
+          },
+        ],
+        battlefield: JSON.parse(JSON.stringify(battlefield)),
+      };
+  };
   const instrumentation = {
     exportPublicAuditCheckpoint: 0,
     getHiddenCardState: 0,
@@ -560,6 +612,9 @@ function createFakeGame() {
     setOmitOwnerOpenedLandPosition: (enabled) => {
       omitOwnerOpenedLandPosition = Boolean(enabled);
     },
+    setFailCheckpointExport: (enabled) => {
+      failCheckpointExport = Boolean(enabled);
+    },
     setFailOpenedLandExport: (enabled) => {
       failOpenedLandExport = Boolean(enabled);
     },
@@ -735,6 +790,9 @@ function Harness() {
       rejectNextVerifiedDispatch: () => { rejectNextVerifiedDispatchRef.current = true; },
       setOmitOwnerOpenedLandPosition: (enabled) => {
         game.setOmitOwnerOpenedLandPosition(enabled);
+      },
+      setFailCheckpointExport: (enabled) => {
+        game.setFailCheckpointExport(enabled);
       },
       setFailOpenedLandExport: (enabled) => {
         game.setFailOpenedLandExport(enabled);

@@ -1,0 +1,52 @@
+{
+  "source_commit": "657aa12ddf4f6d92d4fe718c7034286cddcf02ca",
+  "before_workflow_change": true,
+  "runtime_integration": {
+    "passed": 98,
+    "failed": 0
+  },
+  "runtime_library": {
+    "passed": 122,
+    "pre_existing_failed": 1,
+    "new_failed": 0,
+    "pre_existing_failure": "tests::supported_keyword_mechanics_do_not_lower_to_keyword_markers (Toxic)"
+  },
+  "grammar": {
+    "passed": 4144,
+    "pre_existing_failed": 38,
+    "new_failed": 0
+  },
+  "core": {
+    "passed": 130,
+    "failed": 0
+  },
+  "lowering": {
+    "passed": 59,
+    "failed": 0
+  },
+  "compiler_source": {
+    "passed": 13,
+    "failed": 0
+  },
+  "python_harness": {
+    "passed": 88,
+    "failed": 0
+  },
+  "tools_payloads": {
+    "passed": 5,
+    "failed": 0,
+    "execution": "External library-only harness references unchanged repository test modules to avoid unrelated pre-existing broken probe_badgermole_tap binary"
+  },
+  "full_corpus_replay": "NOT_RUN_DEFERRED_BY_USER",
+  "exact_face_gate": "NOT_RUN_DEFERRED_BY_USER",
+  "optimized_build": "INTERRUPTED_BY_USER_WORKFLOW_CHANGE_EXIT_130",
+  "source_coverage": {
+    "frozen_baseline_unique_unresolved": 3233,
+    "verified_unique_compile_recoveries": 40,
+    "verified_unique_remaining": 3193,
+    "additional_proposed_unique_cards": 141,
+    "additional_proposed_compile_entries": 141,
+    "extra_fixture_entries_not_baseline_failures": [],
+    "source_coverage_is_not_verified_recovery": true
+  }
+}

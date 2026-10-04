@@ -912,6 +912,7 @@ pub struct Object {
         Option<Box<(ObjectId, Zone, crate::grant_registry::PlayFromConstraints)>>,
     /// Once-turn permission captured before movement and retained through payment.
     pub cast_grant_usage_identity: Option<Box<crate::grant_registry::GrantPermissionIdentity>>,
+    pub cast_price: Option<Box<CastPriceReceipt<TotalCost, crate::grant_registry::GrantPermissionIdentity>>>,
     /// True if this split card can be cast fused from hand.
     pub has_fuse: bool,
     /// Optional costs (kicker, buyback, etc.)
@@ -921,6 +922,10 @@ pub struct Object {
     /// Mana actually spent to cast this object while it was a spell.
     /// Used by conditional text like "if at least three blue mana was spent to cast this spell".
     pub mana_spent_to_cast: ManaPool,
+    /// Actual mana spent by the caster, excluding Assist payments by others.
+    pub caster_mana_spent_to_cast: Option<u32>,
+    /// None is unknown historical evidence, never an implicit zero payment.
+    pub mana_spent_on_x: Option<crate::mana::XManaAllocation>,
     /// Mana spent from sources that were snow when they produced it, by actual color.
     pub snow_mana_spent_to_cast: ManaPool,
     /// Non-copiable static abilities granted until end of turn while this object is a spell or
@@ -1022,12 +1027,13 @@ impl<'a> IntoIterator for &'a TemporaryStaticAbilityGrants {
 pub struct TemporaryStaticAbilityGrant {
     pub ability: StaticAbilityId,
     pub ability_payload: Option<StaticAbility>,
-    pub expires_end_of_turn: u32,
+    /// None lasts for this incarnation, including Stack -> Battlefield.
+    pub expires_end_of_turn: Option<u32>,
 }
 
 impl TemporaryStaticAbilityGrant {
     pub fn is_expired(&self, current_turn: u32) -> bool {
-        current_turn > self.expires_end_of_turn
+        self.expires_end_of_turn.is_some_and(|end| current_turn > end)
     }
 
     pub fn materialize(&self) -> Option<StaticAbility> {
@@ -1248,10 +1254,13 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -1335,10 +1344,13 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -1626,10 +1638,13 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -1705,6 +1720,7 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: source.has_fuse,
             // Optional costs are copiable
             optional_costs: source.optional_costs.clone(),
@@ -1712,6 +1728,8 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             // Tokens are never cast.
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -1779,14 +1797,23 @@ impl Object {
             cast_alternative_method: source.cast_alternative_method.clone(),
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: source.has_fuse,
             optional_costs: source.optional_costs.clone(),
             optional_costs_paid: source.optional_costs_paid.clone(),
             // CR 707.10: mana isn't an object, so a copy of a spell has no mana
             // spent to cast it (converge, adamant, "if {G} was spent" read 0).
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
-            temporary_static_ability_grants: source.temporary_static_ability_grants.clone(),
+            temporary_static_ability_grants: {
+                let mut grants = source.temporary_static_ability_grants.clone();
+                // A permission's indefinite recipient rider is an applied
+                // continuous effect, not part of the spell's copiable values.
+                grants.retain(|grant| grant.expires_end_of_turn.is_some());
+                grants
+            },
             x_value: source.x_value,
             keyword_payment_contributions_to_cast: source
                 .keyword_payment_contributions_to_cast
@@ -1855,10 +1882,13 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -1928,10 +1958,13 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -2916,10 +2949,13 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: def.has_fuse,
             optional_costs: handles.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -3456,9 +3492,13 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let mut source = Object::from_card(ObjectId::from_raw(1), &card, alice, Zone::Stack);
         source.snow_mana_spent_to_cast.green = 2;
+        source.caster_mana_spent_to_cast = Some(2);
+        source.mana_spent_on_x = Some(crate::mana::XManaAllocation([0, 0, 1, 0, 0]));
         source.x_value = Some(3);
         let copy = Object::spell_copy_of(&source, ObjectId::from_raw(2), alice);
         assert_eq!(copy.snow_mana_spent_to_cast.total(), 0);
+        assert_eq!(copy.caster_mana_spent_to_cast, None);
+        assert_eq!(copy.mana_spent_on_x, Some(crate::mana::XManaAllocation::default()));
         assert_eq!(copy.x_value, Some(3));
         assert_eq!(source.snow_mana_spent_to_cast.green, 2);
     }
@@ -3519,7 +3559,7 @@ mod temporary_ability_registration_tests {
             let mut grants = TemporaryStaticAbilityGrants::new(source);
             for _ in 0..2 {
                 grants.push(TemporaryStaticAbilityGrant {
-                    ability, ability_payload: None, expires_end_of_turn: 2,
+                    ability, ability_payload: None, expires_end_of_turn: Some(2),
                 });
             }
             assert_ne!(grants.origin(0), grants.origin(1),
@@ -3534,7 +3574,7 @@ mod temporary_ability_registration_tests {
                 let reconstructed = rebuilt[slot].materialize().expect("keyword is supported").instance_id();
                 observations.push((ability, slot, first, repeated, cloned, reconstructed));
             }
-            grants.retain(|grant| grant.expires_end_of_turn > 2);
+            grants.retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > 2));
             assert!(grants.is_empty(), "expiry still removes the registrations");
         }
         assert!(observations.iter().all(|(_, _, first, repeated, cloned, rebuilt)|
@@ -3547,12 +3587,12 @@ mod temporary_ability_registration_tests {
         let source = ObjectId::from_raw(90001);
         let ability = crate::static_abilities::StaticAbility::haste();
         let grant = |expiry| TemporaryStaticAbilityGrant { ability: ability.id(),
-            ability_payload: Some(ability.clone()), expires_end_of_turn: expiry };
+            ability_payload: Some(ability.clone()), expires_end_of_turn: Some(expiry) };
         let mut grants = TemporaryStaticAbilityGrants::new(source);
         grants.push(grant(1)); grants.push(grant(2));
         let first = grants.origin(0).unwrap().clone(); let second = grants.origin(1).unwrap().clone();
         assert_ne!(first, second, "cloned payloads register independently");
-        grants.retain(|grant| grant.expires_end_of_turn > 1);
+        grants.retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > 1));
         assert_eq!(grants.origin(0), Some(&second), "expiry must not renumber survivor");
         assert_eq!(grants.clone(), grants);
         let mut rebuilt = grants.empty_with_allocator(); rebuilt.extend_existing(&grants);
@@ -3612,15 +3652,15 @@ mod native_temporary_registration_tests {
             grants.push(TemporaryStaticAbilityGrant {
                 ability: shared.id(),
                 ability_payload: Some(shared.clone()),
-                expires_end_of_turn: expiry,
+                expires_end_of_turn: Some(expiry),
             });
         }
-        grants.retain(|grant| grant.expires_end_of_turn > 1);
+        grants.retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > 1));
         let mut component = TemporaryStaticAbilityGrants::new(ObjectId::from_raw(9982));
         component.push(TemporaryStaticAbilityGrant {
             ability: shared.id(),
             ability_payload: Some(shared),
-            expires_end_of_turn: 4,
+            expires_end_of_turn: Some(4),
         });
         grants.extend_existing(&component);
         grants
@@ -3652,7 +3692,7 @@ mod native_temporary_registration_tests {
         restored.push(TemporaryStaticAbilityGrant {
             ability: StaticAbilityId::Flying,
             ability_payload: None,
-            expires_end_of_turn: 9,
+            expires_end_of_turn: Some(9),
         });
         assert_eq!(
             restored.origin(0).unwrap().serial,
@@ -3876,4 +3916,31 @@ mod native_counter_store_tests {
 
 
 
+}
+
+#[cfg(all(test, feature = "serialization"))]
+mod permanent_permission_registration_tests {
+    use super::*;
+    #[test]
+    fn indefinite_registration_is_explicit_and_retained_without_an_expiry() {
+        let mut grants = TemporaryStaticAbilityGrants::new(ObjectId::from_raw(99999));
+        grants.push(TemporaryStaticAbilityGrant {ability: StaticAbilityId::Flying,
+            ability_payload: Some(StaticAbility::flying()), expires_end_of_turn: None});
+        assert!(!grants[0].is_expired(u32::MAX));
+        let restored = grants.clone();
+        assert_eq!(restored[0].expires_end_of_turn, None);
+        assert!(!restored[0].is_expired(u32::MAX));
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub struct CastPriceReceipt<C, G> {
+    pub identity: G,
+    pub source: ObjectId,
+    pub total_cost: C,
+    /// Mana that the independent origin requires in addition to any price.
+    pub origin_mana_surcharge: ManaCost,
+    pub prototype: Option<usize>,
+    pub constraints: crate::grant_registry::PlayFromConstraints,
 }

@@ -104,3 +104,5 @@ fn assigned_counter_transfer_pair(ctx: &ExecutionContext) -> Option<(ObjectId, O
     };
     endpoint(0).zip(endpoint(1))
 }
+mod prepared_placement;
+pub(crate) use prepared_placement::{PreparedCounterPlacement, prepare_counter_placement, commit_prepared_counter_original};

@@ -241,3 +241,58 @@ fn passive_no_matching_results_preserves_filter_and_negation() {
         }
     }
 }
+
+#[test]
+fn excess_damage_result_accepts_bare_and_permanent_scopes() {
+    for text in [
+        "excess damage was dealt this way",
+        "excess damage is dealt this way",
+        "excess damage was dealt to that permanent this way",
+        "excess damage was dealt to that creature this way",
+    ] {
+        assert_eq!(
+            parse_if_result_predicate_lexed_tokens(&lex_line(text, 0).unwrap()),
+            Some(IfResultPredicate::ExcessDamageDealt),
+            "{text}"
+        );
+    }
+    for text in [
+        "damage was dealt this way",
+        "excess damage was dealt last turn",
+    ] {
+        assert_ne!(
+            parse_if_result_predicate_lexed_tokens(&lex_line(text, 0).unwrap()),
+            Some(IfResultPredicate::ExcessDamageDealt),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn fewer_discarded_cards_preserves_actual_result_action_and_threshold() {
+    let tokens = lex_line("fewer than two cards were discarded this way", 0).unwrap();
+    let Some(IfResultPredicate::PriorEffectResult(surface)) =
+        parse_if_result_predicate_lexed_tokens(&tokens)
+    else {
+        panic!("typed result")
+    };
+    assert_eq!(surface.action, PriorEffectAction::Discarded);
+    assert_eq!(surface.required_count, Some(2));
+    assert!(surface.negated);
+    assert!(surface.shared_characteristic.is_none());
+}
+
+#[test]
+fn complete_put_into_your_hand_results_keep_destination_and_negation() {
+    for (text, negated) in [("you put a card into your hand this way", false), ("you didn't put a card into your hand this way", true), ("you did not put a card into your hand this way", true)] {
+        let tokens = lex_line(text, 0).unwrap();
+        let Some(IfResultPredicate::PriorEffectResult(surface)) = parse_if_result_predicate_lexed_tokens(&tokens) else { panic!("typed result required: {text}"); };
+        assert_eq!(surface.action, PriorEffectAction::PutIntoHand);
+        assert_eq!(surface.actor, PriorEffectResultActor::You);
+        assert_eq!(surface.negated, negated);
+    }
+    for text in ["you didn't put a card into your hand this way and draw", "you didn't put a card into your graveyard this way", "you didn't put a card into their hand this way"] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(parse_direct_prior_effect_result_surface(&tokens).is_none(), "{text}");
+    }
+}

@@ -1,6 +1,8 @@
 use crate::tag::TagKeyWalk;
 
-use crate::color::Color;
+use crate::color::{Color, ColorSet};
+mod x_payment;
+pub use x_payment::{XPaymentScope, XManaAllocation, ActualManaAllocation};
 
 /// Atomic mana payment options.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -57,6 +59,61 @@ impl ManaSymbol {
     }
 }
 
+/// Characteristics of the object that produced a mana unit, frozen at production.
+/// This is independent of what the unit may be spent as.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaProducerFilter {
+    CardType(crate::types::CardType),
+    Supertype(crate::types::Supertype),
+    Subtype(crate::types::Subtype),
+    All(Vec<ManaProducerFilter>),
+}
+
+/// A consumer-side condition on actual mana spent on this cost.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaSpendingRestriction {
+    ProducedBy(ManaProducerFilter),
+    /// Only the actual mana allocated to the generic X portion is constrained.
+    /// Appended to preserve existing typed-artifact enum discriminants.
+    OnX { colors: ColorSet, maximum_per_color: Option<u32> },
+}
+
+impl ManaProducerFilter {
+    pub fn description(&self) -> String {
+        match self {
+            Self::CardType(kind) => format!("{}s", kind.to_string().to_ascii_lowercase()),
+            Self::Supertype(kind) => format!("{} permanents", kind.to_string().to_ascii_lowercase()),
+            Self::Subtype(kind) => format!("{kind}s"),
+            Self::All(parts) => {
+                if let [Self::CardType(kind), Self::Supertype(supertype)] = parts.as_slice() {
+                    return format!("{} {}s", supertype.to_string().to_ascii_lowercase(), kind.to_string().to_ascii_lowercase());
+                }
+                parts.iter().map(Self::description).collect::<Vec<_>>().join(" and ")
+            }
+        }
+    }
+}
+impl ManaSpendingRestriction {
+    pub fn cast_description(&self, alternative: bool) -> String {
+        let scope = if alternative { "it this way" } else { "this spell" };
+        match self {
+            Self::ProducedBy(filter) => format!("Spend only mana produced by {} to cast {scope}", filter.description()),
+            Self::OnX { colors, maximum_per_color } => {
+                let colors = if colors.count() == 5 { "colored".to_string() } else {
+                    Color::ALL.into_iter().filter(|color| colors.contains(*color)).map(Color::name).collect::<Vec<_>>().join(" and/or ")
+                };
+                let mut text = format!("Spend only {colors} mana on X");
+                if let Some(limit) = maximum_per_color {
+                    text.push_str(&format!(". No more than {limit} mana of each color may be spent this way"));
+                }
+                text
+            },
+        }
+    }
+}
+
 /// Represents a mana cost as a sequence of pips, where each pip is a list of
 /// alternative payment options (disjunction).
 ///
@@ -72,25 +129,82 @@ impl ManaSymbol {
 #[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
 pub struct ManaCost {
     pips: Vec<Vec<ManaSymbol>>,
+    /// Kept on the priced cost, so taxes, alternative payments, planner roots,
+    /// and resumed transactions cannot silently discard a spending condition.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    spending_restrictions: Vec<ManaSpendingRestriction>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    x_payment_scope: Option<XPaymentScope>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    required_actual_payment: Option<ActualManaAllocation>,
 }
 
 impl ManaCost {
     /// Creates an empty mana cost.
     pub fn new() -> Self {
-        Self { pips: Vec::new() }
+        Self { pips: Vec::new(), spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
     }
 
     /// Creates a mana cost from a list of pips, where each pip is a list of
     /// alternative payment options.
     pub fn from_pips(pips: Vec<Vec<ManaSymbol>>) -> Self {
-        Self { pips }
+        Self { pips, spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
     }
 
     /// Creates a mana cost from a simple list of symbols (each becomes one pip).
     pub fn from_symbols(symbols: Vec<ManaSymbol>) -> Self {
         Self {
             pips: symbols.into_iter().map(|s| vec![s]).collect(),
+            spending_restrictions: Vec::new(),
+            x_payment_scope: None,
+            required_actual_payment: None,
         }
+    }
+
+    pub fn spending_restrictions(&self) -> &[ManaSpendingRestriction] {
+        &self.spending_restrictions
+    }
+
+    pub fn with_spending_restriction(mut self, restriction: ManaSpendingRestriction) -> Self {
+        if matches!(restriction, ManaSpendingRestriction::OnX { .. }) && self.x_payment_scope.is_none() {
+            self.x_payment_scope = Some(XPaymentScope {
+                symbols: self.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count() as u32,
+                announced_x: None,
+                ordinary_generic: self.generic_mana_total(),
+                prepaid_generic: Vec::new(), required: None, incompatible: false,
+            });
+        }
+        if !self.spending_restrictions.contains(&restriction) {
+            self.spending_restrictions.push(restriction);
+        }
+        self
+    }
+
+    /// Rewrite the price while retaining transaction-wide spending rules.
+    pub fn with_pips(&self, pips: Vec<Vec<ManaSymbol>>) -> Self {
+        let mut result = Self { pips, spending_restrictions: self.spending_restrictions.clone(),
+            x_payment_scope: self.x_payment_scope.clone(), required_actual_payment: self.required_actual_payment };
+        if let Some(scope) = result.x_payment_scope.as_mut() {
+            let old_x = self.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count() as u32;
+            let new_x = result.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count() as u32;
+            let added_x = new_x.saturating_sub(old_x);
+            scope.symbols = scope.symbols.saturating_add(added_x);
+            let value = scope.announced_x.unwrap_or(0);
+            let before = self.generic_mana_total().saturating_add(old_x.saturating_mul(value));
+            let after = result.pips.iter().filter_map(|pip| match pip.as_slice() {
+                [ManaSymbol::Generic(n)] => Some(u32::from(*n)), _ => None,
+            }).sum::<u32>().saturating_add(new_x.saturating_mul(value));
+            scope.ordinary_generic = scope.ordinary_generic.saturating_add(
+                after.saturating_sub(before).saturating_sub(added_x.saturating_mul(value)));
+        }
+        result
+    }
+
+    pub fn inherit_spending_restrictions(mut self, other: &Self) -> Self {
+        for restriction in other.spending_restrictions() {
+            self = self.with_spending_restriction(restriction.clone());
+        }
+        self
     }
 
     /// Returns the mana value (formerly converted mana cost) of this cost.
@@ -159,12 +273,14 @@ impl ManaCost {
 
     /// Adds a pip with a single payment option.
     pub fn push(&mut self, symbol: ManaSymbol) {
-        self.pips.push(vec![symbol]);
+        self.push_alternatives(vec![symbol]);
     }
 
     /// Adds a pip with multiple alternative payment options.
     pub fn push_alternatives(&mut self, alternatives: Vec<ManaSymbol>) {
-        self.pips.push(alternatives);
+        let mut pips = self.pips.clone();
+        pips.push(alternatives);
+        *self = self.with_pips(pips);
     }
 
     /// Returns true if this mana cost is empty (costs nothing).
@@ -232,7 +348,7 @@ impl ManaCost {
             new_pips.push(pip.clone());
         }
 
-        ManaCost::from_pips(new_pips)
+        self.with_pips(new_pips)
     }
 
     /// Enumerate the payer's cost/reduction choices under CR 118.7.
@@ -301,7 +417,8 @@ impl ManaCost {
                         }
                     }
                 }
-                let cost = ManaCost::from_symbols(remaining).reduce_generic(generic_reduction);
+                let cost = self.with_pips(remaining.into_iter().map(|symbol| vec![symbol]).collect())
+                    .reduce_generic(generic_reduction);
                 if !results.contains(&cost) {
                     results.push(cost);
                 }
@@ -324,13 +441,26 @@ impl ManaCost {
             remaining -= chunk as u32;
         }
 
-        ManaCost::from_pips(new_pips)
+        self.with_pips(new_pips)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_spending_rules_survive_price_transformations() {
+        let rule = ManaSpendingRestriction::ProducedBy(ManaProducerFilter::CardType(crate::types::CardType::Creature));
+        let original = ManaCost::from_symbols(vec![ManaSymbol::Generic(2), ManaSymbol::Green])
+            .with_spending_restriction(rule.clone());
+        for cost in [original.add_generic(3), original.reduce_generic(9), original.with_pips(vec![vec![ManaSymbol::Red]])] {
+            assert_eq!(cost.spending_restrictions(), &[rule.clone()]);
+        }
+        for cost in original.reduced_by_mana_cost_options(&ManaCost::from_symbols(vec![ManaSymbol::Green])) {
+            assert_eq!(cost.spending_restrictions(), &[rule.clone()]);
+        }
+    }
 
     #[test]
     fn test_mana_symbol_value() {
@@ -581,4 +711,85 @@ mod tests {
         twobrid.sort();
         assert_eq!(twobrid, vec!["{2}", "{U}"]);
     }
+}
+
+/// Which symbols in a pending production event a replacement rewrites. This
+/// is independent of the source filter: colored mana is not colorless mana,
+/// and a white-only rewrite must preserve the other symbols in the same event.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaRewriteInput {
+    Any,
+    Colored,
+    Symbol(ManaSymbol),
+}
+impl ManaRewriteInput {
+    pub fn matches(self, symbol: ManaSymbol) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Colored => matches!(symbol, ManaSymbol::White | ManaSymbol::Blue |
+                ManaSymbol::Black | ManaSymbol::Red | ManaSymbol::Green),
+            Self::Symbol(required) => symbol == required,
+        }
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaRewriteOutput {
+    Symbol(ManaSymbol),
+    /// Materialized when a resolving instruction registers its replacement.
+    ChosenColor,
+    /// A fresh decision when the replacement applies, owned by its controller.
+    ChooseColor,
+    /// One occurrence selects one matching basic-land rewrite for the entire
+    /// production, in Plains/Island/Swamp/Mountain/Forest order. Multiple land
+    /// types do not create multiple independently applicable effects.
+    ByBasicLandType([Option<ManaSymbol>; 5]),
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaRewriteQuantity {
+    Preserve,
+    Exact(u32),
+}
+
+/// Authoritative typed production rewrite, shared by static and registered
+/// replacement owners. None of these semantic fields defaults during decoding.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ManaOutputRewrite {
+    pub source_filter: crate::filter_model::ObjectFilter,
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "crate::mana::deserialize_required_mana_option"))]
+    pub controller: Option<crate::filter_model::PlayerFilter>,
+    pub tapped_for_mana: bool,
+    pub input: ManaRewriteInput,
+    pub output: ManaRewriteOutput,
+    pub quantity: ManaRewriteQuantity,
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod mana_output_rewrite_wire_contract {
+    use super::*;
+    #[test]
+    fn new_rewrite_semantics_are_authoritative_and_never_defaulted_from_a_label() {
+        let rule = ManaOutputRewrite {source_filter: crate::filter_model::ObjectFilter::land(), controller: None,
+            tapped_for_mana: true, input: ManaRewriteInput::Any, output: ManaRewriteOutput::ChooseColor,
+            quantity: ManaRewriteQuantity::Exact(1)};
+        let wire = serde_json::to_value(&rule).unwrap();
+        assert_eq!(serde_json::from_value::<ManaOutputRewrite>(wire.clone()).unwrap(), rule);
+        for field in ["source_filter", "controller", "tapped_for_mana", "input", "output", "quantity"] {
+            let mut missing = wire.clone(); missing.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<ManaOutputRewrite>(missing).is_err(), "missing {field}");
+        }
+    }
+}
+
+/// Require the field itself while permitting an explicit null value. Serde's
+/// ordinary Option handling would otherwise erase a missing scope silently.
+#[cfg(feature = "serde")]
+pub(crate) fn deserialize_required_mana_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where D: serde::Deserializer<'de>, T: serde::Deserialize<'de> {
+    <Option<T> as serde::Deserialize>::deserialize(deserializer)
 }

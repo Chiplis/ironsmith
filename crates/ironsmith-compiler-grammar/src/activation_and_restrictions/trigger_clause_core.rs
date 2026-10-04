@@ -54,6 +54,7 @@ const YOU_CYCLE_OR_DISCARD_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!
     exact_any
         & [
             &["you", "cycle", "or", "discard", "a", "card"],
+            &["you", "cycle", "or", "discard", "another", "card"],
             &["you", "cycle", "or", "discard", "card"],
         ]
 );
@@ -641,6 +642,8 @@ const EXPLORE_NONLAND_CARD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["a", "nonland", "card"], &["nonland", "card"]]);
 const BECOMES_TAPPED_TRIGGER_SUFFIX: ClauseShape<'static> =
     clause_shape!(suffix & ["becomes", "tapped"]);
+const BECOMES_UNTAPPED_TRIGGER_SUFFIX: ClauseShape<'static> =
+    clause_shape!(suffix & ["becomes", "untapped"]);
 const BECOMES_MONSTROUS_TRIGGER_SUFFIX: ClauseShape<'static> =
     clause_shape!(suffix & ["becomes", "monstrous"]);
 const MUTATES_TRIGGER_SUFFIX: ClauseShape<'static> = clause_shape!(suffix & ["mutates"]);
@@ -2353,6 +2356,18 @@ fn try_parse_while_source_is_attacking_trigger_lexed(
     }))
 }
 
+fn try_parse_simple_end_of_combat_trigger_lexed(
+    raw_tokens: &[OwnedLexToken],
+) -> Option<TriggerSpec> {
+    let tokens = trim_edge_punctuation_tokens(strip_leading_trigger_intro(raw_tokens));
+    let words = crate::lexer::token_word_refs(tokens);
+    crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[&["end", "of", "combat"], &["the", "end", "of", "combat"]],
+    )
+    .then_some(TriggerSpec::EndOfCombat)
+}
+
 fn try_parse_simple_beginning_of_combat_trigger_lexed(
     raw_tokens: &[OwnedLexToken],
 ) -> Option<TriggerSpec> {
@@ -2664,9 +2679,12 @@ fn try_parse_player_attack_with_one_or_more_lexed(
     let Some(filter_start) = trigger_word_token_start(tokens, filter_word) else {
         return Ok(None);
     };
-    let plural_noun = words
-        .last()
-        .is_some_and(|word| crate::word_primitives::strip_word_suffix(word, "s").is_some());
+    // An explicit singular article is authoritative. A later possessive
+    // clause can end in a verb such as "owns", whose s is not a plural head.
+    let plural_noun = !matches!(words.get(filter_word), Some(&"a" | &"an"))
+        && words
+            .last()
+            .is_some_and(|word| crate::word_primitives::strip_word_suffix(word, "s").is_some());
     if !explicit_one_or_more && !plural_noun {
         return Ok(None);
     }
@@ -2998,6 +3016,26 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
         let left = &tokens[..idx];
         let right = &tokens[idx + 1..];
         let right_words = crate::lexer::token_word_refs(right);
+        // The face-up alternative shares the complete entry subject. Derive
+        // its typed filter from that arm instead of guessing a short noun
+        // prefix (which loses long controller/characteristic qualifiers).
+        if matches!(right_words.as_slice(), ["is" | "are", "turned", "face", "up"]) {
+            fn face_up_arm(entry: &TriggerSpec) -> Option<TriggerSpec> {
+                match entry {
+                    TriggerSpec::WithIntro { trigger, .. } => face_up_arm(trigger),
+                    TriggerSpec::EntersBattlefield { filter, cause_filter: None, origin_condition: None, during_turn: None } =>
+                        Some(TriggerSpec::TurnedFaceUp(filter.clone())),
+                    TriggerSpec::ThisEntersBattlefield { origin_condition: None }
+                    | TriggerSpec::ThisEntersBattlefieldWithSurface { origin_condition: None, .. } =>
+                        Some(TriggerSpec::ThisTurnedFaceUp),
+                    _ => None,
+                }
+            }
+            if let Ok(entry) = parse_trigger_clause_lexed_unstacked(left)
+                && let Some(face_up) = face_up_arm(&entry)
+            { return Some(TriggerSpec::Either(Box::new(entry), Box::new(face_up))); }
+            continue;
+        }
         // Only the exact "is put into exile" passive is unioned here — a
         // broader "is" gate steals natively paired shapes like
         // "enters the battlefield or is put into a graveyard".
@@ -3047,3 +3085,18 @@ use semantic_trigger_programs::{
     try_parse_combat_damage_trigger_lexed,
     try_parse_source_with_filtered_attack_count_trigger_lexed,
 };
+
+#[cfg(test)]
+mod singular_attack_ownership_tests {
+    use super::*;
+    #[test]
+    fn terminal_owns_is_not_plural_evidence_for_a_singular_attacker() {
+        let tokens =
+            crate::lexer::lex_line("you attack with a creature an opponent owns", 0).unwrap();
+        assert!(
+            try_parse_player_attack_with_one_or_more_lexed(&tokens)
+                .unwrap()
+                .is_none()
+        );
+    }
+}

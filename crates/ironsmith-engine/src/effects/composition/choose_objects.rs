@@ -385,6 +385,64 @@ fn cost_candidate_count(
     Ok(total)
 }
 
+pub(crate) fn check_relation_cost_with_context(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<(), CostValidationError> {
+    if !super::selection_relations::has_relations(&effect.filter) {
+        return Ok(());
+    }
+    let chooser =
+        crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)
+            .map_err(|_| CostValidationError::Other("group chooser is unresolved".into()))?;
+    let filter_ctx = ctx.filter_context(game);
+    let mut candidates = Vec::new();
+    for zone in
+        search_zones(effect).map_err(|error| CostValidationError::Other(format!("{error:?}")))?
+    {
+        let ids: Vec<_> = game
+            .objects_in_zone(zone)
+            .into_iter()
+            .filter(|id| {
+                !ctx.replacement.entry_reserved_objects.contains(id)
+                    && game.object(*id).is_some_and(|object| {
+                        !matches!(zone, Zone::Hand | Zone::Library | Zone::Graveyard)
+                            || effect.filter.owner.is_some()
+                            || object.owner == chooser
+                    })
+            })
+            .collect();
+        let placeholders =
+            game.hidden_hand_payable_placeholders(&effect.filter, &filter_ctx, ids.iter().copied());
+        for id in ids {
+            if !candidates.contains(&id)
+                && (placeholders.contains(&id)
+                    || game
+                        .object(id)
+                        .is_some_and(|object| effect.filter.matches(object, &filter_ctx, game)))
+            {
+                candidates.push(id);
+            }
+        }
+    }
+    let required = if effect.count.dynamic_x {
+        ctx.x_value.unwrap_or(0) as usize
+    } else if let Some(value) = &effect.count_value {
+        crate::effects::helpers::resolve_value(game, value, ctx)
+            .map_err(|_| CostValidationError::Other("group count is unresolved".into()))?
+            .max(0) as usize
+    } else {
+        effect.count.min
+    };
+    if effect.count.max.is_some_and(|max| max < required) {
+        return Err(CostValidationError::NotEnoughCards);
+    }
+    super::selection_relations::find_group(game, &effect.filter, &candidates, required, true)
+        .map(|_| ())
+        .ok_or(CostValidationError::NotEnoughCards)
+}
+
 impl EffectExecutor for ChooseObjectsEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -604,6 +662,7 @@ impl CostExecutableEffect for ChooseObjectsEffect {
             return Ok(());
         }
 
+        check_relation_cost_with_context(self, game, &ExecutionContext::new_default(source, controller))?;
         let candidate_count = cost_candidate_count(
             self,
             game,

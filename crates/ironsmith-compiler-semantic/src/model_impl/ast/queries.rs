@@ -46,6 +46,9 @@ pub fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                target, ..
+            })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 target, ..
             })
@@ -71,6 +74,9 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                target, ..
+            })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 target, ..
             })
@@ -97,6 +103,9 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
+                target,
+            })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                 target,
             })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { target })
@@ -357,6 +366,15 @@ pub fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
             }
         }
         TargetAst::Object(filter, explicit_target_span, reference_span) => {
+            // A unique current designation is an object reference, not a new
+            // resolution choice or an announced target. An absent bearer is
+            // an empty set, allowing the rest of the instruction to continue.
+            if explicit_target_span.is_none()
+                && reference_span.is_none()
+                && filter == &ObjectFilter::your_ring_bearer()
+            {
+                return ChooseSpec::All(filter.clone());
+            }
             if explicit_target_span.is_none()
                 && let Some(surface) = filter.additional_cost_object_surface()
                 && surface.action == ironsmith_core::AdditionalCostObjectAction::Sacrificed

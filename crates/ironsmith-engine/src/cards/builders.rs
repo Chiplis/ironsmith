@@ -531,6 +531,7 @@ pub(crate) enum KeywordAction {
     Modular(u32),
     ModularSunburst,
     Graft(u32),
+    Ripple(u32),
     Soulbond,
     Soulshift(u32),
     SoulshiftValue(Value),
@@ -640,6 +641,7 @@ pub(crate) enum KeywordAction {
     },
     Marker(&'static str),
     MarkerText(String),
+    JobSelect,
 }
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
@@ -705,6 +707,7 @@ impl KeywordAction {
                 | Self::Renown(_)
                 | Self::Modular(_)
                 | Self::Graft(_)
+                | Self::Ripple(_)
                 | Self::Soulbond
                 | Self::Soulshift(_)
                 | Self::SoulshiftValue(_)
@@ -826,6 +829,7 @@ impl KeywordAction {
             Self::Modular(amount) => format!("Modular {amount}"),
             Self::ModularSunburst => "Modular-Sunburst".to_string(),
             Self::Graft(amount) => format!("Graft {amount}"),
+            Self::Ripple(amount) => format!("Ripple {amount}"),
             Self::Soulbond => "Soulbond".to_string(),
             Self::Soulshift(amount) => format!("Soulshift {amount}"),
             Self::SoulshiftValue(value) => format!(
@@ -938,6 +942,7 @@ impl KeywordAction {
             Self::Annihilator(amount) => format!("Annihilator {amount}"),
             Self::ForMirrodin => "For Mirrodin!".to_string(),
             Self::LivingWeapon => "Living weapon".to_string(),
+            Self::JobSelect => "Job select".to_string(),
             Self::Crew { amount, .. } => format!("Crew {amount}"),
             Self::Saddle { amount, .. } => format!("Saddle {amount}"),
             Self::Marker(name) => (*name).to_string(),
@@ -1765,6 +1770,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Modular(amount) => self.modular(amount),
             KeywordAction::ModularSunburst => self.modular_sunburst(),
             KeywordAction::Graft(amount) => self.graft(amount),
+            KeywordAction::Ripple(amount) => self.ripple(amount),
             KeywordAction::Soulbond => self.soulbond(),
             KeywordAction::Soulshift(amount) => self.soulshift(amount),
             KeywordAction::SoulshiftValue(value) => self.soulshift_value(value),
@@ -1935,6 +1941,7 @@ impl CardDefinitionBuilder {
             }),
             KeywordAction::ForMirrodin => self.for_mirrodin(),
             KeywordAction::LivingWeapon => self.living_weapon(),
+            KeywordAction::JobSelect => self.job_select(),
             KeywordAction::Crew {
                 amount,
                 timing,
@@ -3034,11 +3041,9 @@ impl CardDefinitionBuilder {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::unless_action(
-                        vec![Effect::sacrifice_source()],
-                        payment_effects,
-                        PlayerFilter::You,
-                    ),
+                    Effect::new(crate::effects::CumulativeUpkeepEffect::echo(
+                        PlayerFilter::You, payment_effects, vec![Effect::sacrifice_source()],
+                    )),
                 ]),
                 choices: vec![],
                 intervening_if: Some(Condition::SourceCameUnderYourControlSinceYourLastUpkeep),
@@ -3564,6 +3569,15 @@ impl CardDefinitionBuilder {
         )
     }
 
+    /// Ripple is a cast trigger, not a copy trigger, and each occurrence is
+    /// independent. The actual reveal/cast/remainder transaction is typed.
+    pub fn ripple(self, amount: u32) -> Self {
+        self.with_ability(Ability::triggered(
+            Trigger::you_cast_this_spell(),
+            vec![Effect::new(crate::effects::RippleEffect { amount })],
+        ).in_zones(vec![Zone::Stack]))
+    }
+
     /// Add rebound.
     ///
     /// Rebound means "If this spell was cast from your hand, exile it as it resolves.
@@ -3992,6 +4006,18 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    /// Add job select: create a 1/1 colorless Hero on entry, then attach this to it.
+    pub fn job_select(self) -> Self {
+        let created_tag = TagKey::from("job_select_created");
+        self.with_ability(Ability::triggered(
+            Trigger::this_enters_battlefield(),
+            vec![
+                Effect::create_tokens(Self::job_select_hero_token(), 1).tag(created_tag.clone()),
+                Effect::attach_to(ChooseSpec::Tagged(created_tag)),
+            ],
+        ))
+    }
+
     /// Add living weapon.
     ///
     /// "When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it."
@@ -4018,7 +4044,7 @@ impl CardDefinitionBuilder {
             Trigger::this_attacks(),
             vec![Effect::for_players(
                 opponent_other_than_defending,
-                vec![Effect::may(vec![Effect::new(
+                vec![Effect::may_player(PlayerFilter::You, vec![Effect::new(
                     crate::effects::CreateTokenCopyEffect::new(
                         ChooseSpec::Source,
                         1,
@@ -4747,6 +4773,15 @@ impl CardDefinitionBuilder {
             .subtypes(vec![Subtype::Rebel])
             .color_indicator(ColorSet::RED)
             .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    fn job_select_hero_token() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Hero")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Hero])
+            .power_toughness(PowerToughness::fixed(1, 1))
             .build()
     }
 

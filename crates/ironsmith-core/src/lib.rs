@@ -80,7 +80,7 @@ pub use effect::{
     AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect, AddManaOfColorsAmongEffect,
     AddManaOfImprintedColorsEffect, AddManaOfLandProducedTypesEffect, AddManaOfNotedTypeEffect,
     AddOneManaOfAnyColorAmongEffect, AddScaledManaEffect, AdditionalLandPlaysEffect,
-    AdditionalPhase, AdditionalPhasesEffect, AmassEffect, AmplifyEffect, AnimationDurationSurface,
+    AdditionalPhase, AdditionalPhasesEffect, AmassEffect, EmpowerJaceEffect, CollectEvidenceEffect, AmplifyEffect, AnimationDurationSurface,
     AnimationPtSurface, ApplyContinuousEffect, AscendEffect, AssignNoCombatDamageEffect,
     AttachObjectsEffect, AttachToEffect, AuraSwapEffect, BackupEffect, BattlefieldController,
     BattlefieldEntryCounterSpec, BattlefieldEntryCounterSurface, BecomeBasicLandTypeChoiceEffect,
@@ -90,7 +90,7 @@ pub use effect::{
     CastTaggedEffect, ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount,
     ChooseCardNameEffect, ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect,
     ChooseLandTypeEffect, ChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
-    ChooseNumberAtRandomEffect, ChooseObjectsEffect, ChoosePlayerEffect,
+    RippleEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClashOpponentMode, ClearGoadEffect,
     ClearSuspectedEffect, CoinFace, CoinFlipKind, CombatDamagePreventionTarget, ConditionalEffect,
     ConditionalModeRange, ConditionalSurface, ConniveEffect, ConspireCostEffect,
@@ -145,17 +145,17 @@ pub use effect::{
     PriorEffectResultQuantifier, PriorEffectResultSurface, ProliferateEffect,
     PutCounterOfChosenKindEffect, PutCountersEffect, PutOntoBattlefieldEffect, PutStickerEffect,
     PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
-    ReconfigureEffect, RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageDestination,
+    ReconfigureEffect, RedirectAllDamageThisTurnToTargetEffect, TimedDamageRedirectDestination, TimedDamageRedirectionScope, RedirectNextDamageDestination,
     RedirectNextDamageToTargetEffect, RedirectNextTimeDamageDestination,
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect, ReduceSpeedEffect,
     ReflexiveTriggerEffect, RegenerateEffect, RegisterCounterPlacementReplacementEffect,
     RegisterDamagedBySourceZoneReplacementEffect,
     RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
-    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
+    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect, RegisterManaRewriteEffect, RegisterManaSpendPermissionEffect,
     RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect,
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
-    RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
+    BecomeBlockedEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReorderTopPlanarDeckEffect,
     RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect, RepeatProcessPromptKind,
     ReplaceNextDamageToTargetEffect, ReplacementApplyMode, ResolvesDespiteIllegalTargetsEffect,
@@ -174,7 +174,7 @@ pub use effect::{
     SetLifeTotalEffect, SetQuantifierSurface, SharedTypeConstraint,
     ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,
-    SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
+    SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipScheduledEffect, ScheduledSkipKind, SkipMainPhasesThisTurnEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SneakCostEffect, SolveCaseEffect,
     SoulbondPairEffect, SupportEffect, SurveilEffect, SuspectEffect, TagAttachedToSourceEffect,
     TagMatchingObjectsEffect, TagOtherBlockParticipantEffect, TagTriggeringAttackerEffect,
@@ -209,13 +209,14 @@ pub use ids::{
     restore_id_counters, snapshot_id_counters,
 };
 pub use interned::{InternedI32Slice, InternedStr};
-pub use mana::{ManaCost, ManaSymbol};
+pub use mana::{ManaCost, ManaSymbol, ManaOutputRewrite, ManaRewriteInput, ManaRewriteOutput, ManaRewriteQuantity};
 pub use ordinal::{ordinal_word, parse_ordinal_word, parse_ordinal_words};
 pub use resolution_model::{ResolutionProgram, ResolutionSegment, SelfReplacementBranch};
 pub use spell_cost_condition_model::ThisSpellCostCondition;
 pub use spell_timing_model::ThisSpellCastTiming;
 pub use static_ability_id::StaticAbilityId;
 pub use static_ability_model::{
+    TokenCreationTemplateMode,
     AbilityLossMode, ActivatedAbilityCostCondition, AdditionalTokenKind, Anthem,
     AnthemReplacementSurface, AttachedAbilityGrant, AttachedChosenLandwalkGrant,
     AttackCostCondition, AttackingGroupAttackCondition, CantAttackUnlessConditionSpec,
@@ -228,6 +229,8 @@ pub use static_ability_model::{
     GrantObjectAbilityForFilter, GraveyardCountMetric, IntrinsicStartingCounter, LandwalkKind, OptionalLifeAdditionalCost,
     PowerToughnessChoiceOption, PregameActionKind, PregameBeginOnBattlefieldSpec,
     PregameRevealFromOpeningHandSpec, PreventAllDamageToSelfFromSourcesMatchingSpec,
+    StaticDamageRedirectDestination, StaticDamageRedirectionSpec,
+    PreventMatchingDamageSpec, StaticDamagePreventionAmount, StaticDamagePreventionFollowUp, PreventionFollowUpAmount,
     RemoveCardTypesForFilter, SetColorsForFilter, SpliceQuality, SpliceSpec, StaticAbility,
     StaticAbilityPayload, StaticAbilityVariantSelector, StaticDamageSourceRelation,
     ThisSpellCastRestrictionKind, ThisSpellCostReduction, ThisSpellCostReductionManaCost,
@@ -235,9 +238,9 @@ pub use static_ability_model::{
 pub use tag::{
     ATTACKING_GROUP_TAG, CAST_CONTROLLED_OBJECTS_TAG, CLASH_OPPONENT_TAG, CAST_MODIFIED_CREATURES_TAG,
     CHOSEN_OBJECTS_TAG, COMBAT_DAMAGE_GROUP_TAG, EXPLOITED_TAG, EXPLOITER_TAG,
-    INITIATIVE_HOLDER_TAG, LINKED_TRIGGER_PLAYER_TAG, TRIGGERING_EVENT_CONTROLLER_TAG, MANA_PAID_OBJECT_TAG, MANA_SOURCES_SPENT_TO_CAST_TAG, TAXED_ATTACKER_TAG, BLOCK_PAIR_SUBJECT_TAG,
+    INITIATIVE_HOLDER_TAG, LINKED_TRIGGER_PLAYER_TAG, TRIGGERING_EVENT_CONTROLLER_TAG, TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG, MANA_PAID_OBJECT_TAG, MANA_SOURCES_SPENT_TO_CAST_TAG, TAXED_ATTACKER_TAG, BLOCK_PAIR_SUBJECT_TAG,
     MANIFEST_DREAD_GRAVEYARD_TAG, PREVIOUS_ITERATED_OBJECTS_TAG, PRIOR_EXILED_CARD_TAG,
-    REVEALED_THIS_WAY_TAG, SOURCE_EXILED_TAG, SOURCE_EXILED_THIS_RESOLUTION_TAG, SOURCE_OBJECT_TAG, GRANTING_SOURCE_TAG, SPELLS_CAST_THIS_TURN_TAG, TagKey, ZONE_CHANGE_GROUP_TAG,
+    REVEALED_THIS_WAY_TAG, SOURCE_EXILED_TAG, SOURCE_EXILED_THIS_RESOLUTION_TAG, SOURCE_OBJECT_TAG, GRANTING_SOURCE_TAG, SPELLS_CAST_THIS_TURN_TAG, TagKey, ZONE_CHANGE_GROUP_TAG, TAP_STATE_GROUP_TAG,
 };
 pub use target_model::{
     ChooseSpec, ChooseSpecSurfaceHint, SacrificedObjectKind, SourceReferenceSurface,
@@ -259,3 +262,18 @@ pub use value_model::{
 pub use zone::Zone;
 
 pub use filter_model::describe_filter_static_ability;
+
+pub use effect::RegisterDamageMultiplierEffect;
+pub use effect::RegisterDamageAdditionEffect;
+pub use effect::DealDamageToRecipientsEffect;
+
+mod damage_history_model;
+pub use damage_history_model::{
+    DamageHistoryQuery, DamageHistoryRecipients, DamageHistoryReduction, DamageHistorySources,
+};
+
+pub use effect::DealDamageBySourcesEffect;
+
+pub use effect::DealDamageEachEffect;
+
+pub use effect::{DamageRecipientSetBinding, DamageSourceSetBinding};

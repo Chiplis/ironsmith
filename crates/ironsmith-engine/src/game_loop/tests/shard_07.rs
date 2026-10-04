@@ -2037,6 +2037,8 @@ pub(super) fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     additional_counters: Vec::new(),
+                    additional_x_counters: Vec::new(),
+                    keep_other_source_abilities: false,
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
@@ -2111,6 +2113,8 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_obje
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     additional_counters: Vec::new(),
+                    additional_x_counters: Vec::new(),
+                    keep_other_source_abilities: false,
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: true,
@@ -2171,6 +2175,8 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stac
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     additional_counters: Vec::new(),
+                    additional_x_counters: Vec::new(),
+                    keep_other_source_abilities: false,
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: true,
@@ -2225,6 +2231,8 @@ pub(super) fn test_static_source_can_make_matching_creatures_enter_as_copy_of_it
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     additional_counters: Vec::new(),
+                    additional_x_counters: Vec::new(),
+                    keep_other_source_abilities: false,
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
@@ -2313,6 +2321,8 @@ pub(super) fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myria
                     )],
                     set_base_power_toughness: None,
                     additional_counters: Vec::new(),
+                    additional_x_counters: Vec::new(),
+                    keep_other_source_abilities: false,
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
@@ -2407,6 +2417,8 @@ pub(super) fn test_enter_as_copy_with_no_candidates_keeps_original_characteristi
                     )],
                     set_base_power_toughness: None,
                     additional_counters: Vec::new(),
+                    additional_x_counters: Vec::new(),
+                    keep_other_source_abilities: false,
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
@@ -3001,7 +3013,7 @@ pub(super) fn test_resolution_target_validation_uses_source_lki_for_protection()
     .with_targets(vec![Target::Object(protected_id)])
     .with_source_snapshot(source_snapshot);
 
-    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry);
+    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry).unwrap();
     assert!(
         valid_targets.is_empty(),
         "protection from red should make the target illegal using the departed source's LKI"
@@ -3160,7 +3172,7 @@ pub(super) fn emrakul_the_world_anew_protection_rejects_spell_targets() {
     );
     let entry = StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(emrakul_id)]);
 
-    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry);
+    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry).unwrap();
     assert!(
         valid_targets.is_empty(),
         "Emrakul should have protection from spells"
@@ -3191,7 +3203,7 @@ pub(super) fn emrakul_the_world_anew_protection_only_rejects_permanents_cast_thi
     )
     .with_targets(vec![Target::Object(emrakul_id)]);
     let (cast_valid_targets, _, cast_all_invalid) =
-        validate_stack_entry_targets(&game, &cast_entry);
+        validate_stack_entry_targets(&game, &cast_entry).unwrap();
     assert!(
         cast_valid_targets.is_empty(),
         "Emrakul should have protection from permanents that were cast this turn"
@@ -3205,7 +3217,7 @@ pub(super) fn emrakul_the_world_anew_protection_only_rejects_permanents_cast_thi
         vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
     )
     .with_targets(vec![Target::Object(emrakul_id)]);
-    let (old_valid_targets, _, old_all_invalid) = validate_stack_entry_targets(&game, &old_entry);
+    let (old_valid_targets, _, old_all_invalid) = validate_stack_entry_targets(&game, &old_entry).unwrap();
     assert_eq!(
         old_valid_targets,
         vec![crate::effects::ResolvedTarget::Object(emrakul_id)],
@@ -3251,7 +3263,7 @@ pub(super) fn test_resolution_player_target_validation_uses_source_lki_for_sourc
     .with_targets(vec![Target::Player(bob)])
     .with_source_snapshot(source_snapshot);
 
-    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry);
+    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry).unwrap();
     assert!(
         valid_targets.is_empty(),
         "player target restrictions from red sources should use departed source LKI"

@@ -59,6 +59,7 @@ use ironsmith_core::{DamagedBySource, TagKey, ValueSurfaceHint};
 
 pub(crate) mod replacements_and_rules;
 pub use replacements_and_rules::*;
+pub(crate) use replacements_and_rules::DamageAmountReplacementMatcher;
 
 /// Counters on this object survive zone changes except when the destination
 /// is explicitly excluded by the ability.
@@ -2963,7 +2964,10 @@ impl StaticAbilityKind for RedirectDamageToSource {
                 self.object_filter.clone(),
             ),
             ReplacementAction::Redirect {
-                target: RedirectTarget::ToSource,
+                // `ToSource` denotes the incoming damage event's source.
+                // This replacement instead names the permanent bearing the
+                // static ability, captured when its replacement is generated.
+                target: RedirectTarget::ToObject(source),
                 which: RedirectWhich::First,
             },
         ))
@@ -3605,7 +3609,7 @@ impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
             source,
             controller,
             crate::events::DamageToSelfMatcher::new(),
-            ReplacementAction::Instead(effects),
+            ReplacementAction::PreventDamageThenFromProposedAmount(effects),
         ))
     }
 }
@@ -3644,7 +3648,7 @@ impl StaticAbilityKind for PreventDamageToSelfPutCountersInstead {
             source,
             controller,
             crate::events::DamageToSelfMatcher::new(),
-            ReplacementAction::PreventDamageThen(vec![Effect::put_counters_on_source(
+            ReplacementAction::Instead(vec![Effect::put_counters_on_source(
                 self.counter_type,
                 Value::EventValue(EventValueSpec::Amount),
             )]),
@@ -5111,5 +5115,25 @@ impl StaticAbilityKind for DamagePreventionWithFollowUp {
             // Additional effects happen even when the damage cannot be prevented.
             ReplacementAction::PreventDamageThen(self.effects.clone()),
         ))
+    }
+}
+
+/// A live controller-scoped exception to the zero-loyalty state-based action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PlaneswalkersYouControlDontDieAtZeroLoyalty;
+
+impl StaticAbilityKind for PlaneswalkersYouControlDontDieAtZeroLoyalty {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+            std::sync::LazyLock::new(
+                super::CompiledStaticAbility::planeswalkers_you_control_dont_die_at_zero_loyalty,
+            );
+        Some(&MODEL)
+    }
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty
+    }
+    fn display(&self) -> String {
+        "Planeswalkers you control aren't put into their owners' graveyards for having 0 loyalty".into()
     }
 }

@@ -80,6 +80,14 @@ pub enum KeywordActionKind {
     /// A permanent becomes saddled (CR 702.171b): the event's source is the
     /// permanent that became saddled, not a creature that saddled it.
     BecomeSaddled,
+    /// A player empowers Jace (CR 701.71).
+    EmpowerJace,
+    /// A player collects evidence; amount is the announced threshold, not overpayment.
+    CollectEvidence,
+    /// One successfully completed cumulative-upkeep payment, not each installment.
+    CumulativeUpkeepPaid,
+    /// An accepted and completed echo payment, including a zero cost.
+    EchoCostPaid,
 }
 
 impl KeywordActionKind {
@@ -105,6 +113,7 @@ impl KeywordActionKind {
         match word {
             "sticker" | "stickers" | "stickered" => Some(Self::Sticker),
             "amass" | "amasses" | "amassed" | "amassing" => Some(Self::Amass),
+            "empower" | "empowers" | "empowered" | "empowering" => Some(Self::EmpowerJace),
             "assemble" | "assembles" | "assembled" | "assembling" => {
                 Some(Self::AssembleContraption)
             }
@@ -169,6 +178,8 @@ impl KeywordActionKind {
         match self {
             Self::Sticker => "put a sticker",
             Self::Amass => "amass",
+            Self::EmpowerJace => "empower Jace",
+            Self::CollectEvidence => "collect evidence",
             Self::AssembleContraption => "assemble a Contraption",
             Self::ArtSticker => "put an art sticker",
             Self::AbilitySticker => "put an ability sticker",
@@ -183,6 +194,8 @@ impl KeywordActionKind {
             Self::Crew => "crew",
             Self::Cycle => "cycle",
             Self::CumulativeUpkeepNotPaid => "not pay cumulative upkeep",
+            Self::CumulativeUpkeepPaid => "pay cumulative upkeep",
+            Self::EchoCostPaid => "pay echo",
             Self::Convoke => "convoke",
             Self::Discover => "discover",
             Self::CompleteDungeon => "complete a dungeon",
@@ -241,6 +254,8 @@ impl KeywordActionKind {
         match self {
             Self::Sticker => "puts a sticker",
             Self::Amass => "amasses",
+            Self::EmpowerJace => "empowers Jace",
+            Self::CollectEvidence => "collects evidence",
             Self::AssembleContraption => "assembles a Contraption",
             Self::ArtSticker => "puts an art sticker",
             Self::AbilitySticker => "puts an ability sticker",
@@ -255,6 +270,8 @@ impl KeywordActionKind {
             Self::Crew => "crews",
             Self::Cycle => "cycles",
             Self::CumulativeUpkeepNotPaid => "doesn't pay cumulative upkeep",
+            Self::CumulativeUpkeepPaid => "pays cumulative upkeep",
+            Self::EchoCostPaid => "pays echo",
             Self::Convoke => "convokes",
             Self::Discover => "discovers",
             Self::CompleteDungeon => "completes a dungeon",

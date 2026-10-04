@@ -55,7 +55,16 @@ pub enum RedirectDamageDestinationShape<'a> {
     TargetOfChoice(&'a [OwnedLexToken]),
 }
 #[derive(Debug, Clone)]
+pub struct ScopedAllDamageRedirectionShape {
+    pub recipient: Vec<OwnedLexToken>,
+    pub source: Option<Vec<OwnedLexToken>>,
+    pub destination: Vec<OwnedLexToken>,
+    pub combat_only: bool,
+    pub mode: ironsmith_core::ReplacementApplyMode,
+}
+#[derive(Debug, Clone)]
 pub enum RedirectNextDamageShape<'a> {
+    ScopedAll(ScopedAllDamageRedirectionShape),
     AllToYouAndPermanents {
         other: bool,
         destination_tokens: &'a [OwnedLexToken],

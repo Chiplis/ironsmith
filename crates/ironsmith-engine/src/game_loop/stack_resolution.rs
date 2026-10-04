@@ -184,7 +184,7 @@ fn stack_entry_cast_with_named_alternative(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(
@@ -694,6 +694,7 @@ pub(crate) fn execute_resolution_program_with_trigger_matching_typed(
     match_triggers_per_instruction: bool,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
     if !ctx.decision_maker.awaiting_choice() { game.clear_pending_decision_controllers(); }
+    let (resource_root, resource_meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let result = crate::effects::with_per_event_trigger_matching(
@@ -717,8 +718,10 @@ pub(crate) fn execute_resolution_program_with_trigger_matching_typed(
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
         game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
         context_checkpoint.restore(ctx);
+        game.end_token_resource_scope(resource_root, &resource_meter);
         return result.map(|_| Vec::new());
     }
+    game.end_token_resource_scope(resource_root, &resource_meter);
     result
 }
 
@@ -1046,6 +1049,7 @@ pub(super) fn resolve_stack_entry_full(
     mut trigger_queue: Option<&mut TriggerQueue>,
 ) -> Result<(), GameLoopError> {
     if !decision_maker.awaiting_choice() { game.clear_pending_decision_controllers(); }
+    let (resource_root, resource_meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.as_deref().cloned();
     let result = resolve_stack_entry_full_inner(game, decision_maker, trigger_queue.as_deref_mut());
@@ -1055,6 +1059,7 @@ pub(super) fn resolve_stack_entry_full(
             *queue = checkpoint;
         }
     }
+    game.end_token_resource_scope(resource_root, &resource_meter);
     result
 }
 
@@ -1217,7 +1222,7 @@ fn resolve_stack_entry_full_inner(
     // Per MTG Rule 608.2b, if ALL targets are now illegal, the spell/ability fizzles
     let target_validation_view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
     let (valid_targets, valid_target_assignments, all_targets_invalid) =
-        validate_stack_entry_targets_with_view(game, &entry, &target_validation_view);
+        validate_stack_entry_targets_with_view(game, &entry, &target_validation_view,Some(&ctx))?;
 
     let mutating_creature_spell = !entry.is_ability
         && obj.as_ref().is_some_and(|obj| {
@@ -1514,14 +1519,19 @@ fn resolve_stack_entry_full_inner(
                     let event_provenance = game
                         .provenance_graph_mut()
                         .alloc_root_event(crate::events::EventKind::Mutated);
-                    let event = TriggerEvent::new_with_provenance(
+                    let mut completed = vec![TriggerEvent::new_with_provenance(
                         crate::events::other::MutatedEvent::new(target_id, entry.controller),
                         event_provenance,
-                    );
+                    )];
+                    crate::events::other::freeze_completed_lifecycle_events(game, &mut completed)?;
+                    let event = completed.remove(0);
                     if let Some(ref mut tq) = trigger_queue {
                         queue_triggers_from_event(game, tq, event, false);
                     } else {
-                        game.record_turn_history_event(&event);
+                        // Public resolution without an external queue must
+                        // preserve the same mutation notification for the
+                        // ordinary pending-trigger owner.
+                        game.queue_trigger_event(event_provenance, event);
                     }
                     return Ok(());
                 }
@@ -1555,9 +1565,9 @@ fn resolve_stack_entry_full_inner(
                 } else { None }
             });
             let current_turn = game.turn.turn_number;
-            if let Some(method) = battlefield_method
+            if let Some(method) = battlefield_method.as_ref()
                 && let Some(spell) = game.object_mut(entry.object_id) {
-                crate::alternative_cast::ensure_alternative_battlefield_abilities(spell, &method, current_turn);
+                crate::alternative_cast::ensure_alternative_battlefield_abilities(spell, method, current_turn);
             }
 
             // It's a permanent spell, move to battlefield with ETB processing
@@ -1568,6 +1578,9 @@ fn resolve_stack_entry_full_inner(
             })).flatten();
             if let Some(player) = chosen_player { game.set_chosen_player(entry.object_id, player); }
             let mut options = crate::effects::zones::BattlefieldEntryOptions::specific(obj.initial_controller, cast_with_sneak);
+            if let Some(method) = &battlefield_method {
+                options = options.with_initial_counters(method.entry_counters().to_vec());
+            }
             if obj.subtypes.contains(&Subtype::Aura) { options = options.with_aura_entry_attachment(aura_target); }
             let receipt = crate::effects::zones::move_to_battlefield_with_options(game, &mut ctx, entry.object_id, options)?;
             if ctx.decision_maker.awaiting_choice() { return Ok(()); }
@@ -1600,7 +1613,7 @@ fn resolve_stack_entry_full_inner(
                         ..
                     }
                     | CastingMethod::SplitOtherHalfPlayFrom {
-                        use_alternative: idx,
+                        use_alternative: Some(idx),
                         zone,
                         ..
                     } => matches!(
@@ -1626,7 +1639,7 @@ fn resolve_stack_entry_full_inner(
                         ..
                     }
                     | CastingMethod::SplitOtherHalfPlayFrom {
-                        use_alternative: idx,
+                        use_alternative: Some(idx),
                         zone,
                         ..
                     } => matches!(
@@ -1653,7 +1666,7 @@ fn resolve_stack_entry_full_inner(
                         ..
                     }
                     | CastingMethod::SplitOtherHalfPlayFrom {
-                        use_alternative: idx,
+                        use_alternative: Some(idx),
                         zone,
                         ..
                     } => matches!(
@@ -1675,7 +1688,7 @@ fn resolve_stack_entry_full_inner(
                         ..
                     }
                     | CastingMethod::SplitOtherHalfPlayFrom {
-                        use_alternative: idx,
+                        use_alternative: Some(idx),
                         zone,
                         ..
                     } if *zone == Zone::Exile => matches!(
@@ -1809,13 +1822,19 @@ fn resolve_stack_entry_full_inner(
                 }) || resolving_spell_has_granted_rebound);
 
             // Only methods which explicitly replace leaving the stack exile the spell.
-            let should_exile = match &entry.casting_method {
+            let should_exile = match entry.casting_method.origin_method() {
+                CastingMethod::AlternativePrice { .. } => false,
                 CastingMethod::Normal => false,
-                CastingMethod::FaceDown => false,
-                CastingMethod::SplitOtherHalf => {
+                CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => false,
+                CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => {
                     obj.subtypes.contains(&crate::types::Subtype::Adventure)
                 }
-                CastingMethod::SplitOtherHalfPlayFrom { .. } => true,
+                CastingMethod::SplitOtherHalfPlayFrom { use_alternative: Some(index), zone, .. } => {
+                    crate::decision::resolve_play_from_alternative_method(game, entry.controller, obj, *zone, *index)
+                        .or_else(|| obj.cast_alternative_method_owned())
+                        .is_some_and(|method| method.exiles_after_resolution())
+                        || obj.subtypes.contains(&crate::types::Subtype::Adventure)
+                }
                 CastingMethod::Fuse => false,
                 CastingMethod::Alternative(idx) => obj
                     .alternative_casts
@@ -1856,10 +1875,10 @@ fn resolve_stack_entry_full_inner(
             // A permission whose alternative cost exiles the spell (granted
             // flashback, CR 702.34a: "exile it instead of putting it anywhere
             // else") overrides the Omen shuffle.
-            let omen_alternative_exiles = match &entry.casting_method {
+            let omen_alternative_exiles = match entry.casting_method.origin_method() {
                 CastingMethod::SplitOtherHalfPlayFrom {
                     zone,
-                    use_alternative,
+                    use_alternative: Some(use_alternative),
                     ..
                 } => crate::decision::resolve_play_from_alternative_method(
                     game,
@@ -1872,7 +1891,7 @@ fn resolve_stack_entry_full_inner(
                 _ => false,
             };
             let resolving_as_omen = matches!(
-                entry.casting_method,
+                entry.casting_method.origin_method(),
                 CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. }
             ) && !omen_alternative_exiles
                 && obj.subtypes.contains(&crate::types::Subtype::Omen);

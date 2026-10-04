@@ -44,9 +44,14 @@ fn bind_damage_amount_to_removed_counter_count(
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 amount, ..
             })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => {
-                Some(amount)
-            }
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
+            }) => Some(amount),
             _ => None,
         };
         if let Some(amount) = amount
@@ -84,6 +89,8 @@ fn is_removed_counter_damage_fanout_member(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { .. })
         ),
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
@@ -585,7 +592,10 @@ fn durational_anaphoric_restriction_grant_to_cant(effect: &mut EffectAst) {
     use crate::effect::{Restriction, Until};
     fn single_filter_mut(restriction: &mut Restriction) -> Option<&mut crate::ObjectFilter> {
         match restriction {
-            Restriction::Attack(filter)
+            Restriction::PreventDamageFrom { sources: filter, .. }
+            | Restriction::ActivateLoyaltyAbilitiesOf(filter)
+            | Restriction::MustAttack(filter)
+            | Restriction::Attack(filter)
             | Restriction::Block(filter)
             | Restriction::Untap(filter)
             | Restriction::BeBlocked(filter)
@@ -664,7 +674,70 @@ fn durational_anaphoric_restriction_grant_to_cant(effect: &mut EffectAst) {
     *effect = EffectAst::subject_verb_cant(restriction, duration, None);
 }
 
+/// A reflexive follow-up naming the tapped object belongs to each tap in
+/// the preceding player loop. Keeping it outside merges local results and
+/// loses both the tapped identity and "that player" before targets are chosen.
+fn transport_tap_quantity_reflexive_into_player_loop(effects: &mut Vec<EffectAst>) {
+    use ironsmith_core::tag::TagKeyWalk;
+    let mut index = 0;
+    while index + 1 < effects.len() {
+        let follower = sentence_tail(&effects[index + 1]);
+        let is_reflexive = matches!(
+            follower,
+            EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                predicate: crate::cards::builders::IfResultPredicate::Did,
+                ..
+            })
+        );
+        let mut names_tapped = false;
+        follower.for_each_tag_key(&mut |tag| {
+            names_tapped |= tag.as_str() == crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG
+        });
+        if !is_reflexive || !names_tapped {
+            index += 1;
+            continue;
+        }
+        let body = match sentence_tail(&effects[index]) {
+            EffectAst::ForEach(
+                ForEachEffectAst::ForEachOpponent { effects }
+                | ForEachEffectAst::ForEachPlayer { effects }
+                | ForEachEffectAst::ForEachPlayersFiltered { effects, .. },
+            ) => effects,
+            _ => {
+                index += 1;
+                continue;
+            }
+        };
+        if !body.last().map(sentence_tail).is_some_and(|effect| {
+            matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::PermanentState(
+                        crate::cards::builders::PermanentStateActionAst::Tap { .. }
+                    ),
+                    ..
+                })
+            )
+        }) {
+            index += 1;
+            continue;
+        }
+        let follower = effects.remove(index + 1);
+        let EffectAst::ForEach(
+            ForEachEffectAst::ForEachOpponent { effects: body }
+            | ForEachEffectAst::ForEachPlayer { effects: body }
+            | ForEachEffectAst::ForEachPlayersFiltered { effects: body, .. },
+        ) = sentence_tail_mut(&mut effects[index])
+        else {
+            unreachable!("checked player loop");
+        };
+        body.push(follower);
+        index += 1;
+    }
+}
+
 fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
+    transport_tap_quantity_reflexive_into_player_loop(effects);
     bind_tapped_this_way_to_tap_all(effects);
     declare_predicate_introduced_player_targets(effects);
     declare_branch_introduced_object_targets(effects);
@@ -3603,11 +3676,11 @@ mod tests {
 
         let normalized = normalize_effects_ast(&[delayed, grant]);
         assert!(matches!(
-            normalized.get(1),
-            Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }),
-                ..
-            })) if tag == &exiled_tag
+            normalized.first(),
+            Some(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }))
+                if matches!(effects.get(1), Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }), ..
+                })) if tag == &exiled_tag)
         ));
     }
 
@@ -3644,6 +3717,43 @@ mod tests {
                 action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }),
                 ..
             })) if tag == &explicit_tag
+        ));
+    }
+}
+
+#[cfg(test)]
+mod tap_reflexive_iteration_tests {
+    use super::*;
+    #[test]
+    fn tapped_quantity_followup_is_inside_each_player_iteration_not_after_the_group() {
+        let tap = EffectAst::subject_verb_tap(TargetAst::Object(
+            crate::filter::ObjectFilter::creature(),
+            None,
+            None,
+        ));
+        let follow = EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects: vec![EffectAst::subject_verb_damage(
+                Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(
+                    crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG.into(),
+                ))),
+                TargetAst::Player(crate::filter::PlayerFilter::IteratedPlayer, None),
+            )],
+        });
+        let mut effects = vec![
+            EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: vec![tap] }),
+            follow,
+        ];
+        transport_tap_quantity_reflexive_into_player_loop(&mut effects);
+        assert_eq!(effects.len(), 1);
+        let EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: body }) = &effects[0]
+        else {
+            panic!()
+        };
+        assert_eq!(body.len(), 2);
+        assert!(matches!(
+            body[1],
+            EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })
         ));
     }
 }

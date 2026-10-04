@@ -58,10 +58,8 @@ pub(super) fn priority_action_ref_for_game(
     if let PriorityActionRef::CastSpell {
         spell_id,
         casting_method:
-            CastingMethodRef::FaceDown {
-                face_down_kind,
-                face_down_permission_source,
-            },
+            CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
+            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. },
         ..
     } = &mut action_ref
         && let Some(spell) = game.object(ObjectId::from_raw(*spell_id))
@@ -81,10 +79,8 @@ fn action_ref_for_matching(action_ref: &PriorityActionRef) -> PriorityActionRef 
     let mut normalized = action_ref.clone();
     if let PriorityActionRef::CastSpell {
         casting_method:
-            CastingMethodRef::FaceDown {
-                face_down_kind,
-                face_down_permission_source,
-            },
+            CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
+            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. },
         ..
     } = &mut normalized
     {
@@ -94,17 +90,15 @@ fn action_ref_for_matching(action_ref: &PriorityActionRef) -> PriorityActionRef 
     normalized
 }
 
-/// The hidden hand card and public cast kind of a face-down cast ref.
+/// The hidden card and public cast kind of a face-down cast ref.
 pub(super) fn face_down_cast_claim_for_action_ref(
     action_ref: &PriorityActionRef,
 ) -> Option<(ObjectId, ironsmith::game_state::FaceDownCastKind)> {
     let PriorityActionRef::CastSpell {
         spell_id,
         casting_method:
-            CastingMethodRef::FaceDown {
-                face_down_kind,
-                face_down_permission_source,
-            },
+            CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
+            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. },
         ..
     } = action_ref
     else {
@@ -173,19 +167,16 @@ fn activation_mana_payment_available(
                     return None;
                 }
                 // Combine components: the same mana must not pay two costs.
-                let pips = costs
-                    .iter()
-                    .filter_map(|cost| cost.mana_cost_ref())
-                    .flat_map(|cost| cost.pips().iter().cloned())
-                    .collect::<Vec<_>>();
-                if pips.is_empty() {
-                    return Some(true);
+                let mut mana = ironsmith::mana::ManaCost::new();
+                for cost in costs.iter().filter_map(|cost| cost.mana_cost_ref()) {
+                    mana = mana.combined_with(cost);
                 }
+                if mana.is_empty() { return Some(true); }
                 let mut request = ManaPaymentRequest::new(
                     payer,
                     source,
                     ironsmith::costs::PaymentReason::ActivateAbility,
-                    ironsmith::mana::ManaCost::from_pips(pips),
+                    mana,
                 )
                 .with_x(minimum_x)
                 .with_spend_policy(game.mana_spend_policy(payer, Some(source)));
@@ -287,9 +278,12 @@ fn action_drag_decision_metadata(
     perspective: PlayerId,
     action: &LegalAction,
 ) -> (bool, bool) {
-    let LegalAction::CastSpell { spell_id, .. } = action else {
+    let LegalAction::CastSpell { spell_id, casting_method, .. } = action else {
         return (false, false);
     };
+    if matches!(casting_method, ironsmith::alternative_cast::CastingMethod::FaceDown | ironsmith::alternative_cast::CastingMethod::FaceDownPlayFrom { .. }) {
+        return (false, false);
+    }
     let Some(spell) = game.object(*spell_id) else {
         return (false, false);
     };
@@ -560,6 +554,15 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             let mut qualifiers = Vec::new();
 
             match casting_method {
+                ironsmith::alternative_cast::CastingMethod::AlternativePrice { price, origin, prototype, .. } => {
+                    if matches!(origin.as_ref(), ironsmith::alternative_cast::CastingMethod::SplitOtherHalf | ironsmith::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { .. })
+                        && let Some(object) = game.object(*spell_id)
+                        && let Some(face) = game.linked_face_definition_by_name_or_id(object.other_face_name.as_deref(), object.other_face)
+                    { name = face.card.name.clone(); }
+                    qualifiers.push(format!("using {}", object_name(game, price.source)));
+                    if prototype.is_some() { qualifiers.push("prototyped".into()); }
+                    if *from_zone != Zone::Hand { qualifiers.push(format!("from {}", zone_display_name(*from_zone))); }
+                }
                 ironsmith::alternative_cast::CastingMethod::Normal => {
                     if *from_zone != Zone::Hand {
                         qualifiers.push(format!("from {}", zone_display_name(*from_zone)));
@@ -567,6 +570,10 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
                 }
                 ironsmith::alternative_cast::CastingMethod::FaceDown => {
                     qualifiers.push("face down".to_string());
+                }
+                ironsmith::alternative_cast::CastingMethod::FaceDownPlayFrom {zone, ..} => {
+                    qualifiers.push("face down".to_string());
+                    qualifiers.push(format!("from {}", zone_display_name(*zone)));
                 }
                 ironsmith::alternative_cast::CastingMethod::SplitOtherHalf => {
                     if let Some(obj) = game.object(*spell_id)
@@ -646,20 +653,15 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
                     }) {
                         name = other_def.card.name.clone();
                     }
-                    let alt = game
-                        .object(*spell_id)
-                        .and_then(|obj| {
+                    if let Some(index) = use_alternative {
+                        let alt = game.object(*spell_id).and_then(|obj| {
                             ironsmith::decision::resolve_play_from_alternative_method(
-                                game,
-                                game.turn.priority_player.unwrap_or(obj.owner),
-                                obj,
-                                *zone,
-                                *use_alternative,
+                                game, game.turn.priority_player.unwrap_or(obj.owner), obj, *zone, *index,
                             )
-                        })
-                        .map(|m| m.name().to_ascii_lowercase())
-                        .unwrap_or_else(|| format!("alternative #{use_alternative}"));
-                    qualifiers.push(alt);
+                        }).map(|method| method.name().to_ascii_lowercase())
+                            .unwrap_or_else(|| format!("alternative #{index}"));
+                        qualifiers.push(alt);
+                    }
                     qualifiers.push(format!("from {}", zone_display_name(*zone)));
                 }
             }
@@ -1175,10 +1177,19 @@ pub(super) fn casting_method_ref(
     method: &ironsmith::alternative_cast::CastingMethod,
 ) -> CastingMethodRef {
     match method {
+        ironsmith::alternative_cast::CastingMethod::AlternativePrice { origin, origin_permission, price, prototype } => CastingMethodRef::AlternativePrice {
+            origin: Box::new(casting_method_ref(origin)),
+            origin_permission: origin_permission.as_ref().map(|key| GrantSelectionRef {source: key.source.0, index: key.index}),
+            price: GrantSelectionRef {source: price.source.0, index: price.index},
+            prototype: *prototype,
+        },
         ironsmith::alternative_cast::CastingMethod::Normal => CastingMethodRef::Normal,
         ironsmith::alternative_cast::CastingMethod::FaceDown => CastingMethodRef::FaceDown {
             face_down_kind: None,
             face_down_permission_source: None,
+        },
+        ironsmith::alternative_cast::CastingMethod::FaceDownPlayFrom {source, zone} => CastingMethodRef::FaceDownPlayFrom {
+            source: source.0, zone: zone_name(*zone), face_down_kind: None, face_down_permission_source: None,
         },
         ironsmith::alternative_cast::CastingMethod::SplitOtherHalf => {
             CastingMethodRef::SplitOtherHalf
@@ -1246,13 +1257,13 @@ pub(super) fn resolve_priority_action(
                 }
             }
         }
-        // A face-down cast of a hidden hand card: peers holding a placeholder
+        // A face-down cast of a hidden card: peers holding a placeholder
         // computed the priority actions before the command's public cast kind
         // was recorded, so recompute the source's actions now.
         let face_down_claim_source = match action_ref {
             PriorityActionRef::CastSpell {
                 spell_id,
-                casting_method: CastingMethodRef::FaceDown { .. },
+                casting_method: CastingMethodRef::FaceDown { .. } | CastingMethodRef::FaceDownPlayFrom { .. },
                 ..
             } => {
                 let spell = ObjectId::from_raw(*spell_id);

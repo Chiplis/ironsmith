@@ -67,7 +67,7 @@ fn main() {
         .name("bake-builtin-dungeons".into())
         // Compiler/typed-artifact serde frames exceed the platform main
         // thread's stack; use the repository's native compiler test allowance.
-        .stack_size(16 * 1024 * 1024)
+        .stack_size(64 * 1024 * 1024)
         .spawn(bake_builtin_dungeons)
         .expect("failed to start builtin dungeon compilation")
         .join()

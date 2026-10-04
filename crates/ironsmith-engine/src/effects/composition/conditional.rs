@@ -163,6 +163,38 @@ fn optional_hidden_reveal_guard(
 ///     vec![Effect::gain_life(2)],
 /// );
 /// ```
+pub(crate) fn prepare_conditional_branch(
+    effect: &ConditionalEffect, game: &GameState, ctx: &ExecutionContext,
+) -> Result<(Vec<crate::effect::Effect>, Option<crate::effects::context::OptionalIdentityGuard>), ExecutionError> {
+        let mut result = evaluate_condition(game, &effect.condition, ctx)?;
+        let identity_guard = optional_hidden_reveal_guard(effect, game, ctx, result);
+
+        // CR 700.2 / 601.2b: "If [condition] as you cast this spell, you may
+        // choose both instead" fixes how many modes may be chosen during
+        // casting (603.3c for triggers). When the announced modes only fit
+        // the other branch's mode choice, that branch was the one in force at
+        // announcement; don't let a changed condition reject the choice.
+        if let Some(chosen) = ctx.chosen_modes.as_deref() {
+            let (current, other) = if result {
+                (&effect.if_true, &effect.if_false)
+            } else {
+                (&effect.if_false, &effect.if_true)
+            };
+            if let (Some(current_max), Some(other_max)) = (
+                announced_mode_choice_max(game, current, ctx)?,
+                announced_mode_choice_max(game, other, ctx)?,
+            ) && chosen.len() > current_max
+                && chosen.len() <= other_max
+            {
+                result = !result;
+            }
+        }
+
+        let effects_to_execute = if result || identity_guard.is_some() { effect.if_true.clone() } else { effect.if_false.clone() };
+
+    Ok((effects_to_execute, identity_guard))
+}
+
 impl EffectExecutor for ConditionalEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         true
@@ -197,35 +229,7 @@ impl EffectExecutor for ConditionalEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let mut result = evaluate_condition(game, &self.condition, ctx)?;
-        let identity_guard = optional_hidden_reveal_guard(self, game, ctx, result);
-
-        // CR 700.2 / 601.2b: "If [condition] as you cast this spell, you may
-        // choose both instead" fixes how many modes may be chosen during
-        // casting (603.3c for triggers). When the announced modes only fit
-        // the other branch's mode choice, that branch was the one in force at
-        // announcement; don't let a changed condition reject the choice.
-        if let Some(chosen) = ctx.chosen_modes.as_deref() {
-            let (current, other) = if result {
-                (&self.if_true, &self.if_false)
-            } else {
-                (&self.if_false, &self.if_true)
-            };
-            if let (Some(current_max), Some(other_max)) = (
-                announced_mode_choice_max(game, current, ctx)?,
-                announced_mode_choice_max(game, other, ctx)?,
-            ) && chosen.len() > current_max
-                && chosen.len() <= other_max
-            {
-                result = !result;
-            }
-        }
-
-        let effects_to_execute = if result || identity_guard.is_some() {
-            &self.if_true
-        } else {
-            &self.if_false
-        };
+        let (effects_to_execute, identity_guard) = prepare_conditional_branch(self, game, ctx)?;
 
         let mut outcomes = Vec::new();
         for (index, effect) in effects_to_execute.iter().enumerate() {

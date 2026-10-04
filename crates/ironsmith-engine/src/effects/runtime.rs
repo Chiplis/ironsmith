@@ -160,15 +160,49 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
             .matched_outcome_events
             .insert(event.occurrence_key(), event.clone());
     }
-    crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, false);
+    crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, true);
     crate::game_loop::drain_pending_trigger_events(game, &mut matched);
     game.defer_trigger_entries(matched.take_all());
     true
 }
 
+/// A completed original operation is a real instruction boundary even when
+/// its producer is a cost or turn-based combat action. Preserve outcome event
+/// evidence, and attach a private receipt proof only after actual matching.
+/// Simultaneous owners call this once for every original before any addition.
+pub(crate) fn capture_triggers_before_added_program<'a>(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    next: Option<&Effect>,
+    reported: impl IntoIterator<Item = &'a mut crate::triggers::TriggerEvent>,
+) -> Result<bool, ExecutionError> {
+    if game.has_open_simultaneous_action()
+        || game.effect_store.trigger_matching_holds > 0
+        || ctx.decision_maker.awaiting_choice()
+        || next.is_some_and(effect_chooses_new_targets_for_copy)
+    { return Ok(false); }
+    let mut reported: Vec<_> = reported.into_iter().collect();
+    game.freeze_completed_entry_events(reported.iter_mut().map(|event| &mut **event))?;
+    let mut seen = std::collections::HashSet::new();
+    let fresh = reported.iter().filter(|event| !outcome_event_already_matched(game, event))
+        .filter(|event| seen.insert(event.occurrence_key())).map(|event| (**event).clone()).collect::<Vec<_>>();
+    crate::events::damage::validate_damage_history_amounts(game, fresh.iter())?;
+    let mut matched = crate::triggers::TriggerQueue::new();
+    // Scoped matching still deduplicates unmarked aliases held elsewhere in
+    // the enclosing resolution. Outside it, the returned receipt owns proof.
+    if game.effect_store.per_event_trigger_matching {
+        for event in &fresh { game.effect_store.matched_outcome_events.insert(event.occurrence_key(), event.clone()); }
+    }
+    crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, true);
+    crate::game_loop::drain_pending_trigger_events(game, &mut matched);
+    game.defer_trigger_entries(matched.take_all());
+    for event in &mut reported { event.mark_triggers_captured(); }
+    Ok(true)
+}
+
 /// Whether a boundary inside the current resolution already matched `event`.
 fn outcome_event_already_matched(game: &GameState, event: &crate::triggers::TriggerEvent) -> bool {
-    game.effect_store
+    event.triggers_captured() || game.effect_store
         .matched_outcome_events
         .contains_key(&event.occurrence_key())
 }
@@ -179,9 +213,8 @@ pub(crate) fn retain_unmatched_outcome_events(
     game: &GameState,
     events: &mut Vec<crate::triggers::TriggerEvent>,
 ) {
-    if game.effect_store.matched_outcome_events.is_empty() {
-        return;
-    }
+    // Receipt proof remains valid after the enclosing matching scope clears
+    // its alias map; fresh appended instructions still pass through.
     events.retain(|event| !outcome_event_already_matched(game, event));
 }
 
@@ -258,6 +291,26 @@ pub fn execute_effect(
     effect: &Effect,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
+    let (root, meter) = game.begin_token_resource_scope();
+    let checkpoint = root.then(|| game.clone());
+    let context_checkpoint = root.then(|| crate::effects::context::ExecutionContextCheckpoint::capture(ctx));
+    let mut result = match game.token_resource_failure() {
+        Some(error) => Err(error),
+        None => execute_effect_with_resource_scope(game, effect, ctx),
+    };
+    if let Err(error) = &result { game.record_token_resource_failure(error); }
+    if let Some(error) = game.token_resource_failure() { result = Err(error); }
+    if result.as_ref().err().is_some_and(ExecutionError::is_incomplete_execution) {
+        if let Some(checkpoint) = checkpoint { game.restore_execution_checkpoint(checkpoint, false); }
+        if let Some(checkpoint) = context_checkpoint { checkpoint.restore(ctx); }
+    }
+    game.end_token_resource_scope(root, &meter);
+    result
+}
+
+fn execute_effect_with_resource_scope(
+    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
     // CR 724.1b/724.2b stop the resolving spell or ability immediately. Composite
     // executors route child effects through this function, so this guard also
     // suppresses later instructions inside a sequence, modal branch, loop, or
@@ -267,7 +320,7 @@ pub fn execute_effect(
     {
         return Ok(EffectOutcome::resolved());
     }
-    game.try_update_static_ability_effects(Default::default())
+    game.establish_control_transition_boundary()
         .map_err(ExecutionError::ContinuousDiscovery)?;
     if !settle_hidden_hand_all_matching_specs(game, effect, ctx) {
         return Ok(EffectOutcome::count(0));
@@ -396,6 +449,8 @@ pub fn execute_effect(
                 event.set_provenance(node);
             }
         }
+        game.freeze_completed_entry_events(outcome.events.iter_mut())?;
+        crate::events::damage::validate_damage_history_amounts(game, outcome.events.iter())?;
         for event in &outcome.events {
             game.stage_turn_history_event(event);
         }

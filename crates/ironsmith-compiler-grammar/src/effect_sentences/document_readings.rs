@@ -74,6 +74,11 @@ pub(super) const DOCUMENT_REGISTRY: RuleId = RuleId::new("document-reading-regis
 /// The readings, in the order they were ranked.
 const DOCUMENT_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("declared-any-target-program"),
+        head: HeadDiscriminator::Words(&["choose"]),
+        read: |document| document.outcome(super::declared_any_target::parse(document.tokens)),
+    },
+    Reading {
         id: RuleId::new("resolving-card-countered-exile-replacement"),
         head: HeadDiscriminator::Any,
         read: |document| {
@@ -684,41 +689,38 @@ fn read_each_opponent_attacking_that_player_does_the_same(
         return Ok(None);
     };
     let second_words = crate::lexer::token_word_refs(second);
-    if second_words.as_slice()
-        != [
-            "each",
-            "opponent",
-            "attacking",
-            "that",
-            "player",
-            "does",
-            "the",
-            "same",
-        ]
-    {
+    let Some(tail) = second_words.strip_prefix(&["each", "opponent", "attacking", "that", "player"]) else {
         return Ok(None);
-    }
+    };
     let effects = crate::clause_support::parse_effect_sentences_lexed(first)?;
-    let mut repeated = Vec::with_capacity(effects.len());
-    for effect in &effects {
-        let EffectAst::SubjectVerb(subject_verb) = effect else {
+    let repeated_basis = if tail == ["does", "the", "same"] {
+        effects.clone()
+    } else {
+        // The same relational player subject may carry its own explicit
+        // action ("... untaps all nonland permanents they control").
+        let start = crate::lexer::parser_token_word_positions(second)
+            .get(5)
+            .map(|(index, _)| *index)
+            .unwrap_or(second.len());
+        if start == second.len() {
+            return Ok(None);
+        }
+        crate::clause_support::parse_effect_sentences_lexed(&second[start..])?
+    };
+    let mut repeated = Vec::with_capacity(repeated_basis.len());
+    for effect in repeated_basis {
+        let EffectAst::SubjectVerb(mut subject_verb) = effect else {
             return Ok(None);
         };
-        let mut copy = subject_verb.clone();
-        copy.subject.player = crate::cards::builders::PlayerAst::That;
-        repeated.push(EffectAst::SubjectVerb(copy));
+        subject_verb.subject.player = crate::cards::builders::PlayerAst::That;
+        repeated.push(EffectAst::SubjectVerb(subject_verb));
     }
     let mut out = effects;
-    out.push(EffectAst::ForEach(
-        ForEachEffectAst::ForEachPlayersFiltered {
-            sequential: false,
-            filter: crate::target::PlayerFilter::Excluding {
-                base: Box::new(crate::target::PlayerFilter::Attacking),
-                excluded: Box::new(crate::target::PlayerFilter::You),
-            },
-            effects: repeated,
-        },
-    ));
+    out.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        sequential: false,
+        filter: crate::target::PlayerFilter::opponents_attacking_event_defender(),
+        effects: repeated,
+    }));
     Ok(Some(out))
 }
 

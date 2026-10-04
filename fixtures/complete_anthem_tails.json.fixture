@@ -1,0 +1,178 @@
+[
+  {
+    "name": "Cagemail",
+    "oracle_id": "fe1f40fe-011b-4686-b865-fed00c56d30a",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +2/+2 and can't attack.",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/jud/7/cagemail?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Dancer's Chakrams",
+    "oracle_id": "7465d02f-3eee-483c-8de3-404381aa21eb",
+    "mana_cost": "{3}{W}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+2, has lifelink and \"Other commanders you control get +2/+2 and have lifelink,\" and is a Performer in addition to its other types.\nKrishna \u2014 Equip {3}",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/fic/17/dancers-chakrams?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Dark Matter Manipulator",
+    "oracle_id": "6a3862f0-8dfc-4ac9-8eb9-faefcad685d4",
+    "mana_cost": "{B}",
+    "type_line": "Creature \u2014 Human Warlock",
+    "oracle_text": "When this creature enters, mill three cards.\nThis creature gets +2/+0 for every seven cards in your graveyard.",
+    "power": "1",
+    "toughness": "2",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/fra/52/dark-matter-manipulator?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Dust Corona",
+    "oracle_id": "3f9ab49b-81fc-487e-8613-e30afcae164d",
+    "mana_cost": "{R}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +2/+0 and can't be blocked by creatures with flying.",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/plc/97/dust-corona?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Gauntlets of Light",
+    "oracle_id": "e5741c85-cd09-4ccb-ab39-3f3a62f98939",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEnchanted creature has \"{2}{W}: Untap this creature.\"",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/m20/17/gauntlets-of-light?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Ghoulish Impetus",
+    "oracle_id": "276eccd6-4a76-46e8-b604-94472e618115",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +1/+1, has deathtouch, and is goaded. (It attacks each combat if able and attacks a player other than you if able.)\nWhen enchanted creature dies, return this card to the battlefield at the beginning of the next end step.",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/plst/CMM-732/ghoulish-impetus?utm_source=api",
+    "proposed_complete": true,
+    "closure_stage": 42,
+    "closure_validation": "Source reviewed only; native/artifact/runtime regressions unrun."
+  },
+  {
+    "name": "Gift of the Deity",
+    "oracle_id": "3548489b-053e-4f81-a0be-07422cbe357d",
+    "mana_cost": "{4}{B/G}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nAs long as enchanted creature is black, it gets +1/+1 and has deathtouch. (Any amount of damage it deals to a creature is enough to destroy that creature.)\nAs long as enchanted creature is green, it gets +1/+1 and all creatures able to block it do so.",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/eve/122/gift-of-the-deity?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Infiltrator's Magemark",
+    "oracle_id": "df82b67f-f685-4278-a108-f3689a3a121b",
+    "mana_cost": "{2}{U}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nCreatures you control that are enchanted get +1/+1 and can't be blocked except by creatures with defender.",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/gpt/28/infiltrators-magemark?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Ninja's Blades",
+    "oracle_id": "cdaffb13-c2a4-4bc5-a9d6-c1a0d1686a81",
+    "mana_cost": "{2}{B}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select\nEquipped creature gets +1/+1, is a Ninja in addition to its other types, and has \"Whenever this creature deals combat damage to a player, draw a card, then discard a card. That player loses life equal to the discarded card's mana value.\"\nMutsunokami \u2014 Equip {2}",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/pfin/108s/ninjas-blades?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Predatory Impetus",
+    "oracle_id": "87f22ec6-6668-4e15-b38c-fa1ac0292c6b",
+    "mana_cost": "{4}{G}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +3/+3, must be blocked if able, and is goaded. (It attacks each combat if able and attacks a player other than you if able.)",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/clu/172/predatory-impetus?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Saddle of the Cavalier",
+    "oracle_id": "f6cd939e-6b45-4d47-b251-7a09a149dedd",
+    "mana_cost": "{2}{G}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Equipped creature gets +3/+3 and can't be blocked by creatures with power 3 or less.\nEquip {3}",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/clb/251/saddle-of-the-cavalier?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Skyblinder Staff",
+    "oracle_id": "3fea3d1a-067b-4eae-8433-f7e1e7b724a3",
+    "mana_cost": "{1}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Equipped creature gets +1/+0 and can't be blocked by creatures with flying.\nEquip {3} ({3}: Attach to target creature you control. Equip only as a sorcery.)",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/gtc/238/skyblinder-staff?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Stalactite Dagger",
+    "oracle_id": "064c3269-c012-4fc7-84c3-5f147a82a03c",
+    "mana_cost": "{2}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "When this Equipment enters, create a 1/1 colorless Shapeshifter creature token with changeling. (It's every creature type.)\nEquipped creature gets +1/+1 and is all creature types.\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/ecl/261/stalactite-dagger?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Treefolk Umbra",
+    "oracle_id": "fa321366-9bc1-48c7-873a-0b12a026ce49",
+    "mana_cost": "{2}{G}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nUmbra armor (If enchanted creature would be destroyed, instead remove all damage from it and destroy this Aura.)",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/mh1/185/treefolk-umbra?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Treetop Bracers",
+    "oracle_id": "ba71eb8a-f9f8-4608-88d8-963a1770d8d4",
+    "mana_cost": "{1}{G}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature (Target a creature as you cast this. This card enters attached to that creature.)\nEnchanted creature gets +1/+1 and can't be blocked except by creatures with flying.",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/10e/304%E2%98%85/treetop-bracers?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Undercover Skrull",
+    "oracle_id": "33b1379f-b329-42cd-92ed-4811d44ed8dd",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature \u2014 Skrull Shapeshifter Villain",
+    "oracle_text": "As long as there are two or more creature cards in your graveyard, this creature gets +2/+2 and is all creature types.\n{T}: Add one mana of any color.",
+    "power": "1",
+    "toughness": "1",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/msh/194/undercover-skrull?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Wall Crawl",
+    "oracle_id": "4a09536e-dfc1-4b15-adc1-07ef866ebda0",
+    "mana_cost": "{3}{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "When this enchantment enters, create a 2/1 green Spider creature token with reach, then you gain 1 life for each Spider you control.\nSpiders you control get +1/+1 and can't be blocked by creatures with defender.",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/spm/121/wall-crawl?utm_source=api",
+    "proposed_complete": true
+  }
+]

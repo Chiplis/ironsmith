@@ -69,6 +69,9 @@ pub(super) const REGISTRY: RuleId = RuleId::new("sentence-remaining-registry");
 
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
+    Reading { id:RuleId::new("ability-loss-object-template"),head:HeadDiscriminator::Any,admits:|_|true,
+        read:|input|input.outcome(crate::effect_sentences::ability_loss_templates::parse(input.tokens).map(|effect|effect.map(|effect|vec![effect]))) },
+
     Reading {
         id: RuleId::new("repeated-counter-placement-coordination"),
         head: HeadDiscriminator::Any,
@@ -120,7 +123,7 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("single-sentence-unless-action"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        admits: |input| !input.read_by("sentence-delayed-next-step-unless-pays"),
         read: |input| input.outcome(read_single_sentence_unless_action(input)),
     },
     Reading {
@@ -137,6 +140,7 @@ const READINGS: &[Reading] = &[
         admits: |input| {
             // Readings ranked above this one that read the input read it.
             !input.read_by("single-sentence-unless-action")
+                && !input.read_by("sentence-delayed-next-step-unless-pays")
         },
         read: |input| input.outcome(read_unless_control_flow(input)),
     },

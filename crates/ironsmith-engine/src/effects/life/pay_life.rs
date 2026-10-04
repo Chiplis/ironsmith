@@ -5,11 +5,9 @@ use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{
     CostExecutableEffect, CostValidationError, EffectExecutor, ExecutionContext, ExecutionError,
 };
-use crate::events::LifeLossEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::triggers::TriggerEvent;
 
 pub type PayLifeEffect = ironsmith_core::PayLifeEffect;
 
@@ -23,22 +21,36 @@ impl EffectExecutor for PayLifeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        game.refresh_continuous_state()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
         let player = resolve_player_from_spec(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
-        if !game.pay_life(player, amount) {
-            return Ok(EffectOutcome::impossible());
-        }
+        Ok(game
+            .pay_life_with_context(player, amount, ctx)?
+            .unwrap_or_else(EffectOutcome::impossible))
+    }
 
-        let outcome = EffectOutcome::count(amount as i32);
-        if amount == 0 {
-            return Ok(outcome);
-        }
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
 
-        Ok(outcome.with_event(TriggerEvent::new_with_provenance(
-            LifeLossEvent::from_effect(player, amount),
-            ctx.provenance,
-        )))
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let checked = game
+            .continuous_query_snapshot()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
+        let player = resolve_player_from_spec(&checked, &self.player, ctx)?;
+        let amount = resolve_value(&checked, &self.amount, ctx)?.max(0) as u32;
+        Ok(Box::new(FixedLifePaymentProposal {
+            player,
+            amount,
+            payable: checked.can_pay_life(player, amount),
+            prepared: None,
+        }))
     }
 
     fn pay_life_amount(&self) -> Option<u32> {
@@ -58,6 +70,30 @@ impl EffectExecutor for PayLifeEffect {
         "player to pay life"
     }
 
+    fn references_cost_x(&self) -> bool {
+        matches!(self.amount.unhinted(), Value::X)
+    }
+
+    fn max_cost_x(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        let ctx = ExecutionContext::new_default(source, controller);
+        let payer = resolve_player_from_spec(game, &self.player, &ctx).ok()?;
+        let available = game.player(payer)?.life.max(0) as u32;
+        Some(
+            if game.can_pay_life_with_reason(
+                payer,
+                available,
+                crate::costs::PaymentReason::ActivateAbility,
+            ) {
+                available
+            } else {
+                0
+            },
+        )
+    }
+
     fn cost_description(&self) -> Option<String> {
         if matches!(self.player, ChooseSpec::Player(PlayerFilter::You))
             && let Value::Fixed(amount) = self.amount
@@ -65,6 +101,65 @@ impl EffectExecutor for PayLifeEffect {
             return Some(format!("Pay {} life", amount.max(0)));
         }
         None
+    }
+}
+
+struct FixedLifePaymentProposal {
+    player: PlayerId,
+    amount: u32,
+    payable: bool,
+    prepared: Option<crate::game_state::PreparedLifePayment>,
+}
+impl std::fmt::Debug for FixedLifePaymentProposal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FixedLifePaymentProposal")
+            .field("player", &self.player)
+            .field("amount", &self.amount)
+            .finish_non_exhaustive()
+    }
+}
+impl crate::effects::SimultaneousEffectProposal for FixedLifePaymentProposal {
+    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId,u32)> { self.payable.then_some((self.player,self.amount)) }
+
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.payable {
+            self.prepared = game.prepare_life_payment(self.player, self.amount, ctx, true)?;
+        }
+        Ok(())
+    }
+    fn commit_original(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        if !self.payable {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                EffectOutcome::impossible(),
+            ));
+        }
+        if self.prepared.is_none() {
+            self.prepare_original(game, ctx)?;
+        }
+        let prepared = self.prepared.take().ok_or_else(|| {
+            ExecutionError::UnresolvableValue("prepared life payment is unavailable".into())
+        })?;
+        game.commit_life_payment_original(prepared, ctx)
+    }
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if !self.payable {
+            return Ok(EffectOutcome::impossible());
+        }
+        Ok(game
+            .pay_life_with_context(self.player, self.amount, ctx)?
+            .unwrap_or_else(EffectOutcome::impossible))
     }
 }
 
@@ -91,7 +186,7 @@ impl CostExecutableEffect for PayLifeEffect {
         controller: PlayerId,
         reason: crate::costs::PaymentReason,
     ) -> Result<(), CostValidationError> {
-        let ctx = ExecutionContext::new_default(source, controller);
+        let ctx = ExecutionContext::new_default(source, controller).with_x(0);
         let player = resolve_player_from_spec(game, &self.player, &ctx).map_err(|_| {
             CostValidationError::Other("unable to resolve player for life payment".to_string())
         })?;
@@ -133,12 +228,11 @@ mod tests {
     }
 
     #[test]
-    fn fixed_life_payment_emits_life_loss_with_effect_provenance() {
+    fn fixed_life_payment_retains_distinct_loss_and_payment_receipts() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
-        let expected_provenance = ctx.provenance;
 
         let outcome = PayLifeEffect::you(2)
             .execute(&mut game, &mut ctx)
@@ -146,8 +240,22 @@ mod tests {
 
         assert_eq!(outcome.as_count(), Some(2));
         assert_eq!(game.player(alice).expect("alice exists").life, 18);
-        assert_eq!(outcome.events.len(), 1);
-        assert_eq!(outcome.events[0].provenance(), expected_provenance);
+        assert_eq!(outcome.events.len(), 2);
+        assert!(
+            outcome.events[0]
+                .downcast::<crate::events::LifeLossEvent>()
+                .is_some()
+        );
+        assert!(
+            outcome.events[1]
+                .downcast::<crate::events::LifePaidEvent>()
+                .is_some()
+        );
+        assert_ne!(
+            outcome.events[0].provenance(),
+            outcome.events[1].provenance()
+        );
+        assert!(outcome.events.iter().all(|event| event.triggers_captured()));
     }
 
     #[test]

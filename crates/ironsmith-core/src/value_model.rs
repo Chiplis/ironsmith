@@ -71,6 +71,10 @@ pub enum EffectMetric {
     OtherNumber,
     /// Distinct A/E/I/O/U/Y letters in the name sticker applied by this effect.
     NameStickerUniqueVowels,
+    /// The original damage instruction's completed damage, limited by its
+    /// original recipient's pre-damage life/loyalty or current creature
+    /// toughness. Auxiliary replacement programs are separate instructions.
+    DamageDealtCappedByRecipient,
 }
 
 /// The authored action that produced a prior-effect metric query.
@@ -104,6 +108,12 @@ pub enum PriorEffectAction {
     Searched,
     Shuffled,
     Tapped,
+    /// A numeric decision, distinct from selecting objects or colors.
+    ChosenNumber,
+    /// A completed local die instruction, distinct from an ambient roll event.
+    Rolled,
+    /// An original zone move that actually arrived in a hand, not a draw or reveal.
+    PutIntoHand,
 }
 
 /// A metric over the last-known-information memory emitted by one exact
@@ -495,8 +505,8 @@ pub enum TurnHistoryCount {
     /// evaluated from zone-change LKI because the permanent card may no longer
     /// be in the graveyard when this value resolves.
     Descended(PlayerFilter),
-    /// The total damage dealt to the source object this turn. Stable object
-    /// identity keeps the count valid after the source changes zones.
+    /// Total damage dealt to this exact source incarnation this turn. A
+    /// pending source snapshot supplies its old object ID after departure.
     DamageDealtToSource,
     /// Total combat and noncombat damage actually dealt by the resolving source this turn.
     DamageDealtBySource,
@@ -532,6 +542,18 @@ pub enum TurnHistoryCount {
     /// Colors among matching permanents currently controlled by the player and
     /// spells that player cast this turn.
     ColorsAmongPermanentsAndSpellsCast(PlayerFilter),
+    /// Completed library searches; optionally require the searcher to own
+    /// the searched library. An unknown library owner cannot prove that scope.
+    LibrarySearches { player: PlayerFilter, own_library_only: bool },
+    /// The greatest number of matching entries under any one matching
+    /// player's control, using entry-time snapshots rather than current control.
+    MaxEnteredBattlefieldByController { player: PlayerFilter, filter: ObjectFilter },
+    /// Successful destruction actions with matching victim LKI and frozen cause.
+    DestroyedBy { filter: ObjectFilter, cause: crate::CauseFilter },
+    /// Exact spell incarnations cast this turn by `caster` and subsequently
+    /// countered by a matching frozen cause. This does not count spell copies
+    /// that were never cast or a different later incarnation of a card.
+    CastSpellsCounteredBy { caster: PlayerFilter, filter: ObjectFilter, cause: crate::CauseFilter },
 }
 
 impl TurnHistoryCount {
@@ -816,6 +838,28 @@ pub enum Value {
     /// object vote ("for each creature with one or more votes, put that many
     /// stun counters on it").
     ObjectVoteCount(Box<ChooseSpec>),
+    /// Frozen mana the triggering spell's caster actually spent, excluding
+    /// other players' Assist contributions. Distinct from total cast payment.
+    CasterManaSpentToCastTriggeringObject,
+    /// Kicker plus multikicker payments on the exact referenced object. Uses
+    /// that object's live cast metadata or departure LKI, never the resolving
+    /// ability source's optional costs and never a new incarnation's costs.
+    KicksPaidOf(Box<ChooseSpec>),
+    /// Current base power through layers 7a/7b of this exact referenced object,
+    /// excluding P/T modifiers, counters, and switching; departure LKI if gone.
+    BasePowerOf(Box<ChooseSpec>),
+    /// Greatest current life total among the in-game players in this exact
+    /// scope. Empty scopes evaluate to zero; negative maxima are preserved.
+    MaximumLifeTotal(PlayerFilter),
+    /// Count players whose life is strictly below half their own starting
+    /// life. Compare the rational threshold before rounding either operand.
+    CountPlayersBelowHalfStartingLifeTotal(PlayerFilter),
+    /// Actual, completed damage receipts from the current turn. This is not
+    /// marked damage and never follows a card into a new object incarnation.
+    DamageHistory(Box<crate::DamageHistoryQuery>),
+    /// Actual mana of this color allocated to X in this spell's completed
+    /// cast payment, including Assist and excluding fixed/base/tax payments.
+    ManaSpentOnX(Color),
 }
 
 impl Value {
@@ -1062,6 +1106,19 @@ pub enum Restriction {
     /// and libraries" only stops entries from those zones. A prohibited entry
     /// leaves the card where it is (CR 614.17 style "can't" effect).
     EnterBattlefield(ObjectFilter),
+    /// Damage from matching sources cannot be prevented. The source's live
+    /// characteristics or damage LKI are evaluated in the restriction host's
+    /// context; the active host is not replaced by the damage source's LKI.
+    /// Appended to preserve existing serialized variant ordinals.
+    PreventDamageFrom { sources: ObjectFilter, combat_only: bool },
+    /// Land plays are special actions, distinct from casting a spell. Match
+    /// the proposed land face in the zone from which it would be played.
+    PlayLandsMatching(PlayerFilter, ObjectFilter),
+    /// Only loyalty abilities of the matching objects are prohibited.
+    ActivateLoyaltyAbilitiesOf(ObjectFilter),
+    /// A continuous combat rule, independent of removable granted abilities.
+    /// Its matching set is re-evaluated while the rule's duration is active.
+    MustAttack(ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1398,6 +1455,10 @@ impl Restriction {
 
     pub fn must_block_specific_attacker(blockers: ObjectFilter, attacker: ObjectFilter) -> Self {
         Self::MustBlockSpecificAttacker { blockers, attacker }
+    }
+
+    pub fn must_attack(filter: ObjectFilter) -> Self {
+        Self::MustAttack(filter)
     }
 
     pub fn must_be_blocked(filter: ObjectFilter) -> Self {
@@ -2071,6 +2132,22 @@ pub enum Condition {
     Not(Box<Condition>),
     And(Box<Condition>, Box<Condition>),
     Or(Box<Condition>, Box<Condition>),
+    /// The controller declared attackers with at least this total power in
+    /// this combat. Power and controller are historical declaration-time
+    /// facts, not the current characteristics of surviving attackers.
+    /// Appended to preserve existing serialized condition discriminants.
+    AttackedWithTotalPowerAtLeastThisCombat(u32),
+    /// A historical choice in the triggering Ring action, not the current
+    /// bearer designation when this condition is checked again on resolution.
+    YouChoseAnotherRingBearer,
+    /// The source Case's current permanent incarnation has the solved
+    /// designation. Counters and current solve requirements do not decide it.
+    /// Appended to preserve existing serialized condition discriminants.
+    SourceCaseSolved,
+    /// Captured causation of the triggering completed action. The causing
+    /// controller is independent of the affected object's controller.
+    TriggeringEventCausedBy { controller: PlayerFilter, effect_like_only: bool },
+    PlayerWasMonarchAtTurnStart { player: PlayerFilter },
 }
 
 #[cfg(test)]
@@ -2124,5 +2201,25 @@ mod tests {
             }
             _ => panic!("wrong condition variant"),
         }
+    }
+}
+
+/// Shared structural condition for the Increment triggered keyword. Actual
+/// cast payment is frozen by the event; source P/T is evaluated both when
+/// triggering and on resolution, as required by its intervening "if".
+impl Condition {
+    pub fn increment() -> Self {
+        Self::Or(
+            Box::new(Self::ValueComparison {
+                left: Value::CasterManaSpentToCastTriggeringObject,
+                operator: ValueComparisonOperator::GreaterThan,
+                right: Value::SourcePower,
+            }),
+            Box::new(Self::ValueComparison {
+                left: Value::CasterManaSpentToCastTriggeringObject,
+                operator: ValueComparisonOperator::GreaterThan,
+                right: Value::SourceToughness,
+            }),
+        )
     }
 }

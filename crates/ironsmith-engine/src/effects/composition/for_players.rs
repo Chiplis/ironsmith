@@ -763,11 +763,16 @@ impl crate::effects::CostExecutableEffect for ForPlayersEffect {
 }
 
 impl ForPlayersEffect {
-    fn execute_players(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    fn selected_players(&self, game: &GameState, ctx: &ExecutionContext) -> Result<Vec<PlayerId>, ExecutionError> {
+        if self.filter.is_opponents_attacking_event_defender()
+            && !ctx.triggering_event.as_ref().is_some_and(|event| {
+                event.downcast::<crate::events::PlayerAttackDeclarationEvent>().is_some()
+            })
+        {
+            return Err(ExecutionError::UnresolvableValue(
+                "attacking-player reward has no captured attacked player".into(),
+            ));
+        }
         let filter_ctx = ctx.filter_context(game);
 
         // Iterate over all players that match the filter
@@ -784,75 +789,208 @@ impl ForPlayersEffect {
         } else {
             game.turn.active_player
         };
-        players = order_selected_players_from(game, players, first_player);
+        Ok(order_selected_players_from(game, players, first_player))
+
+    }
+
+    pub(crate) fn prepare_draw_continuation(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<ForPlayersDrawProgress, ExecutionError> {
+        let players = self.selected_players(game, ctx)?;
+        if players.is_empty() { return Ok(ForPlayersDrawProgress { prefix: EffectOutcome::count(0), resume: None }); }
+        let progress = if self.sequential || self.starting_with_controller || self.stop_after_first_happened {
+            ForPlayersSequentialState::new(self, players, ctx).run(game, ctx, true)?
+        } else {
+            let Some(state) = ForPlayersActionState::new(self, players, game, ctx)? else {
+                return Ok(ForPlayersDrawProgress { prefix: EffectOutcome::count(0), resume: None });
+            };
+            state.run(game, ctx, true)?
+        };
+        match progress {
+            ActionRun::Complete(prefix) => Ok(ForPlayersDrawProgress { prefix, resume: None }),
+            ActionRun::Paused { prefix, state } => Ok(ForPlayersDrawProgress { prefix, resume: Some(ForPlayersDrawContinuation {
+                state, context: crate::effects::ExecutionContextCheckpoint::capture(ctx),
+            }) }),
+        }
+    }
+
+    fn execute_players(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let players = self.selected_players(game, ctx)?;
 
         if players.is_empty() {
             return Ok(EffectOutcome::count(0));
         }
 
-        let mut outcomes = Vec::new();
-        let mut outcomes_by_player = vec![Vec::new(); players.len()];
+        let progress = if self.sequential || self.starting_with_controller || self.stop_after_first_happened {
+            ForPlayersSequentialState::new(self, players, ctx).run(game, ctx, false)?
+        } else {
+            let Some(state) = ForPlayersActionState::new(self, players, game, ctx)? else {
+                return Ok(EffectOutcome::count(0));
+            };
+            state.run(game, ctx, false)?
+        };
+        match progress {
+            ActionRun::Complete(outcome) => Ok(outcome),
+            ActionRun::Paused { .. } => Err(ExecutionError::InternalError("native player program unexpectedly paused at a draw".into())),
+        }
+    }
+}
+
+type PlayerObjectTags = std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>;
+type PlayerResultFrame = std::collections::HashMap<crate::effect::EffectId, EffectOutcome>;
+type PlayerTagBindings = std::collections::HashMap<crate::tag::TagKey, Vec<PlayerId>>;
+
+pub(crate) struct ForPlayersDrawProgress {
+    pub(crate) prefix: EffectOutcome,
+    pub(crate) resume: Option<ForPlayersDrawContinuation>,
+}
+pub(crate) struct ForPlayersDrawContinuation {
+    state: ForPlayersContinuationState,
+    context: crate::effects::ExecutionContextCheckpoint,
+}
+impl ForPlayersDrawContinuation {
+    pub(crate) fn resume(self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+        self.context.restore(ctx);
+        let progress = match self.state {
+            ForPlayersContinuationState::Action(state) => state.run(game, ctx, false)?,
+            ForPlayersContinuationState::Sequential(state) => state.run(game, ctx, false)?,
+        };
+        match progress {
+            ActionRun::Complete(outcome) => Ok(outcome),
+            ActionRun::Paused { .. } => Err(ExecutionError::InternalError("resumed player program paused twice".into())),
+        }
+    }
+}
+struct PlayerUnitDraw {
+    unit_index: usize,
+    player_position: usize,
+    effect_position: usize,
+    players: Vec<PlayerId>,
+    unit_tags: PlayerObjectTags,
+    accumulated_tags: PlayerObjectTags,
+    child: Option<Box<dyn crate::effects::replacement::ReplacementResume>>,
+}
+enum ForPlayersContinuationState { Action(Box<ForPlayersActionState>), Sequential(Box<ForPlayersSequentialState>) }
+enum ActionRun { Complete(EffectOutcome), Paused { prefix: EffectOutcome, state: ForPlayersContinuationState } }
+
+/// The authored player-major variant has its own cursor. It shares the same
+/// child continuation contract but preserves its existing tag-reset and
+/// stop-after-first-success semantics instead of becoming action-major.
+struct ForPlayersSequentialState {
+    effect: ForPlayersEffect,
+    players: Vec<PlayerId>,
+    outcomes: Vec<EffectOutcome>,
+    outcomes_by_player: Vec<Vec<EffectOutcome>>,
+    incoming_tags: PlayerObjectTags,
+    completed_tags: PlayerObjectTags,
+    player_index: usize,
+    effect_index: usize,
+    player_started: bool,
+    pending_child: Option<Box<dyn crate::effects::replacement::ReplacementResume>>,
+}
+impl ForPlayersSequentialState {
+    fn new(effect: &ForPlayersEffect, players: Vec<PlayerId>, ctx: &ExecutionContext) -> Self {
+        let outcomes_by_player = vec![Vec::new(); players.len()];
+        Self { effect: effect.clone(), players, outcomes: Vec::new(), outcomes_by_player,
+            incoming_tags: ctx.tagged_objects.clone(), completed_tags: Default::default(),
+            player_index: 0, effect_index: 0, player_started: false, pending_child: None }
+    }
+    fn run(mut self, game: &mut GameState, ctx: &mut ExecutionContext, defer_draws: bool) -> Result<ActionRun, ExecutionError> {
+        while self.player_index < self.players.len() {
+            let player = self.players[self.player_index];
+            if !self.player_started {
+                if self.effect.sequential { ctx.tagged_objects = self.incoming_tags.clone(); }
+                self.player_started = true;
+            }
+            while self.effect_index < self.effect.effects.len() {
+                let effect = self.effect.effects[self.effect_index].clone();
+                if defer_draws || game.effect_store.per_event_trigger_matching {
+                    crate::effects::capture_triggers_before_added_program(game, ctx, Some(&effect),
+                        self.outcomes.iter_mut().flat_map(|outcome| outcome.events.iter_mut()))?;
+                }
+                let pending = self.pending_child.take();
+                let prepared = ctx.with_temp_iterated_player(Some(player), |ctx| {
+                    if let Some(pending) = pending {
+                        pending.resume(game, ctx).map(|prefix| crate::effects::replacement::PreparedReplacementChild { prefix, resume: None })
+                    } else if defer_draws {
+                        crate::effects::replacement::prepare_replacement_child(game, ctx, &effect)
+                    } else {
+                        execute_effect(game, &effect, ctx).map(|prefix| crate::effects::replacement::PreparedReplacementChild { prefix, resume: None })
+                    }
+                })?;
+                if let Some(pending) = prepared.resume {
+                    let mut partial = prepared.prefix;
+                    crate::effects::capture_triggers_before_added_program(game, ctx, None,
+                        self.outcomes.iter_mut().flat_map(|outcome| outcome.events.iter_mut()).chain(partial.events.iter_mut()))?;
+                    let complete_prefix = finish_players_outcome(&self.effect, self.players.clone(), self.outcomes.clone(), self.outcomes_by_player.clone(), Vec::new())?;
+                    self.pending_child = Some(pending);
+                    return Ok(ActionRun::Paused { prefix: EffectOutcome::aggregate([complete_prefix, partial]),
+                        state: ForPlayersContinuationState::Sequential(Box::new(self)) });
+                }
+                self.outcomes_by_player[self.player_index].push(prepared.prefix.clone());
+                self.outcomes.push(prepared.prefix);
+                self.effect_index += 1;
+                if ctx.decision_maker.awaiting_choice() { return Ok(ActionRun::Complete(EffectOutcome::count(0))); }
+            }
+            let iteration = EffectOutcome::aggregate_summing_counts(self.outcomes_by_player[self.player_index].iter().cloned());
+            if self.effect.sequential { merge_tagged_object_sets(&mut self.completed_tags, &ctx.tagged_objects); }
+            if self.effect.stop_after_first_happened && iteration.something_happened() { break; }
+            self.player_index += 1; self.effect_index = 0; self.player_started = false;
+        }
+        if self.effect.sequential { ctx.tagged_objects = self.completed_tags; }
+        finish_players_outcome(&self.effect, self.players, self.outcomes, self.outcomes_by_player, Vec::new()).map(ActionRun::Complete)
+    }
+}
+
+/// Owned action-iterator state. Player-local results, tags, optional groups and
+/// APNAP preparation survive without reconstructing them from merged counts.
+struct ForPlayersActionState {
+    effect: ForPlayersEffect,
+    players: Vec<PlayerId>,
+    outcomes: Vec<EffectOutcome>,
+    outcomes_by_player: Vec<Vec<EffectOutcome>>,
+    optional_program: OptionalActionProgram,
+    optional_acceptance: Vec<Vec<bool>>,
+    optional_outcomes: Vec<Vec<Vec<EffectOutcome>>>,
+    program_groups: Vec<Vec<Option<CapturedProgramGroup>>>,
+    optional_initialized: Vec<bool>,
+    optional_limits: Vec<Option<crate::effects::DoThisLimit>>,
+    optional_limit_reached: Vec<bool>,
+    actual_events: Vec<crate::events::RawEvent>,
+    shared_action_players: std::collections::HashMap<usize, Vec<PlayerId>>,
+    units: Vec<Vec<usize>>,
+    next_unit: usize,
+    pending_unit_draw: Option<PlayerUnitDraw>,
+    tagged_objects_by_player: Vec<PlayerObjectTags>,
+    loop_local_tags: std::collections::HashSet<crate::tag::TagKey>,
+    effect_outcomes_by_player: Vec<PlayerResultFrame>,
+    incoming_tagged_players: PlayerTagBindings,
+    tagged_players_by_player: Vec<PlayerTagBindings>,
+}
+impl ForPlayersActionState {
+    fn new(effect: &ForPlayersEffect, players: Vec<PlayerId>, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<Option<Self>, ExecutionError> {
+        let outcomes = Vec::new();
+        let outcomes_by_player = vec![Vec::new(); players.len()];
 
         // The simultaneous protocol works on printed actions, so coordinated
         // sequence wrappers are unwrapped first. The sequential branch below
-        // keeps `self.effects` as authored: nesting there is already executed in
+        // keeps `effect.effects` as authored: nesting there is already executed in
         // order and carries no unit grouping.
         let optional_program =
-            OptionalActionProgram::new(&self.effects, !ctx.target_assignments.is_empty());
+            OptionalActionProgram::new(&effect.effects, !ctx.target_assignments.is_empty());
         let simultaneous_effects = &optional_program.effects;
-        let mut optional_acceptance =
+        let optional_acceptance =
             vec![vec![false; players.len()]; optional_program.offers.len()];
-        let mut optional_outcomes =
+        let optional_outcomes =
             vec![vec![Vec::<EffectOutcome>::new(); players.len()]; optional_program.offers.len()];
-        let mut program_groups: Vec<Vec<Option<CapturedProgramGroup>>> = vec![vec![None; players.len()]; optional_program.offers.len()];
-        let mut optional_initialized = vec![false; optional_program.offers.len()];
-        let mut optional_limits = vec![None; optional_program.offers.len()];
-        let mut optional_limit_reached = vec![false; optional_program.offers.len()];
-        let mut actual_events = Vec::new();
+        let program_groups: Vec<Vec<Option<CapturedProgramGroup>>> = vec![vec![None; players.len()]; optional_program.offers.len()];
+        let optional_initialized = vec![false; optional_program.offers.len()];
+        let optional_limits = vec![None; optional_program.offers.len()];
+        let optional_limit_reached = vec![false; optional_program.offers.len()];
+        let actual_events = Vec::new();
 
-        if self.sequential || self.starting_with_controller || self.stop_after_first_happened {
-            // An explicit starting player describes a sequential instruction
-            // ("starting with ..."), as does stopping after the first player
-            // whose action happened. Preserve player-major execution there.
-            let incoming_tags = ctx.tagged_objects.clone();
-            let mut completed_tags = std::collections::HashMap::new();
-            for (player_index, &player_id) in players.iter().enumerate() {
-                if self.sequential {
-                    // Each body sees the outer scope, never another player's
-                    // local result. Its complete results remain available to
-                    // plural references after the loop finishes.
-                    ctx.tagged_objects = incoming_tags.clone();
-                }
-                let mut stop = false;
-                ctx.with_temp_iterated_player(Some(player_id), |ctx| {
-                    for effect in &self.effects {
-                        let outcome = execute_effect(game, effect, ctx)?;
-                        outcomes_by_player[player_index].push(outcome.clone());
-                        outcomes.push(outcome);
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(());
-                        }
-                    }
-                    let iteration_outcome = EffectOutcome::aggregate_summing_counts(
-                        outcomes_by_player[player_index].iter().cloned(),
-                    );
-                    stop = self.stop_after_first_happened && iteration_outcome.something_happened();
-                    Ok::<(), ExecutionError>(())
-                })?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                if self.sequential {
-                    merge_tagged_object_sets(&mut completed_tags, &ctx.tagged_objects);
-                }
-                if stop {
-                    break;
-                }
-            }
-            if self.sequential {
-                ctx.tagged_objects = completed_tags;
-            }
-        } else {
             // CR 608.2f: choices for a simultaneous each-player action are
             // made in APNAP order against the pre-action game state, then the
             // whole action commits as one transaction. Decisions (including
@@ -863,7 +1001,7 @@ impl ForPlayersEffect {
             let shared_action_players =
                 twohg_shared_action_players(game, ctx, &simultaneous_effects, &players)?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(None);
             }
 
             // CR 608.2e: finish each printed action for every player before
@@ -916,24 +1054,83 @@ impl ForPlayersEffect {
                 units.push(current);
             }
 
-            let mut tagged_objects_by_player = vec![
+            let tagged_objects_by_player = vec![
                 std::collections::HashMap::<
                     crate::tag::TagKey,
                     Vec<crate::snapshot::ObjectSnapshot>,
                 >::new();
                 players.len()
             ];
-            let mut loop_local_tags = std::collections::HashSet::<crate::tag::TagKey>::new();
+            let loop_local_tags = std::collections::HashSet::<crate::tag::TagKey>::new();
             // A later printed action can reference the outcome of an earlier
             // action for this same player ("reveal that many"). Keep those
             // bindings per player just like the affected-object collections.
-            let mut effect_outcomes_by_player = vec![ctx.effect_outcomes.clone(); players.len()];
+            let effect_outcomes_by_player = vec![ctx.effect_outcomes.clone(); players.len()];
             // Player bindings ("the chosen opponent", "that player") made by
             // one player's action belong to that player's later actions only.
             let incoming_tagged_players = ctx.tagged_players.clone();
-            let mut tagged_players_by_player = vec![incoming_tagged_players.clone(); players.len()];
+            let tagged_players_by_player = vec![incoming_tagged_players.clone(); players.len()];
 
-            for unit in units {
+        Ok(Some(Self {
+            effect: effect.clone(), next_unit: 0, pending_unit_draw: None,
+            players,
+            outcomes,
+            outcomes_by_player,
+            optional_program,
+            optional_acceptance,
+            optional_outcomes,
+            program_groups,
+            optional_initialized,
+            optional_limits,
+            optional_limit_reached,
+            actual_events,
+            shared_action_players,
+            units,
+            tagged_objects_by_player,
+            loop_local_tags,
+            effect_outcomes_by_player,
+            incoming_tagged_players,
+            tagged_players_by_player,
+        }))
+    }
+
+    fn run(self, game: &mut GameState, ctx: &mut ExecutionContext, defer_draws: bool) -> Result<ActionRun, ExecutionError> {
+        let Self {
+            effect,
+            players,
+            mut outcomes,
+            mut outcomes_by_player,
+            optional_program,
+            mut optional_acceptance,
+            mut optional_outcomes,
+            mut program_groups,
+            mut optional_initialized,
+            mut optional_limits,
+            mut optional_limit_reached,
+            mut actual_events,
+            shared_action_players,
+            units,
+            mut next_unit,
+            mut pending_unit_draw,
+            mut tagged_objects_by_player,
+            mut loop_local_tags,
+            mut effect_outcomes_by_player,
+            incoming_tagged_players,
+            mut tagged_players_by_player,
+        } = self;
+        let simultaneous_effects = &optional_program.effects;
+            while next_unit < units.len() {
+                let unit_index = next_unit;
+                let unit = units[next_unit].clone();
+                next_unit += 1;
+                if !actual_events.is_empty() && (defer_draws || game.effect_store.per_event_trigger_matching) {
+                    crate::effects::capture_triggers_before_added_program(game, ctx,
+                        unit.first().map(|index| &simultaneous_effects[*index]), actual_events.iter_mut())?;
+                }
+                let mut resuming = pending_unit_draw.take();
+                if resuming.as_ref().is_some_and(|resume| resume.unit_index != unit_index) {
+                    return Err(ExecutionError::InternalError("player draw continuation lost its action unit".into()));
+                }
                 let path = &optional_program.paths[unit[0]];
                 if let Some((group, false)) = optional_program.markers[unit[0]] {
                     let marker_tags = ctx.tagged_objects.clone();
@@ -1038,7 +1235,7 @@ impl ForPlayersEffect {
                 // proposal owns the frozen result it needs; restore the base
                 // tags again before committing so commit-time result tags can
                 // accumulate normally across players.
-                let pre_unit_tagged_objects = ctx.tagged_objects.clone();
+                let pre_unit_tagged_objects = resuming.as_ref().map(|resume| resume.unit_tags.clone()).unwrap_or_else(|| ctx.tagged_objects.clone());
                 let unit_has_mutating_effect = unit.iter().any(|effect_index| {
                     optional_program.markers[*effect_index].is_none()
                         && !simultaneous_effects[*effect_index]
@@ -1066,6 +1263,8 @@ impl ForPlayersEffect {
                 })
                 .collect();
 
+                let unit_players = resuming.as_ref().map(|resume| resume.players.clone()).unwrap_or(unit_players);
+
                 // A printed action whose effect cannot pre-build an immutable
                 // proposal (a search, a choose-then-act body, a conditional
                 // follow-up, a nested choice) is performed by each player in
@@ -1080,14 +1279,20 @@ impl ForPlayersEffect {
                         && !effect.0.supports_simultaneous_player_action()
                         && !effect.0.is_read_only_simultaneous_player_action()
                 });
-                if unit_runs_player_by_player {
-                    let pinned_lookback =
+                let unit_has_draw = unit.iter().any(|index| optional_program.markers[*index].is_none()
+                    && crate::effects::replacement::replacement_effect_contains_draw(&simultaneous_effects[*index]));
+                if unit_runs_player_by_player || unit_has_draw || resuming.is_some() {
+                    // CR 121.2c/d: each player's draws (and their replacement
+                    // programs) complete before the next player's draws.
+                    // Do not stamp them with a fictitious simultaneous batch.
+                    let pinned_lookback = !unit_has_draw &&
                         crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
-                    let opened_batch = game.open_simultaneous_action();
-                    let mut accumulated_unit_tags = pre_unit_tagged_objects.clone();
+                    let opened_batch = !unit_has_draw && game.open_simultaneous_action();
+                    let mut accumulated_unit_tags = resuming.as_ref().map(|resume| resume.accumulated_tags.clone()).unwrap_or_else(|| pre_unit_tagged_objects.clone());
                     let mut unit_error = None;
                     let mut unit_waiting = false;
-                    for &player_id in &unit_players {
+                    let start_player = resuming.as_ref().map_or(0, |resume| resume.player_position);
+                    for (player_position, &player_id) in unit_players.iter().enumerate().skip(start_player) {
                         let player_index = players
                             .iter()
                             .position(|candidate| *candidate == player_id)
@@ -1101,10 +1306,19 @@ impl ForPlayersEffect {
                         ctx.effect_outcomes = effect_outcomes_by_player[player_index].clone();
                         ctx.tagged_players = tagged_players_by_player[player_index].clone();
                         let pre_player_tagged_objects = ctx.tagged_objects.clone();
+                        let start_effect = resuming.as_ref().filter(|resume| resume.player_position == player_position).map_or(0, |resume| resume.effect_position);
+                        let mut paused_child = None;
+                        let mut paused_prefix = None;
+                        let mut paused_effect_position = 0;
                         let result = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
-                            for &effect_index in &unit {
+                            for (effect_position, &effect_index) in unit.iter().enumerate().skip(start_effect) {
+                                if unit_has_draw {
+                                    crate::effects::capture_triggers_before_added_program(game, ctx,
+                                        Some(&simultaneous_effects[effect_index]), actual_events.iter_mut())?;
+                                }
                                 let path = &optional_program.paths[effect_index];
-                                let execute_child = prepare_optional_instruction(
+                                let resume_child = resuming.as_mut().filter(|resume| resume.player_position == player_position && resume.effect_position == effect_position).and_then(|resume| resume.child.take());
+                                let execute_child = if resume_child.is_some() { true } else { prepare_optional_instruction(
                                     game,
                                     ctx,
                                     player_index,
@@ -1115,7 +1329,7 @@ impl ForPlayersEffect {
                                     &mut optional_limits,
                                     &mut optional_limit_reached,
                                     &mut program_groups,
-                                )?;
+                                )? };
                                 if ctx.decision_maker.awaiting_choice() {
                                     return Ok(());
                                 }
@@ -1133,10 +1347,21 @@ impl ForPlayersEffect {
                                             player_index,
                                         );
                                         with_program_scope(ctx, &scopes, |ctx| {
-                                            execute_effect(game, effect, ctx)
+                                            if let Some(resume) = resume_child {
+                                                resume.resume(game, ctx)
+                                            } else if defer_draws {
+                                                let prepared = crate::effects::replacement::prepare_replacement_child(game, ctx, effect)?;
+                                                if let Some(resume) = prepared.resume {
+                                                    paused_effect_position = effect_position;
+                                                    paused_prefix = Some(prepared.prefix.clone());
+                                                    paused_child = Some(resume);
+                                                }
+                                                Ok(prepared.prefix)
+                                            } else { execute_effect(game, effect, ctx) }
                                         })
                                     },
                                 )?;
+                                if paused_child.is_some() { return Ok(()); }
                                 retain_optional_outcome(
                                     outcome,
                                     player_index,
@@ -1155,6 +1380,43 @@ impl ForPlayersEffect {
                             }
                             Ok::<(), ExecutionError>(())
                         });
+                        if let Some(child) = paused_child {
+                            result?;
+                            game.close_simultaneous_action(opened_batch);
+                            crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
+                            let mut partial = paused_prefix.expect("paused child has a prefix receipt");
+                            crate::effects::capture_triggers_before_added_program(game, ctx, None,
+                                actual_events.iter_mut().chain(partial.events.iter_mut()))?;
+                            let mut prefix = finish_players_outcome(&effect, players.clone(), outcomes.clone(), outcomes_by_player.clone(), actual_events.clone())?;
+                            prefix = EffectOutcome::aggregate([prefix, partial]);
+                            let pending_unit_draw = Some(PlayerUnitDraw {
+                                unit_index, player_position, effect_position: paused_effect_position,
+                                players: unit_players.clone(), unit_tags: pre_unit_tagged_objects,
+                                accumulated_tags: accumulated_unit_tags, child: Some(child),
+                            });
+                            return Ok(ActionRun::Paused { prefix, state: ForPlayersContinuationState::Action(Box::new(Self {
+                                next_unit: unit_index, pending_unit_draw,
+                                effect,
+                                players,
+                                outcomes,
+                                outcomes_by_player,
+                                optional_program,
+                                optional_acceptance,
+                                optional_outcomes,
+                                program_groups,
+                                optional_initialized,
+                                optional_limits,
+                                optional_limit_reached,
+                                actual_events,
+                                shared_action_players,
+                                units,
+                                tagged_objects_by_player,
+                                loop_local_tags,
+                                effect_outcomes_by_player,
+                                incoming_tagged_players,
+                                tagged_players_by_player,
+                            })) });
+                        }
                         effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
                         tagged_players_by_player[player_index] = ctx.tagged_players.clone();
                         if let Err(error) = result {
@@ -1186,7 +1448,7 @@ impl ForPlayersEffect {
                     if unit_waiting {
                         ctx.tagged_objects = pre_unit_tagged_objects;
                         ctx.tagged_players = incoming_tagged_players;
-                        return Ok(EffectOutcome::count(0));
+                        return Ok(ActionRun::Complete(EffectOutcome::count(0)));
                     }
                     finish_optional_preparation(
                         game,
@@ -1195,6 +1457,10 @@ impl ForPlayersEffect {
                         &optional_acceptance,
                         &mut optional_limits,
                     );
+                    game.freeze_completed_entry_events(actual_events.iter_mut())?;
+                    if unit_has_draw {
+                        crate::effects::capture_triggers_before_added_program(game, ctx, None, actual_events.iter_mut())?;
+                    }
                     ctx.tagged_objects = accumulated_unit_tags;
                     attach_unit_player_counts(
                         &unit,
@@ -1319,7 +1585,7 @@ impl ForPlayersEffect {
                         Ok::<(), ExecutionError>(())
                     })?;
                     if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
+                        return Ok(ActionRun::Complete(EffectOutcome::count(0)));
                     }
                     effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
                     tagged_players_by_player[player_index] = ctx.tagged_players.clone();
@@ -1341,7 +1607,7 @@ impl ForPlayersEffect {
                 // A proposal prompt is still unanswered: unwind before
                 // committing any fallback choice.
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
+                    return Ok(ActionRun::Complete(EffectOutcome::count(0)));
                 }
 
                 finish_optional_preparation(
@@ -1352,6 +1618,26 @@ impl ForPlayersEffect {
                     &mut optional_limits,
                 );
                 let game_checkpoint = game.clone();
+                let declared_payments = prepared.iter().filter_map(|(_, _, proposal, _, _)| proposal.declared_life_payment()).collect::<Vec<_>>();
+                if !game.can_pay_life_simultaneously(&declared_payments) {
+                    return Err(ExecutionError::Impossible("simultaneous life payments exceed the available shared life total".into()));
+                }
+                // Replacement eligibility observes one pre-mutation world.
+                // One-shot consumption and APNAP choices remain ordered, but
+                // no player's original life change has committed yet.
+                for (index, tags, proposal, optional, path) in &mut prepared {
+                    ctx.tagged_objects = tags.clone();
+                    ctx.effect_outcomes = effect_outcomes_by_player[*index].clone();
+                    ctx.tagged_players = tagged_players_by_player[*index].clone();
+                    ctx.with_temp_iterated_player(Some(players[*index]), |ctx| {
+                        in_optional_action(ctx, *optional, |ctx| {
+                            let scopes = program_path_scopes(path, &program_groups, *index);
+                            with_program_scope(ctx, &scopes, |ctx| proposal.prepare_original(game, ctx))
+                        })
+                    })?;
+                    if ctx.decision_maker.awaiting_choice() { return Ok(ActionRun::Complete(EffectOutcome::count(0))); }
+                }
+                ctx.tagged_objects = pre_unit_tagged_objects.clone();
                 // CR 101.4 / 603.2c / 603.10a: the players' prepared actions
                 // happen at the same time, as one event that looks back at
                 // the same trigger sources.
@@ -1378,10 +1664,14 @@ impl ForPlayersEffect {
                     match ctx.with_temp_iterated_player(Some(players[player_index]), |ctx| {
                         in_optional_action(ctx, optional, |ctx| {
                             let scopes = program_path_scopes(&path, &program_groups, player_index);
-                            with_program_scope(ctx, &scopes, |ctx| proposal.commit(game, ctx))
+                            with_program_scope(ctx, &scopes, |ctx| proposal.commit_original(game, ctx))
                         })
                     }) {
-                        Ok(outcome) => {
+                        Ok(committed) => {
+                            let completion = committed.completion.map(|completion| (
+                                completion, crate::effects::ExecutionContextCheckpoint::capture(ctx),
+                                optional, path.clone(),
+                            ));
                             effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
                             tagged_players_by_player[player_index] = ctx.tagged_players.clone();
                             capture_player_tagged_object_deltas(
@@ -1390,7 +1680,7 @@ impl ForPlayersEffect {
                                 &mut tagged_objects_by_player[player_index],
                                 &mut loop_local_tags,
                             );
-                            batch_outcomes.push((player_index, outcome));
+                            batch_outcomes.push((player_index, committed.outcome, completion));
                         }
                         Err(error) => {
                             *game = game_checkpoint;
@@ -1405,7 +1695,7 @@ impl ForPlayersEffect {
                             pinned_lookback,
                         );
                         ctx.tagged_objects = pre_unit_tagged_objects;
-                        return Ok(EffectOutcome::count(0));
+                        return Ok(ActionRun::Complete(EffectOutcome::count(0)));
                     }
                 }
                 game.close_simultaneous_action(opened_batch);
@@ -1413,7 +1703,55 @@ impl ForPlayersEffect {
                     game,
                     pinned_lookback,
                 );
+                // Even a choice-free return can report only queued ETB events
+                // and no completion program. Freeze the complete outer group.
+                game.freeze_completed_entry_events(batch_outcomes.iter_mut()
+                    .flat_map(|(_, outcome, _)| outcome.events.iter_mut()))?;
                 merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
+                // Freeze every receipt against the same completed original
+                // state before any replacement-added program can move a card.
+                for (_, _, completion) in &mut batch_outcomes {
+                    if let Some((completion, _, _, _)) = completion { completion.freeze(game)?; }
+                }
+                // Every original participant has committed. Match the whole
+                // original batch before the first appended program mutates
+                // event-time qualifications for another participant.
+                let contains_life_payment = batch_outcomes.iter().any(|(_, outcome, _)|
+                    outcome.events.iter().any(|event| event.downcast::<crate::events::LifePaidEvent>().is_some()));
+                if contains_life_payment {
+                    let events = batch_outcomes.iter().flat_map(|(_, outcome, _)| outcome.events.iter()).collect::<Vec<_>>();
+                    crate::events::damage::validate_damage_history_amounts(game, events.iter().copied())?;
+                    for event in events { game.stage_turn_history_event(event); }
+                    game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+                }
+                if contains_life_payment || batch_outcomes.iter().any(|(_, _, completion)| completion.is_some()) {
+                    crate::effects::runtime::capture_triggers_before_added_program(
+                        game, ctx, None,
+                        batch_outcomes.iter_mut().flat_map(|(_, outcome, _)| outcome.events.iter_mut()),
+                    )?;
+                }
+                let mut completed_outcomes = Vec::with_capacity(batch_outcomes.len());
+                for (player_index, mut outcome, completion) in batch_outcomes {
+                    if let Some((completion, captured, optional, path)) = completion {
+                        captured.restore(ctx);
+                        let baseline = ctx.tagged_objects.clone();
+                        outcome = ctx.with_temp_iterated_player(Some(players[player_index]), |ctx| {
+                            in_optional_action(ctx, optional, |ctx| {
+                                let scopes = program_path_scopes(&path, &program_groups, player_index);
+                                with_program_scope(ctx, &scopes, |ctx| completion.complete(game, ctx, outcome))
+                            })
+                        })?;
+                        // The outer ForPlayers checkpoint owns all original
+                        // mutations, notifications and completed additions.
+                        if ctx.decision_maker.awaiting_choice() { return Ok(ActionRun::Complete(EffectOutcome::count(0))); }
+                        effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
+                        tagged_players_by_player[player_index] = ctx.tagged_players.clone();
+                        capture_player_tagged_object_deltas(&baseline, &ctx.tagged_objects,
+                            &mut tagged_objects_by_player[player_index], &mut loop_local_tags);
+                        merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
+                    }
+                    completed_outcomes.push((player_index, outcome));
+                }
                 ctx.tagged_objects = accumulated_unit_tags;
                 // Keep each player's scalar result local ("that many"), while
                 // attaching the completed action's per-player counts for
@@ -1425,7 +1763,7 @@ impl ForPlayersEffect {
                     &players,
                     &mut effect_outcomes_by_player,
                 );
-                for (player_index, outcome) in batch_outcomes {
+                for (player_index, outcome) in completed_outcomes {
                     let path = &optional_program.paths[*unit.last().expect("action unit")];
                     retain_optional_outcome(
                         outcome,
@@ -1441,10 +1779,14 @@ impl ForPlayersEffect {
                     );
                 }
             }
-            ctx.tagged_players =
-                merge_tagged_players_by_player(&incoming_tagged_players, &tagged_players_by_player);
-        }
+        ctx.tagged_players = merge_tagged_players_by_player(&incoming_tagged_players, &tagged_players_by_player);
+        finish_players_outcome(&effect, players, outcomes, outcomes_by_player, actual_events).map(ActionRun::Complete)
+    }
+}
 
+fn finish_players_outcome(effect: &ForPlayersEffect, players: Vec<PlayerId>, outcomes: Vec<EffectOutcome>,
+    outcomes_by_player: Vec<Vec<EffectOutcome>>, actual_events: Vec<crate::events::RawEvent>) -> Result<EffectOutcome, ExecutionError>
+{
         let mut player_counts = Vec::new();
         let mut player_affected_memory = Vec::new();
         for (&player_id, player_outcomes) in players.iter().zip(&outcomes_by_player) {
@@ -1453,7 +1795,7 @@ impl ForPlayersEffect {
             }
             let iteration_outcome =
                 EffectOutcome::aggregate_summing_counts(player_outcomes.iter().cloned());
-            let count = if self.stop_after_first_happened {
+            let count = if effect.stop_after_first_happened {
                 i64::from(iteration_outcome.something_happened())
             } else {
                 iteration_outcome
@@ -1471,7 +1813,7 @@ impl ForPlayersEffect {
         // An offer's collective result is the accepted action, or a declined
         // result when nobody acts. Earlier declines must not negate a later
         // acceptance; all participants remain available through PlayerCounts.
-        let mut outcome = if self.stop_after_first_happened {
+        let mut outcome = if effect.stop_after_first_happened {
             outcomes_by_player
                 .iter()
                 .filter(|iteration| !iteration.is_empty())
@@ -1481,13 +1823,12 @@ impl ForPlayersEffect {
         } else {
             EffectOutcome::aggregate_summing_counts(outcomes)
         };
-        if !(self.sequential || self.starting_with_controller || self.stop_after_first_happened) {
+        if !(effect.sequential || effect.starting_with_controller || effect.stop_after_first_happened) {
             outcome.events = actual_events;
         }
         Ok(outcome
             .with_player_counts(player_counts)
             .with_player_affected_object_memory(player_affected_memory))
-    }
 }
 
 impl EffectExecutor for ForPlayersEffect {
@@ -1515,21 +1856,12 @@ impl EffectExecutor for ForPlayersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let result = crate::effects::tokens::execute_resource_transaction_atomically(
+            game, ctx, |game, ctx| self.execute_players(game, ctx),
+        );
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = self.execute_players(game, ctx);
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if pending {
-            return Ok(EffectOutcome::count(0));
-        }
-        result
+            result.map(|_| EffectOutcome::count(0))
+        } else { result }
     }
 }
 

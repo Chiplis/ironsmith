@@ -630,6 +630,7 @@ fn read_tapped_land_mana_replacement(
     input: &RemainingDocument<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(effect) = read_typed_mana_output_sentence(tokens)? { return Ok(Some(vec![effect])); }
     if let Some(effect) = parse_tapped_land_mana_replacement(tokens) {
         return Ok(Some(vec![effect]));
     }
@@ -733,6 +734,9 @@ fn read_can_block_additional_creature_this_turn(
     // ability, however, it is a temporary grant and must retain its explicit
     // turn duration instead of going through the generic granted-object
     // ability parser, which defaults to Forever.
+    if let Some(effect) = parse_blocking_capacity_this_turn_clause(tokens)? {
+        return Ok(Some(vec![effect]));
+    }
     if let Some(effect) = parse_can_block_additional_creature_this_turn_clause(tokens)? {
         return Ok(Some(vec![effect]));
     }

@@ -40,6 +40,7 @@
 //! // Generate continuous effects
 //! let effects = ability.generate_effects(source, controller);
 //! ```
+use crate::target::ObjectFilter;
 
 mod characteristics;
 mod combat;
@@ -68,11 +69,12 @@ pub use cost_modifiers::*;
 pub use ironsmith_core::ThisSpellCastTiming;
 pub use keywords::*;
 pub use misc::*;
+pub(crate) use misc::DamageAmountReplacementMatcher;
 pub use model_interpreter::{CompiledStaticAbility, StaticAbilityModelInterpreter};
 pub use protection::*;
 pub use restrictions::*;
 
-pub(crate) use continuous::resolve_anthem_count_expression;
+pub(crate) use continuous::{resolve_anthem_count_expression, resolve_anthem_count_expression_checked};
 use std::sync::Arc;
 
 use crate::continuous::ContinuousEffect;
@@ -404,6 +406,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     fn may_generate_continuous_effects(&self) -> bool {
         true
     }
+
+    /// Validate mana-derived signed values before infallible effect emission.
+    /// True requests a final checked P/T pass over the complete effect set.
+    fn validate_mana_scalar_ranges(&self, _game: &GameState, _source: ObjectId, _controller: PlayerId)
+        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> { Ok(false) }
 
     /// Generate continuous effects for this ability.
     ///
@@ -765,6 +772,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     /// Used for abilities like "This creature can block an additional creature each combat."
     fn additional_blockable_attackers(&self) -> Option<usize> {
         None
+    }
+
+    /// Capacity read for the actual blocking creature, including live counted
+    /// allowances such as Equipment attached to that creature.
+    fn additional_blockable_attackers_for_source(&self, _game: &GameState, _source: ObjectId) -> Option<usize> {
+        self.additional_blockable_attackers()
     }
 
     /// Returns the attacker subtype this creature can block as though it had reach.
@@ -1419,6 +1432,8 @@ pub struct EnterAsCopyAsEntersSpec {
     pub set_base_power_toughness: Option<(i32, i32)>,
     /// Add the extra abilities only when the chosen copy source matches this filter.
     pub additional_counters: Vec<(ironsmith_core::CounterType, u32)>,
+    pub additional_x_counters: Vec<ironsmith_core::CounterType>,
+    pub keep_other_source_abilities: bool,
     pub additional_counters_source_filter: Option<crate::target::ObjectFilter>,
     pub added_abilities_source_filter: Option<crate::target::ObjectFilter>,
     pub set_base_power_toughness_from_self: bool,
@@ -1772,6 +1787,11 @@ impl StaticAbility {
         self.0.may_generate_continuous_effects()
     }
 
+    pub(crate) fn validate_mana_scalar_ranges(&self, game: &GameState, source: ObjectId, controller: PlayerId)
+        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        self.0.validate_mana_scalar_ranges(game, source, controller)
+    }
+
     /// Generate continuous effects for this ability.
     pub fn generate_effects(
         &self,
@@ -2085,6 +2105,10 @@ impl StaticAbility {
 
     pub fn additional_blockable_attackers(&self) -> Option<usize> {
         self.0.additional_blockable_attackers()
+    }
+
+    pub fn additional_blockable_attackers_for_source(&self, game: &GameState, source: ObjectId) -> Option<usize> {
+        self.0.additional_blockable_attackers_for_source(game, source)
     }
 
     pub fn can_block_as_though_reach_subtype(&self) -> Option<crate::types::Subtype> {
@@ -2760,10 +2784,24 @@ impl StaticAbility {
         Self::new(CanBlockAsThoughNoShadow)
     }
 
+    pub fn blocking_as_though_no_landwalk(
+        spec: ironsmith_core::static_ability_model::BlockingAsThoughNoLandwalkSpec,
+    ) -> Self {
+        Self::new(BlockingAsThoughNoLandwalk { spec })
+    }
+
     pub fn targeting_as_though_no_ability(
         spec: ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec,
     ) -> Self {
         Self::new(TargetingAsThoughNoAbility { spec })
+    }
+
+    pub fn can_block_additional_for_each(additional: u32, filter: ObjectFilter) -> Self {
+        Self::new(CanBlockAdditionalForEach { additional, filter })
+    }
+
+    pub fn can_block_any_number() -> Self {
+        Self::new(CanBlockAnyNumber)
     }
 
     pub fn can_block_additional_creature_each_combat(additional: usize) -> Self {
@@ -3378,6 +3416,10 @@ impl StaticAbility {
         Self::new(CreaturesYouControlAssignCombatDamageUsingToughness)
     }
 
+    pub fn planeswalkers_you_control_dont_die_at_zero_loyalty() -> Self {
+        Self::new(PlaneswalkersYouControlDontDieAtZeroLoyalty)
+    }
+
     pub fn lethal_damage_to_creatures_you_control_uses_power() -> Self {
         Self::new(LethalDamageToCreaturesYouControlUsesPower)
     }
@@ -3658,6 +3700,12 @@ impl StaticAbility {
         Self::new(Improvise)
     }
 
+    pub fn no_maximum_hand_size_for(player: crate::target::PlayerFilter) -> Self {
+        Self::new(ScopedNoMaximumHandSize { player })
+    }
+    pub fn maximum_hand_size_from_source_counters(player: crate::target::PlayerFilter, counter_type: crate::object::CounterType) -> Self {
+        Self::new(MaximumHandSizeFromSourceCounters { player, counter_type })
+    }
     pub fn no_maximum_hand_size() -> Self {
         Self::new(NoMaximumHandSize)
     }
@@ -3966,6 +4014,10 @@ impl StaticAbility {
         Self::new(DoubleDamageFromSourcesYouControlOfChosenType::new(display))
     }
 
+    pub fn redirect_matching_damage(spec: ironsmith_core::StaticDamageRedirectionSpec) -> Self {
+        Self::new(RedirectMatchingDamage { spec, condition: None })
+    }
+
     pub fn redirect_damage_to_source_controller(
         source_filter: crate::target::ObjectFilter,
         target_player_filter: crate::target::PlayerFilter,
@@ -4081,6 +4133,16 @@ impl StaticAbility {
         ))
     }
 
+    pub fn prevent_matching_damage_with_follow_up(
+        spec: ironsmith_core::StaticDamagePreventionFollowUp<crate::effect::Effect>,
+    ) -> Self {
+        Self::new(PreventMatchingDamageWithFollowUp { spec })
+    }
+
+    pub fn prevent_matching_damage(spec: ironsmith_core::PreventMatchingDamageSpec) -> Self {
+        Self::new(PreventMatchingDamage { spec })
+    }
+
     pub fn prevent_half_damage_replacement(
         source_filter: crate::target::ObjectFilter,
         target_player_filter: Option<crate::target::PlayerFilter>,
@@ -4138,6 +4200,17 @@ impl StaticAbility {
         Self::new(DoubleCountersReplacement::new_for_actor(
             actor, halve, display,
         ))
+    }
+
+    pub fn actor_counters_addition_replacement(
+        filter: crate::target::ObjectFilter, player_filter: Option<crate::target::PlayerFilter>, actor: crate::target::PlayerFilter,
+        counter_type: Option<crate::object::CounterType>, additional: i64, display: String,
+    ) -> Self {
+        let mut ability = AddCountersPlacementReplacement::new(filter, counter_type, additional, display);
+        ability.player_filter = player_filter;
+        ability.actor = Some(actor);
+        ability.includes_permanents = true;
+        Self::new(ability)
     }
 
     pub fn add_counters_placement_replacement(
@@ -4677,7 +4750,21 @@ impl StaticAbility {
         ))
     }
 
-    /// "If you would gain life, you gain twice that much life instead."
+    /// Append or substitute complete token definitions during token creation.
+    pub fn token_creation_templates(
+        controller: crate::target::PlayerFilter, token_filter: crate::target::ObjectFilter,
+        templates: Vec<crate::effect::Effect>, mode: ironsmith_core::TokenCreationTemplateMode,
+        choose_one: bool, optional: bool, display: String,
+    ) -> Self {
+        Self::new(TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display, condition: None })
+    }
+
+    pub fn add_life_gain_replacement(
+        player: crate::target::PlayerFilter, additional: i32, display: impl Into<String>,
+    ) -> Self {
+        Self::new(AddLifeGainReplacement { player, additional, condition: None, display: display.into() })
+    }
+
     pub fn double_life_change_replacement(
         player: crate::target::PlayerFilter,
         loss: bool,
@@ -4688,6 +4775,10 @@ impl StaticAbility {
 
     /// "If a land is tapped for two or more mana, it produces {C} instead of
     /// any other type and amount." (Damping Sphere)
+    pub fn mana_production_rewrite(rule: ironsmith_core::ManaOutputRewrite, display: impl Into<String>) -> Self {
+        Self::new(ManaProductionRewrite { rule, display: display.into() })
+    }
+
     pub fn mana_production_replacement(
         source_filter: crate::target::ObjectFilter,
         minimum_amount: u32,
@@ -4828,6 +4919,8 @@ impl StaticAbility {
         Self::new(AllPlayersLookAtYourTopLibraryCard)
     }
 
+    pub fn controller_plays_with_hand_revealed() -> Self { Self::new(ControllerPlaysWithHandRevealed) }
+    pub fn players_play_with_hands_revealed() -> Self { Self::new(PlayersPlayWithHandsRevealed) }
     pub fn opponents_play_with_hands_revealed() -> Self {
         Self::new(OpponentsPlayWithHandsRevealed)
     }
@@ -4859,6 +4952,8 @@ impl StaticAbility {
     ) -> Self {
         Self::new(PregameAction::with_effects(kind, text, effects))
     }
+
+    pub fn cant_be_copied() -> Self { Self::new(CantBeCopied) }
 
     pub fn cant_be_countered_ability() -> Self {
         Self::new(CantBeCountered)

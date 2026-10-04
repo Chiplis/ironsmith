@@ -31,25 +31,31 @@ pub fn parse_deal_damage_equal_to_clause(
                 .and_then(|(value, used)| (used == shape.amount_tokens.len()).then_some(value))
                 .map(preserve_equal_to_surface)
         });
-    let amount = complete_value
-        .or(parse_add_mana_equal_amount_value(shape.amount_tokens))
-        .or(parse_devotion_value_from_add_clause(shape.amount_tokens)?)
-        .or(parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
-            shape.amount_tokens,
-        ))
-        .or(parse_equal_to_number_of_opponents_you_have_value(
-            shape.amount_tokens,
-        ))
-        .or(parse_equal_to_number_of_counters_on_reference_value(
-            shape.amount_tokens,
-        ))
-        .or(parse_dynamic_cost_modifier_value(shape.amount_tokens)?)
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing damage amount (clause: '{}')",
-                clause_words.join(" ")
+    // A complete typed amount owns this clause. Inapplicable cost/value
+    // probes can recover only an inner suffix and emit a lossy diagnostic,
+    // even when Option::or would subsequently discard their returned value.
+    let amount = if complete_value.is_some() {
+        complete_value
+    } else {
+        parse_add_mana_equal_amount_value(shape.amount_tokens)
+            .or(parse_devotion_value_from_add_clause(shape.amount_tokens)?)
+            .or(parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
+                shape.amount_tokens,
             ))
-        })?;
+            .or(parse_equal_to_number_of_opponents_you_have_value(
+                shape.amount_tokens,
+            ))
+            .or(parse_equal_to_number_of_counters_on_reference_value(
+                shape.amount_tokens,
+            ))
+            .or(parse_dynamic_cost_modifier_value(shape.amount_tokens)?)
+    }
+    .ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing damage amount (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
     let amount = preserve_equal_to_surface(amount);
     if let Some(effect) = damage_to_embedded_target_controller(amount.clone(), shape.target_tokens)
     {

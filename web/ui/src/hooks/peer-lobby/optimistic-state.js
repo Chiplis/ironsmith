@@ -4,7 +4,7 @@ import { wireStablePayload } from '../../lib/accepted-actions.js';
 import { isMatchDisputed } from './match-lifecycle.js';
 import {
   actionRefObjectId, canonicalMultiplayerPayload, cryptoRequirementsFromState,
-  isDecisionCommandCompatible, isForfeitCommand,
+  isDecisionCommandCompatible, isForfeitCommand, isNonDispatchSyncCommand,
   isTrustedMultiplayerSecurityMode, publicCheckpointHash, randomAuditHex,
   recordPeerSyncPerf, safeSend, selectObjectCandidateForId,
   selectObjectCandidateRevealPolicy, sessionSecurityMode, toErrorMessage,
@@ -209,6 +209,15 @@ export function useOptimisticPeerState(base, servicesRef) {
     }
     const state = await visibleGame().uiState();
     command = wireStablePayload(command);
+    const disclosure = isNonDispatchSyncCommand(command)
+      ? null : await visibleGame().getPaymentDisclosureForCommand(command);
+    if (disclosure?.required || disclosure?.active) {
+      // Provisional publicClaims are cancelable and precede the signed
+      // disclosure commitment. Keep these payments on the verified branch.
+      waitingForMaterialRef.current = true; setWaitingForMaterial(true);
+      try { return await runVerifiedTask(() => submitVerified(command, label)); }
+      finally { waitingForMaterialRef.current = false; setWaitingForMaterial(false); }
+    }
     const publicClaims = [];
     for (const objectId of commandClaimIds(command, state)) {
       const open = await visibleGame().hiddenCardOpenState(BigInt(objectId));
@@ -318,7 +327,8 @@ export function useOptimisticPeerState(base, servicesRef) {
   }
 
   async function stagePreparedLocalAction({ seq, actorIndex, command, label, publicCheckpointHash,
-    openings = [], rngReveals = [], shuffleProofs = [] }) {
+    openings = [], rngReveals = [], shuffleProofs = [], paymentDisclosure = false }) {
+    if (paymentDisclosure) return;
     if (!runtimeRef.current || controller.status().closed || isMatchDisputed(multiplayerRef.current) || isForfeitCommand(command)) return;
     if (controller.entries().some(entry => entry.seq === Number(seq))) return;
     // A previously blocked action now has its actual random result and private

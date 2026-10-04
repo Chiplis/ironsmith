@@ -1916,6 +1916,8 @@ pub struct ActivatedAbilityCostIncrease {
     pub activator: Option<PlayerFilter>,
     pub non_mana_only: bool,
     pub condition: Option<crate::ConditionExpr>,
+    pub ability_condition: Option<ActivatedAbilityCostCondition>,
+    pub display: Option<String>,
 }
 
 impl ActivatedAbilityCostIncrease {
@@ -1926,6 +1928,8 @@ impl ActivatedAbilityCostIncrease {
             activator: None,
             non_mana_only: false,
             condition: None,
+            ability_condition: None,
+            display: None,
         }
     }
 
@@ -1940,11 +1944,16 @@ impl ActivatedAbilityCostIncrease {
             activator: Some(activator),
             non_mana_only,
             condition: None,
+            ability_condition: None,
+            display: None,
         }
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
         self
     }
 }
@@ -1959,6 +1968,7 @@ pub enum ActivatedAbilityCostCondition {
     /// "This ability costs ... less": only the activated ability at
     /// `ability_index` of the source (CR 602.2b); unbound applies to all.
     ThisAbility { ability_index: Option<usize> },
+    All(Vec<ActivatedAbilityCostCondition>),
 }
 
 fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCondition) -> String {
@@ -2009,6 +2019,9 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
             targeting: Some(filter),
         } => format!("if it's an equip ability that targets {}", filter.description()),
         ActivatedAbilityCostCondition::ThisAbility { .. } => String::new(),
+        ActivatedAbilityCostCondition::All(conditions) => conditions.iter()
+            .map(describe_activated_ability_cost_condition).filter(|text| !text.is_empty())
+            .collect::<Vec<_>>().join(" and "),
     }
 }
 
@@ -2029,6 +2042,11 @@ pub fn activated_ability_cost_condition_is_active_for_activation(
     };
     let controller = game.controller_of(source_obj);
     match condition {
+        ActivatedAbilityCostCondition::All(conditions) => conditions.iter().all(|condition| {
+            activated_ability_cost_condition_is_active_for_activation(
+                game, source, modifier_source, condition, chosen_targets, ability,
+            )
+        }),
         ActivatedAbilityCostCondition::ThisAbility { ability_index } => {
             // Without the priced ability's identity the reduction is assumed
             // to apply, as with the ability-kind conditions.
@@ -2132,8 +2150,7 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
         // An authored display already states the equip-ability scope
         // ("Equip abilities you activate that target ...").
         if let Some(condition) = &self.condition
-            && !(self.display.is_some()
-                && matches!(condition, ActivatedAbilityCostCondition::EquipAbility { .. }))
+            && self.display.is_none()
             && !matches!(condition, ActivatedAbilityCostCondition::ThisAbility { .. })
         {
             line.push(' ');
@@ -2175,6 +2192,10 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
     }
 
     fn display(&self) -> String {
+        if let Some(display) = &self.display {
+            return describe_cost_modifier_with_condition(display.clone(), &self.condition);
+        }
+
         let increase = self.increase.display();
         let increase = if self.increase.has_non_mana_costs() {
             format!("\"{increase}\"")
@@ -2527,13 +2548,40 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
     chosen_targets: &[crate::game_state::Target],
     optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
 ) -> bool {
+    let Some(object) = game.object(source) else { return false; };
+    this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
+        game, source, game.controller_of(object), condition, chosen_targets, optional_costs_paid,
+    )
+}
+
+/// Announcement-time conditions use the prospective caster, who need not own
+/// or currently control the card in the permitted source zone.
+pub fn this_spell_cost_condition_is_active_for_player(
+    game: &crate::game_state::GameState,
+    source: crate::ids::ObjectId,
+    caster: crate::ids::PlayerId,
+    condition: &ThisSpellCostCondition,
+    chosen_targets: &[crate::game_state::Target],
+) -> bool {
+    this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
+        game, source, caster, condition, chosen_targets, None,
+    )
+}
+
+pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
+    game: &crate::game_state::GameState,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+    condition: &ThisSpellCostCondition,
+    chosen_targets: &[crate::game_state::Target],
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+) -> bool {
     if matches!(condition, ThisSpellCostCondition::Always) {
         return true;
     }
     let Some(source_obj) = game.object(source) else {
         return false;
     };
-    let controller = game.controller_of(source_obj);
 
     match condition {
         ThisSpellCostCondition::Always => true,

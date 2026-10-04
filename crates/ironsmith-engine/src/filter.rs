@@ -234,7 +234,8 @@ fn stack_spell_cast_origin_zone(
     if entry.is_ability || object.kind == ObjectKind::SpellCopy {
         return None;
     }
-    Some(match &entry.casting_method {
+    Some(match entry.casting_method.origin_method() {
+        crate::alternative_cast::CastingMethod::AlternativePrice { .. } => return None,
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf
@@ -247,7 +248,8 @@ fn stack_spell_cast_origin_zone(
         crate::alternative_cast::CastingMethod::GrantedEscape { .. }
         | crate::alternative_cast::CastingMethod::GrantedFlashback => Zone::Graveyard,
         crate::alternative_cast::CastingMethod::PlayFrom { zone, .. }
-        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => *zone,
+        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. }
+        | crate::alternative_cast::CastingMethod::FaceDownPlayFrom { zone, .. } => *zone,
     })
 }
 
@@ -401,6 +403,7 @@ pub(crate) trait TaggedConstraintSubject {
         None
     }
     fn subject_controller(&self) -> PlayerId;
+    fn subject_owner(&self) -> PlayerId;
     fn subject_card_types(&self) -> &[CardType];
     fn subject_subtypes(&self) -> &[Subtype];
     fn subject_colors(&self) -> ColorSet;
@@ -422,6 +425,8 @@ pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_first_printed_set_name(&self) -> Option<&str>;
     fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32>;
     fn tail_abilities(&self) -> &[crate::ability::Ability];
+    /// Frozen attached objects for a historical subject, including an empty set.
+    fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> { None }
     fn tail_has_alternative_cast_kind(
         &self,
         kind: AlternativeCastKind,
@@ -451,6 +456,8 @@ impl TaggedConstraintSubject for Object {
     fn subject_alternate_name(&self) -> Option<&str> {
         self.split_other_half_name()
     }
+
+    fn subject_owner(&self) -> PlayerId { self.owner }
 
     fn subject_controller(&self) -> PlayerId {
         self.owner
@@ -561,6 +568,8 @@ impl TaggedConstraintSubject for LayeredSubject<'_> {
     fn subject_alternate_name(&self) -> Option<&str> {
         self.object.split_other_half_name()
     }
+
+    fn subject_owner(&self) -> PlayerId { self.object.owner }
 
     fn subject_controller(&self) -> PlayerId {
         self.chars.controller
@@ -678,6 +687,8 @@ impl TaggedConstraintSubject for ObjectSnapshot {
         self.split_other_half_name()
     }
 
+    fn subject_owner(&self) -> PlayerId { self.owner }
+
     fn subject_controller(&self) -> PlayerId {
         self.controller
     }
@@ -716,6 +727,7 @@ impl TaggedConstraintSubject for ObjectSnapshot {
 }
 
 impl TailMatchSubject for ObjectSnapshot {
+    fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> { Some(&self.attachment_snapshots) }
     fn tail_object_id(&self) -> ObjectId {
         self.object_id
     }
@@ -1069,6 +1081,11 @@ fn subject_shares_characteristic_with_object(
         ObjectCharacteristic::ManaValue => {
             subject.subject_mana_value() == object_current_mana_value_for_relation(object, game)
         }
+        ObjectCharacteristic::Name => names_share(
+            subject.subject_name(), subject.subject_alternate_name(),
+            &game.current_name(object.id).unwrap_or_else(|| object.name.to_string()),
+            object.split_other_half_name(),
+        ),
     }
 }
 
@@ -1078,11 +1095,16 @@ fn characteristic_relation_matches_subject(
     ctx: &FilterContext,
     game: &GameState,
 ) -> bool {
+    let mut comparison_context = ctx.clone();
+    if relation.characteristics.contains(&ObjectCharacteristic::Name) {
+        comparison_context.filter_candidate_players = Some((subject.subject_controller(), subject.subject_owner()));
+    }
     let shares = game
         .objects_in_deterministic_order()
         .into_iter()
         .any(|object| {
-            relation.comparison.matches(object, ctx, game)
+            (!relation.exclude_candidate || object.id != subject.subject_object_id())
+                && relation.comparison.matches(object, &comparison_context, game)
                 && relation.characteristics.iter().any(|characteristic| {
                     subject_shares_characteristic_with_object(
                         subject,
@@ -1751,6 +1773,31 @@ fn resolve_filter_comparison_rhs_value(
         }
     }
 
+    fn referenced_snapshot_pt(
+        game: &crate::game_state::GameState,
+        snapshot: &ObjectSnapshot,
+        power: bool,
+    ) -> Option<i64> {
+        // A captured identity is a reference, not a frozen characteristic.
+        // Read the same live incarnation through the layer system; use its
+        // recorded LKI only after that incarnation leaves its expected zone.
+        if game
+            .object(snapshot.object_id)
+            .is_some_and(|object| object.zone == snapshot.zone && !game.is_phased_out(object.id))
+        {
+            current_object_pt(game, snapshot.object_id, power)
+        } else {
+            // A tag may have been captured before the move while another
+            // effect was still resolving, so it need not have passed through
+            // the pending-stack departure refresh. Prefer the exact departure
+            // receipt (including a currently staged simultaneous move).
+            let departure = crate::effects::helpers::latest_zone_change_snapshot_for_object(
+                game, snapshot.object_id,
+            ).filter(|departure| departure.zone == snapshot.zone);
+            snapshot_pt(departure.as_ref().unwrap_or(snapshot), power)
+        }
+    }
+
     fn resolve_pt_choose_spec(
         spec: &ChooseSpec,
         game: &crate::game_state::GameState,
@@ -1768,13 +1815,13 @@ fn resolve_filter_comparison_rhs_value(
                 .tagged_objects
                 .get(tag)
                 .and_then(|snapshots| snapshots.first())
-                .and_then(|snapshot| snapshot_pt(snapshot, power)),
+                .and_then(|snapshot| referenced_snapshot_pt(game, snapshot, power)),
             ChooseSpec::Object(_) | ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget
                 if spec.is_target() =>
             {
                 ctx.target_objects
                     .first()
-                    .and_then(|snapshot| snapshot_pt(snapshot, power))
+                    .and_then(|snapshot| referenced_snapshot_pt(game, snapshot, power))
             }
             _ => None,
         }
@@ -2149,6 +2196,44 @@ fn resolve_filter_comparison_rhs_value(
                 .as_ref()
                 .and_then(|snapshot| snapshot_pt(snapshot, false))
         }),
+        Value::BasePowerOf(spec) => {
+            let live = |id| {
+                game.calculated_characteristics(id)
+                    .and_then(|chars| chars.base_power)
+            };
+            let recorded = |snapshot: &ObjectSnapshot| {
+                if game.object(snapshot.object_id).is_some_and(|object| {
+                    object.zone == snapshot.zone && !game.is_phased_out(object.id)
+                }) {
+                    live(snapshot.object_id)
+                } else {
+                    crate::effects::helpers::latest_zone_change_snapshot_for_object(
+                        game,
+                        snapshot.object_id,
+                    )
+                    .filter(|departure| departure.zone == snapshot.zone)
+                    .as_ref()
+                    .unwrap_or(snapshot)
+                    .base_power
+                }
+            };
+            match spec.base() {
+                ChooseSpec::Source => ctx
+                    .source
+                    .and_then(live)
+                    .or_else(|| ctx.source_snapshot.as_ref().and_then(recorded)).map(i64::from),
+                ChooseSpec::SpecificObject(id) => live(*id).map(i64::from),
+                ChooseSpec::Tagged(tag) => ctx
+                    .tagged_objects
+                    .get(tag)
+                    .and_then(|objects| objects.first())
+                    .and_then(recorded).map(i64::from),
+                ChooseSpec::Object(_) if spec.is_target() => {
+                    ctx.target_objects.first().and_then(recorded).map(i64::from)
+                }
+                _ => None,
+            }
+        }
         Value::PowerOf(spec) => resolve_pt_choose_spec(spec, game, ctx, true),
         Value::ToughnessOf(spec) => resolve_pt_choose_spec(spec, game, ctx, false),
         Value::CountersOn(spec, counter_type) => match spec.base() {
@@ -2234,7 +2319,7 @@ fn resolve_filter_comparison_rhs_value(
                 .filter(|player| {
                     player.is_in_game() && player_filter.matches_player(player.id, ctx)
                 })
-                .map(|player| player.mana_pool.total() as i64)
+                .map(|player| player.mana_pool.total_wide() as i64)
                 .sum(),
         ),
         Value::Devotion { player, color } => Some(
@@ -2411,16 +2496,18 @@ fn object_is_in_combat_with_source_lki(
     );
     source_ids.into_iter().any(|source_id| {
         crate::combat_state::get_blockers(combat, source_id).contains(&object_id)
-            || crate::combat_state::get_blocked_attacker(combat, source_id)
-                .is_some_and(|attacker| attacker == object_id)
+            || combat.blockers.get(&object_id).is_some_and(|blockers| blockers.contains(&source_id))
             // A source that left the battlefield was removed from combat
             // (CR 506.4), but its ability still refers to the creatures it
             // was in combat with through last known information (CR 608.2h).
             || (game
                 .object(source_id)
                 .is_none_or(|source| source.zone != crate::zone::Zone::Battlefield)
-                && (game.creature_was_blocked_by_this_turn(source_id, object_id)
-                    || game.creature_was_blocked_by_this_turn(object_id, source_id)))
+                && (game.turn_store.turn_history.creature_was_blocked_by_in_combat(
+                    source_id, object_id, game.turn_store.combat_phases_started_this_turn,
+                ) || game.turn_store.turn_history.creature_was_blocked_by_in_combat(
+                    object_id, source_id, game.turn_store.combat_phases_started_this_turn,
+                )))
     })
 }
 
@@ -2618,7 +2705,7 @@ impl PlayerFilterExt for PlayerFilter {
             }
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
-            PlayerFilter::ControlsMost { .. } => false,
+            PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => false,
             PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
@@ -2842,6 +2929,39 @@ pub(crate) fn player_filter_matches_game(
                         candidate_count > reference_count
                     }
                 })
+        }
+        PlayerFilter::ControlsFewestTied {
+            filter: object_filter,
+        } => {
+            if ctx
+                .players_in_range
+                .as_ref()
+                .is_some_and(|players| !players.contains(&player))
+            {
+                return false;
+            }
+            let counts = game
+                .players
+                .iter()
+                .filter(|candidate| candidate.is_in_game())
+                .filter(|candidate| {
+                    ctx.players_in_range
+                        .as_ref()
+                        .is_none_or(|players| players.contains(&candidate.id))
+                })
+                .map(|candidate| {
+                    (
+                        candidate.id,
+                        controlled_matching_object_count(game, candidate.id, object_filter, ctx),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let Some(minimum) = counts.iter().map(|(_, count)| *count).min() else {
+                return false;
+            };
+            counts
+                .iter()
+                .any(|(candidate, count)| *candidate == player && *count == minimum)
         }
         PlayerFilter::ControlsMost {
             filter: object_filter,
@@ -3448,10 +3568,13 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if let Some(with_attached_filter) = &self.with_attached_object {
-            let has_matching_attachment = subject.subject_attachments().iter().any(|&id| {
-                game.object(id)
-                    .is_some_and(|attachment| with_attached_filter.matches(attachment, ctx, game))
-            });
+            let has_matching_attachment = if let Some(snapshots) = subject.tail_attachment_snapshots() {
+                snapshots.iter().any(|attachment| with_attached_filter.matches_snapshot(attachment, ctx, game))
+            } else {
+                subject.subject_attachments().iter().any(|&id| {
+                    game.object(id).is_some_and(|attachment| with_attached_filter.matches(attachment, ctx, game))
+                })
+            };
             if !has_matching_attachment {
                 return false;
             }
@@ -3465,11 +3588,18 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if let Some(without_attached_filter) = &self.without_attached_object {
-            let has_forbidden_attachment = subject.subject_attachments().iter().any(|&id| {
-                game.object(id).is_some_and(|attachment| {
-                    without_attached_filter.matches(attachment, ctx, game)
+            let has_forbidden_attachment = if let Some(snapshots) = subject.tail_attachment_snapshots() {
+                if subject.subject_attachments().iter().any(|id| !snapshots.iter().any(|snapshot| snapshot.object_id == *id)) {
+                    // A raw/legacy snapshot names an attachment but has no
+                    // historical characteristics for it. Unknown does not prove absence.
+                    return false;
+                }
+                snapshots.iter().any(|attachment| without_attached_filter.matches_snapshot(attachment, ctx, game))
+            } else {
+                subject.subject_attachments().iter().any(|&id| {
+                    game.object(id).is_some_and(|attachment| without_attached_filter.matches(attachment, ctx, game))
                 })
-            });
+            };
             if has_forbidden_attachment {
                 return false;
             }
@@ -3770,6 +3900,10 @@ impl ObjectFilterExt for ObjectFilter {
             };
         }
 
+        if self == &ObjectFilter::your_ring_bearer() {
+            return "your Ring-bearer".to_string();
+        }
+
         let mut parts = Vec::new();
         let mut post_noun_qualifiers: Vec<String> = Vec::new();
         let append_token_after_type = self.token;
@@ -3818,6 +3952,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.goaded {
             parts.push("goaded".to_string());
+        }
+        if self.ring_bearer && (!self.card_types.is_empty() || !self.all_card_types.is_empty() || !self.subtypes.is_empty() || !self.all_subtypes.is_empty() || self.token) {
+            post_noun_qualifiers.push("that is a Ring-bearer".to_string());
         }
 
         let has_leading_determiner =
@@ -3868,7 +4005,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::ControlsMost { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 // "target creature one of their opponents controls": the
@@ -4032,7 +4169,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::ControlsMost { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
@@ -4239,6 +4376,14 @@ impl ObjectFilterExt for ObjectFilter {
             ));
         }
         for relation in &self.characteristic_relations {
+            if relation.characteristics == [ObjectCharacteristic::Name] {
+                let phrase = match relation.kind {
+                    ObjectCharacteristicRelationKind::SharesAny => "with the same name as",
+                    ObjectCharacteristicRelationKind::SharesNone => "that doesn't have the same name as",
+                };
+                post_noun_qualifiers.push(format!("{phrase} {}", relation.comparison_description()));
+                continue;
+            }
             let characteristics = relation
                 .characteristics
                 .iter()
@@ -4523,7 +4668,10 @@ impl ObjectFilterExt for ObjectFilter {
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
         }
         if self.blocked_by_source {
-            post_noun_qualifiers.push("blocked by this creature this turn".to_string());
+            post_noun_qualifiers.push("blocked by this creature".to_string());
+        }
+        if self.blocked_source_this_turn {
+            post_noun_qualifiers.push("that blocked this creature this turn".to_string());
         }
         if self.crewed_by_source_this_turn {
             post_noun_qualifiers.push("crewed by this creature this turn".to_string());
@@ -4580,6 +4728,7 @@ impl ObjectFilterExt for ObjectFilter {
         if self.blocked_this_turn {
             post_noun_qualifiers.push("that blocked this turn".to_string());
         }
+        if self.was_blocked_this_turn { post_noun_qualifiers.push("that was blocked this turn".to_string()); }
         if self.didnt_attack_this_turn {
             let clause = if self.could_have_attacked_this_turn {
                 "that didn't attack this turn, except for creatures that couldn't attack"
@@ -4826,6 +4975,7 @@ impl ObjectFilterExt for ObjectFilter {
                 }
             } else {
                 match self.zone {
+                    Some(Zone::Battlefield) | None if self.ring_bearer => "Ring-bearer",
                     Some(Zone::Battlefield) | None if self.is_commander => "commander",
                     Some(Zone::Battlefield) | None => "permanent",
                     Some(Zone::Stack) => {
@@ -5055,6 +5205,12 @@ impl ObjectFilterExt for ObjectFilter {
         if self.shares_land_type {
             parts.push("that share a land type".to_string());
         }
+        if self.shares_name {
+            parts.push("with the same name".to_string());
+        }
+        if self.shares_color {
+            parts.push("that share a color".to_string());
+        }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());
         }
@@ -5137,6 +5293,17 @@ impl ObjectFilterExt for ObjectFilter {
             }
             if self.power_greater_than_base_power {
                 parts.push("with power greater than its base power".to_string());
+            }
+            if let Some(operator) = self.power_comparison_to_base {
+                let relation = match operator {
+                    crate::effect::ValueComparisonOperator::GreaterThan => "greater than",
+                    crate::effect::ValueComparisonOperator::GreaterThanOrEqual => "greater than or equal to",
+                    crate::effect::ValueComparisonOperator::Equal => "equal to",
+                    crate::effect::ValueComparisonOperator::LessThan => "less than",
+                    crate::effect::ValueComparisonOperator::LessThanOrEqual => "less than or equal to",
+                    crate::effect::ValueComparisonOperator::NotEqual => "different from",
+                };
+                parts.push(format!("with power {relation} its base power"));
             }
             if let Some(relation) = self.power_toughness_relation {
                 match relation {
@@ -5400,6 +5567,10 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push(format!("created with {source}"));
         }
 
+        if self.milled_into_graveyard_this_turn {
+            parts.push("that was milled this turn".to_string());
+        }
+
         if self.entered_graveyard_from_library_this_turn && self.zone == Some(Zone::Graveyard) {
             parts.push("that was put there from their library this turn".to_string());
         } else if self.entered_graveyard_from_battlefield_this_turn
@@ -5444,6 +5615,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.drawn_this_turn {
             parts.push("drawn this turn".to_string());
+        }
+        if let Some(player) = &self.last_drawn_this_turn {
+            parts.push(format!("drawn last this turn by {}", describe_player_filter(player)));
         }
 
         parts.extend(chosen_trailing_qualifiers);
@@ -5636,5 +5810,72 @@ mod permanent_spell_description_tests {
         };
 
         assert_eq!(filter.description(), "permanent spell");
+    }
+}
+
+#[cfg(test)]
+mod fewest_controller_set_tests {
+    use super::*;
+    #[test]
+    fn fewest_set_includes_zero_and_all_ties_and_tracks_effective_control_and_departed_players() {
+        let mut game =
+            crate::GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let [a, b, c] = [
+            crate::PlayerId::from_index(0),
+            crate::PlayerId::from_index(1),
+            crate::PlayerId::from_index(2),
+        ];
+        let card =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Counted creature")
+                .card_types(vec![crate::types::CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(1, 4))
+                .build();
+        let source = game.create_object_from_definition(&card, a, crate::Zone::Battlefield);
+        let bob = game.create_object_from_definition(&card, b, crate::Zone::Battlefield);
+        for _ in 0..2 {
+            game.create_object_from_definition(&card, c, crate::Zone::Battlefield);
+        }
+        let filter = PlayerFilter::ControlsFewestTied {
+            filter: Box::new(ObjectFilter::creature()),
+        };
+        let selected = |game: &crate::GameState| {
+            let ctx = game.filter_context_for(a, Some(source));
+            game.players
+                .iter()
+                .filter(|player| player_filter_matches_game(&filter, player.id, game, &ctx))
+                .map(|player| player.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(selected(&game), vec![a, b]);
+        let mut ctx = crate::effects::ExecutionContext::new_default(source, a);
+        let effect = crate::effect::Effect::new(crate::effects::GainControlEffect::new(
+            crate::target::ChooseSpec::SpecificObject(bob),
+            crate::effect::Until::EndOfTurn,
+        ));
+        crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(selected(&game), vec![b]);
+        let mut restricted = game.filter_context_for(a, Some(source));
+        restricted.players_in_range = Some(vec![a, c]);
+        // The out-of-range zero must not suppress both in-range tied players.
+        assert!(player_filter_matches_game(&filter, a, &game, &restricted));
+        assert!(player_filter_matches_game(&filter, c, &game, &restricted));
+        assert!(!player_filter_matches_game(&filter, b, &game, &restricted));
+        let filter_ctx = ctx.filter_context(&game);
+        assert_eq!(
+            crate::effects::helpers::resolve_player_filter_to_list(
+                &game,
+                &filter,
+                &filter_ctx,
+                &ctx
+            )
+            .unwrap(),
+            vec![b]
+        );
+        assert!(game.leave_game(b).expect("checked designation/departure fixture"));
+        assert_eq!(selected(&game), vec![a]);
+        assert!(game.leave_game(c).expect("checked designation/departure fixture"));
+        assert_eq!(selected(&game), vec![a]);
+        assert!(game.leave_game(a).expect("checked designation/departure fixture"));
+        assert!(selected(&game).is_empty());
     }
 }

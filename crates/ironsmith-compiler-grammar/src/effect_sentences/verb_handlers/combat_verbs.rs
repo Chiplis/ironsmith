@@ -796,6 +796,13 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
             .amount_is_event_result
             .then_some(Value::EventValue(EventValueSpec::Amount)),
     );
+    let complete_maximum = crate::word_primitives::parse_sequence_suffix(
+        &crate::lexer::token_word_refs(amount_tokens),
+        &["whichever", "is", "greater"],
+    )
+    .then(|| parse_add_mana_equal_amount_value(amount_tokens))
+    .flatten();
+    add_candidate("damage-amount-complete-maximum", complete_maximum.clone());
     let fixed_plus_history = parse_fixed_plus_turn_history_value(amount_tokens);
     // The plain `equal to the number of <filter>` shape and the summed
     // `equal to <n> plus <history>` shape each own their complete amount
@@ -803,7 +810,7 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
     // same words (a bare history count, a re-derived filter count bound to
     // a nearby reference) and therefore covers only what those shapes
     // cannot prove.
-    if fixed_plus_history.is_none() && object_count.is_none() {
+    if fixed_plus_history.is_none() && object_count.is_none() && complete_maximum.is_none() {
         add_candidate(
             "damage-amount-dynamic-cost-modifier",
             parse_dynamic_cost_modifier_value(amount_tokens)?,

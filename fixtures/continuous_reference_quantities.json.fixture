@@ -1,0 +1,31 @@
+[
+  {
+    "name": "Hedron Matrix",
+    "mana_cost": "{4}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Equipped creature gets +X/+X, where X is its mana value.\nEquip {4}",
+    "canonical_name": "Hedron Matrix"
+  },
+  {
+    "name": "Hancock, Ghoulish Mayor",
+    "mana_cost": "{2}{B}",
+    "type_line": "Legendary Creature — Zombie Mutant Advisor",
+    "power": "2",
+    "toughness": "1",
+    "oracle_text": "Each other creature you control that's a Zombie or Mutant gets +X/+X, where X is the number of counters on Hancock.\nUndying (When this creature dies, if it had no +1/+1 counters on it, return it to the battlefield under its owner's control with a +1/+1 counter on it.)",
+    "canonical_name": "Hancock, Ghoulish Mayor"
+  },
+  {
+    "name": "Glamdring, Foe-hammer",
+    "mana_cost": "{2}",
+    "type_line": "Legendary Artifact — Equipment",
+    "oracle_text": "Instant and sorcery spells you cast cost {X} less to cast, where X is equipped creature's power.\nEquip {2}",
+    "canonical_name": "Glamdring, Foe-hammer // Gleam of Death",
+    "other_face": {
+      "name": "Gleam of Death",
+      "mana_cost": "{3}{U}",
+      "type_line": "Sorcery — Adventure",
+      "oracle_text": "Mill six cards, then put all instant and sorcery cards from among them into your hand. (Then exile this card. You may cast the artifact later from exile.)"
+    }
+  }
+]

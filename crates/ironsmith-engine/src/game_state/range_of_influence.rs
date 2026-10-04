@@ -454,7 +454,7 @@ impl GameState {
     pub fn draw_game_for_players(
         &mut self,
         players: impl IntoIterator<Item = PlayerId>,
-    ) -> Vec<PlayerId> {
+    ) -> Result<Vec<PlayerId>,crate::effects::ExecutionError> {
         let requested = players.into_iter().collect::<Vec<_>>();
         let mut players = requested.clone();
         for player in requested {
@@ -471,15 +471,13 @@ impl GameState {
                     .is_some_and(|player| player.is_in_game())
             })
             .collect::<Vec<_>>();
-        for player in &drawn {
-            self.leave_game(*player);
-        }
-        drawn
+        self.leave_game_group(&drawn)?;
+        Ok(drawn)
     }
 
     /// CR 801.15 limits a spell-or-ability draw to its controller and all
     /// players in that controller's frozen range snapshot.
-    pub fn draw_game_for_controller_and_range(&mut self, controller: PlayerId) -> Vec<PlayerId> {
+    pub fn draw_game_for_controller_and_range(&mut self, controller: PlayerId) -> Result<Vec<PlayerId>,crate::effects::ExecutionError> {
         let players = self.players_within_range(controller);
         self.draw_game_for_players(players)
     }

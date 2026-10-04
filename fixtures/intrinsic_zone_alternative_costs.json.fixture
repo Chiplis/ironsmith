@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Raffine's Guidance",
+    "oracle_id": "ad3bf726-e0c2-4038-a66e-9a9dff439563",
+    "text": "Mana cost: {W}\nType: Enchantment \u2014 Aura\nEnchant creature\nEnchanted creature gets +1/+1.\nYou may cast this card from your graveyard by paying {2}{W} rather than paying its mana cost.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Scourge of Nel Toth",
+    "oracle_id": "32972d7a-c7c6-437c-8e7c-6c7d56b130e4",
+    "text": "Mana cost: {5}{B}{B}\nType: Creature \u2014 Zombie Dragon\nPower/Toughness: 6/6\nFlying\nYou may cast this creature from your graveyard by paying {B}{B} and sacrificing two creatures rather than paying its mana cost.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Squee, Dubious Monarch",
+    "oracle_id": "124a5dd7-c4f8-479c-9eb0-669aca01d045",
+    "text": "Mana cost: {2}{R}\nType: Legendary Creature \u2014 Goblin Noble\nPower/Toughness: 2/2\nHaste\nWhenever Squee attacks, create a 1/1 red Goblin creature token that's tapped and attacking.\nYou may cast this card from your graveyard by paying {3}{R} and exiling four other cards from your graveyard rather than paying its mana cost.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Glimpse the Cosmos",
+    "oracle_id": "27065d34-b22a-47af-aea2-980f47bafcea",
+    "text": "Mana cost: {1}{U}\nType: Sorcery\nLook at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order.\nAs long as you control a Giant, you may cast this card from your graveyard by paying {U} rather than paying its mana cost. If you cast this card this way and it would be put into your graveyard, exile it instead.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Worldheart Phoenix",
+    "oracle_id": "67c50af9-bb8e-40b6-8b25-c209784b6865",
+    "text": "Mana cost: {3}{R}\nType: Creature \u2014 Phoenix\nPower/Toughness: 2/2\nFlying\nYou may cast this card from your graveyard by paying {W}{U}{B}{R}{G} rather than paying its mana cost. If you do, it enters with two +1/+1 counters on it.",
+    "proposed_coverage": "source_complete_unvalidated"
+  }
+]

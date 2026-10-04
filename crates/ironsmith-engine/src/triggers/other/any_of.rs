@@ -66,6 +66,15 @@ impl TriggerMatcher for AnyOfTrigger {
             .any(|branch| branch.matches(event, ctx))
     }
 
+    fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        crate::triggers::matcher_trait::alternative_grouping_key(self.branches.iter(), event)
+    }
+
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        self.branches.iter().filter(|branch| branch.matches(event, ctx))
+            .find_map(|branch| branch.event_value_amount(event, ctx))
+    }
+
     fn subscribed_kinds(&self) -> Option<Vec<crate::events::EventKind>> {
         let mut kinds = Vec::new();
         for branch in &self.branches {

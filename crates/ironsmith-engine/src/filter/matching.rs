@@ -149,22 +149,37 @@ pub(super) fn matches_subject(
             || !game
                 .turn_store
                 .turn_history
-                .object_was_put_into_graveyard_from_battlefield_this_turn(subject.stable_id()))
+                .graveyard_incarnation_entered_this_turn(
+                    subject.object_id(),
+                    Some(Zone::Battlefield),
+                ))
     {
         return false;
     }
 
-    if filter.entered_graveyard_from_library_this_turn
+    if filter.milled_into_graveyard_this_turn
         && (subject.zone() != Zone::Graveyard
-            || !game
-                .turn_store
-                .turn_history
-                .object_was_put_into_graveyard_from_zone_this_turn(
-                    subject.stable_id(),
-                    Zone::Library,
-                ))
+            || !game.turn_store.turn_history.graveyard_incarnation_was_milled_this_turn(subject.object_id()))
     {
         return false;
+    }
+
+    if filter.entered_graveyard_from_library_this_turn {
+        let history = &game.turn_store.turn_history;
+        let entered = if subject.is_live() {
+            history.graveyard_incarnation_entered_this_turn(
+                subject.object_id(),
+                Some(Zone::Library),
+            )
+        } else {
+            history.object_was_put_into_graveyard_from_zone_this_turn(
+                subject.stable_id(),
+                Zone::Library,
+            )
+        };
+        if subject.zone() != Zone::Graveyard || !entered {
+            return false;
+        }
     }
 
     if subject.is_live()
@@ -173,7 +188,7 @@ pub(super) fn matches_subject(
             || !game
                 .turn_store
                 .turn_history
-                .object_was_put_into_graveyard_this_turn(subject.stable_id()))
+                .graveyard_incarnation_entered_this_turn(subject.object_id(), None))
     {
         return false;
     }
@@ -313,6 +328,15 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    if let Some(player_filter) = &filter.last_drawn_this_turn {
+        if !subject.is_live() || !game.players.iter().any(|player|
+            player.is_in_game() && player_filter.matches_player(player.id, ctx)
+                && game.turn_store.turn_history.last_card_drawn_by_player(player.id) == Some(subject.object_id()))
+        {
+            return false;
+        }
+    }
+
     let Some(stack_entry) = subject.stack_context(filter, ctx, game) else {
         return false;
     };
@@ -373,6 +397,10 @@ pub(super) fn matches_subject(
         return false;
     }
     if filter.goaded && (subject.zone() != Zone::Battlefield || !subject.goaded(game)) {
+        return false;
+    }
+
+    if filter.ring_bearer && (subject.zone() != Zone::Battlefield || !subject.ring_bearer(game)) {
         return false;
     }
 
@@ -881,6 +909,7 @@ pub(super) fn matches_subject(
     if filter.blocked_this_turn && !game.creature_blocked_this_turn(subject.object_id()) {
         return false;
     }
+    if filter.was_blocked_this_turn && !game.creature_was_blocked_this_turn(subject.object_id()) { return false; }
     if filter.didnt_attack_this_turn && game.creature_attacked_this_turn(subject.object_id()) {
         return false;
     }
@@ -957,14 +986,25 @@ pub(super) fn matches_subject(
         let Some(source_id) = ctx.source else {
             return false;
         };
-        let Some(combat) = &game.combat else {
+        let currently_blocked = game.combat.as_ref().is_some_and(|combat| {
+            combat.blockers.get(&subject.object_id())
+                .is_some_and(|blockers| blockers.contains(&source_id))
+        });
+        let source_left = game.object(source_id)
+            .is_none_or(|source| source.zone != crate::zone::Zone::Battlefield);
+        let blocked_at_source_lki = source_left
+            && game.turn_store.turn_history.creature_was_blocked_by_in_combat(
+                subject.object_id(), source_id, game.turn_store.combat_phases_started_this_turn,
+            );
+        if !currently_blocked && !blocked_at_source_lki {
+            return false;
+        }
+    }
+    if filter.blocked_source_this_turn {
+        let Some(source_id) = ctx.source else {
             return false;
         };
-        if !combat
-            .blockers
-            .get(&subject.object_id())
-            .is_some_and(|blockers| blockers.contains(&source_id))
-        {
+        if !game.creature_was_blocked_by_this_turn(source_id, subject.object_id()) {
             return false;
         }
     }
@@ -1007,8 +1047,8 @@ pub(super) fn matches_subject(
         if partners.is_empty()
             || !partners.iter().any(|partner| {
                 crate::combat_state::get_blockers(combat, *partner).contains(&subject.object_id())
-                    || crate::combat_state::get_blocked_attacker(combat, *partner)
-                        .is_some_and(|attacker| attacker == subject.object_id())
+                    || combat.blockers.get(&subject.object_id())
+                        .is_some_and(|blockers| blockers.contains(partner))
             })
         {
             return false;
@@ -1057,7 +1097,7 @@ pub(super) fn matches_subject(
             return false;
         }
     }
-    if filter.power_greater_than_base_power {
+    if filter.power_greater_than_base_power || filter.power_comparison_to_base.is_some() {
         let Some(effective_power) = subject.power(
             calculated_chars_ref,
             game,
@@ -1074,7 +1114,9 @@ pub(super) fn matches_subject(
         ) else {
             return false;
         };
-        if effective_power <= base_power {
+        if (filter.power_greater_than_base_power && effective_power <= base_power)
+            || filter.power_comparison_to_base.is_some_and(|operator| !operator.evaluate(effective_power, base_power))
+        {
             return false;
         }
     }

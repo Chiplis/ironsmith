@@ -17,6 +17,14 @@ pub(crate) fn pay_mana_cost_with_choices(
     reason: crate::costs::PaymentReason,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<(), CostPaymentError> {
+    pay_mana_cost_with_choices_in_context(game, payer, source, cost, x_value, reason, decision_maker, None)
+}
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn pay_mana_cost_with_choices_in_context(
+    game: &mut GameState, payer: crate::ids::PlayerId, source: Option<crate::ids::ObjectId>, cost: &ManaCost,
+    x_value: u32, reason: crate::costs::PaymentReason, decision_maker: &mut dyn crate::decision::DecisionMaker,
+    execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+) -> Result<(), CostPaymentError> {
     use crate::mana::ManaSymbol;
     if game.player(payer).is_none() {
         return Err(CostPaymentError::PlayerNotFound);
@@ -46,7 +54,7 @@ pub(crate) fn pay_mana_cost_with_choices(
                 game.can_pay_mana_cost_with_payment_options(
                     payer,
                     source,
-                    &ManaCost::from_pips(candidate),
+                    &cost.with_pips(candidate),
                     x_value,
                     reason,
                     &policy,
@@ -98,17 +106,19 @@ pub(crate) fn pay_mana_cost_with_choices(
         };
         pips[index] = vec![chosen];
     }
-    if game.try_pay_mana_cost_with_payment_options(
+    if game.try_pay_mana_cost_with_payment_options_in_context(
         payer,
         source,
-        &ManaCost::from_pips(pips),
+        &cost.with_pips(pips),
         x_value,
         reason,
         &policy,
         true,
         false,
         false,
-    ) {
+        decision_maker,
+        execution,
+    ).map_err(CostPaymentError::ExecutionFailed)? {
         Ok(())
     } else {
         Err(CostPaymentError::InsufficientMana)
@@ -183,7 +193,8 @@ impl CostPayer for ManaPaymentCost {
         game: &mut GameState,
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, CostPaymentError> {
-        pay_mana_cost_with_choices(
+        let execution = ctx.capture_execution_context();
+        pay_mana_cost_with_choices_in_context(
             game,
             ctx.payer,
             Some(ctx.source),
@@ -191,6 +202,7 @@ impl CostPayer for ManaPaymentCost {
             ctx.x_value.unwrap_or(0),
             ctx.reason,
             ctx.decision_maker,
+            Some(&execution),
         )?;
 
         Ok(CostPaymentResult::Paid)

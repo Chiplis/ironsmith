@@ -148,6 +148,24 @@ where
     }
 }
 
+/// Completion programs are frozen only after every original proposal commits,
+/// then executed after the simultaneous action has closed. The owner preserves
+/// each participant's execution context and rolls back the whole instruction
+/// if completion pauses for a decision or fails.
+pub trait SimultaneousEffectCompletion: Send {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError>;
+    fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome) -> Result<EffectOutcome, ExecutionError>;
+}
+
+pub struct SimultaneousEffectCommit {
+    pub outcome: EffectOutcome,
+    pub completion: Option<Box<dyn SimultaneousEffectCompletion>>,
+}
+impl SimultaneousEffectCommit {
+    pub fn finished(outcome: EffectOutcome) -> Self { Self { outcome, completion: None } }
+}
+
 /// A fully determined part of one simultaneous multi-player action.
 ///
 /// Implementations are prepared for every affected player against the same
@@ -155,6 +173,24 @@ where
 /// mutation: it must not ask a new question or recalculate a value from game
 /// state changed by an earlier proposal in the same batch.
 pub trait SimultaneousEffectProposal: std::fmt::Debug + Send {
+    /// Accepted nominal life payment, before replacements alter its actions.
+    /// The batch owner checks shared team affordability once (CR 119.4a).
+    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId, u32)> { None }
+
+    /// Resolve a prepared proposal's replacement choices against the shared
+    /// pre-mutation world. Owners run this for every participant before any
+    /// commit; immutable choice-free proposals need no further preparation.
+    fn prepare_original(&mut self, _game: &mut GameState, _ctx: &mut ExecutionContext)
+        -> Result<(), ExecutionError> { Ok(()) }
+
+    /// Separate original mutations from replacement-added programs when the
+    /// proposal has them. Existing choice-free proposals finish in one phase.
+    fn commit_original(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<SimultaneousEffectCommit, ExecutionError>
+    {
+        self.commit(game, ctx).map(SimultaneousEffectCommit::finished)
+    }
+
     fn commit(
         self: Box<Self>,
         game: &mut GameState,

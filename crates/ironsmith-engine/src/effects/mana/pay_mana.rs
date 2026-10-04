@@ -64,9 +64,12 @@ fn try_pay_interactively(
     let mut replans = 0;
     let mut payment_open = false;
     loop {
-        let Some(plan) = crate::mana_payment::plan_first_mana_payment(game, &request)
-            .ok()
-            .or_else(|| {
+        let planned = match crate::mana_payment::plan_first_mana_payment(game, &request) {
+            Ok(plan) => Some(plan),
+            Err(crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)) => return Err(error),
+            Err(_) => None,
+        };
+        let Some(plan) = planned.or_else(|| {
                 payment_open
                     .then(|| crate::mana_payment::unfunded_mana_payment_plan(game, &request))
             })
@@ -101,8 +104,9 @@ fn try_pay_interactively(
                     ability_index,
                     ctx.decision_maker,
                 )
-                .map_err(|error| {
-                    ExecutionError::Impossible(format!("illegal mana activation: {error}"))
+                .map_err(|error| match error {
+                    crate::special_actions::ActionError::ExecutionFailure { error, .. } => error,
+                    other => ExecutionError::Impossible(format!("illegal mana activation: {other}")),
                 })?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(false);
@@ -129,15 +133,12 @@ fn try_pay_interactively(
                 plan_id,
                 request_hash,
             } if plan.payable && plan_id == plan.id && request_hash == plan.request_hash => {
-                return Ok(matches!(
-                    crate::mana_payment::execute_mana_payment_plan(
-                        game,
-                        &request,
-                        &plan,
-                        &mut ctx.decision_maker,
-                    ),
-                    Ok(crate::mana_payment::ManaPaymentExecution::Paid)
-                ));
+                let execution = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+                return match crate::mana_payment::execute_mana_payment_plan_in_context(game, &request, &plan, &mut ctx.decision_maker, Some(&execution)) {
+                    Ok(crate::mana_payment::ManaPaymentExecution::Paid) => Ok(true),
+                    Err(crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)) => Err(error),
+                    _ => Ok(false),
+                };
             }
             crate::mana_payment::ManaPaymentResponse::Confirm { .. } => return Ok(false),
         }
@@ -150,7 +151,7 @@ fn maximum_affordable_bounded_x(
     ctx: &ExecutionContext<'_>,
     player_id: PlayerId,
     semantic_maximum: u32,
-) -> Option<u32> {
+) -> Result<Option<u32>, ExecutionError> {
     let reason = payment_reason(ctx);
     let adjusted_cost =
         game.adjust_mana_cost_for_payment_reason(player_id, Some(ctx.source), &effect.cost, reason);
@@ -163,10 +164,14 @@ fn maximum_affordable_bounded_x(
             x_value,
             reason,
         );
-        crate::mana_payment::check_mana_payment(game, &request).is_ok()
+        match crate::mana_payment::check_mana_payment(game, &request) {
+            Ok(()) => Ok(true),
+            Err(crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)) => Err(error),
+            Err(_) => Ok(false),
+        }
     };
-    if !can_pay(0) {
-        return None;
+    if !can_pay(0)? {
+        return Ok(None);
     }
 
     // Paying a mana cost with a larger X cannot require less mana than paying
@@ -176,13 +181,13 @@ fn maximum_affordable_bounded_x(
     while lower < upper {
         let distance = upper - lower;
         let middle = lower + distance / 2 + distance % 2;
-        if can_pay(middle) {
+        if can_pay(middle)? {
             lower = middle;
         } else {
             upper = middle - 1;
         }
     }
-    Some(lower)
+    Ok(Some(lower))
 }
 
 impl EffectExecutor for PayManaEffect {
@@ -195,6 +200,7 @@ impl EffectExecutor for PayManaEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
         let chooses_x = self.cost.has_x() && self.x_value.is_none() && ctx.x_value.is_none();
         let bounded_x = if self.x_maximum.is_some() || chooses_x {
@@ -206,7 +212,7 @@ impl EffectExecutor for PayManaEffect {
                     .total()
             };
             let Some(affordable_maximum) =
-                maximum_affordable_bounded_x(self, game, ctx, player_id, semantic_maximum)
+                maximum_affordable_bounded_x(self, game, ctx, player_id, semantic_maximum)?
             else {
                 return Ok(EffectOutcome::impossible());
             };
@@ -245,6 +251,7 @@ impl EffectExecutor for PayManaEffect {
         } else {
             Ok(EffectOutcome::count(1))
         }
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

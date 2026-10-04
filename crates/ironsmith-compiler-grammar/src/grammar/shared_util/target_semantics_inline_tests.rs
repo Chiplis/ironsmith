@@ -131,7 +131,12 @@ fn definite_combat_role_targets_keep_the_block_pair_identity() {
         ("the blocking creature", "blocking", "blocking"),
         ("the attacking creature", "blocked", "attacking"),
     ] {
-        let TargetAst::Object(filter, explicit_target, _) = parse(text) else {
+        let parsed = parse(text);
+        if expected_tag == "blocking" {
+            assert!(matches!(parsed, TargetAst::Tagged(tag, _) if tag.as_str() == "blocking"));
+            continue;
+        }
+        let TargetAst::Object(filter, explicit_target, _) = parsed else {
             panic!("expected object target for {text}");
         };
         assert!(explicit_target.is_none(), "{filter:#?}");
@@ -142,7 +147,7 @@ fn definite_combat_role_targets_keep_the_block_pair_identity() {
             }),
             "{filter:#?}"
         );
-        assert_eq!(filter.blocking, expected_role == "blocking", "{filter:#?}");
+        assert!(!filter.blocking, "definite blocking participant is event identity: {filter:#?}");
         assert_eq!(
             filter.attacking,
             expected_role == "attacking",
@@ -415,4 +420,13 @@ fn full_name_possessive_source_target_preserves_full_name_surface() {
         matches!(parsed, TargetAst::Source(Some(_span))),
         "expected named possessive to resolve to the source: {parsed:#?}"
     );
+}
+
+#[test]
+fn explicit_blocking_creature_target_keeps_current_role_and_type_legality() {
+    let TargetAst::Object(filter, target, _) = parse("target blocking creature") else { panic!("expected targeted filter"); };
+    assert!(target.is_some());
+    assert!(filter.blocking);
+    assert_eq!(filter.card_types, [CardType::Creature]);
+    assert!(filter.tagged_constraints.is_empty());
 }

@@ -43,6 +43,7 @@ fn sync_restricted_mana(
             Ok(SyncRestrictedManaUnit {
                 symbol: unit.symbol,
                 source: unit.source,
+                source_controller: unit.source_controller,
                 source_chosen_creature_type: unit.source_chosen_creature_type,
                 restrictions: unit
                     .restrictions
@@ -1802,6 +1803,7 @@ mod public_audit_tests {
             ironsmith::ability::RestrictedManaUnit {
                 symbol: ironsmith::mana::ManaSymbol::Green,
                 source: ObjectId::from_raw(17),
+                source_controller: Some(PlayerId(0)),
                 source_chosen_creature_type: None,
                 restrictions: vec![ironsmith_core::ManaUsageRestriction::PaymentTransaction {
                     restriction: Some(ironsmith_core::ManaPaymentPredicate::Any),

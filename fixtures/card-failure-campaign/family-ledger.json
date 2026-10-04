@@ -1,0 +1,295 @@
+{
+  "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
+  "baseline_measurement_status": "measured",
+  "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "families": [
+    {
+      "id": "power-filtered-combat-prevention",
+      "baseline_cards": [
+        "Fog of War",
+        "Vine Snare"
+      ],
+      "status": "implemented",
+      "implementation_commits": [
+        "412b7e30423e9033072b19dc69c8cc592fb2efe8"
+      ],
+      "stack_pr": "https://github.com/Chiplis/ironsmith/pull/767",
+      "grammar_tests": [],
+      "runtime_tests": [
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-runtime --test power_filtered_prevention",
+          "commit": "00bcaa6c",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "https://github.com/Chiplis/ironsmith/pull/767"
+        }
+      ],
+      "semantic_coverage": {
+        "status": "partial",
+        "cases": [
+          "Damage-time source-power threshold, later creatures, noncombat exclusion, unpreventable damage, expiration."
+        ],
+        "remaining_gaps": []
+      },
+      "review": {
+        "status": "pending",
+        "evidence": null
+      }
+    },
+    {
+      "id": "qualified-target-type-coordination",
+      "baseline_cards": [
+        "Abuelo's Awakening",
+        "Excava, the Risen Past",
+        "Second Sunrise"
+      ],
+      "status": "implemented",
+      "implementation_commits": [
+        "95cf14ccf88cc0de1225aca7c54e8df6c39ed379"
+      ],
+      "stack_pr": "https://github.com/Chiplis/ironsmith/pull/768",
+      "grammar_tests": [
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-grammar --lib grammar::effects::coordination::tests",
+          "commit": "8c581632",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "https://github.com/Chiplis/ironsmith/pull/768"
+        }
+      ],
+      "runtime_tests": [
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-runtime --test target_type_coordination",
+          "commit": "00bcaa6c",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "https://github.com/Chiplis/ironsmith/pull/768"
+        }
+      ],
+      "semantic_coverage": {
+        "status": "partial",
+        "cases": [
+          "Branch-local Aura exclusion, common owner/zone/mana constraints, return counters, Spirit and flying effects."
+        ],
+        "remaining_gaps": [
+          "Second Sunrise whole-card regression exposed live graveyard-incarnation membership bug; red test confirmed and corrective branch is under validation."
+        ]
+      },
+      "review": {
+        "status": "pending",
+        "evidence": null
+      }
+    },
+    {
+      "id": "granted-triggered-keywords",
+      "baseline_cards": [
+        "Adriana, Captain of the Guard",
+        "Blade of Selves",
+        "Cybermen Squadron",
+        "Dagger of the Worthy",
+        "Depthshaker Titan",
+        "Drogskol Reinforcements",
+        "Fang of the Pack",
+        "Legion Loyalty",
+        "Skyhunter Strike Force",
+        "Titania, Proud Pummeler"
+      ],
+      "status": "implemented",
+      "implementation_commits": [
+        "69a05afa",
+        "c2718d7a",
+        "00bcaa6c",
+        "bc9e56e2"
+      ],
+      "stack_pr": "https://github.com/Chiplis/ironsmith/pull/769",
+      "grammar_tests": [
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-grammar --lib keyword_grant_materialization",
+          "commit": "8c581632",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "https://github.com/Chiplis/ironsmith/pull/769"
+        },
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-lowering --lib keyword_grant_materialization",
+          "commit": "8c581632",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "https://github.com/Chiplis/ironsmith/pull/769"
+        }
+      ],
+      "runtime_tests": [
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-runtime --lib keyword_grant_materialization",
+          "commit": "bc9e56e2cf228f158060631927cab8f42d9b6ebc",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "https://github.com/Chiplis/ironsmith/pull/769"
+        }
+      ],
+      "semantic_coverage": {
+        "status": "partial",
+        "cases": [
+          "Melee attack-event history and multiple instances, Myriad recipient copies and opponent scope, Afflict attachment and defending-player scope."
+        ],
+        "remaining_gaps": []
+      },
+      "review": {
+        "status": "pending",
+        "evidence": null
+      }
+    },
+    {
+      "id": "landwalk-blocking-permission",
+      "baseline_cards": [
+        "Gosta Dirk",
+        "Undertow",
+        "Staff of the Ages"
+      ],
+      "status": "implemented",
+      "implementation_commits": [
+        "d829d11b",
+        "8baa3f6f",
+        "c8fbf54c"
+      ],
+      "stack_pr": "https://github.com/Chiplis/ironsmith/pull/770",
+      "grammar_tests": [
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-grammar --lib landwalk_override",
+          "commit": "c2718d7a",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "reports/card-failure-campaign/stack-07/validation-logs.tar.gz#grammar-landwalk-retry.log"
+        }
+      ],
+      "runtime_tests": [
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-runtime --test landwalk_block_override",
+          "commit": "00bcaa6c",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "reports/card-failure-campaign/stack-07/validation-logs.tar.gz#runtime-batch-final.log"
+        }
+      ],
+      "semantic_coverage": {
+        "status": "partial",
+        "cases": [
+          "All nine authored sources compile and round-trip, preserve landwalk characteristics, modify only matching block restrictions, stop after source phasing/ability loss."
+        ],
+        "remaining_gaps": [
+          "Quagmire was baseline-supported but had incorrect ability-removal behavior; tracked as semantic correction rather than compile-failure reduction."
+        ]
+      },
+      "review": {
+        "status": "pending",
+        "evidence": null
+      }
+    },
+    {
+      "id": "unicode-source-span-mapping",
+      "baseline_cards": [
+        "Altaïr Ibn-La'Ahad"
+      ],
+      "status": "implemented",
+      "implementation_commits": [
+        "44d45737"
+      ],
+      "stack_pr": "https://github.com/Chiplis/ironsmith/pull/771",
+      "grammar_tests": [
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-grammar --lib preprocess::unicode_tests",
+          "commit": "8c581632",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "reports/card-failure-campaign/stack-07/validation-logs.tar.gz#grammar-unicode.log"
+        },
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-source --lib span_mapping_tests",
+          "commit": "8c581632",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "reports/card-failure-campaign/stack-07/validation-logs.tar.gz#source-unicode.log"
+        }
+      ],
+      "runtime_tests": [],
+      "semantic_coverage": {
+        "status": "partial",
+        "cases": [
+          "Character-to-byte boundaries in parser normalization and diagnostic source mapping."
+        ],
+        "remaining_gaps": [
+          "Altaïr fully strict/nonlossy compiles after the fix; whole-card runtime scenarios are under validation."
+        ]
+      },
+      "review": {
+        "status": "pending",
+        "evidence": null
+      }
+    },
+    {
+      "id": "dash-optional-cost-identity",
+      "baseline_cards": [
+        "Alesha's Vanguard",
+        "Ambuscade Shaman",
+        "Death-Greeter's Champion",
+        "Flamerush Rider",
+        "Goblin Heelcutter",
+        "Kolaghan Forerunners",
+        "Kolaghan Skirmisher",
+        "Kolaghan, the Storm's Fury",
+        "Lightning Berserker",
+        "Mardu Scout",
+        "Mardu Shadowspear",
+        "Mardu Strike Leader",
+        "Pitiless Horde",
+        "Ragavan, Nimble Pilferer",
+        "Reckless Imp",
+        "Riders of Rohan",
+        "Screamreach Brawler",
+        "Sprinting Warbrute",
+        "Treetop Ambusher",
+        "Vaultbreaker",
+        "Zurgo Bellstriker"
+      ],
+      "status": "implemented",
+      "implementation_commits": [
+        "163d75dd",
+        "8c581632"
+      ],
+      "stack_pr": "https://github.com/Chiplis/ironsmith/pull/772",
+      "grammar_tests": [
+        {
+          "command": "cargo test --locked -p ironsmith-core --lib dash_cost_identity",
+          "commit": "8c581632",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "reports/card-failure-campaign/stack-07/validation-logs.tar.gz#core-dash.log"
+        }
+      ],
+      "runtime_tests": [
+        {
+          "command": "cargo test --locked -p ironsmith-compiler-runtime --test dash_materialization",
+          "commit": "00bcaa6c",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence": "reports/card-failure-campaign/stack-07/validation-logs.tar.gz#runtime-batch-final.log"
+        }
+      ],
+      "semantic_coverage": {
+        "status": "partial",
+        "cases": [
+          "All21 frozen Dash failures have typed cost identity, normal/alternate mana and haste, timing, end-step return, owner/control and blink identity, unknown-cost rejection."
+        ],
+        "remaining_gaps": []
+      },
+      "review": {
+        "status": "pending",
+        "evidence": null
+      }
+    }
+  ],
+  "overall_status": "in_progress",
+  "schema_version": 1,
+  "latest_compile_milestone": "reports/card-failure-campaign/stack-07/milestone.json",
+  "remaining_baseline_unique_cards": 3193
+}

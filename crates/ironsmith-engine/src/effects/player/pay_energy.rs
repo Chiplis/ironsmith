@@ -7,12 +7,10 @@ use crate::effects::executor_trait::CostValidationError;
 use crate::effects::helpers::{resolve_nonnegative_u32, resolve_player_from_spec};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::LifeLossEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::triggers::TriggerEvent;
 pub type PayEnergyEffect = ironsmith_core::PayEnergyEffect;
 pub type PayAnyEnergyEffect = ironsmith_core::PayAnyEnergyEffect;
 pub type PayAnyLifeEffect = ironsmith_core::PayAnyLifeEffect;
@@ -32,15 +30,21 @@ impl EffectExecutor for PayEnergyEffect {
 
         if game
             .player(player_id)
-            .is_some_and(|player| player.energy_counters >= amount)
-            && let Some((removed, event)) = game.remove_player_counters_with_source(
-                player_id,
-                CounterType::Energy,
-                amount,
-                Some(ctx.source),
-                Some(ctx.controller),
-            )
+            .is_none_or(|player| player.energy_counters < amount)
         {
+            return Ok(EffectOutcome::impossible());
+        }
+        if amount == 0 {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        if let Some((removed, event)) = game.remove_player_counters_with_source(
+            player_id,
+            CounterType::Energy,
+            amount,
+            Some(ctx.source),
+            Some(ctx.controller),
+        ) {
             return Ok(EffectOutcome::count(i64::from(removed)).with_event(event));
         }
 
@@ -57,6 +61,19 @@ impl EffectExecutor for PayEnergyEffect {
 
     fn target_description(&self) -> &'static str {
         "player to pay energy"
+    }
+
+    fn references_cost_x(&self) -> bool {
+        matches!(self.amount.unhinted(), Value::X)
+    }
+
+    fn max_cost_x(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        let ctx = ExecutionContext::new_default(source, controller);
+        let payer = resolve_player_from_spec(game, &self.player, &ctx).ok()?;
+        Some(game.player(payer)?.energy_counters)
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -84,7 +101,7 @@ impl CostExecutableEffect for PayEnergyEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        let ctx = ExecutionContext::new_default(source, controller);
+        let ctx = ExecutionContext::new_default(source, controller).with_x(0);
         let payer = resolve_player_from_spec(game, &self.player, &ctx).map_err(|_| {
             CostValidationError::Other("unable to resolve player for energy cost".to_string())
         })?;
@@ -183,15 +200,21 @@ impl EffectExecutor for PayAnyLifeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        game.refresh_continuous_state()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
-        if !game.can_lose_life(player_id) {
-            return Ok(EffectOutcome::count(0));
+        if !game.can_lose_life(player_id) && self.min_amount > 0 {
+            return Ok(EffectOutcome::impossible());
         }
         let available = game
             .player(player_id)
             .map(|player| player.life)
             .unwrap_or(0);
-        let available = available.max(0) as u32;
+        let available = if game.can_lose_life(player_id) {
+            available.max(0) as u32
+        } else {
+            0
+        };
 
         if available < self.min_amount {
             return Ok(EffectOutcome::count(0));
@@ -221,20 +244,10 @@ impl EffectExecutor for PayAnyLifeEffect {
         }
         let chosen = chosen.clamp(self.min_amount, available);
 
-        if chosen == 0 {
-            return Ok(EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0)));
-        }
-
-        if !game.pay_life(player_id, chosen) {
+        let Some(outcome) = game.pay_life_with_context(player_id, chosen, ctx)? else {
             return Ok(EffectOutcome::count(0));
-        }
-        let event = TriggerEvent::new_with_provenance(
-            LifeLossEvent::from_effect(player_id, chosen),
-            ctx.provenance,
-        );
-        Ok(EffectOutcome::count(chosen as i32)
-            .with_event(event)
-            .with_execution_fact(ExecutionFact::ChosenNumber(chosen)))
+        };
+        Ok(outcome.with_execution_fact(ExecutionFact::ChosenNumber(chosen)))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -254,11 +267,17 @@ impl EffectExecutor for PayAnyLifeEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let checked = game
+            .continuous_query_snapshot()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
+        let game = &checked;
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
-        if !game.can_lose_life(player_id) {
+        if !game.can_lose_life(player_id) && self.min_amount > 0 {
             return Ok(Box::new(PayAnyLifeProposal {
                 player: player_id,
                 amount: 0,
+                acknowledged: false,
+                prepared: None,
             }));
         }
         let available = game
@@ -266,10 +285,17 @@ impl EffectExecutor for PayAnyLifeEffect {
             .map(|player| player.life)
             .unwrap_or(0)
             .max(0) as u32;
+        let available = if game.can_lose_life(player_id) {
+            available
+        } else {
+            0
+        };
         if available < self.min_amount {
             return Ok(Box::new(PayAnyLifeProposal {
                 player: player_id,
                 amount: 0,
+                acknowledged: false,
+                prepared: None,
             }));
         }
         let number_spec = if self.min_amount == 0 {
@@ -298,6 +324,8 @@ impl EffectExecutor for PayAnyLifeEffect {
         Ok(Box::new(PayAnyLifeProposal {
             player: player_id,
             amount,
+            acknowledged: !ctx.decision_maker.awaiting_choice(),
+            prepared: None,
         }))
     }
 
@@ -309,31 +337,67 @@ impl EffectExecutor for PayAnyLifeEffect {
 /// One player's declared life payment for a simultaneous each-player round;
 /// the amount was chosen against pre-round state and commits atomically with
 /// the other players' payments.
-#[derive(Debug)]
 struct PayAnyLifeProposal {
     player: crate::ids::PlayerId,
     amount: u32,
+    acknowledged: bool,
+    prepared: Option<crate::game_state::PreparedLifePayment>,
 }
-
+impl std::fmt::Debug for PayAnyLifeProposal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PayAnyLifeProposal")
+            .field("player", &self.player)
+            .field("amount", &self.amount)
+            .finish_non_exhaustive()
+    }
+}
 impl crate::effects::SimultaneousEffectProposal for PayAnyLifeProposal {
+    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId,u32)> { self.acknowledged.then_some((self.player,self.amount)) }
+
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.acknowledged {
+            self.prepared = game.prepare_life_payment(self.player, self.amount, ctx, true)?;
+        }
+        Ok(())
+    }
+    fn commit_original(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        if !self.acknowledged {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0)),
+            ));
+        }
+        if self.prepared.is_none() {
+            self.prepare_original(game, ctx)?;
+        }
+        let prepared = self.prepared.take().ok_or_else(|| {
+            ExecutionError::UnresolvableValue("prepared life payment is unavailable".into())
+        })?;
+        let mut receipt = game.commit_life_payment_original(prepared, ctx)?;
+        receipt.outcome = receipt
+            .outcome
+            .with_execution_fact(ExecutionFact::ChosenNumber(self.amount));
+        Ok(receipt)
+    }
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if self.amount == 0 {
-            return Ok(EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0)));
-        }
-        if !game.pay_life(self.player, self.amount) {
-            return Ok(EffectOutcome::count(0));
-        }
-        let event = TriggerEvent::new_with_provenance(
-            LifeLossEvent::from_effect(self.player, self.amount),
-            ctx.provenance,
-        );
-        Ok(EffectOutcome::count(self.amount as i32)
-            .with_event(event)
-            .with_execution_fact(ExecutionFact::ChosenNumber(self.amount)))
+        let outcome = if self.acknowledged {
+            game.pay_life_with_context(self.player, self.amount, ctx)?
+                .unwrap_or_else(EffectOutcome::impossible)
+        } else {
+            EffectOutcome::count(0)
+        };
+        Ok(outcome.with_execution_fact(ExecutionFact::ChosenNumber(self.amount)))
     }
 }
 

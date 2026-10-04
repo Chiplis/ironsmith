@@ -75,6 +75,13 @@ pub enum EventValueSpec {
     LifeAmount,
     BlockersBeyondFirst { multiplier: i32 },
     DieResult,
+    /// Captured life gained/lost by the event's affected player. The optional
+    /// controller restriction preserves an authored "you" participant.
+    LifeChange { gained: bool, for_controller: bool },
+    /// Sum only the retained numeric results of this player's roll batch.
+    DieBatchTotal,
+    /// Number of this batch's numeric results satisfying the authored predicate.
+    DieResultsAtLeast(i32),
 }
 
 #[cfg(test)]

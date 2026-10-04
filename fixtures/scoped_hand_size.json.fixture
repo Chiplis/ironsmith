@@ -1,0 +1,68 @@
+[
+  {
+    "name": "Anvil of Bogardan",
+    "oracle_id": "9deb2a0b-f40c-4d13-8321-41dc41448d24",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "oracle_text": "Players have no maximum hand size.\nAt the beginning of each player's draw step, that player draws an additional card, then discards a card.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Cursed Rack",
+    "oracle_id": "4f04603f-8f91-405b-b6ac-d2b66f05e32f",
+    "mana_cost": "{4}",
+    "type_line": "Artifact",
+    "oracle_text": "As this artifact enters, choose an opponent.\nThe chosen player's maximum hand size is four.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Folio of Fancies",
+    "oracle_id": "9030d508-5cfe-46ed-954b-21d970bc3b5a",
+    "mana_cost": "{1}{U}",
+    "type_line": "Artifact — Book",
+    "oracle_text": "Players have no maximum hand size.\n{X}{X}, {T}: Each player draws X cards.\n{2}{U}, {T}: Each opponent mills cards equal to the number of cards in their hand.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Inspired Idea",
+    "oracle_id": "5f1386d5-b802-46b2-9803-275621ebda80",
+    "mana_cost": "{2}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Cleave {3}{U}{U} (You may cast this spell for its cleave cost. If you do, remove the words in square brackets.)\nDraw three cards. [Your maximum hand size is reduced by three for the rest of the game.]",
+    "proposed_complete": false
+  },
+  {
+    "name": "Marina Vendrell's Grimoire",
+    "oracle_id": "096eac52-00c2-4439-b2f3-ff555d15ec88",
+    "mana_cost": "{5}{U}",
+    "type_line": "Legendary Artifact — Book",
+    "oracle_text": "When Marina Vendrell's Grimoire enters, if you cast it, draw five cards.\nYou have no maximum hand size and don't lose the game for having 0 or less life.\nWhenever you gain life, draw that many cards.\nWhenever you lose life, discard that many cards. Then if you have no cards in hand, you lose the game.",
+    "proposed_complete": false
+  },
+  {
+    "name": "Midnight Oil",
+    "oracle_id": "26bfc19c-8122-4e95-9a62-2b5418429db2",
+    "mana_cost": "{2}{B}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "This enchantment enters with seven hour counters on it.\nAt the beginning of your draw step, draw an additional card and remove two hour counters from this enchantment.\nYour maximum hand size is equal to the number of hour counters on this enchantment.\nWhenever you discard a card, you lose 1 life.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Price of Knowledge",
+    "oracle_id": "1c586aa7-7a61-464f-abba-b33f9a525f0e",
+    "mana_cost": "{6}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "Players have no maximum hand size.\nAt the beginning of each opponent's upkeep, this enchantment deals damage to that player equal to the number of cards in that player's hand.",
+    "proposed_complete": true
+  },
+  {
+    "name": "The Second Doctor",
+    "oracle_id": "8a6eda31-2791-4def-b9e7-3adde155a4f0",
+    "mana_cost": "{2}{W}{U}",
+    "type_line": "Legendary Creature — Time Lord Doctor",
+    "oracle_text": "Players have no maximum hand size.\nHow Civil of You — At the beginning of your end step, each player may draw a card. Each opponent who does can't attack you or permanents you control during their next turn.",
+    "power": "2",
+    "toughness": "4",
+    "proposed_complete": false
+  }
+]

@@ -117,7 +117,7 @@ pub fn parse_every_basic_land_type_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn every_subtype_family(input: &mut LexStream<'_>) -> WResult<SubtypeFamily> {
-    primitives::kw("every").parse_next(input)?;
+    alt((primitives::kw("every"), primitives::kw("all"))).parse_next(input)?;
     let family = alt((
         primitives::kw("creature").value(SubtypeFamily::Creature),
         primitives::kw("land").value(SubtypeFamily::Land),

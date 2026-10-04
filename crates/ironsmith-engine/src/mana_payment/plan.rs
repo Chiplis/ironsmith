@@ -52,6 +52,10 @@ pub struct ManaPaymentPreferences {
     pub prefer_life: bool,
     /// Expanded pips the player explicitly chose to pay with life.
     pub required_life_pips: Vec<ManaPipId>,
+    /// Actual W/U/B/R/G mana to allocate to X. This is a constraint on a
+    /// server-proved assignment, not a client-authored payment receipt.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub x_allocation: Option<ironsmith_core::mana::XManaAllocation>,
 }
 
 impl ManaPaymentPreferences {
@@ -128,6 +132,10 @@ pub struct ManaPaymentRequest {
     pub allow_black_life: bool,
     pub obligation: PaymentObligation,
     pub preferences: ManaPaymentPreferences,
+    /// Assist's actual payment must leave this independently priced caster
+    /// obligation payable. A continuation cannot itself contain Assist.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub assist_completion: Option<Box<ManaPaymentRequest>>,
 }
 
 impl ManaPaymentRequest {
@@ -147,6 +155,7 @@ impl ManaPaymentRequest {
             allow_black_life: false,
             obligation: PaymentObligation::Required,
             preferences: ManaPaymentPreferences::default(),
+            assist_completion: None,
         }
     }
 
@@ -280,6 +289,18 @@ pub enum ManaPaymentFailure {
     ConflictingPreferences,
     StalePlan,
     ExecutionFailed,
+    /// An otherwise legal payment's effect/program could not be completed.
+    EffectExecutionFailed(crate::effects::ExecutionError),
+}
+
+impl ManaPaymentFailure {
+    pub(crate) fn from_execution(error: crate::game_loop::GameLoopError) -> Self {
+        match error {
+            crate::game_loop::GameLoopError::ExecutionFailed(error)
+            | crate::game_loop::GameLoopError::ActionError(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => Self::EffectExecutionFailed(error),
+            _ => Self::ExecutionFailed,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -338,5 +359,28 @@ impl PendingManaPayment {
             next_activation: 0,
             planning_complete: false,
         }
+    }
+}
+
+#[cfg(all(test, feature = "serialization"))]
+mod consumer_constraint_wire_tests {
+    use super::*;
+    #[test]
+    fn serialized_requests_retain_cost_owned_spending_constraints_and_root_identity() {
+        use ironsmith_core::mana::{ManaProducerFilter, ManaSpendingRestriction};
+        let request = ManaPaymentRequest::new(PlayerId(0), ObjectId::from_raw(19), PaymentReason::CastSpell,
+            ManaCost::new().add_generic(2).with_spending_restriction(ManaSpendingRestriction::ProducedBy(
+                ManaProducerFilter::Subtype(crate::types::Subtype::Treasure))));
+        let json = serde_json::to_value(&request).unwrap();
+        let restored: ManaPaymentRequest = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(restored, request);
+        assert_eq!(crate::mana_payment::mana_payment_transaction_id(&restored),
+            crate::mana_payment::mana_payment_transaction_id(&request));
+        let mut legacy = json;
+        legacy["cost"].as_object_mut().unwrap().remove("spending_restrictions");
+        let plain: ManaPaymentRequest = serde_json::from_value(legacy).unwrap();
+        assert!(plain.cost.spending_restrictions().is_empty());
+        assert_ne!(crate::mana_payment::mana_payment_transaction_id(&plain),
+            crate::mana_payment::mana_payment_transaction_id(&request));
     }
 }

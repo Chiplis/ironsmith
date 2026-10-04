@@ -1,0 +1,9 @@
+[
+  {
+    "name": "Jandor's Ring",
+    "oracle_id": "737db899-dcdb-48f9-8d30-cbbce3ae3434",
+    "mana_cost": "{6}",
+    "type_line": "Artifact",
+    "oracle_text": "{2}, {T}, Discard the last card you drew this turn: Draw a card."
+  }
+]

@@ -24,6 +24,18 @@ pub enum ConditionAntecedentBinding {
 }
 
 pub fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<ObjectFilter> {
+    if let PredicateAst::And(attached, history) = predicate
+        && matches!(attached.as_ref(), PredicateAst::AttachedToSourceMatches(_))
+        && matches!(history.as_ref(),PredicateAst::ValueComparison {left:Value::DamageHistory(query),..}
+            if matches!(query.sources,ironsmith_core::DamageHistorySources::SourceAttachedObject))
+    {
+        // History is about the equipped host, and the consequence's "it"
+        // names that host. A resolution prelude captures the current host (or
+        // the departed Equipment's LKI), not a live attachment-filter scan.
+        return Some(ObjectFilter::tagged(
+            crate::tag::CompilerReferenceTag::Equipped.key(),
+        ));
+    }
     match predicate {
         // "if enchanted creature is untapped, tap it": the tagged condition
         // subject is the antecedent for "it" in the body effects.
@@ -263,6 +275,8 @@ fn effect_establishes_body_object_antecedent(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { .. })
             | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
@@ -666,6 +680,9 @@ fn persistent_battlefield_subject(action: &mut SubjectVerbActionAst) -> Option<&
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
+            target,
+        })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
             target,
         }) => Some(target),
         _ => None,

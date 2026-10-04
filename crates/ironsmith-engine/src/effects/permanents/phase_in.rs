@@ -7,27 +7,26 @@ use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
-/// Context tag recording the permanents an untargeted "all ... phase in"
-/// instruction phased in during the current resolution.
-pub(crate) const PHASED_IN_THIS_RESOLUTION_TAG: &str = "__phased_in_this_resolution__";
-
 /// Effect that phases permanents in.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PhaseInEffect {
     /// What to phase in - can be targeted, all matching, source, etc.
     pub spec: ChooseSpec,
+    /// Both sets are captured from one pre-instruction state.
+    pub simultaneous_phase_out: Option<ObjectFilter>,
 }
 
 impl PhaseInEffect {
     /// Create a phase-in effect with a custom spec.
     pub fn with_spec(spec: ChooseSpec) -> Self {
-        Self { spec }
+        Self { spec, simultaneous_phase_out: None }
     }
 
     /// Create a targeted phase-in effect.
     pub fn target(spec: ChooseSpec) -> Self {
         Self {
             spec: ChooseSpec::target(spec),
+            simultaneous_phase_out: None,
         }
     }
 
@@ -35,6 +34,7 @@ impl PhaseInEffect {
     pub fn all(filter: ObjectFilter) -> Self {
         Self {
             spec: ChooseSpec::all(filter),
+            simultaneous_phase_out: None,
         }
     }
 }
@@ -64,25 +64,25 @@ impl EffectExecutor for PhaseInEffect {
                         })
                 })
                 .collect::<Vec<_>>();
-            let mut phased_in = Vec::new();
-            for object_id in candidates {
-                if game.is_phased_out(object_id) {
-                    game.phase_in(object_id);
-                    if !game.is_phased_out(object_id) {
-                        phased_in.push(object_id);
-                    }
-                }
-            }
-            // A following "... and all creatures with phasing phase out" in
-            // the same instruction happens simultaneously (Time and Tide):
-            // the permanents that just phased in must not phase out again.
-            let snapshots = phased_in
-                .iter()
-                .filter_map(|id| game.object(*id))
-                .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
+            let outgoing = if let Some(out) = &self.simultaneous_phase_out {
+                game.battlefield.iter().copied().filter(|id| {
+                    !game.is_phased_out(*id) && game.can_phase_out(*id)
+                        && game.object(*id).is_some_and(|object| out.matches(object, &filter_ctx, game))
+                }).collect::<Vec<_>>()
+            } else { Vec::new() };
+            // Legality and both filters were evaluated above without mutation.
+            // One producer owns all flags, attachment trees and event lookback.
+            game.phase_simultaneously(&outgoing, &candidates);
+            let phased_in = candidates
+                .into_iter()
+                .filter(|id| !game.is_phased_out(*id))
                 .collect::<Vec<_>>();
-            ctx.set_tagged_objects(PHASED_IN_THIS_RESOLUTION_TAG, snapshots);
-            return Ok(EffectOutcome::count(phased_in.len() as i32));
+            let phased_out = outgoing.iter().filter(|id| game.is_phased_out(**id)).count();
+            return Ok(EffectOutcome::count((phased_in.len() + phased_out) as i32));
+        }
+        if self.simultaneous_phase_out.is_some() {
+            // Exchange payloads require the explicit non-targeted All domain.
+            return Err(ExecutionError::InvalidTarget);
         }
         let result_policy = if self.spec.is_target() && self.spec.is_single() {
             ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
@@ -90,6 +90,7 @@ impl EffectExecutor for PhaseInEffect {
             ObjectApplyResultPolicy::CountApplied
         };
 
+        let mut affected = Vec::new();
         let apply_result = apply_to_selected_objects(
             game,
             ctx,
@@ -102,7 +103,7 @@ impl EffectExecutor for PhaseInEffect {
                     && game.is_phased_out(object_id)
                     && game.can_phase_in(object_id)
                 {
-                    game.phase_in(object_id);
+                    affected.push(object_id);
                     Ok(true)
                 } else {
                     Ok(false)
@@ -110,6 +111,7 @@ impl EffectExecutor for PhaseInEffect {
             },
         )?;
 
+        game.phase_in_simultaneously(&affected);
         Ok(apply_result.outcome)
     }
 

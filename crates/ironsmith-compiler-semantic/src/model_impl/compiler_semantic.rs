@@ -233,6 +233,8 @@ pub struct ParsedModalActivatedHeader {
     pub timing: ActivationTiming,
     pub is_loyalty_ability: bool,
     pub once_per_turn: bool,
+    /// Announced X must be positive, either in the header or every mode.
+    pub x_cant_be_zero: bool,
     /// The activation restrictions the header stated, as recognized.
     pub activation_restrictions: Vec<super::ast::PredicateAst>,
 }

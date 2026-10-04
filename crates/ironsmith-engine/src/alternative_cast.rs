@@ -1,4 +1,5 @@
 use crate::zone::Zone;
+pub(crate) mod price_routes;
 pub use ironsmith_core::{AlternativeCastRequirements, TrapCondition};
 
 pub type AlternativeCastingMethod = ironsmith_core::AlternativeCastingMethod<
@@ -86,7 +87,7 @@ pub(crate) fn ensure_alternative_battlefield_abilities(
     grant.additional_abilities = missing;
     let ability = crate::static_abilities::StaticAbility::new(grant);
     object.temporary_static_ability_grants.push(crate::object::TemporaryStaticAbilityGrant {
-        ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: u32::MAX,
+        ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: Some(u32::MAX),
     });
 }
 
@@ -112,6 +113,16 @@ pub fn is_blitz_death_draw_ability(ability: &crate::ability::Ability) -> bool {
     })
 }
 
+/// Exact native permission plus the source and ordinal used by public action
+/// references. The ordinal is local to the checked announcement snapshot;
+/// execution validates the identity, never retargets by ordinal after payment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrantSelection {
+    pub identity: crate::grant_registry::GrantPermissionIdentity,
+    pub source: crate::ids::ObjectId,
+    pub index: usize,
+}
+
 /// Which method is being used to cast a spell.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
@@ -135,19 +146,43 @@ pub enum CastingMethod {
     SplitOtherHalfPlayFrom {
         source: crate::ids::ObjectId,
         zone: Zone,
-        use_alternative: usize,
+        use_alternative: Option<usize>,
+    },
+    /// A printed morph/disguise (or separately granted face-down) cast using
+    /// this exact zone permission. Appended for serialized ordinal stability.
+    FaceDownPlayFrom {
+        source: crate::ids::ObjectId,
+        zone: Zone,
+    },
+    /// A separately authorized origin plus one independently selected price.
+    /// Nested price routes and origins that already replace the mana cost are
+    /// rejected before announcement. Both identities are locked at selection.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    AlternativePrice {
+        origin: Box<CastingMethod>,
+        origin_permission: Option<GrantSelection>,
+        price: GrantSelection,
+        /// Exact prototype characteristic choice on the selected face. This
+        /// is independent of the replacement price (CR 718.3).
+        prototype: Option<usize>,
     },
 }
 
 impl CastingMethod {
+    /// The underlying spell face/origin, without discarding its price receipt.
+    /// Validation admits only one layer; this intentionally does not recurse.
+    pub fn origin_method(&self) -> &Self {
+        match self { Self::AlternativePrice { origin, .. } => origin, _ => self }
+    }
+
     pub fn is_alternative(&self) -> bool {
-        matches!(self, Self::Alternative(_) | Self::FaceDown)
+        matches!(self, Self::Alternative(_) | Self::FaceDown | Self::FaceDownPlayFrom { .. } | Self::AlternativePrice { .. })
     }
 
     pub fn exiles_after_resolution(&self) -> bool {
         matches!(
             self,
-            Self::GrantedFlashback | Self::SplitOtherHalfPlayFrom { .. }
+            Self::GrantedFlashback | Self::SplitOtherHalfPlayFrom { use_alternative: Some(_), .. }
         )
     }
 }

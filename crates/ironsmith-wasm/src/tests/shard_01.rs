@@ -615,7 +615,7 @@ pub(super) fn wasm_dispatch_failed_counter_allows_protected_spell_to_resolve() {
 
     wasm.game.turn.active_player = alice;
     wasm.game.turn.priority_player = Some(alice);
-    wasm.game.turn.phase = Phase::SecondMain;
+    wasm.game.turn.phase = Phase::SecondMainPhase;
     wasm.game.turn.step = None;
 
     let goblin = CardBuilder::new(CardId::new(), "Raging Goblin")

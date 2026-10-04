@@ -31,36 +31,74 @@ impl EffectExecutor for TagTriggeringSourceEffect {
         // ability" is the targeting stack object. An ability exists
         // independently of its source (CR 113.7a): name its own stack entry,
         // controlled by the ability's controller, even after its source left.
-        if let Some(ability_id) = event
-            .downcast::<crate::events::spells::BecomesTargetedEvent>()
-            .and_then(|targeted| targeted.stack_ability)
-            && let Some(entry) = game
-                .stack
-                .iter()
-                .find(|entry| entry.ability_id == Some(ability_id))
+        if let Some(targeted) = event.downcast::<crate::events::spells::BecomesTargetedEvent>()
+            && targeted.by_ability
         {
-            let snapshot = match game.object(source_id) {
-                Some(source) => Some(
-                    ObjectSnapshot::from_object_with_calculated_characteristics(source, game),
-                ),
-                None => entry.source_snapshot.clone(),
+            let Some(ability_id) = targeted.stack_ability else { return Ok(EffectOutcome::count(0)); };
+            let Some(entry) = game.stack.iter().find(|entry| entry.is_ability && entry.target_id() == ability_id) else {
+                // Once that exact ability is gone, never redirect the reference
+                // to a sibling activation or its physical source permanent.
+                return Ok(EffectOutcome::count(0));
             };
+            let snapshot = game.object(source_id)
+                .map(|source| ObjectSnapshot::from_object_with_calculated_characteristics(source, game))
+                .or_else(|| entry.source_snapshot.clone());
             if let Some(mut snapshot) = snapshot {
                 snapshot.object_id = ability_id;
                 snapshot.controller = entry.controller;
                 ctx.set_tagged_objects(self.tag.as_str(), vec![snapshot]);
                 return Ok(EffectOutcome::count(1));
             }
+            return Ok(EffectOutcome::count(0));
         }
-        let Some(source) = game.object(source_id) else {
+        let snapshot = game.object(source_id)
+            .filter(|_| !game.is_phased_out(source_id))
+            .map(|source| ObjectSnapshot::from_object_with_calculated_characteristics(source, game))
+            .or_else(|| event.source_snapshot().filter(|snapshot| snapshot.object_id == source_id).cloned())
+            .or_else(|| game.turn_store.turn_history.departed_object_snapshot(source_id).cloned());
+        let Some(snapshot) = snapshot else {
             return Ok(EffectOutcome::count(0));
         };
-        ctx.set_tagged_objects(
-            self.tag.as_str(),
-            vec![ObjectSnapshot::from_object_with_calculated_characteristics(
-                source, game,
-            )],
-        );
+        ctx.set_tagged_objects(self.tag.as_str(), vec![snapshot]);
         Ok(EffectOutcome::count(1))
+    }
+}
+
+#[cfg(test)]
+mod targeting_tests {
+    use super::*;
+    use crate::{card::CardBuilder, ids::{CardId, PlayerId}, game_state::{StackEntry, Target}, zone::Zone};
+    #[test]
+    fn targeting_reference_uses_exact_ability_entry_including_copy_proxy() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = PlayerId::from_index(0); let b = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::new(), "Activated source").build();
+        let source = game.create_object_from_card(&card, a, Zone::Battlefield);
+        let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(game.object(source).unwrap(), &game);
+        let mut first = StackEntry::ability(source, b, crate::resolution::ResolutionProgram::from_effects(vec![]));
+        first.source_snapshot = Some(snapshot.clone());
+        game.push_to_stack(first);
+        let first = game.stack.last().unwrap().clone();
+        let mut second = StackEntry::ability(source, a, crate::resolution::ResolutionProgram::from_effects(vec![]));
+        second.source_snapshot = Some(snapshot.clone()); game.push_to_stack(second);
+        let copy = game.create_object_from_card(&card, b, Zone::Stack);
+        let mut copied = StackEntry::ability(copy, b, crate::resolution::ResolutionProgram::from_effects(vec![]));
+        copied.source_snapshot = Some(snapshot); game.stack.push(copied);
+        let copied = game.stack.last().unwrap().clone();
+        assert_eq!(copied.target_id(), copy);
+        for entry in [first, copied] {
+            let targeted = crate::events::BecomesTargetedEvent::from_stack_entry(Target::Player(a), &entry);
+            assert_eq!(targeted.source, source);
+            let mut ctx = ExecutionContext::new_default(source, a);
+            ctx.triggering_event = Some(crate::triggers::TriggerEvent::new_with_provenance(targeted, Default::default()));
+            TagTriggeringSourceEffect::new("targeting").execute(&mut game, &mut ctx).unwrap();
+            let tagged = ctx.get_tagged_all("targeting").unwrap();
+            assert_eq!(tagged[0].object_id, entry.target_id()); assert_eq!(tagged[0].controller, b);
+            game.stack.retain(|candidate| candidate.target_id() != entry.target_id());
+            let mut absent = ExecutionContext::new_default(source, a);
+            absent.triggering_event = ctx.triggering_event;
+            TagTriggeringSourceEffect::new("targeting").execute(&mut game, &mut absent).unwrap();
+            assert!(absent.get_tagged_all("targeting").is_none());
+        }
     }
 }

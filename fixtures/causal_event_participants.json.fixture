@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Baral, Chief of Compliance",
+    "oracle_id": "baf80db7-2ca8-4bfc-b5b6-25ed51878dd7",
+    "oracle_text": "Instant and sorcery spells you cast cost {1} less to cast.\nWhenever a spell or ability you control counters a spell, you may draw a card. If you do, discard a card.",
+    "text": "Mana cost: {1}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 1/3\nInstant and sorcery spells you cast cost {1} less to cast.\nWhenever a spell or ability you control counters a spell, you may draw a card. If you do, discard a card.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever a spell or ability you control counters a spell, you may draw a card. If you do, discard a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a spell or ability you control counters a spell, you may draw a card. If you do, discard a card.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "1e3c54c5a32b4f62500ffe0777aa9eff29babbb4936cf68276fc275a6a63665f",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Lullmage Mentor",
+    "oracle_id": "752566b4-d3f5-4f10-b6f5-7185809f7a9d",
+    "oracle_text": "Whenever a spell or ability you control counters a spell, you may create a 1/1 blue Merfolk creature token.\nTap seven untapped Merfolk you control: Counter target spell.",
+    "text": "Mana cost: {1}{U}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nWhenever a spell or ability you control counters a spell, you may create a 1/1 blue Merfolk creature token.\nTap seven untapped Merfolk you control: Counter target spell.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever a spell or ability you control counters a spell, you may create a 1/1 blue Merfolk creature token.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a spell or ability you control counters a spell, you may create a 1/1 blue Merfolk creature token.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "d87da3c065956e183ea984ad06cc861218db4d7b064cbb0215490fe9bda1f0c8",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Karmic Justice",
+    "oracle_id": "9ea58595-fcb9-455c-9558-b6a3fb2b83c5",
+    "oracle_text": "Whenever a spell or ability an opponent controls destroys a noncreature permanent you control, you may destroy target permanent that opponent controls.",
+    "text": "Mana cost: {2}{W}\nType: Enchantment\nWhenever a spell or ability an opponent controls destroys a noncreature permanent you control, you may destroy target permanent that opponent controls.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever a spell or ability an opponent controls destroys a noncreature permanent you control, you may destroy target permanent that opponent controls.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a spell or ability an opponent controls destroys a noncreature permanent you control, you may destroy target permanent that opponent controls.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "d0870e6079621e1760211b03042aa3ae7b9f5557b11ad537ccc40098ba442679",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Spiritual Focus",
+    "oracle_id": "da350f46-6d6e-4257-8f4f-77769c442d0c",
+    "oracle_text": "Whenever a spell or ability an opponent controls causes you to discard a card, you gain 2 life and you may draw a card.",
+    "text": "Mana cost: {1}{W}\nType: Enchantment\nWhenever a spell or ability an opponent controls causes you to discard a card, you gain 2 life and you may draw a card.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever a spell or ability an opponent controls causes you to discard a card, you gain 2 life and you may draw a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a spell or ability an opponent controls causes you to discard a card, you gain 2 life and you may draw a card.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "7a056704b9ad9bf3967ea22d1fc6c6bd6fa0e9944ccda3f23b88b5f47b93319d",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Pure Intentions",
+    "oracle_id": "77ef82e6-16e3-44fa-9542-252060fa6c96",
+    "oracle_text": "Whenever a spell or ability an opponent controls causes you to discard cards this turn, return those cards from your graveyard to your hand.\nWhen a spell or ability an opponent controls causes you to discard this card, return this card from your graveyard to your hand at the beginning of the next end step.",
+    "text": "Mana cost: {W}\nType: Instant — Arcane\nWhenever a spell or ability an opponent controls causes you to discard cards this turn, return those cards from your graveyard to your hand.\nWhen a spell or ability an opponent controls causes you to discard this card, return this card from your graveyard to your hand at the beginning of the next end step.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever a spell or ability an opponent controls causes you to discard cards this turn, return those cards from your graveyard to your hand.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a spell or ability an opponent controls causes you to discard cards this turn, return those cards from your graveyard to your hand.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "228cf1b4b186bbac00590440be7b42e03ee55d46a03d561174ac4b6ddec247e4",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  }
+]

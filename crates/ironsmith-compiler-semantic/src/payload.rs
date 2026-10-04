@@ -64,6 +64,7 @@ pub enum KeywordAction {
     Modular(u32),
     ModularSunburst,
     Graft(u32),
+    Ripple(u32),
     Soulbond,
     Soulshift(u32),
     SoulshiftValue(Value),
@@ -198,6 +199,10 @@ pub enum KeywordAction {
     MarkerText(String),
     /// Trample over planeswalkers (CR 702.19c).
     TrampleOverPlaneswalkers,
+    /// ETB token creation and Equipment attachment (CR 702.182).
+    JobSelect,
+    /// Cast-triggered growth based on actual mana paid versus current P/T.
+    Increment,
 }
 
 pub fn describe_soulshift_value(value: &Value) -> String {
@@ -212,6 +217,9 @@ pub fn describe_soulshift_value(value: &Value) -> String {
 }
 
 impl KeywordAction {
+    /// Whether static grant syntax can carry this keyword. Some entries name
+    /// triggered abilities; lowering expands those through the printed keyword
+    /// builder instead of manufacturing a marker-only static ability.
     pub fn lowers_to_static_ability(&self) -> bool {
         matches!(
             self,
@@ -257,8 +265,12 @@ impl KeywordAction {
                 | Self::Toxic(_)
                 | Self::Poisonous(_)
                 | Self::BattleCry
+                | Self::Melee
+                | Self::Myriad
+                | Self::Afflict(_)
                 | Self::Dethrone
                 | Self::Evolve
+                | Self::Increment
                 | Self::Ingest
                 | Self::Mentor
                 | Self::Skulk
@@ -268,6 +280,7 @@ impl KeywordAction {
                 | Self::Renown(_)
                 | Self::Modular(_)
                 | Self::Graft(_)
+                | Self::Ripple(_)
                 | Self::Soulbond
                 | Self::Soulshift(_)
                 | Self::SoulshiftValue(_)
@@ -388,6 +401,7 @@ impl KeywordAction {
             Self::BattleCry => "Battle cry".to_string(),
             Self::Dethrone => "Dethrone".to_string(),
             Self::Evolve => "Evolve".to_string(),
+            Self::Increment => "Increment".to_string(),
             Self::Ingest => "Ingest".to_string(),
             Self::Mentor => "Mentor".to_string(),
             Self::Skulk => "Skulk".to_string(),
@@ -399,6 +413,7 @@ impl KeywordAction {
             Self::Modular(amount) => format!("Modular {amount}"),
             Self::ModularSunburst => "Modular-Sunburst".to_string(),
             Self::Graft(amount) => format!("Graft {amount}"),
+            Self::Ripple(amount) => format!("Ripple {amount}"),
             Self::Soulbond => "Soulbond".to_string(),
             Self::Soulshift(amount) => format!("Soulshift {amount}"),
             Self::SoulshiftValue(value) => format!(
@@ -549,6 +564,7 @@ impl KeywordAction {
             Self::Annihilator(amount) => format!("Annihilator {amount}"),
             Self::ForMirrodin => "For Mirrodin!".to_string(),
             Self::LivingWeapon => "Living weapon".to_string(),
+            Self::JobSelect => "Job select".to_string(),
             Self::Fuse => "Fuse".to_string(),
             Self::Prototype {
                 cost,

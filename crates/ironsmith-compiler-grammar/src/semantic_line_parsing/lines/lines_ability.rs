@@ -138,6 +138,9 @@ pub(super) fn parse_static_line_impl(
             chosen_option,
         );
     }
+    if let Some(ability) = crate::consumer_mana::spell_source_spending_ability(parse_tokens) {
+        return wrap_chosen_option_static_chunk(LineAst::StaticAbility(ability.into()), chosen_option);
+    }
     if is_minimum_spell_total_mana_three_line_lexed(parse_tokens) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::minimum_spell_total_mana(3).into()),

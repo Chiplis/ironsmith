@@ -13,6 +13,10 @@ use super::{EventKind, GameEventType};
 pub struct RawEvent {
     inner: Arc<dyn GameEventType>,
     provenance: ProvNodeId,
+    /// Receipt proof: both ordinary and delayed triggers were matched before
+    /// a later instruction. Keep the physical event for quantities/history,
+    /// but never discover those triggers again when the receipt is published.
+    triggers_captured: bool,
     /// Identity shared by events produced by one simultaneous game action.
     ///
     /// This is presentation-neutral rules metadata used by grouped triggers
@@ -30,6 +34,7 @@ impl RawEvent {
         Self {
             inner: Arc::new(event),
             provenance,
+            triggers_captured: false,
             simultaneous_batch: None,
             source_snapshot: None,
             lookback_source_snapshots: Vec::new(),
@@ -41,6 +46,7 @@ impl RawEvent {
         Self {
             inner: Arc::from(event),
             provenance,
+            triggers_captured: false,
             simultaneous_batch: None,
             source_snapshot: None,
             lookback_source_snapshots: Vec::new(),
@@ -104,6 +110,10 @@ impl RawEvent {
         self.inner().source_object()
     }
 
+    pub fn cause(&self) -> Option<&crate::events::cause::EventCause> {
+        self.inner().cause()
+    }
+
     /// Get snapshot/LKI payload if present.
     pub fn snapshot(&self) -> Option<&ObjectSnapshot> {
         self.inner().snapshot()
@@ -149,6 +159,11 @@ impl RawEvent {
         Arc::as_ptr(&self.inner) as *const () as usize
     }
 
+    pub(crate) fn triggers_captured(&self) -> bool { self.triggers_captured }
+
+    /// Only the matching boundary may assert this receipt proof.
+    pub(crate) fn mark_triggers_captured(&mut self) { self.triggers_captured = true; }
+
     /// Return the simultaneous-action identity attached to this event.
     #[inline]
     pub fn simultaneous_batch(&self) -> Option<ProvNodeId> {
@@ -193,6 +208,7 @@ impl RawEvent {
         Self {
             inner: Arc::new(event),
             provenance: self.provenance,
+            triggers_captured: self.triggers_captured,
             simultaneous_batch: self.simultaneous_batch,
             source_snapshot: self.source_snapshot.clone(),
             lookback_source_snapshots: self.lookback_source_snapshots.clone(),
@@ -210,6 +226,7 @@ impl std::fmt::Debug for RawEvent {
         f.debug_struct("RawEvent")
             .field("kind", &self.kind())
             .field("provenance", &self.provenance)
+            .field("triggers_captured", &self.triggers_captured)
             .field("simultaneous_batch", &self.simultaneous_batch)
             .field("source_snapshot", &self.source_snapshot)
             .field("lookback_source_snapshots", &self.lookback_source_snapshots)

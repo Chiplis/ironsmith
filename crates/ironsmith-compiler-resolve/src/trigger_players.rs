@@ -14,8 +14,32 @@ use crate::filter::{ObjectRef, PlayerFilter};
 /// reads only the trigger, never the card's words.
 pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => inferred_trigger_player_filter(trigger),
+        TriggerSpec::ConditionQualified {
+            condition: crate::cards::builders::PredicateAst::Triggering(
+                crate::cards::builders::TriggeringPredicateAst::TriggeringEventCausedBy { .. }), ..
+        } => Some(PlayerFilter::TaggedPlayer(ironsmith_core::TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG.into())),
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => inferred_trigger_player_filter(trigger),
+        TriggerSpec::DamageReceived { target, .. } => match target.base() {
+            crate::target::ChooseSpec::Player(_) | crate::target::ChooseSpec::SpecificPlayer(_)
+                | crate::target::ChooseSpec::SourceController => Some(PlayerFilter::IteratedPlayer),
+            _ => None,
+        },
         TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
+        // Private-zone possessors name the owner, even when a stolen permanent
+        // was controlled by somebody else immediately before the move.
+        TriggerSpec::ZoneChange(event) => event
+            .filter
+            .as_ref()
+            .and_then(|filter| filter.owner.as_ref())
+            .map(|owner| {
+                if *owner == PlayerFilter::You {
+                    PlayerFilter::You
+                } else {
+                    PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(
+                        crate::tag::CompilerReferenceTag::Triggering.bind(),
+                    ))
+                }
+            }),
         TriggerSpec::EntersBattlefield { filter, .. } if filter.source => None,
         // "Whenever a nonland permanent an opponent owns enters under your
         // control, they lose life ...": you are the controller, so the only
@@ -66,7 +90,16 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 Some(copier.clone())
             }
         }
-        TriggerSpec::PlayerLosesLife(_) | TriggerSpec::PlayersLoseLifeOneOrMore(_) => {
+        TriggerSpec::PlayerAttackDeclaration { grouping, .. } => {
+            let tag = if *grouping == ironsmith_core::trigger_model::PlayerAttackGrouping::Defender {
+                ironsmith_core::tag::ATTACK_DECLARATION_DEFENDER_TAG
+            } else {
+                ironsmith_core::tag::ATTACK_DECLARATION_ACTOR_TAG
+            };
+            Some(PlayerFilter::TaggedPlayer(tag.into()))
+        }
+        TriggerSpec::CardsMilled { .. } | TriggerSpec::PlayerChangesTapState { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerGainsLife { .. } | TriggerSpec::PlayerLosesLife(_) | TriggerSpec::PlayersLoseLifeOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)
         }
         // CR 607.2a: in "When this leaves the battlefield, that player ...",
@@ -77,8 +110,11 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 crate::tag::CompilerReferenceTag::LinkedTriggerPlayer.bind().into(),
             ))
         }
+        TriggerSpec::PlayerBecomesMonarch(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesGame(_) => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerPaysLife(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLifeDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerDrawsCardDuringTurn { .. } | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCard(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCardNotDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_) => Some(PlayerFilter::IteratedPlayer),
@@ -105,6 +141,8 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::PlayerTapsForMana { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerRollsToVisitAttractions { .. }
         | TriggerSpec::PlayerRollsResult { .. }
+        | TriggerSpec::PlayerRollsResultMatching { .. }
+        | TriggerSpec::PlayerRollsNthDie { .. }
         | TriggerSpec::PlayerRollsHighestNaturalResult { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerRollsDie { .. } | TriggerSpec::PlayerCoinFlipResult { .. } => {
             Some(PlayerFilter::IteratedPlayer)
@@ -146,8 +184,22 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         | TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast { .. }
         | TriggerSpec::ThisBecomesBlocked
         | TriggerSpec::BecomesBlocked(_)
+        | TriggerSpec::AttacksPlayerAlone(_)
         | TriggerSpec::BecomesBlockedByObjectWithLesserPower { .. } => {
             Some(PlayerFilter::Defending)
+        }
+        // "You attack with a creature an opponent owns": the attacker is
+        // under your control; the explicitly named other player is its owner.
+        TriggerSpec::Attacks(filter)
+            if filter.controller == Some(PlayerFilter::You)
+                && filter
+                    .owner
+                    .as_ref()
+                    .is_some_and(|owner| *owner != PlayerFilter::You) =>
+        {
+            Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
+            )))
         }
         // "... attack you ..., that player": you are the defender, so the
         // only player antecedent is the attacking player.
@@ -285,6 +337,8 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
             }
         }
         TriggerSpec::BeginningOfTheEndStep => Some(PlayerFilter::Active),
+        TriggerSpec::PlayerBecomesTargeted { .. }
+        | TriggerSpec::PlayerTurnsFaceUp { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::BeginningOfMonarchEndStep => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::BecomesTargetedBySourceController {
             source_controller, ..

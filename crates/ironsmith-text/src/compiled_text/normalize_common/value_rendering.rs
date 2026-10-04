@@ -2030,6 +2030,7 @@ pub(crate) fn describe_object_filter_with_fixed_pt_shorthand(filter: &ObjectFilt
             && filter.power_parity.is_none()
             && filter.power_relative_to_source.is_none()
             && !filter.power_greater_than_base_power
+            && filter.power_comparison_to_base.is_none()
             && filter.power_toughness_relation.is_none()
             && filter.total_power_toughness.is_none() =>
         {
@@ -2828,6 +2829,7 @@ pub(crate) fn describe_goad_target(spec: &ChooseSpec) -> String {
                 && filter.with_attached_object.is_none()
                 && filter.without_attached_object.is_none()
                 && !filter.suspected
+                && !filter.ring_bearer
                 && !filter.source;
             if looks_like_plain_creature_filter {
                 if let Some(controller) = filter.controller.as_ref() {
@@ -3928,6 +3930,8 @@ pub(crate) fn describe_compact_prevent_damage_color_choice(effect: &Effect) -> O
             || prevent.source_target.is_some()
             || prevent.excluded_source_target.is_some()
             || prevent.protect_source
+            || prevent.protect_source_target
+            || !prevent.follow_up_effects.is_empty()
         {
             return None;
         }
@@ -4536,6 +4540,7 @@ pub(crate) fn describe_effect_metric_value(
         crate::effect::EffectMetric::LifeLost => "the life lost this way".to_string(),
         crate::effect::EffectMetric::LifeGained => "the life gained this way".to_string(),
         crate::effect::EffectMetric::DamageDealt => "the damage dealt this way".to_string(),
+        crate::effect::EffectMetric::DamageDealtCappedByRecipient => "the damage dealt, but not more life than the player's life total before the damage was dealt, the planeswalker's loyalty before the damage was dealt, or the creature's toughness".into(),
         crate::effect::EffectMetric::ExcessDamage => {
             "the excess damage dealt to that creature this way".to_string()
         }
@@ -4588,6 +4593,8 @@ pub(crate) fn describe_prior_effect_action(
     match action {
         crate::effect::PriorEffectAction::Cast => "cast",
         crate::effect::PriorEffectAction::Chosen => "chosen",
+        crate::effect::PriorEffectAction::ChosenNumber => "chosen",
+        crate::effect::PriorEffectAction::Rolled => "rolled",
         crate::effect::PriorEffectAction::Connived => "connived",
         crate::effect::PriorEffectAction::Countered => "countered",
         crate::effect::PriorEffectAction::CountersPut => "had counters put on them",
@@ -4602,6 +4609,7 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::Prevented => "prevented",
         crate::effect::PriorEffectAction::PutOntoBattlefield => "put onto the battlefield",
         crate::effect::PriorEffectAction::PutIntoGraveyard => "put into a graveyard",
+        crate::effect::PriorEffectAction::PutIntoHand => "put into a hand",
         crate::effect::PriorEffectAction::Removed => "removed",
         crate::effect::PriorEffectAction::Returned => "returned",
         crate::effect::PriorEffectAction::Revealed => "revealed",
@@ -4815,6 +4823,8 @@ pub(crate) fn describe_prior_effect_count_basis_for_action(
 pub(crate) fn describe_prior_effect_metric_value(
     query: &crate::effect::PriorEffectMetricQuery,
 ) -> String {
+    if query.action == Some(crate::effect::PriorEffectAction::Rolled) && query.metric == crate::effect::EffectMetric::Count { return "the result of that roll".into(); }
+    if query.action == Some(crate::effect::PriorEffectAction::ChosenNumber) && query.metric == crate::effect::EffectMetric::Count { return "the chosen number".into(); }
     let plural_basis = describe_prior_effect_metric_basis(query, true);
     let singular_basis = describe_prior_effect_metric_basis(query, false);
     match query.metric {
@@ -5155,6 +5165,32 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
     }
 }
 
+fn describe_history_cause(cause: &ironsmith_core::CauseFilter) -> String {
+    use ironsmith_core::{CauseType, CauseTypeFilter, ControllerFilter};
+    let kind = |kind: &CauseType| match kind {
+        CauseType::Effect => "a spell or ability", CauseType::Cost => "a cost payment",
+        CauseType::StateBasedAction => "a state-based action", CauseType::GameRule => "a game rule",
+        CauseType::CombatDamage => "combat damage", CauseType::SpecialAction => "a special action",
+        CauseType::LegendRule => "the legend rule",
+    };
+    let mut text = match &cause.cause_type {
+        None => "an event".into(),
+        Some(CauseTypeFilter::Exact(value)) => kind(value).into(),
+        Some(CauseTypeFilter::Not(value)) => format!("an event other than {}", kind(value)),
+        Some(CauseTypeFilter::EffectLike) => "a spell or ability".into(),
+        Some(CauseTypeFilter::NotCost) => "an event other than a cost payment".into(),
+        Some(CauseTypeFilter::OneOf(values)) => values.iter().map(kind).collect::<Vec<_>>().join(" or "),
+    };
+    if let Some(filter) = &cause.source_filter { text.push_str(&format!(" from {}", describe_for_each_filter(filter))); }
+    match &cause.controller_filter {
+        Some(ControllerFilter::You | ControllerFilter::ContextController) => text.push_str(" you controlled"),
+        Some(ControllerFilter::Opponent | ControllerFilter::ContextOpponent) => text.push_str(" an opponent controlled"),
+        Some(ControllerFilter::Player(player)) => text.push_str(&format!(" controlled by {}", describe_player_filter(&PlayerFilter::Specific(*player)))),
+        _ => {}
+    }
+    text
+}
+
 fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
     match query {
         TurnHistoryCount::Died {
@@ -5170,6 +5206,10 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 describe_death_history_subject(&subject, controller.as_ref(), *controller_surface,)
             )
         }
+        TurnHistoryCount::LibrarySearches { player, own_library_only } => format!("the number of times {} searched {} this turn", describe_player_filter(player), if *own_library_only { "their own library" } else { "a library" }),
+        TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter } => format!("the greatest number of {} that entered the battlefield under {} control this turn", pluralize_noun_phrase(&describe_for_each_filter(filter)), describe_possessive_player_filter(player)),
+        TurnHistoryCount::DestroyedBy { filter, cause } => format!("the number of {} destroyed this turn by {}", describe_for_each_filter(filter), describe_history_cause(cause)),
+        TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => format!("the number of {} cast by {} this turn that were countered by {}", describe_for_each_filter(filter), describe_player_filter(caster), describe_history_cause(cause)),
         TurnHistoryCount::EnteredBattlefield(filter) => {
             let mut subject_filter = filter.clone();
             let controller = subject_filter.controller.take();
@@ -5716,6 +5756,18 @@ pub(crate) fn describe_value(value: &Value) -> String {
             format!("{} divided by {divisor}, rounded down", describe_value(value))
         }
         Value::Min(left, right) => {
+            let capped_damage = |value: &Value| matches!(value.unhinted(),
+                Value::EffectMetric { source: crate::effect::EffectMetricSource::Outcome,
+                    metric: crate::effect::EffectMetric::DamageDealtCappedByRecipient, .. });
+            let paid_color = match (left.unhinted(), right.unhinted()) {
+                (damage, Value::ManaSpentOnX(color)) if capped_damage(damage) => Some(*color),
+                (Value::ManaSpentOnX(color), damage) if capped_damage(damage) => Some(*color),
+                _ => None,
+            };
+            if let Some(color) = paid_color {
+                return format!("the damage dealt, but not more than {}, the player's life total before the damage was dealt, the planeswalker's loyalty before the damage was dealt, or the creature's toughness", describe_value(&Value::ManaSpentOnX(color)));
+            }
+
             format!("the lesser of {} and {}", describe_value(left), describe_value(right))
         }
         Value::HalfRoundedDown(value) => {
@@ -5823,6 +5875,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_count_filter_value_subject(filter)
             )
         }
+        Value::TotalPower(filter) if filter == &ObjectFilter::your_ring_bearer() => "your Ring-bearer's power".to_string(),
+        Value::TotalToughness(filter) if filter == &ObjectFilter::your_ring_bearer() => "your Ring-bearer's toughness".to_string(),
+        Value::TotalManaValue(filter) if filter == &ObjectFilter::your_ring_bearer() => "your Ring-bearer's mana value".to_string(),
         Value::TotalPower(filter) => {
             if filter.tagged_constraints.iter().any(|constraint| {
                 constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -6122,6 +6177,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 "the number of colors it is".to_string()
             }
         }
+        Value::BasePowerOf(spec) => format!("{} base power", describe_possessive_choose_spec(spec)),
+        Value::KicksPaidOf(spec) => format!("the number of times {} was kicked", describe_choose_spec(spec)),
         Value::ManaSpentToCast(spec) => format!("the amount of mana spent to cast {}", describe_choose_spec(spec)),
         Value::ManaValueOf(spec) => {
             // For implicit off-battlefield references, oracle text usually prefers
@@ -6182,6 +6239,24 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 .unwrap_or_else(|| "this permanent".to_string());
             format!("the number of {character}'s in name stickers on {source}")
         }
+        Value::DamageHistory(query) => query.describe_with_reference(describe_choose_spec),
+        Value::MaximumLifeTotal(players) => {
+            let scope = match players {
+                PlayerFilter::Any => "all players".to_string(),
+                PlayerFilter::Opponent => "your opponents".to_string(),
+                _ => describe_player_filter(players),
+            };
+            format!("the highest life total among {scope}")
+        },
+        Value::CountPlayersBelowHalfStartingLifeTotal(players) => {
+            let scope = match players {
+                PlayerFilter::Opponent => "opponents".to_string(),
+                PlayerFilter::Any => "players".to_string(),
+                _ => describe_player_filter(players),
+            };
+            format!("the number of {scope} whose life total is less than half their starting life total")
+        },
+        Value::LifeTotal(PlayerFilter::MostLifeTied) => "the highest life total among all players".to_string(),
         Value::LifeTotal(filter) => {
             format!("{} life total", describe_possessive_player_filter(filter))
         }
@@ -6505,6 +6580,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 reference.text()
             )
         }
+        Value::ManaSpentOnX(color) => format!("the amount of {{{}}} spent on X", match color {
+            crate::color::Color::White => "W", crate::color::Color::Blue => "U", crate::color::Color::Black => "B",
+            crate::color::Color::Red => "R", crate::color::Color::Green => "G",
+        }),
+        Value::CasterManaSpentToCastTriggeringObject => "the amount of mana you spent to cast that spell".to_string(),
         Value::ManaSpentToCastTriggeringObject => {
             "the amount of mana spent to cast that spell".to_string()
         }
@@ -6525,6 +6605,14 @@ pub(crate) fn describe_value(value: &Value) -> String {
             title_case_card_name_fragment(card_name)
         ),
         Value::LastNotedLifeTotal => "the last noted life total for this permanent".to_string(),
+        Value::PlayerCounters(PlayerFilter::Any, counter_type) => format!(
+            "the total number of {} counters among players",
+            counter_type.description()
+        ),
+        Value::PlayerCounters(PlayerFilter::Opponent, counter_type) => format!(
+            "the total number of {} counters among your opponents",
+            counter_type.description()
+        ),
         Value::PlayerCounters(player, counter_type) => format!(
             "the number of {} counters {}",
             counter_type.description(),
@@ -6552,6 +6640,18 @@ pub(crate) fn describe_value(value: &Value) -> String {
         | Value::PendingPriorEffectMetric(query) => describe_prior_effect_metric_value(query),
         Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount) => "that much".to_string(),
+        Value::EventValue(EventValueSpec::LifeChange { gained, for_controller }) => format!(
+            "the amount of life {} {}", if *for_controller { "you" } else { "that player" },
+            if *gained { "gained" } else { "lost" },
+        ),
+        Value::EventValueOffset(EventValueSpec::LifeChange { gained, for_controller }, offset) => format!(
+            "the amount of life {} {} {:+}", if *for_controller { "you" } else { "that player" },
+            if *gained { "gained" } else { "lost" }, offset,
+        ),
+        Value::EventValue(EventValueSpec::DieBatchTotal) => "the total result of those dice".to_string(),
+        Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)) => format!("the number of those die results of {minimum} or higher"),
+        Value::EventValueOffset(EventValueSpec::DieBatchTotal, offset) => format!("the total result of those dice plus {offset}"),
+        Value::EventValueOffset(EventValueSpec::DieResultsAtLeast(minimum), offset) => format!("the number of those die results of {minimum} or higher plus {offset}"),
         Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
         Value::EventValueOffset(EventValueSpec::DieResult, offset) => {
             if *offset == 0 {

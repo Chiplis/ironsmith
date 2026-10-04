@@ -1313,7 +1313,7 @@ pub(crate) fn render_each_player_exile_top_then_cast_any_number(
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag.as_str() != "__it__"
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -1376,7 +1376,7 @@ pub(crate) fn render_may_cast_any_number_from_among_exiled(
     let [cast_effect] = inner_may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag.as_str() != "__it__"
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -1445,7 +1445,7 @@ pub(crate) fn render_exile_top_then_cast_any_number_with_mana_value_cap(
     let [cast_effect] = inner_may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag.as_str() != "__it__"
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -1826,7 +1826,7 @@ pub(crate) fn render_random_exile_choose_copy_then_cast_copy(
     {
         return None;
     }
-    let cast = may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag != choose.tag
         || cast.player != PlayerFilter::You
         || !cast.as_copy
@@ -2703,7 +2703,7 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
         return None;
     }
     let permission_text =
-        if let Some(grant) = permission.downcast_ref::<crate::effects::GrantPlayTaggedEffect>() {
+        if let Some(grant) = permission.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none()) {
             if grant.tag != choose.tag
                 || grant.player != PlayerFilter::You
                 || grant.allow_any_color_for_cast
@@ -2718,7 +2718,7 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
             } else {
                 "You may cast the exiled card this turn"
             }
-        } else if let Some(cast) = permission.downcast_ref::<crate::effects::CastTaggedEffect>() {
+        } else if let Some(cast) = permission.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none()) {
             if cast.tag != choose.tag
                 || cast.player != PlayerFilter::You
                 || cast.allow_land

@@ -244,6 +244,23 @@ pub enum Until {
     /// whose first transition to false is permanent.
     ForAsLongAs(ContinuousDurationPredicate),
     TurnsPass(crate::value_model::Value),
+    /// Ends when this exact incarnation completes casting from the named zone.
+    /// Merely leaving that zone (including proposal before payment) is not enough.
+    ObjectIsCast {
+        object: ContinuousDurationObject,
+        from_zone: crate::zone::Zone,
+    },
+}
+
+impl Until {
+    /// CR 611.2b / 702.26f: a for-as-long-as duration tracks the exact visible
+    /// source and ends permanently on departure or phasing. This is deliberately
+    /// different from the literal "until this leaves" event duration.
+    pub fn while_source_remains_on_battlefield() -> Self {
+        Self::ForAsLongAs(ContinuousDurationPredicate::ObjectOnBattlefield(
+            ContinuousDurationObject::Source,
+        ))
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -407,6 +424,7 @@ pub enum GrantPlayTaggedObjectSurface {
         creature_spell: bool,
         source: SourceReferenceSurface,
     },
+    ThisCard,
 }
 
 /// Oracle-facing reference used by a flexible-mana suffix on a temporary
@@ -650,6 +668,21 @@ pub enum DelayedTriggerSpec {
         activation_cost_has_tap: Option<bool>,
     },
     Either(Box<DelayedTriggerSpec>, Box<DelayedTriggerSpec>),
+    /// Each actual life gain/loss while this registration is active.
+    LifeChanged {
+        player: PlayerFilter,
+        gained: bool,
+        during_turn: Option<PlayerFilter>,
+    },
+    ControlChanged(crate::trigger_model::ControlChangeTrigger),
+    PermanentBecomesUntapped { filter: ObjectFilter },
+    PlayerDiscardsCard {
+        player: PlayerFilter,
+        filter: Option<ObjectFilter>,
+        cause_controller: Option<PlayerFilter>,
+        effect_like_only: bool,
+        one_or_more: bool,
+    },
 }
 
 /// Lifetime policy for a delayed trigger registration.
@@ -1390,34 +1423,47 @@ impl TargetOnlyEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct TapEffect {
     pub target: ChooseSpec,
+    /// Explicit actor of the instruction. Absent means the effect controller
+    /// (or cost payer); it is independent from the recipient's controller.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub actor: Option<PlayerFilter>,
 }
 
 impl TapEffect {
+    pub fn with_actor(mut self, actor: Option<PlayerFilter>) -> Self {
+        self.actor = actor;
+        self
+    }
+
     pub fn with_spec(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, actor: None }
     }
 
     pub fn target(target: ChooseSpec) -> Self {
         Self {
             target: ChooseSpec::target(target),
+            actor: None,
         }
     }
 
     pub fn targets(target: ChooseSpec, count: ChoiceCount) -> Self {
         Self {
             target: ChooseSpec::target(target).with_count(count),
+            actor: None,
         }
     }
 
     pub fn all(filter: ObjectFilter) -> Self {
         Self {
             target: ChooseSpec::all(filter),
+            actor: None,
         }
     }
 
     pub fn source() -> Self {
         Self {
             target: ChooseSpec::Source,
+            actor: None,
         }
     }
 }
@@ -1426,28 +1472,40 @@ impl TapEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct UntapEffect {
     pub target: ChooseSpec,
+    /// Explicit actor of the instruction. Absent means the effect controller
+    /// (or cost payer); it is independent from the recipient's controller.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub actor: Option<PlayerFilter>,
 }
 
 impl UntapEffect {
+    pub fn with_actor(mut self, actor: Option<PlayerFilter>) -> Self {
+        self.actor = actor;
+        self
+    }
+
     pub fn with_spec(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, actor: None }
     }
 
     pub fn target(target: ChooseSpec) -> Self {
         Self {
             target: ChooseSpec::target(target),
+            actor: None,
         }
     }
 
     pub fn targets(target: ChooseSpec, count: ChoiceCount) -> Self {
         Self {
             target: ChooseSpec::target(target).with_count(count),
+            actor: None,
         }
     }
 
     pub fn all(filter: ObjectFilter) -> Self {
         Self {
             target: ChooseSpec::all(filter),
+            actor: None,
         }
     }
 }
@@ -3615,6 +3673,11 @@ pub struct BecomeBasicLandTypeChoiceEffect {
     pub duration: Until,
     pub chooser: PlayerFilter,
     pub fixed_subtype: Option<crate::types::Subtype>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub preserve_other_types: bool,
+    /// Empty means the five basic land types; otherwise one of this exact set.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub allowed_subtypes: Vec<crate::types::Subtype>,
 }
 
 impl BecomeBasicLandTypeChoiceEffect {
@@ -3624,6 +3687,8 @@ impl BecomeBasicLandTypeChoiceEffect {
             duration,
             chooser: PlayerFilter::You,
             fixed_subtype: None,
+            preserve_other_types: false,
+            allowed_subtypes: Vec::new(),
         }
     }
 
@@ -3633,7 +3698,13 @@ impl BecomeBasicLandTypeChoiceEffect {
             duration,
             chooser: PlayerFilter::You,
             fixed_subtype: Some(subtype),
+            preserve_other_types: false,
+            allowed_subtypes: Vec::new(),
         }
+    }
+
+    pub fn with_options(mut self, allowed_subtypes: Vec<crate::types::Subtype>, preserve_other_types: bool) -> Self {
+        self.allowed_subtypes = allowed_subtypes; self.preserve_other_types = preserve_other_types; self
     }
 
     pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
@@ -3737,6 +3808,29 @@ impl PayManaEffect {
         self.x_maximum = Some(x_maximum);
         self
     }
+}
+
+/// CR 701.71: choose a controlled Jace planeswalker token, creating the
+/// predefined blue token only when none exists, then put N loyalty counters on it.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct EmpowerJaceEffect {
+    pub amount: Value,
+}
+
+impl EmpowerJaceEffect {
+    pub fn new(amount: impl Into<Value>) -> Self {
+        Self { amount: amount.into() }
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct CollectEvidenceEffect {
+    pub amount: Value,
+}
+impl CollectEvidenceEffect {
+    pub fn new(amount: impl Into<Value>) -> Self { Self { amount: amount.into() } }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -6028,3 +6122,21 @@ impl MayCastMatchingSpellWithoutPayingManaCostEffect {
         self
     }
 }
+
+/// A bounded numeric choice made while an instruction resolves. The limits
+/// are authored rules bounds, not a host-selected silent cap.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ChooseNumberEffect {
+    pub chooser: PlayerFilter,
+    pub min: u32,
+    pub max: u32,
+}
+impl ChooseNumberEffect {
+    pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self { Self { chooser, min, max } }
+}
+
+/// One CR702.60 reveal/cast/remainder resolution transaction.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RippleEffect { pub amount: u32 }

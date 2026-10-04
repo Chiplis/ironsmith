@@ -16,11 +16,17 @@ pub struct CarriedSubjectTypeAdditionShape<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AnthemReplacementCondition<'a> {
+    Attached(ObjectFilter),
+    Predicate(&'a [OwnedLexToken]),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConditionalAnthemReplacementShape<'a> {
     pub subject_tokens: &'a [OwnedLexToken],
     pub base_power: i32,
     pub base_toughness: i32,
-    pub condition_filter: ObjectFilter,
+    pub condition: AnthemReplacementCondition<'a>,
     pub replacement_power: i32,
     pub replacement_toughness: i32,
 }
@@ -78,13 +84,18 @@ pub fn parse_conditional_anthem_replacement(
 ) -> Option<ConditionalAnthemReplacementShape<'_>> {
     let sentences = two_sentences(tokens)?;
     let first = parse_fixed_anthem_sentence(sentences.0, false)?;
-    let (condition_filter, replacement_power, replacement_toughness) =
-        parse_if_replacement_sentence(sentences.1)?;
+    let (condition, replacement_power, replacement_toughness) =
+        if let Some((filter, power, toughness)) = parse_if_replacement_sentence(sentences.1) {
+            (AnthemReplacementCondition::Attached(filter), power, toughness)
+        } else {
+            let (condition, power, toughness) = parse_ongoing_replacement_sentence(sentences.1)?;
+            (AnthemReplacementCondition::Predicate(condition), power, toughness)
+        };
     Some(ConditionalAnthemReplacementShape {
         subject_tokens: first.subject_tokens,
         base_power: first.power,
         base_toughness: first.toughness,
-        condition_filter,
+        condition,
         replacement_power,
         replacement_toughness,
     })
@@ -217,6 +228,20 @@ fn parse_if_replacement_sentence(tokens: &[OwnedLexToken]) -> Option<(ObjectFilt
     let (power, toughness) = parse_fixed_modifier(modifier_tokens)?;
     let condition_filter = parse_attached_reference_condition(condition_tokens)?;
     Some((condition_filter, power, toughness))
+}
+
+fn parse_ongoing_replacement_sentence(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], i32, i32)> {
+    let (_, tail) = primitives::parse_prefix(
+        tokens,
+        (primitives::kw("it"), alt((primitives::kw("get"), primitives::kw("gets")))),
+    )?;
+    let (modifier, condition) = primitives::split_lexed_once_on_separator(tail, || {
+        primitives::phrase(&["instead", "as", "long", "as"])
+    })?;
+    let condition = super::trim_anthem_clause_tokens(condition);
+    if condition.is_empty() { return None; }
+    let (power, toughness) = parse_fixed_modifier(modifier)?;
+    Some((condition, power, toughness))
 }
 
 fn parse_otherwise_anthem_sentence(tokens: &[OwnedLexToken]) -> Option<(i32, i32)> {

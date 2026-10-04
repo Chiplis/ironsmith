@@ -123,30 +123,26 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
                     }
                 }
             }
-            let copy_id = create_stack_copy(
+            let Some(copy_id) = create_stack_copy(
                 game,
                 target_id,
                 &original_entry,
                 copier,
                 &self.removed_supertypes,
                 Some(targets),
-            )?;
+            )? else { continue; };
             created_ids.push(copy_id);
 
-            events.push(TriggerEvent::new_with_provenance(
-                SpellCopiedEvent::new(copy_id, copier),
-                ctx.provenance,
-            ));
-            if let Target::Object(target_id) = candidate {
-                events.push(TriggerEvent::new_with_provenance(
-                    BecomesTargetedEvent::new(
-                        *target_id,
-                        copy_id,
-                        copier,
-                        original_entry.is_ability,
-                    ),
-                    ctx.provenance,
-                ));
+            if !original_entry.is_ability {
+                events.push(TriggerEvent::new_with_provenance(SpellCopiedEvent::new(copy_id, copier), ctx.provenance));
+            }
+            if let Some(entry) = game.stack.iter().find(|entry| entry.object_id == copy_id) {
+                let mut seen = Vec::new();
+                for target in &entry.targets {
+                    if seen.contains(target) { continue; }
+                    seen.push(*target);
+                    events.push(TriggerEvent::new_with_provenance(BecomesTargetedEvent::from_stack_entry(*target, entry).with_participant_snapshots(game), ctx.provenance));
+                }
             }
         }
 

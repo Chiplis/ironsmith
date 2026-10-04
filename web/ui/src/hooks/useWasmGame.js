@@ -63,6 +63,8 @@ const WORKER_METHODS = [
   "objectDetails",
   "inspectorActions",
   "getPaymentActivationOptions",
+  "getPaymentDisclosureForCommand",
+  "retainPaymentDisclosure",
   "beginPaymentAnalysis",
   "stepPaymentAnalysis",
   "cancelPaymentAnalysis",
