@@ -1035,7 +1035,7 @@ export const ui = {
   "Offline {0}": "Offline {0}",
   "Omniscience": "Omniscience",
   "one or more peers": "one or more peers",
-  "One or more peers are importing the latest checkpoint before another action can be submitted.": "One or more peers are importing the latest checkpoint before another action can be submitted.",
+  "One or more peers are recovering the game before another action can be submitted.": "One or more peers are recovering the game before another action can be submitted.",
   "open": "open",
   "Open decklist": "Open decklist",
   "Open decklist ·": "Open decklist ·",
