@@ -38,6 +38,9 @@ pub struct ZoneChangeEvent {
     pub snapshot: Option<ObjectSnapshot>,
     /// Snapshots of every object's state before the zone change (for batch LKI).
     pub snapshots: Vec<ObjectSnapshot>,
+    /// Completed destination characteristics, separate from origin LKI.
+    /// Filled by the original batch owner after entry/timestamp choices.
+    pub destination_snapshots: Vec<ObjectSnapshot>,
     /// Optional tagged object snapshots attached to this zone-change event.
     pub object_tags: HashMap<TagKey, Vec<ObjectSnapshot>>,
 }
@@ -60,6 +63,7 @@ impl ZoneChangeEvent {
             snapshots: snapshot.iter().cloned().collect(),
             snapshot,
             object_tags: HashMap::new(),
+            destination_snapshots: Vec::new(),
         }
     }
 
@@ -81,6 +85,7 @@ impl ZoneChangeEvent {
             snapshots: snapshot.iter().cloned().collect(),
             snapshot,
             object_tags: HashMap::new(),
+            destination_snapshots: Vec::new(),
         }
     }
 
@@ -107,6 +112,7 @@ impl ZoneChangeEvent {
             snapshot,
             snapshots,
             object_tags: HashMap::new(),
+            destination_snapshots: Vec::new(),
         }
     }
 
@@ -131,6 +137,10 @@ impl ZoneChangeEvent {
         } else {
             &self.result_objects
         }
+    }
+
+    pub fn destination_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
+        self.destination_snapshots.iter().find(|snapshot| snapshot.object_id == object)
     }
 
     /// The per-object views of a zone change that moved several objects at
@@ -195,6 +205,9 @@ impl ZoneChangeEvent {
                     Vec::new()
                 }
             };
+            let destinations = if result_objects.is_empty() { vec![object] } else { result_objects.clone() };
+            let destination_snapshots = self.destination_snapshots.iter()
+                .filter(|snapshot| destinations.contains(&snapshot.object_id)).cloned().collect();
             events.push(ZoneChangeEvent {
                 objects: vec![object],
                 result_objects,
@@ -204,6 +217,7 @@ impl ZoneChangeEvent {
                 snapshots: snapshot.iter().cloned().collect(),
                 snapshot,
                 object_tags: self.object_tags.clone(),
+                destination_snapshots,
             });
         }
         Some(events)

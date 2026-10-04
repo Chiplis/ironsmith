@@ -64,6 +64,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("spell-cost-condition-registry")
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("combat-and-completed-action-cost-condition"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(super::spell_cost_event_conditions::read(input.tokens)),
+    },
+    Reading {
         id: RuleId::new("life-total-or-less"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -93,7 +99,7 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("bound-condition-predicate"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        admits: |input| !input.read_by("combat-and-completed-action-cost-condition"),
         read: |input| input.outcome(read_bound_condition_predicate(input)),
     },
 ];

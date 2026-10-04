@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Arcum's Weathervane",
+    "oracle_id": "b4e57fba-5fa3-4fd5-8f0a-7b61593ade72",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "oracle_text": "{2}, {T}: Target snow land is no longer snow.\n{2}, {T}: Target nonsnow basic land becomes snow.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Glittering Frost",
+    "oracle_id": "2013df0b-9e8c-4dbf-87b2-0dec983266fa",
+    "mana_cost": "{2}{G}",
+    "type_line": "Snow Enchantment — Aura",
+    "oracle_text": "Enchant land\nEnchanted land is snow.\nWhenever enchanted land is tapped for mana, its controller adds an additional one mana of any color.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Melting",
+    "oracle_id": "599247f2-7f88-40ab-be08-e284e5f231d9",
+    "mana_cost": "{3}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "All lands are no longer snow.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Thermal Flux",
+    "oracle_id": "90fe98df-4f87-49ff-b562-0ed51d1d3a1c",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Choose one —\n• Target nonsnow permanent becomes snow until end of turn.\n• Target snow permanent isn't snow until end of turn.\nDraw a card at the beginning of the next turn's upkeep.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Neurok Transmuter",
+    "oracle_id": "08a64b22-49da-415e-98ce-e1a61d3dfff3",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Human Wizard",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "{U}: Target creature becomes an artifact in addition to its other types until end of turn.\n{U}: Until end of turn, target artifact creature becomes blue and isn't an artifact.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Snowfall",
+    "oracle_id": "5ffed544-1656-4753-ac8f-ad8fb4442c7f",
+    "mana_cost": "{2}{U}",
+    "type_line": "Enchantment",
+    "oracle_text": "Cumulative upkeep {U} (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\nWhenever an Island is tapped for mana, its controller may add an additional {U}. If that Island is snow, its controller may add an additional {U}{U} instead. Spend this mana only to pay cumulative upkeep costs.",
+    "proposed_complete": false
+  }
+]

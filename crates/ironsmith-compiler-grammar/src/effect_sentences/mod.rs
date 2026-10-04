@@ -1,3 +1,5 @@
+mod ability_loss_templates;
+mod characteristic_assertions;
 mod timed_draw_replacement;
 pub(crate) mod life_unit_programs;
 use self::sentence_helpers::*;

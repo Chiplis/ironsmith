@@ -35747,6 +35747,17 @@ fn describe_source_line_static_group(
         return None;
     }
     let members = abilities.get(..member_count)?;
+    // Solved is the printed surface of the executable Case designation, not
+    // an extra authored "as long as" predicate. Keep it outside the entire
+    // source-line bundle while rendering any inner predicates normally.
+    if let AbilityKind::Static(first) = &members.first()?.kind
+        && first.labeled_static_condition().is_some_and(|(_, _, condition)|
+            matches!(condition, Condition::SourceCaseSolved))
+        && let Some((text, consumed)) = describe_labeled_static_bundle(members, subject)
+        && consumed == member_count
+    {
+        return Some(text);
+    }
     describe_source_line_additive_type_loss_group(members)
         .or_else(|| {
             describe_structural_all_subtypes_scope_ladder(members)

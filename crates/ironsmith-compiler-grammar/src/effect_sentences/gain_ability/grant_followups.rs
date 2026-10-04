@@ -56,6 +56,10 @@ pub(super) fn apply_gain_clause_duration_to_leading_effect(
                     duration: effect_duration,
                     ..
                 })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes {
+                    duration: effect_duration,
+                    ..
+                })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                     duration: effect_duration,
                     ..

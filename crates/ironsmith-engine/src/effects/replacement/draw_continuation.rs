@@ -188,7 +188,7 @@ impl ReplacementResume for ProgramFrame {
                 outcomes
                     .iter_mut()
                     .flat_map(|outcome| outcome.events.iter_mut()),
-            );
+            )?;
             let result = crate::effects::execute_effect(game, effect, ctx);
             let mut outcome = match result {
                 Err(ExecutionError::InvalidTarget)
@@ -212,7 +212,7 @@ impl ReplacementResume for ProgramFrame {
                     outcomes
                         .iter_mut()
                         .flat_map(|outcome| outcome.events.iter_mut()),
-                );
+                )?;
             }
         }
         Ok(self.mode.finish(outcomes))
@@ -351,7 +351,7 @@ impl ReplacementResume for RepetitionFrame {
             outcomes
                 .iter_mut()
                 .flat_map(|outcome| outcome.events.iter_mut()),
-        );
+        )?;
         if self.remaining > 0 {
             use crate::effects::EffectExecutor;
             let repeated =
@@ -403,7 +403,7 @@ fn prepare_repetitions(
             outcomes
                 .iter_mut()
                 .flat_map(|outcome| outcome.events.iter_mut()),
-        );
+        )?;
     }
     Ok(PreparedReplacementChild::finished(finish_repetitions(
         outcomes,
@@ -433,7 +433,7 @@ impl ReplacementResume for BranchesFrame {
             outcomes
                 .iter_mut()
                 .flat_map(|outcome| outcome.events.iter_mut()),
-        );
+        )?;
         outcomes.push(crate::effects::execute_if_branches(game, ctx, &self.rest)?);
         Ok(EffectOutcome::aggregate(outcomes))
     }
@@ -541,7 +541,7 @@ fn prepare_program(
             outcomes
                 .iter_mut()
                 .flat_map(|outcome| outcome.events.iter_mut()),
-        );
+        )?;
     }
     Ok(PreparedReplacementChild::finished(mode.finish(outcomes)))
 }
@@ -703,7 +703,7 @@ impl SimultaneousEffectCompletion for DrawContinuation {
                     &child,
                     None,
                     outcome.events.iter_mut(),
-                );
+                )?;
                 Ok::<_, ExecutionError>(outcome)
             })?;
         let mut original = EffectOutcome::replaced();

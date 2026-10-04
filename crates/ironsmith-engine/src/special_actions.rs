@@ -1418,10 +1418,10 @@ fn perform_play_land(
         let provenance = game
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-        game.queue_trigger_event(
-            provenance,
-            crate::triggers::TriggerEvent::new_with_provenance(event, provenance),
-        );
+        let mut event = crate::triggers::TriggerEvent::new_with_provenance(event, provenance);
+        game.freeze_completed_entry_events(std::iter::once(&mut event))
+            .map_err(|error| ActionError::ExecutionFailure { source: card_id, error })?;
+        game.queue_trigger_event(provenance, event);
         let provenance = game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::LandPlayed);
         game.queue_trigger_event(provenance, crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::LandPlayedEvent::new(new_id, player, old_zone), provenance,

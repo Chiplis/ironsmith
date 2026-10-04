@@ -1332,6 +1332,17 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
         .token(0)
         .is_some_and(|token| token_word_is(token, NO_WORD))
     {
+        if surface::exact_any(counter_clause, &[&["no", "counter"], &["no", "counters"]]) {
+            let filter = ObjectFilter {
+                without_counter: Some(crate::filter::CounterConstraint::Any),
+                ..Default::default()
+            };
+            return Some(if is_explicit_source_state_subject_clause(relation.subject_clause) {
+                PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
+            } else {
+                PredicateAst::ItMatches(filter)
+            });
+        }
         let counter_type = parse_terminal_counter_phrase(counter_clause.tokens().get(1..)?)??;
         return Some(PredicateAst::Source(
             SourcePredicateAst::SourceHasNoCounter(counter_type),
@@ -1764,6 +1775,12 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
         .token(0)
         .is_some_and(|token| token_word_is(token, NO_WORD))
     {
+        if surface::exact_any(counter_clause, &[&["no", "counter"], &["no", "counters"]]) {
+            return Some(PredicateAst::ItMatchedLastKnown(ObjectFilter {
+                without_counter: Some(crate::filter::CounterConstraint::Any),
+                ..Default::default()
+            }));
+        }
         let counter_type = parse_terminal_counter_phrase(counter_clause.tokens().get(1..)?)??;
         return Some(PredicateAst::Triggering(
             TriggeringPredicateAst::TriggeringObjectHadNoCounter(counter_type),
@@ -3882,6 +3899,10 @@ fn parse_single_card_type_card_descriptor_tokens(tokens: &[OwnedLexToken]) -> Op
     None
 }
 
+#[path = "predicate_phrases/referenced_characteristics.rs"]
+mod referenced_characteristics;
+use referenced_characteristics::parse_referenced_characteristic_state;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DemonstrativeReferenceKind {
     It,
@@ -4372,6 +4393,10 @@ fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<Pre
                 &["doesnt", "have"],
                 &["doesn't", "have"],
                 &["does", "not", "have"],
+                &["had"],
+                &["didnt", "have"],
+                &["didn't", "have"],
+                &["did", "not", "have"],
             ]),
         ),
         WinnowSequence::object("keyword", WinnowCaptureKind::Rest),
@@ -4385,8 +4410,15 @@ fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<Pre
         return None;
     }
     let mut filter = ObjectFilter::default();
-    apply_filter_keyword_constraint(&mut filter, constraint, false);
     let action = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
+    let past = surface::exact_any(action, &[&["had"], &["didnt", "have"], &["didn't", "have"], &["did", "not", "have"]]);
+    let negative = !surface::exact_any(action, &[&["has"], &["have"], &["had"]]);
+    apply_filter_keyword_constraint(&mut filter, constraint, past && negative);
+    if past {
+        // Missing historical evidence must not satisfy a negation merely
+        // because a positive current-state lookup failed.
+        return Some(PredicateAst::ItMatchedLastKnown(filter));
+    }
     let predicate = PredicateAst::ItMatches(filter);
     Some(if surface::exact_any(action, &[&["has"], &["have"]]) {
         predicate

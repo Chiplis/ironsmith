@@ -1,3 +1,5 @@
+pub mod ability_loss_templates;
+pub mod characteristic_assertions;
 pub mod timed_draw_replacement;
 use super::super::activation_and_restrictions::{
     normalize_cant_words, parse_cant_restriction_clause, parse_cant_restrictions,
@@ -1492,9 +1494,9 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
             ConditionalEffectAst::IfResult {
                 predicate,
                 effects: split.effects,
-            })
-        }
-    }])
+            },
+        )]),
+    }
 }
 
 pub fn parse_conditional_sentence_family_lexed(

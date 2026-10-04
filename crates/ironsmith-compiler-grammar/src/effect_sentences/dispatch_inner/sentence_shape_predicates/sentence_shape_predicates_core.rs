@@ -466,6 +466,7 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors { target, .. })

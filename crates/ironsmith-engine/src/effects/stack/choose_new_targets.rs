@@ -127,8 +127,9 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 changed += 1;
                 let final_targets = game.stack[stack_idx].targets.clone();
                 game.drop_pending_stale_becomes_targeted_events(
-                    object_id,
+                    BecomesTargetedEvent::source_for_stack_entry(&entry),
                     entry.is_ability,
+                    entry.is_ability.then(|| entry.target_id()),
                     &final_targets,
                 );
                 // Only targets that are new become the target (CR 115.7);
@@ -141,12 +142,7 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                     }
                     newly_targeted.push(*target);
                     events.push(TriggerEvent::new_with_provenance(
-                        BecomesTargetedEvent::new_target(
-                            *target,
-                            object_id,
-                            entry.controller,
-                            entry.is_ability,
-                        ),
+                        BecomesTargetedEvent::from_stack_entry(*target, &entry).with_participant_snapshots(game),
                         ctx.provenance,
                     ));
                 }

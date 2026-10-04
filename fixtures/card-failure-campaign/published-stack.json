@@ -1,9 +1,6 @@
 {
-  "schema_version": 1,
   "repository": "Chiplis/ironsmith",
-  "frozen_baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "published_through_stage": 44,
-  "purpose": "Verified published tree/ref/parent and draft-PR lookup for the source-coverage stage IDs. Only historical compile/runtime evidence is verification; stages08+ remain UNVALIDATED. The current stage appears in the next cumulative source update to avoid a self-referential commit.",
+  "base_commit": "e8740178a7f7367ffa3147e7642607042079237c",
   "entries": [
     {
       "branch": "fix/card-failures-01-baseline",
@@ -15,9 +12,7 @@
       "pr": 766,
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/766",
       "draft": true,
-      "base": "main",
-      "stage": 1,
-      "validation_status": "historical_stage07_full_corpus_measurement_contains_this_stage; not_exhaustive_runtime_verification"
+      "base": "main"
     },
     {
       "branch": "fix/card-failures-02-filtered-prevention",
@@ -29,9 +24,7 @@
       "pr": 767,
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/767",
       "draft": true,
-      "base": "fix/card-failures-01-baseline",
-      "stage": 2,
-      "validation_status": "historical_stage07_full_corpus_measurement_contains_this_stage; not_exhaustive_runtime_verification"
+      "base": "fix/card-failures-01-baseline"
     },
     {
       "branch": "fix/card-failures-03-target-coordination",
@@ -43,9 +36,7 @@
       "pr": 768,
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/768",
       "draft": true,
-      "base": "fix/card-failures-02-filtered-prevention",
-      "stage": 3,
-      "validation_status": "historical_stage07_full_corpus_measurement_contains_this_stage; not_exhaustive_runtime_verification"
+      "base": "fix/card-failures-02-filtered-prevention"
     },
     {
       "branch": "fix/card-failures-04-keyword-grants",
@@ -62,9 +53,7 @@
       "pr": 769,
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/769",
       "draft": true,
-      "base": "fix/card-failures-03-target-coordination",
-      "stage": 4,
-      "validation_status": "historical_stage07_full_corpus_measurement_contains_this_stage; not_exhaustive_runtime_verification"
+      "base": "fix/card-failures-03-target-coordination"
     },
     {
       "branch": "fix/card-failures-05-landwalk",
@@ -83,9 +72,7 @@
       "pr": 770,
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/770",
       "draft": true,
-      "base": "fix/card-failures-04-keyword-grants",
-      "stage": 5,
-      "validation_status": "historical_stage07_full_corpus_measurement_contains_this_stage; not_exhaustive_runtime_verification"
+      "base": "fix/card-failures-04-keyword-grants"
     },
     {
       "branch": "fix/card-failures-06-unicode-spans",
@@ -104,9 +91,7 @@
       "pr": 771,
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/771",
       "draft": true,
-      "base": "fix/card-failures-05-landwalk",
-      "stage": 6,
-      "validation_status": "historical_stage07_full_corpus_measurement_contains_this_stage; not_exhaustive_runtime_verification"
+      "base": "fix/card-failures-05-landwalk"
     },
     {
       "branch": "fix/card-failures-07-dash",
@@ -128,9 +113,7 @@
       "pr": 772,
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/772",
       "draft": true,
-      "base": "fix/card-failures-06-unicode-spans",
-      "stage": 7,
-      "validation_status": "historical_stage07_full_corpus_measurement_contains_this_stage; not_exhaustive_runtime_verification"
+      "base": "fix/card-failures-06-unicode-spans"
     },
     {
       "stage": 8,
@@ -557,20 +540,21 @@
       "stage": 38,
       "branch": "fix/card-failures-38-token-lifetime-roots",
       "base": "fix/card-failures-37-animation-event-roots",
+      "source_integration_commit": "2ee64c7c5f87d839d07f386200f549c3d20d4918",
       "remote_commit": "3c4a6c57e8bc64a6f3a7e5e278798f269b6428c7",
       "tree": "36de48a06632223f2d7e7cb574a96cabe858def2",
       "remote_ref_verified": true,
       "remote_tree_verified": true,
       "pr": 804,
       "draft": true,
-      "pr_url": "https://github.com/Chiplis/ironsmith/pull/804",
-      "validation_status": "UNVALIDATED_source_only_all_execution_deferred",
-      "local_commit": "2ee64c7c5f87d839d07f386200f549c3d20d4918"
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/804"
     },
     {
       "stage": 39,
       "branch": "fix/card-failures-39-replacement-context-roots",
       "base": "fix/card-failures-38-token-lifetime-roots",
+      "source_integration_commit": "7f8a717f4ee92bfdbb2d168c6532eaea5cfac867",
       "remote_commit": "3796fb82d10aa3e5168d30c30abb3a93deea95ba",
       "tree": "faa352d336bd50f3e019f45138e7260e2b04d3fa",
       "remote_ref_verified": true,
@@ -578,13 +562,13 @@
       "pr": 805,
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
-      "pr_url": "https://github.com/Chiplis/ironsmith/pull/805",
-      "local_commit": "7f8a717f4ee92bfdbb2d168c6532eaea5cfac867"
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/805"
     },
     {
       "stage": 40,
       "branch": "fix/card-failures-40-transformation-and-payment-roots",
       "base": "fix/card-failures-39-replacement-context-roots",
+      "source_integration_commit": "e1a0f5e84e3eb82c185c356dba779002cf7fe3c7",
       "remote_commit": "18310394322e2365e0f69e355d5406592230aca9",
       "tree": "6521f4f5ff19f5674aff65aec337b8ffabb33c7a",
       "remote_ref_verified": true,
@@ -592,8 +576,7 @@
       "pr": 806,
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
-      "pr_url": "https://github.com/Chiplis/ironsmith/pull/806",
-      "local_commit": "e1a0f5e84e3eb82c185c356dba779002cf7fe3c7"
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/806"
     },
     {
       "stage": 41,
@@ -620,7 +603,7 @@
       "remote_tree_verified": true,
       "pr": 808,
       "draft": true,
-      "validation_status": "UNVALIDATED_source_proposal_all_execution_deferred",
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/808"
     },
     {
@@ -650,6 +633,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/810"
+    },
+    {
+      "stage": 45,
+      "branch": "fix/card-failures-45-pricing-life-and-designation-roots",
+      "base": "fix/card-failures-44-control-and-activation-families",
+      "source_integration_commit": "d39d9ab5303cacdbb9dcf7a71651f43d6030a329",
+      "remote_commit": "b94bc61eb57a3ed4bdf69d7ab54beeb91bf1dd3d",
+      "tree": "4141b7ac441e7de747261285aa76beecceddd2a4",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 811,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/811"
     }
   ]
 }

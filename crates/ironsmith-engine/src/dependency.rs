@@ -2202,6 +2202,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TriggeringObjectEnteredTransformed
         | C::EvolveEnteringCreatureIsLarger
         | C::SoulbondPairingPossible
+        | C::SourceCaseSolved
         | C::SourceClassLevelAtLeast(_)
         | C::TriggeringObjectHadCounters { .. }
         | C::SourceIsInZone(_)

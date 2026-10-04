@@ -1,0 +1,68 @@
+[
+  {
+    "name": "Archive Trap",
+    "oracle_id": "d412b175-2365-4b2c-a8f5-3e4e9d06280d",
+    "text": "Mana cost: {3}{U}{U}\nType: Instant — Trap\nIf an opponent searched their library this turn, you may pay {0} rather than pay this spell's mana cost.\nTarget opponent mills thirteen cards.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Arrow Volley Trap",
+    "oracle_id": "131dc114-cd48-43d9-93b3-88df85640e09",
+    "text": "Mana cost: {3}{W}{W}\nType: Instant — Trap\nIf four or more creatures are attacking, you may pay {1}{W} rather than pay this spell's mana cost.\nArrow Volley Trap deals 5 damage divided as you choose among any number of target attacking creatures.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Baloth Cage Trap",
+    "oracle_id": "1221bef9-5947-4c32-a74b-b60279bb79bf",
+    "text": "Mana cost: {3}{G}{G}\nType: Instant — Trap\nIf an opponent had an artifact enter the battlefield under their control this turn, you may pay {1}{G} rather than pay this spell's mana cost.\nCreate a 4/4 green Beast creature token.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Cobra Trap",
+    "oracle_id": "f3953f48-01c0-4647-9e4a-d70708d01e33",
+    "text": "Mana cost: {4}{G}{G}\nType: Instant — Trap\nIf a noncreature permanent under your control was destroyed this turn by a spell or ability an opponent controlled, you may pay {G} rather than pay this spell's mana cost.\nCreate four 1/1 green Snake creature tokens.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Lethargy Trap",
+    "oracle_id": "7356319d-1485-426b-80a7-9700d6684ac9",
+    "text": "Mana cost: {3}{U}\nType: Instant — Trap\nIf three or more creatures are attacking, you may pay {U} rather than pay this spell's mana cost.\nAttacking creatures get -3/-0 until end of turn.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Nemesis Trap",
+    "oracle_id": "1c6f95fd-f8d0-4d22-aa21-29e5c70b2f85",
+    "text": "Mana cost: {4}{B}{B}\nType: Instant — Trap\nIf a white creature is attacking, you may pay {B}{B} rather than pay this spell's mana cost.\nExile target attacking creature. Create a token that's a copy of that creature. Exile it at the beginning of the next end step.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Permafrost Trap",
+    "oracle_id": "f037b319-e559-42ad-bcfe-d43d07ce05e7",
+    "text": "Mana cost: {2}{U}{U}\nType: Instant — Trap\nIf an opponent had a green creature enter the battlefield under their control this turn, you may pay {U} rather than pay this spell's mana cost.\nTap up to two target creatures. Those creatures don't untap during their controller's next untap step.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Pitfall Trap",
+    "oracle_id": "26e75f0b-3a02-4989-8429-b6276e98ac33",
+    "text": "Mana cost: {2}{W}\nType: Instant — Trap\nIf exactly one creature is attacking, you may pay {W} rather than pay this spell's mana cost.\nDestroy target attacking creature without flying.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Slingbow Trap",
+    "oracle_id": "66ce0ae5-7000-4e4a-891f-f571f0e58cd7",
+    "text": "Mana cost: {3}{G}\nType: Instant — Trap\nIf a black creature with flying is attacking, you may pay {G} rather than pay this spell's mana cost.\nDestroy target attacking creature with flying.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Summoning Trap",
+    "oracle_id": "2faa8dc1-0370-458c-9aef-44f81a9b5cd5",
+    "text": "Mana cost: {4}{G}{G}\nType: Instant — Trap\nIf a creature spell you cast this turn was countered by a spell or ability an opponent controlled, you may pay {0} rather than pay this spell's mana cost.\nLook at the top seven cards of your library. You may put a creature card from among them onto the battlefield. Put the rest on the bottom of your library in any order.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Whiplash Trap",
+    "oracle_id": "1bd26692-c030-4493-883e-2d26b3a1d025",
+    "text": "Mana cost: {3}{U}{U}\nType: Instant — Trap\nIf an opponent had two or more creatures enter the battlefield under their control this turn, you may pay {U} rather than pay this spell's mana cost.\nReturn two target creatures to their owners' hands.",
+    "proposed_coverage": "source_complete_unvalidated"
+  }
+]

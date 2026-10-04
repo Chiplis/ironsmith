@@ -857,7 +857,11 @@ fn describe_turn_history_value_comparison(
                 None
             }
         }
-        ironsmith_core::TurnHistoryCount::Descended(_)
+        ironsmith_core::TurnHistoryCount::LibrarySearches { .. }
+        | ironsmith_core::TurnHistoryCount::MaxEnteredBattlefieldByController { .. }
+        | ironsmith_core::TurnHistoryCount::DestroyedBy { .. }
+        | ironsmith_core::TurnHistoryCount::CastSpellsCounteredBy { .. }
+        | ironsmith_core::TurnHistoryCount::Descended(_)
         | ironsmith_core::TurnHistoryCount::UntappedLandsAtTurnStart(_)
         | ironsmith_core::TurnHistoryCount::DamageDealtToSource
         | ironsmith_core::TurnHistoryCount::DamageDealtBySource
@@ -2620,6 +2624,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "the target is paired with another creature".to_string()
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            if filter.was_blocked_this_turn {
+                let mut plain = filter.clone();
+                plain.was_blocked_this_turn = false;
+                if plain.zone == Some(Zone::Battlefield) { plain.zone = None; }
+                plain.set_demonstrative_antecedent_surface(None);
+                if plain == ObjectFilter::default() { return "it was blocked this turn".into(); }
+            }
+
             if let [constraint] = filter.tagged_constraints.as_slice()
                 && constraint.tag.as_str() == "__chosen_name__"
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
@@ -3457,6 +3469,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "{} or more mana was spent to activate that ability",
             amount
         ),
+        Condition::SourceCaseSolved => "this Case is solved".to_string(),
         Condition::SourceClassLevelAtLeast(level) => format!("this Class is level {level} or higher"),
         Condition::SoulbondPairingPossible => "you control both this creature and that creature and both are unpaired".to_string(),
         Condition::EvolveEnteringCreatureIsLarger => "that creature's power is greater than this creature's power and/or that creature's toughness is greater than this creature's toughness".to_string(),
@@ -5389,6 +5402,7 @@ pub(crate) fn describe_implicit_tagged_object_pt_condition(
     base.power_reference = ironsmith_core::PtReference::default();
     base.power_relative_to_source = None;
     base.power_greater_than_base_power = false;
+    base.power_comparison_to_base = None;
     base.power_toughness_relation = None;
     base.toughness = None;
     base.toughness_reference = ironsmith_core::PtReference::default();
@@ -5429,6 +5443,17 @@ pub(crate) fn describe_implicit_tagged_object_pt_condition(
     }
     if filter.power_greater_than_base_power {
         return Some(format!("{possessive} power is greater than its base power"));
+    }
+    if let Some(operator) = filter.power_comparison_to_base {
+        let relation = match operator {
+            ironsmith_core::ValueComparisonOperator::GreaterThan => "greater than",
+            ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual => "greater than or equal to",
+            ironsmith_core::ValueComparisonOperator::Equal => "equal to",
+            ironsmith_core::ValueComparisonOperator::LessThan => "less than",
+            ironsmith_core::ValueComparisonOperator::LessThanOrEqual => "less than or equal to",
+            ironsmith_core::ValueComparisonOperator::NotEqual => "different from",
+        };
+        return Some(format!("{possessive} power is {relation} its base power"));
     }
     if let Some(relation) = filter.power_toughness_relation {
         return Some(match relation {

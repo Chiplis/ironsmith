@@ -320,6 +320,8 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisIsTurnedFaceUp => crate::triggers::Trigger::this_is_turned_face_up(),
         TriggerKind::TurnedFaceUp { filter } => crate::triggers::Trigger::turned_face_up(filter),
         TriggerKind::BecomesTargeted => crate::triggers::Trigger::becomes_targeted(),
+        TriggerKind::BecomesTargetedByAbilitySource { target, source } => Trigger::new(crate::triggers::BecomesTargetedByAbilitySourceTrigger { target_filter: target.clone(), source_filter: source.clone() }),
+        TriggerKind::PlayerBecomesTargeted { player, source_controller, source_kind } => crate::triggers::Trigger::new(crate::triggers::PlayerBecomesTargetedTrigger { player_filter: player, source_controller, source_kind }),
         TriggerKind::BecomesTargetedObject { filter } => {
             crate::triggers::Trigger::becomes_targeted_object(filter)
         }

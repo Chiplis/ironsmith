@@ -285,7 +285,8 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                         .is_some_and(|player| player.mentions_iterated_player())
                         || object_filter_mentions_iterated_player(filter)
                 }
-                TurnHistoryCount::TokensCreated(player)
+                TurnHistoryCount::LibrarySearches { player, .. }
+                | TurnHistoryCount::TokensCreated(player)
                 | TurnHistoryCount::TurnedFaceUp(player)
                 | TurnHistoryCount::PlayersAttackedThisCombat(player)
                 | TurnHistoryCount::OpponentsAttacked(player)
@@ -304,7 +305,8 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 TurnHistoryCount::PutIntoGraveyard { owner, .. } => {
                     owner.mentions_iterated_player()
                 }
-                TurnHistoryCount::Sacrificed { player, filter }
+                TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter }
+                | TurnHistoryCount::Sacrificed { player, filter }
                 | TurnHistoryCount::SacrificedCardTypes { player, filter }
                 | TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
                     player.mentions_iterated_player()
@@ -318,6 +320,11 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                     player.mentions_iterated_player()
                         || object_filter_mentions_iterated_player(filter)
                 }
+                TurnHistoryCount::DestroyedBy { filter, cause } => object_filter_mentions_iterated_player(filter)
+                    || cause.source_filter.as_ref().is_some_and(object_filter_mentions_iterated_player),
+                TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => caster.mentions_iterated_player()
+                    || object_filter_mentions_iterated_player(filter)
+                    || cause.source_filter.as_ref().is_some_and(object_filter_mentions_iterated_player),
                 TurnHistoryCount::DamageDealtToSource | TurnHistoryCount::DamageDealtBySource => {
                     false
                 }

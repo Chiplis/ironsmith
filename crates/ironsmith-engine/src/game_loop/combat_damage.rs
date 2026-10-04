@@ -210,7 +210,7 @@ pub(crate) fn try_execute_combat_damage_step_with_dm_and_first_step_snapshot(
                 .has_pending_follow_ups()
                 && let Ok(events) = &mut result
             {
-                capture_combat_consequence_triggers(game, events, dm);
+                capture_combat_consequence_triggers(game, events, dm)?;
                 for event in events.iter_mut().filter(|event| event.amount > 0) {
                     if let Some(snapshot) = game.object(event.source).map(|obj| {
                         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
@@ -722,15 +722,17 @@ fn execute_general_combat_damage_batch_path(
 fn capture_combat_consequence_triggers(
     game: &mut GameState, events: &mut [CombatDamageEvent],
     dm: &mut dyn crate::decision::DecisionMaker,
-) {
-    let Some(first) = events.first() else { return; };
+) -> Result<(), CombatDamageAssignmentError> {
+    let Some(first) = events.first() else { return Ok(()); };
     let source = first.source;
     let controller = first.source_snapshot.as_ref().map(|snapshot| snapshot.controller)
         .or_else(|| game.current_controller(source)).unwrap_or(game.turn.active_player);
     let ctx = crate::effects::ExecutionContext::new(source, controller, dm);
     crate::effects::capture_triggers_before_added_program(game, &ctx, None,
         events.iter_mut().flat_map(|event| event.consequence_outcome.iter_mut().chain(event.lifelink_outcome.iter_mut()))
-            .flat_map(|outcome| outcome.events.iter_mut()));
+            .flat_map(|outcome| outcome.events.iter_mut()))
+        .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
+    Ok(())
 }
 
 type CombatDamageAdditions = Vec<(usize, ObjectId, crate::ids::PlayerId,
@@ -744,7 +746,7 @@ fn finish_combat_damage_additions(
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<(), CombatDamageAssignmentError> {
     if !additions.is_empty() {
-        capture_combat_consequence_triggers(game, events, dm);
+        capture_combat_consequence_triggers(game, events, dm)?;
     }
     // Freeze every original target before any added instruction can move it.
     for event in events.iter_mut().filter(|event| event.amount > 0) {
@@ -1540,11 +1542,11 @@ impl CombatLifelinkTotals {
             receipts.push((source, controller, index, snapshot, receipt));
         }
         if receipts.iter().any(|(_, _, _, _, receipt)| receipt.completion.is_some()) {
-            let (source, controller, _, _, _) = &receipts[0];
-            let ctx = crate::effects::ExecutionContext::new(*source, *controller, &mut *dm);
+            let (source, controller) = (receipts[0].0, receipts[0].1);
+            let ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
             crate::effects::capture_triggers_before_added_program(
                 game, &ctx, None, receipts.iter_mut().flat_map(|(_, _, _, _, receipt)| receipt.outcome.events.iter_mut()),
-            );
+            ).map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
         }
         for (source, controller, index, snapshot, receipt) in receipts {
             let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);

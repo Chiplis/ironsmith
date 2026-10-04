@@ -198,7 +198,7 @@ fn cast(
     };
     assert!(compute_legal_actions(game, A).unwrap().contains(&action));
     let mut queue = TriggerQueue::new();
-    let mut state = PriorityLoopState::new(2);
+    let mut state = PriorityLoopState::new(game.players.len());
     let mut progress = apply_priority_response_with_dm(
         game,
         &mut queue,
@@ -476,6 +476,56 @@ fn cast_trigger_difference_keeps_seven_as_authored_boundary_and_rechecks_on_reso
             }
             assert_eq!(hand(&game, A), (initial + response_draw as usize).max(7));
             assert_eq!(game.stack.len(), 1);
+        }
+    }
+}
+
+
+#[test]
+fn sandstone_oracle_cannot_choose_a_teammate_as_an_opponent_for_its_real_draw() {
+    let teammate = PlayerId::from_index(1);
+    let bob = PlayerId::from_index(2);
+    let charlie = PlayerId::from_index(3);
+    for definition in definitions("Sandstone Oracle") {
+        for teams in [false, true] {
+            let mut game = GameState::new(
+                vec![
+                    "Alice".into(),
+                    "Teammate".into(),
+                    "Bob".into(),
+                    "Charlie".into(),
+                ],
+                20,
+            );
+            game.turn.phase = Phase::FirstMain;
+            game.turn.step = None;
+            game.turn.active_player = A;
+            game.turn.priority_player = Some(A);
+            game.player_mut(A)
+                .unwrap()
+                .mana_pool
+                .add(ManaSymbol::Blue, 20);
+            if teams {
+                game.set_teams(vec![vec![A, teammate], vec![bob, charlie]])
+                    .unwrap();
+            }
+            for (player, count) in [(A, 2), (teammate, 11), (bob, 5), (charlie, 9)] {
+                populate(&mut game, player, Zone::Hand, count);
+            }
+            populate(&mut game, A, Zone::Library, 20);
+            cast(
+                &mut game,
+                &definition,
+                CastingMethod::Normal,
+                &mut Choices::default(),
+            );
+            resolve(&mut game, &mut Choices::default());
+            let mut queue = TriggerQueue::new();
+            put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut Choices::default()).unwrap();
+            assert_eq!(game.stack.len(), 1);
+            resolve_all(&mut game, &mut Choices::default());
+            assert_eq!(hand(&game, A), if teams { 5 } else { 11 });
+            assert_eq!(hand(&game, teammate), 11);
         }
     }
 }

@@ -1,0 +1,97 @@
+[
+  {
+    "name": "Azure Beastbinder",
+    "oracle_id": "7bb51602-60e8-4730-b11c-2870d6b42e20",
+    "mana_cost": "{1}{U}",
+    "type_line": "Creature — Rat Rogue",
+    "oracle_text": "Vigilance\nThis creature can't be blocked by creatures with power 2 or greater.\nWhenever this creature attacks, up to one target artifact, creature, or planeswalker an opponent controls loses all abilities until your next turn. If it's a creature, it also has base power and toughness 2/2 until your next turn.",
+    "power": "1",
+    "toughness": "3",
+    "layout": "normal",
+    "proposed_complete": false
+  },
+  {
+    "name": "Gift of Tusks",
+    "oracle_id": "c0307f8d-b39a-4180-8a45-ddc019ee39f6",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Until end of turn, target creature loses all abilities and becomes a green Elephant with base power and toughness 3/3.",
+    "layout": "normal",
+    "proposed_complete": true
+  },
+  {
+    "name": "Honest Work",
+    "oracle_id": "12956c07-e679-471b-8dcb-2a2d15b0be55",
+    "mana_cost": "{U}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature an opponent controls\nWhen this Aura enters, tap enchanted creature and remove all counters from it.\nEnchanted creature loses all abilities and is a Citizen with base power and toughness 1/1 and \"{T}: Add {C}\" named Humble Merchant. (It loses all other creature types and names.)",
+    "layout": "normal",
+    "proposed_complete": false
+  },
+  {
+    "name": "Mercurial Transformation",
+    "oracle_id": "c7efe6c6-3da1-47a6-a8ad-30c36502a7ab",
+    "mana_cost": "{1}{U}",
+    "type_line": "Sorcery — Lesson",
+    "oracle_text": "Until end of turn, target nonland permanent loses all abilities and becomes your choice of a blue Frog creature with base power and toughness 1/1 or a blue Octopus creature with base power and toughness 4/4.",
+    "layout": "normal",
+    "proposed_complete": false
+  },
+  {
+    "name": "Polymorphist's Jest",
+    "oracle_id": "5bc66b2d-a93c-449d-a090-b61e1613aa15",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Until end of turn, each creature target player controls loses all abilities and becomes a blue Frog with base power and toughness 1/1.",
+    "layout": "normal",
+    "proposed_complete": true
+  },
+  {
+    "name": "Snakeform",
+    "oracle_id": "76ae07ce-ca0c-4308-b8bd-d999eea0a65f",
+    "mana_cost": "{2}{G/U}",
+    "type_line": "Instant",
+    "oracle_text": "Until end of turn, target creature loses all abilities and becomes a green Snake with base power and toughness 1/1.\nDraw a card.",
+    "layout": "normal",
+    "proposed_complete": true
+  },
+  {
+    "name": "Turn // Burn",
+    "oracle_id": "41841bbf-1c51-494b-b299-c997cce88e44",
+    "mana_cost": "{2}{U} // {1}{R}",
+    "type_line": "Instant // Instant",
+    "card_faces": [
+      {
+        "object": "card_face",
+        "name": "Turn",
+        "mana_cost": "{2}{U}",
+        "type_line": "Instant",
+        "oracle_text": "Until end of turn, target creature loses all abilities and becomes a red Weird with base power and toughness 0/1.\nFuse (You may cast one or both halves of this card from your hand.)",
+        "watermark": "izzet",
+        "artist": "Ryan Barger",
+        "artist_id": "a4e0102e-bbeb-497c-babc-1c0741fea914",
+        "illustration_id": "6f292968-be9f-469f-9491-f455c57a5149"
+      },
+      {
+        "object": "card_face",
+        "name": "Burn",
+        "mana_cost": "{1}{R}",
+        "type_line": "Instant",
+        "oracle_text": "Burn deals 2 damage to any target.\nFuse (You may cast one or both halves of this card from your hand.)",
+        "artist": "Ryan Barger",
+        "artist_id": "a4e0102e-bbeb-497c-babc-1c0741fea914"
+      }
+    ],
+    "layout": "split",
+    "proposed_complete": false
+  },
+  {
+    "name": "Turn to Frog",
+    "oracle_id": "74c4c1e2-c50d-4c8f-889a-0d5674dc6d67",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Until end of turn, target creature loses all abilities and becomes a blue Frog with base power and toughness 1/1.",
+    "layout": "normal",
+    "proposed_complete": true
+  }
+]

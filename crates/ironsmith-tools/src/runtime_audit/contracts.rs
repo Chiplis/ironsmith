@@ -968,6 +968,16 @@ impl Auditor {
                 scope.amount = Binding::Present;
             }
             "PlayerAttackDeclaration" | "RingBearerChosen" => { scope.player = Binding::Present; }
+            "BecomesTargetedByAbilitySource" => {
+                scope.player = Binding::Present;
+                scope.event_object = Binding::Present;
+            }
+            "PlayerBecomesTargeted" => {
+                // BecomesTargetedEvent::player is the captured source controller;
+                // the player target does not invent an event object.
+                scope.player = Binding::Present;
+                scope.event_object = Binding::Absent;
+            }
             "CardsMilled" => {
                 scope.player = Binding::Present;
                 scope.amount = Binding::Present;

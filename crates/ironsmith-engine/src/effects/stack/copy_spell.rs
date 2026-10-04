@@ -303,36 +303,22 @@ pub(crate) fn create_stack_copy(
     )
 }
 
-/// A copy that targets an object makes that object become the target of the
+/// A copy that targets a player or object makes it become the target of the
 /// copy (ward, "becomes the target" triggers). Each distinct target becomes a
 /// target once (CR 115.3).
 fn queue_copy_becomes_targeted_events(
     game: &mut GameState,
     ctx: &ExecutionContext,
-    original_entry: &StackEntry,
     copy_id: crate::ids::ObjectId,
-    copier: crate::ids::PlayerId,
 ) {
-    let mut targeted_seen: Vec<crate::ids::ObjectId> = Vec::new();
-    for target in &original_entry.targets {
-        if let Target::Object(targeted) = target {
-            if targeted_seen.contains(targeted) {
-                continue;
-            }
-            targeted_seen.push(*targeted);
-            game.queue_trigger_event(
-                ctx.provenance,
-                TriggerEvent::new_with_provenance(
-                    crate::events::spells::BecomesTargetedEvent::new(
-                        *targeted,
-                        copy_id,
-                        copier,
-                        original_entry.is_ability,
-                    ),
-                    ctx.provenance,
-                ),
-            );
-        }
+    let Some(entry) = game.stack.iter().find(|entry| entry.object_id == copy_id).cloned() else { return; };
+    let mut targeted_seen = Vec::new();
+    for target in &entry.targets {
+        if targeted_seen.contains(target) { continue; }
+        targeted_seen.push(*target);
+        game.queue_trigger_event(ctx.provenance, TriggerEvent::new_with_provenance(
+            crate::events::BecomesTargetedEvent::from_stack_entry(*target, &entry), ctx.provenance,
+        ));
     }
 }
 
@@ -430,13 +416,7 @@ impl EffectExecutor for CopySpellEffect {
                         None,
                     )? else { prevented_copy = true; continue; };
                     created_ids.push(copy_id);
-                    queue_copy_becomes_targeted_events(
-                        game,
-                        ctx,
-                        &original_entry,
-                        copy_id,
-                        copier,
-                    );
+                    queue_copy_becomes_targeted_events(game, ctx, copy_id);
                     game.queue_trigger_event(
                         ctx.provenance,
                         TriggerEvent::new_with_provenance(
@@ -494,7 +474,7 @@ impl EffectExecutor for CopySpellEffect {
                 )? else { prevented_copy = true; continue; };
                 created_ids.push(copy_id);
 
-                queue_copy_becomes_targeted_events(game, ctx, &original_entry, copy_id, copier);
+                queue_copy_becomes_targeted_events(game, ctx, copy_id);
 
                 // Only copying a spell emits the spell-copied event. The same
                 // effect type also represents activated/triggered ability
@@ -616,6 +596,23 @@ mod tests {
         game.object_mut(spell).unwrap().abilities_mut().push(
             crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::cant_be_copied()));
         assert!(create_stack_copy(&mut game, spell, &entry, alice, &[], None).unwrap().is_none());
+    }
+
+    #[test]
+    fn copied_player_targets_are_reported_once_per_distinct_participant() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let spell = create_instant_on_stack(&mut game, "Repeated target spell", bob);
+        game.stack.last_mut().unwrap().targets = vec![Target::Player(alice), Target::Player(alice), Target::Player(bob)];
+        let mut ctx = ExecutionContext::new_default(spell, bob);
+        let outcome = CopySpellEffect::single(ChooseSpec::SpecificObject(spell)).execute(&mut game, &mut ctx).unwrap();
+        let crate::effect::OutcomeValue::Objects(copies) = outcome.value else { panic!("copy"); };
+        let events = game.take_pending_trigger_events();
+        let targeted: Vec<_> = events.iter().filter_map(|event| event.downcast::<BecomesTargetedEvent>()).collect();
+        assert_eq!(targeted.len(), 2);
+        assert_eq!(targeted[0].target_player(), Some(alice));
+        assert_eq!(targeted[1].target_player(), Some(bob));
+        assert!(targeted.iter().all(|event| event.source == copies[0] && event.source_controller == bob && !event.by_ability));
     }
 
     #[test]

@@ -109,7 +109,7 @@ pub(super) fn execute_replacement_program(
             crate::effects::runtime::capture_triggers_before_added_program(
                 game, child, effects.get(index + 1),
                 outcomes.iter_mut().flat_map(|outcome| outcome.events.iter_mut()),
-            );
+            )?;
         }
         Ok(EffectOutcome::aggregate(outcomes))
     })
@@ -231,7 +231,7 @@ where T: Fn(&GameState, &ReplacementEventContext, &EffectOutcome) -> Result<Repl
             crate::effects::runtime::capture_triggers_before_added_program(
                 game, parent, program.effects.first(),
                 original_outcome.events.iter_mut().chain(outcomes.iter_mut().flat_map(|outcome| outcome.events.iter_mut())),
-            );
+            )?;
             let bindings = bindings_for_program(game, &program.context, &original_outcome)?;
             let outcome = execute_replacement_payload_with_snapshot(
                 game, parent, &program.effects, program.source, program.controller,

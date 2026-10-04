@@ -908,7 +908,7 @@ impl ForPlayersSequentialState {
                 let effect = self.effect.effects[self.effect_index].clone();
                 if defer_draws || game.effect_store.per_event_trigger_matching {
                     crate::effects::capture_triggers_before_added_program(game, ctx, Some(&effect),
-                        self.outcomes.iter_mut().flat_map(|outcome| outcome.events.iter_mut()));
+                        self.outcomes.iter_mut().flat_map(|outcome| outcome.events.iter_mut()))?;
                 }
                 let pending = self.pending_child.take();
                 let prepared = ctx.with_temp_iterated_player(Some(player), |ctx| {
@@ -923,7 +923,7 @@ impl ForPlayersSequentialState {
                 if let Some(pending) = prepared.resume {
                     let mut partial = prepared.prefix;
                     crate::effects::capture_triggers_before_added_program(game, ctx, None,
-                        self.outcomes.iter_mut().flat_map(|outcome| outcome.events.iter_mut()).chain(partial.events.iter_mut()));
+                        self.outcomes.iter_mut().flat_map(|outcome| outcome.events.iter_mut()).chain(partial.events.iter_mut()))?;
                     let complete_prefix = finish_players_outcome(&self.effect, self.players.clone(), self.outcomes.clone(), self.outcomes_by_player.clone(), Vec::new())?;
                     self.pending_child = Some(pending);
                     return Ok(ActionRun::Paused { prefix: EffectOutcome::aggregate([complete_prefix, partial]),
@@ -1125,7 +1125,7 @@ impl ForPlayersActionState {
                 next_unit += 1;
                 if !actual_events.is_empty() && (defer_draws || game.effect_store.per_event_trigger_matching) {
                     crate::effects::capture_triggers_before_added_program(game, ctx,
-                        unit.first().map(|index| &simultaneous_effects[*index]), actual_events.iter_mut());
+                        unit.first().map(|index| &simultaneous_effects[*index]), actual_events.iter_mut())?;
                 }
                 let mut resuming = pending_unit_draw.take();
                 if resuming.as_ref().is_some_and(|resume| resume.unit_index != unit_index) {
@@ -1314,7 +1314,7 @@ impl ForPlayersActionState {
                             for (effect_position, &effect_index) in unit.iter().enumerate().skip(start_effect) {
                                 if unit_has_draw {
                                     crate::effects::capture_triggers_before_added_program(game, ctx,
-                                        Some(&simultaneous_effects[effect_index]), actual_events.iter_mut());
+                                        Some(&simultaneous_effects[effect_index]), actual_events.iter_mut())?;
                                 }
                                 let path = &optional_program.paths[effect_index];
                                 let resume_child = resuming.as_mut().filter(|resume| resume.player_position == player_position && resume.effect_position == effect_position).and_then(|resume| resume.child.take());
@@ -1386,7 +1386,7 @@ impl ForPlayersActionState {
                             crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
                             let mut partial = paused_prefix.expect("paused child has a prefix receipt");
                             crate::effects::capture_triggers_before_added_program(game, ctx, None,
-                                actual_events.iter_mut().chain(partial.events.iter_mut()));
+                                actual_events.iter_mut().chain(partial.events.iter_mut()))?;
                             let mut prefix = finish_players_outcome(&effect, players.clone(), outcomes.clone(), outcomes_by_player.clone(), actual_events.clone())?;
                             prefix = EffectOutcome::aggregate([prefix, partial]);
                             let pending_unit_draw = Some(PlayerUnitDraw {
@@ -1457,8 +1457,9 @@ impl ForPlayersActionState {
                         &optional_acceptance,
                         &mut optional_limits,
                     );
+                    game.freeze_completed_entry_events(actual_events.iter_mut())?;
                     if unit_has_draw {
-                        crate::effects::capture_triggers_before_added_program(game, ctx, None, actual_events.iter_mut());
+                        crate::effects::capture_triggers_before_added_program(game, ctx, None, actual_events.iter_mut())?;
                     }
                     ctx.tagged_objects = accumulated_unit_tags;
                     attach_unit_player_counts(
@@ -1698,6 +1699,10 @@ impl ForPlayersActionState {
                     game,
                     pinned_lookback,
                 );
+                // Even a choice-free return can report only queued ETB events
+                // and no completion program. Freeze the complete outer group.
+                game.freeze_completed_entry_events(batch_outcomes.iter_mut()
+                    .flat_map(|(_, outcome, _)| outcome.events.iter_mut()))?;
                 merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
                 // Freeze every receipt against the same completed original
                 // state before any replacement-added program can move a card.
@@ -1711,7 +1716,7 @@ impl ForPlayersActionState {
                     crate::effects::runtime::capture_triggers_before_added_program(
                         game, ctx, None,
                         batch_outcomes.iter_mut().flat_map(|(_, outcome, _)| outcome.events.iter_mut()),
-                    );
+                    )?;
                 }
                 let mut completed_outcomes = Vec::with_capacity(batch_outcomes.len());
                 for (player_index, mut outcome, completion) in batch_outcomes {
@@ -1839,21 +1844,12 @@ impl EffectExecutor for ForPlayersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let result = crate::effects::tokens::execute_resource_transaction_atomically(
+            game, ctx, |game, ctx| self.execute_players(game, ctx),
+        );
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = self.execute_players(game, ctx);
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if pending {
-            return Ok(EffectOutcome::count(0));
-        }
-        result
+            result.map(|_| EffectOutcome::count(0))
+        } else { result }
     }
 }
 

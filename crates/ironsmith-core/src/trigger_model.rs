@@ -738,6 +738,11 @@ pub enum TriggerKind {
     PlayerDrawsFirstCardInOwnDrawStep { player: PlayerFilter },
     ControlChanged(ControlChangeTrigger),
     RingBearerChosen { player: PlayerFilter },
+    /// A player target is distinct from a targeted permanent.
+    PlayerBecomesTargeted { player: PlayerFilter, source_controller: PlayerFilter, source_kind: crate::filter_model::StackObjectKind },
+    /// Targets of an ability whose physical source has these characteristics.
+    /// The source's controller is not necessarily the ability's controller.
+    BecomesTargetedByAbilitySource { target: ObjectFilter, source: ObjectFilter },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -1199,6 +1204,13 @@ impl Trigger {
         Self::typed("player_changes_tap_state", TriggerKind::PlayerChangesTapState {
             player, filter, tapped, one_or_more, during_untap_step,
         })
+    }
+    pub fn becomes_targeted_by_ability_source(target: ObjectFilter, source: ObjectFilter) -> Self {
+        Self::typed("becomes_targeted_by_ability_source", TriggerKind::BecomesTargetedByAbilitySource { target, source })
+    }
+
+    pub fn player_becomes_targeted(player: PlayerFilter, source_controller: PlayerFilter, source_kind: crate::filter_model::StackObjectKind) -> Self {
+        Self::typed("player_becomes_targeted", TriggerKind::PlayerBecomesTargeted { player, source_controller, source_kind })
     }
     pub fn ring_bearer_chosen(player: PlayerFilter) -> Self {
         Self::typed("ring_bearer_chosen", TriggerKind::RingBearerChosen { player })

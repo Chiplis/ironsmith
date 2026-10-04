@@ -1039,11 +1039,22 @@ impl StaticAbilityModelInterpreter {
                 display,
             } => StaticAbility::counter_limit_rule(*counter_type, *maximum, display.clone()),
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
-                let converted = StaticAbility::from_model((**ability).clone());
-                converted.with_condition(condition.clone()).unwrap_or_else(|| {
+                // The retained model keeps each authored label. Native leaf
+                // setters receive the complete executable conjunction once,
+                // so an outer designation cannot replace an inner predicate.
+                let mut leaf = ability.as_ref();
+                let mut combined = condition.clone();
+                while let ironsmith_core::StaticAbilityPayload::Conditional {
+                    ability: inner, condition: inner_condition,
+                } = &leaf.payload {
+                    combined = inner_condition.clone().and(combined);
+                    leaf = inner.as_ref();
+                }
+                let converted = StaticAbility::from_model(leaf.clone());
+                converted.with_condition(combined.clone()).unwrap_or_else(|| {
                     StaticAbility::new(
                         crate::static_abilities::GrantAbility::source(converted)
-                            .with_condition(condition.clone()),
+                            .with_condition(combined),
                     )
                 })
             }
@@ -1355,6 +1366,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SetChosenColor { filter, display } => {
                 StaticAbility::set_chosen_color(filter.clone(), display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::NoMaximumHandSizeFor(player) => StaticAbility::no_maximum_hand_size_for(player.clone()),
+            ironsmith_core::StaticAbilityPayload::MaximumHandSizeFromSourceCounters { player, counter_type } =>
+                StaticAbility::maximum_hand_size_from_source_counters(player.clone(), *counter_type),
             ironsmith_core::StaticAbilityPayload::SetMaximumHandSize { player, amount } => {
                 StaticAbility::set_maximum_hand_size(player.clone(), *amount)
             }

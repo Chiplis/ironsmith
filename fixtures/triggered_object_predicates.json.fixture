@@ -1,0 +1,93 @@
+[
+  {
+    "name": "Sigil Captain",
+    "text": "Mana cost: {1}{G}{W}{W}\nType: Creature — Rhino Soldier\nPower/Toughness: 3/3\nWhenever a creature you control enters, if that creature is 1/1, put two +1/+1 counters on it.",
+    "oracle_id": "7182e6f4-6caf-474a-8759-13c56f391bef",
+    "source": "https://scryfall.com/card/cmd/225/sigil-captain?utm_source=api",
+    "baseline_content_hash": "b4d6100046f0b01ca47fd81000c19ce9645623c2386095e0fdfee752d38ee833",
+    "baseline_diagnostic": "unsupported intervening-if predicate in triggered line: 'Whenever a creature you control enters, if that creature is 1/1, put two +1/+1 counters on it.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported intervening-if predicate in triggered line: 'Whenever a creature you control enters, if that creature is 1/1, put two +1/+1 counters on it.' [rule-path=statement-line > triggered-line]",
+    "candidate_root": "characteristic_frame",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "source_coverage_basis": "Typed current/LKI or passive blocked-history predicate, real producer and full secondary body source review, plus authored direct/artifact gameplay regression; unexecuted."
+  },
+  {
+    "name": "Unstoppable Slasher",
+    "text": "Mana cost: {2}{B}\nType: Creature — Zombie Assassin\nPower/Toughness: 2/3\nDeathtouch\nWhenever this creature deals combat damage to a player, they lose half their life, rounded up.\nWhen this creature dies, if it had no counters on it, return it to the battlefield tapped under its owner's control with two stun counters on it.",
+    "oracle_id": "6662968e-ca9e-454c-be44-24ad10e43d3e",
+    "source": "https://scryfall.com/card/sld/2589/unstoppable-slasher?utm_source=api",
+    "baseline_content_hash": "e2f40de6e3945bb4436a9b52e4112e6d2dd7598a81cb6449012eadc591e11d65",
+    "baseline_diagnostic": "unsupported intervening-if predicate in triggered line: 'When this creature dies, if it had no counters on it, return it to the battlefield tapped under its owner's control with two stun counters on it.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported intervening-if predicate in triggered line: 'When this creature dies, if it had no counters on it, return it to the battlefield tapped under its owner's control with two stun counters on it.' [rule-path=statement-line > triggered-line]",
+    "candidate_root": "characteristic_frame",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "source_coverage_basis": "Typed current/LKI or passive blocked-history predicate, real producer and full secondary body source review, plus authored direct/artifact gameplay regression; unexecuted."
+  },
+  {
+    "name": "Wilhelt, the Rotcleaver",
+    "text": "Mana cost: {2}{U}{B}\nType: Legendary Creature — Zombie Warrior\nPower/Toughness: 3/3\nWhenever another Zombie you control dies, if it didn't have decayed, create a 2/2 black Zombie creature token with decayed. (It can't block. When it attacks, sacrifice it at end of combat.)\nAt the beginning of your end step, you may sacrifice a Zombie. If you do, draw a card.",
+    "oracle_id": "eada96a1-4964-4ad0-b0e3-2df08d6ae188",
+    "source": "https://scryfall.com/card/sld/2593/wilhelt-the-rotcleaver?utm_source=api",
+    "baseline_content_hash": "76ce3ad92a94092befab776a2db92072ec0bebe61f3318a0a83f300dd3eb00d0",
+    "baseline_diagnostic": "unsupported intervening-if predicate in triggered line: 'Whenever another Zombie you control dies, if it didn't have decayed, create a 2/2 black Zombie creature token with decayed. (It can't block. When it attacks, sacrifice it at end of combat.)' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported intervening-if predicate in triggered line: 'Whenever another Zombie you control dies, if it didn't have decayed, create a 2/2 black Zombie creature token with decayed.' [rule-path=statement-line > triggered-line]",
+    "candidate_root": "characteristic_frame",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "source_coverage_basis": "Typed current/LKI or passive blocked-history predicate, real producer and full secondary body source review, plus authored direct/artifact gameplay regression; unexecuted."
+  },
+  {
+    "name": "Jason Bright, Glowing Prophet",
+    "text": "Mana cost: {2}{U}\nType: Legendary Creature — Zombie Mutant Advisor\nPower/Toughness: 2/3\nWhenever a Zombie or Mutant you control dies, if its power was different from its base power, draw a card.\nCome Fly With Me — {2}, Sacrifice a creature: Put a +1/+1 counter on target creature you control. It gains flying until end of turn.",
+    "oracle_id": "5c4f1f94-9916-49aa-956a-c1c6b299b24f",
+    "source": "https://scryfall.com/card/pip/904/jason-bright-glowing-prophet?utm_source=api",
+    "baseline_content_hash": "a61521a2998730f58e4a512805176b7447013e1aaabd98302235712f196b2524",
+    "baseline_diagnostic": "unsupported intervening-if predicate in triggered line: 'Whenever a Zombie or Mutant you control dies, if its power was different from its base power, draw a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported intervening-if predicate in triggered line: 'Whenever a Zombie or Mutant you control dies, if its power was different from its base power, draw a card.' [rule-path=statement-line > triggered-line]",
+    "candidate_root": "characteristic_frame",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "source_coverage_basis": "Typed current/LKI or passive blocked-history predicate, real producer and full secondary body source review, plus authored direct/artifact gameplay regression; unexecuted."
+  },
+  {
+    "name": "Dawn Evangel",
+    "text": "Mana cost: {2}{W}\nType: Enchantment Creature — Human Cleric\nPower/Toughness: 2/3\nWhenever a creature dies, if an Aura you controlled was attached to it, return target creature card with mana value 2 or less from your graveyard to your hand.",
+    "oracle_id": "4d6e38f6-480b-4f81-a5d4-342fc45e39b0",
+    "source": "https://scryfall.com/card/thb/8/dawn-evangel?utm_source=api",
+    "baseline_content_hash": "15ff314731aeb65a57adb2a16534c2c18e7e7e63f2f63bda418350626f68dbef",
+    "baseline_diagnostic": "unsupported intervening-if predicate in triggered line: 'Whenever a creature dies, if an Aura you controlled was attached to it, return target creature card with mana value 2 or less from your graveyard to your hand.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported intervening-if predicate in triggered line: 'Whenever a creature dies, if an Aura you controlled was attached to it, return target creature card with mana value 2 or less from your graveyard to your hand.' [rule-path=statement-line > triggered-line]",
+    "candidate_root": "characteristic_frame",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "source_coverage_basis": "Typed current/LKI or passive blocked-history predicate, real producer and full secondary body source review, plus authored direct/artifact gameplay regression; unexecuted."
+  },
+  {
+    "name": "Tom, Bert, and William",
+    "text": "Mana cost: {3}{B}{G}\nType: Legendary Creature — Troll\nPower/Toughness: 5/5\n{1}, Sacrifice another creature: Draw cards equal to the sacrificed creature's power, then discard a card.\nWhen Tom, Bert, and William die, if they were a creature, return them to the battlefield. They're an artifact. (They're no longer a creature.)",
+    "oracle_id": "0ea58cfe-b37c-49a6-a3be-7e60065b8238",
+    "source": "https://scryfall.com/card/hob/312/tom-bert-and-william?utm_source=api",
+    "baseline_content_hash": "a51baefe314b62b9882c827c9ae84183ada56054a01c8734099daf05cf258255",
+    "baseline_diagnostic": "unsupported intervening-if predicate in triggered line: 'When Tom, Bert, and William die, if they were a creature, return them to the battlefield. They're an artifact. (They're no longer a creature.)' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported intervening-if predicate in triggered line: 'When Tom, Bert, and William die, if they were a creature, return them to the battlefield. They're an artifact.' [rule-path=statement-line > triggered-line]",
+    "candidate_root": "characteristic_frame",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "source_coverage_basis": "Typed current/LKI or passive blocked-history predicate, real producer and full secondary body source review, plus authored direct/artifact gameplay regression; unexecuted."
+  },
+  {
+    "name": "Fyndhorn Druid",
+    "text": "Mana cost: {2}{G}\nType: Creature — Elf Druid\nPower/Toughness: 2/2\nWhen this creature dies, if it was blocked this turn, you gain 4 life.",
+    "oracle_id": "98e51f1a-ed6e-4286-a41b-e4656d08c934",
+    "source": "https://scryfall.com/card/all/90b/fyndhorn-druid?utm_source=api",
+    "baseline_content_hash": "42ce3d7634517ef2cfcb466b3522a5c76fc7c74faa3439a359c059cab572f249",
+    "baseline_diagnostic": "unsupported intervening-if predicate in triggered line: 'When this creature dies, if it was blocked this turn, you gain 4 life.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported intervening-if predicate in triggered line: 'When this creature dies, if it was blocked this turn, you gain 4 life.' [rule-path=statement-line > triggered-line]",
+    "candidate_root": "event_history",
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "source_coverage_basis": "Typed current/LKI or passive blocked-history predicate, real producer and full secondary body source review, plus authored direct/artifact gameplay regression; unexecuted."
+  }
+]

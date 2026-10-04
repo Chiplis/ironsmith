@@ -1220,8 +1220,21 @@ pub fn is_remove_snow_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["all", "lands", "are", "no", "longer", "snow"])
 }
 
+pub fn no_maximum_hand_size_player(tokens: &[OwnedLexToken]) -> Option<crate::target::PlayerFilter> {
+    if tokens.iter().any(OwnedLexToken::is_quote) { return None; }
+    use crate::target::PlayerFilter;
+    match crate::lexer::parser_token_word_refs(tokens).as_slice() {
+        ["you", "have", "no", "maximum", "hand", "size"] => Some(PlayerFilter::You),
+        ["players", "have", "no", "maximum", "hand", "size"]
+        | ["each", "player", "has", "no", "maximum", "hand", "size"] => Some(PlayerFilter::Any),
+        ["your", "opponents", "have", "no", "maximum", "hand", "size"]
+        | ["each", "opponent", "has", "no", "maximum", "hand", "size"] => Some(PlayerFilter::Opponent),
+        ["the", "chosen", "player", "has", "no", "maximum", "hand", "size"] => Some(PlayerFilter::ChosenPlayer),
+        _ => None,
+    }
+}
 pub fn is_no_maximum_hand_size_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    matches_exact_phrase_line_lexed(tokens, &["you", "have", "no", "maximum", "hand", "size"])
+    no_maximum_hand_size_player(tokens).is_some()
 }
 
 pub fn is_can_be_your_commander_line_lexed(tokens: &[OwnedLexToken]) -> bool {

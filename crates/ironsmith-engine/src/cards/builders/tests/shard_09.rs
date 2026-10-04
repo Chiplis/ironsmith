@@ -3561,18 +3561,15 @@ pub(super) fn parse_destroy_up_to_x_other_targets_preserves_dynamic_count() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_loses_all_abilities_and_becomes_effect_fails_instead_of_partial_parse() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Lose Abilities Becomes Effect Variant")
-            .parse_text(
-                "Until end of turn, target creature loses all abilities and becomes a blue Frog with base power and toughness 1/1.",
-            )
-            .expect_err("unsupported lose-all-abilities+becomes effect should fail parse");
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported loses-all-abilities with becomes clause")
-            || message.contains("unsupported lose-all-abilities static becomes clause"),
-        "expected strict loses-all-abilities+becomes effect parse error, got {message}"
-    );
+pub(super) fn parse_loses_all_abilities_and_becomes_effect_preserves_all_characteristics() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Lose Abilities Becomes Effect Variant")
+        .parse_text("Until end of turn, target creature loses all abilities and becomes a blue Frog with base power and toughness 1/1.")
+        .expect("complete ability-loss object template should parse");
+    let debug=format!("{:?}",definition.spell_effect);
+    for marker in ["RemoveAllAbilities", "SetBasePowerToughness", "Frog"] { assert!(debug.contains(marker), "{debug}"); }
+    assert!(CardDefinitionBuilder::new(CardId::new(), "Unsupported template tail")
+        .parse_text("Until end of turn, target creature loses all abilities and becomes a blue Frog with base power and toughness 1/1 and its controller loses the match.")
+        .is_err());
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

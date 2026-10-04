@@ -239,6 +239,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             TriggerSubjectAst::Object(filter.clone())
         }
+        TriggerSpec::BecomesTargetedByAbilitySource { target, .. } => TriggerSubjectAst::Object(target.clone()),
         TriggerSpec::ControlChanged(trigger) => TriggerSubjectAst::Object(trigger.filter.clone()),
         TriggerSpec::SpellCast {
             filter: Some(filter),
@@ -272,6 +273,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::BeginningOfEndStep(player)
         | TriggerSpec::BeginningOfPrecombatMain(player)
         | TriggerSpec::RingBearerChosen(player)
+        | TriggerSpec::PlayerBecomesTargeted { player, .. }
         | TriggerSpec::PlayerGainsLife { player, .. }
         | TriggerSpec::PlayerLosesLife(player)
         | TriggerSpec::PlayersLoseLifeOneOrMore(player)

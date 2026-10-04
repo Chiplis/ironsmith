@@ -69,6 +69,12 @@ pub(super) const CLAUSE_REGISTRY: RuleId = RuleId::new("clause-reading-registry"
 
 /// The readings, in the order they were ranked.
 const CLAUSE_READINGS: &[Reading] = &[
+    Reading { id:RuleId::new("ability-loss-object-template"),head:HeadDiscriminator::Any,admits:|_|true,
+        read:|input|input.outcome(crate::effect_sentences::ability_loss_templates::parse(input.tokens)) },
+
+    Reading { id:RuleId::new("negative-characteristic-assertion"),head:HeadDiscriminator::Any,admits:|_|true,
+        read:|input|input.outcome(crate::effect_sentences::characteristic_assertions::parse(input.tokens)) },
+
     Reading {
         id: RuleId::new("any-player-or-opponent-may"),
         head: HeadDiscriminator::Any,

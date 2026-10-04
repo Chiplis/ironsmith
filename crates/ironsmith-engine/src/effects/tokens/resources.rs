@@ -67,6 +67,35 @@ pub(crate) fn limit(resource: &'static str, requested: u128, maximum: u128) -> E
 pub(crate) fn checked_token_count(count: u128) -> Result<u32, ExecutionError> {
     u32::try_from(count).map_err(|_| limit("token count representation", count, u32::MAX as u128))
 }
+/// One charged instruction split across simultaneous preparation/completion.
+/// Sibling permits share work accounting, but nesting is active only while a
+/// participant is executing a phase, never while it waits for its siblings.
+pub(crate) struct TokenInstructionPermit(SharedTokenCreationMeter);
+impl TokenInstructionPermit {
+    pub(crate) fn charge(meter: SharedTokenCreationMeter) -> Result<Self, ExecutionError> {
+        {
+            let mut state = meter.lock().map_err(|_| ExecutionError::InternalError("token resource meter poisoned".into()))?;
+            let instructions = u64::from(state.instructions) + 1;
+            if instructions > u64::from(state.limits.max_instructions) {
+                return Err(limit("token instruction work", instructions as u128, state.limits.max_instructions as u128));
+            }
+            state.instructions = instructions as u32;
+        }
+        Ok(Self(meter))
+    }
+    pub(crate) fn enter_phase(&self) -> Result<TokenInstructionGuard, ExecutionError> {
+        {
+            let mut state = self.0.lock().map_err(|_| ExecutionError::InternalError("token resource meter poisoned".into()))?;
+            let nesting = u64::from(state.nesting) + 1;
+            if nesting > u64::from(state.limits.max_nesting) {
+                return Err(limit("nested token instructions", nesting as u128, state.limits.max_nesting as u128));
+            }
+            state.nesting = nesting as u32;
+        }
+        Ok(TokenInstructionGuard(self.0.clone()))
+    }
+}
+
 pub(crate) struct TokenInstructionGuard(SharedTokenCreationMeter);
 impl TokenInstructionGuard {
     pub(crate) fn enter(meter: SharedTokenCreationMeter) -> Result<Self, ExecutionError> {

@@ -1009,7 +1009,10 @@ pub(crate) fn resolve(
                     return None;
                 }
                 let ctx = context.execution()?;
-                latest_zone_change_snapshot_for_object(game, context.source)
+                game.turn_store
+                    .turn_history
+                    .source_departure_snapshot(context.source)
+                    .cloned()
                     .or_else(|| {
                         ctx.source_snapshot
                             .as_ref()

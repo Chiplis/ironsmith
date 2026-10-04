@@ -532,6 +532,18 @@ pub enum TurnHistoryCount {
     /// Colors among matching permanents currently controlled by the player and
     /// spells that player cast this turn.
     ColorsAmongPermanentsAndSpellsCast(PlayerFilter),
+    /// Completed library searches; optionally require the searcher to own
+    /// the searched library. An unknown library owner cannot prove that scope.
+    LibrarySearches { player: PlayerFilter, own_library_only: bool },
+    /// The greatest number of matching entries under any one matching
+    /// player's control, using entry-time snapshots rather than current control.
+    MaxEnteredBattlefieldByController { player: PlayerFilter, filter: ObjectFilter },
+    /// Successful destruction actions with matching victim LKI and frozen cause.
+    DestroyedBy { filter: ObjectFilter, cause: crate::CauseFilter },
+    /// Exact spell incarnations cast this turn by `caster` and subsequently
+    /// countered by a matching frozen cause. This does not count spell copies
+    /// that were never cast or a different later incarnation of a card.
+    CastSpellsCounteredBy { caster: PlayerFilter, filter: ObjectFilter, cause: crate::CauseFilter },
 }
 
 impl TurnHistoryCount {
@@ -2085,6 +2097,10 @@ pub enum Condition {
     /// A historical choice in the triggering Ring action, not the current
     /// bearer designation when this condition is checked again on resolution.
     YouChoseAnotherRingBearer,
+    /// The source Case's current permanent incarnation has the solved
+    /// designation. Counters and current solve requirements do not decide it.
+    /// Appended to preserve existing serialized condition discriminants.
+    SourceCaseSolved,
 }
 
 #[cfg(test)]

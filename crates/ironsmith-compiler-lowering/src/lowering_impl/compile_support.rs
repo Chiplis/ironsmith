@@ -1004,7 +1004,8 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 | TurnHistoryCount::EnteredBattlefield(filter) => {
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
-                TurnHistoryCount::TokensCreated(player)
+                TurnHistoryCount::LibrarySearches { player, .. }
+                | TurnHistoryCount::TokensCreated(player)
                 | TurnHistoryCount::TurnedFaceUp(player)
                 | TurnHistoryCount::PlayersAttackedThisCombat(player)
                 | TurnHistoryCount::OpponentsAttacked(player)
@@ -1039,7 +1040,8 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 TurnHistoryCount::MovedZones { filter, .. } => {
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
-                TurnHistoryCount::Sacrificed { player, filter }
+                TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter }
+                | TurnHistoryCount::Sacrificed { player, filter }
                 | TurnHistoryCount::SacrificedCardTypes { player, filter }
                 | TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
@@ -1052,6 +1054,15 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 TurnHistoryCount::SpellsCast { player, filter, .. } => {
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+                }
+                TurnHistoryCount::DestroyedBy { filter, cause } => {
+                    bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+                    if let Some(filter) = cause.source_filter.as_mut() { bind_relative_iterated_player_filters_to_chooser(filter, player_filter); }
+                }
+                TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => {
+                    bind_relative_iterated_player_filter_to_player_filter(caster, player_filter);
+                    bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+                    if let Some(filter) = cause.source_filter.as_mut() { bind_relative_iterated_player_filters_to_chooser(filter, player_filter); }
                 }
                 TurnHistoryCount::DamageDealtToSource | TurnHistoryCount::DamageDealtBySource => {}
             }

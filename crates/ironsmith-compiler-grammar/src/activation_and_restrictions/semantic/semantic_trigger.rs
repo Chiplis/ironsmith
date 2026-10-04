@@ -3391,6 +3391,19 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         return Ok(trigger);
     }
 
+    if let Some(tail) = words.strip_prefix(&["you", "become", "the", "target", "of"]) {
+        use ironsmith_core::filter_model::StackObjectKind;
+        let source = parse_targeting_source_controller_tail(tail).or_else(|| match tail {
+            ["a", "spell"] => Some((StackObjectKind::Spell, PlayerFilter::Any)),
+            ["an", "ability"] => Some((StackObjectKind::Ability, PlayerFilter::Any)),
+            ["a", "spell", "or", "ability"] => Some((StackObjectKind::SpellOrAbility, PlayerFilter::Any)),
+            _ => None,
+        });
+        if let Some((source_kind, source_controller)) = source {
+            return Ok(TriggerSpec::PlayerBecomesTargeted { player: PlayerFilter::You, source_controller, source_kind });
+        }
+    }
+
     if trigger_pattern_accepts(&words, THIS_BECOMES_MONSTROUS_TRIGGER_PATTERN) {
         return Ok(TriggerSpec::ThisBecomesMonstrous);
     }
@@ -3468,6 +3481,23 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             );
         }
         let subject_filter = parse_trigger_subject_filter_lexed(subject_tokens)?;
+        if words[becomes_idx + 4..].starts_with(&["an", "ability", "of"]) {
+            let source_start = trigger_word_token_start(tokens, becomes_idx + 7)
+                .unwrap_or(tokens.len());
+            if source_start == tokens.len() {
+                return Err(CardTextError::ParseError("missing physical source in ability-source targeting event".into()));
+            }
+            let source = parse_object_filter_lexed(&tokens[source_start..], false)?;
+            if source == ObjectFilter::default() {
+                return Err(CardTextError::ParseError("unqualified physical source in ability-source targeting event".into()));
+            }
+            let target = match subject_filter.clone() {
+                Some(filter) => filter,
+                None if is_source_reference_words(subject_words) => ObjectFilter::source(),
+                None => return Err(CardTextError::ParseError("unknown participant in ability-source targeting event".into())),
+            };
+            return Ok(TriggerSpec::BecomesTargetedByAbilitySource { target, source });
+        }
         let subject_is_source =
             subject_words.is_empty() || is_source_reference_words(subject_words);
         if subject_is_source {

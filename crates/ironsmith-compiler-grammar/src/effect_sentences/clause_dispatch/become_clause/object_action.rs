@@ -210,6 +210,21 @@ pub fn parse_become_clause(
         target = recovered_target;
     }
 
+    if let Some((colors, kind)) = crate::grammar::effects::characteristic_assertions::color_then_remove_card_type(become_body_tokens) {
+        // The first instruction owns the authored target and records its exact
+        // affected objects. A source reference has no newly allocated result.
+        let alias = if matches!(&target, TargetAst::Source(_))
+            || matches!(&target, TargetAst::Object(filter, _, _) if filter.source) {
+            target.clone()
+        } else {
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
+        };
+        return Ok(EffectAst::Sequence { effects: vec![
+            EffectAst::subject_verb_set_colors(target, colors, duration.clone()),
+            EffectAst::subject_verb_remove_card_types(alias, vec![kind], duration),
+        ] });
+    }
+
     if let Some(shape) = become_grammar::parse_basic_land_choice_template(become_words) {
         let mut effect = EffectAst::subject_verb_become_basic_land_type_choice(target, duration);
         if let EffectAst::SubjectVerb(subject) = &mut effect

@@ -2199,6 +2199,9 @@ pub struct ObjectFilter {
     pub ability_activated_this_turn: bool,
     /// Requires a creature that was declared as a blocker during this turn.
     pub blocked_this_turn: bool,
+    /// Passive combat history: this exact attacker became blocked this turn.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub was_blocked_this_turn: bool,
     pub didnt_attack_this_turn: bool,
     /// Requires a creature that is legally able to attack. This is used with
     /// turn history for instructions that affect creatures that did not
@@ -2338,6 +2341,9 @@ pub struct ObjectFilter {
     pub power_reference: PtReference,
     pub power_relative_to_source: Option<SourcePowerRelation>,
     pub power_greater_than_base_power: bool,
+    /// Compare this object's effective and base power in the same live/LKI frame.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub power_comparison_to_base: Option<crate::ValueComparisonOperator>,
     pub power_toughness_relation: Option<PowerToughnessRelation>,
     pub toughness: Option<Comparison>,
     pub toughness_reference: PtReference,
@@ -2990,6 +2996,7 @@ impl ObjectFilter {
             || self.power_parity.is_some()
             || self.power_relative_to_source.is_some()
             || self.power_greater_than_base_power
+            || self.power_comparison_to_base.is_some()
             || self.power_toughness_relation.is_some()
             || self.distinct_powers
             || self.distinct_creature_types
@@ -4958,6 +4965,7 @@ impl ObjectFilter {
         if self.blocked_this_turn {
             post_noun_qualifiers.push("that blocked this turn".to_string());
         }
+        if self.was_blocked_this_turn { post_noun_qualifiers.push("that was blocked this turn".to_string()); }
         if self.didnt_attack_this_turn {
             let clause = if self.could_have_attacked_this_turn {
                 "that didn't attack this turn, except for creatures that couldn't attack"
@@ -5503,6 +5511,7 @@ impl ObjectFilter {
             || self.toughness.is_some()
             || self.power_parity.is_some()
             || self.power_greater_than_base_power
+            || self.power_comparison_to_base.is_some()
             || self.power_toughness_relation.is_some()
             || self.power_relative_to_source.is_some()
             || self.total_power_toughness.is_some();
@@ -5554,6 +5563,17 @@ impl ObjectFilter {
             }
             if self.power_greater_than_base_power {
                 parts.push("with power greater than its base power".to_string());
+            }
+            if let Some(operator) = self.power_comparison_to_base {
+                let relation = match operator {
+                    crate::ValueComparisonOperator::GreaterThan => "greater than",
+                    crate::ValueComparisonOperator::GreaterThanOrEqual => "greater than or equal to",
+                    crate::ValueComparisonOperator::Equal => "equal to",
+                    crate::ValueComparisonOperator::LessThan => "less than",
+                    crate::ValueComparisonOperator::LessThanOrEqual => "less than or equal to",
+                    crate::ValueComparisonOperator::NotEqual => "different from",
+                };
+                parts.push(format!("with power {relation} its base power"));
             }
             if let Some(relation) = self.power_toughness_relation {
                 match relation {

@@ -69,6 +69,9 @@ pub(super) const REGISTRY: RuleId = RuleId::new("sentence-remaining-registry");
 
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
+    Reading { id:RuleId::new("ability-loss-object-template"),head:HeadDiscriminator::Any,admits:|_|true,
+        read:|input|input.outcome(crate::effect_sentences::ability_loss_templates::parse(input.tokens).map(|effect|effect.map(|effect|vec![effect]))) },
+
     Reading {
         id: RuleId::new("repeated-counter-placement-coordination"),
         head: HeadDiscriminator::Any,

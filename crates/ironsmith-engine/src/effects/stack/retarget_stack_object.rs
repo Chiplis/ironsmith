@@ -267,15 +267,14 @@ fn resolve_fixed_target(
 }
 
 fn push_becomes_targeted_event(
+    game: &GameState,
     events: &mut Vec<TriggerEvent>,
     target: Target,
-    source: crate::ids::ObjectId,
-    source_controller: PlayerId,
-    by_ability: bool,
+    entry: &crate::game_state::StackEntry,
     provenance: crate::provenance::ProvNodeId,
 ) {
     events.push(TriggerEvent::new_with_provenance(
-        BecomesTargetedEvent::new_target(target, source, source_controller, by_ability),
+        BecomesTargetedEvent::from_stack_entry(target, entry).with_participant_snapshots(game),
         provenance,
     ));
 }
@@ -481,8 +480,9 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         changed += 1;
                         let final_targets = game.stack[stack_idx].targets.clone();
                         game.drop_pending_stale_becomes_targeted_events(
-                            object_id,
+                            BecomesTargetedEvent::source_for_stack_entry(&entry),
                             entry.is_ability,
+                            entry.is_ability.then(|| entry.target_id()),
                             &final_targets,
                         );
                         // Each new target becomes a target once (CR 115.3,
@@ -492,11 +492,10 @@ impl EffectExecutor for RetargetStackObjectEffect {
                             if !old_targets.contains(target) && !newly_targeted.contains(target) {
                                 newly_targeted.push(*target);
                                 push_becomes_targeted_event(
+                                    game,
                                     &mut events,
                                     *target,
-                                    object_id,
-                                    entry.controller,
-                                    entry.is_ability,
+                                    &entry,
                                     ctx.provenance,
                                 );
                             }
@@ -604,18 +603,20 @@ impl EffectExecutor for RetargetStackObjectEffect {
                             changed += 1;
                             let final_targets = game.stack[stack_idx].targets.clone();
                             game.drop_pending_stale_becomes_targeted_events(
-                                object_id,
+                                BecomesTargetedEvent::source_for_stack_entry(&entry),
                                 entry.is_ability,
+                                entry.is_ability.then(|| entry.target_id()),
                                 &final_targets,
                             );
+                            if !old_targets.contains(&fixed_target) {
                             push_becomes_targeted_event(
+                                game,
                                 &mut events,
                                 fixed_target,
-                                object_id,
-                                entry.controller,
-                                entry.is_ability,
+                                &entry,
                                 ctx.provenance,
                             );
+                            }
                         }
                     }
                 }

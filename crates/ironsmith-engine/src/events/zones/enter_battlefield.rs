@@ -20,6 +20,9 @@ use crate::zone::Zone;
 pub struct EnterBattlefieldEvent {
     /// The object entering
     pub object: ObjectId,
+    /// Frozen only when the committed notification is queued. Replacement
+    /// proposals keep this absent and continue using prospective state.
+    pub completed_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     /// The zone it's coming from
     pub from: Zone,
     /// Whether it enters tapped (may be modified by replacement effects)
@@ -66,6 +69,7 @@ impl EnterBattlefieldEvent {
     pub fn new(object: ObjectId, from: Zone) -> Self {
         Self {
             object,
+            completed_snapshot: None,
             from,
             enters_tapped: false,
             enters_with_counters: Vec::new(),
@@ -93,6 +97,7 @@ impl EnterBattlefieldEvent {
     pub fn tapped(object: ObjectId, from: Zone) -> Self {
         Self {
             object,
+            completed_snapshot: None,
             from,
             enters_tapped: true,
             enters_with_counters: Vec::new(),
@@ -446,6 +451,7 @@ impl GameEventType for EnterBattlefieldEvent {
     }
 
     fn affected_player(&self, game: &GameState) -> PlayerId {
+        if let Some(snapshot) = &self.completed_snapshot { return snapshot.controller; }
         // CR 616.1 / 110.2a: the permanent's controller chooses the order of
         // its entry replacements, and a permanent entering under a player's
         // control is controlled by that player.
@@ -488,6 +494,14 @@ impl GameEventType for EnterBattlefieldEvent {
 
     fn object_id(&self) -> Option<ObjectId> {
         Some(self.object)
+    }
+
+    fn snapshot(&self) -> Option<&crate::snapshot::ObjectSnapshot> {
+        self.completed_snapshot.as_ref()
+    }
+
+    fn controller(&self) -> Option<PlayerId> {
+        self.completed_snapshot.as_ref().map(|snapshot| snapshot.controller)
     }
 }
 

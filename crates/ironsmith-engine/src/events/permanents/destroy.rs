@@ -19,6 +19,8 @@ pub struct DestroyEvent {
     pub snapshot: Option<ObjectSnapshot>,
     /// Final destination after all destruction and zone-change replacements.
     pub final_zone: Option<Zone>,
+    /// The action's cause at execution, independent of a source's later zone/control.
+    pub cause: Option<crate::events::cause::EventCause>,
 }
 
 impl DestroyEvent {
@@ -29,6 +31,7 @@ impl DestroyEvent {
             source,
             snapshot: None,
             final_zone: None,
+            cause: None,
         }
     }
 
@@ -49,7 +52,13 @@ impl DestroyEvent {
             source: self.source,
             snapshot: self.snapshot.clone(),
             final_zone: self.final_zone,
+            cause: self.cause.clone(),
         }
+    }
+
+    pub fn with_cause(mut self, cause: crate::events::cause::EventCause) -> Self {
+        self.cause = Some(cause);
+        self
     }
 
     pub fn with_successful_result(mut self, snapshot: ObjectSnapshot, final_zone: Zone) -> Self {

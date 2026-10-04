@@ -80,6 +80,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 StatChangeActionAst::RemoveAllSubtypesOfFamily { .. }
             )
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
@@ -2756,6 +2757,10 @@ pub(super) fn compile_subject_verb_middle(
                 duration.clone(),
             ))
         }),
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { target, supertypes, duration }) =>
+            compile_tagged_effect_for_target(target, ctx, "typed", |spec| Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(spec,
+                    crate::continuous::Modification::RemoveSupertypes(supertypes.clone()), duration.clone()))),
         SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes {
             target,
             card_types,

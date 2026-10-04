@@ -644,8 +644,14 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => replace_it_tag_in_filter(filter, tag),
         Value::StaticAbilitiesAmong { filter, .. } => replace_it_tag_in_filter(filter, tag),
+        Value::TurnHistoryCount(TurnHistoryCount::DestroyedBy { filter, cause }
+            | TurnHistoryCount::CastSpellsCounteredBy { filter, cause, .. }) => {
+            replace_it_tag_in_filter(filter, tag);
+            if let Some(filter) = cause.source_filter.as_mut() { replace_it_tag_in_filter(filter, tag); }
+        }
         Value::TurnHistoryCount(
-            TurnHistoryCount::Died { filter, .. }
+            TurnHistoryCount::MaxEnteredBattlefieldByController { filter, .. }
+            | TurnHistoryCount::Died { filter, .. }
             | TurnHistoryCount::EnteredBattlefield(filter)
             | TurnHistoryCount::MovedZones { filter, .. }
             | TurnHistoryCount::Sacrificed { filter, .. }
@@ -2354,6 +2360,22 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                     from_outside_hand: *from_outside_hand,
                     exclude_source: *exclude_source,
                     before_triggering_spell: *before_triggering_spell,
+                },
+                TurnHistoryCount::LibrarySearches { player, own_library_only } => TurnHistoryCount::LibrarySearches {
+                    player: resolve_contextual_player_filter(player, refs)?, own_library_only: *own_library_only,
+                },
+                TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter } => TurnHistoryCount::MaxEnteredBattlefieldByController {
+                    player: resolve_contextual_player_filter(player, refs)?, filter: resolve_it_tag(filter, refs)?,
+                },
+                TurnHistoryCount::DestroyedBy { filter, cause } => {
+                    let mut cause = cause.clone();
+                    cause.source_filter = cause.source_filter.as_ref().map(|filter| resolve_it_tag(filter, refs)).transpose()?;
+                    TurnHistoryCount::DestroyedBy { filter: resolve_it_tag(filter, refs)?, cause }
+                },
+                TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => {
+                    let mut cause = cause.clone();
+                    cause.source_filter = cause.source_filter.as_ref().map(|filter| resolve_it_tag(filter, refs)).transpose()?;
+                    TurnHistoryCount::CastSpellsCounteredBy { caster: resolve_contextual_player_filter(caster, refs)?, filter: resolve_it_tag(filter, refs)?, cause }
                 },
                 TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => {
                     TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(

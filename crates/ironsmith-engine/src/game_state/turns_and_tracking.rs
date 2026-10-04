@@ -690,6 +690,47 @@ impl GameState {
         self.turn.turn_number.saturating_add(1)
     }
 
+    /// Retain the actual departure state for independent pending abilities.
+    /// Only the same incarnation and expected zone may refresh an old receipt.
+    pub(crate) fn refresh_pending_ability_source_lki(
+        &mut self,
+        snapshot: &crate::snapshot::ObjectSnapshot,
+    ) {
+        for entry in &mut self.stack {
+            if entry.is_ability
+                && (entry.object_id == snapshot.object_id
+                    || entry
+                        .source_snapshot
+                        .as_ref()
+                        .is_some_and(|source| source.object_id == snapshot.object_id))
+                && entry
+                    .source_snapshot
+                    .as_ref()
+                    .is_none_or(|source| source.zone == snapshot.zone)
+            {
+                entry.source_stable_id = Some(snapshot.stable_id);
+                entry
+                    .source_name
+                    .get_or_insert_with(|| snapshot.name.clone());
+                entry.source_snapshot = Some(snapshot.clone());
+            }
+        }
+        for entry in &mut self.effect_store.pending_trigger_entries {
+            if (entry.source == snapshot.object_id
+                || entry
+                    .source_snapshot
+                    .as_ref()
+                    .is_some_and(|source| source.object_id == snapshot.object_id))
+                && entry
+                    .source_snapshot
+                    .as_ref()
+                    .is_none_or(|source| source.zone == snapshot.zone)
+            {
+                entry.source_snapshot = Some(snapshot.clone());
+            }
+        }
+    }
+
     /// Perform the immediate multiplayer leave-game procedure (CR 800.4).
     ///
     /// Owned objects cease to exist without a zone change, control effects end,
@@ -807,6 +848,20 @@ impl GameState {
         } else {
             self.trigger_source_lookback_snapshots()
         };
+        // CR 800.4a also removes phased-out permanents and other owned objects
+        // without a zone change. Their independently controlled pending
+        // abilities still need exact source LKI after this history expires.
+        let departing_source_snapshots = owned_objects
+            .iter()
+            .filter_map(|(id, _)| {
+                self.object(*id).map(|object| {
+                    self.cached_object_snapshot_with_calculated_characteristics(object)
+                })
+            })
+            .collect::<Vec<_>>();
+        for snapshot in &departing_source_snapshots {
+            self.refresh_pending_ability_source_lki(snapshot);
+        }
         for (object_id, _) in &owned_objects {
             self.remove_object(*object_id);
         }
@@ -2269,6 +2324,10 @@ impl GameState {
     /// Check whether an object was exerted this turn.
     pub fn object_exerted_this_turn(&self, object_id: ObjectId) -> bool {
         self.object_performed_keyword_action_this_turn(object_id, KeywordActionKind::Exert)
+    }
+
+    pub fn creature_was_blocked_this_turn(&self, creature: ObjectId) -> bool {
+        self.turn_store.turn_history.creature_was_blocked_this_turn(creature)
     }
 
     pub fn creature_blocked_this_turn(&self, creature: ObjectId) -> bool {
@@ -3887,6 +3946,12 @@ impl GameState {
     ) -> bool {
         self.characteristic_extension_change_can_stay_local(id, |effect, _| {
             effect.condition.as_ref().is_some_and(condition_reads_state)
+        })
+    }
+
+    pub(super) fn condition_reads_case_solved(condition: &crate::ConditionExpr) -> bool {
+        Self::condition_matches_or_nested(condition, |condition| {
+            matches!(condition, crate::ConditionExpr::SourceCaseSolved)
         })
     }
 

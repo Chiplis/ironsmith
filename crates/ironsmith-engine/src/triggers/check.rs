@@ -1703,13 +1703,15 @@ fn add_ward_triggers(
     // A copy whose new targets were chosen as it was created reports its
     // original targets too; those it no longer has never became targeted.
     let Some(targeting_entry) = game.stack.iter().rev().find(|entry| {
-        entry.object_id == targeted.source
-            && entry.is_ability == targeted.by_ability
+        entry.is_ability == targeted.by_ability
+            && (if targeted.by_ability {
+                targeted.stack_ability.is_some_and(|id| entry.target_id() == id)
+            } else { entry.object_id == targeted.source })
             && entry.targets.contains(&targeted.target)
     }) else {
         return;
     };
-    let targeting_stack_id = targeting_entry.ability_id;
+    let targeting_stack_id = targeting_entry.is_ability.then(|| targeting_entry.target_id());
     let wards = crate::targeting::get_ward_costs(game, target, targeted.source_controller);
     if wards.is_empty() {
         return;

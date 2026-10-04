@@ -2475,3 +2475,28 @@ fn fastland_replacement_scope_preserves_entry_threshold() {
         assert_eq!(matcher.matches_event(&event, &ctx).unwrap(), other_lands > 2);
     }
 }
+
+#[test]
+fn scoped_hand_limits_bind_chosen_player_and_actual_opponent_teams() {
+    let mut game=GameState::new(vec!["Alice".into(),"Teammate".into(),"Bob".into()],20);
+    let [alice,mate,bob]=std::array::from_fn(|i|game.players[i].id);
+    game.set_teams(vec![vec![alice,mate],vec![bob]]).unwrap();
+    let card=CardBuilder::new(CardId::new(),"Rule source").card_types(vec![CardType::Artifact]).build();
+    let source=game.create_object_from_card(&card,alice,Zone::Battlefield);game.set_chosen_player(source,bob);
+    ScopedNoMaximumHandSize{player:PlayerFilter::Opponent}.apply_restrictions(&mut game,source,alice);
+    assert_eq!(game.player(mate).unwrap().max_hand_size,7);assert_eq!(game.player(bob).unwrap().max_hand_size,i32::MAX);
+    SetMaximumHandSize::new(PlayerFilter::ChosenPlayer,4).apply_restrictions(&mut game,source,alice);
+    assert_eq!(game.player(bob).unwrap().max_hand_size,4);assert_eq!(game.player(alice).unwrap().max_hand_size,7);
+}
+#[test]
+fn unlimited_hand_size_is_not_a_finite_value_that_reductions_can_change() {
+    let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let alice=PlayerId::from_index(0);let source=ObjectId::from_raw(8001);
+    NoMaximumHandSize.apply_restrictions(&mut game,source,alice);
+    ReduceMaximumHandSize::new(PlayerFilter::You,3).apply_restrictions(&mut game,source,alice);
+    assert_eq!(game.player(alice).unwrap().max_hand_size,i32::MAX);
+    IncreaseMaximumHandSize::new(PlayerFilter::You,7).apply_restrictions(&mut game,source,alice);
+    assert_eq!(game.player(alice).unwrap().max_hand_size,i32::MAX);
+    SetMaximumHandSize::new(PlayerFilter::You,4).apply_restrictions(&mut game,source,alice);
+    ReduceMaximumHandSize::new(PlayerFilter::You,3).apply_restrictions(&mut game,source,alice);
+    assert_eq!(game.player(alice).unwrap().max_hand_size,1);
+}
