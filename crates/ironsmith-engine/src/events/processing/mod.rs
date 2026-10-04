@@ -10273,16 +10273,6 @@ mod native_prevention_savepoint_tests {
             .with_follow_up_target_assignments(vec![crate::game_state::TargetAssignment {
                 spec: crate::target::ChooseSpec::target_player(), range: 0..1,
             }]));
-        // Keep the native descriptor/action and suppression history with the
-        // queued follow-up when cloning the manager into a recovery runtime.
-        let scope = scope.try_map_payloads(
-            Ok::<_, String>,
-            |descriptor| descriptor.try_map_payloads(
-                |action| action.try_map_payloads(Ok::<_, String>, Ok, Ok, Ok),
-                Ok, Ok, Ok,
-            ),
-            Ok,
-        ).expect("complete native replacement scope conversion");
         manager.begin_follow_up_replacement_scope(&scope);
         let follow_up = manager.apply_chosen_shield(shield, 2, true, None).follow_ups.remove(0);
         manager.queue_follow_up_with_source_snapshot(follow_up, crate::events::DamageEvent::with_cause(

@@ -24,16 +24,13 @@ use crate::zone::Zone;
 use ironsmith_core::AdditionalTokenKind;
 
 /// A replacement effect that modifies events.
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serialization", serde(deny_unknown_fields, bound(deserialize = "A: serde::Deserialize<'de>, M: serde::Deserialize<'de>, S: serde::Deserialize<'de>, O: serde::Deserialize<'de>")))]
-pub struct ReplacementEffect<A = ReplacementAction, M = Box<dyn ReplacementMatcher>, S = StaticAbilityInstanceId, O = ReplacementAbilityOrigin> {
+#[derive(Debug, Clone)]
+pub struct ReplacementEffect {
     /// Unique identifier for this effect
     pub id: ReplacementEffectId,
 
     /// Identity of a persistent manager registration. Static/ephemeral
     /// effects leave this unset because their transient IDs can change.
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
     registration_id: Option<ReplacementEffectId>,
 
     /// The source that created this effect
@@ -43,24 +40,20 @@ pub struct ReplacementEffect<A = ReplacementAction, M = Box<dyn ReplacementMatch
     pub controller: PlayerId,
 
     /// What happens instead
-    pub replacement: A,
+    pub replacement: ReplacementAction,
 
     /// Optional explicit priority bucket override per CR 616.1.
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
     pub priority_override: Option<ReplacementPriority>,
 
     /// Trait-based matcher for checking if this effect applies.
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
-    pub matcher: Option<M>,
+    pub matcher: Option<Box<dyn ReplacementMatcher>>,
 
     /// Stable identity of the static ability that generated this effect.
     /// Resolution-created effects leave this unset.
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
-    pub static_ability_instance: Option<S>,
+    pub static_ability_instance: Option<StaticAbilityInstanceId>,
     /// Stable originating occurrence plus generated branch, when produced
     /// from an object's abilities. Controller and mutable payload are not identity.
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
-    pub ability_origin: Option<O>,
+    pub ability_origin: Option<ReplacementAbilityOrigin>,
 
     /// Whether the affected player may decline this replacement effect.
     /// Optional effects are expanded into an explicit no-op CR 616 choice
@@ -68,49 +61,10 @@ pub struct ReplacementEffect<A = ReplacementAction, M = Box<dyn ReplacementMatch
     pub optional: bool,
 }
 
-/// Decode an explicitly present optional descriptor field. Serde's ordinary
-/// Option handling would otherwise accept an omitted capture as None.
-#[cfg(feature = "serialization")]
-fn deserialize_present_descriptor_option<'de, T: serde::Deserialize<'de>, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<T>, D::Error> {
-    <Option<T> as serde::Deserialize>::deserialize(deserializer)
-}
-
-impl<A, M, S, O> ReplacementEffect<A, M, S, O> {
-    /// Translate every executable and occurrence payload without changing the
-    /// captured controller, source, registration, ordering or optionality.
-    /// Each converter is mandatory and fallible. The owning codec must bind
-    /// nested world/card references and validate its complete imported world.
-    pub fn try_map_payloads<A2, M2, S2, O2, Error>(
-        self,
-        action: impl FnOnce(A) -> Result<A2, Error>,
-        matcher: impl FnOnce(M) -> Result<M2, Error>,
-        static_ability: impl FnOnce(S) -> Result<S2, Error>,
-        origin: impl FnOnce(O) -> Result<O2, Error>,
-    ) -> Result<ReplacementEffect<A2, M2, S2, O2>, Error> {
-        // Exhaustive destructuring makes a newly added runtime field require an
-        // explicit transport decision rather than silently disappearing.
-        let Self { id, registration_id, source, controller, replacement,
-            priority_override, matcher: native_matcher, static_ability_instance,
-            ability_origin, optional } = self;
-        Ok(ReplacementEffect {
-            id, registration_id, source, controller,
-            replacement: action(replacement)?, priority_override,
-            matcher: native_matcher.map(matcher).transpose()?,
-            static_ability_instance: static_ability_instance.map(static_ability).transpose()?,
-            ability_origin: ability_origin.map(origin).transpose()?, optional,
-        })
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serialization", serde(deny_unknown_fields, bound(deserialize = "I: serde::Deserialize<'de>, C: serde::Deserialize<'de>")))]
-pub struct ReplacementAbilityOrigin<I = StaticAbilityInstanceId, C = crate::ids::CardId> {
-    pub ability: crate::continuous::AbilityOrigin<I, C>,
-    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
-    pub printed_face: Option<C>,
+pub struct ReplacementAbilityOrigin {
+    pub ability: crate::continuous::AbilityOrigin,
+    pub printed_face: Option<crate::ids::CardId>,
     pub branch: usize,
 }
 
@@ -133,20 +87,16 @@ impl ReplacementEffectId {
 /// to recognize the same replacement effect for CR 614.5, especially when a
 /// replacement creates nested events that move objects and refresh state.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serialization", serde(deny_unknown_fields, bound(deserialize = "I: serde::Deserialize<'de>, C: serde::Deserialize<'de>")))]
-pub enum ReplacementEffectKey<I = StaticAbilityInstanceId, C = crate::ids::CardId> {
+pub enum ReplacementEffectKey {
     /// Separate resolutions remain separate even when their source and text match.
     Registered(ReplacementEffectId),
     /// The same ability occurrence survives regeneration and mutable bindings.
-    Ability { source: ObjectId, origin: ReplacementAbilityOrigin<I, C> },
+    Ability { source: ObjectId, origin: ReplacementAbilityOrigin },
     /// Regenerated and event-local effects retain their structural identity.
     Regenerated {
         source: ObjectId,
         controller: PlayerId,
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
-        static_ability_instance: Option<I>,
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
+        static_ability_instance: Option<StaticAbilityInstanceId>,
         matcher: Option<String>,
         replacement: String,
     },
@@ -189,9 +139,7 @@ impl ReplacementEffect {
 
 /// What happens instead when a replacement triggers.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serialization", serde(deny_unknown_fields))]
-pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::ResolutionProgram, K = ReplacementEffectKey> {
+pub enum ReplacementAction {
     /// Prevent the event entirely
     Prevent,
 
@@ -213,7 +161,7 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     /// The additional part still happens with an amount of zero when the damage
     /// can't be prevented (CR 615.12), while CR 615.13 is emitted only when the
     /// application actually prevents damage.
-    PreventDamageThen(Vec<E>),
+    PreventDamageThen(Vec<Effect>),
 
     /// Apply one prevention shield to a matching damage event.
     ///
@@ -222,7 +170,6 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     PreventWithShield {
         shield_id: crate::prevention::PreventionShieldId,
         /// Batch-level CR 615.7 allocation cap for this source event.
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         max_amount: Option<u32>,
     },
 
@@ -230,7 +177,7 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     Modify(EventModification),
 
     /// Do something different instead
-    Instead(Vec<E>),
+    Instead(Vec<Effect>),
 
     /// Redirect to a different target.
     /// Use `which` to specify which target to redirect for multi-target events.
@@ -277,13 +224,13 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
 
     /// Exile the object, record it as exiled with the replacement source, then
     /// execute follow-up effects from that source.
-    ExileWithSourceLinkThen(Vec<E>),
+    ExileWithSourceLinkThen(Vec<Effect>),
 
     /// Exile the object with counters, record it as exiled with the replacement
     /// source, then execute follow-up effects from that source.
     ExileWithSourceLinkCountersThen {
         counters: Vec<(CounterType, u32)>,
-        effects: Vec<E>,
+        effects: Vec<Effect>,
     },
 
     /// Enter with the prospective printed number specified by an intrinsic rule.
@@ -295,12 +242,10 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
         count: Value,
         /// Selects `count` when true and `otherwise_count` when false. The
         /// condition is evaluated with the entering object as its source.
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         count_condition: Option<crate::ConditionExpr>,
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         otherwise_count: Option<Value>,
         added_subtypes: Vec<Subtype>,
-        added_abilities: Vec<A>,
+        added_abilities: Vec<Ability>,
     },
 
     /// Enter with the controller's choice of one counter type.
@@ -334,11 +279,9 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     EnterAsCopy {
         source: ObjectId,
         enters_tapped: bool,
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         copy_duration: Option<crate::effect::Until>,
         linked_exile_objects: Vec<ObjectId>,
         additional_counters: Vec<(CounterType, u32)>,
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         name_override: Option<String>,
         added_colors: crate::color::ColorSet,
         added_card_types: Vec<CardType>,
@@ -346,8 +289,7 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
         added_supertypes: Vec<Supertype>,
         removed_supertypes: Vec<Supertype>,
         added_subtypes: Vec<Subtype>,
-        added_abilities: Vec<A>,
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
+        added_abilities: Vec<Ability>,
         set_base_power_toughness: Option<(i32, i32)>,
         /// What else happens once this copy is chosen.
         copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup>,
@@ -357,7 +299,6 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     EnterWithCharacteristics {
         added_card_types: Vec<CardType>,
         added_subtypes: Vec<Subtype>,
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         set_base_power_toughness: Option<(i32, i32)>,
     },
 
@@ -366,21 +307,18 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
 
     /// Double counters of the matching type on counter-placement events.
     DoubleCounters {
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         counter_type: Option<CounterType>,
     },
 
     /// Halve (rounded down) counters of the matching type on counter-placement
     /// events ("they put half that many ... instead, rounded down").
     HalveCounters {
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         counter_type: Option<CounterType>,
     },
 
     /// Add extra counters of the matching type to counter-placement events
     /// ("that many plus one ... counters are put on it instead").
     AddCountersToPlacement {
-        #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_descriptor_option"))]
         counter_type: Option<CounterType>,
         additional: i64,
     },
@@ -393,13 +331,13 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     },
 
     /// Execute a selected as-enters program, then reconsider the pending entry.
-    AsEntersProgram(P),
+    AsEntersProgram(crate::resolution::ResolutionProgram),
 
     /// Add an additional effect
-    Additionally(Vec<E>),
+    Additionally(Vec<Effect>),
 
     /// Explicitly decline one optional replacement for this event.
-    DeclineOptional(K),
+    DeclineOptional(ReplacementEffectKey),
 
     /// Add separately defined tokens to a token-creation event.
     AddTokens {
@@ -504,69 +442,6 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     },
 }
 
-
-impl<E, A, P, K> ReplacementAction<E, A, P, K> {
-    /// Encode all executable bodies, added abilities, selected programs and
-    /// declined-parent keys. Scalar event semantics remain unchanged. Each
-    /// occurrence is converted in order, including identical independent bodies.
-    /// The owning encoder supplies atomic table/reference binding and codecs.
-    pub fn try_map_payloads<E2, A2, P2, K2, Error>(
-        self, mut effect: impl FnMut(E) -> Result<E2, Error>,
-        mut ability: impl FnMut(A) -> Result<A2, Error>,
-        program: impl FnOnce(P) -> Result<P2, Error>,
-        key: impl FnOnce(K) -> Result<K2, Error>,
-    ) -> Result<ReplacementAction<E2, A2, P2, K2>, Error> {
-        Ok(match self {
-            Self::Prevent => ReplacementAction::Prevent,
-            Self::PreventDamage => ReplacementAction::PreventDamage,
-            Self::PreventDamageAmount(value) => ReplacementAction::PreventDamageAmount(value),
-            Self::PreventHalfDamage { round_up } => ReplacementAction::PreventHalfDamage { round_up },
-            Self::PreventDamageByRemovingSourceCounters { counter_type } => ReplacementAction::PreventDamageByRemovingSourceCounters { counter_type },
-            Self::PreventDamageThen(value) => ReplacementAction::PreventDamageThen(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
-            Self::PreventWithShield { shield_id, max_amount } => ReplacementAction::PreventWithShield { shield_id, max_amount },
-            Self::Modify(value) => ReplacementAction::Modify(value),
-            Self::Instead(value) => ReplacementAction::Instead(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
-            Self::Redirect { target, which } => ReplacementAction::Redirect { target, which },
-            Self::RedirectDamageAmount { target, which, amount } => ReplacementAction::RedirectDamageAmount { target, which, amount },
-            Self::ChangeDestination(value) => ReplacementAction::ChangeDestination(value),
-            Self::DiscardWithMadness => ReplacementAction::DiscardWithMadness,
-            Self::RedirectDrawToController => ReplacementAction::RedirectDrawToController,
-            Self::MoveToZoneWithCounters { zone, counters } => ReplacementAction::MoveToZoneWithCounters { zone, counters },
-            Self::ExileWithSourceLink => ReplacementAction::ExileWithSourceLink,
-            Self::ExileWithSourceLinkThen(value) => ReplacementAction::ExileWithSourceLinkThen(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
-            Self::ExileWithSourceLinkCountersThen { counters, effects } => ReplacementAction::ExileWithSourceLinkCountersThen { counters, effects: effects.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()? },
-            Self::EnterWithCounters { counter_type, count, count_condition, otherwise_count, added_subtypes, added_abilities } => ReplacementAction::EnterWithCounters { counter_type, count, count_condition, otherwise_count, added_subtypes, added_abilities: added_abilities.into_iter().map(&mut ability).collect::<Result<Vec<_>, _>>()? },
-            Self::EnterWithIntrinsicStartingCounters(rule) => ReplacementAction::EnterWithIntrinsicStartingCounters(rule),
-            Self::EnterWithCounterChoice { counter_types, count } => ReplacementAction::EnterWithCounterChoice { counter_types, count },
-            Self::Tribute { counter_type, count, paid_label } => ReplacementAction::Tribute { counter_type, count, paid_label },
-            Self::EnterTapped => ReplacementAction::EnterTapped,
-            Self::EnterUntapped => ReplacementAction::EnterUntapped,
-            Self::EnterUnderControl(value) => ReplacementAction::EnterUnderControl(value),
-            Self::EnterUnderChosenControl { players } => ReplacementAction::EnterUnderChosenControl { players },
-            Self::EnterAsCopy { source, enters_tapped, copy_duration, linked_exile_objects, additional_counters, name_override, added_colors, added_card_types, removes_other_card_types, added_supertypes, removed_supertypes, added_subtypes, added_abilities, set_base_power_toughness, copy_followups } => ReplacementAction::EnterAsCopy { source, enters_tapped, copy_duration, linked_exile_objects, additional_counters, name_override, added_colors, added_card_types, removes_other_card_types, added_supertypes, removed_supertypes, added_subtypes, added_abilities: added_abilities.into_iter().map(&mut ability).collect::<Result<Vec<_>, _>>()?, set_base_power_toughness, copy_followups },
-            Self::EnterWithCharacteristics { added_card_types, added_subtypes, set_base_power_toughness } => ReplacementAction::EnterWithCharacteristics { added_card_types, added_subtypes, set_base_power_toughness },
-            Self::Double => ReplacementAction::Double,
-            Self::DoubleCounters { counter_type } => ReplacementAction::DoubleCounters { counter_type },
-            Self::HalveCounters { counter_type } => ReplacementAction::HalveCounters { counter_type },
-            Self::AddCountersToPlacement { counter_type, additional } => ReplacementAction::AddCountersToPlacement { counter_type, additional },
-            Self::SetPlayerCountersAndLockForTurn { counter_type, amount } => ReplacementAction::SetPlayerCountersAndLockForTurn { counter_type, amount },
-            Self::AsEntersProgram(value) => ReplacementAction::AsEntersProgram(program(value)?),
-            Self::Additionally(value) => ReplacementAction::Additionally(value.into_iter().map(&mut effect).collect::<Result<Vec<_>, _>>()?),
-            Self::DeclineOptional(value) => ReplacementAction::DeclineOptional(key(value)?),
-            Self::AddTokens { token, count } => ReplacementAction::AddTokens { token, count },
-            Self::AddTokensPerCreated { token } => ReplacementAction::AddTokensPerCreated { token },
-            Self::AddTokensOfOtherKinds { kinds } => ReplacementAction::AddTokensOfOtherKinds { kinds },
-            Self::ReplaceMana(value) => ReplacementAction::ReplaceMana(value),
-            Self::ReplaceManaExact(value) => ReplacementAction::ReplaceManaExact(value),
-            Self::Skip => ReplacementAction::Skip,
-            Self::InteractiveDiscardOrRedirect { filter, redirect_zone } => ReplacementAction::InteractiveDiscardOrRedirect { filter, redirect_zone },
-            Self::InteractiveSacrificeOrRedirect { filter, count, redirect_zone } => ReplacementAction::InteractiveSacrificeOrRedirect { filter, count, redirect_zone },
-            Self::InteractivePayLifeOrEnterTapped { life_cost } => ReplacementAction::InteractivePayLifeOrEnterTapped { life_cost },
-            Self::InteractiveRevealCardOrEnterTapped { filter } => ReplacementAction::InteractiveRevealCardOrEnterTapped { filter },
-            Self::InteractiveChooseDestination { destinations, description } => ReplacementAction::InteractiveChooseDestination { destinations, description },
-        })
-    }
-}
 
 /// How to modify an event.
 #[derive(Debug, Clone, PartialEq)]
@@ -1408,70 +1283,9 @@ mod tests {
     }
 
     #[test]
-    fn replacement_action_payload_conversion_keeps_order_repeats_and_failures() {
-        use std::cell::Cell;
-        type Action = ReplacementAction<u8, u8, u8, u8>;
-        let calls = Cell::new(0);
-        let converted = Action::Instead(vec![3, 3, 7]).try_map_payloads(
-            |value| { calls.set(calls.get() + 1); Ok::<_, u8>(value + 10) },
-            Ok, Ok, Ok,
-        ).unwrap();
-        assert_eq!(converted, Action::Instead(vec![13, 13, 17]));
-        assert_eq!(calls.get(), 3, "equal occurrences are independent");
-        let calls = Cell::new(0);
-        let failed = Action::PreventDamageThen(vec![3, 7, 9]).try_map_payloads(
-            |value| { calls.set(calls.get() + 1); if value == 7 { Err(value) } else { Ok(value) } },
-            Ok, Ok, Ok,
-        );
-        assert_eq!(failed.unwrap_err(), 7);
-        assert_eq!(calls.get(), 2, "stop at the actual failed body");
-        assert_eq!(Action::AsEntersProgram(19).try_map_payloads(Ok, Ok,
-            |_| Err::<u8, _>("program"), Ok).unwrap_err(), "program");
-        assert_eq!(Action::DeclineOptional(23).try_map_payloads(Ok, Ok, Ok,
-            |_| Err::<u8, _>("key")).unwrap_err(), "key");
-    }
-
-    #[cfg(feature = "serialization")]
-    #[test]
-    fn replacement_action_wire_retains_redirect_description_and_dynamic_entry_counters() {
-        type Action = ReplacementAction<u8, u8, u8, u8>;
-        let redirect = Action::RedirectDamageAmount {
-            target: RedirectTarget::ToPlayer(PlayerId::from_index(1)),
-            which: RedirectWhich::ByDescription(String::from("damage recipient")), amount: 5,
-        };
-        let restored: Action = serde_json::from_str(&serde_json::to_string(&redirect).unwrap()).unwrap();
-        assert_eq!(restored, redirect);
-        let counters = Action::EnterWithCounters {
-            counter_type: CounterType::PlusOnePlusOne,
-            count: Value::EventValue(crate::effect::EventValueSpec::Amount),
-            count_condition: None, otherwise_count: Some(Value::Fixed(7)),
-            added_subtypes: vec![Subtype::Elf], added_abilities: vec![2, 2, 5],
-        };
-        let mapped = counters.clone().try_map_payloads(Ok::<_, String>, |value| Ok(value + 10), Ok, Ok).unwrap();
-        let json = serde_json::to_value(&mapped).unwrap();
-        assert_eq!(serde_json::from_value::<Action>(json.clone()).unwrap(), mapped);
-        let restored = mapped.try_map_payloads(Ok::<_, String>, |value| Ok(value - 10), Ok, Ok).unwrap();
-        assert_eq!(restored, counters);
-        for field in ["count_condition", "otherwise_count", "count", "added_abilities", "added_subtypes", "counter_type"] {
-            let mut missing = json.clone(); missing["EnterWithCounters"].as_object_mut().unwrap().remove(field);
-            assert!(serde_json::from_value::<Action>(missing).is_err(), "missing {field}");
-        }
-        let mut unknown = json; unknown["EnterWithCounters"]["unknown_body"] = serde_json::json!(3);
-        assert!(serde_json::from_value::<Action>(unknown).is_err());
-        for variant in ["DoubleCounters", "HalveCounters"] {
-            let mut absent = serde_json::Map::new(); absent.insert(variant.into(), serde_json::json!({}));
-            assert!(serde_json::from_value::<Action>(serde_json::Value::Object(absent)).is_err());
-            let mut explicit = serde_json::Map::new(); explicit.insert(variant.into(), serde_json::json!({"counter_type": null}));
-            assert!(serde_json::from_value::<Action>(serde_json::Value::Object(explicit)).is_ok());
-        }
-    }
-
-    #[test]
-    fn complete_replacement_descriptor_mapping_preserves_every_capture() {
+    fn native_clone_preserves_complete_replacement_descriptor() {
         let original = complete_descriptor_fixture();
-        let mapped = original.clone().try_map_payloads(
-            Ok::<_, String>, Ok, Ok, Ok,
-        ).unwrap();
+        let mapped = original.clone();
         assert_eq!(mapped.id, original.id);
         assert_eq!(mapped.registration_id, original.registration_id);
         assert_eq!(mapped.source, original.source);
@@ -1486,59 +1300,10 @@ mod tests {
             original.matcher.as_ref().unwrap().as_ref().downcast_ref::<WouldGainLifeMatcher>().unwrap().player_filter);
         let mut absent = original;
         absent.matcher = None; absent.static_ability_instance = None; absent.ability_origin = None;
-        let mapped: ReplacementEffect = absent.try_map_payloads(Ok::<_, String>, |_| panic!("absent matcher"),
-            |_| panic!("absent static occurrence"), |_| panic!("absent origin")).unwrap();
+        let mapped = absent.clone();
         assert!(mapped.matcher.is_none());
         assert!(mapped.static_ability_instance.is_none());
         assert!(mapped.ability_origin.is_none());
-    }
-
-    #[test]
-    fn complete_replacement_descriptor_mapping_propagates_each_payload_failure() {
-        use std::cell::Cell;
-        for failing in 0..4 {
-            let visited = Cell::new(0usize);
-            let record = |stage, value| {
-                visited.set(visited.get() + 1);
-                if stage == failing { Err(stage) } else { Ok(value) }
-            };
-            let result = complete_descriptor_fixture().try_map_payloads(
-                |_| record(0, 0u8), |_| record(1, 1u8),
-                |_| record(2, 2u8), |_| record(3, 3u8),
-            );
-            assert_eq!(result.unwrap_err(), failing);
-            assert_eq!(visited.get(), failing + 1, "do not publish or continue after a failed payload");
-        }
-    }
-
-    #[cfg(feature = "serialization")]
-    #[test]
-    fn complete_replacement_descriptor_schema_requires_all_fields_and_explicit_options() {
-        type Encoded = ReplacementEffect<u8, u8, u8, u8>;
-        let encoded: Encoded = complete_descriptor_fixture().try_map_payloads(
-            |_| Ok::<_, String>(10), |_| Ok(11), |_| Ok(12), |_| Ok(13),
-        ).unwrap();
-        let json = serde_json::to_value(&encoded).unwrap();
-        assert_eq!(serde_json::from_value::<Encoded>(json.clone()).unwrap(), encoded);
-        let fields = json.as_object().unwrap();
-        assert_eq!(fields.len(), 10);
-        for field in fields.keys() {
-            let mut missing = json.clone(); missing.as_object_mut().unwrap().remove(field);
-            assert!(serde_json::from_value::<Encoded>(missing).is_err(), "missing {field}");
-        }
-        let mut unknown = json.clone(); unknown["unknown_payload"] = serde_json::json!(1);
-        assert!(serde_json::from_value::<Encoded>(unknown).is_err());
-        let mut explicit_null = json;
-        for field in ["registration_id", "priority_override", "matcher", "static_ability_instance", "ability_origin"] {
-            explicit_null[field] = serde_json::Value::Null;
-        }
-        let restored = serde_json::from_value::<Encoded>(explicit_null).unwrap();
-        assert!(restored.registration_id.is_none() && restored.priority_override.is_none());
-        assert!(restored.matcher.is_none() && restored.static_ability_instance.is_none() && restored.ability_origin.is_none());
-        assert_eq!(restored.source, encoded.source);
-        assert_eq!(restored.controller, encoded.controller);
-        assert_eq!(restored.replacement, encoded.replacement);
-        assert!(restored.optional);
     }
 
     #[test]
@@ -1874,7 +1639,7 @@ mod ability_origin_identity_tests {
 
 // Pure production rewrites are exposed independently of event matching. This
 // does not assert that a replacement matches, or that it is safe to reorder.
-impl<E, A, P, K> ReplacementAction<E, A, P, K> {
+impl ReplacementAction {
     pub fn mana_transformation(&self) -> Option<crate::events::mana::ManaTransformation<'_>> {
         use crate::events::mana::ManaTransformation;
         match self {

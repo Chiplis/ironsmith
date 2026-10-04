@@ -2436,20 +2436,8 @@ fn intrinsic_starting_counter_models_round_trip_with_rule_identity_and_action_pa
         assert_eq!(first.static_ability_instance, None, "rule identity does not use a synthetic native instance");
         assert_eq!(second.static_ability_instance, None);
         assert_eq!(first.application_key(), second.application_key(), "rule and host identity survives materialization");
-        type Action = crate::replacement::ReplacementAction<u8, u8, u8, u8>;
-        let action = Action::EnterWithIntrinsicStartingCounters(rule);
-        let mapped: crate::replacement::ReplacementAction<u16, u16, u16, u16> = action.try_map_payloads(
-            |_| Err::<u16, _>("unexpected effect payload"), |_| Err::<u16, _>("unexpected ability payload"),
-            |_| Err::<u16, _>("unexpected program payload"), |_| Err::<u16, _>("unexpected key payload"),
-        ).unwrap();
-        assert!(matches!(mapped, crate::replacement::ReplacementAction::EnterWithIntrinsicStartingCounters(actual) if actual == rule));
-        #[cfg(feature = "serialization")]
-        {
-            let json = serde_json::to_value(&mapped).unwrap();
-            let decoded: crate::replacement::ReplacementAction<u16, u16, u16, u16> = serde_json::from_value(json).unwrap();
-            assert_eq!(decoded, mapped);
-            assert!(serde_json::from_value::<Action>(serde_json::json!({"EnterWithIntrinsicStartingCounters": "Poison"})).is_err());
-        }
+        assert!(matches!(first.replacement,
+            crate::replacement::ReplacementAction::EnterWithIntrinsicStartingCounters(actual) if actual == rule));
     }
 }
 
