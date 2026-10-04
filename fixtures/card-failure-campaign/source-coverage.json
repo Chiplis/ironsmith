@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "2423fd6cf265469189f729aed32d0516c2dd3c28",
+  "source_implementation_commit": "1883ee3085113b758837765dfd942b0379d92320",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 479,
-    "additional_proposed_compile_entries": 480,
+    "additional_proposed_unique_cards": 506,
+    "additional_proposed_compile_entries": 507,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 4,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
-    "identified_source_proposals_with_known_runtime_gaps": 13,
-    "source_proposals_excluding_identified_runtime_gaps": 466,
+    "identified_source_proposals_with_known_runtime_gaps": 21,
+    "source_proposals_excluding_identified_runtime_gaps": 485,
     "runtime_gap_inventory_is_not_exhaustive": true
   },
   "workflow": {
@@ -1457,6 +1457,103 @@
       "semantic_scope": [
         "Case complete entry/face-up subject binding, actual solve path and live token addition; Fisher full upkeep choices/draw and class substitutions.",
         "Native500-token truncation remains an explicit final correctness blocker."
+      ]
+    },
+    {
+      "id": "continuous-reference-quantities",
+      "stage": 39,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/continuous_reference_quantities.json.fixture",
+      "baseline_entries": [
+        "Hedron Matrix",
+        "Hancock, Ghoulish Mayor",
+        "Glamdring, Foe-hammer // Gleam of Death"
+      ],
+      "implementation_commit": "57745cd2f2befa1875cbecfb8cd58cf96aabcf29",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Exact source and attached-recipient quantities with dynamic layer mana value, source counters and live attachment cost references.",
+        "Complete three identities and both Adventure faces; authored compiler, runtime and layer regressions remain unrun."
+      ]
+    },
+    {
+      "id": "scoped-counter-replacements",
+      "stage": 39,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/scoped_counter_replacements.json.fixture",
+      "baseline_entries": [
+        "Doc Samson, Super Psychiatrist",
+        "Lae'zel, Vlaakith's Champion",
+        "Loading Zone"
+      ],
+      "implementation_commit": "09d35d4d4f503b8cd9e72028c936e2fb941ca7a4",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Counter placing actor independent of permanent/player recipient, live controller and mixed type/subtype union.",
+        "Existing replacement ordering, entry coalescing and cost counter placements retained; Zabaz remains partial."
+      ]
+    },
+    {
+      "id": "life-unit-quantities",
+      "stage": 39,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/life_unit_quantities.json.fixture",
+      "baseline_entries": [
+        "False Cure",
+        "Cradle of Vitality",
+        "Lich's Tomb",
+        "Lich's Mastery",
+        "Oath of Lim-D\u00fbl",
+        "Transcendence"
+      ],
+      "implementation_commit": "3b31b3231dd4575b52d24bdc272c728dcbaaf1bf",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Exact participant/direction life quantities retain compatible local producers or captured real life events.",
+        "Simultaneous group actions versus frozen repeated conditional instructions; all six complete bodies retained."
+      ]
+    },
+    {
+      "id": "damage-multiplier-scopes",
+      "stage": 39,
+      "status": "mechanic_source_implemented_runtime_limit_unresolved",
+      "fixture": "fixtures/damage_multiplier_scopes.json.fixture",
+      "baseline_entries": [
+        "Blind Fury",
+        "Curse of Bloodletting",
+        "Goblin Goliath",
+        "Goldnight Castigator",
+        "Inquisitor's Flail",
+        "Quest for Pure Flame",
+        "Sawhorn Nemesis",
+        "The Rollercrusher Ride"
+      ],
+      "implementation_commit": "c45d6833988a7272153db0af0b52f20e41a25ede",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed recipients, live conditions, exact attachment and chosen-player filters, and duration-bound captured controller registration.",
+        "Eight complete mechanic source proposals; inherited u32 saturation remains an explicit final runtime arithmetic gap."
+      ]
+    },
+    {
+      "id": "draw-replacement-programs",
+      "stage": 39,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/draw_replacement_programs.json.fixture",
+      "baseline_entries": [
+        "Tomorrow, Azami's Familiar",
+        "Obstinate Familiar",
+        "Possessed Portal",
+        "Forbidden Crypt",
+        "Out of the Tombs",
+        "Chains of Mephistopheles",
+        "Enduring Renewal"
+      ],
+      "implementation_commit": "1883ee3085113b758837765dfd942b0379d92320",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete replacement program ownership and shared effect-reference frames, affected drawer scope and current-draw cancellation.",
+        "Live native self/global public hand visibility reaches cryptographic public opening requirements; full source lifetime transitions authored."
       ]
     }
   ],
@@ -4240,8 +4337,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "damage-multiplier-scopes"
+      ],
+      "runtime_correctness_gaps": [
+        "damage-amount-saturation"
+      ]
     },
     {
       "card_name": "Blinding Angel",
@@ -5581,8 +5683,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Chameleon Blur",
@@ -6919,8 +7023,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-unit-quantities"
+      ]
     },
     {
       "card_name": "Crafty Cutpurse",
@@ -7229,8 +7335,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "damage-multiplier-scopes"
+      ],
+      "runtime_correctness_gaps": [
+        "damage-amount-saturation"
+      ]
     },
     {
       "card_name": "Curse of Bounty",
@@ -8527,8 +8638,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-counter-replacements"
+      ]
     },
     {
       "card_name": "Doctor Doom, King of Latveria",
@@ -9695,8 +9808,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Energy Arc",
@@ -10619,8 +10734,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-unit-quantities"
+      ]
     },
     {
       "card_name": "False Dawn",
@@ -11451,8 +11568,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Force Bubble",
@@ -12507,8 +12626,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "continuous-reference-quantities"
+      ]
     },
     {
       "card_name": "Glamerdye",
@@ -12745,8 +12866,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "damage-multiplier-scopes"
+      ],
+      "runtime_correctness_gaps": [
+        "damage-amount-saturation"
+      ]
     },
     {
       "card_name": "Goblin Heelcutter",
@@ -12889,8 +13015,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "damage-multiplier-scopes"
+      ],
+      "runtime_correctness_gaps": [
+        "damage-amount-saturation"
+      ]
     },
     {
       "card_name": "Golgari Brownscale",
@@ -13573,8 +13704,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "continuous-reference-quantities"
+      ]
     },
     {
       "card_name": "Hankyu",
@@ -13859,8 +13992,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "continuous-reference-quantities"
+      ]
     },
     {
       "card_name": "Hedron-Field Purists",
@@ -15146,8 +15281,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "damage-multiplier-scopes"
+      ],
+      "runtime_correctness_gaps": [
+        "damage-amount-saturation"
+      ]
     },
     {
       "card_name": "Inquisitor's Snare",
@@ -17204,8 +17344,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-counter-replacements"
+      ]
     },
     {
       "card_name": "Land Equilibrium",
@@ -17508,8 +17650,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-unit-quantities"
+      ]
     },
     {
       "card_name": "Lich's Tomb",
@@ -17518,8 +17662,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-unit-quantities"
+      ]
     },
     {
       "card_name": "Lich-Knights' Conquest",
@@ -17928,8 +18074,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-counter-replacements"
+      ]
     },
     {
       "card_name": "Loathsome Catoblepas",
@@ -20936,8 +21084,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-unit-quantities"
+      ]
     },
     {
       "card_name": "Oath of Mages",
@@ -21026,8 +21176,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Ochre Jelly",
@@ -21400,8 +21552,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Outlaws' Merriment",
@@ -22526,8 +22680,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Power Artifact",
@@ -23233,8 +23389,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "damage-multiplier-scopes"
+      ],
+      "runtime_correctness_gaps": [
+        "damage-amount-saturation"
+      ]
     },
     {
       "card_name": "Questing Beast",
@@ -25362,8 +25523,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "damage-multiplier-scopes"
+      ],
+      "runtime_correctness_gaps": [
+        "damage-amount-saturation"
+      ]
     },
     {
       "card_name": "Scalpelexis",
@@ -30119,8 +30285,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "damage-multiplier-scopes"
+      ],
+      "runtime_correctness_gaps": [
+        "damage-amount-saturation"
+      ]
     },
     {
       "card_name": "The Ruinous Wrecking Crew",
@@ -30977,8 +31148,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "draw-replacement-programs"
+      ]
     },
     {
       "card_name": "Toph, Earthbending Master",
@@ -31143,8 +31316,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "life-unit-quantities"
+      ]
     },
     {
       "card_name": "Transcendent Archaic",
@@ -34949,6 +35124,25 @@
       "source_location": "crates/ironsmith-engine/src/effects/tokens/lifecycle.rs::TOKEN_PER_PLAYER_LIMIT",
       "behavior": "Native token creation silently truncates at500 token permanents per player. Mechanic source proposals do not establish correct larger outcomes.",
       "completion_gate": "Fix silent truncation or retain it as explicitly unresolved; no final all-cards-correct claim while it remains."
+    },
+    {
+      "id": "damage-amount-saturation",
+      "status": "unresolved_runtime_correctness_gap",
+      "scope": "Global damage representation; this source cohort is a known affected subset, not exhaustive.",
+      "affected_source_family": "damage-multiplier-scopes",
+      "affected_card_names": [
+        "Blind Fury",
+        "Curse of Bloodletting",
+        "Goblin Goliath",
+        "Goldnight Castigator",
+        "Inquisitor's Flail",
+        "Quest for Pure Flame",
+        "Sawhorn Nemesis",
+        "The Rollercrusher Ride"
+      ],
+      "source_location": "Native u32 damage amounts and saturating replacement multiplication",
+      "behavior": "Damage exceeding representable u32 amounts silently saturates. This stage retains the existing bound and cannot establish arbitrary larger-outcome correctness.",
+      "completion_gate": "Replace silent saturation with correct supported representation or explicit transactional resource/representation failure; no final all-cards-correct claim while unresolved."
     }
   ]
 }

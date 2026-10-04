@@ -13,6 +13,30 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     use crate::tag::CompilerReferenceTag as Tag;
     let offset = usize::from(words.first() == Some(&"the"));
     let rest = &words[offset..];
+    // A source-relative attachment host is a live relationship, including
+    // during cost determination where there is no resolution tag table.
+    // Requiring this exact source to be attached avoids the generic
+    // "equipped" state fallback when the source itself is unattached.
+    if matches!(rest.first(), Some(&"equipped" | &"enchanted"))
+        && rest
+            .get(1)
+            .is_some_and(|noun| matches!(*noun, "creature" | "creatures" | "creature's"))
+    {
+        let mut host = ObjectFilter::creature();
+        host.with_attached_object = Some(Box::new(ObjectFilter::source()));
+        let spec = Box::new(ChooseSpec::All(host).with_surface_hint(
+            ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::ThisPermanentType(
+                format!("{} creature", rest[0]),
+            )),
+        ));
+        match rest.get(2..) {
+            Some(["power", ..]) => return Some((Value::PowerOf(spec), offset + 3)),
+            Some(["toughness", ..]) => return Some((Value::ToughnessOf(spec), offset + 3)),
+            Some(["mana", "value", ..]) => return Some((Value::ManaValueOf(spec), offset + 4)),
+            _ => {}
+        }
+    }
+
     // A definite possessive retains the referenced object, rather than the
     // resolving spell as damage source. Destroy keeps departure LKI; a live
     // indestructible object is still read from the same tagged identity.
@@ -201,5 +225,28 @@ mod damage_reference_tests {
                 "{text}: {value:?}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod attachment_host_tests {
+    use super::*;
+    #[test]
+    fn explicit_attachment_quantity_requires_the_exact_source_attachment_relationship() {
+        let tokens = crate::lexer::lex_line("equipped creature's power", 0).unwrap();
+        let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+        assert_eq!(used, tokens.len());
+        let Value::PowerOf(spec) = value.unhinted() else {
+            panic!("{value:?}");
+        };
+        let ChooseSpec::All(filter) = spec.base() else {
+            panic!("{spec:?}");
+        };
+        assert!(filter.with_attached_object.as_ref().unwrap().source);
+        assert!(filter.tagged_constraints.is_empty());
+        assert!(matches!(
+            filter.card_types.as_slice(),
+            [crate::types::CardType::Creature]
+        ));
     }
 }

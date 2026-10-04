@@ -83,6 +83,9 @@ fn parse_each_player_with_life_clause(
 pub(super) fn parse_effect_clause_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
+        return Ok(EffectAst::Sequence { effects });
+    }
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
     }

@@ -4958,3 +4958,18 @@ pub struct SkipScheduledEffect {
     pub kind: ScheduledSkipKind,
     pub count: u32,
 }
+
+/// A resolving spell/ability creates a multi-use damage multiplier for its
+/// duration. Its controller is captured on resolution, independently of the
+/// source's later controller, zone, or continued existence.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterDamageMultiplierEffect {
+    pub source_filter: crate::filter_model::ObjectFilter,
+    pub target_player_filter: Option<crate::filter_model::PlayerFilter>,
+    pub target_object_filter: Option<crate::filter_model::ObjectFilter>,
+    pub factor: u32,
+    pub combat_only: bool,
+    pub noncombat_only: bool,
+    pub mode: ReplacementApplyMode,
+}

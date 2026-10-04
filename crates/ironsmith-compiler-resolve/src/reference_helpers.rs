@@ -2434,6 +2434,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             })
         }
         Value::PendingPriorEffectMetric(query) => {
+            if let Some(result) = super::reference_resolution::resolve_life_quantity_query(query, refs) {
+                return result;
+            }
             let id = refs.known_last_effect_id().ok_or_else(|| {
                 CardTextError::ParseError(
                     "pending filtered effect metric requires a prior memory-producing effect"

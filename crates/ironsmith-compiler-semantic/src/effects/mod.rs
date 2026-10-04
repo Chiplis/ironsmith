@@ -219,3 +219,5 @@ pub mod mana {
         AddOneManaOfAnyColorAmongEffect, AddScaledManaEffect,
     };
 }
+
+pub use ironsmith_core::RegisterDamageMultiplierEffect;

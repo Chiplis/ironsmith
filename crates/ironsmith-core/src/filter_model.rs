@@ -7678,6 +7678,10 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 )
             }
             Value::EventValue(EventValueSpec::Amount) => "that damage".to_string(),
+            Value::EventValue(EventValueSpec::LifeChange { gained, for_controller }) => format!(
+                "the amount of life {} {}", if *for_controller { "you" } else { "that player" },
+                if *gained { "gained" } else { "lost" },
+            ),
             Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
             Value::EventValue(EventValueSpec::LifeAmount) => "that much life".to_string(),
             Value::EventValue(EventValueSpec::BlockersBeyondFirst { .. }) => {

@@ -292,3 +292,37 @@ pub fn trigger_milling_event_filter(trigger: &TriggerSpec) -> Option<std::sync::
         _ => None,
     }
 }
+
+/// Evidence for one affected player's actual life-change event. The action
+/// direction is distinct from a generic numeric event (damage, cards, etc.).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LifeEventBinding {
+    pub metric: ironsmith_core::EffectMetric,
+    pub player: PlayerFilter,
+}
+
+/// A compatible lexical life instruction, independent of an intervening cost's
+/// result ID. Optional instructions retain an outcome ID even when declined.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LifeAmountProducer {
+    pub effect_id: ironsmith_core::EffectId,
+    pub metric: ironsmith_core::EffectMetric,
+    pub player: PlayerFilter,
+}
+
+pub fn trigger_life_event_binding(trigger: &TriggerSpec) -> Option<std::sync::Arc<LifeEventBinding>> {
+    use ironsmith_core::EffectMetric;
+    let (metric, player) = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => return trigger_life_event_binding(trigger),
+        TriggerSpec::YouGainLife | TriggerSpec::YouGainLifeCausedBy(_) | TriggerSpec::YouGainLifeDuringTurn(_) => (EffectMetric::LifeGained, PlayerFilter::You),
+        TriggerSpec::PlayerGainsLife { player, .. } => (EffectMetric::LifeGained, player.clone()),
+        TriggerSpec::PlayerLosesLife(player) | TriggerSpec::PlayerLosesLifeDuringTurn { player, .. } => (EffectMetric::LifeLost, player.clone()),
+        TriggerSpec::Either(left, right) => {
+            let left = trigger_life_event_binding(left)?;
+            let right = trigger_life_event_binding(right)?;
+            return (left == right).then_some(left);
+        }
+        _ => return None,
+    };
+    Some(std::sync::Arc::new(LifeEventBinding { metric, player }))
+}

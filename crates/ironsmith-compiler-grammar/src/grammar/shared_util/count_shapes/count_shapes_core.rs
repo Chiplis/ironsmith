@@ -1,6 +1,23 @@
 use super::*;
 
 pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    if let ["for", "each" | "every", number, "life", rest @ ..] = words
+        && let Some(group) = crate::util::parse_number_word_u32(number)
+        && group > 0
+    {
+        let (player, verb, used) = match rest {
+            ["you", verb @ ("gained" | "lost"), ..] => (PlayerFilter::You, *verb, 2),
+            ["they", verb @ ("gained" | "lost"), ..] => (PlayerFilter::IteratedPlayer, *verb, 2),
+            ["that", "player", verb @ ("gained" | "lost"), ..] => (PlayerFilter::IteratedPlayer, *verb, 3),
+            _ => return None,
+        };
+        let metric = if verb == "gained" { ironsmith_core::EffectMetric::LifeGained } else { ironsmith_core::EffectMetric::LifeLost };
+        let mut query = ironsmith_core::PriorEffectMetricQuery::new(ironsmith_core::EffectMetricSource::Outcome, metric);
+        query.player = Some(player);
+        let value = Value::PendingPriorEffectMetric(query);
+        let value = if group == 1 { value } else { Value::DividedRoundedDown(Box::new(value), i32::try_from(group).ok()?) };
+        return Some((value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach), used + 4));
+    }
     // "for every three cards in your graveyard" (Recursive Recruitment): one
     // per complete group of N counted objects (CR 107.1a rounds down).
     if let ["for", "every" | "each", number, noun, rest @ ..] = words

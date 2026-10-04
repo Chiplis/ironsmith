@@ -2578,6 +2578,8 @@ fn stage_effects_from_normalized(
     );
     initial_env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     initial_env.milling_event_filter = config.milling_event_filter.clone();
+    initial_env.life_event_binding = config.life_event_binding.clone();
+    initial_env.life_amount_producers = config.life_amount_producers.clone();
     let implicit_trigger_references = include_trigger_prelude.then(|| {
         semantic_effects
             .iter()
@@ -3355,6 +3357,7 @@ pub fn stage_effects_with_trigger_context_for_lowering(
                 ironsmith_compiler_semantic::trigger_references::trigger_binds_excess_damage_amount,
             ),
             milling_event_filter: trigger.and_then(ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter),
+            life_event_binding: trigger.and_then(ironsmith_compiler_semantic::trigger_references::trigger_life_event_binding),
             ..Default::default()
         },
         trigger.and_then(inferred_trigger_player_filter),
@@ -4029,6 +4032,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
                     &trigger,
                 ),
             milling_event_filter: ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter(&trigger),
+            life_event_binding: ironsmith_compiler_semantic::trigger_references::trigger_life_event_binding(&trigger),
             ..Default::default()
         },
         inferred_trigger_player_filter(&trigger),
@@ -5362,6 +5366,23 @@ pub(crate) fn lower_compiler_static_ability_core(
                 },
             })
         }
+        crate::model::CompilerStaticAbilityPayloadCore::ConditionalDrawReplacement {
+            condition, replacement_effects, optional, display,
+        } => {
+            let mut replacement_effects = replacement_effects;
+            crate::effect_ast_normalization::normalize_effects_ast_in_place(&mut replacement_effects);
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            ctx.iterated_player = true;
+            ctx.last_player_filter = Some(PlayerFilter::IteratedPlayer);
+            let (replacement_effects, choices) = crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
+            if !choices.is_empty() {
+                return Err(CardTextError::InvariantViolation("draw replacement cannot announce targets".into()));
+            }
+            Ok(StaticAbility { id, label,
+                payload: crate::static_abilities::StaticAbilityPayload::ConditionalDrawReplacement {
+                    condition: resolve_intervening_if_without_trigger(&condition)?, replacement_effects, optional, display,
+                } })
+        }
         crate::model::CompilerStaticAbilityPayloadCore::DrawReplacementWithEffects {
             drawer,
             except_first_of_draw_step,
@@ -5379,6 +5400,10 @@ pub(crate) fn lower_compiler_static_ability_core(
                 &mut replacement_effects,
             );
             let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            // Native replacement execution binds the affected drawer here,
+            // independently of the replacement ability's controller ("you").
+            ctx.iterated_player = true;
+            ctx.last_player_filter = Some(PlayerFilter::IteratedPlayer);
             let (replacement_effects, choices) =
                 crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
             if !choices.is_empty() {

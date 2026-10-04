@@ -62,6 +62,9 @@ pub enum EventValueSpec {
     LifeAmount,
     BlockersBeyondFirst { multiplier: i32 },
     DieResult,
+    /// Captured life gained/lost by the event's affected player. The optional
+    /// controller restriction preserves an authored "you" participant.
+    LifeChange { gained: bool, for_controller: bool },
 }
 
 #[cfg(test)]

@@ -3650,3 +3650,25 @@ fn dynamic_anthem_layer_conversion_preserves_legacy_source_relative_evaluation_p
         assert!(super::anthem_value_as_layer_value(&AnthemValue::Dynamic(value)).is_none());
     }
 }
+
+#[test]
+fn scoped_dynamic_layer_conversion_keeps_source_and_recipient_anchors_distinct() {
+    let source = Value::CountersOn(Box::new(crate::target::ChooseSpec::Source), None);
+    let recipient = Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Iterated));
+    for value in [
+        source.clone(),
+        recipient.clone(),
+        Value::Add(Box::new(source), Box::new(recipient)),
+    ] {
+        assert_eq!(
+            super::anthem_value_as_layer_value(&AnthemValue::Dynamic(value.clone())),
+            Some(value)
+        );
+    }
+    assert!(
+        super::anthem_value_as_layer_value(&AnthemValue::Dynamic(Value::ManaValueOf(Box::new(
+            crate::target::ChooseSpec::Tagged("it".into())
+        ))))
+        .is_none()
+    );
+}

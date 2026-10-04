@@ -1504,6 +1504,12 @@ pub fn trigger_binds_player_reference_context(trigger: &TriggerSpec) -> bool {
 
 pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
     match spec {
+        EventValueSpec::LifeChange { gained, for_controller } => {
+            let metric = if *gained { ironsmith_core::EffectMetric::LifeGained } else { ironsmith_core::EffectMetric::LifeLost };
+            ironsmith_compiler_semantic::trigger_references::trigger_life_event_binding(trigger)
+                .is_some_and(|event| event.metric == metric
+                    && (!*for_controller || event.player == PlayerFilter::You))
+        }
         EventValueSpec::DieResult => match trigger {
             TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::PlayerRollsToVisitAttractions { .. }

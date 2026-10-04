@@ -238,6 +238,8 @@ pub struct ReferenceFrame {
     pub allow_life_event_value: bool,
     pub allow_excess_damage_event_value: bool,
     pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
+    pub life_event_binding: Option<std::sync::Arc<crate::trigger_references::LifeEventBinding>>,
+    pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub bind_unbound_x_to_last_effect: bool,
 }
 
@@ -261,6 +263,8 @@ impl ReferenceFrame {
             allow_life_event_value: frame.allow_life_event_value,
             allow_excess_damage_event_value: frame.allow_excess_damage_event_value,
             milling_event_filter: frame.milling_event_filter.clone(),
+            life_event_binding: frame.life_event_binding.clone(),
+            life_amount_producers: frame.life_amount_producers.clone(),
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
         }
     }
@@ -289,6 +293,8 @@ impl ReferenceFrame {
             allow_life_event_value: self.allow_life_event_value,
             allow_excess_damage_event_value: self.allow_excess_damage_event_value,
             milling_event_filter: self.milling_event_filter.clone(),
+            life_event_binding: self.life_event_binding.clone(),
+            life_amount_producers: self.life_amount_producers.clone(),
             bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
         }
     }
@@ -401,6 +407,8 @@ pub struct ReferenceEnv {
     pub allow_life_event_value: bool,
     pub allow_excess_damage_event_value: bool,
     pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
+    pub life_event_binding: Option<std::sync::Arc<crate::trigger_references::LifeEventBinding>>,
+    pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub bind_unbound_x_to_last_effect: bool,
 }
 
@@ -421,6 +429,8 @@ impl Default for ReferenceEnv {
             allow_life_event_value: false,
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
+            life_event_binding: None,
+            life_amount_producers: Default::default(),
             bind_unbound_x_to_last_effect: false,
         }
     }
@@ -453,6 +463,8 @@ impl ReferenceEnv {
             allow_life_event_value,
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
+            life_event_binding: None,
+            life_amount_producers: Default::default(),
             bind_unbound_x_to_last_effect,
         }
     }
@@ -475,6 +487,8 @@ impl ReferenceEnv {
             allow_life_event_value: frame.allow_life_event_value,
             allow_excess_damage_event_value: frame.allow_excess_damage_event_value,
             milling_event_filter: frame.milling_event_filter.clone(),
+            life_event_binding: frame.life_event_binding.clone(),
+            life_amount_producers: frame.life_amount_producers.clone(),
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
         }
     }
@@ -506,6 +520,8 @@ impl ReferenceEnv {
             allow_life_event_value: self.allow_life_event_value,
             allow_excess_damage_event_value: self.allow_excess_damage_event_value,
             milling_event_filter: self.milling_event_filter.clone(),
+            life_event_binding: self.life_event_binding.clone(),
+            life_amount_producers: self.life_amount_producers.clone(),
             bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
         }
     }

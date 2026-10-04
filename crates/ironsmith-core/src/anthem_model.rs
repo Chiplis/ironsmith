@@ -285,3 +285,55 @@ mod controller_state_anthem_value_tests {
         }
     }
 }
+
+/// Statically bound object quantities with an explicit source/recipient anchor.
+/// Keep this separate from controller-state values and from arbitrary legacy
+/// Dynamic values, whose historical discovery context is unchanged.
+pub fn supports_scoped_reference_anthem_value(value: &Value) -> bool {
+    if !crate::tag::tag_keys_of(value).is_empty() {
+        return false;
+    }
+    match value.unhinted() {
+        Value::Fixed(_) => true,
+        Value::ManaValueOf(spec) => matches!(spec.unhinted(), crate::ChooseSpec::Iterated),
+        Value::CountersOn(spec, None) => matches!(spec.unhinted(), crate::ChooseSpec::Source),
+        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+            supports_scoped_reference_anthem_value(inner)
+        }
+        Value::DividedRoundedDown(inner, divisor) => {
+            *divisor != 0 && supports_scoped_reference_anthem_value(inner)
+        }
+        Value::Add(left, right) | Value::Min(left, right) => {
+            supports_scoped_reference_anthem_value(left)
+                && supports_scoped_reference_anthem_value(right)
+        }
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod scoped_reference_tests {
+    use super::*;
+    #[test]
+    fn scoped_anthem_capability_admits_only_proven_source_and_recipient_quantities() {
+        assert!(supports_scoped_reference_anthem_value(&Value::ManaValueOf(
+            Box::new(crate::ChooseSpec::Iterated)
+        )));
+        assert!(supports_scoped_reference_anthem_value(&Value::CountersOn(
+            Box::new(crate::ChooseSpec::Source),
+            None
+        )));
+        for value in [
+            Value::SourcePower,
+            Value::ManaValueOf(Box::new(crate::ChooseSpec::target(
+                crate::ChooseSpec::Iterated,
+            ))),
+            Value::ManaValueOf(Box::new(crate::ChooseSpec::Source)),
+            Value::ManaValueOf(Box::new(crate::ChooseSpec::Tagged("it".into()))),
+            Value::CountersOn(Box::new(crate::ChooseSpec::Iterated), None),
+            Value::EventValue(crate::EventValueSpec::Amount),
+        ] {
+            assert!(!supports_scoped_reference_anthem_value(&value), "{value:?}");
+        }
+    }
+}

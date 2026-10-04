@@ -3150,6 +3150,22 @@ pub fn parse_double_counters_replacement_line(
         return Ok(None);
     };
     Ok(Some(match shape {
+        keyword_static_lines::CounterReplacementShape::ActorAnyKindAdd { filter_tokens, includes_player, additional } => {
+            let self_tail = filter_tokens.len() >= 3 && filter_tokens[filter_tokens.len() - 3..].iter()
+                .zip(["or", "on", "yourself"]).all(|(token, word)| token.is_word(word));
+            if self_tail != includes_player { return Ok(None); }
+            let object_tokens = if self_tail { &filter_tokens[..filter_tokens.len() - 3] } else { filter_tokens };
+            let mut filter = parse_object_filter_lexed(object_tokens, false)?;
+            if filter.zone.is_none() { filter.zone = Some(Zone::Battlefield); }
+            StaticAbility::actor_counters_addition_replacement(filter,
+                includes_player.then_some(PlayerFilter::You), PlayerFilter::You, None,
+                additional, display_text_for_tokens(tokens, true))
+        }
+        keyword_static_lines::CounterReplacementShape::AnyKindDouble { filter_tokens } => {
+            let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
+            if filter.zone.is_none() { filter.zone = Some(Zone::Battlefield); }
+            StaticAbility::double_counters_replacement(filter, None, display_text_for_tokens(tokens, true))
+        }
         keyword_static_lines::CounterReplacementShape::CounterAdjustment {
             filter_tokens,
             counter_type,
@@ -4579,6 +4595,15 @@ pub fn parse_play_top_card_your_library_revealed_line(
     Ok(None)
 }
 
+pub fn parse_self_or_global_hands_revealed_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    Ok(if crate::word_primitives::parse_sequence_complete(&words, &["play", "with", "your", "hand", "revealed"]) {
+        Some(StaticAbility::controller_plays_with_hand_revealed())
+    } else if crate::word_primitives::parse_sequence_complete(&words, &["players", "play", "with", "their", "hands", "revealed"]) {
+        Some(StaticAbility::players_play_with_hands_revealed())
+    } else { None })
+}
+
 pub fn parse_your_opponents_play_with_hands_revealed_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -5151,61 +5176,35 @@ pub fn parse_if_opponent_would_draw_redirect_line(
 pub fn parse_if_you_would_draw_instead_effects_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = parser_token_word_refs(tokens);
-    let Some((_, rest)) = crate::word_primitives::strip_any_prefix(
-        &words,
-        &[
-            &["if", "you", "would", "draw", "a", "card"],
-            &["if", "an", "opponent", "would", "draw", "a", "card"],
-            &["if", "a", "player", "would", "draw", "a", "card"],
-        ],
-    ) else {
-        return Ok(None);
-    };
-    let drawer = match words[1] {
-        "you" => PlayerFilter::You,
-        "an" => PlayerFilter::Opponent,
-        _ => PlayerFilter::Any,
-    };
-    // "except the first one you draw in each of your draw steps" /
-    // "... they draw in each of their draw steps" (Hullbreacher).
-    let except_first: &[&str] = if drawer == PlayerFilter::You {
-        &[
-            "except", "the", "first", "one", "you", "draw", "in", "each", "of", "your", "draw",
-            "steps",
-        ]
-    } else {
-        &[
-            "except", "the", "first", "one", "they", "draw", "in", "each", "of", "their", "draw",
-            "steps",
-        ]
-    };
-    let (except_first_of_draw_step, rest) = match rest.strip_prefix(except_first) {
-        Some(rest) => (true, rest),
-        None => (false, rest),
-    };
-    let Some(rest) = rest.strip_prefix(&["instead"][..]) else {
-        return Ok(None);
-    };
-    if rest.is_empty() {
-        return Ok(None);
+    let Some(shape) = keyword_static_lines::parse_draw_replacement_program(tokens) else { return Ok(None); };
+    // Preserve the existing specialized readings' ownership (and their exact
+    // semantics such as a count modification versus an executable program).
+    if matches!(parse_conditional_draw_replacement_line(tokens), Ok(Some(_)))
+        || matches!(parse_draw_extra_cards_replacement_line(tokens), Ok(Some(_)))
+        || matches!(parse_if_opponent_would_draw_redirect_line(tokens), Ok(Some(_)))
+        || matches!(parse_draw_replacement_skip_empty_library_line(tokens), Ok(Some(_)))
+        || matches!(parse_draw_replacement_exile_top_and_play_line(tokens), Ok(Some(_)))
+        || matches!(parse_draw_replacement_reveal_top_matching_to_hand_rest_bottom_line(tokens), Ok(Some(_)))
+    { return Ok(None); }
+    let effects = if shape.skip { Vec::new() }
+        else { super::super::clause_support::parse_effect_sentences_lexed(&shape.body)? };
+    let display = render_token_slice(tokens);
+    if shape.optional || shape.empty_library {
+        let condition = if shape.empty_library {
+            PredicateAst::ValueComparison { left: Value::CardsInLibrary(PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::Equal, right: Value::Fixed(0) }
+        } else {
+            PredicateAst::ValueComparison { left: Value::Fixed(1),
+                operator: crate::effect::ValueComparisonOperator::Equal, right: Value::Fixed(1) }
+        };
+        return Ok(Some(StaticAbility::conditional_draw_replacement_with_optional(condition, effects, shape.optional, display)));
     }
-    let effect_start_word = words.len() - rest.len();
-    let view = TokenWordView::new(tokens);
-    let Some(effect_start) = view.map_word_to_token_start(effect_start_word) else {
-        return Ok(None);
+    let drawer = match shape.player {
+        keyword_static_lines::DrawReplacementPlayer::You => PlayerFilter::You,
+        keyword_static_lines::DrawReplacementPlayer::Opponent => PlayerFilter::Opponent,
+        keyword_static_lines::DrawReplacementPlayer::Any => PlayerFilter::Any,
     };
-    let effects =
-        super::super::clause_support::parse_effect_sentences_lexed(&tokens[effect_start..])?;
-    if effects.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(StaticAbility::draw_replacement_with_effects(
-        drawer,
-        except_first_of_draw_step,
-        effects,
-        render_token_slice(tokens),
-    )))
+    Ok(Some(StaticAbility::draw_replacement_with_effects(drawer, shape.except_first_of_draw_step, effects, display)))
 }
 
 pub fn parse_draw_extra_cards_replacement_line(
@@ -7624,5 +7623,31 @@ mod loyalty_timing_tests {
                 assert_eq!(filter.controller, Some(PlayerFilter::You));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod scoped_counter_replacement_tests {
+    use super::*;
+    use crate::lexer::lex_line;
+    #[test]
+    fn counter_addition_keeps_actor_and_permanent_player_scopes() {
+        let text = "If you would put one or more counters on a creature or planeswalker you control or on yourself, put that many plus one of each of those kinds of counters on that permanent or player instead.";
+        let ability = parse_double_counters_replacement_line(&lex_line(text, 0).unwrap()).unwrap().unwrap();
+        let ironsmith_core::StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, .. } = ability.payload else { panic!() };
+        assert_eq!(actor, PlayerFilter::You); assert_eq!(player_filter, Some(PlayerFilter::You));
+        assert_eq!(filter.controller, Some(PlayerFilter::You)); assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(counter_type, None); assert_eq!(additional, 1);
+        for invalid in [text.replace("or on yourself", "or on an opponent"), text.replace("or player instead", "instead"), format!("{text} Draw a card.")] {
+            assert!(!matches!(parse_double_counters_replacement_line(&lex_line(&invalid, 0).unwrap()), Ok(Some(_))), "{invalid}");
+        }
+    }
+    #[test]
+    fn any_counter_multiplier_preserves_mixed_type_subtype_disjunction() {
+        let text = "If one or more counters would be put on a creature, Spacecraft, or Planet you control, twice that many of each of those kinds of counters are put on it instead.";
+        let ability = parse_double_counters_replacement_line(&lex_line(text, 0).unwrap()).unwrap().unwrap();
+        let ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement { filter, counter_type, actor, effect_only, .. } = ability.payload else { panic!() };
+        assert_eq!(counter_type, None); assert_eq!(actor, None); assert!(!effect_only);
+        assert_eq!(filter.any_of.len(), 3, "mixed type/subtype alternatives must not become an intersection");
     }
 }

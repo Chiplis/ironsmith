@@ -31,3 +31,6 @@ mod execute_payload;
 pub(crate) use execute_payload::{execute_replacement_payload, execute_replacement_payload_with_object_tags, execute_event_expansion, execute_event_expansion_with_targets, execute_deferred_replacement_programs, execute_deferred_replacement_programs_with_targets};
 
 pub(crate) use execute_payload::{ReplacementProgramBindings, execute_event_expansion_with_bindings, execute_deferred_replacement_programs_with_bindings};
+
+mod register_damage_multiplier;
+pub use register_damage_multiplier::RegisterDamageMultiplierEffect;

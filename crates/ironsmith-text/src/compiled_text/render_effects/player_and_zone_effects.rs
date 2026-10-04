@@ -1186,6 +1186,17 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         return Some("creature chosen before it".to_string());
     }
     match value.unhinted() {
+        Value::EventValue(EventValueSpec::LifeChange { gained, for_controller }) => Some(format!(
+            "1 life {} {}", if *for_controller { "you" } else { "that player" },
+            if *gained { "gained" } else { "lost" },
+        )),
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query)
+            if query.source == crate::effect::EffectMetricSource::Outcome
+                && matches!(query.metric, crate::effect::EffectMetric::LifeGained | crate::effect::EffectMetric::LifeLost)
+                && query.filter.is_none() => Some(format!(
+                    "1 life {} {}", if query.player == Some(PlayerFilter::You) { "you" } else { "that player" },
+                    if query.metric == crate::effect::EffectMetric::LifeGained { "gained" } else { "lost" },
+                )),
         Value::Count(filter) => Some(
             describe_prior_effect_source_count_basis(filter, false)
                 .or_else(|| describe_repeated_each_union_count(filter))

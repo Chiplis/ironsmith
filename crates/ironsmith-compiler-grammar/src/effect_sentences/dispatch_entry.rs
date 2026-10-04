@@ -1,3 +1,4 @@
+mod temporary_damage_multiplier;
 use self::subject_verb_followups::{
     PostParseFollowupResult, PreParseFollowupResult, is_conditional_token_entry_followup_sentence,
     run_post_parse_followup_registry, run_pre_parse_followup_registry,
@@ -2441,6 +2442,12 @@ fn parse_effect_sentences_from_sentence_inputs(
             || super::chain_carry::bind_return_exiled_to_owners_hands(&mut effects, sentence)
         {
             parser_trace("parse_effect_sentences:rider:bound-followup", sentence);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+        if let Some(effect) = temporary_damage_multiplier::parse(authored_sentence)? {
+            effects.push(effect);
             carried_context = None;
             sentence_idx += 1;
             continue;
@@ -6054,6 +6061,12 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effect) = temporary_damage_multiplier::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(effect) = parse_temporary_counter_placement_replacement(tokens) {
         return Ok(vec![effect]);
     }
@@ -12559,6 +12572,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
             })
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
+            )
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterDamageMultiplier { .. },
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },

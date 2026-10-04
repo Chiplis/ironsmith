@@ -358,10 +358,28 @@ impl LayerValueContext<'_, '_> {
     ) -> i32 {
         use crate::effects::helpers::value_eval::NumericProperty;
         let ctx = self.calculation;
-        if matches!(
-            property,
-            NumericProperty::ManaValue | NumericProperty::ManaSpent
-        ) {
+        if matches!(property, NumericProperty::ManaValue) {
+            let Some(object) = ctx.objects.get(&id) else {
+                return 0;
+            };
+            // Layer-1 copies, face-down values and linked-face rules are
+            // already present in the in-progress view at the P/T layer.
+            // Reading the printed object here loses that mana cost.
+            return in_progress_characteristics(ctx.game, id)
+                .or_else(|| {
+                    ctx.effects.calculate_characteristics(
+                        id,
+                        ctx.objects,
+                        ctx.battlefield,
+                        ctx.game,
+                    )
+                })
+                .map_or_else(
+                    || crate::filter::object_mana_value_for_filter(object),
+                    |chars| crate::filter::calculated_mana_value_for_filter(object, &chars),
+                );
+        }
+        if matches!(property, NumericProperty::ManaSpent) {
             return ctx
                 .objects
                 .get(&id)

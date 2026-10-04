@@ -65,3 +65,7 @@ pub use life_change::*;
 #[path = "keyword_static_lines/token_templates.rs"]
 mod token_templates;
 pub use token_templates::*;
+
+#[path = "keyword_static_lines/draw_programs.rs"]
+mod draw_programs;
+pub use draw_programs::*;

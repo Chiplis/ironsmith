@@ -1,0 +1,62 @@
+[
+  {
+    "name": "False Cure",
+    "text": "Mana cost: {B}{B}\nType: Instant\nUntil end of turn, whenever a player gains life, that player loses 2 life for each 1 life they gained.",
+    "oracle_id": "fc4c969d-408c-46d1-8dba-fabecc2c30ce",
+    "source": "https://scryfall.com/card/ons/146/false-cure?utm_source=api",
+    "baseline_content_hash": "0f02d76f2d36230d797ba1f060705afe10720b8cad85d05c02f940cb52c892a7",
+    "baseline_diagnostic": "unsupported triggered line (clause: 'whenever a player gains life that player loses 2 life for each 1 life they gained') [rule-path=until-duration-triggered > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported triggered line (clause: 'whenever a player gains life that player loses 2 life for each 1 life they gained') [rule-path=until-duration-triggered > sentence-reading] [rule-path=statement-line > statement-probe]",
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Cradle of Vitality",
+    "text": "Mana cost: {3}{W}\nType: Enchantment\nWhenever you gain life, you may pay {1}{W}. If you do, put a +1/+1 counter on target creature for each 1 life you gained.",
+    "oracle_id": "956250da-532a-4457-8696-73915be56943",
+    "source": "https://scryfall.com/card/jmp/98/cradle-of-vitality?utm_source=api",
+    "baseline_content_hash": "464f9fb52f33d9709c4d9e4466810d97097c07496291572ac3d854a3023fc301",
+    "baseline_diagnostic": "unsupported target phrase (clause: '1 life you gained') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported target phrase (clause: '1 life you gained') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > triggered-line]",
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Lich's Tomb",
+    "text": "Mana cost: {4}\nType: Artifact\nYou don't lose the game for having 0 or less life.\nWhenever you lose life, sacrifice a permanent for each 1 life you lost. (Damage causes loss of life.)",
+    "oracle_id": "600b9ab8-36dc-4f02-b48c-091348d132ac",
+    "source": "https://scryfall.com/card/dst/128/lichs-tomb?utm_source=api",
+    "baseline_content_hash": "faeada0690883b18b2b63323a5ade7348dc537704eacbcc923ee60bc5f14163b",
+    "baseline_diagnostic": "missing filter after 'for each' in gets clause [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading] [rule-path=immediate-sacrifice-sentence > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: missing filter after 'for each' in gets clause [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading] [rule-path=immediate-sacrifice-sentence > sentence-reading] [rule-path=statement-line > triggered-line]",
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Lich's Mastery",
+    "text": "Mana cost: {3}{B}{B}{B}\nType: Legendary Enchantment\nHexproof\nYou can't lose the game.\nWhenever you gain life, draw that many cards.\nWhenever you lose life, for each 1 life you lost, exile a permanent you control or a card from your hand or graveyard.\nWhen Lich's Mastery leaves the battlefield, you lose the game.",
+    "oracle_id": "785c306c-471c-4699-8ab2-43c253d569cf",
+    "source": "https://scryfall.com/card/pdom/98s/lichs-mastery?utm_source=api",
+    "baseline_content_hash": "0994d8e0b8add9384b5882be0840c277f647a1506226ad525b71f7ad06089a26",
+    "baseline_diagnostic": "unsupported target phrase (clause: '1 life you lost') [rule-path=for-each-object-filter-effect > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported target phrase (clause: '1 life you lost') [rule-path=for-each-object-filter-effect > sentence-reading] [rule-path=statement-line > triggered-line]",
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Oath of Lim-D\u00fbl",
+    "text": "Mana cost: {3}{B}\nType: Enchantment\nWhenever you lose life, for each 1 life you lost, sacrifice a permanent other than this enchantment unless you discard a card. (Damage dealt to you causes you to lose life.)\n{B}{B}: Draw a card.",
+    "oracle_id": "64e163c2-2378-4e4c-aefe-5e0d2fd19988",
+    "source": "https://scryfall.com/card/ice/156/oath-of-lim-d%C3%BBl?utm_source=api",
+    "baseline_content_hash": "aca4fc5f9201535bd63fcefebd3d62adab83dba3edaa743e386a814ebf6fb38c",
+    "baseline_diagnostic": "unsupported target phrase (clause: '1 life you lost') [rule-path=for-each-object-effect-chain > chain-entry-registry-reading] [rule-path=single-sentence-unless-action > sentence-remaining-registry-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported target phrase (clause: '1 life you lost') [rule-path=for-each-object-effect-chain > chain-entry-registry-reading] [rule-path=single-sentence-unless-action > sentence-remaining-registry-reading] [rule-path=statement-line > triggered-line]",
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Transcendence",
+    "text": "Mana cost: {3}{W}{W}{W}\nType: Enchantment\nYou don't lose the game for having 0 or less life.\nWhen you have 20 or more life, you lose the game.\nWhenever you lose life, you gain 2 life for each 1 life you lost. (Damage dealt to you causes you to lose life.)",
+    "oracle_id": "f9279f8f-3d19-4f5b-b194-cb8c65313b7e",
+    "source": "https://scryfall.com/card/tor/20/transcendence?utm_source=api",
+    "baseline_content_hash": "ae04635dc3fe5bde83b0bfa6d887e1701690a54896d440f759f20fc8d442b17c",
+    "baseline_diagnostic": "unsupported trailing life-gain clause (clause: '2 life for each 1 life you lost') [rule-path=complete-simple-subject-verb > document-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported trailing life-gain clause (clause: '2 life for each 1 life you lost') [rule-path=complete-simple-subject-verb > document-reading] [rule-path=statement-line > triggered-line]",
+    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes.",
+    "proposed_complete": true
+  }
+]
