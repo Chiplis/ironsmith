@@ -160,15 +160,46 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
             .matched_outcome_events
             .insert(event.occurrence_key(), event.clone());
     }
-    crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, false);
+    crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, true);
     crate::game_loop::drain_pending_trigger_events(game, &mut matched);
     game.defer_trigger_entries(matched.take_all());
     true
 }
 
+/// A completed original operation is a real instruction boundary even when
+/// its producer is a cost or turn-based combat action. Preserve outcome event
+/// evidence, and attach a private receipt proof only after actual matching.
+/// Simultaneous owners call this once for every original before any addition.
+pub(crate) fn capture_triggers_before_added_program<'a>(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    next: Option<&Effect>,
+    reported: impl IntoIterator<Item = &'a mut crate::triggers::TriggerEvent>,
+) -> bool {
+    if game.effect_store.trigger_matching_holds > 0
+        || ctx.decision_maker.awaiting_choice()
+        || next.is_some_and(effect_chooses_new_targets_for_copy)
+    { return false; }
+    let mut reported: Vec<_> = reported.into_iter().collect();
+    let mut seen = std::collections::HashSet::new();
+    let fresh = reported.iter().filter(|event| !outcome_event_already_matched(game, event))
+        .filter(|event| seen.insert(event.occurrence_key())).map(|event| (**event).clone()).collect::<Vec<_>>();
+    let mut matched = crate::triggers::TriggerQueue::new();
+    // Scoped matching still deduplicates unmarked aliases held elsewhere in
+    // the enclosing resolution. Outside it, the returned receipt owns proof.
+    if game.effect_store.per_event_trigger_matching {
+        for event in &fresh { game.effect_store.matched_outcome_events.insert(event.occurrence_key(), event.clone()); }
+    }
+    crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, true);
+    crate::game_loop::drain_pending_trigger_events(game, &mut matched);
+    game.defer_trigger_entries(matched.take_all());
+    for event in &mut reported { event.mark_triggers_captured(); }
+    true
+}
+
 /// Whether a boundary inside the current resolution already matched `event`.
 fn outcome_event_already_matched(game: &GameState, event: &crate::triggers::TriggerEvent) -> bool {
-    game.effect_store
+    event.triggers_captured() || game.effect_store
         .matched_outcome_events
         .contains_key(&event.occurrence_key())
 }

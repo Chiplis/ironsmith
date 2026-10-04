@@ -17,16 +17,17 @@ pub fn parse_if_enters_with_additional_counter_sentence(
         None,
         false,
     );
-    let apply_only_if_creature = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate: PredicateAst::ItMatches(ObjectFilter::creature()),
-        if_true: vec![put_counter],
-        if_false: Vec::new(),
-    });
+    let apply_only_if_matching_object =
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ItMatches(shape.object_filter),
+            if_true: vec![put_counter],
+            if_false: Vec::new(),
+        });
 
     Ok(Some(vec![EffectAst::Conditionals(
         ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
-            effects: vec![apply_only_if_creature],
+            effects: vec![apply_only_if_matching_object],
         },
     )]))
 }

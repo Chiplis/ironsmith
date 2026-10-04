@@ -66,7 +66,7 @@ impl EffectExecutor for VariableCasualtyPlaneswalkerCopyEffect {
                 (source, resolving_source_stack_entry(ctx))
             }
         };
-        let copy_id = create_stack_copy_from_object(
+        let Some(copy_id) = create_stack_copy_from_object(
             game,
             &source,
             ctx.source,
@@ -78,7 +78,7 @@ impl EffectExecutor for VariableCasualtyPlaneswalkerCopyEffect {
                 copy.counters.remove(&CounterType::Loyalty);
             },
             None,
-        )?;
+        )? else { return Ok(EffectOutcome::protected()); };
         game.queue_trigger_event(
             ctx.provenance,
             crate::triggers::TriggerEvent::new_with_provenance(

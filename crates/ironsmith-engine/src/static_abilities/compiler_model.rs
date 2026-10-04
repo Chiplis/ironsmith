@@ -109,6 +109,7 @@ impl StaticAbility {
             Some(StaticAbilityId::CantBlock) => Self::cant_block(),
             Some(StaticAbilityId::CantAttack) => Self::cant_attack(),
             Some(StaticAbilityId::CantAttackItsOwner) => Self::cant_attack_its_owner(),
+            Some(StaticAbilityId::CantBeCopied) => Self::cant_be_copied(),
             Some(StaticAbilityId::CantBeCountered) => Self::cant_be_countered_ability(),
             Some(StaticAbilityId::CanBlockFlying) => Self::can_block_flying(),
             Some(StaticAbilityId::CanBlockOnlyFlying) => Self::can_block_only_flying(),

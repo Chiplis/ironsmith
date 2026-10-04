@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "5d4ab53939b4bb93f9e8f07ec3cc6b1b0ddd0607",
+  "source_implementation_commit": "75a77c721f68508e5b2aaceb31412a759b299c81",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 549,
-    "additional_proposed_compile_entries": 550,
+    "additional_proposed_unique_cards": 563,
+    "additional_proposed_compile_entries": 564,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
-    "identified_source_proposals_with_known_runtime_gaps": 27,
-    "source_proposals_excluding_identified_runtime_gaps": 522,
+    "identified_source_proposals_with_known_runtime_gaps": 29,
+    "source_proposals_excluding_identified_runtime_gaps": 534,
     "runtime_gap_inventory_is_not_exhaustive": true
   },
   "workflow": {
@@ -1664,7 +1664,7 @@
       "partial_entries": [
         {
           "card_name": "Wedding Ring",
-          "remaining_blocker": "Event-time qualification in combat/cost replacement-added programs outside per-instruction matching scope; follow-up in progress."
+          "remaining_blocker": "CR121.7 quantified player-action non-draw prefix iterator remains partial. Branch, May, result/tag/source frames are integrated stage42; action-major/APNAP iteration must not be replaced by player-major execution."
         }
       ],
       "implementation_commit": "4fecc6b2ae6dba90a70e4b83923f2ad098cfa541",
@@ -1730,18 +1730,141 @@
         "Undercover Skrull",
         "Wall Crawl"
       ],
-      "partial_entries": [
-        {
-          "card_name": "Ghoulish Impetus",
-          "remaining_blocker": "Review exact Aura incarnation across its own state-based graveyard move and extra zone changes before delayed registration; complete tail and normal return tests are authored, no final source claim yet."
-        }
-      ],
+      "partial_entries": [],
       "implementation_commit": "5d4ab53939b4bb93f9e8f07ec3cc6b1b0ddd0607",
       "tests": "authored_not_run",
       "semantic_scope": [
         "Complete compound static predicates, quoted grants and type additions preserve every shared-subject/condition operation.",
         "Exact attachment blocker rules, native continuous goad designation surviving recipient ability loss, all creature types and grouped live quantities.",
         "Ghoulish delayed-source incarnation remains partial; token-producing members retain the resource-cap dependency."
+      ],
+      "subsequent_source_closures": [
+        {
+          "card_name": "Ghoulish Impetus",
+          "stage": 42,
+          "closed_by": "aura-source-incarnations"
+        }
+      ]
+    },
+    {
+      "id": "source-exiled-name-restrictions",
+      "stage": 42,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/source_exiled_name_restrictions.json.fixture",
+      "baseline_entries": [
+        "Circu, Dimir Lobotomist",
+        "Godsend"
+      ],
+      "implementation_commit": "29363fb787457c377eb96d6d3d2f28e1d50cd77e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Live source-exile name restriction context preserves exact source/card incarnations, current opponent/controller and split/nameless rules."
+      ]
+    },
+    {
+      "id": "dynamic-control-bounds",
+      "stage": 42,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/dynamic_control_bounds.json.fixture",
+      "baseline_entries": [
+        "Beguiler of Wills",
+        "Vedalken Shackles"
+      ],
+      "implementation_commit": "b443b1f939eb3508fdf5130712edef482ad55ece",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Dynamic target power/count legality at announcement/resolution, separate true/false tapped duration and actual control-transition receipts."
+      ]
+    },
+    {
+      "id": "aura-source-incarnations",
+      "stage": 42,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/complete_anthem_tails.json.fixture",
+      "baseline_entries": [
+        "Ghoulish Impetus"
+      ],
+      "implementation_commit": "5e3c23b0b82522aa8461f4d7a6e633e3700873b4",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "CR400.7f follows the recorded first Aura SBA graveyard result only; extra pre-registration zone changes cannot substitute a newer object.",
+        "Same-event and in-resolution movement behavior is retained; complete authored scenario remains unrun."
+      ]
+    },
+    {
+      "id": "live-name-hand-selectors",
+      "stage": 42,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/live_name_hand_selectors.json.fixture",
+      "baseline_entries": [
+        "Key to the Side-Door",
+        "Hint of Insanity"
+      ],
+      "implementation_commit": "4d200fb4113562b190750c95a3b877bb1192bfd8",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed live comparison names and exact candidate exclusion preserve nonland/legendary qualifiers, source controller, split names and committed discard payment."
+      ]
+    },
+    {
+      "id": "target-characteristic-comparisons",
+      "stage": 42,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/target_characteristic_comparisons.json.fixture",
+      "baseline_entries": [
+        "Fell the Mighty"
+      ],
+      "implementation_commit": "fd12443218662de64f5a5db92a1a867b3924a986",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Real announcement target for numeric comparison, live same-incarnation power then exact departure receipt LKI."
+      ]
+    },
+    {
+      "id": "source-comparison-returns",
+      "stage": 42,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/source_comparison_returns.json.fixture",
+      "baseline_entries": [
+        "Mirko, Obsessive Theorist",
+        "Winter Soldier, Reborn Avenger"
+      ],
+      "implementation_commit": "39cb701c3b209648c30a4dd7a20740d1d991d690",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed source-axis elision and complete target bounds; Hero-conditioned pre-entry counter fusion retains finality and all return clauses."
+      ]
+    },
+    {
+      "id": "spell-copy-prohibitions",
+      "stage": 42,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/spell_copy_prohibitions.json.fixture",
+      "baseline_entries": [
+        "Choreographed Sparks",
+        "Display of Power",
+        "See Double"
+      ],
+      "implementation_commit": "16091b4379fd1e441b85bcfba38bb82eee89731e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed spell-only copy prohibition checked at every central stack-copy owner before allocation/events; ability copies remain independent.",
+        "Full modal bodies, optional/mixed target sets, copied-creature haste/end-step trigger and per-opponent graveyard threshold retained."
+      ]
+    },
+    {
+      "id": "tapped-object-comparisons",
+      "stage": 42,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/tapped_object_comparisons.json.fixture",
+      "baseline_entries": [
+        "Nihiloor"
+      ],
+      "implementation_commit": "655fefcbf488226a18511735c1fa5102eb1613c6",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Local body-tap reference precedes imported tap-cost aliases; each opponent retains a separate tap result and reflexive target scope.",
+        "Whole attack/owner-antecedent body and actual source-bound control remain covered by authored direct/artifact scenarios."
       ]
     }
   ],
@@ -4089,8 +4212,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "dynamic-control-bounds"
+      ]
     },
     {
       "card_name": "Behemoth of Vault 0",
@@ -6185,8 +6310,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "spell-copy-prohibitions"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Chorus of the Conclave",
@@ -6269,8 +6399,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-exiled-name-restrictions"
+      ]
     },
     {
       "card_name": "Circuits Act",
@@ -8690,8 +8822,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "spell-copy-prohibitions"
+      ]
     },
     {
       "card_name": "Disruption Aura",
@@ -11291,8 +11425,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-characteristic-comparisons"
+      ]
     },
     {
       "card_name": "Felothar the Steadfast",
@@ -12615,8 +12751,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails",
+        "aura-source-incarnations"
+      ]
     },
     {
       "card_name": "Giant Albatross",
@@ -13187,8 +13326,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-exiled-name-restrictions"
+      ]
     },
     {
       "card_name": "Gogo, Master of Mimicry",
@@ -14534,8 +14675,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-name-hand-selectors"
+      ]
     },
     {
       "card_name": "Hisoka, Minamo Sensei",
@@ -16873,8 +17016,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-name-hand-selectors"
+      ]
     },
     {
       "card_name": "Keys to the House",
@@ -19630,8 +19775,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-comparison-returns"
+      ]
     },
     {
       "card_name": "Mirkwood",
@@ -20930,8 +21077,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "tapped-object-comparisons"
+      ]
     },
     {
       "card_name": "Niko Aris",
@@ -26090,8 +26239,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "spell-copy-prohibitions"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Seedtime",
@@ -32582,8 +32736,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "dynamic-control-bounds"
+      ]
     },
     {
       "card_name": "Vedalken Squirrel-Whacker",
@@ -34432,8 +34588,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-comparison-returns"
+      ]
     },
     {
       "card_name": "Winter's Chill",
@@ -35392,7 +35550,9 @@
         "Dancer's Chakrams",
         "Ninja's Blades",
         "Stalactite Dagger",
-        "Wall Crawl"
+        "Wall Crawl",
+        "Choreographed Sparks",
+        "See Double"
       ],
       "source_location": "crates/ironsmith-engine/src/effects/tokens/lifecycle.rs::TOKEN_PER_PLAYER_LIMIT",
       "behavior": "Native token creation silently truncates at500 token permanents per player. Mechanic source proposals do not establish correct larger outcomes.",

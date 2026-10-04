@@ -128,6 +128,19 @@ pub fn parse_discard(
     let uses_all_count = cards_shape.uses_all_count;
     let mut count = cards_shape.count;
     let any_number = cards_shape.any_number;
+    // A live comparison belongs to the complete card phrase. Parsing only
+    // its trailing relation would discard qualifiers such as "nonland".
+    if let Some(start) = tokens.len().checked_sub(
+        cards_shape.qualifier_tokens.len() + 1 + cards_shape.trailing_tokens.len(),
+    ) && let Some(result) = crate::grammar::filters::parse_live_name_relation(&tokens[start..], false) {
+        let mut filter = result?;
+        filter.zone = Some(Zone::Hand);
+        if uses_all_count && let Some(owner) = discard_subject_owner_filter(subject) {
+            filter.owner = Some(owner);
+        }
+        if uses_all_count { count = Value::Count(filter.clone()); }
+        return Ok(EffectAst::subject_verb_discard(player, count, false, any_number, Some(filter), None));
+    }
     // "an instant or sorcery card or a creature card with flying": a
     // trailing "or ... card" arm continues the card selector itself, so the
     // whole list is one disjunctive filter rather than a trailing qualifier

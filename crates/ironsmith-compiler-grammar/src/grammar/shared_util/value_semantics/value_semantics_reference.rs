@@ -291,10 +291,43 @@ pub fn parse_filter_comparison_tokens(
         }
     };
 
+    // Comparisons can elide a repeated axis: "power less than this
+    // creature's". The document parser has already normalized only proven
+    // aliases of this card into typed source references. Do not guess that an
+    // arbitrary possessive name is the source, or consume a following zone.
+    let parse_operand_value = |words: &[&str]| -> Option<(Value, usize)> {
+        value_expr::parse_value_expr_words(words).or_else(|| {
+            if !matches!(axis, "power" | "toughness") {
+                return None;
+            }
+            for used in (1..=words.len()).rev() {
+                let last = words[used - 1];
+                if !last.ends_with("'s") && !last.ends_with('s') {
+                    continue;
+                }
+                let Some(surface) =
+                    crate::util::source_reference_surface_for_possessive_words(&words[..used])
+                else {
+                    continue;
+                };
+                let source = Box::new(crate::util::source_choose_spec_for_surface(surface));
+                return Some((
+                    if axis == "power" {
+                        Value::PowerOf(source)
+                    } else {
+                        Value::ToughnessOf(source)
+                    },
+                    used,
+                ));
+            }
+            None
+        })
+    };
+
     let parse_operand = |operand_tokens: &[&str],
                          operator: ValueComparisonOperator|
      -> Result<(crate::filter::Comparison, usize), CardTextError> {
-        let Some((operand, used)) = value_expr::parse_value_expr_words(operand_tokens) else {
+        let Some((operand, used)) = parse_operand_value(operand_tokens) else {
             let quoted = operand_tokens
                 .first()
                 .copied()
@@ -353,16 +386,14 @@ pub fn parse_filter_comparison_tokens(
                 clause_words.join(" ")
             )));
         }
-        let (operand, used) =
-            value_expr::parse_value_expr_words(operand_words).ok_or_else(|| {
-                let quoted = operand_words.first().copied().unwrap_or_default();
-                CardTextError::ParseError(format!(
-                    "unsupported dynamic {axis} comparison operand '{quoted}' (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
-        let operand =
-            bind_candidate_controller_graveyard_count(operand, &operand_words[..used]);
+        let (operand, used) = parse_operand_value(operand_words).ok_or_else(|| {
+            let quoted = operand_words.first().copied().unwrap_or_default();
+            CardTextError::ParseError(format!(
+                "unsupported dynamic {axis} comparison operand '{quoted}' (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        let operand = bind_candidate_controller_graveyard_count(operand, &operand_words[..used]);
         let operand = bind_candidate_counters_on_it(operand, &operand_words[..used]);
         let operand = if starts_explicit_ordered_comparison(tokens, operator)
             && !matches!(operand.unhinted(), Value::Fixed(_))
@@ -375,7 +406,7 @@ pub fn parse_filter_comparison_tokens(
         return Ok(Some((to_comparison(operator, operand), consumed)));
     }
 
-    if let Some((value, used)) = value_expr::parse_value_expr_words(tokens) {
+    if let Some((value, used)) = parse_operand_value(tokens) {
         if tokens.get(used).copied() == Some("or")
             && let Some(next) = tokens.get(used + 1)
             && is_comparison_tail_word(next)
@@ -399,4 +430,39 @@ pub fn parse_filter_comparison_tokens(
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod elided_comparison_axis_tests {
+    use super::*;
+    #[test]
+    fn elided_source_axis_retains_the_bound_and_leaves_the_zone_tail() {
+        let words = [
+            "less",
+            "than",
+            "this",
+            "creatures",
+            "from",
+            "your",
+            "graveyard",
+        ];
+        for axis in ["power", "toughness"] {
+            let (comparison, used) = parse_filter_comparison_tokens(axis, &words, &words)
+                .unwrap()
+                .unwrap();
+            assert_eq!(used, 4);
+            let crate::filter::Comparison::LessThanExpr(value) = comparison else {
+                panic!()
+            };
+            let spec = match (axis, value.unhinted()) {
+                ("power", Value::PowerOf(spec)) | ("toughness", Value::ToughnessOf(spec)) => spec,
+                other => panic!("{other:?}"),
+            };
+            assert!(matches!(spec.base(), crate::target::ChooseSpec::Source));
+        }
+        assert!(
+            parse_filter_comparison_tokens("power", &["less", "than", "strangers"], &[]).is_err()
+        );
+        assert!(parse_filter_comparison_tokens("mana value", &words, &words).is_err());
+    }
 }

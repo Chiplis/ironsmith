@@ -185,6 +185,7 @@ pub fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool 
     matches!(
         static_ability.id(),
         crate::static_abilities::StaticAbilityId::ConditionalSpellKeyword
+            | crate::static_abilities::StaticAbilityId::CantBeCopied
             | crate::static_abilities::StaticAbilityId::CantBeCountered
             | crate::static_abilities::StaticAbilityId::ThisSpellCastRestriction
             | crate::static_abilities::StaticAbilityId::ThisSpellXMaximum

@@ -315,6 +315,36 @@ pub(crate) fn pin_tagged_objects_to_current(
     }
 }
 
+/// CR400.7f authorizes only the Aura's first actual battlefield-to-graveyard
+/// receipt after its enchanted permanent left. A physical-card lookup cannot
+/// distinguish that object from a later exile/return incarnation.
+fn aura_source_graveyard_incarnation(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    trigger: &crate::events::ZoneChangeEvent,
+) -> Option<ObjectId> {
+    if trigger.from != Zone::Battlefield { return None; }
+    let attached_sources = trigger.object_tags.get("attached_source");
+    let snapshot = ctx.source_snapshot.as_ref()
+        .filter(|snapshot| snapshot.object_id == ctx.source)
+        .or_else(|| attached_sources.and_then(|sources| sources.iter().find(|snapshot| snapshot.object_id == ctx.source)))?;
+    if snapshot.zone != Zone::Battlefield || !snapshot.subtypes.contains(&crate::types::Subtype::Aura) { return None; }
+    let was_attached = snapshot.attached_to.as_ref().and_then(|target| target.object_id())
+        .is_some_and(|host| trigger.objects.contains(&host))
+        || attached_sources.is_some_and(|sources| sources.iter().any(|source| source.object_id == ctx.source && source.stable_id == snapshot.stable_id));
+    if !was_attached { return None; }
+    let transition = game.turn_history.event_records.iter()
+        .chain(game.turn_history.staged_event_records.iter())
+        .filter_map(|record| record.event.downcast::<crate::events::ZoneChangeEvent>())
+        .find(|event| event.from == Zone::Battlefield && event.objects.contains(&ctx.source))?;
+    if transition.to != Zone::Graveyard || transition.cause.cause_type != crate::events::cause::CauseType::StateBasedAction {
+        return None;
+    }
+    transition.result_objects.iter().copied().find(|id| game.object(*id).is_some_and(|object| {
+        object.zone == Zone::Graveyard && object.owner == snapshot.owner && object.stable_id == snapshot.stable_id
+    }))
+}
+
 pub(crate) fn resolve_source_object_id(
     game: &GameState,
     ctx: &ExecutionContext,
@@ -360,6 +390,24 @@ pub(crate) fn resolve_source_object_id(
         && event.objects.contains(&ctx.source)
     {
         return None;
+    }
+    if let Some(event) = ctx.triggering_event.as_ref()
+        .and_then(|event| event.downcast::<crate::events::ZoneChangeEvent>())
+    {
+        // Preserve the existing in-resolution movement permission used by
+        // tagged references (400.7j). Cost moves were pinned at stack entry;
+        // anything created before this resolution cannot use this exception.
+        if let Some(floor) = ctx.resolution_object_id_floor
+            && let Some(snapshot) = ctx.source_snapshot.as_ref()
+            && let Some(current) = game.find_object_by_stable_id(snapshot.stable_id)
+            && current.0 >= floor.0
+        {
+            return Some(current);
+        }
+        // Source movement in the same event was handled above (400.7e).
+        // A different dying object only authorizes the exact Aura/SBA case;
+        // never follow arbitrary pre-resolution moves by stable card identity.
+        return aura_source_graveyard_incarnation(game, ctx, event);
     }
     // Non-zone-change triggers retain the object that owned the ability.
     // A later independent zone change does not authorize following the same
@@ -5770,3 +5818,74 @@ mod replacement_object_selection_contract_tests {
 #[cfg(test)]
 #[path = "helpers/tagged_lki_identity_tests.rs"]
 mod tagged_lki_identity_tests;
+
+#[cfg(test)]
+mod aura_source_incarnation_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::events::{ZoneChangeEvent, cause::EventCause};
+    use crate::ids::{CardId, PlayerId};
+    use crate::object::AttachmentTarget;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::triggers::TriggerEvent;
+    use crate::turn_history::TurnEventRecord;
+    use crate::types::{CardType, Subtype};
+    fn setup() -> (GameState, ObjectId, ObjectId, ObjectId, ObjectSnapshot) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let owner = PlayerId(0);
+        let host = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Attached host").card_types(vec![CardType::Creature]).build(), owner, Zone::Battlefield);
+        let aura = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Source Aura").card_types(vec![CardType::Enchantment]).subtypes(vec![Subtype::Aura]).build(), owner, Zone::Battlefield);
+        game.object_mut(aura).unwrap().attached_to = Some(AttachmentTarget::Object(host));
+        let snapshot = ObjectSnapshot::from_object(game.object(aura).unwrap(), &game);
+        let graveyard = game.move_object_by_effect(aura, Zone::Graveyard).unwrap();
+        // Unit fixture supplies a canonical completed SBA receipt. The full
+        // Ghoulish integration scenario separately uses real native SBAs.
+        game.turn_history.event_records.clear(); game.turn_history.staged_event_records.clear();
+        (game, host, aura, graveyard, snapshot)
+    }
+    fn record(game: &mut GameState, source: ObjectId, graveyard: ObjectId, snapshot: ObjectSnapshot, cause: EventCause) {
+        game.turn_history.event_records.push(TurnEventRecord {
+            event: TriggerEvent::new_with_provenance(ZoneChangeEvent::with_results(source, vec![graveyard], Zone::Battlefield, Zone::Graveyard, cause, Some(snapshot)), Default::default()),
+            object_snapshot: None, source_snapshot: None,
+        });
+    }
+    fn trigger(host: ObjectId) -> TriggerEvent {
+        TriggerEvent::new_with_provenance(ZoneChangeEvent::with_cause(host, Zone::Battlefield, Zone::Graveyard, EventCause::from_game_rule(), None), Default::default())
+    }
+    #[test]
+    fn aura_exception_returns_the_recorded_sba_arrival_never_an_exile_return() {
+        let (mut game, host, source, graveyard, snapshot) = setup();
+        record(&mut game, source, graveyard, snapshot.clone(), EventCause::from_sba());
+        let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(trigger(host));
+        assert_eq!(resolve_source_object_id(&game, &ctx), Some(graveyard));
+        let exiled = game.move_object_by_effect(graveyard, Zone::Exile).unwrap();
+        let returned = game.move_object_by_effect(exiled, Zone::Graveyard).unwrap();
+        assert_ne!(returned, graveyard); assert_eq!(resolve_source_object_id(&game, &ctx), None);
+    }
+    #[test]
+    fn unrelated_move_or_unrelated_attachment_does_not_authorize_source_following() {
+        for sba in [false, true] {
+            let (mut game, host, source, graveyard, mut snapshot) = setup();
+            if sba { snapshot.attached_to = Some(AttachmentTarget::Object(ObjectId::from_raw(90909))); }
+            record(&mut game, source, graveyard, snapshot.clone(), if sba { EventCause::from_sba() } else { EventCause::from_game_rule() });
+            let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(trigger(host));
+            assert_eq!(resolve_source_object_id(&game, &ctx), None);
+        }
+    }
+    #[test]
+    fn batched_source_departure_retains_the_existing_exact_event_exception() {
+        let (game, host, source, graveyard, snapshot) = setup();
+        let mut event = ZoneChangeEvent::with_results(source, vec![graveyard], Zone::Battlefield, Zone::Graveyard, EventCause::from_game_rule(), Some(snapshot.clone()));
+        event.objects.push(host);
+        let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(TriggerEvent::new_with_provenance(event, Default::default()));
+        assert_eq!(resolve_source_object_id(&game, &ctx), Some(graveyard));
+    }
+    #[test]
+    fn copied_aura_can_lose_its_aura_type_in_graveyard_without_losing_the_proven_arrival() {
+        let (mut game, host, source, graveyard, snapshot) = setup();
+        record(&mut game, source, graveyard, snapshot.clone(), EventCause::from_sba());
+        game.object_mut(graveyard).unwrap().subtypes.clear();
+        let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(trigger(host));
+        assert_eq!(resolve_source_object_id(&game, &ctx), Some(graveyard));
+    }
+}

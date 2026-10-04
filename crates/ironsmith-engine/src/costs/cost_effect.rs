@@ -625,8 +625,15 @@ impl CostPayer for CostEffect {
             exec_ctx = exec_ctx.with_x(x);
         }
 
-        let outcome = execute_effect(game, &self.effect, &mut exec_ctx)
-            .map_err(CostPaymentError::ExecutionFailed)?;
+        let outcome = crate::effects::with_per_event_trigger_matching(game, true, |game| {
+            let mut outcome = execute_effect(game, &self.effect, &mut exec_ctx)?;
+            // Retain payment evidence for later typed amount/counter queries,
+            // while freezing triggers before the next payment instruction.
+            crate::effects::capture_triggers_before_added_program(
+                game, &exec_ctx, None, outcome.events.iter_mut(),
+            );
+            Ok::<_, crate::effects::ExecutionError>(outcome)
+        }).map_err(CostPaymentError::ExecutionFailed)?;
         if let Some(move_to_zone) =
             transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
         {

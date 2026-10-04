@@ -1,0 +1,23 @@
+[
+  {
+    "name": "Choreographed Sparks",
+    "oracle_id": "61495793-b0c7-40a5-ad3e-9df8e2b8096b",
+    "mana_cost": "{R}{R}",
+    "type_line": "Instant",
+    "oracle_text": "This spell can't be copied.\nChoose one or both \u2014\n\u2022 Copy target instant or sorcery spell you control. You may choose new targets for the copy.\n\u2022 Copy target creature spell you control. The copy gains haste and \"At the beginning of the end step, sacrifice this token.\""
+  },
+  {
+    "name": "Display of Power",
+    "oracle_id": "99140891-face-4015-aacd-1309e87d8f9f",
+    "mana_cost": "{1}{R}{R}",
+    "type_line": "Instant",
+    "oracle_text": "This spell can't be copied.\nCopy any number of target instant and/or sorcery spells. You may choose new targets for the copies."
+  },
+  {
+    "name": "See Double",
+    "oracle_id": "144d0817-348c-4171-aa7e-3468b23cf97d",
+    "mana_cost": "{2}{U}{U}",
+    "type_line": "Instant",
+    "oracle_text": "This spell can't be copied.\nChoose one. If an opponent has eight or more cards in their graveyard, you may choose both instead.\n\u2022 Copy target spell. You may choose new targets for the copy. (A copy of a permanent spell becomes a token.)\n\u2022 Create a token that's a copy of target creature."
+  }
+]

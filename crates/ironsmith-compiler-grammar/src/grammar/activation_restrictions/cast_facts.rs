@@ -169,6 +169,16 @@ pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<Ob
             input = &rest[consumed..];
             continue;
         }
+        if let Some(source) = prefix_remainder(input, &["the", "same", "name", "as", "a", "card", "exiled", "with"])
+            && crate::util::is_source_reference_words(source)
+        {
+            filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+                relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+            });
+            input = &[];
+            continue;
+        }
         if let Some(rest) = parse_x_in_mana_cost_prefix(input) {
             filter.has_x_in_cost = true;
             input = rest;

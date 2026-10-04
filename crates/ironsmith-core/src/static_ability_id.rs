@@ -381,6 +381,8 @@ pub enum StaticAbilityId {
     TokenCreationTemplates,
     ControllerPlaysWithHandRevealed,
     PlayersPlayWithHandsRevealed,
+    /// A spell-only copy prohibition; appended for wire compatibility.
+    CantBeCopied,
 }
 
 impl StaticAbilityId {
@@ -563,6 +565,7 @@ impl StaticAbilityId {
             | CounterLimit
             | CountersRemainAcrossZoneChanges
             | CantBeCountered
+            | CantBeCopied
             | PlayersCantCycle
             | PlayersSkipUpkeep
             | PlayerSkipsDrawStep

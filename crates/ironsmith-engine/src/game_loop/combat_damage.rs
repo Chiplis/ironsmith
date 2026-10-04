@@ -210,6 +210,7 @@ pub(crate) fn try_execute_combat_damage_step_with_dm_and_first_step_snapshot(
                 .has_pending_follow_ups()
                 && let Ok(events) = &mut result
             {
+                capture_combat_consequence_triggers(game, events, dm);
                 for event in events.iter_mut().filter(|event| event.amount > 0) {
                     if let Some(snapshot) = game.object(event.source).map(|obj| {
                         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
@@ -715,6 +716,23 @@ fn execute_general_combat_damage_batch_path(
     Ok(events)
 }
 
+/// Combat keeps actual life/counter receipts until later publication. Capture
+/// their conditions before damage additions or prevention follow-ups can alter
+/// the board, without discarding their amounts or object evidence.
+fn capture_combat_consequence_triggers(
+    game: &mut GameState, events: &mut [CombatDamageEvent],
+    dm: &mut dyn crate::decision::DecisionMaker,
+) {
+    let Some(first) = events.first() else { return; };
+    let source = first.source;
+    let controller = first.source_snapshot.as_ref().map(|snapshot| snapshot.controller)
+        .or_else(|| game.current_controller(source)).unwrap_or(game.turn.active_player);
+    let ctx = crate::effects::ExecutionContext::new(source, controller, dm);
+    crate::effects::capture_triggers_before_added_program(game, &ctx, None,
+        events.iter_mut().flat_map(|event| event.consequence_outcome.iter_mut().chain(event.lifelink_outcome.iter_mut()))
+            .flat_map(|outcome| outcome.events.iter_mut()));
+}
+
 type CombatDamageAdditions = Vec<(usize, ObjectId, crate::ids::PlayerId,
     crate::snapshot::ObjectSnapshot, crate::events::cause::EventCause,
     Vec<crate::events::processing::PreparedReplacementProgram>)>;
@@ -725,6 +743,9 @@ fn finish_combat_damage_additions(
     additions: CombatDamageAdditions,
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<(), CombatDamageAssignmentError> {
+    if !additions.is_empty() {
+        capture_combat_consequence_triggers(game, events, dm);
+    }
     // Freeze every original target before any added instruction can move it.
     for event in events.iter_mut().filter(|event| event.amount > 0) {
         if let DamageEventTarget::Object(target) = event.target {
@@ -1489,19 +1510,50 @@ impl CombatLifelinkTotals {
         events: &mut [CombatDamageEvent],
         dm: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<(), CombatDamageAssignmentError> {
-        for (source, controller, total, event_index) in self.sources {
-            let Some(event) = events.get_mut(event_index) else {
-                continue;
-            };
-            let result = DamageResult {
-                has_lifelink: true,
-                ..DamageResult::default()
-            };
-            event.lifelink_outcome = apply_combat_lifelink_with_dm(game, source, controller, &result, total, dm)
+        // All sources' lifelink is a consequence of the same simultaneous
+        // damage event. Commit every original gain before any appended program
+        // can remove another source's qualifying artifact or change life.
+        let mut prepared = Vec::new();
+        for (source, controller, total, index) in self.sources {
+            if total == 0 || index >= events.len() { continue; }
+            let snapshot = events[index].source_snapshot.clone().or_else(|| game.object(source).map(|object|
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)));
+            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
+            ctx.source_snapshot = snapshot.clone();
+            ctx.cause = crate::events::cause::EventCause::from_combat_damage(source, controller);
+            let event = crate::events::Event::new_with_provenance(
+                crate::events::LifeGainEvent::new(controller, total).with_source(source), ctx.provenance);
+            let result = crate::effects::life::life_change::prepare_life_change(
+                game, &mut ctx, event,
+            ).map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+            prepared.push((source, controller, index, snapshot, result));
+        }
+        let mut receipts = Vec::new();
+        for (source, controller, index, snapshot, prepared) in prepared {
+            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
+            ctx.source_snapshot = snapshot.clone();
+            ctx.cause = crate::events::cause::EventCause::from_combat_damage(source, controller);
+            let receipt = crate::effects::life::life_change::commit_prepared_life_original(game, &mut ctx, prepared)
                 .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
-            if dm.awaiting_choice() {
-                return Ok(());
-            }
+            if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+            receipts.push((source, controller, index, snapshot, receipt));
+        }
+        if receipts.iter().any(|(_, _, _, _, receipt)| receipt.completion.is_some()) {
+            let (source, controller, _, _, _) = &receipts[0];
+            let ctx = crate::effects::ExecutionContext::new(*source, *controller, &mut *dm);
+            crate::effects::capture_triggers_before_added_program(
+                game, &ctx, None, receipts.iter_mut().flat_map(|(_, _, _, _, receipt)| receipt.outcome.events.iter_mut()),
+            );
+        }
+        for (source, controller, index, snapshot, receipt) in receipts {
+            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
+            ctx.source_snapshot = snapshot;
+            ctx.cause = crate::events::cause::EventCause::from_combat_damage(source, controller);
+            let outcome = crate::effects::life::life_change::complete_life_original(game, &mut ctx, receipt)
+                .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+            events[index].lifelink_outcome = Some(outcome);
         }
         Ok(())
     }

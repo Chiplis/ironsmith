@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "Chiplis/ironsmith",
   "frozen_baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "published_through_stage": 40,
+  "published_through_stage": 41,
   "purpose": "Verified published tree/ref/parent and draft-PR lookup for the source-coverage stage IDs. Only historical compile/runtime evidence is verification; stages08+ remain UNVALIDATED. The current stage appears in the next cumulative source update to avoid a self-referential commit.",
   "entries": [
     {
@@ -594,6 +594,20 @@
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/806",
       "local_commit": "e1a0f5e84e3eb82c185c356dba779002cf7fe3c7"
+    },
+    {
+      "stage": 41,
+      "branch": "fix/card-failures-41-complete-clause-and-event-roots",
+      "base": "fix/card-failures-40-transformation-and-payment-roots",
+      "source_integration_commit": "41e6c26f29c998fd69b5e5850a06d4bf7c0e0e49",
+      "remote_commit": "c67f048457a0622d942cb199cebb1dd6fef58d26",
+      "tree": "4f812e03bdc4ecfb6700c069ddeb8572441ee6fd",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 807,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/807"
     }
   ]
 }

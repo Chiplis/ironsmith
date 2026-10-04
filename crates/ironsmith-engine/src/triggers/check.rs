@@ -2743,6 +2743,7 @@ fn check_triggers_with_view_and_registry(
     view: &crate::derived_view::DerivedGameView<'_>,
     registry: &TriggerRegistry,
 ) -> Vec<TriggeredAbilityEntry> {
+    if trigger_event.triggers_captured() { return Vec::new(); }
     if suppresses_creature_etb_triggers_with_effects(game, trigger_event, Some(view.effects())) {
         return Vec::new();
     }
@@ -3500,6 +3501,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
     // untapping. They are not triggered abilities and must never be queued.
     let events = trigger_events
         .iter()
+        .filter(|event| !event.triggers_captured())
         .filter(|event| event.kind() != crate::events::EventKind::PermanentsUntapStep)
         .filter(|event| !suppresses_creature_etb_triggers(game, event))
         .collect::<Vec<_>>();

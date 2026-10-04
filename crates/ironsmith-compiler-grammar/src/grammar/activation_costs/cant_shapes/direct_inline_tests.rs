@@ -74,6 +74,7 @@ fn parses_complete_direct_cant_alternatives() {
             "This spell can't be countered.",
             DirectCantFact::ThisSpellCantBeCountered,
         ),
+        ("This spell can't be copied.", DirectCantFact::ThisSpellCantBeCopied),
         (
             "This creature can't attack.",
             DirectCantFact::SourceCantAttack,

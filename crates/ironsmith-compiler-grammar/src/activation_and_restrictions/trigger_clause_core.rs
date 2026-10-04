@@ -2679,9 +2679,12 @@ fn try_parse_player_attack_with_one_or_more_lexed(
     let Some(filter_start) = trigger_word_token_start(tokens, filter_word) else {
         return Ok(None);
     };
-    let plural_noun = words
-        .last()
-        .is_some_and(|word| crate::word_primitives::strip_word_suffix(word, "s").is_some());
+    // An explicit singular article is authoritative. A later possessive
+    // clause can end in a verb such as "owns", whose s is not a plural head.
+    let plural_noun = !matches!(words.get(filter_word), Some(&"a" | &"an"))
+        && words
+            .last()
+            .is_some_and(|word| crate::word_primitives::strip_word_suffix(word, "s").is_some());
     if !explicit_one_or_more && !plural_noun {
         return Ok(None);
     }
@@ -3082,3 +3085,18 @@ use semantic_trigger_programs::{
     try_parse_combat_damage_trigger_lexed,
     try_parse_source_with_filtered_attack_count_trigger_lexed,
 };
+
+#[cfg(test)]
+mod singular_attack_ownership_tests {
+    use super::*;
+    #[test]
+    fn terminal_owns_is_not_plural_evidence_for_a_singular_attacker() {
+        let tokens =
+            crate::lexer::lex_line("you attack with a creature an opponent owns", 0).unwrap();
+        assert!(
+            try_parse_player_attack_with_one_or_more_lexed(&tokens)
+                .unwrap()
+                .is_none()
+        );
+    }
+}

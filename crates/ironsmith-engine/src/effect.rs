@@ -177,7 +177,10 @@ impl OutcomeObjectMemory {
         Self {
             object_id: snapshot.object_id,
             stable_id: snapshot.stable_id,
-            name: snapshot.name.clone(),
+            // Compact memory must retain both names of a split card even if
+            // no current object survives to enrich its later snapshot.
+            name: snapshot.split_other_half_name().filter(|other| !crate::filter::names_match(&snapshot.name, other))
+                .map(|other| format!("{} // {other}", snapshot.name)).unwrap_or_else(|| snapshot.name.clone()),
             controller: snapshot.controller,
             owner: snapshot.owner,
             zone: snapshot.zone,

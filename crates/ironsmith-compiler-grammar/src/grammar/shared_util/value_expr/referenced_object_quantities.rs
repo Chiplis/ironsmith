@@ -43,6 +43,16 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
             offset + 7,
         ));
     }
+    if rest.len() >= 3 && rest[0] == "target" && matches!(rest[1], "creatures" | "creature's") {
+        let spec = Box::new(ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature(),
+        )));
+        match rest.get(2..) {
+            Some(["power", ..]) => return Some((Value::PowerOf(spec), offset + 3)),
+            Some(["toughness", ..]) => return Some((Value::ToughnessOf(spec), offset + 3)),
+            _ => {}
+        }
+    }
     // A definite possessive retains the referenced object, rather than the
     // resolving spell as damage source. Destroy keeps departure LKI; a live
     // indestructible object is still read from the same tagged identity.
@@ -77,7 +87,14 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
         || rest.starts_with(&["tapped", "creature's", "power"])
     {
         return Some((
-            Value::PowerOf(tagged(Tag::TapCost0, "the tapped creature")),
+            Value::PowerOf(Box::new(
+                ChooseSpec::Tagged(crate::tag::TagKey::from(
+                    crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG,
+                ))
+                .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
+                    SourceReferenceSurface::ThisPermanentType("the tapped creature".into()),
+                )),
+            )),
             offset + 3,
         ));
     }
@@ -228,7 +245,7 @@ mod damage_reference_tests {
             ),
             (
                 "the tapped creature's power",
-                crate::tag::CompilerReferenceTag::TapCost0.as_str(),
+                crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG,
             ),
             (
                 "the power of the card returned this way",
@@ -298,5 +315,37 @@ mod spell_quantity_tests {
                 ))
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod targeted_characteristic_tests {
+    use super::*;
+    #[test]
+    fn target_possessive_is_an_explicit_choice_not_a_source_or_prior_object() {
+        for (text, power) in [
+            ("target creature's power", true),
+            ("target creature's toughness", false),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+            assert_eq!(used, tokens.len());
+            let spec = match value {
+                Value::PowerOf(spec) if power => spec,
+                Value::ToughnessOf(spec) if !power => spec,
+                _ => panic!(),
+            };
+            assert!(spec.is_target());
+            let ChooseSpec::Object(filter) = spec.base() else {
+                panic!()
+            };
+            assert!(
+                filter
+                    .card_types
+                    .contains(&crate::types::CardType::Creature)
+            );
+            assert!(!filter.source);
+        }
+        assert!(parse(&["target", "creatures", "mystery"]).is_none());
     }
 }

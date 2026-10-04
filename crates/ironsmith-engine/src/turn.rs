@@ -2243,4 +2243,23 @@ mod draw_step_ordinal_tests {
         game.record_cards_drawn_in_current_draw_step(PlayerId(2), 7);
         assert_eq!(game.draw_step_context_for_player(PlayerId(2)), (false, 0));
     }
+
+    #[test]
+    fn ending_the_turn_clears_draw_ordinals_at_the_cleanup_jump() {
+        use crate::effects::EffectExecutor;
+        let mut game = setup();
+        execute_draw_step(&mut game);
+        let source = game.new_object_id();
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = crate::effects::EffectContext::new(source, PlayerId(0), &mut dm);
+        crate::effects::EndTurnEffect::new(crate::target::PlayerFilter::You).execute(&mut game, &mut ctx).unwrap();
+        let mut runner = crate::TurnRunner::from_state_for_sync(crate::TurnRunnerState::DrawPriority);
+        let mut queue = crate::triggers::TriggerQueue::new();
+        for _ in 0..10 {
+            if game.turn.step == Some(Step::Cleanup) { break; }
+            runner.advance(&mut game, &mut queue).unwrap();
+        }
+        assert_eq!(game.turn.step, Some(Step::Cleanup));
+        assert!(game.turn_store.cards_drawn_this_draw_step.is_empty());
+    }
 }

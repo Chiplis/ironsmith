@@ -357,3 +357,18 @@ fn targeting_source_envelopes_keep_single_kinds_and_controller_qualified_pairs()
         assert!(parse_target_restriction_envelope_tokens(&lex_line(text, 0).unwrap()).is_none(), "{text}");
     }
 }
+
+#[test]
+fn source_exiled_names_are_typed_cast_restrictions_with_full_consumption() {
+    for source in [vec!["this"], vec!["this", "permanent"], vec!["this", "creature"]] {
+        let mut words = vec!["cast", "spells", "with", "the", "same", "name", "as", "a", "card", "exiled", "with"];
+        words.extend(source);
+        let filter = parse_cast_restriction_tail_filter_words(&words).unwrap();
+        assert!(filter.zone.is_none());
+        assert!(filter.tagged_constraints.iter().any(|constraint|
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged));
+        words.push("unexpected");
+        assert!(parse_cast_restriction_tail_filter_words(&words).is_none());
+    }
+}

@@ -32,6 +32,7 @@ pub(crate) fn execute_life_changes(
     mut events: Vec<Event>,
 ) -> Result<EffectOutcome, ExecutionError> {
     let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let order = game.team_apnap_player_order();
     events.sort_by_key(|event| {
         let player = event.inner().affected_player(game);
@@ -48,23 +49,85 @@ pub(crate) fn execute_life_changes(
                 return Ok(EffectOutcome::count(0));
             }
         }
-        let mut outcomes = Vec::new();
+        let mut committed = Vec::new();
         for proposal in prepared {
-            outcomes.push(commit_life_change(game, ctx, proposal)?);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
+            committed.push(commit_prepared_life_original(game, ctx, proposal)?);
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        }
+        // Exchanges and multi-player instructions preserve one original batch.
+        // Added replacement programs cannot change another original's event-time
+        // qualifications or run before that original changes life.
+        if committed.iter().any(|receipt| receipt.completion.is_some()) {
+            crate::effects::runtime::capture_triggers_before_added_program(
+                game, ctx, None, committed.iter_mut().flat_map(|receipt| receipt.outcome.events.iter_mut()),
+            );
+        }
+        let mut outcomes = Vec::new();
+        for receipt in committed {
+            outcomes.push(complete_life_original(game, ctx, receipt)?);
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         }
         Ok(EffectOutcome::aggregate_summing_counts(outcomes))
     })();
     let pending = ctx.decision_maker.awaiting_choice();
     if pending || result.is_err() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
+        context_checkpoint.restore(ctx);
     }
     result
 }
 
-fn prepare_life_change(
+/// Deferred appended programs for one committed life-change proposal. Life
+/// notifications already contain their actual scalar result and participant;
+/// unlike zone receipts, they need no post-batch identity reconstruction.
+struct LifeChangeCompletion {
+    original_continuation: Option<Box<dyn crate::effects::SimultaneousEffectCompletion>>,
+    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+}
+impl crate::effects::SimultaneousEffectCompletion for LifeChangeCompletion {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        if let Some(original) = &mut self.original_continuation { original.freeze(game)?; }
+        Ok(())
+    }
+    fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome) -> Result<EffectOutcome, ExecutionError>
+    {
+        let original = if let Some(continuation) = self.original_continuation {
+            continuation.complete(game, ctx, original)?
+        } else { original };
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        crate::effects::replacement::execute_deferred_replacement_programs(game, ctx, original, self.programs)
+    }
+}
+
+pub(crate) fn commit_prepared_life_original(
+    game: &mut GameState, ctx: &mut ExecutionContext, prepared: TraitEventResult,
+) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    let (original, programs) = prepared.into_expansion();
+    let deferred = if let TraitEventResult::Replaced { effects, source, controller, context, .. } = &original {
+        crate::effects::replacement::prepare_draw_continuation(game, ctx, effects, *source, *controller, context)?
+    } else { None };
+    let (outcome, original_continuation) = if let Some(receipt) = deferred {
+        (receipt.outcome, receipt.completion)
+    } else { (commit_life_change(game, ctx, original)?, None) };
+    Ok(crate::effects::SimultaneousEffectCommit {
+        outcome,
+        completion: if programs.is_empty() && original_continuation.is_none() { None } else {
+            Some(Box::new(LifeChangeCompletion { original_continuation, programs }))
+        },
+    })
+}
+
+pub(crate) fn complete_life_original(
+    game: &mut GameState, ctx: &mut ExecutionContext, receipt: crate::effects::SimultaneousEffectCommit,
+) -> Result<EffectOutcome, ExecutionError> {
+    if let Some(mut completion) = receipt.completion {
+        completion.freeze(game)?;
+        completion.complete(game, ctx, receipt.outcome)
+    } else { Ok(receipt.outcome) }
+}
+
+pub(crate) fn prepare_life_change(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     event: Event,
@@ -236,4 +299,38 @@ mod removed_life_operation_tests {
     fn life_gain_reduced_to_zero_does_not_revive_or_consume_later_one_shot() { check_removed_life_change(true); }
     #[test]
     fn life_loss_reduced_to_zero_does_not_revive_or_consume_later_one_shot() { check_removed_life_change(false); }
+}
+
+#[cfg(test)]
+mod simultaneous_life_preparation_tests {
+    use super::*;
+    use crate::effects::{EffectExecutor, ForPlayersEffect, GainLifeEffect, LoseLifeEffect};
+    use crate::target::PlayerFilter;
+    #[derive(Debug)]
+    struct WhileFirstPlayerAtTwenty;
+    impl crate::events::ReplacementMatcher for WhileFirstPlayerAtTwenty {
+        fn matches_prepared_event(&self, event: &dyn crate::events::GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+            matches!(event.event_kind(), crate::events::EventKind::LifeGain | crate::events::EventKind::LifeLoss)
+                && ctx.game.player(crate::ids::PlayerId(0)).is_some_and(|player| player.life == 20)
+        }
+        fn display(&self) -> String { "while first player's life is twenty".into() }
+    }
+    #[test]
+    fn each_player_life_replacement_eligibility_uses_the_shared_precommit_world() {
+        for gained in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let a = crate::ids::PlayerId(0); let b = crate::ids::PlayerId(1);
+            let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Life replacement witness")
+                .card_types(vec![crate::types::CardType::Artifact]).build();
+            let source = game.create_object_from_definition(&definition, a, crate::zone::Zone::Battlefield);
+            game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                source, a, WhileFirstPlayerAtTwenty, crate::replacement::ReplacementAction::Double));
+            let effect = if gained { crate::effect::Effect::new(GainLifeEffect::with_filter(1, PlayerFilter::IteratedPlayer)) }
+                else { crate::effect::Effect::new(LoseLifeEffect::with_filter(1, PlayerFilter::IteratedPlayer)) };
+            let mut dm = crate::decision::SelectFirstDecisionMaker;
+            let mut ctx = ExecutionContext::new(source, a, &mut dm);
+            ForPlayersEffect::new(PlayerFilter::Any, vec![effect]).execute(&mut game, &mut ctx).unwrap();
+            for player in [a, b] { assert_eq!(game.player(player).unwrap().life, if gained { 22 } else { 18 }); }
+        }
+    }
 }

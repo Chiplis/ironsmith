@@ -48,7 +48,7 @@ use super::tagging_runtime::{
 /// Tag the execution context (and runtime tag state) from an inner effect's
 /// outcome — shared by live execution and batched simultaneous commits.
 /// (Free function because `TaggedEffect` aliases a foreign core type.)
-pub(super) fn apply_outcome_tags(
+pub(crate) fn apply_outcome_tags(
     effect: &TaggedEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,

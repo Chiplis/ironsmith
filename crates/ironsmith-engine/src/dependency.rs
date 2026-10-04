@@ -2597,6 +2597,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                     || filter.name_originally_printed_in_set.is_some()
                     || filter.distinct_names
                     || filter.shares_name
+                    || filter.characteristic_relations.iter().any(|relation| relation.characteristics.contains(&crate::ObjectCharacteristic::Name))
             }
             Modification::AddCardTypes(types) | Modification::RemoveCardTypes(types) => {
                 filter_mentions_card_types(filter, types)

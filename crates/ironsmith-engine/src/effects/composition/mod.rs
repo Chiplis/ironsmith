@@ -128,3 +128,10 @@ pub use collect_evidence::CollectEvidenceEffect;
 pub use with_id::WithIdEffect;
 
 pub(crate) mod selection_relations;
+pub(crate) use conditional::prepare_conditional_branch;
+pub(crate) use execute_with_source::resolve_source_binding;
+pub(crate) use may::is_object_selection;
+pub(crate) use tagged::apply_outcome_tags;
+pub(crate) use tagging_runtime::{TaggedRuntimeState, capture_tagged_runtime_state};
+
+pub(crate) use if_effect::{PreparedIfBranch, prepare_if_branches, execute_if_branches};

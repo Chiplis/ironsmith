@@ -8,6 +8,10 @@ pub use ironsmith_core::tag::{TagKeyWalk, tag_keys_of};
 /// result-object contract of that return into its destination zone.
 pub const RETURNED_THIS_WAY_QUANTITY_TAG: &str = "__returned_this_way_quantity__";
 
+/// Compiler-only live characteristic reference to a prior tap instruction,
+/// or to an imported tap-cost object when no local tap supersedes it.
+pub const PRIOR_TAPPED_OBJECT_QUANTITY_TAG: &str = "__prior_tapped_object_quantity__";
+
 const SENTENCE_HELPER_ROOT: &str = "__sentence_helper_";
 
 pub fn sentence_helper_tag(purpose: &str, line: usize, start: usize, end: usize) -> TagRef {

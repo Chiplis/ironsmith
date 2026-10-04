@@ -1102,6 +1102,7 @@ pub fn parse_object_filter_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(result) = super::live_name_relations::parse_live_name_relation(tokens, other) { return result; }
     let attack_destination_relation = is_attack_destination_relation(tokens);
     let mut filter = if attack_destination_relation {
         parse_object_filter(tokens, other)?

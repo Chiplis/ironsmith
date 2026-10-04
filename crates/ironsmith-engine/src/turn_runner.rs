@@ -1902,6 +1902,7 @@ impl TurnRunner {
                                     )
                             });
                         }
+                        game.finish_draw_step_tracking();
                         game.turn.phase = Phase::Ending;
                         game.turn.step = Some(Step::Cleanup);
                         game.turn.priority_player = None;

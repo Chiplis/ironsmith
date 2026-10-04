@@ -5,7 +5,7 @@ use crate::cards::builders::CardTextError;
 use crate::recognition::{ParseOutcome, RuleId};
 use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
 
-const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
+const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 27] = [
     LexUnsupportedRuleDef {
         metadata: RegistryRuleMetadata::distinct(
             RuleId::new("enters-as-copy"),
@@ -113,15 +113,6 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         shape_mask: 0,
         message: "unsupported phase-out-until-leaves clause",
         predicate: inner::sentence_has_phase_out_until_leaves_clause_rule_lexed,
-    },
-    LexUnsupportedRuleDef {
-        metadata: RegistryRuleMetadata::distinct(
-            RuleId::new("same-name-as-another-in-hand"),
-            HeadDiscriminator::words(&["target", "choose", "discard"]),
-        ),
-        shape_mask: 0,
-        message: "unsupported same-name-as-another-in-hand discard clause",
-        predicate: inner::sentence_has_same_name_as_another_in_hand_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
         metadata: RegistryRuleMetadata::distinct(

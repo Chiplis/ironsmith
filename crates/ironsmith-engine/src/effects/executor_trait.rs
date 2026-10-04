@@ -173,6 +173,12 @@ impl SimultaneousEffectCommit {
 /// mutation: it must not ask a new question or recalculate a value from game
 /// state changed by an earlier proposal in the same batch.
 pub trait SimultaneousEffectProposal: std::fmt::Debug + Send {
+    /// Resolve a prepared proposal's replacement choices against the shared
+    /// pre-mutation world. Owners run this for every participant before any
+    /// commit; immutable choice-free proposals need no further preparation.
+    fn prepare_original(&mut self, _game: &mut GameState, _ctx: &mut ExecutionContext)
+        -> Result<(), ExecutionError> { Ok(()) }
+
     /// Separate original mutations from replacement-added programs when the
     /// proposal has them. Existing choice-free proposals finish in one phase.
     fn commit_original(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)

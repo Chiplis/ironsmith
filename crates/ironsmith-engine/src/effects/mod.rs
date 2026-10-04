@@ -87,6 +87,7 @@ pub(crate) use context::{ExecutionContext, ExecutionContextCheckpoint};
 pub use runtime::{execute_effect, resolve_value, validate_target};
 pub(crate) use runtime::{
     match_triggers_at_instruction_boundary, retain_unmatched_outcome_events,
+    capture_triggers_before_added_program,
     with_per_event_trigger_matching,
 };
 
@@ -237,3 +238,8 @@ pub use zones::{
 
 pub use replacement::RegisterDamageMultiplierEffect;
 pub use damage::DealDamageToRecipientsEffect;
+
+pub(crate) use composition::{prepare_conditional_branch, resolve_source_binding,
+    is_object_selection, apply_outcome_tags, TaggedRuntimeState, capture_tagged_runtime_state};
+
+pub(crate) use composition::{PreparedIfBranch, prepare_if_branches, execute_if_branches};

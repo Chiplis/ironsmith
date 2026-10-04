@@ -1,0 +1,9 @@
+[
+  {
+    "name": "Fell the Mighty",
+    "oracle_id": "1fbb2a7c-8093-4729-b8fe-cf032d99470f",
+    "mana_cost": "{4}{W}",
+    "type_line": "Sorcery",
+    "oracle_text": "Destroy all creatures with power greater than target creature's power."
+  }
+]

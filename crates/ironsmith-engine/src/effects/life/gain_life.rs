@@ -72,7 +72,7 @@ impl EffectExecutor for GainLifeEffect {
         // pre-action state and the whole batch commits together.
         let player = resolve_player_from_spec(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-        Ok(Box::new(GainLifeProposal { player, amount }))
+        Ok(Box::new(GainLifeProposal { player, amount, prepared: None }))
     }
 
     fn target_description(&self) -> &'static str {
@@ -89,9 +89,24 @@ impl EffectExecutor for GainLifeEffect {
 struct GainLifeProposal {
     player: crate::ids::PlayerId,
     amount: u32,
+    prepared: Option<crate::events::processing::TraitEventResult>,
 }
 
 impl crate::effects::SimultaneousEffectProposal for GainLifeProposal {
+    fn prepare_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<(), ExecutionError>
+    {
+        self.prepared = Some(super::life_change::prepare_life_change(game, ctx,
+            crate::events::Event::new_with_provenance(LifeGainEvent::new(self.player, self.amount).with_source(ctx.source), ctx.provenance))?);
+        Ok(())
+    }
+    fn commit_original(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError>
+    {
+        if self.prepared.is_none() { self.prepare_original(game, ctx)?; }
+        super::life_change::commit_prepared_life_original(game, ctx, self.prepared.take().expect("life proposal prepared"))
+    }
+
     fn commit(
         self: Box<Self>,
         game: &mut GameState,

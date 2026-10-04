@@ -401,6 +401,7 @@ pub(crate) trait TaggedConstraintSubject {
         None
     }
     fn subject_controller(&self) -> PlayerId;
+    fn subject_owner(&self) -> PlayerId;
     fn subject_card_types(&self) -> &[CardType];
     fn subject_subtypes(&self) -> &[Subtype];
     fn subject_colors(&self) -> ColorSet;
@@ -451,6 +452,8 @@ impl TaggedConstraintSubject for Object {
     fn subject_alternate_name(&self) -> Option<&str> {
         self.split_other_half_name()
     }
+
+    fn subject_owner(&self) -> PlayerId { self.owner }
 
     fn subject_controller(&self) -> PlayerId {
         self.owner
@@ -561,6 +564,8 @@ impl TaggedConstraintSubject for LayeredSubject<'_> {
     fn subject_alternate_name(&self) -> Option<&str> {
         self.object.split_other_half_name()
     }
+
+    fn subject_owner(&self) -> PlayerId { self.object.owner }
 
     fn subject_controller(&self) -> PlayerId {
         self.chars.controller
@@ -677,6 +682,8 @@ impl TaggedConstraintSubject for ObjectSnapshot {
     fn subject_alternate_name(&self) -> Option<&str> {
         self.split_other_half_name()
     }
+
+    fn subject_owner(&self) -> PlayerId { self.owner }
 
     fn subject_controller(&self) -> PlayerId {
         self.controller
@@ -1069,6 +1076,11 @@ fn subject_shares_characteristic_with_object(
         ObjectCharacteristic::ManaValue => {
             subject.subject_mana_value() == object_current_mana_value_for_relation(object, game)
         }
+        ObjectCharacteristic::Name => names_share(
+            subject.subject_name(), subject.subject_alternate_name(),
+            &game.current_name(object.id).unwrap_or_else(|| object.name.to_string()),
+            object.split_other_half_name(),
+        ),
     }
 }
 
@@ -1078,11 +1090,16 @@ fn characteristic_relation_matches_subject(
     ctx: &FilterContext,
     game: &GameState,
 ) -> bool {
+    let mut comparison_context = ctx.clone();
+    if relation.characteristics.contains(&ObjectCharacteristic::Name) {
+        comparison_context.filter_candidate_players = Some((subject.subject_controller(), subject.subject_owner()));
+    }
     let shares = game
         .objects_in_deterministic_order()
         .into_iter()
         .any(|object| {
-            relation.comparison.matches(object, ctx, game)
+            (!relation.exclude_candidate || object.id != subject.subject_object_id())
+                && relation.comparison.matches(object, &comparison_context, game)
                 && relation.characteristics.iter().any(|characteristic| {
                     subject_shares_characteristic_with_object(
                         subject,
@@ -1751,6 +1768,31 @@ fn resolve_filter_comparison_rhs_value(
         }
     }
 
+    fn referenced_snapshot_pt(
+        game: &crate::game_state::GameState,
+        snapshot: &ObjectSnapshot,
+        power: bool,
+    ) -> Option<i32> {
+        // A captured identity is a reference, not a frozen characteristic.
+        // Read the same live incarnation through the layer system; use its
+        // recorded LKI only after that incarnation leaves its expected zone.
+        if game
+            .object(snapshot.object_id)
+            .is_some_and(|object| object.zone == snapshot.zone && !game.is_phased_out(object.id))
+        {
+            current_object_pt(game, snapshot.object_id, power)
+        } else {
+            // A tag may have been captured before the move while another
+            // effect was still resolving, so it need not have passed through
+            // the pending-stack departure refresh. Prefer the exact departure
+            // receipt (including a currently staged simultaneous move).
+            let departure = crate::effects::helpers::latest_zone_change_snapshot_for_object(
+                game, snapshot.object_id,
+            ).filter(|departure| departure.zone == snapshot.zone);
+            snapshot_pt(departure.as_ref().unwrap_or(snapshot), power)
+        }
+    }
+
     fn resolve_pt_choose_spec(
         spec: &ChooseSpec,
         game: &crate::game_state::GameState,
@@ -1768,13 +1810,13 @@ fn resolve_filter_comparison_rhs_value(
                 .tagged_objects
                 .get(tag)
                 .and_then(|snapshots| snapshots.first())
-                .and_then(|snapshot| snapshot_pt(snapshot, power)),
+                .and_then(|snapshot| referenced_snapshot_pt(game, snapshot, power)),
             ChooseSpec::Object(_) | ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget
                 if spec.is_target() =>
             {
                 ctx.target_objects
                     .first()
-                    .and_then(|snapshot| snapshot_pt(snapshot, power))
+                    .and_then(|snapshot| referenced_snapshot_pt(game, snapshot, power))
             }
             _ => None,
         }
@@ -4241,6 +4283,14 @@ impl ObjectFilterExt for ObjectFilter {
             ));
         }
         for relation in &self.characteristic_relations {
+            if relation.characteristics == [ObjectCharacteristic::Name] {
+                let phrase = match relation.kind {
+                    ObjectCharacteristicRelationKind::SharesAny => "with the same name as",
+                    ObjectCharacteristicRelationKind::SharesNone => "that doesn't have the same name as",
+                };
+                post_noun_qualifiers.push(format!("{phrase} {}", relation.comparison_description()));
+                continue;
+            }
             let characteristics = relation
                 .characteristics
                 .iter()

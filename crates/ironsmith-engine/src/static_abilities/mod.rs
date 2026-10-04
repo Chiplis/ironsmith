@@ -4914,6 +4914,8 @@ impl StaticAbility {
         Self::new(PregameAction::with_effects(kind, text, effects))
     }
 
+    pub fn cant_be_copied() -> Self { Self::new(CantBeCopied) }
+
     pub fn cant_be_countered_ability() -> Self {
         Self::new(CantBeCountered)
     }

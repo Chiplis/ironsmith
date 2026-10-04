@@ -34,3 +34,6 @@ pub(crate) use execute_payload::{ReplacementProgramBindings, execute_event_expan
 
 mod register_damage_multiplier;
 pub use register_damage_multiplier::RegisterDamageMultiplierEffect;
+
+mod draw_continuation;
+pub(crate) use draw_continuation::prepare_draw_continuation;
