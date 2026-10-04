@@ -30,6 +30,11 @@ impl PlayerRollsHighestNaturalResultTrigger {
 }
 
 impl TriggerMatcher for PlayerRollsResultTrigger {
+    fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
+        let Self { player, result } = self;
+        Some(ironsmith_core::trigger_model::Trigger::player_rolls_result(player.clone(), *result))
+    }
+
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::DieRolled {
             return false;
@@ -62,6 +67,11 @@ impl TriggerMatcher for PlayerRollsResultTrigger {
 }
 
 impl TriggerMatcher for PlayerRollsHighestNaturalResultTrigger {
+    fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
+        let Self { player } = self;
+        Some(ironsmith_core::trigger_model::Trigger::player_rolls_highest_natural_result(player.clone()))
+    }
+
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::DieRolled {
             return false;

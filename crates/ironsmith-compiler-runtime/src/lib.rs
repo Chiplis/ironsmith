@@ -3038,3 +3038,694 @@ mod compiled_surviving_token_group_tests {
         check_compiled_owner("Xorn", "Mana cost: {2}{R}\nType: Creature — Elemental\nPower/Toughness: 3/2\nIf you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.");
     }
 }
+
+#[cfg(test)]
+mod compiled_counter_transfer_mode_tests {
+    use super::*;
+    use ironsmith::{GameState, PlayerId, Zone};
+    use ironsmith::effects::{MoveAllCountersEffect, MayEffect};
+    use ironsmith::effects::EffectContext as ExecutionContext;
+    use ironsmith::effect::Effect;
+    use ironsmith::target::ChooseSpec;
+    use ironsmith::object::CounterType;
+    fn collect(effect: &Effect, out: &mut Vec<MoveAllCountersEffect>) {
+        if let Some(value) = effect.downcast_ref::<MoveAllCountersEffect>() { out.push(value.clone()); }
+        if let Some(value) = effect.downcast_ref::<MayEffect>() {
+            for child in &value.effects { collect(child, out); }
+        }
+        if let Some(value) = effect.downcast_ref::<ironsmith::effects::TaggedEffect>() {
+            collect(&value.effect, out);
+        }
+    }
+    fn compiled_modes(name: &str, text: &str) -> Vec<Vec<MoveAllCountersEffect>> {
+        let (artifact, direct) = compile_builder_to_artifact(
+            compiler::CardDefinitionBuilder::new(ironsmith::CardId::new(), name), text, false).unwrap();
+        artifact.validate().unwrap();
+        let mut registry = ironsmith::cards::CardRegistry::new();
+        registry.register_compiled_artifact(&artifact).unwrap();
+        let decoded = registry.get(name).unwrap().clone();
+        [direct, decoded].into_iter().map(|definition| {
+            let mut out = Vec::new();
+            if let Some(program) = &definition.spell_effect {
+                for effect in program.all_effects() { collect(effect, &mut out); }
+            }
+            for ability in &definition.abilities {
+                if let ironsmith::ability::AbilityKind::Triggered(value) = &ability.kind {
+                    for effect in value.effects.all_effects() { collect(effect, &mut out); }
+                }
+            }
+            out
+        }).collect()
+    }
+    #[test]
+    fn compiled_fate_transfer_is_explicit_movement_in_direct_and_catalog_payloads() {
+        for modes in compiled_modes("Fate Transfer", "Mana cost: {1}{U/B}\nType: Instant\nMove all counters from target creature onto another target creature.") {
+            assert_eq!(modes.len(), 1);
+            assert!(modes[0].remove_from_source);
+        }
+    }
+    #[test]
+    fn compiled_ozolith_distinguishes_historical_placement_from_actual_move() {
+        let text = "Mana cost: {1}\nType: Legendary Artifact\nWhenever a creature you control leaves the battlefield, if it had counters on it, put those counters on The Ozolith.\nAt the beginning of combat on your turn, if The Ozolith has counters on it, you may move all counters from The Ozolith onto target creature.";
+        for modes in compiled_modes("The Ozolith", text) {
+            assert_eq!(modes.len(), 2);
+            assert!(!modes[0].remove_from_source);
+            assert!(modes[1].remove_from_source);
+            let alice = PlayerId::from_index(0);
+            let artifact = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Transfer artifact")
+                .card_types(vec![ironsmith::types::CardType::Artifact]).build();
+            let creature = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Transfer creature")
+                .card_types(vec![ironsmith::types::CardType::Creature]).build();
+            // Execute the actual compiled historical placement with its tag and Source destination.
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let source = game.create_object_from_definition(&artifact, alice, Zone::Battlefield);
+            let departed = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+            game.object_mut(departed).unwrap().counters.insert(CounterType::Charge, 2);
+            let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(game.object(departed).unwrap(), &game);
+            game.move_object_by_effect(departed, Zone::Graveyard).unwrap();
+            let ChooseSpec::Tagged(tag) = modes[0].from.base() else { panic!("historical source must retain triggering-object reference: {:?}", modes[0].from); };
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            ctx.set_tagged_objects(tag.clone(), vec![snapshot]);
+            let out = ironsmith::effects::execute_effect(&mut game, &Effect::new(modes[0].clone()), &mut ctx).unwrap();
+            assert_eq!(game.counter_count(source, CounterType::Charge), 2);
+            assert_eq!(out.events_of_type::<ironsmith::events::MarkersChangedEvent>().count(), 1);
+            // Execute actual compiled move: a departed Source must not become historical placement.
+            let target = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+            let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+            game.move_object_by_effect(source, Zone::Graveyard).unwrap();
+            let mut ctx = ExecutionContext::new_default(source, alice).with_source_snapshot(snapshot);
+            ctx.targets.push(ironsmith::effects::ResolvedTarget::Object(target));
+            let out = ironsmith::effects::execute_effect(&mut game, &Effect::new(modes[1].clone()), &mut ctx).unwrap();
+            assert_eq!(game.counter_count(target, CounterType::Charge), 0);
+            assert_eq!(out.count_or_zero(), 0);
+            assert_eq!(out.events_of_type::<ironsmith::events::MarkersChangedEvent>().count(), 0);
+        }
+    }
+    #[test]
+    fn compiled_fate_transfer_public_resolution_moves_only_between_live_target_roles() {
+        let (artifact, direct) = compile_builder_to_artifact(
+            compiler::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Fate Transfer"),
+            "Mana cost: {1}{U/B}\nType: Instant\nMove all counters from target creature onto another target creature.", false).unwrap();
+        let mut registry = ironsmith::cards::CardRegistry::new();
+        registry.register_compiled_artifact(&artifact).unwrap();
+        let decoded = registry.get("Fate Transfer").unwrap().clone();
+        for definition in [direct, decoded] {
+            for departed in [false, true] {
+                let alice = PlayerId::from_index(0);
+                let bob = PlayerId::from_index(1);
+                let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let creature = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Counter role creature")
+                    .card_types(vec![ironsmith::types::CardType::Creature])
+                    .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2)).build();
+                let from = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+                let to = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+                game.object_mut(from).unwrap().counters.insert(CounterType::Charge, 2);
+                let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+                let mut entry = ironsmith::game_state::StackEntry::new(spell, alice);
+                entry.targets = vec![ironsmith::Target::Object(from), ironsmith::Target::Object(to)];
+                game.push_to_stack(entry);
+                if departed { game.move_object_by_effect(from, Zone::Graveyard).unwrap(); }
+                ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+                assert!(game.stack.is_empty());
+                assert_eq!(game.counter_count(to, CounterType::Charge), if departed { 0 } else { 2 },
+                    "actual compiled spell must retain distinct source and recipient roles and must not copy former counters");
+                if !departed { assert_eq!(game.counter_count(from, CounterType::Charge), 0); }
+            }
+        }
+    }
+    #[test]
+    fn compiled_fate_transfer_cast_declares_and_pays_for_two_distinct_target_roles() {
+        use ironsmith::game_loop::*;
+        let definition = compile_to_runtime_definition("Fate Transfer",
+            "Mana cost: {1}{U/B}\nType: Instant\nMove all counters from target creature onto another target creature.", false).unwrap();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        game.player_mut(alice).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Blue, 2);
+        let creature = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Cast target role creature")
+            .card_types(vec![ironsmith::types::CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2)).build();
+        let from = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let to = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+        game.object_mut(from).unwrap().counters.insert(CounterType::Charge, 2);
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let requirements = extract_target_requirements_from_program_with_modes(
+            &game, definition.spell_effect.as_ref().unwrap(), alice, Some(spell), None);
+        assert_eq!(requirements.len(), 2, "both counter transfer endpoints must be announced while casting");
+        assert!(requirements.iter().all(|r| r.min_targets == 1 && r.max_targets == Some(1)));
+        let mut state = PriorityLoopState::new(2);
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        let action = ironsmith::decision::LegalAction::CastSpell {
+            spell_id: spell, from_zone: Zone::Hand,
+            casting_method: ironsmith::alternative_cast::CastingMethod::Normal,
+        };
+        let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+            &PriorityResponse::PriorityAction(action), &mut dm).unwrap();
+        for _ in 0..30 {
+            if state.pending_cast.is_none() && !game.stack.is_empty() { break; }
+            let ironsmith::GameProgress::NeedsDecisionCtx(ctx) = progress else { break; };
+            progress = if let ironsmith::decisions::context::DecisionContext::Targets(context) = &ctx {
+                assert_eq!(context.requirements.len(), 2);
+                apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+                    &PriorityResponse::Targets(vec![ironsmith::Target::Object(from), ironsmith::Target::Object(to)]), &mut dm).unwrap()
+            } else { apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm).unwrap() };
+        }
+        assert!(state.pending_cast.is_none());
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.stack[0].targets, vec![ironsmith::Target::Object(from), ironsmith::Target::Object(to)]);
+        assert_eq!(game.stack[0].target_assignments.len(), 2);
+        assert_eq!(game.player(alice).unwrap().mana_pool.blue, 0);
+        resolve_stack_entry(&mut game).unwrap();
+        assert_eq!(game.counter_count(from, CounterType::Charge), 0);
+        assert_eq!(game.counter_count(to, CounterType::Charge), 2);
+    }
+    #[test]
+    fn compiled_bioshift_cast_selects_one_counter_between_same_controller_roles() {
+        use ironsmith::game_loop::*;
+        let definition = compile_to_runtime_definition("Bioshift",
+            "Mana cost: {G/U}\nType: Instant\nMove any number of +1/+1 counters from target creature onto another target creature with the same controller.", false).unwrap();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        game.player_mut(alice).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Green, 1);
+        let creature = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Cast target role creature")
+            .card_types(vec![ironsmith::types::CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2)).build();
+        let from = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let to = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        game.object_mut(from).unwrap().counters.insert(CounterType::PlusOnePlusOne, 2);
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let requirements = extract_target_requirements_from_program_with_modes(
+            &game, definition.spell_effect.as_ref().unwrap(), alice, Some(spell), None);
+        assert_eq!(requirements.len(), 2, "both counter transfer endpoints must be announced while casting");
+        assert!(requirements.iter().all(|r| r.min_targets == 1 && r.max_targets == Some(1)));
+        let mut state = PriorityLoopState::new(2);
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        let action = ironsmith::decision::LegalAction::CastSpell {
+            spell_id: spell, from_zone: Zone::Hand,
+            casting_method: ironsmith::alternative_cast::CastingMethod::Normal,
+        };
+        let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+            &PriorityResponse::PriorityAction(action), &mut dm).unwrap();
+        for _ in 0..30 {
+            if state.pending_cast.is_none() && !game.stack.is_empty() { break; }
+            let ironsmith::GameProgress::NeedsDecisionCtx(ctx) = progress else { break; };
+            progress = if let ironsmith::decisions::context::DecisionContext::Targets(context) = &ctx {
+                assert_eq!(context.requirements.len(), 2);
+                apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+                    &PriorityResponse::Targets(vec![ironsmith::Target::Object(from), ironsmith::Target::Object(to)]), &mut dm).unwrap()
+            } else { apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm).unwrap() };
+        }
+        assert!(state.pending_cast.is_none());
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.stack[0].targets, vec![ironsmith::Target::Object(from), ironsmith::Target::Object(to)]);
+        assert_eq!(game.stack[0].target_assignments.len(), 2);
+        assert_eq!(game.player(alice).unwrap().mana_pool.green, 0);
+        struct PickOne { choices: usize }
+        impl ironsmith::decision::DecisionMaker for PickOne {
+            fn decide_boolean(&mut self, _game: &GameState, _ctx: &ironsmith::decisions::context::BooleanContext) -> bool { true }
+            fn decide_number(&mut self, _game: &GameState, ctx: &ironsmith::decisions::context::NumberContext) -> u32 {
+                assert!(ctx.min <= 1 && ctx.max >= 1); self.choices += 1; 1
+            }
+            fn decide_counters(&mut self, _game: &GameState, ctx: &ironsmith::decisions::context::CountersContext) -> Vec<(CounterType, u32)> {
+                assert!(ctx.available_counters.iter().any(|(kind, count)| *kind == CounterType::PlusOnePlusOne && *count >= 1));
+                self.choices += 1; vec![(CounterType::PlusOnePlusOne, 1)]
+            }
+        }
+        let mut chooser = PickOne { choices: 0 };
+        resolve_stack_entry_with(&mut game, &mut chooser).unwrap();
+        assert!(chooser.choices > 0, "actual any-number transfer must offer a legal subset choice");
+        assert_eq!(game.counter_count(from, CounterType::PlusOnePlusOne), 1);
+        assert_eq!(game.counter_count(to, CounterType::PlusOnePlusOne), 1);
+    }
+    #[test]
+    fn compiled_bioshift_rejects_opposing_controller_endpoint_during_public_cast() {
+        use ironsmith::game_loop::*;
+        let definition = compile_to_runtime_definition("Bioshift",
+            "Mana cost: {G/U}\nType: Instant\nMove any number of +1/+1 counters from target creature onto another target creature with the same controller.", false).unwrap();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        game.player_mut(alice).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Green, 1);
+        let creature = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Cast target role creature")
+            .card_types(vec![ironsmith::types::CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2)).build();
+        let from = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let to = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+        game.object_mut(from).unwrap().counters.insert(CounterType::PlusOnePlusOne, 2);
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let requirements = extract_target_requirements_from_program_with_modes(
+            &game, definition.spell_effect.as_ref().unwrap(), alice, Some(spell), None);
+        assert_eq!(requirements.len(), 2, "both counter transfer endpoints must be announced while casting");
+        assert!(requirements.iter().all(|r| r.min_targets == 1 && r.max_targets == Some(1)));
+        let mut state = PriorityLoopState::new(2);
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        let action = ironsmith::decision::LegalAction::CastSpell {
+            spell_id: spell, from_zone: Zone::Hand,
+            casting_method: ironsmith::alternative_cast::CastingMethod::Normal,
+        };
+        let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+            &PriorityResponse::PriorityAction(action), &mut dm).unwrap();
+        for _ in 0..30 {
+            if state.pending_cast.is_none() && !game.stack.is_empty() { break; }
+            let ironsmith::GameProgress::NeedsDecisionCtx(ctx) = progress else { break; };
+            progress = if let ironsmith::decisions::context::DecisionContext::Targets(context) = &ctx {
+                assert_eq!(context.requirements.len(), 2);
+                let rejected = apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+                    &PriorityResponse::Targets(vec![ironsmith::Target::Object(from), ironsmith::Target::Object(to)]), &mut dm);
+                assert!(rejected.is_err(), "same-controller movement must reject the opposing endpoint while announcing targets");
+                assert!(game.stack.is_empty());
+                assert_eq!(game.counter_count(from, CounterType::PlusOnePlusOne), 2);
+                assert_eq!(game.counter_count(to, CounterType::PlusOnePlusOne), 0);
+                return;
+            } else { apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm).unwrap() };
+        }
+        panic!("actual Bioshift casting must request both endpoint roles");
+    }
+    #[test]
+    fn retained_counter_move_amount_preserves_exact_and_any_number_and_rejects_missing_mode() {
+        use ironsmith::effects::MoveCountersEffect;
+        use ironsmith::target::ChooseSpec;
+        for model in [
+            MoveCountersEffect::new(CounterType::PlusOnePlusOne, 2, ChooseSpec::Source, ChooseSpec::creature()),
+            MoveCountersEffect::any_number(CounterType::PlusOnePlusOne, ChooseSpec::Source, ChooseSpec::creature()),
+        ] {
+            let wire=serde_json::to_value(&model).unwrap();
+            let restored:MoveCountersEffect=serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(restored,model);
+            assert_eq!(serde_json::to_value(&restored).unwrap(),wire);
+            let mut missing=wire.clone();missing.as_object_mut().unwrap().remove("count");
+            assert!(serde_json::from_value::<MoveCountersEffect>(missing).is_err());
+            let mut legacy=wire.clone();legacy["count"]=serde_json::json!({"Fixed":2});
+            assert!(serde_json::from_value::<MoveCountersEffect>(legacy).is_err(),"an untyped legacy count cannot silently become a chosen movement amount");
+            let mut unknown=wire;unknown["count"]=serde_json::json!({"Unknown":null});
+            assert!(serde_json::from_value::<MoveCountersEffect>(unknown).is_err());
+        }
+    }
+    #[test]
+    fn compiled_fate_transfer_cast_preserves_empty_illegal_endpoint_roles() {
+        use ironsmith::game_loop::*;
+        for departed_source in [true, false] {
+        let definition = compile_to_runtime_definition("Fate Transfer",
+            "Mana cost: {1}{U/B}\nType: Instant\nMove all counters from target creature onto another target creature.", false).unwrap();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        game.player_mut(alice).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Blue, 2);
+        let creature = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Cast target role creature")
+            .card_types(vec![ironsmith::types::CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2)).build();
+        let from = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let to = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+        game.object_mut(from).unwrap().counters.insert(CounterType::Charge, 2);
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let requirements = extract_target_requirements_from_program_with_modes(
+            &game, definition.spell_effect.as_ref().unwrap(), alice, Some(spell), None);
+        assert_eq!(requirements.len(), 2, "both counter transfer endpoints must be announced while casting");
+        assert!(requirements.iter().all(|r| r.min_targets == 1 && r.max_targets == Some(1)));
+        let mut state = PriorityLoopState::new(2);
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        let action = ironsmith::decision::LegalAction::CastSpell {
+            spell_id: spell, from_zone: Zone::Hand,
+            casting_method: ironsmith::alternative_cast::CastingMethod::Normal,
+        };
+        let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+            &PriorityResponse::PriorityAction(action), &mut dm).unwrap();
+        for _ in 0..30 {
+            if state.pending_cast.is_none() && !game.stack.is_empty() { break; }
+            let ironsmith::GameProgress::NeedsDecisionCtx(ctx) = progress else { break; };
+            progress = if let ironsmith::decisions::context::DecisionContext::Targets(context) = &ctx {
+                assert_eq!(context.requirements.len(), 2);
+                apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+                    &PriorityResponse::Targets(vec![ironsmith::Target::Object(from), ironsmith::Target::Object(to)]), &mut dm).unwrap()
+            } else { apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm).unwrap() };
+        }
+        assert!(state.pending_cast.is_none());
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.stack[0].targets, vec![ironsmith::Target::Object(from), ironsmith::Target::Object(to)]);
+        assert_eq!(game.stack[0].target_assignments.len(), 2);
+        assert_eq!(game.player(alice).unwrap().mana_pool.blue, 0);
+        game.move_object_by_effect(if departed_source { from } else { to }, Zone::Graveyard).unwrap();
+        resolve_stack_entry(&mut game).unwrap();
+        assert_eq!(game.counter_count(from, CounterType::Charge), if departed_source { 0 } else { 2 },
+            "surviving source must retain counters when recipient is illegal");
+        assert_eq!(game.counter_count(to, CounterType::Charge), 0,
+            "surviving recipient must not receive departed source counters");
+        }
+
+    }
+    fn activated_counter_owner(name: &str, text: &str, single_any_kind: bool) {
+        use ironsmith::game_loop::*;
+        let (artifact, direct) = compile_builder_to_artifact(
+            compiler::CardDefinitionBuilder::new(ironsmith::CardId::new(), name), text, false).unwrap();
+        artifact.validate().unwrap();
+        let mut registry = ironsmith::cards::CardRegistry::new();
+        registry.register_compiled_artifact(&artifact).unwrap();
+        let decoded = registry.get(name).unwrap().clone();
+        for definition in [direct, decoded] {
+            let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+            let symbol = if single_any_kind { ironsmith::mana::ManaSymbol::Colorless } else { ironsmith::mana::ManaSymbol::Black };
+            game.player_mut(alice).unwrap().mana_pool.add(symbol, if single_any_kind { 1 } else { 3 });
+            let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            // Set up a surviving Daghatar after its printed four-counter entry.
+            // This activation scenario does not claim to test its entry ability.
+            if !single_any_kind { game.object_mut(source).unwrap().counters.insert(CounterType::PlusOnePlusOne, 4); }
+            let creature = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Activated endpoint creature")
+                .card_types(vec![ironsmith::types::CardType::Creature])
+                .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2)).build();
+            let from = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+            let to = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+            game.object_mut(from).unwrap().counters.insert(CounterType::PlusOnePlusOne, 2);
+            let (ability_index, ability) = definition.abilities.iter().enumerate().find_map(|(index, ability)| {
+                if let ironsmith::ability::AbilityKind::Activated(value) = &ability.kind {
+                    value.mana_output.is_none().then_some((index, value))
+                } else { None }
+            }).expect("actual nonmana activated counter transfer");
+            fn contains(effect: &Effect, single: bool) -> bool {
+                if single && effect.downcast_ref::<ironsmith::effects::MoveOneCounterEffect>().is_some() { return true; }
+                if !single && effect.downcast_ref::<ironsmith::effects::MoveCountersEffect>().is_some() { return true; }
+                effect.transparent_child_effect().is_some_and(|child| contains(child, single))
+            }
+            assert!(ability.effects.all_effects().into_iter().any(|effect| contains(effect, single_any_kind)),
+                "actual Oracle/card artifact must compile to expected counter owner");
+            let requirements = extract_target_requirements_from_program_with_modes(&game, &ability.effects, alice, Some(source), None);
+            assert_eq!(requirements.len(), 2);
+            let mut state = PriorityLoopState::new(2); let mut queue = ironsmith::triggers::TriggerQueue::new();
+            let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+            let action = ironsmith::decision::LegalAction::ActivateAbility { source, ability_index };
+            let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+                &PriorityResponse::PriorityAction(action), &mut dm).unwrap();
+            for _ in 0..30 {
+                if state.pending_activation.is_none() && !game.stack.is_empty() { break; }
+                let ironsmith::GameProgress::NeedsDecisionCtx(ctx) = progress else { break; };
+                progress = if let ironsmith::decisions::context::DecisionContext::Targets(context) = &ctx {
+                    assert_eq!(context.requirements.len(), 2);
+                    apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+                        &PriorityResponse::Targets(vec![ironsmith::Target::Object(from), ironsmith::Target::Object(to)]), &mut dm).unwrap()
+                } else { apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm).unwrap() };
+            }
+            assert!(state.pending_activation.is_none()); assert_eq!(game.stack.len(), 1);
+            assert_eq!(game.stack[0].targets, vec![ironsmith::Target::Object(from), ironsmith::Target::Object(to)]);
+            assert_eq!(game.stack[0].target_assignments.len(), 2);
+            if single_any_kind {
+                assert!(game.is_tapped(source)); assert_eq!(game.player(alice).unwrap().mana_pool.colorless, 0);
+            } else { assert_eq!(game.player(alice).unwrap().mana_pool.black, 0); }
+            resolve_stack_entry(&mut game).unwrap();
+            assert_eq!(game.counter_count(from, CounterType::PlusOnePlusOne), 1);
+            assert_eq!(game.counter_count(to, CounterType::PlusOnePlusOne), 1);
+        }
+    }
+    #[test]
+    fn compiled_nesting_grounds_activates_single_counter_between_two_roles() {
+        activated_counter_owner("Nesting Grounds", "Type: Land\n{T}: Add {C}.\n{1}, {T}: Move a counter from target permanent you control onto a second target permanent. Activate only as a sorcery.", true);
+    }
+    #[test]
+    fn compiled_daghatar_activates_fixed_counter_between_two_roles() {
+        activated_counter_owner("Daghatar the Adamant", "Mana cost: {3}{W}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 0/0\nVigilance\nDaghatar enters with four +1/+1 counters on it.\n{1}{B/G}{B/G}: Move a +1/+1 counter from target creature onto a second target creature.", false);
+    }
+
+    #[test]
+    fn retained_counter_transfer_mode_is_required_and_preserved() {
+        for remove in [true, false] {
+            let payload = if remove { MoveAllCountersEffect::new(ChooseSpec::Source, ChooseSpec::Source) }
+                else { MoveAllCountersEffect::put_referenced(ChooseSpec::Source, ChooseSpec::Source) };
+            let mut wire = serde_json::to_value(&payload).unwrap();
+            assert_eq!(wire["remove_from_source"], remove);
+            let restored: MoveAllCountersEffect = serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(restored, payload);
+            wire.as_object_mut().unwrap().remove("remove_from_source");
+            assert!(serde_json::from_value::<MoveAllCountersEffect>(wire).is_err(),
+                "ambiguous retained intent must be rejected, not guessed from snapshot state");
+        }
+    }
+}
+
+#[cfg(test)]
+mod retained_unsigned_quantity_codec_tests {
+    use super::*;
+    use ironsmith::{GameState,PlayerId,Zone};
+    use ironsmith::effect::{EffectOutcome,EffectId,Value};
+    use ironsmith::effects::{PutCountersEffect,RemoveCountersEffect,MoveAllCountersEffect};
+    use ironsmith::target::ChooseSpec;
+    use ironsmith::object::CounterType;
+    fn object(game:&mut GameState,alice:PlayerId)->ironsmith::ObjectId {
+        let card=ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(),"Retained quantity recipient")
+            .card_types(vec![ironsmith::types::CardType::Artifact]).build();
+        game.create_object_from_definition(&card,alice,Zone::Battlefield)
+    }
+    fn restored(kind:&str,payload:serde_json::Value)->ironsmith::Effect {
+        let wire=ironsmith_compiled_artifact::WireEffect::new(kind,payload);
+        let text=serde_json::to_string(&wire).unwrap();
+        let restored=ironsmith_runtime_catalog::artifact_materializer::materialize_effect(serde_json::from_str(&text).unwrap()).unwrap();
+        let retained:ironsmith_compiled_artifact::WireEffect=serde_json::from_str(restored.serialized_model().expect("materializer retains canonical executable model")).unwrap();
+        assert_eq!(retained.kind(),wire.kind());assert_eq!(retained.payload(),wire.payload());restored
+    }
+    fn outcome(out:&EffectOutcome)->EffectOutcome {
+        // EffectOutcome serialization is documented only for event-free receipts.
+        // Trigger events are owned by the live execution stream, not this codec.
+        assert!(!out.events.is_empty(), "real execution must produce its marker events");
+        let mut receipt=out.clone();receipt.events.clear();
+        let restored:EffectOutcome=serde_json::from_str(&serde_json::to_string(&receipt).unwrap()).unwrap();
+        assert_eq!(restored,receipt);restored
+    }
+    #[test]
+    fn retained_unsigned_quantity_literal_executes_through_materializer() {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);
+            let effect=restored("PutCountersEffect",serde_json::to_value(&PutCountersEffect::new(CounterType::Charge,amount,ChooseSpec::SpecificObject(source))).unwrap());
+            let mut ctx=ironsmith::effects::EffectContext::new_default(source,alice);
+            let out=ironsmith::effects::execute_effect(&mut game,&effect,&mut ctx).unwrap();
+            assert_eq!(game.counter_count(source,CounterType::Charge),amount);assert_eq!(outcome(&out).as_count(),Some(i64::from(amount)));
+        }
+    }
+    #[test]
+    fn retained_unsigned_quantity_receipt_drives_materialized_removal() {
+        for amount in [i32::MAX as u32+1,u32::MAX] {
+            let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);
+            let put=restored("PutCountersEffect",serde_json::to_value(&PutCountersEffect::new(CounterType::Charge,amount,ChooseSpec::SpecificObject(source))).unwrap());
+            let remove=restored("RemoveCountersEffect",serde_json::to_value(&RemoveCountersEffect::new(CounterType::Charge,Value::EffectValue(EffectId(23)),ChooseSpec::SpecificObject(source))).unwrap());
+            let mut ctx=ironsmith::effects::EffectContext::new_default(source,alice);
+            let placed=ironsmith::effects::execute_effect(&mut game,&put,&mut ctx).unwrap();ctx.store_outcome(EffectId(23),outcome(&placed));
+            let removed=ironsmith::effects::execute_effect(&mut game,&remove,&mut ctx).unwrap();
+            assert_eq!(game.counter_count(source,CounterType::Charge),0);assert_eq!(outcome(&removed).as_count(),Some(i64::from(amount)));
+        }
+    }
+    #[test]
+    fn retained_unsigned_quantity_mixed_counter_sum_drives_wide_arithmetic() {
+        let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);let target=object(&mut game,alice);let following=object(&mut game,alice);
+        let mut ctx=ironsmith::effects::EffectContext::new_default(source,alice);
+        for kind in [CounterType::Charge,CounterType::PlusOnePlusOne] {
+            let put=restored("PutCountersEffect",serde_json::to_value(&PutCountersEffect::new(kind,u32::MAX,ChooseSpec::SpecificObject(source))).unwrap());
+            ironsmith::effects::execute_effect(&mut game,&put,&mut ctx).unwrap();
+        }
+        let movement=restored("MoveAllCountersEffect",serde_json::to_value(&MoveAllCountersEffect::new(ChooseSpec::SpecificObject(source),ChooseSpec::SpecificObject(target))).unwrap());
+        let moved=ironsmith::effects::execute_effect(&mut game,&movement,&mut ctx).unwrap();
+        assert_eq!(moved.as_count(),Some(2*i64::from(u32::MAX)));ctx.store_outcome(EffectId(23),outcome(&moved));
+        for kind in [CounterType::Charge,CounterType::PlusOnePlusOne] {assert_eq!(game.counter_count(source,kind),0);assert_eq!(game.counter_count(target,kind),u32::MAX);}
+        let put=restored("PutCountersEffect",serde_json::to_value(&PutCountersEffect::new(CounterType::Charge,Value::HalfRoundedDown(Box::new(Value::EffectValue(EffectId(23)))),ChooseSpec::SpecificObject(following))).unwrap());
+        let out=ironsmith::effects::execute_effect(&mut game,&put,&mut ctx).unwrap();assert_eq!(game.counter_count(following,CounterType::Charge),u32::MAX);assert_eq!(outcome(&out).as_count(),Some(i64::from(u32::MAX)));
+    }
+}
+
+#[cfg(test)]
+mod retained_unsigned_counter_cost_codec_tests {
+    use super::*;
+    use ironsmith::{GameState,PlayerId,Zone};
+    use ironsmith::object::CounterType;
+    fn restored(cost:&ironsmith::costs::Cost)->ironsmith::costs::Cost {
+        let wire=cost.compiled_model().expect("public counter cost retains canonical model").clone()
+            .try_map_effect(|effect| serde_json::from_str::<ironsmith_compiled_artifact::WireEffect>(effect.serialized_model().expect("nested effect retains executable model"))).unwrap();
+        let json=serde_json::to_string(&wire).unwrap();
+        let decoded:ironsmith_compiled_artifact::WireCost=serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_value(&decoded).unwrap(),serde_json::to_value(&wire).unwrap());
+        let native=decoded.try_map_effect(ironsmith_runtime_catalog::artifact_materializer::materialize_effect).unwrap();
+        let result=ironsmith::costs::Cost::from_model(native).unwrap();assert_eq!(result.display(),cost.display());
+        let again=result.compiled_model().unwrap().clone().try_map_effect(|effect| serde_json::from_str::<ironsmith_compiled_artifact::WireEffect>(effect.serialized_model().unwrap())).unwrap();
+        assert_eq!(serde_json::to_value(&again).unwrap(),serde_json::to_value(&wire).unwrap());result
+    }
+    fn check(add:bool) {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);
+            let card=ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(),"Restored counter cost recipient").card_types(vec![ironsmith::types::CardType::Artifact]).build();
+            let source=game.create_object_from_definition(&card,alice,Zone::Battlefield);
+            let cost=if add {ironsmith::costs::Cost::add_counters(CounterType::Charge,amount)} else {game.object_mut(source).unwrap().counters.insert(CounterType::Charge,amount);ironsmith::costs::Cost::remove_counters(CounterType::Charge,amount)};
+            let cost=restored(&cost);let mut dm=ironsmith::decision::SelectFirstDecisionMaker;let mut ctx=ironsmith::costs::CostContext::new(source,alice,&mut dm);
+            assert_eq!(cost.pay(&mut game,&mut ctx).unwrap(),ironsmith::costs::CostPaymentResult::Paid);
+            if !add {assert_eq!(ctx.x_value,Some(amount));}
+            assert_eq!(game.counter_count(source,CounterType::Charge),if add {amount} else {0});
+        }
+    }
+    #[test] fn retained_unsigned_counter_cost_removal_executes_after_roundtrip() {check(false);}
+    #[test] fn retained_unsigned_counter_cost_placement_executes_after_roundtrip() {check(true);}
+}
+
+#[cfg(test)]
+mod retained_unsigned_player_counter_codec_tests {
+    use super::*;
+    use ironsmith::{GameState,PlayerId,Zone};
+    use ironsmith::effect::{EffectOutcome,EffectId,Value};
+    use ironsmith::object::CounterType;
+    use ironsmith::target::{ChooseSpec,PlayerFilter};
+    fn restored(kind:&str,payload:serde_json::Value)->ironsmith::Effect {
+        let wire=ironsmith_compiled_artifact::WireEffect::new(kind,payload);let text=serde_json::to_string(&wire).unwrap();
+        let native=ironsmith_runtime_catalog::artifact_materializer::materialize_effect(serde_json::from_str(&text).unwrap()).unwrap();
+        let retained:ironsmith_compiled_artifact::WireEffect=serde_json::from_str(native.serialized_model().unwrap()).unwrap();assert_eq!(retained.kind(),wire.kind());assert_eq!(retained.payload(),wire.payload());native
+    }
+    fn receipt(out:&EffectOutcome)->EffectOutcome {
+        assert!(!out.events.is_empty());let mut receipt=out.clone();receipt.events.clear();
+        let decoded:EffectOutcome=serde_json::from_str(&serde_json::to_string(&receipt).unwrap()).unwrap();assert_eq!(decoded,receipt);decoded
+    }
+    fn object(game:&mut GameState,alice:PlayerId)->ironsmith::ObjectId {
+        let card=ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(),"Retained player quantity source").card_types(vec![ironsmith::types::CardType::Artifact]).build();game.create_object_from_definition(&card,alice,Zone::Battlefield)
+    }
+    fn check(kind:CounterType) {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);let following=object(&mut game,alice);
+            let mut ctx=ironsmith::effects::EffectContext::new_default(source,alice);
+            let prior=restored("PutCountersEffect",serde_json::to_value(ironsmith::effects::PutCountersEffect::new(CounterType::Charge,amount,ChooseSpec::SpecificObject(source))).unwrap());
+            let placed=ironsmith::effects::execute_effect(&mut game,&prior,&mut ctx).unwrap();assert_eq!(placed.as_count(),Some(i64::from(amount)));ctx.store_outcome(EffectId(31),receipt(&placed));
+            let value=Value::EffectValue(EffectId(31));let player=PlayerFilter::Specific(bob);
+            let (class,payload)=match kind {
+                CounterType::Energy=>("EnergyCountersEffect",serde_json::to_value(ironsmith::effects::EnergyCountersEffect::new(value,player)).unwrap()),
+                CounterType::Experience=>("ExperienceCountersEffect",serde_json::json!({"count":value,"player":player})),
+                CounterType::Poison=>("PoisonCountersEffect",serde_json::json!({"count":value,"player":player})),
+                ticket if ticket==CounterType::Named("ticket".into())=>("TicketCountersEffect",serde_json::to_value(ironsmith::effects::TicketCountersEffect::new(value,player)).unwrap()),
+                _=>("GivePlayerCountersEffect",serde_json::json!({"counter_type":kind,"count":value,"player":player})),
+            };
+            let effect=restored(class,payload);let out=ironsmith::effects::execute_effect(&mut game,&effect,&mut ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(amount)));assert_eq!(game.player(bob).unwrap().counter_count(kind),amount);assert_eq!(game.player(alice).unwrap().counter_count(kind),0);
+            let marker=out.events.iter().find_map(|event|event.downcast::<ironsmith::events::MarkersChangedEvent>()).unwrap();assert_eq!(marker.amount,amount);assert_eq!(marker.count_after,Some(amount));assert_eq!(marker.location,ironsmith::marker::MarkerLocation::Player(bob));
+            ctx.store_outcome(EffectId(57),receipt(&out));
+            let follow=restored("PutCountersEffect",serde_json::to_value(ironsmith::effects::PutCountersEffect::new(CounterType::Charge,Value::EffectValue(EffectId(57)),ChooseSpec::SpecificObject(following))).unwrap());
+            let out=ironsmith::effects::execute_effect(&mut game,&follow,&mut ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(amount)));assert_eq!(game.counter_count(following,CounterType::Charge),amount);
+        }
+    }
+    #[test] fn retained_unsigned_player_counter_energy_executes_and_preserves_receipt() {check(CounterType::Energy);}
+    #[test] fn retained_unsigned_player_counter_experience_executes_and_preserves_receipt() {check(CounterType::Experience);}
+    #[test] fn retained_unsigned_player_counter_poison_executes_and_preserves_receipt() {check(CounterType::Poison);}
+    #[test] fn retained_unsigned_player_counter_generic_executes_and_preserves_receipt() {check(CounterType::Rad);}
+    #[test] fn retained_unsigned_player_counter_ticket_executes_and_preserves_receipt() {check(CounterType::Named("ticket".into()));}
+}
+
+#[cfg(test)]
+mod retained_wide_removal_and_pending_result_contract_tests {
+    use super::*;
+    use ironsmith::{GameState,PlayerId,ObjectId,Zone};
+    use ironsmith::effect::{EffectOutcome,EffectId,Value};
+    use ironsmith::effects::{EffectContext,PutCountersEffect,GainLifeEffect};
+    use ironsmith::object::CounterType;
+    use ironsmith::target::{ChooseSpec,PlayerFilter,ObjectFilter};
+    fn wire(kind:&str,payload:serde_json::Value)->ironsmith_compiled_artifact::WireEffect {ironsmith_compiled_artifact::WireEffect::new(kind,payload)}
+    fn materialized(wire:ironsmith_compiled_artifact::WireEffect)->ironsmith::Effect {
+        let json=serde_json::to_string(&wire).unwrap();let native=ironsmith_runtime_catalog::artifact_materializer::materialize_effect(serde_json::from_str(&json).unwrap()).unwrap();let retained:ironsmith_compiled_artifact::WireEffect=serde_json::from_str(native.serialized_model().unwrap()).unwrap();assert_eq!(retained.kind(),wire.kind());assert_eq!(retained.payload(),wire.payload());native
+    }
+    fn receipt(out:&EffectOutcome)->EffectOutcome {
+        assert!(!out.events.is_empty());let mut value=out.clone();value.events.clear();let decoded:EffectOutcome=serde_json::from_str(&serde_json::to_string(&value).unwrap()).unwrap();assert_eq!(decoded,value);decoded
+    }
+    fn object(game:&mut GameState,alice:PlayerId)->ObjectId {
+        let card=ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(),"Materialized removal result owner").card_types(vec![ironsmith::types::CardType::Artifact]).build();game.create_object_from_definition(&card,alice,Zone::Battlefield)
+    }
+    fn put(game:&mut GameState,ctx:&mut EffectContext,id:ObjectId,kind:CounterType,count:u32,result:u32) {
+        let effect=materialized(wire("PutCountersEffect",serde_json::to_value(PutCountersEffect::new(kind,count,ChooseSpec::SpecificObject(id))).unwrap()));let out=ironsmith::effects::execute_effect(game,&effect,ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(count)));assert_eq!(game.counter_count(id,kind),count);ctx.store_outcome(EffectId(result),receipt(&out));
+    }
+    fn bounded(any:bool) {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);let target=object(&mut game,alice);let following=object(&mut game,alice);let mut ctx=EffectContext::new_default(source,alice);put(&mut game,&mut ctx,source,CounterType::Charge,amount,31);put(&mut game,&mut ctx,target,CounterType::Charge,3,32);
+            let value=Value::EffectValue(EffectId(31));let payload=if any{serde_json::json!({"max_count":value,"target":ChooseSpec::SpecificObject(target),"up_to":true})}else{serde_json::json!({"counter_type":CounterType::Charge,"max_count":value,"target":ChooseSpec::SpecificObject(target)})};let effect=materialized(wire(if any{"RemoveUpToAnyCountersEffect"}else{"RemoveUpToCountersEffect"},payload));let out=ironsmith::effects::execute_effect(&mut game,&effect,&mut ctx).unwrap();assert_eq!(out.as_count(),Some(3));assert_eq!(game.counter_count(target,CounterType::Charge),0);assert_eq!(game.counter_count(source,CounterType::Charge),amount);ctx.store_outcome(EffectId(57),receipt(&out));
+            let follow=materialized(wire("PutCountersEffect",serde_json::to_value(PutCountersEffect::new(CounterType::Charge,Value::EffectValue(EffectId(57)),ChooseSpec::SpecificObject(following))).unwrap()));assert_eq!(ironsmith::effects::execute_effect(&mut game,&follow,&mut ctx).unwrap().as_count(),Some(3));assert_eq!(game.counter_count(following,CounterType::Charge),3);
+        }
+    }
+    #[test]fn materialized_typed_up_to_caps_unsigned_actual_prior(){bounded(false);}
+    #[test]fn materialized_any_up_to_caps_unsigned_actual_prior(){bounded(true);}
+    fn wide(typed:bool) {
+        let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);let other=if typed{object(&mut game,alice)}else{source};let following=object(&mut game,alice);let mut ctx=EffectContext::new_default(source,alice);put(&mut game,&mut ctx,source,CounterType::Charge,u32::MAX,31);put(&mut game,&mut ctx,other,if typed{CounterType::Charge}else{CounterType::PlusOnePlusOne},u32::MAX,32);
+        let mut filter=ObjectFilter::permanent().you_control();if !typed{filter.source=true;}
+        let maximum=Value::Add(Box::new(Value::EffectValue(EffectId(31))),Box::new(Value::EffectValue(EffectId(32))));let payload=if typed{serde_json::json!({"counter_type":CounterType::Charge,"max_count":maximum,"target":ChooseSpec::All(filter)})}else{serde_json::json!({"max_count":maximum,"target":ChooseSpec::All(filter),"up_to":false})};let nested=wire(if typed{"RemoveUpToCountersEffect"}else{"RemoveUpToAnyCountersEffect"},payload);let effect=materialized(wire("WithIdEffect",serde_json::json!({"id":57,"effect":nested})));let out=ironsmith::effects::execute_effect(&mut game,&effect,&mut ctx).unwrap();assert_eq!(out.as_count(),Some(2*i64::from(u32::MAX)));assert_eq!(ctx.get_outcome(EffectId(57)).unwrap().as_count(),out.as_count());assert_eq!(game.counter_count(source,CounterType::Charge),0);assert_eq!(game.counter_count(other,if typed{CounterType::Charge}else{CounterType::PlusOnePlusOne}),0);assert_eq!(out.events_of_type::<ironsmith::events::MarkersChangedEvent>().count(),2);ctx.store_outcome(EffectId(57),receipt(&out));
+        let follow=materialized(wire("PutCountersEffect",serde_json::to_value(PutCountersEffect::new(CounterType::Charge,Value::HalfRoundedDown(Box::new(Value::EffectValue(EffectId(57)))),ChooseSpec::SpecificObject(following))).unwrap()));assert_eq!(ironsmith::effects::execute_effect(&mut game,&follow,&mut ctx).unwrap().as_count(),Some(i64::from(u32::MAX)));assert_eq!(game.counter_count(following,CounterType::Charge),u32::MAX);
+    }
+    #[test]fn materialized_typed_all_wide_receipt_survives_codec_and_followup(){wide(true);}
+    #[test]fn materialized_any_all_wide_receipt_survives_codec_and_followup(){wide(false);}
+    struct Decisions{answer:Option<usize>,pending:bool,calls:usize}
+    impl ironsmith::decision::DecisionMaker for Decisions {
+        fn awaiting_choice(&self)->bool{self.pending}
+        fn decide_options(&mut self,_game:&GameState,ctx:&ironsmith::decisions::context::SelectOptionsContext)->Vec<usize> {
+            assert!(!self.pending);assert_eq!(ctx.player,PlayerId::from_index(1));assert_eq!(ctx.options.len(),2);self.calls+=1;if let Some(answer)=self.answer.take(){vec![answer]}else{self.pending=true;vec![]}
+        }
+    }
+    fn pending(simultaneous:bool,already_pending:bool) {
+        for previous in [false,true] {
+            let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);let mut prior=EffectContext::new_default(source,alice);put(&mut game,&mut prior,source,CounterType::Charge,42,31);if previous{let gain=materialized(wire("GainLifeEffect",serde_json::to_value(GainLifeEffect::new(7,ChooseSpec::Player(PlayerFilter::You))).unwrap()));let out=ironsmith::effects::execute_effect(&mut game,&gain,&mut prior).unwrap();assert_eq!(out.as_count(),Some(7));prior.store_outcome(EffectId(57),receipt(&out));}let records=prior.effect_outcomes.clone();drop(prior);
+            let mut shields=Vec::new();for extra in [0,1]{let replacement=ironsmith::static_abilities::StaticAbility::add_player_counters_placement_replacement(PlayerFilter::Specific(bob),Some(CounterType::Energy),extra,"Materialized result choice".into()).generate_replacement_effect(source,alice).unwrap();shields.push(game.effect_store.replacement_effects.add_one_shot_effect(replacement));}
+            let nested=wire("GivePlayerCountersEffect",serde_json::json!({"counter_type":CounterType::Energy,"count":Value::from(1),"player":PlayerFilter::Specific(bob)}));let effect=materialized(wire("WithIdEffect",serde_json::json!({"id":57,"effect":nested})));let mut dm=Decisions{answer:None,pending:already_pending,calls:0};let mut ctx=EffectContext::new(source,alice,&mut dm);ctx.effect_outcomes=records.clone();let out=if simultaneous{assert!(effect.0.supports_simultaneous_player_action());effect.0.prepare_simultaneous_player_action(&game,&mut ctx).unwrap().commit(&mut game,&mut ctx).unwrap()}else{ironsmith::effects::execute_effect(&mut game,&effect,&mut ctx).unwrap()};assert!(ctx.decision_maker.awaiting_choice());assert_eq!(out.as_count(),Some(0));assert!(out.events.is_empty());assert_eq!(ctx.effect_outcomes,records);assert_eq!(game.player(bob).unwrap().energy_counters,0);assert_eq!(game.counter_count(source,CounterType::Charge),42);assert!(shields.iter().all(|id|game.effect_store.replacement_effects.get_effect(*id).is_some()));assert!(game.take_pending_trigger_events().is_empty());
+            // Only event-free receipts are serialized here; this is not a
+            // checkpoint/event-stream codec claim.
+            assert!(ctx.effect_outcomes.values().all(|out|out.events.is_empty()));let text=serde_json::to_string(&ctx.effect_outcomes).unwrap();let saved:std::collections::HashMap<EffectId,EffectOutcome>=serde_json::from_str(&text).unwrap();assert_eq!(saved,records);drop(ctx);assert_eq!(dm.calls,usize::from(!already_pending));let mut replay=Decisions{answer:Some(0),pending:false,calls:0};let mut ctx=EffectContext::new(source,alice,&mut replay);ctx.effect_outcomes=saved;let out=if simultaneous{effect.0.prepare_simultaneous_player_action(&game,&mut ctx).unwrap().commit(&mut game,&mut ctx).unwrap()}else{ironsmith::effects::execute_effect(&mut game,&effect,&mut ctx).unwrap()};assert!(!ctx.decision_maker.awaiting_choice());assert_eq!(out.as_count(),Some(2));assert_eq!(ctx.get_outcome(EffectId(57)).unwrap().as_count(),Some(2));assert_eq!(ctx.get_outcome(EffectId(31)),records.get(&EffectId(31)));assert_eq!(game.player(bob).unwrap().energy_counters,2);assert!(shields.iter().all(|id|game.effect_store.replacement_effects.get_effect(*id).is_none()));assert_eq!(out.events_of_type::<ironsmith::events::MarkersChangedEvent>().count(),1);assert!(game.take_pending_trigger_events().is_empty());
+        }
+    }
+    #[test]fn materialized_live_with_id_pending_keeps_result_map(){pending(false,false);}
+    #[test]fn materialized_prepared_with_id_pending_keeps_result_map(){pending(true,false);}
+    #[test]fn materialized_live_with_id_already_pending_keeps_result_map(){pending(false,true);}
+    #[test]fn materialized_prepared_with_id_already_pending_keeps_result_map(){pending(true,true);}
+}
+
+#[cfg(test)]
+mod compiled_distinct_player_clause_tests {
+    use super::*;
+    use ironsmith::{GameState, PlayerId, Zone, Target};
+    use ironsmith::game_state::{StackEntry, TargetAssignment};
+
+    #[test]
+    fn verdant_command_direct_and_catalog_keep_player_modes_independent() {
+        // Oracle and printed metadata match the local cards.json snapshot.
+        let text = "Mana cost: {1}{G}\nType: Instant\nChoose two —\n• Target player creates two tapped 1/1 green Squirrel creature tokens.\n• Counter target loyalty ability of a planeswalker.\n• Exile target card from a graveyard.\n• Target player gains 3 life.";
+        let (artifact, direct) = compile_builder_to_artifact(
+            compiler::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Verdant Command"),
+            text, false,
+        ).expect("strict real-card compilation");
+        artifact.validate().unwrap();
+        let mut registry = ironsmith::cards::CardRegistry::new();
+        registry.register_compiled_artifact(&artifact).unwrap();
+        let decoded = registry.get("Verdant Command").unwrap().clone();
+        for definition in [direct, decoded] {
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+            let modes = vec![0, 3];
+            let requirements = ironsmith::game_loop::extract_target_requirements_from_program_with_modes(
+                &game, definition.spell_effect.as_ref().unwrap(), alice, Some(spell), Some(&modes),
+            );
+            assert_eq!(requirements.len(), 2, "chosen modes announce two independent targets");
+            for requirement in &requirements {
+                assert_eq!(requirement.min_targets, 1);
+                assert_eq!(requirement.max_targets, Some(1));
+                assert!(requirement.legal_targets.contains(&Target::Player(alice)));
+                assert!(requirement.legal_targets.contains(&Target::Player(bob)));
+            }
+            let assignments = requirements.into_iter().enumerate()
+                .map(|(index, requirement)| TargetAssignment { spec: requirement.spec, range: index..index+1 })
+                .collect();
+            game.push_to_stack(StackEntry::new(spell, alice)
+                .with_chosen_modes(Some(modes))
+                .with_targets(vec![Target::Player(alice), Target::Player(bob)])
+                .with_target_assignments(assignments));
+            ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+            assert_eq!(game.battlefield.len(), 2);
+            for &id in &game.battlefield {
+                assert_eq!(game.controller_of_id(id), Some(alice));
+                assert!(game.is_tapped(id));
+            }
+            assert_eq!(game.player(alice).unwrap().life, 20);
+            assert_eq!(game.player(bob).unwrap().life, 23);
+        }
+    }
+}

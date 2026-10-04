@@ -209,7 +209,7 @@ fn describe_conjunctive_filter_list(mut parts: Vec<String>) -> String {
 
 /// A reference to an object for use in filters and effects.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum ObjectRef {
     #[default]
     Target,
@@ -220,6 +220,24 @@ pub enum ObjectRef {
     /// ("with mana value less than or equal to the number of cards in its
     /// controller's graveyard"). Only resolvable while matching that filter.
     FilterCandidate,
+}
+
+impl TagKeyWalk for ObjectRef {
+    fn for_each_tag_key(&self, f: &mut dyn FnMut(&TagKey)) {
+        match self {
+            Self::Tagged(tag) => f(tag),
+            Self::Target | Self::Specific(_) | Self::FilterCandidate => {}
+        }
+    }
+    fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut TagKey)) {
+        match self {
+            Self::Tagged(tag) => f(tag),
+            Self::Target | Self::Specific(_) | Self::FilterCandidate => {}
+        }
+    }
+    fn for_each_object_ref(&self, f: &mut dyn FnMut(&ObjectRef)) {
+        f(self);
+    }
 }
 
 impl ObjectRef {

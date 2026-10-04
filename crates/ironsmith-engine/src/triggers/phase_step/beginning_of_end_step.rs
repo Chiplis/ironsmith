@@ -69,6 +69,14 @@ impl BeginningOfEndStepTrigger {
 }
 
 impl TriggerMatcher for BeginningOfEndStepTrigger {
+    fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
+        let mut model = ironsmith_core::trigger_model::Trigger::beginning_of_end_step(self.player.clone());
+        model.kind = ironsmith_core::trigger_model::TriggerKind::BeginningOfEndStep {
+            player: self.player.clone(), surface: self.surface,
+        };
+        Some(model)
+    }
+
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::BeginningOfEndStep {
             return false;
@@ -164,6 +172,33 @@ mod tests {
     use crate::events::phase::BeginningOfEndStepEvent;
     use crate::game_state::GameState;
     use crate::ids::ObjectId;
+
+    #[test]
+    fn native_end_step_canonical_model_preserves_player_and_surface() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        for player in [PlayerFilter::You, PlayerFilter::Any, PlayerFilter::Opponent, PlayerFilter::Specific(bob)] {
+            for surface in [EndStepSurface::Each, EndStepSurface::Definite, EndStepSurface::Monarch] {
+                let native = BeginningOfEndStepTrigger { player: player.clone(), surface };
+                let runtime = crate::triggers::Trigger::new(native.clone());
+                let model = runtime.compiled_model().expect("native matcher supplies complete typed model").clone();
+                assert!(matches!(&model.kind, ironsmith_core::trigger_model::TriggerKind::BeginningOfEndStep { player: kept, surface: kept_surface }
+                    if kept == &player && kept_surface == &surface));
+                let restored = crate::triggers::Trigger::from_model(model).unwrap();
+                for monarch in [None, Some(alice), Some(bob)] {
+                    let mut game = setup_game();
+                    game.monarch = monarch;
+                    let context = TriggerContext::for_source(ObjectId::from_raw(1), alice, &game);
+                    for active in [alice, bob] {
+                        let event = TriggerEvent::new_with_provenance(BeginningOfEndStepEvent::new(active),
+                            crate::provenance::ProvNodeId::default());
+                        assert_eq!(native.matches(&event, &context), restored.matches(&event, &context),
+                            "roundtrip must preserve player {player:?}, surface {surface:?}, monarch {monarch:?}, event {active:?}");
+                    }
+                }
+            }
+        }
+    }
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

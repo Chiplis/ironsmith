@@ -16,8 +16,9 @@ impl EffectExecutor for MoveOneCounterEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
-            let target_pair = if ctx.target_assignments.is_empty() && ctx.targets.len() >= 2 {
-                ctx.resolve_two_object_targets()
+            let target_pair = if crate::game_loop::requires_target_selection(&self.from)
+                && crate::game_loop::requires_target_selection(&self.to) {
+                super::assigned_counter_transfer_pair(ctx)
             } else {
                 let from = resolve_objects_for_effect(game, ctx, &self.from)?;
                 let to = resolve_objects_for_effect(game, ctx, &self.to)?;

@@ -32,6 +32,7 @@ impl WouldBecomeTappedMatcher {
 }
 
 impl ReplacementMatcher for WouldBecomeTappedMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::BecomeTapped {
             return false;
@@ -71,6 +72,7 @@ impl WouldBecomeUntappedMatcher {
 }
 
 impl ReplacementMatcher for WouldBecomeUntappedMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::BecomeUntapped {
             return false;
@@ -115,6 +117,7 @@ impl WouldBeDestroyedMatcher {
 }
 
 impl ReplacementMatcher for WouldBeDestroyedMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
             return false;
@@ -141,6 +144,7 @@ impl ReplacementMatcher for WouldBeDestroyedMatcher {
 pub struct ThisWouldBeDestroyedMatcher;
 
 impl ReplacementMatcher for ThisWouldBeDestroyedMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
             return false;
@@ -175,6 +179,7 @@ impl AttachedPermanentWouldBeDestroyedMatcher {
 }
 
 impl ReplacementMatcher for AttachedPermanentWouldBeDestroyedMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
             return false;
@@ -219,6 +224,7 @@ impl WouldBeSacrificedMatcher {
 }
 
 impl ReplacementMatcher for WouldBeSacrificedMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Sacrifice {
             return false;
@@ -261,6 +267,7 @@ impl RegenerationShieldMatcher {
 }
 
 impl ReplacementMatcher for RegenerationShieldMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Destroy {
             return false;

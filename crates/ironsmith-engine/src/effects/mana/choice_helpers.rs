@@ -37,7 +37,7 @@ pub(crate) fn mana_added_count_outcome(
     mut receipt: ManaCreditReceipt,
     count: i32,
 ) -> EffectOutcome {
-    receipt.outcome.set_value(OutcomeValue::Count(if receipt.original_committed { count } else { 0 }));
+    receipt.outcome.set_value(OutcomeValue::Count(if receipt.original_committed { i64::from(count) } else { 0 }));
     receipt.outcome
 }
 

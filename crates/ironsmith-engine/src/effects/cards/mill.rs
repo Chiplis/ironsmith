@@ -2,7 +2,7 @@
 
 use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effect::{EffectOutcome, OutcomeObjectMemory, Value};
-use crate::effects::helpers::{resolve_player_filter, resolve_value};
+use crate::effects::helpers::{resolve_player_filter, resolve_value_wide};
 use crate::effects::zones::apply_zone_change_with_additional_effects;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -70,7 +70,9 @@ impl EffectExecutor for MillEffect {
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        let requested = resolve_value_wide(game, &self.count, ctx)?.max(0) as u64;
+        // Narrow only after capping to the actual resident library length.
+        let count = requested.min(game.player(player_id).map_or(0, |player| player.library.len()) as u64) as usize;
 
         // Snapshot the top cards first so replacement/prevention on one card does not
         // change which original cards are being milled.
@@ -164,22 +166,14 @@ impl CostExecutableEffect for MillEffect {
             PlayerFilter::Specific(id) => id,
             _ => controller,
         };
-        let count = match &self.count {
-            Value::Fixed(count) => (*count).max(0) as usize,
-            Value::X => {
-                return Err(crate::effects::CostValidationError::Other(
-                    "dynamic X mill costs are not supported".to_string(),
-                ));
-            }
-            _ => {
-                let ctx = crate::effects::ExecutionContext::new_default(source, controller);
-                crate::effects::helpers::resolve_value(game, &self.count, &ctx)
-                    .map_err(|err| crate::effects::CostValidationError::Other(format!("{err:?}")))?
-                    .max(0) as usize
-            }
-        };
+        if matches!(self.count, Value::X) {
+            return Err(crate::effects::CostValidationError::Other("dynamic X mill costs are not supported".into()));
+        }
+        let ctx = crate::effects::ExecutionContext::new_default(source, controller);
+        let count = resolve_value_wide(game, &self.count, &ctx)
+            .map_err(|err| crate::effects::CostValidationError::Other(format!("{err:?}")))?.max(0) as u64;
         let available = game.player(player_id).map_or(0, |p| p.library.len());
-        if available >= count {
+        if (available as u64) >= count {
             Ok(())
         } else {
             Err(crate::effects::CostValidationError::Other(

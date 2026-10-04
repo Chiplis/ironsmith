@@ -99,6 +99,11 @@ impl SagaChapterTrigger {
 }
 
 impl TriggerMatcher for SagaChapterTrigger {
+    fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
+        let Self { chapters } = self;
+        Some(ironsmith_core::trigger_model::Trigger::saga_chapter(chapters.clone()))
+    }
+
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         self.crossed_chapter_count(event, ctx) > 0
     }

@@ -113,11 +113,6 @@ fn commit_object_counter_placement(
                     "object counter placement exceeds the supported counter range".into(),
                 )
             })?;
-            i32::try_from(resolved.count).map_err(|_| {
-                ExecutionError::InternalError(
-                    "object counter outcome exceeds the supported count range".into(),
-                )
-            })?;
             let Some(mut notification) = game.add_counters_with_source(
                 object,
                 resolved.counter_type,
@@ -134,11 +129,7 @@ fn commit_object_counter_placement(
             let actual = game
                 .counter_count(object, resolved.counter_type)
                 .saturating_sub(before);
-            let count = i32::try_from(actual).map_err(|_| {
-                ExecutionError::InternalError(
-                    "object counter outcome exceeds the supported count range".into(),
-                )
-            })?;
+            let count = i64::from(actual);
             let observation = game.alloc_child_event_provenance(
                 event.provenance(), crate::events::EventKind::MarkersChanged);
             notification = notification.with_provenance(observation);
@@ -205,9 +196,9 @@ mod range_tests {
                 "object counter placement exceeds the supported counter range",
             ),
             (
-                0,
+                i32::MAX as u32 + 1,
                 i32::MAX / 2 + 1,
-                "object counter outcome exceeds the supported count range",
+                "object counter placement exceeds the supported counter range",
             ),
         ] {
             let alice = crate::ids::PlayerId::from_index(0);

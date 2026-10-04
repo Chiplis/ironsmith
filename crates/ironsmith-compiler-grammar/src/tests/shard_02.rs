@@ -833,6 +833,7 @@ pub(super) fn rewrite_possessive_self_counters_move_from_source_lki() {
     assert!(!loss.is_lossy(), "{}", loss.reasons_text());
     let debug = format!("{:#?}", compiled.definition.abilities);
     assert!(debug.contains("MoveAllCountersEffect"), "{debug}");
+    assert!(debug.contains("remove_from_source: false"), "{debug}");
     assert!(debug.contains("from: Source"), "{debug}");
     let attach = compiled
         .definition

@@ -98,7 +98,7 @@ pub(super) fn apply_trait_replacement(
                     prevented,
                     effects: vec![crate::effect::Effect::remove_counters(
                         *counter_type,
-                        crate::effect::Value::Fixed(counters_to_remove as i32),
+                        crate::effect::Value::from(counters_to_remove),
                         crate::target::ChooseSpec::Source,
                     )],
                     targets: Vec::new(),

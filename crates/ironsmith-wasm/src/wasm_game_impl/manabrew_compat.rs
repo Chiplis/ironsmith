@@ -1583,6 +1583,23 @@ impl WasmGame {
         ))
     }
 
+    fn manabrew_counter_chunk_bounds(state: &ManabrewCounterState) -> Result<(u32,u32),ProtocolError> {
+        let invalid = |message: &str| protocol_error(ProtocolErrorCode::InvalidShape,message,None);
+        let available = state.available.get(state.counter_index).copied()
+            .ok_or_else(|| invalid("counter type index is out of range"))?;
+        let allocated = state.allocations.get(state.counter_index).copied()
+            .ok_or_else(|| invalid("counter allocation index is out of range"))?;
+        let capacity = available.checked_sub(allocated)
+            .ok_or_else(|| invalid("counter allocation exceeds available amount"))?;
+        let max = u64::from(capacity).min(state.remaining);
+        let future = state.available.iter().skip(state.counter_index + 1)
+            .fold(0u64, |sum, value| sum.saturating_add(u64::from(*value)));
+        let required = state.minimum_remaining.saturating_sub(future);
+        if required > max { return Err(invalid("required counter allocation exceeds remaining capacity")); }
+        let chunk = max.min(i32::MAX as u64) as u32;
+        Ok((required.min(u64::from(chunk)) as u32,chunk))
+    }
+
     fn manabrew_counter_prompt(
         state: ManabrewCounterState,
         source_card_id: Option<String>,
@@ -1594,12 +1611,7 @@ impl WasmGame {
                 None,
             ));
         };
-        let max = state
-            .available
-            .get(state.counter_index)
-            .copied()
-            .unwrap_or(0)
-            .min(state.remaining);
+        let (min, max) = Self::manabrew_counter_chunk_bounds(&state)?;
         Ok((
             PromptInput::ChooseNumber(ChooseNumberInput {
                 presentation: presentation(
@@ -1610,8 +1622,8 @@ impl WasmGame {
                     )),
                     source_card_id,
                 ),
-                min: 0,
-                max: max.min(i32::MAX as u32) as i32,
+                min: min as i32,
+                max: max as i32,
             }),
             ManabrewPromptBinding::CounterNumber { state },
         ))
@@ -1888,6 +1900,19 @@ impl WasmGame {
             })
     }
 
+    fn manabrew_number_prompt(minimum_remaining:u32, maximum_remaining:u32, accumulated:u32, description:String, source:Option<String>) -> Result<(PromptInput, ManabrewPromptBinding), ProtocolError> {
+        if minimum_remaining > maximum_remaining {
+            return Err(protocol_error(ProtocolErrorCode::InvalidShape, "number minimum exceeds its maximum", None));
+        }
+        let title = if accumulated == 0 { "Choose a number" } else { "Choose an additional amount" };
+        let detail = if accumulated == 0 { description.clone() } else { format!("{description}. Selected so far: {accumulated}. Choose an additional amount; choose zero to finish when allowed.") };
+        Ok((PromptInput::ChooseNumber(ChooseNumberInput {
+            presentation: presentation(title, Some(detail), source),
+            min: minimum_remaining.min(i32::MAX as u32) as i32,
+            max: maximum_remaining.min(i32::MAX as u32) as i32,
+        }), ManabrewPromptBinding::Number { minimum_remaining, maximum_remaining, accumulated, description }))
+    }
+
     fn build_manabrew_prompt(
         &self,
         context: &DecisionContext,
@@ -2013,18 +2038,7 @@ impl WasmGame {
                 }),
                 ManabrewPromptBinding::Boolean,
             )),
-            DecisionContext::Number(ctx) => Ok((
-                PromptInput::ChooseNumber(ChooseNumberInput {
-                    presentation: presentation(
-                        "Choose a number",
-                        Some(ctx.description.clone()),
-                        source,
-                    ),
-                    min: ctx.min.min(i32::MAX as u32) as i32,
-                    max: ctx.max.min(i32::MAX as u32) as i32,
-                }),
-                ManabrewPromptBinding::Number,
-            )),
+            DecisionContext::Number(ctx) => Self::manabrew_number_prompt(ctx.min, ctx.max, 0, ctx.description.clone(), source),
             DecisionContext::SelectOptions(ctx) => {
                 let legal: Vec<_> = ctx.options.iter().filter(|option| option.legal).collect();
                 Ok((
@@ -2415,7 +2429,8 @@ impl WasmGame {
                         .collect(),
                     counter_index: 0,
                     remaining: ctx.max_total,
-                    allocations: Vec::with_capacity(ctx.available_counters.len()),
+                    minimum_remaining: ctx.min_total,
+                    allocations: vec![0; ctx.available_counters.len()],
                 },
                 source,
             ),
@@ -2661,33 +2676,28 @@ impl WasmGame {
                 Some(open.prompt_id),
             )
         };
-        let available = state
-            .available
-            .get(state.counter_index)
-            .copied()
-            .ok_or_else(|| invalid("counter type index is out of range".to_string()))?;
-        if amount > available || amount > state.remaining {
-            return Err(invalid(format!(
-                "cannot remove {amount} counter(s); {available} of this type and {} total are available",
-                state.remaining
-            )));
+        let (min, max) = Self::manabrew_counter_chunk_bounds(state)?;
+        if amount < min || amount > max {
+            return Err(invalid(format!("counter chunk {amount} must be between {min} and {max}")));
         }
-
         let mut next = state.clone();
-        next.allocations.push(amount);
-        next.remaining -= amount;
-        next.counter_index += 1;
-        if next.remaining == 0 {
-            next.allocations.resize(next.counter_names.len(), 0);
-        }
+        let allocation = next.allocations.get_mut(next.counter_index)
+            .ok_or_else(|| invalid("counter allocation index is out of range".into()))?;
+        *allocation = allocation.checked_add(amount)
+            .ok_or_else(|| invalid("counter allocation exceeds per-kind range".into()))?;
+        next.remaining -= u64::from(amount);
+        next.minimum_remaining = next.minimum_remaining.saturating_sub(u64::from(amount));
+        let continue_kind = amount == max && amount > 0 && next.remaining > 0
+            && *allocation < next.available[next.counter_index];
+        if !continue_kind { next.counter_index += 1; }
         if next.counter_index >= next.counter_names.len() || next.remaining == 0 {
-            let mut option_indices = Vec::new();
-            for (index, count) in next.allocations.iter().copied().enumerate() {
-                option_indices.extend(std::iter::repeat_n(index, count as usize));
+            if next.minimum_remaining > 0 {
+                return Err(invalid("counter allocation does not satisfy the required total".into()));
             }
-            return Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
-                option_indices,
-            }));
+            let allocations = next.allocations.iter().copied().enumerate()
+                .filter(|(_,count)| *count > 0)
+                .map(|(index,count)| CounterAllocation { index,count }).collect();
+            return Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectCounters { allocations }));
         }
 
         let (input, binding) = Self::manabrew_counter_prompt(next, open.source_card_id.clone())?;
@@ -2749,15 +2759,25 @@ impl WasmGame {
                 option_indices: vec![usize::from(value)],
             })),
             (
-                ManabrewPromptBinding::Number,
+                ManabrewPromptBinding::Number { minimum_remaining, maximum_remaining, accumulated, description },
                 PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision { chosen_number }),
             ) => {
-                let value = chosen_number
-                    .filter(|value| *value >= 0)
-                    .ok_or_else(|| invalid("a non-negative number is required".to_string()))?;
-                Ok(ManabrewResponseAction::Dispatch(UiCommand::NumberChoice {
-                    value: value as u32,
-                }))
+                let amount = chosen_number.filter(|value| *value >= 0)
+                    .ok_or_else(|| invalid("a non-negative number is required".into()))? as u32;
+                let chunk_min = (*minimum_remaining).min(i32::MAX as u32);
+                let chunk_max = (*maximum_remaining).min(i32::MAX as u32);
+                if minimum_remaining > maximum_remaining || amount < chunk_min || amount > chunk_max {
+                    return Err(invalid(format!("number chunk {amount} must be between {chunk_min} and {chunk_max}")));
+                }
+                let total = accumulated.checked_add(amount).ok_or_else(|| invalid("number choice exceeds the unsigned range".into()))?;
+                let minimum = minimum_remaining.saturating_sub(amount);
+                let maximum = maximum_remaining - amount;
+                if amount == chunk_max && amount > 0 && maximum > 0 {
+                    let (input, binding) = Self::manabrew_number_prompt(minimum, maximum, total, description.clone(), open.source_card_id.clone())?;
+                    return Ok(ManabrewResponseAction::Continue { input, binding });
+                }
+                if minimum > 0 { return Err(invalid("number choice does not satisfy the required minimum".into())); }
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::NumberChoice { value: total }))
             }
             (
                 ManabrewPromptBinding::TextNameGroups {
@@ -4019,7 +4039,7 @@ mod manabrew_tests {
     }
 
     #[test]
-    fn counter_removal_uses_number_sequence_and_dispatches_repeated_indices() {
+    fn counter_removal_uses_number_sequence_and_dispatches_counted_allocations() {
         let _id_guard = crate::test_id_counter_guard();
         let game = game();
         let context =
@@ -4059,8 +4079,8 @@ mod manabrew_tests {
             )
             .expect("final counter allocation maps")
         {
-            ManabrewResponseAction::Dispatch(UiCommand::SelectOptions { option_indices }) => {
-                assert_eq!(option_indices, vec![0, 1, 1]);
+            ManabrewResponseAction::Dispatch(UiCommand::SelectCounters { allocations }) => {
+                assert_eq!(allocations, vec![CounterAllocation { index: 0, count: 1 }, CounterAllocation { index: 1, count: 2 }]);
             }
             _ => panic!("final counter allocation should dispatch"),
         }
@@ -4107,4 +4127,103 @@ mod manabrew_tests {
             _ => panic!("proliferate should dispatch directly"),
         }
     }
+}
+
+#[cfg(test)]
+mod counter_transport_boundary_contract_tests {
+    use super::*;
+    fn context(min:u64,max:u64,amount:u32)->DecisionContext {
+        DecisionContext::Counters(ironsmith::decisions::context::CountersContext::new_wide(
+            PlayerId::from_index(0),None,ironsmith::Target::Object(ObjectId::from_raw(900001)),"Counter transport owner",min,max,
+            vec![(ironsmith::object::CounterType::Charge,amount),(ironsmith::object::CounterType::PlusOnePlusOne,amount)]))
+    }
+    fn game()->WasmGame {let mut game=WasmGame::new();game.initialize_empty_match(vec!["Alice".into(),"Bob".into()],20,42);game}
+    fn prompt(input:PromptInput,binding:ManabrewPromptBinding)->ManabrewOpenPrompt {
+        ManabrewOpenPrompt {prompt_id:1,deciding_player:PlayerId::from_index(0),decision_hash:1,source_card:None,input,binding,source_card_id:None}
+    }
+    #[test]
+    fn snapshot_preserves_actual_counter_minimum() {
+        let _guard=crate::test_id_counter_guard();let game=game();let ctx=context(3,5,4);
+        let view=DecisionView::from_context(&game.game,&ctx,PlayerId::from_index(0),None,None);
+        let json=serde_json::to_value(view).unwrap();assert_eq!(json["min_total"],serde_json::json!("3"));assert_eq!(json["max_total"],serde_json::json!("5"));
+    }
+    #[test]
+    fn snapshot_preserves_wide_counter_budget_without_pointer_width() {
+        let _guard=crate::test_id_counter_guard();let game=game();let maximum=2*u64::from(u32::MAX);let ctx=context(maximum,maximum,u32::MAX);
+        let view=DecisionView::from_context(&game.game,&ctx,PlayerId::from_index(0),None,None);
+        let json=serde_json::to_value(view).unwrap();assert_eq!(json["max_total"],serde_json::json!(maximum.to_string()));assert_eq!(json["min_total"],serde_json::json!(maximum.to_string()));
+    }
+    #[test]
+    fn manabrew_counter_prompt_preserves_required_total() {
+        let _guard=crate::test_id_counter_guard();let game=game();let ctx=context(7,7,4);let (input,_)=game.build_manabrew_prompt(&ctx).unwrap();
+        let PromptInput::ChooseNumber(number)=input else{panic!("counter quantity prompt required")};assert_eq!(number.min,3);assert_eq!(number.max,4);
+    }
+    #[test]
+    fn manabrew_unsigned_quantity_requires_residual_chunk() {
+        let _guard=crate::test_id_counter_guard();let game=game();let ctx=DecisionContext::Counters(ironsmith::decisions::context::CountersContext::new_wide(PlayerId::from_index(0),None,ironsmith::Target::Object(ObjectId::from_raw(900001)),"Unsigned counter owner",u64::from(u32::MAX),u64::from(u32::MAX),vec![(ironsmith::object::CounterType::Charge,u32::MAX)]));
+        let (input,_)=game.build_manabrew_prompt(&ctx).unwrap();let PromptInput::ChooseNumber(number)=input else{panic!("counter quantity prompt required")};assert_eq!(number.min,i32::MAX);assert_eq!(number.max,i32::MAX);
+    }
+    #[test]
+    fn manabrew_final_response_is_counted_without_index_expansion() {
+        let _guard=crate::test_id_counter_guard();let game=game();let ctx=context(0,3,3);let (input,binding)=game.build_manabrew_prompt(&ctx).unwrap();let open=prompt(input,binding);
+        let first=game.manabrew_response_action(&open,PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision{chosen_number:Some(1)})).unwrap();let ManabrewResponseAction::Continue{input,binding}=first else{panic!("second counter kind required")};let open=prompt(input,binding);
+        let last=game.manabrew_response_action(&open,PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision{chosen_number:Some(2)})).unwrap();let ManabrewResponseAction::Dispatch(command)=last else{panic!("completed allocation must dispatch")};let json=serde_json::to_value(command).unwrap();assert_eq!(json["type"],"select_counters");assert_eq!(json["allocations"],serde_json::json!([{"index":0,"count":1},{"index":1,"count":2}]));
+    }
+}
+
+#[cfg(test)]
+mod sparse_counter_transport_execution_tests {
+    use super::*;
+    fn context(min:u64,max:u64)->ironsmith::decisions::context::CountersContext {
+        ironsmith::decisions::context::CountersContext::new_wide(PlayerId::from_index(0),None,ironsmith::Target::Object(ObjectId::from_raw(900001)),"Sparse counter execution",min,max,vec![(ironsmith::object::CounterType::Charge,u32::MAX),(ironsmith::object::CounterType::PlusOnePlusOne,u32::MAX)])
+    }
+    #[test]
+    fn sparse_backend_retains_wide_total_and_authored_order() {
+        let _guard=crate::test_id_counter_guard();let mut game=WasmGame::new();let maximum=2*u64::from(u32::MAX);let ctx=DecisionContext::Counters(context(maximum,maximum));
+        let command:UiCommand=serde_json::from_value(serde_json::json!({"type":"select_counters","allocations":[{"index":1,"count":u32::MAX},{"index":0,"count":u32::MAX}]})).unwrap();
+        let retained_command:UiCommand=serde_json::from_str(&serde_json::to_string(&command).unwrap()).unwrap();let answer=game.command_to_replay_answer(&ctx,command).unwrap();let ReplayDecisionAnswer::Counters(values)=answer else{panic!("counter answer required")};assert_eq!(values,vec![(ironsmith::object::CounterType::PlusOnePlusOne,u32::MAX),(ironsmith::object::CounterType::Charge,u32::MAX)]);
+        let replay=game.command_to_replay_answer(&ctx,retained_command).unwrap();let ReplayDecisionAnswer::Counters(restored)=replay else{panic!("restored counter answer required")};assert_eq!(restored,values);
+    }
+    #[test]
+    fn sparse_backend_rejects_bad_bounds_duplicates_indices_and_capacity() {
+        let ctx=context(3,5);assert!(validate_counter_allocations(&ctx,&[CounterAllocation{index:0,count:2}]).is_err());assert!(validate_counter_allocations(&ctx,&[CounterAllocation{index:0,count:6}]).is_err());assert!(validate_counter_allocations(&ctx,&[CounterAllocation{index:2,count:3}]).is_err());assert!(validate_counter_allocations(&ctx,&[CounterAllocation{index:0,count:3},CounterAllocation{index:0,count:0}]).is_err());
+        let mut limited=context(0,5);limited.available_counters[0].1=2;assert!(validate_counter_allocations(&limited,&[CounterAllocation{index:0,count:3}]).is_err());assert_eq!(validate_counter_allocations(&ctx,&[CounterAllocation{index:0,count:3}]).unwrap(),vec![(ironsmith::object::CounterType::Charge,3)]);
+    }
+    #[test]
+    fn bounded_legacy_counter_response_preserves_first_selection_order() {
+        let _guard=crate::test_id_counter_guard();let mut game=WasmGame::new();let ctx=DecisionContext::Counters(context(3,3));let answer=game.command_to_replay_answer(&ctx,UiCommand::SelectOptions{option_indices:vec![1,0,1]}).unwrap();let ReplayDecisionAnswer::Counters(values)=answer else{panic!("counter answer required")};assert_eq!(values,vec![(ironsmith::object::CounterType::PlusOnePlusOne,2),(ironsmith::object::CounterType::Charge,1)]);
+    }
+    #[test]
+    fn manabrew_reaches_every_unsigned_boundary_without_expansion() {
+        let _guard=crate::test_id_counter_guard();let game=WasmGame::new();
+        for required in [false,true] {for quantity in [0,i32::MAX as u32-1,i32::MAX as u32,i32::MAX as u32+1,2*(i32::MAX as u32),u32::MAX] {
+            let ctx=DecisionContext::Counters(ironsmith::decisions::context::CountersContext::new_wide(PlayerId::from_index(0),None,ironsmith::Target::Object(ObjectId::from_raw(900001)),"Unsigned chunk owner",if required{u64::from(quantity)}else{0},u64::from(u32::MAX),vec![(ironsmith::object::CounterType::Charge,u32::MAX)]));let (mut input,mut binding)=game.build_manabrew_prompt(&ctx).unwrap();let mut remaining=quantity;let mut prompts=0;
+            loop {prompts+=1;assert!(prompts<=3);let PromptInput::ChooseNumber(number)=&input else{panic!("number chunk required")};let amount=remaining.min(i32::MAX as u32);assert!(i64::from(amount)>=i64::from(number.min));assert!(i64::from(amount)<=i64::from(number.max));remaining-=amount;
+                let open=ManabrewOpenPrompt{prompt_id:prompts,deciding_player:PlayerId::from_index(0),decision_hash:1,source_card_id:None,source_card:None,input,binding};let response=game.manabrew_response_action(&open,PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision{chosen_number:Some(amount as i32)})).unwrap();
+                match response {ManabrewResponseAction::Continue{input:next,binding:next_binding}=>{input=next;binding=next_binding;},ManabrewResponseAction::Dispatch(UiCommand::SelectCounters{allocations})=>{assert_eq!(remaining,0);assert_eq!(allocations,if quantity==0{vec![]}else{vec![CounterAllocation{index:0,count:quantity}]});break;},_=>panic!("counter chunk completion must remain sparse")}
+            }
+        }}
+    }
+    #[test]
+    fn manabrew_future_capacity_enforces_remaining_minimum() {
+        let _guard=crate::test_id_counter_guard();let game=WasmGame::new();let ctx=DecisionContext::Counters(ironsmith::decisions::context::CountersContext::new_wide(PlayerId::from_index(0),None,ironsmith::Target::Object(ObjectId::from_raw(900001)),"Required residual owner",7,7,vec![(ironsmith::object::CounterType::Charge,4),(ironsmith::object::CounterType::PlusOnePlusOne,4)]));
+        let (input,binding)=game.build_manabrew_prompt(&ctx).unwrap();let open=ManabrewOpenPrompt{prompt_id:1,deciding_player:PlayerId::from_index(0),decision_hash:1,source_card_id:None,source_card:None,input,binding};assert!(game.manabrew_response_action(&open,PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision{chosen_number:Some(2)})).is_err());
+        let response=game.manabrew_response_action(&open,PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision{chosen_number:Some(3)})).unwrap();let ManabrewResponseAction::Continue{input,binding}=response else{panic!("residual prompt required")};let PromptInput::ChooseNumber(number)=&input else{panic!("residual number required")};assert_eq!(number.min,4);assert_eq!(number.max,4);let open=ManabrewOpenPrompt{prompt_id:2,deciding_player:PlayerId::from_index(0),decision_hash:1,source_card_id:None,source_card:None,input,binding};let response=game.manabrew_response_action(&open,PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision{chosen_number:Some(4)})).unwrap();let ManabrewResponseAction::Dispatch(UiCommand::SelectCounters{allocations})=response else{panic!("sparse completion required")};assert_eq!(allocations,vec![CounterAllocation{index:0,count:3},CounterAllocation{index:1,count:4}]);
+    }
+}
+
+#[cfg(test)]
+mod unsigned_number_transport_contract_tests {
+    use super::*;
+    fn context(min:u32,max:u32)->DecisionContext {DecisionContext::Number(ironsmith::decisions::context::NumberContext::new(PlayerId::from_index(0),None,min,max,"Unsigned legal number"))}
+    fn exercise(min:u32,max:u32,chosen:u32) {
+        let game=WasmGame::new();let (mut input,mut binding)=game.build_manabrew_prompt(&context(min,max)).unwrap();let mut remaining=chosen;let mut prompts=0;
+        loop {prompts+=1;assert!(prompts<=3,"bounded unsigned choice must terminate");let PromptInput::ChooseNumber(number)=&input else{panic!("number prompt required")};let chunk=remaining.min(i32::MAX as u32);assert!(chunk>=number.min as u32);assert!(chunk<=number.max as u32);remaining-=chunk;
+            let open=ManabrewOpenPrompt{prompt_id:prompts,deciding_player:PlayerId::from_index(0),decision_hash:1,source_card_id:None,source_card:None,input,binding};let action=game.manabrew_response_action(&open,PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision{chosen_number:Some(chunk as i32)})).unwrap();
+            match action {ManabrewResponseAction::Continue{input:next,binding:next_binding}=>{input=next;binding=next_binding;},ManabrewResponseAction::Dispatch(command)=>{assert_eq!(remaining,0,"unsigned residual cannot be discarded");let wire=serde_json::to_value(command).unwrap();assert_eq!(wire,serde_json::json!({"type":"number_choice","value":chosen}));let decoded:UiCommand=serde_json::from_value(wire).unwrap();let mut backend=WasmGame::new();let replay=backend.command_to_replay_answer(&context(min,max),decoded).unwrap();assert!(matches!(replay,ReplayDecisionAnswer::Number(value) if value==chosen));break;},_=>panic!("number choice must preserve its command family")}
+        }
+    }
+    #[test] fn bounded_number_control(){let _g=crate::test_id_counter_guard();exercise(2,9,7);}
+    #[test] fn optional_unsigned_numbers_reach_storage_maximum(){let _g=crate::test_id_counter_guard();for chosen in [i32::MAX as u32+1,2*(i32::MAX as u32),u32::MAX]{exercise(0,u32::MAX,chosen);}}
+    #[test] fn required_unsigned_numbers_retain_minimum(){let _g=crate::test_id_counter_guard();for chosen in [i32::MAX as u32+1,u32::MAX]{exercise(chosen,chosen,chosen);}}
 }

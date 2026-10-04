@@ -180,7 +180,7 @@ fn execute_source_counter_removal(
         };
         if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         let mut selected_total = 0u32;
-        let mut removed_total = 0u32;
+        let mut removed_total = 0u64;
         let mut outcomes = Vec::new();
         for (counter_type, requested) in selections {
             if selected_total >= to_remove { break; }
@@ -192,7 +192,7 @@ fn execute_source_counter_removal(
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             let removed = u32::try_from(outcome.count_or_zero()).map_err(|_| ExecutionError::InternalError(
                 "counter-removal outcome has an invalid count".into()))?;
-            removed_total = removed_total.checked_add(removed).ok_or_else(|| ExecutionError::InternalError(
+            removed_total = removed_total.checked_add(u64::from(removed)).ok_or_else(|| ExecutionError::InternalError(
                 "counter-removal total exceeds the supported count range".into()))?;
             // Replacements can change the physical amount. The chosen budget
             // counts authored actions, while the returned result counts removals.
@@ -201,7 +201,7 @@ fn execute_source_counter_removal(
         }
         if selected_total != to_remove { return Err(ExecutionError::Impossible(
             "counter-removal selection did not fulfill the chosen amount".into())); }
-        let count = i32::try_from(removed_total).map_err(|_| ExecutionError::InternalError(
+        let count = i64::try_from(removed_total).map_err(|_| ExecutionError::InternalError(
             "counter-removal total exceeds the supported outcome range".into()))?;
         let mut outcome = EffectOutcome::aggregate(outcomes);
         outcome.set_value(crate::effect::OutcomeValue::Count(count));
@@ -366,13 +366,13 @@ mod mixed_source_removal_replacement_tests {
         let expected_other = if mode == 2 { 1 } else if mode == 3 { 0 } else { 2 };
         assert_eq!(game.counter_count(source, charge), expected_charge);
         assert_eq!(game.counter_count(source, other), expected_other);
-        assert_eq!(outcome.count_or_zero(), (5 - expected_charge - expected_other) as i32);
+        assert_eq!(outcome.count_or_zero(), (5 - expected_charge - expected_other) as i64);
         assert_eq!(outcome.events_of_type::<crate::events::MarkersChangedEvent>().count(), if mode == 2 { 2 } else { usize::from(mode == 3) });
         assert_eq!(outcome.events_of_type::<crate::events::LifeGainEvent>().count(), if mode == 1 { 2 } else { 0 });
         assert_eq!(game.player(alice).unwrap().life, if mode == 1 { 24 } else { 20 });
         assert!(shields.iter().all(|shield| game.effect_store.replacement_effects.get_effect(*shield).is_none()));
         let next = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
-        assert_eq!(next.count_or_zero(), (expected_charge + expected_other) as i32);
+        assert_eq!(next.count_or_zero(), (expected_charge + expected_other) as i64);
         assert_eq!(game.counter_count(source, charge), 0);
         assert_eq!(game.counter_count(source, other), 0);
         assert_eq!(next.events_of_type::<crate::events::MarkersChangedEvent>().count(), if mode == 3 { 1 } else { 2 });
@@ -506,7 +506,7 @@ mod distributed_removal_owner_tests {
                 let mut remaining=ctx.max_total;let mut chosen=Vec::new();
                 for kind in [CounterType::Charge,CounterType::PlusOnePlusOne] {
                     let available=ctx.available_counters.iter().find(|(k,_)|*k==kind).map(|(_,n)|*n).unwrap_or(0);
-                    let count=remaining.min(available);if count>0{chosen.push((kind,count));remaining-=count;}
+                    let count=available.min(u32::try_from(remaining).unwrap_or(u32::MAX));if count>0{chosen.push((kind,count));remaining-=u64::from(count);}
                 }chosen
             }
         }

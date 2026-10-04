@@ -837,7 +837,7 @@ mod surviving_level_parent_gameplay_tests {
             let outcome = crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx).unwrap();
             let gain = if active { 2 } else { 1 };
             assert_eq!(game.player(alice).unwrap().life, 20 + gain, "mode={mode}");
-            assert_eq!(outcome.count_or_zero(), gain);
+            assert_eq!(outcome.count_or_zero(), i64::from(gain));
             assert_eq!(outcome.events.len(), 1);
         }
     }

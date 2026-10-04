@@ -203,6 +203,13 @@ pub trait TriggerMatcher:
     /// `true` if this trigger should fire for the given event.
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool;
 
+    /// Lossless shared model of this native matcher, including every qualifier.
+    /// Callbacks or unrepresented field combinations return None and remain an
+    /// explicit codec error. Display text is not a semantic reconstruction.
+    fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
+        None
+    }
+
     /// Superset of event kinds this matcher can return true for.
     ///
     /// Returning `None` keeps the matcher in the wildcard bucket. Implementors

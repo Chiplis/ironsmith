@@ -87,3 +87,20 @@ pub(crate) fn remove_moved_counters(
         .with_provenance(ctx.provenance);
     remove_counters::execute_counter_removal_event(game, ctx, event)
 }
+
+/// Bind the two endpoint roles by position, retaining empty assignments for
+/// illegal targets. Equal filters do not make these the same target role.
+fn assigned_counter_transfer_pair(ctx: &ExecutionContext) -> Option<(ObjectId, ObjectId)> {
+    if ctx.target_assignments.is_empty() {
+        if !ctx.announced_target_assignments.is_empty() { return None; }
+        return ctx.resolve_two_object_targets();
+    }
+    let endpoint = |index: usize| {
+        let assignment = ctx.target_assignments.get(index)?;
+        if assignment.range.is_empty() { return None; }
+        match ctx.targets.get(assignment.range.start)? {
+            crate::effects::ResolvedTarget::Object(id) => Some(*id), _ => None,
+        }
+    };
+    endpoint(0).zip(endpoint(1))
+}

@@ -3,6 +3,7 @@ use crate::ids::{ObjectId, PlayerId};
 
 /// Stable identifier for a provenance graph node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
 pub struct ProvNodeId(u64);
 
 impl ProvNodeId {
@@ -13,6 +14,8 @@ impl ProvNodeId {
 
 /// Semantic type of a provenance graph node.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialization", serde(deny_unknown_fields))]
 pub enum ProvenanceNodeKind {
     RootEvent {
         kind: EventKind,
@@ -33,6 +36,8 @@ pub enum ProvenanceNodeKind {
 
 /// One node in the provenance graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialization", serde(deny_unknown_fields))]
 pub struct ProvenanceNode {
     pub id: ProvNodeId,
     pub parent: Option<ProvNodeId>,
@@ -45,6 +50,7 @@ pub struct ProvenanceGraph {
     next_id: u64,
     nodes: im::Vector<ProvenanceNode>,
 }
+
 
 impl ProvenanceGraph {
     pub fn new() -> Self {

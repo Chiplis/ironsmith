@@ -470,7 +470,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                     visit(fixed);
                 }
             }
-            SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to })
+            SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to })
                 | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { from, to, .. }) => {
                 visit(from);

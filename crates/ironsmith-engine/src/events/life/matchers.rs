@@ -35,6 +35,7 @@ impl WouldGainLifeMatcher {
 }
 
 impl ReplacementMatcher for WouldGainLifeMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::LifeGain {
             return false;
@@ -86,6 +87,7 @@ impl WouldLoseLifeMatcher {
 }
 
 impl ReplacementMatcher for WouldLoseLifeMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::LifeLoss {
             return false;

@@ -54,6 +54,7 @@ impl GameEventType for PlayerLosesGameEvent {
 pub struct WouldLoseGameMatcher;
 
 impl ReplacementMatcher for WouldLoseGameMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         event
             .as_any()

@@ -114,6 +114,7 @@ pub fn is_blitz_death_draw_ability(ability: &crate::ability::Ability) -> bool {
 
 /// Which method is being used to cast a spell.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum CastingMethod {
     #[default]
     Normal,

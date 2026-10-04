@@ -187,6 +187,8 @@ enum PaymentQueryContext {
     #[default]
     Root,
     ContinuousCheckedRoot,
+    ProposedSpellRoot(ObjectId),
+    ProposedSpellCheckedRoot(ObjectId),
 }
 
 /// Owned by a single immutable priority snapshot. Completed queries are reused
@@ -299,6 +301,43 @@ pub(crate) fn with_checked_query<T>(root: &GameState, checked: &GameState, compu
         let previous = (session.active_root, session.active_context);
         session.active_root = Some(checked as *const GameState as usize);
         session.active_context = PaymentQueryContext::ContinuousCheckedRoot;
+        Some(previous)
+    });
+    struct Restore(Option<(Option<usize>, PaymentQueryContext)>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            if let Some((root, context)) = self.0 {
+                SESSION.with(|slot| {
+                    if let Some(session) = slot.borrow_mut().as_mut() {
+                        session.active_root = root;
+                        session.active_context = context;
+                    }
+                });
+            }
+        }
+    }
+    let _restore = Restore(previous);
+    compute()
+}
+
+/// The casting boundary changes only this proposed spell's zone to Stack.
+/// Bind that deterministic view separately from root and continuous-check
+/// queries. Other hypothetical games remain outside the resumable session.
+pub(super) fn with_proposed_spell<T>(
+    root: &GameState, proposed: &GameState, spell: ObjectId, compute: impl FnOnce() -> T,
+) -> T {
+    let previous = SESSION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let session = slot.as_mut()?;
+        if session.active_root != Some(root as *const GameState as usize) { return None; }
+        let context = match session.active_context {
+            PaymentQueryContext::Root => PaymentQueryContext::ProposedSpellRoot(spell),
+            PaymentQueryContext::ContinuousCheckedRoot => PaymentQueryContext::ProposedSpellCheckedRoot(spell),
+            _ => return None,
+        };
+        let previous = (session.active_root, session.active_context);
+        session.active_root = Some(proposed as *const GameState as usize);
+        session.active_context = context;
         Some(previous)
     });
     struct Restore(Option<(Option<usize>, PaymentQueryContext)>);

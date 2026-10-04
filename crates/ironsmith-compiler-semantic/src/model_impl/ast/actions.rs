@@ -2264,8 +2264,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("distributed_across_all", distributed_across_all)
                 .field("all_of_them", all_of_them)
                 .finish(),
-            Self::Counters(CounterActionAst::MoveAllCounters { from, to }) => f
+            Self::Counters(CounterActionAst::MoveAllCounters { from, to, remove_from_source }) => f
                 .debug_struct("MoveAllCounters")
+                .field("remove_from_source", remove_from_source)
                 .field("from", from)
                 .field("to", to)
                 .finish(),

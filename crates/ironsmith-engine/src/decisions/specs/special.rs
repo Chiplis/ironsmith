@@ -520,9 +520,9 @@ pub struct CounterRemovalSpec {
     /// The permanent or player to remove counters from.
     pub target: Target,
     /// Minimum total counters that must be removed.
-    pub min_total: u32,
+    pub min_total: u64,
     /// Maximum total counters that can be removed.
-    pub max_total: u32,
+    pub max_total: u64,
     /// Available counters: (counter_type, count_available).
     pub available_counters: Vec<(CounterType, u32)>,
 }
@@ -565,16 +565,24 @@ impl CounterRemovalSpec {
         max_total: u32,
         available_counters: Vec<(CounterType, u32)>,
     ) -> Self {
-        Self {
-            source,
-            target,
-            min_total: 0,
-            max_total,
-            available_counters,
-        }
+        Self::for_target_wide(source, target, u64::from(max_total), available_counters)
+    }
+
+    pub fn for_target_wide(
+        source: ObjectId,
+        target: Target,
+        max_total: u64,
+        available_counters: Vec<(CounterType, u32)>,
+    ) -> Self {
+        Self { source, target, min_total: 0, max_total, available_counters }
     }
 
     pub fn with_min_total(mut self, min_total: u32) -> Self {
+        self.min_total = u64::from(min_total).min(self.max_total);
+        self
+    }
+
+    pub fn with_min_total_wide(mut self, min_total: u64) -> Self {
         self.min_total = min_total.min(self.max_total);
         self
     }
@@ -611,10 +619,10 @@ impl DecisionSpec for CounterRemovalSpec {
                     if remaining == 0 {
                         break;
                     }
-                    let to_remove = (*available).min(remaining);
+                    let to_remove = (*available).min(u32::try_from(remaining).unwrap_or(u32::MAX));
                     if to_remove > 0 {
                         selections.push((*counter_type, to_remove));
-                        remaining -= to_remove;
+                        remaining -= u64::from(to_remove);
                     }
                 }
                 selections
@@ -635,7 +643,7 @@ impl DecisionSpec for CounterRemovalSpec {
         }
         .unwrap_or_else(|| "Unknown".to_string());
 
-        DecisionContext::Counters(CountersContext::new(
+        DecisionContext::Counters(CountersContext::new_wide(
             player,
             Some(self.source),
             self.target,

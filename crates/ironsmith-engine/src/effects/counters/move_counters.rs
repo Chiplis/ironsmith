@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
+use crate::effects::helpers::{resolve_objects_for_effect, resolve_bounded_nonnegative_u32};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -21,7 +21,6 @@ impl EffectExecutor for MoveCountersEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
-            let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
 
             // Targeted moves read the two resolved targets; untargeted moves
             // (graft: this permanent onto the entering creature, CR 702.58a)
@@ -30,7 +29,7 @@ impl EffectExecutor for MoveCountersEffect {
                 matches!(spec.base(), ChooseSpec::Source | ChooseSpec::Tagged(_))
             };
             let target_pair = if !is_reference(&self.from) && !is_reference(&self.to) {
-                ctx.resolve_two_object_targets()
+                super::assigned_counter_transfer_pair(ctx)
             } else {
                 let from = match self.from.base() {
                     ChooseSpec::Source => vec![ctx.source],
@@ -60,7 +59,17 @@ impl EffectExecutor for MoveCountersEffect {
                 .and_then(|obj| obj.counters.get(&self.counter_type).copied())
                 .unwrap_or(0);
 
-            let to_move = count.min(available);
+            let to_move = match &self.count {
+                ironsmith_core::effect::CounterMoveAmount::Exact(value) => resolve_bounded_nonnegative_u32(game, value, ctx, available)?,
+                ironsmith_core::effect::CounterMoveAmount::AnyNumber => {
+                    let spec = crate::decisions::NumberSpec::up_to(ctx.source, available,
+                        format!("Choose how many {} counters to move", self.counter_type.description()));
+                    let chosen = crate::decisions::make_decision_with_fallback(game, &mut ctx.decision_maker,
+                        ctx.controller, Some(ctx.source), spec, crate::decision::FallbackStrategy::Maximum);
+                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    chosen
+                }
+            }.min(available);
 
             if to_move == 0 {
                 return Ok(EffectOutcome::count(0));
@@ -77,7 +86,7 @@ impl EffectExecutor for MoveCountersEffect {
                 return Ok(EffectOutcome::count(0));
             }
             outcome = EffectOutcome::aggregate([outcome, placed]);
-            outcome.set_value(crate::effect::OutcomeValue::Count(to_move as i32));
+            outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(to_move)));
 
             Ok(outcome)
         })();
@@ -297,7 +306,7 @@ mod move_removal_replacement_owner_tests {
         let previous_destination_count=game.counter_count(destination,kind);
         let moved=match owner{0=>2,1=>3,_=>1};
         let next=crate::effects::execute_effect(&mut game,&effect,&mut ctx).unwrap();
-        assert_eq!(next.count_or_zero(),moved as i32);
+        assert_eq!(next.count_or_zero(),moved as i64);
         assert_eq!(game.counter_count(source,kind),3-moved);
         assert_eq!(game.counter_count(destination,kind),previous_destination_count+moved);
         assert_eq!(next.events_of_type::<crate::events::MarkersChangedEvent>().count(),2);
@@ -415,7 +424,7 @@ mod phased_move_owner_parity_tests {
         impl crate::decision::DecisionMaker for Choices {
             fn decide_counters(&mut self, _game: &GameState, ctx: &crate::decisions::context::CountersContext) -> Vec<(crate::object::CounterType, u32)> {
                 self.0 += 1;
-                vec![(crate::object::CounterType::Charge, ctx.max_total.min(1))]
+                vec![(crate::object::CounterType::Charge, u32::try_from(ctx.max_total.min(1)).unwrap())]
             }
         }
         let mut choices = Choices(0);
@@ -486,7 +495,7 @@ mod move_component_application_tests {
         // CR 122.5 decomposes the instruction into removal and placement.
         // Replacing one component does not rewrite the other's authored quantity.
         assert_eq!(game.counter_count(destination, CounterType::Charge), 2 * budget);
-        assert_eq!(out.count_or_zero(), budget as i32);
+        assert_eq!(out.count_or_zero(), budget as i64);
         assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
         assert!(game.effect_store.replacement_effects.get_effect(put_shield).is_none());
         let markers = out.events_of_type::<crate::events::MarkersChangedEvent>().collect::<Vec<_>>();
@@ -523,7 +532,7 @@ mod move_component_application_tests {
         assert_eq!(game.counter_count(source, CounterType::Charge), 3);
         assert_eq!(game.counter_count(destination, CounterType::Charge), budget);
         assert_eq!(game.player(PlayerId::from_index(0)).unwrap().life, 22);
-        assert_eq!(out.count_or_zero(), budget as i32);
+        assert_eq!(out.count_or_zero(), budget as i64);
         assert_eq!(out.events_of_type::<crate::events::LifeGainEvent>().count(), 1);
         assert_eq!(out.events_of_type::<crate::events::MarkersChangedEvent>().count(), 1);
         assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
@@ -574,4 +583,95 @@ mod move_component_application_tests {
     #[test] fn fixed_move_propagates_removal_payload_failure() { error(0); }
     #[test] fn all_move_propagates_removal_payload_failure() { error(1); }
     #[test] fn one_move_propagates_removal_payload_failure() { error(2); }
+}
+
+#[cfg(test)]
+mod chosen_counter_move_amount_tests {
+    use super::*;
+    use crate::object::CounterType;
+    struct Answers { chosen: u32, pause: bool, pending: bool, calls: usize, bounds: Vec<(u32,u32)> }
+    impl crate::decision::DecisionMaker for Answers {
+        fn decide_number(&mut self, _game: &GameState, ctx: &crate::decisions::context::NumberContext) -> u32 {
+            self.calls += 1; self.bounds.push((ctx.min,ctx.max)); self.pending=self.pause; self.chosen
+        }
+        fn awaiting_choice(&self) -> bool {self.pending}
+    }
+    fn setup(available:u32) -> (GameState,crate::ids::ObjectId,crate::ids::ObjectId,crate::effect::Effect) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=crate::ids::PlayerId::from_index(0);
+        let definition=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Chosen counter transfer")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let from=game.create_object_from_definition(&definition,alice,crate::zone::Zone::Battlefield);
+        let to=game.create_object_from_definition(&definition,alice,crate::zone::Zone::Battlefield);
+        game.object_mut(from).unwrap().counters.insert(CounterType::Charge,available);
+        let effect=crate::effect::Effect::new(MoveCountersEffect::any_number(CounterType::Charge,ChooseSpec::Source,ChooseSpec::SpecificObject(to)));
+        (game,from,to,effect)
+    }
+    fn run(game:&mut GameState,source:crate::ids::ObjectId,effect:&crate::effect::Effect,answers:&mut Answers)->EffectOutcome {
+        let mut ctx=ExecutionContext::new(source,crate::ids::PlayerId::from_index(0),answers);
+        crate::effects::execute_effect(game,effect,&mut ctx).unwrap()
+    }
+    #[test]
+    fn any_number_move_chooses_zero_subset_or_all() {
+        for chosen in [0,1,4] {
+            let (mut game,from,to,effect)=setup(4);
+            let mut answers=Answers{chosen,pause:false,pending:false,calls:0,bounds:vec![]};
+            let out=run(&mut game,from,&effect,&mut answers);
+            assert_eq!(answers.bounds,vec![(0,4)]);
+            assert_eq!(game.counter_count(from,CounterType::Charge),4-chosen);
+            assert_eq!(game.counter_count(to,CounterType::Charge),chosen);
+            assert_eq!(out.count_or_zero(),chosen as i64);
+            assert_eq!(out.events_of_type::<crate::events::MarkersChangedEvent>().count(),if chosen==0{0}else{2});
+        }
+    }
+    #[test]
+    fn any_number_move_pending_choice_keeps_both_endpoints_and_shield() {
+        let (mut game,from,to,effect)=setup(4);
+        let shield=game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(from,crate::ids::PlayerId::from_index(0),
+            crate::events::counters::matchers::WouldPutCountersMatcher::any(),crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Multiply(2))));
+        let mut answers=Answers{chosen:1,pause:true,pending:false,calls:0,bounds:vec![]};
+        let out=run(&mut game,from,&effect,&mut answers);
+        assert!(answers.pending);assert!(out.events.is_empty());
+        assert_eq!(game.counter_count(from,CounterType::Charge),4);assert_eq!(game.counter_count(to,CounterType::Charge),0);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+        answers.pause=false;answers.pending=false;
+        let out=run(&mut game,from,&effect,&mut answers);
+        assert_eq!(answers.calls,2);assert_eq!(out.count_or_zero(),1);
+        assert_eq!(game.counter_count(from,CounterType::Charge),3);assert_eq!(game.counter_count(to,CounterType::Charge),2);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        assert_eq!(out.events_of_type::<crate::events::MarkersChangedEvent>().count(),2);
+    }
+    #[test]
+    fn any_number_choice_bound_preserves_unsigned_available_counter_count() {
+        let (mut game,from,to,effect)=setup(u32::MAX);
+        let mut answers=Answers{chosen:1,pause:false,pending:false,calls:0,bounds:vec![]};
+        run(&mut game,from,&effect,&mut answers);
+        assert_eq!(answers.bounds,vec![(0,u32::MAX)]);
+        assert_eq!(game.counter_count(from,CounterType::Charge),u32::MAX-1);assert_eq!(game.counter_count(to,CounterType::Charge),1);
+    }
+    #[test]
+    fn any_number_move_absent_endpoint_does_not_ask_or_consume() {
+        for destination in [false,true] {
+            let (mut game,from,to,effect)=setup(4);game.phase_out(if destination{to}else{from});
+            let mut answers=Answers{chosen:1,pause:false,pending:false,calls:0,bounds:vec![]};
+            let out=run(&mut game,from,&effect,&mut answers);
+            assert_eq!(answers.calls,0);assert!(out.events.is_empty());
+            assert_eq!(game.counter_count(from,CounterType::Charge),4);assert_eq!(game.counter_count(to,CounterType::Charge),0);
+        }
+    }
+
+    #[test]
+    fn any_number_all_preserves_unsigned_quantity_in_movement_receipt() {
+        for available in [i32::MAX as u32, i32::MAX as u32 + 1, u32::MAX] {
+            let (mut game,from,to,effect)=setup(available);
+            let mut answers=Answers{chosen:available,pause:false,pending:false,calls:0,bounds:vec![]};
+            let out=run(&mut game,from,&effect,&mut answers);
+            assert_eq!(answers.bounds,vec![(0,available)]);
+            assert_eq!(game.counter_count(from,CounterType::Charge),0);
+            assert_eq!(game.counter_count(to,CounterType::Charge),available);
+            assert_eq!(out.events_of_type::<crate::events::MarkersChangedEvent>().count(),2);
+            assert_eq!(i64::from(out.count_or_zero()),i64::from(available),
+                "movement receipt must preserve the unsigned quantity actually chosen and moved");
+        }
+    }
 }

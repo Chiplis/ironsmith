@@ -383,7 +383,7 @@ impl EffectExecutor for EachPlayerScryEffect {
             apply_scry_arrangement(game, arrangement);
         }
 
-        let total = arrangements.iter().map(|a| a.total_looked as i32).sum();
+        let total: i64 = arrangements.iter().map(|a| a.total_looked as i64).sum();
         let events = arrangements.into_iter().map(|arrangement| {
             TriggerEvent::new_with_provenance(
                 KeywordActionEvent::new(

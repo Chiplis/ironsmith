@@ -192,6 +192,7 @@ impl WouldKeywordActionMatcher {
 }
 
 impl ReplacementMatcher for WouldKeywordActionMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::KeywordAction {
             return false;

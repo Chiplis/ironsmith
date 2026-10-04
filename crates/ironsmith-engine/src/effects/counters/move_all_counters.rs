@@ -89,22 +89,26 @@ impl EffectExecutor for MoveAllCountersEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
-            let contextual_target_pair = if ctx.target_assignments.is_empty()
-                && !ctx.targets.is_empty()
-                && matches!(self.from.base(), ChooseSpec::Object(_))
+            let contextual_target_pair = if matches!(self.from.base(), ChooseSpec::Object(_))
                 && matches!(self.to.base(), ChooseSpec::Object(_))
-                && !self.from.is_target()
-                && !self.to.is_target()
+                && crate::game_loop::requires_target_selection(&self.from)
+                && crate::game_loop::requires_target_selection(&self.to)
             {
-                match ctx.resolve_two_object_targets() {
+                match super::assigned_counter_transfer_pair(ctx) {
                     Some((from_id, to_id)) => {
-                        let filter_ctx = ctx.filter_context(game);
+                        // Endpoint relations refer to preceding roles, never
+                        // to the complete set containing the candidate itself.
+                        let mut filter_ctx = ctx.filter_context(game);
+                        filter_ctx.target_objects.clear();
                         let from_valid = match self.from.base() {
                             ChooseSpec::Object(filter) => game
                                 .object(from_id)
                                 .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
                             _ => false,
                         };
+                        if let Some(from) = game.object(from_id) {
+                            filter_ctx.target_objects.push(crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(from, game));
+                        }
                         let to_valid = match self.to.base() {
                             ChooseSpec::Object(filter) => game
                                 .object(to_id)
@@ -215,11 +219,15 @@ impl EffectExecutor for MoveAllCountersEffect {
                             .find(|snapshot| snapshot.object_id == *id).or_else(|| snapshots.first()))
                     }).is_none_or(|snapshot| snapshot.zone == obj.zone)
                 })
-            }).and_then(|id| game.object(id).map(|object| (id, object.zone)));
+            }).and_then(|id| game.object(id).map(|object| (id, object.zone)))
+                .filter(|_| self.remove_from_source);
+            if self.remove_from_source && live_source.is_none() {
+                return Ok(EffectOutcome::count(0));
+            }
             if live_source.is_some_and(|(id, _)| id == to_id) {
                 return Ok(EffectOutcome::count(0));
             }
-            let mut total_moved = 0u32;
+            let mut total_moved = 0i64;
             let mut outcome = EffectOutcome::count(0);
             for (counter_type, count) in counters_to_move {
                 let budget = if let Some((from_id, zone)) = live_source {
@@ -240,13 +248,14 @@ impl EffectExecutor for MoveAllCountersEffect {
                     count
                 };
                 if budget == 0 { continue; }
-                total_moved = total_moved.saturating_add(budget);
+                total_moved = total_moved.checked_add(i64::from(budget)).ok_or_else(||
+                    ExecutionError::InternalError("counter movement total exceeds the supported wide count range".into()))?;
                 let placed = super::put_moved_counters(game, ctx, to_id, counter_type, budget)?;
                 if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
                 outcome = EffectOutcome::aggregate([outcome, placed]);
             }
 
-            outcome.set_value(crate::effect::OutcomeValue::Count(total_moved as i32));
+            outcome.set_value(crate::effect::OutcomeValue::Count(total_moved));
             Ok(outcome)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
@@ -414,6 +423,39 @@ mod tests {
     }
 
     #[test]
+    fn another_recipient_is_relative_to_source_endpoint_only() {
+        for same_endpoint in [false, true] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let from = create_creature_with_multiple_counters(&mut game, "From", alice);
+            let to = if same_endpoint { from } else {
+                create_creature_with_multiple_counters(&mut game, "To", alice)
+            };
+            if !same_endpoint { game.object_mut(to).unwrap().counters.clear(); }
+            let mut recipient = crate::target::ObjectFilter::creature();
+            recipient.other = true;
+            let effect = MoveAllCountersEffect::new(
+                ChooseSpec::Target(Box::new(ChooseSpec::Object(crate::target::ObjectFilter::creature()))),
+                ChooseSpec::Target(Box::new(ChooseSpec::Object(recipient))));
+            let source = game.new_object_id();
+            let mut ctx = ExecutionContext::new_default(source, alice)
+                .with_targets(vec![ResolvedTarget::Object(from), ResolvedTarget::Object(to)]);
+            let out = effect.execute(&mut game, &mut ctx).unwrap();
+            if same_endpoint {
+                assert_eq!(out.status, crate::effect::OutcomeStatus::TargetInvalid);
+                assert_eq!(game.counter_count(from, CounterType::PlusOnePlusOne), 3);
+                assert_eq!(game.counter_count(from, CounterType::MinusOneMinusOne), 2);
+            } else {
+                assert_eq!(out.count_or_zero(), 5);
+                assert_eq!(game.counter_count(from, CounterType::PlusOnePlusOne), 0);
+                assert_eq!(game.counter_count(from, CounterType::MinusOneMinusOne), 0);
+                assert_eq!(game.counter_count(to, CounterType::PlusOnePlusOne), 3);
+                assert_eq!(game.counter_count(to, CounterType::MinusOneMinusOne), 2);
+            }
+        }
+    }
+
+    #[test]
     fn test_move_all_counters_clone_box() {
         let effect = MoveAllCountersEffect::between_creatures();
         let cloned = effect.clone_box();
@@ -435,7 +477,7 @@ mod tests {
             .expect("move source");
 
         let effect =
-            MoveAllCountersEffect::new(ChooseSpec::Source, ChooseSpec::SpecificObject(target));
+            MoveAllCountersEffect::put_referenced(ChooseSpec::Source, ChooseSpec::SpecificObject(target));
         let mut ctx = ExecutionContext::new_default(source, alice).with_source_snapshot(snapshot);
         let outcome = effect.execute(&mut game, &mut ctx).expect("move counters");
 
@@ -469,7 +511,7 @@ mod tests {
         let tag = crate::tag::TagKey::from("triggering");
         let mut tagged_snapshot = snapshot.clone();
         tagged_snapshot.object_id = graveyard_id;
-        let effect = MoveAllCountersEffect::new(
+        let effect = MoveAllCountersEffect::put_referenced(
             ChooseSpec::Tagged(tag.clone()),
             ChooseSpec::SpecificObject(target),
         );
@@ -505,7 +547,7 @@ mod same_object_snapshot_placement_tests {
         assert_ne!(old, current);
         snapshot.object_id = current;
         let tag = crate::tag::TagKey::from("departed-counter-source");
-        let effect = crate::effect::Effect::new(MoveAllCountersEffect::new(
+        let effect = crate::effect::Effect::new(MoveAllCountersEffect::put_referenced(
             ChooseSpec::Tagged(tag.clone()), ChooseSpec::SpecificObject(current)));
         let mut ctx = ExecutionContext::new_default(old, alice);
         ctx.set_tagged_objects(tag, vec![snapshot]);
@@ -514,5 +556,63 @@ mod same_object_snapshot_placement_tests {
             "placing former counters from a departed snapshot is not a same-object move");
         assert_eq!(outcome.count_or_zero(), 2);
         assert_eq!(outcome.events_of_type::<crate::events::MarkersChangedEvent>().count(), 1);
+    }
+}
+
+#[cfg(test)]
+mod actual_move_departed_source_tests {
+    use super::*;
+    fn departed(tagged: bool) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Actual counter move source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let destination = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        game.object_mut(source).unwrap().counters.insert(CounterType::Charge, 2);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        let departed = game.move_object_by_effect(source, crate::zone::Zone::Graveyard).unwrap();
+        assert_ne!(source, departed);
+        let tag = crate::tag::TagKey::from("actual-departed-move-source");
+        let from = if tagged { ChooseSpec::Tagged(tag.clone()) } else { ChooseSpec::Source };
+        let effect = crate::effect::Effect::new(MoveAllCountersEffect::new(from, ChooseSpec::SpecificObject(destination)));
+        let mut ctx = ExecutionContext::new_default(source, alice).with_source_snapshot(snapshot.clone());
+        if tagged { ctx.set_tagged_objects(tag, vec![snapshot]); }
+        let result = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(game.counter_count(destination, CounterType::Charge), 0,
+            "an instruction to move counters cannot silently become placement of historical counters when its source leaves the expected zone");
+        assert_eq!(result.count_or_zero(), 0);
+        assert_eq!(result.events_of_type::<crate::events::MarkersChangedEvent>().count(), 0);
+        assert_eq!(game.counter_count(departed, CounterType::Charge), 0);
+    }
+    #[test] fn source_move_does_not_copy_departed_counters() { departed(false); }
+    #[test] fn tagged_move_does_not_copy_departed_counters() { departed(true); }
+}
+
+#[cfg(test)]
+mod explicit_counter_collection_placement_tests {
+    use super::*;
+    #[test]
+    fn placement_from_live_reference_keeps_source_and_applies_placement_replacements() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Referenced counter collection")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let target = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        game.object_mut(source).unwrap().counters.insert(CounterType::Charge, 2);
+        game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+            source, alice, crate::events::counters::matchers::WouldPutCountersMatcher::any(),
+            crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Multiply(2))));
+        let effect = crate::effect::Effect::new(MoveAllCountersEffect::put_referenced(
+            ChooseSpec::Source, ChooseSpec::SpecificObject(target)));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let out = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(game.counter_count(source, CounterType::Charge), 2);
+        assert_eq!(game.counter_count(target, CounterType::Charge), 4);
+        let markers = out.events_of_type::<crate::events::MarkersChangedEvent>().collect::<Vec<_>>();
+        assert_eq!(markers.len(), 1);
+        assert!(markers[0].is_added());
+        assert_eq!(markers[0].amount, 4);
     }
 }

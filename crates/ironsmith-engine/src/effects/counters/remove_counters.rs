@@ -1,7 +1,7 @@
 //! Remove counters effect implementation.
 
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
+use crate::effects::helpers::{resolve_single_object_for_effect, resolve_bounded_nonnegative_u32};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -59,7 +59,7 @@ impl EffectExecutor for RemoveCountersEffect {
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
             let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-            let requested = resolve_value(game, &self.count, ctx)?.max(0) as u32;
+            let requested = resolve_bounded_nonnegative_u32(game, &self.count, ctx, game.counter_count(target_id, self.counter_type))?;
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             let event = crate::events::Event::remove_counters(target_id, self.counter_type, requested)
                 .with_provenance(ctx.provenance);
@@ -83,7 +83,7 @@ impl EffectExecutor for RemoveCountersEffect {
 
     fn cost_description(&self) -> Option<String> {
         if matches!(self.target.base(), ChooseSpec::Source)
-            && let Value::Fixed(count) = self.count
+            && let Some(count) = self.count.constant_integer()
         {
             let label = self.counter_type.description();
             return Some(if count == 1 {
@@ -156,8 +156,7 @@ fn commit_counter_removal(
                 ExecutionError::InternalError("counter-removal replacement returned an incompatible event".into()))?;
             if game.object(removal.target).is_none() { return Ok(EffectOutcome::target_invalid()); }
             let actual = removal.count.min(game.counter_count(removal.target, removal.counter_type));
-            let count = i32::try_from(actual).map_err(|_| ExecutionError::InternalError(
-                "counter-removal outcome exceeds the supported count range".into()))?;
+            let count = i64::from(actual);
             match game.remove_counters(removal.target, removal.counter_type, removal.count,
                 Some(ctx.source), Some(ctx.controller)) {
                 Some((removed, mut notification)) => {
@@ -209,14 +208,11 @@ impl CostExecutableEffect for RemoveCountersEffect {
                 "remove-counters cost supports only source".to_string(),
             ));
         }
-        let count = match self.count {
-            Value::Fixed(count) => count.max(0) as u32,
-            _ => {
-                return Err(crate::effects::CostValidationError::Other(
-                    "dynamic remove-counters cost is unsupported".to_string(),
-                ));
-            }
-        };
+        let quantity = self.count.constant_integer().ok_or_else(||
+            crate::effects::CostValidationError::Other(
+                "remove-counters cost requires representable constant integer arithmetic".to_string()))?;
+        let count = u32::try_from(quantity.max(0)).map_err(|_| crate::effects::CostValidationError::Other(
+            "remove-counters cost exceeds the unsigned counter range".to_string()))?;
         if game.counter_count(source, self.counter_type) < count {
             return Err(crate::effects::CostValidationError::Other(
                 "not enough counters".to_string(),
@@ -544,4 +540,97 @@ mod removed_counter_removal_quantity_tests {
     fn counter_removal_set_to_zero_preserves_later_increase() {
         check_removed_operation(crate::replacement::EventModification::SetTo(0));
     }
+}
+
+#[cfg(test)]
+mod unsigned_counter_quantity_contract_tests {
+    use super::*;
+    use crate::card::{CardBuilder,PowerToughness};
+    use crate::effect::{Effect,EffectId};
+    use crate::effects::{execute_effect,PutCountersEffect,DealDamageEffect};
+    use crate::ids::{CardId,PlayerId};
+    use crate::object::CounterType;
+    use crate::types::CardType;
+    use crate::zone::Zone;
+    fn fixture()->(GameState,crate::ids::ObjectId,PlayerId) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let alice=PlayerId::from_index(0);
+        let source=game.create_object_from_card(&CardBuilder::new(CardId::new(),"Unsigned counter source").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1,1)).build(),alice,Zone::Battlefield);
+        (game,source,alice)
+    }
+    #[test]
+    fn unsigned_literal_constructor_preserves_full_counter_quantity() {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let (mut game,source,alice)=fixture();let mut ctx=ExecutionContext::new_default(source,alice);
+            let outcome=PutCountersEffect::new(CounterType::Charge,amount,ChooseSpec::SpecificObject(source)).execute(&mut game,&mut ctx).unwrap();
+            assert_eq!(game.counter_count(source,CounterType::Charge),amount,"unsigned literal must preserve its value");
+            assert_eq!(outcome.as_count(),Some(i64::from(amount)));
+        }
+    }
+    #[test]
+    fn unsigned_prior_counter_receipt_drives_full_removal() {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let (mut game,source,alice)=fixture();let mut ctx=ExecutionContext::new_default(source,alice);ctx.x_value=Some(amount);
+            let placed=execute_effect(&mut game,&Effect::with_id(21,Effect::new(PutCountersEffect::new(CounterType::Charge,Value::X,ChooseSpec::SpecificObject(source)))),&mut ctx).unwrap();
+            assert_eq!(placed.as_count(),Some(i64::from(amount)));
+            let removed=RemoveCountersEffect::new(CounterType::Charge,Value::EffectValue(EffectId(21)),ChooseSpec::SpecificObject(source)).execute(&mut game,&mut ctx).expect("representable unsigned removal must resolve");
+            assert_eq!(game.counter_count(source,CounterType::Charge),0);
+            assert_eq!(removed.as_count(),Some(i64::from(amount)));
+        }
+    }
+    #[test]
+    fn source_counter_prevention_consumes_full_unsigned_follow_up_quantity() {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let (mut game,shield,alice)=fixture();
+            let attacker=game.create_object_from_card(&CardBuilder::new(CardId::new(),"Damage source").card_types(vec![CardType::Artifact]).build(),alice,Zone::Battlefield);
+            game.object_mut(shield).unwrap().counters.insert(CounterType::Charge,amount);
+            game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(shield,alice,crate::events::DamageToSelfMatcher::new(),
+                crate::replacement::ReplacementAction::PreventDamageByRemovingSourceCounters {counter_type:CounterType::Charge}));
+            let mut ctx=ExecutionContext::new_default(attacker,alice);ctx.x_value=Some(amount);
+            let outcome=DealDamageEffect::new(Value::X,ChooseSpec::SpecificObject(shield)).execute(&mut game,&mut ctx).unwrap();
+            assert_eq!(game.damage_on(shield),0,"shield prevents the unsigned amount");
+            assert_eq!(game.counter_count(shield,CounterType::Charge),0,"prevention consumes exactly its unsigned counter budget");
+            assert_eq!(outcome.as_count(),Some(0),"prevented original damage remains zero");
+            let next=DealDamageEffect::new(1,ChooseSpec::SpecificObject(shield)).execute(&mut game,&mut ctx).unwrap();
+            assert_eq!(game.damage_on(shield),1,"spent shield cannot prevent the next damage");
+            assert_eq!(next.as_count(),Some(1));
+        }
+    }
+}
+
+#[cfg(test)]
+mod wide_bounded_counter_request_tests {
+    use super::*;
+    use crate::effect::{Effect,EffectId};
+    use crate::effects::{execute_effect,MoveAllCountersEffect,MoveCountersEffect};
+    use crate::object::CounterType;
+    use crate::ids::{CardId,PlayerId};
+    use crate::types::CardType;
+    use crate::zone::Zone;
+    fn object(game:&mut GameState,alice:PlayerId)->crate::ids::ObjectId {
+        let card=crate::card::CardBuilder::new(CardId::new(),"Bounded quantity recipient").card_types(vec![CardType::Artifact]).build();
+        game.create_object_from_card(&card,alice,Zone::Battlefield)
+    }
+    fn check(movement:bool) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let alice=PlayerId::from_index(0);
+        let source=object(&mut game,alice);let collected=object(&mut game,alice);let following=object(&mut game,alice);
+        for kind in [CounterType::Charge,CounterType::PlusOnePlusOne] {game.object_mut(source).unwrap().counters.insert(kind,u32::MAX);}
+        let mut ctx=ExecutionContext::new_default(source,alice);
+        let out=execute_effect(&mut game,&Effect::with_id(27,Effect::new(MoveAllCountersEffect::new(ChooseSpec::SpecificObject(source),ChooseSpec::SpecificObject(collected)))),&mut ctx).unwrap();
+        assert_eq!(out.as_count(),Some(2*i64::from(u32::MAX)),"real mixed movement produces a wider-than-event receipt");
+        let amount=Value::EffectValue(EffectId(27));
+        // The targeted transfer consumes its announced pair, as real casting does.
+        if movement {ctx.targets=vec![crate::effects::ResolvedTarget::Object(collected),crate::effects::ResolvedTarget::Object(following)];}
+        let out=if movement {
+            MoveCountersEffect::new(CounterType::Charge,amount,ChooseSpec::SpecificObject(collected),ChooseSpec::SpecificObject(following)).execute(&mut game,&mut ctx)
+        } else {
+            RemoveCountersEffect::new(CounterType::Charge,amount,ChooseSpec::SpecificObject(collected)).execute(&mut game,&mut ctx)
+        }.expect("available counters bound a realizable operation even when requested total exceeds one event range");
+        assert_eq!(out.as_count(),Some(i64::from(u32::MAX)));
+        assert_eq!(game.counter_count(collected,CounterType::Charge),0);
+        assert_eq!(game.counter_count(collected,CounterType::PlusOnePlusOne),u32::MAX,"unrequested kind remains untouched");
+        assert_eq!(game.counter_count(following,CounterType::Charge),if movement {u32::MAX} else {0});
+        for kind in [CounterType::Charge,CounterType::PlusOnePlusOne] {assert_eq!(game.counter_count(source,kind),0);}
+    }
+    #[test] fn wide_actual_prior_total_removes_all_available_counters() {check(false);}
+    #[test] fn wide_actual_prior_total_moves_all_available_counters() {check(true);}
 }

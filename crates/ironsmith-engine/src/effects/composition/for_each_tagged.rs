@@ -13,7 +13,7 @@ use crate::ids::PlayerId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 
-fn correlated_player_count(outcomes: &[EffectOutcome]) -> i32 {
+fn correlated_player_count(outcomes: &[EffectOutcome]) -> i64 {
     let summary = EffectOutcome::aggregate_summing_counts(outcomes.iter().cloned());
     let count = summary.as_count().unwrap_or(0);
     if count != 0 {
@@ -21,7 +21,7 @@ fn correlated_player_count(outcomes: &[EffectOutcome]) -> i32 {
     }
     // Accepting an optional action is itself the correlated "did" result,
     // even when a hidden-zone search legally finds no card.
-    i32::from(
+    i64::from(
         summary
             .execution_facts
             .iter()
@@ -150,7 +150,7 @@ impl SimultaneousEffectProposal for ForEachTaggedProposal {
 
         let result = (|| {
             let mut outcomes = Vec::new();
-            let mut player_counts: Vec<(PlayerId, i32)> = Vec::new();
+            let mut player_counts: Vec<(PlayerId, i64)> = Vec::new();
             for (index, ((snapshot, iterated_player), proposals)) in snapshots
                 .iter()
                 .zip(iterated_players.into_iter())
@@ -301,7 +301,7 @@ impl EffectExecutor for ForEachTaggedEffect {
         }
 
         let mut outcomes = Vec::new();
-        let mut player_counts: Vec<(PlayerId, i32)> = Vec::new();
+        let mut player_counts: Vec<(PlayerId, i64)> = Vec::new();
 
         let it_tag = TagKey::from("__it__");
         let previous_tag = TagKey::from(ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG);

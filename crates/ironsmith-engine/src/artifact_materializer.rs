@@ -1544,11 +1544,10 @@ pub fn encode_runtime_static_ability(
     ability: crate::static_abilities::StaticAbility,
 ) -> Result<wire::WireStaticAbility, RuntimePayloadEncodingError> {
     ability
-        .compiled_model()
+        .canonical_model()
         .ok_or(RuntimePayloadEncodingError::MissingModel {
             component: "static ability",
         })?
-        .clone()
         .try_map(
             encode_runtime_trigger,
             encode_runtime_effect,

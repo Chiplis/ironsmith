@@ -95,7 +95,7 @@ impl OutcomeStatus {
 pub enum OutcomeValue {
     #[default]
     None,
-    Count(i32),
+    Count(i64),
     ManaAdded(Vec<ManaSymbol>),
     Objects(Vec<ObjectId>),
     MonstrosityApplied {
@@ -105,15 +105,15 @@ pub enum OutcomeValue {
 }
 
 impl OutcomeValue {
-    pub fn as_count(&self) -> Option<i32> {
+    pub fn as_count(&self) -> Option<i64> {
         match self {
             Self::Count(n) => Some(*n),
-            Self::ManaAdded(mana) => Some(mana.len() as i32),
+            Self::ManaAdded(mana) => Some(mana.len() as i64),
             _ => None,
         }
     }
 
-    pub fn count_or_zero(&self) -> i32 {
+    pub fn count_or_zero(&self) -> i64 {
         self.as_count().unwrap_or(0)
     }
 
@@ -322,7 +322,7 @@ pub enum ExecutionFact {
     ChosenObjectMemory(Vec<OutcomeObjectMemory>),
     AffectedObjectMemory(Vec<OutcomeObjectMemory>),
     PlayerAffectedObjectMemory(Vec<(PlayerId, Vec<OutcomeObjectMemory>)>),
-    PlayerCounts(Vec<(PlayerId, i32)>),
+    PlayerCounts(Vec<(PlayerId, i64)>),
     ExcessDamageDealt,
     ExcessDamage(u32),
     ChosenOptions(Vec<usize>),
@@ -406,6 +406,7 @@ pub struct EffectOutcome {
     #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
     pub instruction_result: Option<Box<EffectOutcome>>,
 }
+
 
 impl EffectOutcome {
     fn object_memory_from_ids(game: &GameState, objects: &[ObjectId]) -> Vec<OutcomeObjectMemory> {
@@ -609,8 +610,8 @@ impl EffectOutcome {
     }
 
     /// Create a count outcome (no events).
-    pub fn count(n: i32) -> Self {
-        Self::from_value(OutcomeValue::Count(n))
+    pub fn count(n: impl Into<i64>) -> Self {
+        Self::from_value(OutcomeValue::Count(n.into()))
     }
 
     pub fn mana_added(mana: Vec<ManaSymbol>) -> Self {
@@ -751,7 +752,7 @@ impl EffectOutcome {
     }
 
     /// Record per-player counts produced by an iterating effect.
-    pub fn with_player_counts(self, counts: Vec<(PlayerId, i32)>) -> Self {
+    pub fn with_player_counts(self, counts: Vec<(PlayerId, i64)>) -> Self {
         if counts.is_empty() {
             self
         } else {
@@ -837,12 +838,12 @@ impl EffectOutcome {
     }
 
     /// Get the count value, or zero if not a Count result.
-    pub fn count_or_zero(&self) -> i32 {
+    pub fn count_or_zero(&self) -> i64 {
         self.value.count_or_zero()
     }
 
     /// Get the count value if this is a Count result.
-    pub fn as_count(&self) -> Option<i32> {
+    pub fn as_count(&self) -> Option<i64> {
         self.value.as_count()
     }
 
@@ -896,7 +897,7 @@ impl EffectOutcome {
     }
 
     /// Access per-player count partitions captured during execution.
-    pub fn player_counts(&self) -> Option<&[(PlayerId, i32)]> {
+    pub fn player_counts(&self) -> Option<&[(PlayerId, i64)]> {
         self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::PlayerCounts(counts) => Some(counts.as_slice()),
             _ => None,
@@ -1157,7 +1158,7 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                         .any(|memory| prior_result_memory_matches_filter(memory, &surface.filter))
                 })
             }
-            Self::Value(cmp) => outcome.as_count().is_some_and(|n| cmp.evaluate(n)),
+            Self::Value(cmp) => outcome.as_count().is_some_and(|n| cmp.evaluate_wide(n)),
             Self::Chosen => {
                 !outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::Declined))
             }

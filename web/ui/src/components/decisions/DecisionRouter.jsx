@@ -6,6 +6,7 @@ import BlockersDecision from "./BlockersDecision";
 import SelectObjectsDecision from "./SelectObjectsDecision";
 import SelectOptionsDecision from "./SelectOptionsDecision";
 import NumberDecision from "./NumberDecision";
+import SelectCountersDecision from "./SelectCountersDecision";
 import TextInputDecision from "./TextInputDecision";
 import ManaPaymentDecision from "./ManaPaymentDecision";
 import { useGame } from "@/context/GameContext";
@@ -97,6 +98,8 @@ export default function DecisionRouter({
           toolbarSearchTarget={toolbarSearchTarget}
         />
       );
+    case "select_counters":
+      return <SelectCountersDecision key={key} decision={decision} canAct={canAct} inlineSubmit={inlineSubmit} onSubmitActionChange={onSubmitActionChange} hideDescription={hideDescription} layout={layout} />;
     case "number":
       return (
         <NumberDecision

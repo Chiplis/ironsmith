@@ -4134,6 +4134,7 @@ impl GameState {
             return None;
         }
 
+        let count_after = self.player(player_id)?.counter_count(counter_type);
         let event_provenance = self
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::MarkersChanged);
@@ -4146,7 +4147,7 @@ impl GameState {
                     removed,
                     source,
                     source_controller,
-                ),
+                ).with_count_after(count_after),
                 event_provenance,
             ),
         ))
@@ -5893,4 +5894,19 @@ mod lingering_departure_snapshot_tests {
                     && effect.duration == crate::effect::Until::EndOfTurn));
         }
     }
+}
+
+#[cfg(test)]
+mod player_removal_notification_public_contract_tests {
+
+use crate::{GameState,PlayerId,Zone,CardId,Effect};
+use crate::effects::{EffectContext,EnergyCountersEffect,PayEnergyEffect,PutCountersEffect,execute_effect};
+use crate::target::{PlayerFilter,ChooseSpec};
+use crate::object::CounterType;
+use crate::events::MarkersChangedEvent;
+fn setup()->(GameState,crate::ObjectId,PlayerId){let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let card=crate::cards::builders::CardDefinitionBuilder::new(CardId::new(),"Removal notification owner").card_types(vec![crate::types::CardType::Artifact]).build();let source=game.create_object_from_definition(&card,alice,Zone::Battlefield);(game,source,alice)}
+#[test] fn object_removal_event_snapshot_control(){let (mut game,source,alice)=setup();let mut ctx=EffectContext::new_default(source,alice);execute_effect(&mut game,&Effect::new(PutCountersEffect::new(CounterType::Charge,7,ChooseSpec::SpecificObject(source))),&mut ctx).unwrap();let (removed,event)=game.remove_counters(source,CounterType::Charge,3,Some(source),Some(alice)).unwrap();assert_eq!(removed,3);assert_eq!(game.counter_count(source,CounterType::Charge),4);let marker=event.downcast::<MarkersChangedEvent>().unwrap();assert_eq!(marker.amount,3);assert_eq!(marker.count_after,Some(4));}
+#[test] fn player_removal_event_preserves_actual_count_at_event_time(){let (mut game,source,alice)=setup();for kind in [CounterType::Energy,CounterType::Experience,CounterType::Poison,CounterType::Rad,CounterType::Named("ticket".into())]{game.add_player_counters_with_source(alice,kind,7,Some(source),Some(alice)).unwrap();let (removed,event)=game.remove_player_counters_with_source(alice,kind,3,Some(source),Some(alice)).unwrap();assert_eq!(removed,3);assert_eq!(game.player(alice).unwrap().counter_count(kind),4);let marker=event.downcast::<MarkersChangedEvent>().unwrap();assert_eq!(marker.amount,3);assert_eq!(marker.source,Some(source));assert_eq!(marker.count_after,Some(4),"known player count must be captured before subsequent events");game.add_player_counters_with_source(alice,kind,2,Some(source),Some(alice)).unwrap();assert_eq!(game.player(alice).unwrap().counter_count(kind),6);assert_eq!(marker.count_after,Some(4));}}
+#[test] fn energy_payment_notification_reports_zero_remaining(){let (mut game,source,alice)=setup();let mut ctx=EffectContext::new_default(source,alice);execute_effect(&mut game,&Effect::new(EnergyCountersEffect::you(u32::MAX)),&mut ctx).unwrap();let out=execute_effect(&mut game,&Effect::new(PayEnergyEffect::new(u32::MAX,ChooseSpec::Player(PlayerFilter::You))),&mut ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(u32::MAX)));assert_eq!(game.player(alice).unwrap().energy_counters,0);let marker=out.events.iter().find_map(|e|e.downcast::<MarkersChangedEvent>()).unwrap();assert_eq!(marker.amount,u32::MAX);assert_eq!(marker.count_after,Some(0),"actual removal outcome and notification must agree");}
+
 }

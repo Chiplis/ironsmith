@@ -3256,6 +3256,7 @@ pub struct ScopedPlayerControlEffect {
 
 /// A target for spells or abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum Target {
     Object(ObjectId),
     Player(PlayerId),
@@ -3263,6 +3264,8 @@ pub enum Target {
 
 /// A chosen target requirement bound to a range within the flattened target list.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
 pub struct TargetAssignment {
     pub spec: ChooseSpec,
     pub range: Range<usize>,
@@ -3270,6 +3273,7 @@ pub struct TargetAssignment {
 
 /// A division announced for one target requirement while a spell or ability is proposed.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub struct TargetDistribution {
     pub spec: ChooseSpec,
     /// Range of target slots whose announced amounts this division follows.
@@ -3382,6 +3386,7 @@ pub struct StackEntry {
     pub effect_outcomes:
         std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
 }
+
 
 /// A mana ability granted to a player until end of turn.
 ///

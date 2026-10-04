@@ -4,7 +4,7 @@ use crate::decision::FallbackStrategy;
 use crate::decisions::{NumberSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, ExecutionFact, Value};
 use crate::effects::executor_trait::CostValidationError;
-use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
+use crate::effects::helpers::{resolve_nonnegative_u32, resolve_player_from_spec};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::LifeLossEvent;
@@ -28,7 +28,7 @@ impl EffectExecutor for PayEnergyEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
-        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+        let amount = resolve_nonnegative_u32(game, &self.amount, ctx)?;
 
         if game
             .player(player_id)
@@ -41,7 +41,7 @@ impl EffectExecutor for PayEnergyEffect {
                 Some(ctx.controller),
             )
         {
-            return Ok(EffectOutcome::count(removed as i32).with_event(event));
+            return Ok(EffectOutcome::count(i64::from(removed)).with_event(event));
         }
 
         Ok(EffectOutcome::impossible())
@@ -88,9 +88,8 @@ impl CostExecutableEffect for PayEnergyEffect {
         let payer = resolve_player_from_spec(game, &self.player, &ctx).map_err(|_| {
             CostValidationError::Other("unable to resolve player for energy cost".to_string())
         })?;
-        let needed = resolve_value(game, &self.amount, &ctx)
-            .map_err(|_| CostValidationError::Other("unable to resolve energy amount".to_string()))?
-            .max(0) as u32;
+        let needed = resolve_nonnegative_u32(game, &self.amount, &ctx)
+            .map_err(|_| CostValidationError::Other("unable to resolve energy amount".to_string()))?;
         let Some(player) = game.player(payer) else {
             return Err(CostValidationError::Other(
                 "unable to resolve payer".to_string(),
@@ -157,7 +156,7 @@ impl EffectExecutor for PayAnyEnergyEffect {
             Some(ctx.source),
             Some(ctx.controller),
         ) {
-            return Ok(EffectOutcome::count(removed as i32)
+            return Ok(EffectOutcome::count(i64::from(removed))
                 .with_event(event)
                 .with_execution_fact(ExecutionFact::ChosenNumber(removed)));
         }
@@ -420,4 +419,34 @@ mod tests {
         assert_eq!(outcome.as_count(), Some(0));
         assert_eq!(game.player(alice).expect("alice exists").life, 20);
     }
+}
+
+#[cfg(test)]
+mod unsigned_energy_payment_public_contract_tests {
+use crate::{GameState,PlayerId,Zone,CardId,Effect};
+use crate::effects::{EffectContext,EnergyCountersEffect,PayEnergyEffect,CostExecutableEffect,execute_effect};
+use crate::effect::{Value,EffectId};
+use crate::target::{PlayerFilter,ChooseSpec};
+fn seeded(amount:u32)->(GameState,crate::ObjectId,PlayerId){
+ let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);
+ let definition=crate::cards::builders::CardDefinitionBuilder::new(CardId::new(),"Energy payment result owner").card_types(vec![crate::types::CardType::Artifact]).build();let source=game.create_object_from_definition(&definition,alice,Zone::Battlefield);
+ let mut ctx=EffectContext::new_default(source,alice);let out=execute_effect(&mut game,&Effect::new(EnergyCountersEffect::you(amount)),&mut ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(amount)));assert_eq!(game.player(alice).unwrap().energy_counters,amount);(game,source,alice)
+}
+fn dynamic(amount:u32){
+ let (mut game,source,alice)=seeded(amount);let mut ctx=EffectContext::new_default(source,alice);
+ // Store a second actual completed instruction's result, rather than a fake receipt.
+ let other=PlayerId::from_index(1);let out=execute_effect(&mut game,&Effect::new(EnergyCountersEffect::new(amount,PlayerFilter::Specific(other))),&mut ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(amount)));ctx.store_outcome(EffectId(31),out);
+ let pay=Effect::new(PayEnergyEffect::new(Value::EffectValue(EffectId(31)),ChooseSpec::Player(PlayerFilter::You)));let out=execute_effect(&mut game,&pay,&mut ctx).expect("actual unsigned receipt must remain usable for energy payment");assert_eq!(out.as_count(),Some(i64::from(amount)));assert_eq!(game.player(alice).unwrap().energy_counters,0);assert_eq!(game.player(other).unwrap().energy_counters,amount);ctx.store_outcome(EffectId(57),out);let follow=execute_effect(&mut game,&Effect::new(EnergyCountersEffect::new(Value::EffectValue(EffectId(57)),PlayerFilter::You)),&mut ctx).unwrap();assert_eq!(follow.as_count(),Some(i64::from(amount)));assert_eq!(game.player(alice).unwrap().energy_counters,amount);
+}
+#[test]fn bounded_energy_receipt_control(){dynamic(i32::MAX as u32);}
+#[test]fn unsigned_energy_receipt_above_signed_boundary(){dynamic(i32::MAX as u32+1);}
+#[test]fn unsigned_energy_receipt_at_storage_maximum(){dynamic(u32::MAX);}
+#[test]fn unsigned_static_energy_cost_is_legal_with_actual_available_energy(){let (game,source,alice)=seeded(u32::MAX);let pay=PayEnergyEffect::new(u32::MAX,ChooseSpec::Player(PlayerFilter::You));assert!(CostExecutableEffect::can_execute_as_cost(&pay,&game,source,alice).is_ok(),"natural energy cost must use available unsigned energy");}
+
+#[test]fn unsigned_chosen_energy_payment_reports_actual_removed_count(){
+ let (mut game,source,alice)=seeded(u32::MAX);let mut ctx=EffectContext::new_default(source,alice);
+ let effect=Effect::new(crate::effects::PayAnyEnergyEffect::new(ChooseSpec::Player(PlayerFilter::You),u32::MAX));let out=execute_effect(&mut game,&effect,&mut ctx).expect("forced unsigned quantity is payable");
+ assert_eq!(game.player(alice).unwrap().energy_counters,0,"actual unsigned energy was removed");assert_eq!(out.as_count(),Some(i64::from(u32::MAX)),"receipt must report actual unsigned removal without signed wrap");
+}
+
 }

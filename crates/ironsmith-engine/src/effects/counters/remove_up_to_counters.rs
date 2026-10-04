@@ -3,7 +3,7 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::{NumberSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
+use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value_wide};
 use crate::effects::{EffectExecutor, RemoveAnyCountersAmongEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -89,10 +89,13 @@ fn execute_up_to_counter_removal(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-        let max_count = resolve_value(game, &effect.max_count, ctx)?.max(0) as u32;
+        let max_count = resolve_value_wide(game, &effect.max_count, ctx)?.max(0) as u64;
         if let ChooseSpec::All(filter) = effect.target.unhinted() {
+            if max_count > u64::from(u32::MAX) {
+                return super::remove_any_counters_among::execute_wide_counter_removal_among(game, ctx, filter.clone(), Some(effect.counter_type), max_count, true);
+            }
             let distributed =
-                RemoveAnyCountersAmongEffect::dynamic(0, max_count, filter.clone(), false)
+                RemoveAnyCountersAmongEffect::dynamic(0, u32::try_from(max_count).expect("bounded branch"), filter.clone(), false)
                     .with_counter_type(Some(effect.counter_type));
             return distributed.execute(game, ctx);
         }
@@ -105,7 +108,7 @@ fn execute_up_to_counter_removal(
             .unwrap_or(0);
 
         // The actual maximum we can remove is the lesser of max_count and available
-        let actual_max = max_count.min(available);
+        let actual_max = u32::try_from(max_count.min(u64::from(available))).expect("bounded by per-kind storage");
 
         // If there's nothing to remove, return 0
         if actual_max == 0 {

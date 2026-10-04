@@ -72,16 +72,16 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             Mode::Continuous(layer) => layer.filter_context(),
         }
     }
-    pub(super) fn x(&self) -> Result<i32, ExecutionError> {
+    pub(super) fn x(&self) -> Result<i64, ExecutionError> {
         match self.mode {
             Mode::Execution(ctx) => ctx
                 .x_value
-                .map(|x| x as i32)
+                .map(i64::from)
                 .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".into())),
             Mode::Continuous(_) => Ok(0),
         }
     }
-    pub(super) fn division_by_zero(&self, inner: &Value) -> Result<i32, ExecutionError> {
+    pub(super) fn division_by_zero<T>(&self, inner: &Value) -> Result<T, ExecutionError> {
         match self.mode {
             Mode::Execution(_) => Err(ExecutionError::UnresolvableValue(
                 "division by zero in dynamic value".into(),
@@ -265,8 +265,8 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         filter: &ObjectFilter,
         property: NumericProperty,
         reduction: Reduction,
-    ) -> i32 {
-        let mut result: Option<i32> = None;
+    ) -> i64 {
+        let mut result: Option<i64> = None;
         let mut visit = |number: Option<i32>| {
             let number = match reduction {
                 Reduction::Sum => number.unwrap_or(0),
@@ -278,6 +278,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                     None => return,
                 },
             };
+            let number = i64::from(number);
             result = Some(match (result, reduction) {
                 (Some(total), Reduction::Sum) => total + number,
                 (Some(min), Reduction::Min) => min.min(number),
@@ -578,12 +579,12 @@ impl EvaluationContext<'_, '_> {
 }
 
 impl EvaluationContext<'_, '_> {
-    pub(super) fn unavailable(
+    pub(super) fn unavailable<T>(
         &self,
         value: &Value,
         execution_reason: &str,
         layer_reason: &str,
-    ) -> Result<i32, ExecutionError> {
+    ) -> Result<T, ExecutionError> {
         match self.mode {
             Mode::Execution(_) => Err(ExecutionError::UnresolvableValue(execution_reason.into())),
             Mode::Continuous(layer) => layer.unsupported(value, layer_reason),
@@ -621,11 +622,9 @@ impl EvaluationContext<'_, '_> {
             Mode::Continuous(layer) => layer.controlled_object_count(filter, player),
         }
     }
-    pub(super) fn add_spell_metric(&self, total: i32, value: i32) -> i32 {
-        match self.mode {
-            Mode::Execution(_) => total.saturating_add(value),
-            Mode::Continuous(_) => total + value,
-        }
+    pub(super) fn add_spell_metric(&self, total: i64, value: i64) -> Result<i64, ExecutionError> {
+        total.checked_add(value).ok_or_else(|| ExecutionError::UnresolvableValue(
+            "spell metric total exceeds the wide value range".into()))
     }
     pub(super) fn tagged_spell_id(
         &self,

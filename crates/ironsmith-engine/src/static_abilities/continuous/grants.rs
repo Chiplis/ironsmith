@@ -33,6 +33,11 @@ impl ControlAttachedPermanent {
 }
 
 impl StaticAbilityKind for ControlAttachedPermanent {
+    fn canonical_model(&self) -> Option<crate::static_abilities::CompiledStaticAbility> {
+        let Self { display } = self;
+        Some(crate::static_abilities::CompiledStaticAbility::control_attached_permanent(display.clone()))
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ControlAttachedPermanent
     }

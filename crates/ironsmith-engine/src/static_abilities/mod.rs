@@ -48,7 +48,7 @@ mod continuous;
 mod cost_modifiers;
 mod id;
 mod keywords;
-mod misc;
+pub(crate) mod misc;
 mod model_interpreter;
 mod protection;
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
@@ -333,6 +333,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         None
+    }
+
+    /// Exact shared model of an immutable native ability's current fields.
+    /// Unrepresented semantics remain an explicit codec boundary; neither id
+    /// nor display text alone is sufficient to reconstruct a parameterized model.
+    fn canonical_model(&self) -> Option<CompiledStaticAbility> {
+        self.compiled_model().cloned()
     }
 
     fn intrinsic_starting_counter_rule(&self) -> Option<ironsmith_core::IntrinsicStartingCounter> {
@@ -1701,6 +1708,10 @@ impl StaticAbility {
 
     pub fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         self.0.compiled_model()
+    }
+
+    pub fn canonical_model(&self) -> Option<CompiledStaticAbility> {
+        self.0.canonical_model()
     }
 
     pub fn intrinsic_starting_counter_rule(&self) -> Option<ironsmith_core::IntrinsicStartingCounter> {

@@ -38,6 +38,16 @@ impl PlayerRollsDieTrigger {
 }
 
 impl TriggerMatcher for PlayerRollsDieTrigger {
+    fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
+        let Self { player, one_or_more, attraction_visit_only } = self;
+        if *attraction_visit_only {
+            if *one_or_more { return None; }
+            Some(ironsmith_core::trigger_model::Trigger::player_rolls_to_visit_attractions(player.clone()))
+        } else {
+            Some(ironsmith_core::trigger_model::Trigger::player_rolls_die_with_surface(player.clone(), *one_or_more))
+        }
+    }
+
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::DieRolled {
             return false;

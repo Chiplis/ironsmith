@@ -225,7 +225,7 @@ mod removed_life_operation_tests {
             let outcome = execute_life_change(&mut game, &mut ctx, event).unwrap();
             let amount = if count == 2 { 3 } else { 0 };
             assert_eq!(outcome.value, OutcomeValue::Count(amount));
-            assert_eq!(game.player(alice).unwrap().life, before + if gain { amount } else { -amount });
+            assert_eq!(i64::from(game.player(alice).unwrap().life), i64::from(before) + if gain { amount } else { -amount });
             assert_eq!(outcome.events.len(), usize::from(count == 2));
             assert!(game.take_pending_trigger_events().is_empty(), "owner returns notifications for its caller to publish");
             assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_some(), count != 2,

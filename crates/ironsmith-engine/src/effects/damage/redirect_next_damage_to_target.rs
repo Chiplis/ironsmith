@@ -60,6 +60,7 @@ impl DamageToSpecificTargetMatcher {
 }
 
 impl ReplacementMatcher for DamageToSpecificTargetMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, _ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;

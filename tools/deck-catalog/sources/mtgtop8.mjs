@@ -20,6 +20,8 @@ const FORMAT_CODES = {
 
 function decodeHtml(value) {
   return text(value)
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
     .replace(/&amp;/g, "&")
     .replace(/&#39;|&apos;/g, "'")
     .replace(/&quot;/g, '"')
@@ -206,5 +208,25 @@ export async function fetchText(url, {
   if (remaining) await sleep(remaining);
   const response = await fetchImpl(url, { signal, headers: { "user-agent": "IronSmith deck catalog sync" } });
   if (!response?.ok) throw new Error(`MTGTop8 request failed (${response?.status || "unknown"})`);
-  return response.text();
+  return decodeResponseBody(new Uint8Array(await response.arrayBuffer()), response.headers?.get?.("content-type"));
+}
+
+// MTGTop8 serves ISO-8859-1 ("Lórien Revealed" arrives as a lone 0xF3 byte),
+// which `response.text()` would decode as UTF-8 and turn into U+FFFD. Decode
+// with the declared charset instead: the Content-Type header, else a <meta>
+// charset in the page, else UTF-8.
+export function decodeResponseBody(bytes, contentType = "") {
+  const declared = charsetOf(contentType)
+    || charsetOf(new TextDecoder("latin1").decode(bytes.subarray(0, 2048)).match(/<meta[^>]+charset=[^>]*>/i)?.[0]);
+  let decoder;
+  try {
+    decoder = new TextDecoder(declared || "utf-8");
+  } catch {
+    decoder = new TextDecoder("utf-8");
+  }
+  return decoder.decode(bytes);
+}
+
+function charsetOf(value) {
+  return String(value || "").match(/charset\s*=\s*["']?([\w.:-]+)/i)?.[1] || "";
 }

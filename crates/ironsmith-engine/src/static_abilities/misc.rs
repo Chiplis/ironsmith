@@ -57,7 +57,7 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use ironsmith_core::{DamagedBySource, TagKey, ValueSurfaceHint};
 
-mod replacements_and_rules;
+pub(crate) mod replacements_and_rules;
 pub use replacements_and_rules::*;
 
 /// Counters on this object survive zone changes except when the destination
@@ -1496,6 +1496,7 @@ impl StaticAbilityKind for EntersTappedUnlessTwoOrMoreOpponents {
 struct ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher {
+
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
         matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
     }
@@ -1536,6 +1537,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLands
 struct ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher {
+
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
         matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
     }
@@ -1576,6 +1578,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLand
 struct ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher {
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1616,6 +1619,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLands
 struct ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher {
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1648,6 +1652,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatc
 struct ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher {
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1777,6 +1782,7 @@ struct ThisWouldEnterTappedUnlessConditionMatcher {
 }
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessConditionMatcher {
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1901,6 +1907,7 @@ impl StaticAbilityKind for Bloodthirst {
 struct ThisWouldEnterWithBloodthirstMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -2359,6 +2366,7 @@ struct ThisWouldEnterWithCountersIfConditionMatcher {
 }
 
 impl ReplacementMatcher for ThisWouldEnterWithCountersIfConditionMatcher {
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -3190,6 +3198,7 @@ struct PreventableCombatDamageToOrByObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableCombatDamageToOrByObjectMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if self.to.matches_prepared_event(event, ctx) {
             return true;
@@ -3297,6 +3306,7 @@ struct PreventableAnyDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableAnyDamageToObjectMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         self.combat.matches_prepared_event(event, ctx) || self.noncombat.matches_prepared_event(event, ctx)
     }
@@ -4463,6 +4473,7 @@ impl ConditionalWouldEnterBattlefieldMatcher {
 }
 
 impl ReplacementMatcher for ConditionalWouldEnterBattlefieldMatcher {
+
     fn applies_from_entering_source(&self) -> bool {
         self.enter_matcher.applies_from_entering_source()
     }

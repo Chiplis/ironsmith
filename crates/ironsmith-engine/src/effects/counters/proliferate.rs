@@ -268,7 +268,7 @@ impl EffectExecutor for ProliferateEffect {
 
                 proliferated_total += proliferated_count;
                 outcome = outcome.with_affected_objects(proliferated_permanents);
-                outcome.set_value(crate::effect::OutcomeValue::Count(proliferated_count));
+                outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(proliferated_count)));
                 Ok(outcome.with_event(TriggerEvent::new_with_provenance(
                     KeywordActionEvent::new(KeywordActionKind::Proliferate, ctx.controller, ctx.source, 1), ctx.provenance,
                 )))
@@ -297,7 +297,7 @@ impl EffectExecutor for ProliferateEffect {
                 } else { true }
             });
             outcome = outcome.with_affected_objects(affected);
-            outcome.set_value(crate::effect::OutcomeValue::Count(proliferated_total));
+            outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(proliferated_total)));
             Ok(outcome)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {

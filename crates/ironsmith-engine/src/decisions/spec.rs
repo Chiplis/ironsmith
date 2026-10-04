@@ -85,9 +85,9 @@ pub enum DecisionPrimitive {
     /// Select counters to remove (counter type + count pairs).
     SelectCounters {
         /// Minimum total counters to remove.
-        min_total: u32,
+        min_total: u64,
         /// Maximum total counters to remove
-        max_total: u32,
+        max_total: u64,
     },
 
     /// Partition objects into two groups (top/bottom for scry, library/graveyard for surveil).

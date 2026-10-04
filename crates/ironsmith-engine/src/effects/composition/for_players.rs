@@ -1454,11 +1454,11 @@ impl ForPlayersEffect {
             let iteration_outcome =
                 EffectOutcome::aggregate_summing_counts(player_outcomes.iter().cloned());
             let count = if self.stop_after_first_happened {
-                i32::from(iteration_outcome.something_happened())
+                i64::from(iteration_outcome.something_happened())
             } else {
                 iteration_outcome
                     .as_count()
-                    .unwrap_or_else(|| i32::from(iteration_outcome.something_happened()))
+                    .unwrap_or_else(|| i64::from(iteration_outcome.something_happened()))
             };
             player_counts.push((player_id, count));
             if let Some(memory) = iteration_outcome.affected_object_memory()
@@ -3589,7 +3589,7 @@ mod readonly_player_result_tag_contract_tests {
             ))],
         );
         let result = effect.execute(&mut game, &mut ctx).unwrap();
-        assert_eq!(result.count_or_zero(), expected.len() as i32);
+        assert_eq!(result.count_or_zero(), expected.len() as i64);
         assert_eq!(
             result.affected_object_memory().unwrap().len(),
             expected.len()

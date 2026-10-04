@@ -398,17 +398,17 @@ impl Cost {
     pub fn remove_counters(counter_type: CounterType, count: u32) -> Self {
         Self::validated_effect(crate::effect::Effect::remove_counters(
             counter_type,
-            count as i32,
+            count,
             crate::target::ChooseSpec::Source,
-        ))
+        )).with_model(ironsmith_core::Cost::RemoveCounters { counter_type, count })
     }
 
     /// Create an add counters cost.
     pub fn add_counters(counter_type: CounterType, count: u32) -> Self {
         Self::validated_effect(crate::effect::Effect::put_counters_on_source(
             counter_type,
-            count as i32,
-        ))
+            count,
+        )).with_model(ironsmith_core::Cost::AddCounters { counter_type, count })
     }
 
     /// Create an energy payment cost.

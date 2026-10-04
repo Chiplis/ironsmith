@@ -98,6 +98,7 @@ pub struct AttackerInfo {
 
 /// The target of an attack.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum AttackTarget {
     /// Attacking a player.
     Player(PlayerId),

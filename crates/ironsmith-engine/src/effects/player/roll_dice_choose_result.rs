@@ -126,7 +126,7 @@ impl EffectExecutor for RollDiceChooseResultEffect {
             })
             .collect::<Vec<_>>();
 
-        Ok(EffectOutcome::count(chosen.result as i32)
+        Ok(EffectOutcome::count(i64::from(chosen.result))
             .with_events(events)
             .with_execution_fact(ExecutionFact::ChosenNumber(chosen.result))
             .with_execution_fact(ExecutionFact::OtherNumber(other)))

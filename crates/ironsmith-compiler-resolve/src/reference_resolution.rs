@@ -1980,7 +1980,7 @@ fn advance_reference_frame_for_effect(
                         track_target_player(counter_source, frame);
                     }
                 }
-                SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to })
+                SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to, .. })
                 | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to })
                 | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { from, to, .. }) => {
                     if frame.auto_tag_object_targets {
@@ -7410,7 +7410,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_value(amount, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
-            SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to })
+            SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to })
                 | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { from, to, .. }) => {
                 bind_unresolved_it_in_target(from, seed_tag)

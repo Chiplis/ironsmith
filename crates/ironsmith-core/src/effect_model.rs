@@ -15,6 +15,19 @@ pub enum Comparison {
 }
 
 impl Comparison {
+    /// Compare a resolved count without narrowing it to the printed bound type.
+    pub fn evaluate_wide(&self, value: i64) -> bool {
+        match self {
+            Self::GreaterThan(n) => value > i64::from(*n),
+            Self::GreaterThanOrEqual(n) => value >= i64::from(*n),
+            Self::Equal(n) => value == i64::from(*n),
+            Self::OneOf(values) => values.iter().any(|n| value == i64::from(*n)),
+            Self::LessThan(n) => value < i64::from(*n),
+            Self::LessThanOrEqual(n) => value <= i64::from(*n),
+            Self::NotEqual(n) => value != i64::from(*n),
+            Self::BetweenInclusive(min,max) => value >= i64::from(*min) && value <= i64::from(*max),
+        }
+    }
     pub fn evaluate(&self, value: i32) -> bool {
         match self {
             Self::GreaterThan(n) => value > *n,

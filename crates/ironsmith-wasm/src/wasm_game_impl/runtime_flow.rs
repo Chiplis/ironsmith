@@ -1,3 +1,31 @@
+// Counter quantities are sparse: aggregate limits do not depend on pointer
+// width, and the selected kind order reaches the owning executor unchanged.
+fn validate_counter_allocations(
+    ctx: &ironsmith::decisions::context::CountersContext,
+    allocations: &[CounterAllocation],
+) -> Result<Vec<(ironsmith::object::CounterType, u32)>, String> {
+    let mut seen = HashSet::new();
+    let mut total = 0u64;
+    let mut selected = Vec::new();
+    for allocation in allocations {
+        if !seen.insert(allocation.index) {
+            return Err(format!("duplicate counter allocation index {}", allocation.index));
+        }
+        let (kind, available) = ctx.available_counters.get(allocation.index).copied()
+            .ok_or_else(|| format!("counter allocation index {} is out of range", allocation.index))?;
+        if allocation.count > available {
+            return Err(format!("cannot remove {} {} counters; only {available} available", allocation.count, kind.description()));
+        }
+        total = total.checked_add(u64::from(allocation.count))
+            .ok_or_else(|| "counter allocation aggregate overflow".to_string())?;
+        if allocation.count > 0 { selected.push((kind, allocation.count)); }
+    }
+    if total < ctx.min_total || total > ctx.max_total {
+        return Err(format!("counter allocation total {total} must be between {} and {}",ctx.min_total,ctx.max_total));
+    }
+    Ok(selected)
+}
+
 // Runner replay and ordinary effect replay share the same option contract.
 // Counts are mode points for weighted decisions; repeating a nonrepeatable
 // option must never stand in for selecting another legal mode.
@@ -1501,50 +1529,26 @@ impl WasmGame {
                 }
                 Ok(ReplayDecisionAnswer::Colors(selected))
             }
+            (DecisionContext::Counters(counters), UiCommand::SelectCounters { allocations }) => {
+                validate_counter_allocations(counters, &allocations)
+                    .map(ReplayDecisionAnswer::Counters)
+                    .map_err(|error| JsValue::from_str(&error))
+            }
             (DecisionContext::Counters(counters), UiCommand::SelectOptions { option_indices }) => {
-                let legal: Vec<usize> = counters
-                    .available_counters
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, (_, available))| *available > 0)
-                    .map(|(index, _)| index)
-                    .collect();
-                validate_option_selection(
-                    0,
-                    Some(counters.max_total as usize),
-                    &option_indices,
-                    &legal,
-                )?;
-
-                let mut counts: HashMap<usize, u32> = HashMap::new();
+                let mut allocations: Vec<CounterAllocation> = Vec::new();
+                let mut positions: HashMap<usize, usize> = HashMap::new();
                 for index in option_indices {
-                    *counts.entry(index).or_insert(0) += 1;
-                }
-
-                let mut selected: Vec<(ironsmith::object::CounterType, u32)> = Vec::new();
-                for index in 0..counters.available_counters.len() {
-                    let Some(chosen) = counts.get(&index).copied() else {
-                        continue;
-                    };
-                    let Some((counter_type, available)) =
-                        counters.available_counters.get(index).copied()
-                    else {
-                        continue;
-                    };
-                    if chosen > available {
-                        return Err(JsValue::from_str(&format!(
-                            "cannot remove {} of counter {} (only {} available)",
-                            chosen,
-                            counter_type.description(),
-                            available
-                        )));
-                    }
-                    if chosen > 0 {
-                        selected.push((counter_type, chosen));
+                    if let Some(position) = positions.get(&index).copied() {
+                        allocations[position].count = allocations[position].count.checked_add(1)
+                            .ok_or_else(|| JsValue::from_str("counter allocation exceeds per-kind range"))?;
+                    } else {
+                        positions.insert(index, allocations.len());
+                        allocations.push(CounterAllocation { index, count: 1 });
                     }
                 }
-
-                Ok(ReplayDecisionAnswer::Counters(selected))
+                validate_counter_allocations(counters, &allocations)
+                    .map(ReplayDecisionAnswer::Counters)
+                    .map_err(|error| JsValue::from_str(&error))
             }
             (
                 DecisionContext::Partition(partition),

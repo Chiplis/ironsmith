@@ -63,7 +63,7 @@ impl EffectExecutor for RollDieEffect {
             Some(i64::from(roll.result)),
             Some(format!("d{}", self.sides)),
         );
-        Ok(EffectOutcome::count(roll.result as i32)
+        Ok(EffectOutcome::count(i64::from(roll.result))
             .with_event(crate::triggers::TriggerEvent::new_with_provenance(
                 DieRolledEvent::new_with_natural_result(
                     player,
@@ -376,7 +376,7 @@ mod tests {
             &mut ctx,
         )
         .expect("die roll should resolve");
-        let rolled = outcome.as_count().expect("die roll should produce a count");
+        let rolled = i32::try_from(outcome.as_count().expect("die roll should produce a count")).expect("a d20 result fits the printed comparison-bound type");
 
         execute_effect(
             &mut game,
@@ -408,4 +408,50 @@ mod tests {
 
         assert_eq!(game.player(alice).unwrap().life, 23);
     }
+}
+
+#[cfg(test)]
+mod wide_die_result_receipt_tests {
+    use super::*;
+    use crate::effects::{execute_effect, PutCountersEffect};
+    use crate::effect::{Effect, EffectId, ExecutionFact, Value};
+    use crate::decision::DecisionMaker;
+    use crate::decisions::context::{BooleanContext, SelectOptionsContext};
+    use crate::ids::{CardId, PlayerId};
+    use crate::static_abilities::StaticAbility;
+    use crate::target::ChooseSpec;
+    use crate::object::CounterType;
+    use crate::zone::Zone;
+    struct ChooseDirection(usize);
+    impl DecisionMaker for ChooseDirection {
+        fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool { true }
+        fn decide_options(&mut self, _: &GameState, _: &SelectOptionsContext) -> Vec<usize> { vec![self.0] }
+    }
+    fn check(amount:u32, direction:usize, expected:u32, chosen_die:bool) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=PlayerId::from_index(0);
+        let definition=crate::CardDefinitionBuilder::new(CardId::from_raw(991701),"Numeric die modifier")
+            .with_ability(crate::ability::Ability::static_ability(StaticAbility::die_roll_result_adjustment(
+                PlayerFilter::You,1,amount,true,"Increase or decrease this result"))).build();
+        let source=game.create_object_from_definition(&definition,alice,Zone::Battlefield);
+        game.force_next_die_roll(5);
+        let mut dm=ChooseDirection(direction);
+        let mut ctx=ExecutionContext::new_default(source,alice).with_decision_maker(&mut dm);
+        let roll=if chosen_die { Effect::roll_dice_choose_result_with_die_text(1,6,PlayerFilter::You,None) }
+            else { Effect::roll_die(6,PlayerFilter::You) };
+        let outcome=execute_effect(&mut game,&Effect::with_id(17,roll),&mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life,19,"accepted modifier pays once");
+        assert!(game.turn_store.turn_history.die_roll_result_adjusted_this_turn(source),"one-shot turn use retained");
+        assert!(game.turn_store.turn_history.player_rolled_result_this_turn(alice,expected),"history must preserve selected direction and unsigned result");
+        assert!(outcome.execution_facts.iter().any(|fact|matches!(fact,ExecutionFact::ChosenNumber(n) if *n==expected)),"chosen-number fact must agree with modified result");
+        assert_eq!(outcome.as_count(),Some(i64::from(expected)),"instruction receipt must agree with modified result");
+        let following=execute_effect(&mut game,&Effect::new(PutCountersEffect::new(CounterType::Charge,
+            Value::EffectValue(EffectId(17)),ChooseSpec::SpecificObject(source))),&mut ctx).unwrap();
+        assert_eq!(game.counter_count(source,CounterType::Charge),expected,"following effect reads the full unsigned receipt");
+        assert_eq!(following.as_count(),Some(i64::from(expected)));
+    }
+    #[test] fn modified_die_receipt_and_following_effect_keep_unsigned_quantity() { check(i32::MAX as u32,0,i32::MAX as u32+5,false); }
+    #[test] fn chosen_die_receipt_and_following_effect_keep_unsigned_quantity() { check(i32::MAX as u32,0,i32::MAX as u32+5,true); }
+    #[test] fn increasing_by_unsigned_amount_preserves_selected_direction() { check(i32::MAX as u32+1,0,i32::MAX as u32+6,false); }
+    #[test] fn decreasing_by_unsigned_amount_preserves_selected_direction() { check(i32::MAX as u32+1,1,0,false); }
 }

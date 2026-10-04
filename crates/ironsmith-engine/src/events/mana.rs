@@ -12,6 +12,8 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::ObjectFilter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
 pub enum ManaProductionProvenance {
     #[default]
     Unknown,
@@ -155,6 +157,7 @@ pub mod matchers {
     }
 
     impl ReplacementMatcher for ManaProducedBySourceMatcher {
+
         fn may_match_event_kind(&self, kind: EventKind) -> bool {
             kind == EventKind::ManaAdded
         }
@@ -182,6 +185,8 @@ pub mod matchers {
             format!("If {} would produce mana", self.source_filter.description())
         }
     }
+
+
 }
 
 impl GameEventType for ManaAddedEvent {

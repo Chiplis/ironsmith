@@ -22,7 +22,7 @@ impl EffectExecutor for IncreaseSpeedEffect {
 
         Ok(EffectOutcome {
             status: OutcomeStatus::Succeeded,
-            value: crate::effect::OutcomeValue::Count(changed as i32),
+            value: crate::effect::OutcomeValue::Count(i64::from(changed)),
             events: Vec::new(),
             execution_facts: Vec::new(),
             instruction_result: None,
@@ -46,7 +46,7 @@ impl EffectExecutor for ReduceSpeedEffect {
 
         Ok(EffectOutcome {
             status: OutcomeStatus::Succeeded,
-            value: crate::effect::OutcomeValue::Count(changed as i32),
+            value: crate::effect::OutcomeValue::Count(i64::from(changed)),
             events: Vec::new(),
             execution_facts: Vec::new(),
             instruction_result: None,

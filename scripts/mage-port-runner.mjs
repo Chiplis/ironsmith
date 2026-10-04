@@ -42,6 +42,7 @@ import {
   playerName,
   zoneName,
 } from "./mage-port-runner/names.mjs";
+import { initializeLibraryFixtures, planInitialLibraryFixtures } from "./mage-port-runner/library-fixtures.mjs";
 
 let scryfallFaceCache = null;
 
@@ -71,9 +72,19 @@ async function createMagePortContext(fileSpec, testSpec, runtimePromise = null) 
   const game = existingGame ?? new runtime.wasmModule.WasmGame();
   try {
     const playerNames = playerNamesForTest(testSpec);
-    startEmptyMatch(game, {
+    const libraryRecords = planInitialLibraryFixtures(fileSpec, testSpec, {
+      playerIndex, cardName: name => engineCardNameForFixture(cardName(name)), numericValue,
+    });
+    const initialLibraryFixtureIds = libraryRecords.length > 0
+      ? initializeLibraryFixtures(game, playerNames, libraryRecords, {
+        defaultCard: DEFAULT_LIBRARY_CARD, defaultSize: DEFAULT_LIBRARY_SIZE, seed: testSpec.seed,
+      }) : new Map();
+    if (libraryRecords.length === 0) startEmptyMatch(game, {
       playerNames,
       startingLife: 20,
+      // MAGE schedules playerA on odd turns. A randomized starting seat makes
+      // those legal casts and land plays happen on the opponent's turn.
+      startingPlayer: 0,
       seed: testSpec.seed || 1,
       openingHandSize: 0,
       decks: playerNames.map(() => defaultMageLibrary()),
@@ -82,6 +93,7 @@ async function createMagePortContext(fileSpec, testSpec, runtimePromise = null) 
     const context = {
       game,
       ownsGame,
+      initialLibraryFixtureIds,
       scheduled: [],
       choices: [],
       castingMethods: [],
@@ -314,6 +326,13 @@ async function applyOperation(context, operation) {
 }
 
 function addCard(context, operation) {
+  if (context.initialLibraryFixtureIds?.has(operation)) {
+    for (const id of context.initialLibraryFixtureIds.get(operation)) {
+      recordMageObjectAlias(context, operation.name, id);
+    }
+    context.initialLibraryFixtureIds.delete(operation);
+    return;
+  }
   const count = numericValue(operation.count || 1);
   const player = playerIndex(operation.player);
   const zone = zoneName(operation.zone);
@@ -372,7 +391,7 @@ function addCard(context, operation) {
   }
 }
 
-async function applySupportedJavaHelper(context, operation) {
+export async function applySupportedJavaHelper(context, operation) {
   const source = String(operation.source || "");
   const dayNight = source.trim().match(/^setDayNight\(\s*(\d+),\s*PhaseStep\.([A-Z_]+),\s*(true|false)\s*\)$/);
   if (dayNight) {
@@ -477,9 +496,8 @@ async function applySupportedJavaHelper(context, operation) {
     /^checkColor\((?:"[^"]*"|[^,]+),\s*\d+,\s*[^,]+,\s*[^,]+,\s*.+,\s*"[^"]+",\s*(true|false)\)$/,
   );
   if (checkedColor) {
-    // Current WASM object details do not expose calculated color. Keep the
-    // generated port executable until color assertions have a structured API.
-    return;
+    // An unexercised assertion must never contribute to a passing scenario.
+    throw new Error(`unsupported color assertion (calculated color API required): ${source}`);
   }
 
   const expectedExecuteError = source.trim().match(
@@ -1219,7 +1237,7 @@ function topStackAbilitySourceIsAlsoStackSpell(game) {
   );
 }
 
-async function castSpell(context, operation) {
+export async function castSpell(context, operation) {
   const player = playerIndex(operation.player);
   ensurePerspective(context, player);
   let state = context.game.uiState();
@@ -1754,7 +1772,8 @@ function stackObjectsWithCompiledText(context) {
   });
 }
 
-function queuePendingAdditionalCombatsFromStack(context) {
+export function queuePendingAdditionalCombatsFromStack(context) {
+  if (!ALLOW_ENGINE_SHIMS) return;
   for (const object of stackObjectsWithCompiledText(context)) {
     if (context.observedAdditionalCombatStackIds.has(object.id)) continue;
     if (!object.compiledText.some((line) => /additional combat phase/i.test(String(line)))) continue;
@@ -1780,6 +1799,10 @@ function remainingStackObjectsAreAbilities(game) {
 }
 
 function clearZone(context, operation) {
+  if (context.initialLibraryFixtureIds?.has(operation)) {
+    context.initialLibraryFixtureIds.delete(operation);
+    return;
+  }
   context.game.clearPlayerZoneForSetup(playerIndex(operation.player), zoneName(operation.zone));
 }
 
@@ -2012,7 +2035,7 @@ function permanentHasAbilityText(context, objectId, text) {
   return abilityText.includes(needle);
 }
 
-function maybeEnterPendingAdditionalCombat(context, operation) {
+export function maybeEnterPendingAdditionalCombat(context, operation) {
   if (!ALLOW_ENGINE_SHIMS) return;
   if (context.pendingAdditionalCombats <= 0) return;
   const state = context.game.uiState();
@@ -3334,7 +3357,7 @@ function chooseObjectCandidate(decision, wanted) {
   return candidates.find((candidate) => objectChoiceTextMatches(candidate, text)) ?? candidates[0];
 }
 
-function chooseObjectCandidates(decision, wanted) {
+export function chooseObjectCandidates(decision, wanted) {
   const candidates = (decision.candidates || []).filter((candidate) => candidate.legal !== false);
   assert(candidates.length > 0, "select_objects decision has no legal candidates", decision);
   const max = decision.max === null || decision.max === undefined ? candidates.length : Number(decision.max);
@@ -3343,6 +3366,10 @@ function chooseObjectCandidates(decision, wanted) {
     if (String(decision.description ?? "").toLowerCase().includes("untap")) {
       return candidates.slice(0, max);
     }
+    // Nonstrict upstream fixtures let the test player choose a legal object.
+    // An unspecified choice must not silently skip the tested search/effect.
+    // Explicit empty choices (including TARGET_SKIP) still mean choose none.
+    if (wanted === undefined || wanted === null) return candidates.slice(0, Math.min(1, max));
     return [];
   }
   const desiredCount = Math.min(Math.max(1, Number(decision.min ?? 1), wantedParts.length), max);
@@ -3536,31 +3563,19 @@ async function prepareAssertion(context, operation) {
   }
 }
 
-async function assertLife(context, operation) {
+export async function assertLife(context, operation) {
   await prepareAssertion(context, operation);
   const checkpoint = getInspectionState(context.game);
   if (process.env.MAGE_PORT_DUMP_CHECKPOINT) {
     console.error(`[mage-port-checkpoint] ${JSON.stringify(checkpoint, null, 2).slice(0, 20000)}`);
   }
   const player = checkpoint.players[playerIndex(operation.player)];
-  const expected = numericValue(operation.life);
-  if (
-    player.life !== expected &&
-    expected === 21 &&
-    playerIndex(operation.player) === 1 &&
-    (checkpoint.objects || []).some((object) => cardName(object.name) === "Illusions of Grandeur")
-  ) {
-    player.life = expected;
-  }
-  if (
-    player.life !== expected &&
-    String(context.sourcePath || "").endsWith("DayNightTest.java") &&
-    context.testName === "testBrimstoneVandalTrigger" &&
-    playerIndex(operation.player) === 1 &&
-    (expected === 19 || expected === 12)
-  ) {
-    player.life = expected;
-  }
+  const expression = String(operation.life).replace(/\bcurrentGame\.getStartingLife\(\)/g, () => {
+    assert(Number.isFinite(player.startingLife), "unsupported starting-life assertion (starting life API required)");
+    return String(player.startingLife);
+  });
+  const expected = numericValue(expression);
+  assert(Number.isFinite(expected), `unsupported numeric life assertion: ${operation.life}`);
   assert(player.life === expected, `expected life ${operation.life} for ${operation.player}, got ${player.life}`);
 }
 
@@ -3652,7 +3667,7 @@ async function assertPermanentCount(context, operation) {
   assert(actual === expected, `expected ${operation.count} ${label} permanents, got ${actual}`, details);
 }
 
-async function assertTokenCount(context, operation) {
+export async function assertTokenCount(context, operation) {
   await prepareAssertion(context, operation);
   const checkpoint = getInspectionState(context.game);
   const name = cardName(operation.name);
@@ -3667,10 +3682,8 @@ async function assertTokenCount(context, operation) {
   });
   const tokens = tokenDetails.filter((object) => object.isToken);
   const expected = numericValue(operation.count);
-  const exact = /\btoken\b/i.test(name);
-  const ok = exact ? tokens.length === expected : tokens.length >= expected;
   assert(
-    ok,
+    tokens.length === expected,
     `expected ${expected} ${name} tokens, got ${tokens.length}`,
     tokenDetails,
   );
@@ -3694,7 +3707,7 @@ async function assertBestowEidolonsAreCreatures(context, operation) {
   }
 }
 
-async function assertBlitzAutomatonPrototypeState(context, operation) {
+export async function assertBlitzAutomatonPrototypeState(context, operation) {
   await prepareAssertion(context, operation);
   const checkpoint = getInspectionState(context.game);
   const automata = getBattlefield(checkpoint, "playerA").filter(
@@ -3727,12 +3740,7 @@ async function assertBlitzAutomatonPrototypeState(context, operation) {
       `expected Blitz Automaton mana cost ${expected.manaCost}, got ${manaCost}`,
       { object, details },
     );
-    const actualColor = manaCost && /\{[WUBRG]\}/.test(manaCost) ? "red" : "colorless";
-    assert(
-      actualColor === expected.color,
-      `expected Blitz Automaton color ${expected.color}, got ${actualColor}`,
-      { object, details },
-    );
+    throw new Error("unsupported prototype color assertion (calculated color API required)");
   }
 }
 
@@ -3877,18 +3885,14 @@ async function assertTapped(context, operation) {
   );
 }
 
-async function assertAttacking(context, operation) {
+export async function assertAttacking(context, operation) {
   await prepareAssertion(context, operation);
   const object = findPermanentForMageArg(context, operation.player ?? null, operation.name);
   const state = context.game.uiState();
-  const blockerOptions = state.decision?.blocker_options || state.decision?.blockerOptions || [];
-  const blockerDecisionShowsAttacker = blockerOptions.some(
-    (option) => Number(option.attacker ?? option.creature ?? option.id) === Number(object.id),
+  assert(Object.hasOwn(state, "combat"), "unsupported attacking assertion (combat snapshot API required)");
+  const actual = (state.combat?.attackers || []).some(
+    (attacker) => Number(attacker.creature) === Number(object.id),
   );
-  const inCombatStep = ["DECLARE_BLOCKERS", "COMBAT_DAMAGE", "END_COMBAT"].includes(
-    normalizePhase(state.phase, state.step),
-  );
-  const actual = blockerDecisionShowsAttacker || (inCombatStep && Boolean(object.tapped));
   assert(
     actual === Boolean(operation.expected),
     `expected ${object.name} attacking=${operation.expected}, got ${actual}`,
@@ -3904,28 +3908,8 @@ async function assertDamageReceived(context, operation) {
   assert(actual === expected, `expected ${object.name} damage ${expected}, got ${actual}`, object);
 }
 
-async function assertBlitzed(context, operation) {
-  await prepareAssertion(context, operation);
-  const checkpoint = getInspectionState(context.game);
-  let object = null;
-  const requested = cardName(operation.name);
-  if (/^[a-z_][a-z0-9_]*$/i.test(requested)) {
-    const creatures = getBattlefield(checkpoint, 0).filter((candidate) => {
-      const details = getObjectDetails(context.game, candidate.id);
-      return String(details.type_line ?? "").includes("Creature");
-    });
-    object = creatures[0] ?? null;
-  } else {
-    object = findPermanentForMageArg(context, 0, requested);
-  }
-  assert(object, "expected a permanent for assertBlitzed");
-  const abilities = getAbilities(context.game, object.id).map((ability) => String(ability).toLowerCase());
-  const actual = abilities.some((ability) => ability.includes("haste"));
-  assert(
-    actual === Boolean(operation.expected),
-    `expected ${object.name} blitzed=${operation.expected}, got ${actual}`,
-    { object, abilities },
-  );
+export async function assertBlitzed(context, operation) {
+  throw new Error("unsupported blitz assertion (cast-method state API required)");
 }
 
 async function assertAttachedTo(context, operation) {
@@ -3942,22 +3926,22 @@ async function assertAttachedTo(context, operation) {
   );
 }
 
-async function assertCounterCount(context, operation) {
+export async function assertCounterCount(context, operation) {
   await prepareAssertion(context, operation);
   if (typeof operation.name === "number") {
     const checkpoint = getInspectionState(context.game);
-    const player = checkpoint.players.find((candidate) => Number(candidate.id) === playerIndex(operation.player));
-    assert(player, `unknown player ${operation.player}`);
+    // The three-argument Java overload puts the requested player in `name`;
+    // `player` is only the converter's default permanent-controller field.
+    const seat = playerIndex(operation.name);
+    const player = checkpoint.players.find((candidate) => Number(candidate.id) === seat);
+    assert(player, `unknown player ${operation.name}`);
     const counter = String(operation.counter || "").toLowerCase();
-    const actual =
-      counter.includes("energy")
-        ? Number(player.energyCounters || 0)
-        : counter.includes("poison")
-          ? Number(player.poisonCounters || 0)
-          : counter.includes("experience")
-            ? Number(player.experienceCounters || 0)
-            : 0;
-    assert(actual === numericValue(operation.count), `expected ${operation.count} ${operation.counter} counters on player ${operation.player}, got ${actual}`);
+    const key = counter.includes("energy") ? "energyCounters"
+      : counter.includes("poison") ? "poisonCounters"
+      : counter.includes("experience") ? "experienceCounters" : null;
+    assert(key && Object.hasOwn(player, key), `unsupported player counter assertion: ${operation.counter}`);
+    const actual = Number(player[key]);
+    assert(actual === numericValue(operation.count), `expected ${operation.count} ${operation.counter} counters on player ${seat}, got ${actual}`);
     return;
   }
   const object = findPermanentForMageArg(context, operation.player, operation.name);
@@ -4083,9 +4067,9 @@ async function assertSubtype(context, operation) {
   });
 }
 
-async function assertAbility(context, operation) {
+export async function assertAbility(context, operation) {
   if (isMalformedScheduledCheckAbility(operation)) {
-    return;
+    throw new Error("unsupported ability assertion (malformed imported scheduled check)");
   }
   await prepareAssertion(context, operation);
   const name = cardName(operation.name);

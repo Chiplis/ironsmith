@@ -185,7 +185,8 @@ struct ManabrewCounterState {
     counter_names: Vec<String>,
     available: Vec<u32>,
     counter_index: usize,
-    remaining: u32,
+    remaining: u64,
+    minimum_remaining: u64,
     allocations: Vec<u32>,
 }
 
@@ -200,7 +201,7 @@ enum ManabrewPromptBinding {
         mulligan_index: usize,
     },
     Boolean,
-    Number,
+    Number { minimum_remaining:u32, maximum_remaining:u32, accumulated:u32, description:String },
     TextNameGroups {
         description: String,
         groups: Vec<Vec<String>>,
@@ -2919,6 +2920,18 @@ enum DecisionView {
         consequence_text: Option<String>,
         reason: Option<String>,
     },
+    SelectCounters {
+        player: u8,
+        description: String,
+        min_total: String,
+        max_total: String,
+        options: Vec<OptionView>,
+        source_id: Option<u64>,
+        source_name: Option<String>,
+        context_text: Option<String>,
+        consequence_text: Option<String>,
+        reason: Option<String>,
+    },
     SelectObjects {
         player: u8,
         description: String,
@@ -3518,14 +3531,14 @@ impl DecisionView {
                     reason: reason.clone(),
                 }
             }
-            DecisionContext::Counters(counters) => DecisionView::SelectOptions {
+            DecisionContext::Counters(counters) => DecisionView::SelectCounters {
                 player: decision_player_for(counters.player).0,
                 description: format!(
                     "Choose up to {} counters to remove from {}",
                     counters.max_total, counters.target_name
                 ),
-                min: 0,
-                max: counters.max_total as usize,
+                min_total: counters.min_total.to_string(),
+                max_total: counters.max_total.to_string(),
                 options: counters
                     .available_counters
                     .iter()
@@ -3764,6 +3777,12 @@ impl GameOverView {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct CounterAllocation {
+    index: usize,
+    count: u32,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum UiCommand {
@@ -3781,6 +3800,9 @@ enum UiCommand {
     },
     SelectOptions {
         option_indices: Vec<usize>,
+    },
+    SelectCounters {
+        allocations: Vec<CounterAllocation>,
     },
     SelectObjects {
         object_ids: Vec<u64>,
@@ -4074,6 +4096,7 @@ fn ui_command_kind(command: &UiCommand) -> &'static str {
         UiCommand::PriorityAction { .. } => "priority_action",
         UiCommand::SelectTargets { .. } => "select_targets",
         UiCommand::SelectOptions { .. } => "select_options",
+        UiCommand::SelectCounters { .. } => "select_counters",
         UiCommand::SelectObjects { .. } => "select_objects",
         UiCommand::NumberChoice { .. } => "number_choice",
         UiCommand::TextChoice { .. } => "text_choice",

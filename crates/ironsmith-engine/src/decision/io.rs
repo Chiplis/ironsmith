@@ -994,10 +994,10 @@ impl DecisionMaker for AutoPassDecisionMaker {
             if remaining == 0 {
                 break;
             }
-            let to_remove = (*available).min(remaining);
+            let to_remove = (*available).min(u32::try_from(remaining).unwrap_or(u32::MAX));
             if to_remove > 0 {
                 selections.push((*counter_type, to_remove));
-                remaining -= to_remove;
+                remaining -= u64::from(to_remove);
             }
         }
         selections
@@ -1179,10 +1179,10 @@ impl DecisionMaker for SelectFirstDecisionMaker {
             if remaining == 0 {
                 break;
             }
-            let to_remove = (*available).min(remaining);
+            let to_remove = (*available).min(u32::try_from(remaining).unwrap_or(u32::MAX));
             if to_remove > 0 {
                 selections.push((*counter_type, to_remove));
-                remaining -= to_remove;
+                remaining -= u64::from(to_remove);
             }
         }
         selections
@@ -1708,10 +1708,10 @@ impl DecisionMaker for NumericInputDecisionMaker {
                 && idx < ctx.available_counters.len()
             {
                 let (counter_type, available) = ctx.available_counters[idx];
-                let to_remove = count.min(available).min(remaining);
+                let to_remove = count.min(available).min(u32::try_from(remaining).unwrap_or(u32::MAX));
                 if to_remove > 0 {
                     selections.push((counter_type, to_remove));
-                    remaining -= to_remove;
+                    remaining -= u64::from(to_remove);
                 }
             }
         }
@@ -3375,7 +3375,7 @@ fn prompt_choose_colors(
 /// Prompt for choosing counters to remove, returning Vec<(CounterType, u32)> directly.
 fn prompt_choose_counters(
     available_counters: &[(CounterType, u32)],
-    max_total: u32,
+    max_total: u64,
 ) -> Vec<(CounterType, u32)> {
     if available_counters.is_empty() {
         return vec![];
@@ -3406,7 +3406,7 @@ fn prompt_choose_counters(
         }
 
         let mut result = vec![];
-        let mut total_removed = 0u32;
+        let mut total_removed = 0u64;
         let mut valid = true;
 
         for part in trimmed.split(',') {
@@ -3450,7 +3450,7 @@ fn prompt_choose_counters(
                 break;
             }
 
-            total_removed += amount;
+            total_removed += u64::from(amount);
             result.push((available_counters[idx].0, amount));
         }
 

@@ -1420,7 +1420,7 @@ mod replacement_sacrifice_owner_contract_tests {
         if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
         else if mode == 2 { assert!(ctx.decision_maker.awaiting_choice()); assert!(result.unwrap().events.is_empty()); }
         else {
-            let outcome = result.unwrap(); assert_eq!(outcome.count_or_zero(), victims.len() as i32);
+            let outcome = result.unwrap(); assert_eq!(outcome.count_or_zero(), victims.len() as i64);
             for id in &victims { assert!(game.object(*id).is_none()); }
             assert_eq!(outcome.events.iter().filter(|event| event.downcast::<SacrificeEvent>().is_some()).count(), victims.len());
             assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.player(bob).unwrap().life, if mode == 3 { 20 } else { 27 });
@@ -1438,7 +1438,7 @@ mod replacement_sacrifice_owner_contract_tests {
         drop(ctx); if mode == 0 || mode == 3 { assert_eq!(dm.calls, 1); }
         if mode == 2 { assert_eq!(dm.calls, 1); dm.pause = false; dm.pending = false;
             let mut ctx = ExecutionContext::new(source, alice, &mut dm); ctx.set_tagged_objects("victims", snapshots);
-            let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap(); assert_eq!(outcome.count_or_zero(), victims.len() as i32);
+            let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap(); assert_eq!(outcome.count_or_zero(), victims.len() as i64);
             for id in &victims { assert!(game.object(*id).is_none()); } assert_eq!(game.player(bob).unwrap().life, 27); assert!(!ctx.decision_maker.awaiting_choice()); drop(ctx); assert_eq!(dm.calls, 2);
         }
     }

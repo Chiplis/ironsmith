@@ -844,7 +844,7 @@ export function commandMayProducePostApplyOpenings(command, state, previewedRequ
   ) {
     return true;
   }
-  return ["select_options", "select_objects", "targets"].includes(String(command.type || ""));
+  return ["select_options", "select_counters", "select_objects", "targets"].includes(String(command.type || ""));
 }
 
 export function isUnauthorizedAddCardCommand(command) {

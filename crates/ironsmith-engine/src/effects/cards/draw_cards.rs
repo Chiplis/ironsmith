@@ -41,8 +41,8 @@ pub(crate) fn execute_scoped_draw_replacement_effects(
     let drawn_count = outcome.events.iter()
         .filter_map(|event| event.downcast::<CardsDrawnEvent>())
         .filter(|event| event.player == replaced_player)
-        .try_fold(0i32, |total, event| {
-            let amount = i32::try_from(event.amount()).map_err(|_| ExecutionError::InternalError(
+        .try_fold(0i64, |total, event| {
+            let amount = i64::try_from(event.amount()).map_err(|_| ExecutionError::InternalError(
                 "draw replacement outcome exceeds the supported count range".into(),
             ))?;
             total.checked_add(amount).ok_or_else(|| ExecutionError::InternalError(
@@ -418,7 +418,7 @@ fn commit_draw_original_with_reveal_mode(
             let mut drawn = game.draw_cards_with_dm(player, count, &mut *ctx.decision_maker);
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             let count = if player == requested_player {
-                i32::try_from(drawn.len()).map_err(|_| ExecutionError::InternalError("draw outcome exceeds supported count range".into()))?
+                i64::try_from(drawn.len()).map_err(|_| ExecutionError::InternalError("draw outcome exceeds supported count range".into()))?
             } else { 0 };
             let ids = drawn.clone();
             let events = finish_direct_draw_segment(
@@ -492,7 +492,7 @@ fn execute_draw_instruction(
         requested_count
     };
 
-    let mut total_drawn: i32 = 0;
+    let mut total_drawn: i64 = 0;
     let mut replacement_count = 0;
     let mut events = Vec::new();
     let mut replacement_facts = Vec::new();
@@ -640,7 +640,7 @@ fn execute_draw_instruction(
                 if drawn.is_empty() {
                     continue;
                 }
-                let drawn_len = drawn.len() as i32;
+                let drawn_len = drawn.len() as i64;
                 if direct_drawn.is_empty() {
                     direct_draw_is_first = is_first;
                     direct_draw_step_context = (

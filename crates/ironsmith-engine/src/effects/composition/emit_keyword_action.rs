@@ -221,7 +221,7 @@ impl EffectExecutor for EmitKeywordActionEffect {
                 ));
             }
             let mut outcome = EffectOutcome::aggregate(outcomes);
-            outcome.value = crate::effect::OutcomeValue::Count(self.amount as i32);
+            outcome.value = crate::effect::OutcomeValue::Count(i64::from(self.amount));
             return Ok(outcome);
         }
         if self.action == KeywordActionKind::AssembleContraption {

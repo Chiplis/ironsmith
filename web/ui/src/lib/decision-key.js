@@ -10,6 +10,8 @@ export function decisionKey(decision) {
     decision.consequence_text || "",
     decision.plan_id || "",
     decision.request_hash || "",
+    decision.min_total ?? "",
+    decision.max_total ?? "",
   ].join("|");
   if (decision.attacker_options) {
     return decision.attacker_options
@@ -40,7 +42,7 @@ export function decisionKey(decision) {
         const related = Array.isArray(o.related_object_ids)
           ? o.related_object_ids.join("+")
           : "";
-        return `${o.index}:${o.description}:${related}`;
+        return `${o.index}:${o.description}:${o.max_count ?? ""}:${o.legal ?? ""}:${related}`;
       })
       .join(",") + `|${metaKey}`;
   }

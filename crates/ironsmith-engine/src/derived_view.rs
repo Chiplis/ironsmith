@@ -1925,7 +1925,9 @@ impl<'a> DerivedGameView<'a> {
         self.ensure_memo_context();
         let object = self.game.object(object_id)?;
         if !self.requires_battlefield_characteristic_calculation(object_id) {
-            return Some(object.owner);
+            // An authored entry controller is the base for layer two and can
+            // differ from ownership even without a continuous control effect.
+            return Some(object.initial_controller);
         }
 
         self.calculated_characteristics_arc(object_id)

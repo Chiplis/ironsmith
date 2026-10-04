@@ -44,6 +44,7 @@ impl WouldPutCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldPutCountersMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::PutCounters {
             return false;
@@ -111,6 +112,7 @@ impl WouldRemoveCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldRemoveCountersMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::RemoveCounters {
             return false;

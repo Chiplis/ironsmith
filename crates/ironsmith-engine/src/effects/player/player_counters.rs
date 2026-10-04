@@ -1,7 +1,7 @@
 //! Generic counters placed on players.
 
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::helpers::{resolve_player_filter, resolve_value};
+use crate::effects::helpers::{resolve_player_filter, resolve_nonnegative_u32};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
@@ -56,7 +56,7 @@ impl EffectExecutor for PlayerCountersEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
+            let count = resolve_nonnegative_u32(game, &self.count, ctx)?;
             let event = crate::events::Event::put_player_counters(
                 player,
                 self.counter_type,

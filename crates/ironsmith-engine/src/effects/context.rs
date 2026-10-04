@@ -113,6 +113,7 @@ pub enum TargetError {
 
 /// A resolved target - either a specific object or player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
 pub enum ResolvedTarget {
     Object(ObjectId),
     Player(PlayerId),

@@ -16,6 +16,7 @@ use super::context::EventContext;
 ///
 /// This allows O(1) type checking without downcasting for common operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum EventKind {
     /// Damage being dealt
     Damage,
@@ -350,6 +351,7 @@ where
 }
 
 pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone + Any {
+
     /// Exact mana-event predicate for compact evaluation. Wrappers with
     /// additional conditions must expose those conditions or leave this unknown.
     fn mana_predicate(&self) -> Option<crate::events::mana::ManaEventPredicate<'_>> {

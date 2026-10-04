@@ -27,6 +27,7 @@ impl DamageSourceToSpecificTargetMatcher {
 }
 
 impl ReplacementMatcher for DamageSourceToSpecificTargetMatcher {
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;

@@ -1701,7 +1701,7 @@ fn entry_redirect_back_to_library_keeps_object_identity_and_state() {
     let performed_count = match &outcome.value {
         crate::effect::OutcomeValue::None => 0,
         crate::effect::OutcomeValue::Count(count) => *count,
-        crate::effect::OutcomeValue::Objects(ids) => i32::try_from(ids.len()).unwrap(),
+        crate::effect::OutcomeValue::Objects(ids) => i64::try_from(ids.len()).unwrap(),
         value => panic!("unexpected movement result {value:?}"),
     };
     assert_eq!(performed_count, 0, "a redirect that cannot move reports no performed movement");
@@ -1745,7 +1745,7 @@ fn same_battlefield_destination_does_not_run_entry_programs_or_reset_state() {
         let performed_count = match &outcome.value {
             crate::effect::OutcomeValue::None => 0,
             crate::effect::OutcomeValue::Count(count) => *count,
-            crate::effect::OutcomeValue::Objects(ids) => i32::try_from(ids.len()).unwrap(),
+            crate::effect::OutcomeValue::Objects(ids) => i64::try_from(ids.len()).unwrap(),
             value => panic!("unexpected movement result {value:?}"),
         };
         assert_eq!(performed_count, 0);
@@ -2809,7 +2809,7 @@ fn check_additional_counter_contract(player_target: bool, mode: u8) {
     let count = if player_target { game.player(alice).unwrap().counter_count(counter_type) }
         else { game.counter_count(source, counter_type) };
     assert_eq!(count, expected);
-    assert!(matches!(outcome.value, crate::effect::OutcomeValue::Count(value) if value == expected as i32));
+    assert!(matches!(outcome.value, crate::effect::OutcomeValue::Count(value) if value == expected as i64));
     assert_eq!(game.player(alice).unwrap().life, if mode == 2 { 27 } else { 23 });
     assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
     if let Some(prevention_shield) = prevention_shield {
@@ -3828,7 +3828,7 @@ mod counter_owner_nested_prompt_contract_tests {
                 assert_eq!(game.counter_count(parent,crate::object::CounterType::Charge),0); assert_eq!(game.player(alice).unwrap().counter_count(crate::object::CounterType::Energy),0);
                 assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty());
             } else {
-                let outcome=result.unwrap(); assert_eq!(outcome.count_or_zero(),i32::from(!instead));
+                let outcome=result.unwrap(); assert_eq!(outcome.count_or_zero(),i64::from(!instead));
                 let arrival=game.find_object_by_stable_id(stable).unwrap(); assert_eq!(game.object(arrival).unwrap().zone,Zone::Exile);
                 for player in [alice,bob,charlie,diana] { assert_eq!(game.effect_store.grant_registry.card_can_play_from_zone(&game,arrival,Zone::Exile,player),player==bob); }
                 assert_eq!(game.counter_count(parent,crate::object::CounterType::Charge),u32::from(object&&!instead)); assert_eq!(game.player(alice).unwrap().counter_count(crate::object::CounterType::Energy),u32::from(!object&&!instead));

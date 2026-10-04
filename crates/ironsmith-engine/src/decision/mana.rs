@@ -2795,7 +2795,8 @@ fn mana_cost_can_be_paid_with_view_at_x(
         } else {
             game
         };
-        return resumable::check_payment(payment_game, &request);
+        return resumable::with_proposed_spell(game, payment_game, spell_id, ||
+            resumable::check_payment(payment_game, &request));
     }
     let potential = view.potential_mana(player);
     let mana_spend_policy = game.mana_spend_policy(player, Some(spell_id));

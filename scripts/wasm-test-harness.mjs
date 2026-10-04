@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 export const DEFAULT_PLAYER_NAMES = ["Alice", "Bob"];
 
@@ -107,6 +109,11 @@ function instrumentWasmGameClass(WasmGame) {
 }
 
 export function packageBase(pkg = "root") {
+  // Keep regression runs on an immutable build when other local tasks rebuild
+  // the shared browser package concurrently.
+  if (pkg === "demo" && process.env.IRONSMITH_TEST_WASM_PKG) {
+    return pathToFileURL(path.resolve(process.env.IRONSMITH_TEST_WASM_PKG)).href;
+  }
   if (pkg === "root") return "../pkg";
   if (pkg === "demo") return "../web/wasm_demo/pkg";
   if (pkg === "bench") return "../target/bench-wasm-pkg";
@@ -151,6 +158,7 @@ export function startEmptyMatch(
   {
     playerNames = DEFAULT_PLAYER_NAMES,
     startingLife = 20,
+    startingPlayer = null,
     seed = 1,
     format = "normal",
     openingHandSize = 0,
@@ -160,6 +168,7 @@ export function startEmptyMatch(
   return game.startMatch({
     playerNames,
     startingLife,
+    ...(startingPlayer === null ? {} : { startingPlayer }),
     seed,
     format,
     decks,

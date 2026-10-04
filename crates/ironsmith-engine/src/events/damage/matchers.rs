@@ -40,6 +40,7 @@ impl DamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -78,6 +79,7 @@ pub struct PreventableDamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageToPlayerMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -122,6 +124,7 @@ impl DamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToObjectMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -169,6 +172,7 @@ impl DamageToPlayerOrObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -206,6 +210,7 @@ impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
 pub struct CombatDamageMatcher;
 
 impl ReplacementMatcher for CombatDamageMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -240,6 +245,7 @@ impl PreventableCombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableCombatDamageToObjectMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -291,6 +297,7 @@ impl PreventableNoncombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -334,6 +341,7 @@ impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
 pub struct NoncombatDamageMatcher;
 
 impl ReplacementMatcher for NoncombatDamageMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -388,6 +396,7 @@ impl DamageFromSourceMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -430,6 +439,7 @@ impl DamageFromSourceToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToPlayerMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -523,6 +533,7 @@ impl DamageFromSourceToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToObjectMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -580,6 +591,7 @@ impl Default for DamageFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -630,6 +642,7 @@ impl Default for DamageToOrFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToOrFromSelfMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -680,6 +693,7 @@ impl Default for DamageFromSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfCombatMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -711,6 +725,8 @@ impl ReplacementMatcher for DamageFromSelfCombatMatcher {
 
 /// Constraint for matching damage sources.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
 pub enum DamageSourceConstraint {
     /// Damage is dealt by a specific object.
     Specific(ObjectId),
@@ -746,6 +762,8 @@ impl DamageSourceConstraint {
 
 /// Constraint for matching damage targets.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
 pub enum DamageTargetConstraint {
     /// Any damage target.
     Any,
@@ -787,6 +805,7 @@ impl PreventableDamageConstraintMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageConstraintMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -873,6 +892,7 @@ impl Default for DamageToSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -918,6 +938,7 @@ impl Default for DamageToAttachedObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToAttachedObjectMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -987,6 +1008,7 @@ impl DamageToSelfConstraintMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfConstraintMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -1052,6 +1074,7 @@ impl Default for DamageToSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfCombatMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -1105,6 +1128,7 @@ impl DamageToOtherCreatureYouControlMatcher {
 }
 
 impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }
@@ -1183,6 +1207,7 @@ impl DamageToSelfFromSourceFilterMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
+
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
         kind == EventKind::Damage
     }

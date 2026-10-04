@@ -87,13 +87,13 @@ fn split_damage_keeps_split_time_history_through_modified_prevented_and_instead_
                     outcome.count_or_zero(),
                     remainder + if mode == 0 { redirected } else { 0 }
                 );
-                assert_eq!(game.player(bob).unwrap().life, 20 - iteration * remainder);
+                assert_eq!(i64::from(game.player(bob).unwrap().life), 20 - iteration * remainder);
                 assert_eq!(
-                    game.player(carol).unwrap().life,
+                    i64::from(game.player(carol).unwrap().life),
                     20 - if mode == 0 { iteration * redirected } else { 0 }
                 );
                 assert_eq!(
-                    game.player(alice).unwrap().life,
+                    i64::from(game.player(alice).unwrap().life),
                     20 + if mode == 2 { iteration } else { 0 }
                 );
                 assert!(ctx.replacement.suppressed_replacement_effects.is_empty());
@@ -157,14 +157,14 @@ fn repeated_partial_redirects_preserve_all_remainders_after_terminal_primary_out
             .execute(&mut game, &mut ctx)
             .unwrap();
         assert_eq!(outcome.count_or_zero(), if mode == 0 { 5 } else { 4 });
-        assert_eq!(game.player(bob).unwrap().life, 18);
-        assert_eq!(game.player(carol).unwrap().life, 18);
+        assert_eq!(i64::from(game.player(bob).unwrap().life), 18);
+        assert_eq!(i64::from(game.player(carol).unwrap().life), 18);
         assert_eq!(
             game.player(dave).unwrap().life,
             if mode == 0 { 19 } else { 20 }
         );
         assert_eq!(
-            game.player(alice).unwrap().life,
+            i64::from(game.player(alice).unwrap().life),
             if mode == 2 { 21 } else { 20 }
         );
         let mut events = outcome.events;
@@ -273,9 +273,9 @@ fn split_damage_payload_failure_and_pause_restore_all_branches_and_replay_once()
                     .is_empty()
             );
             drop(ctx);
-            assert_eq!(game.player(alice).unwrap().life, 20);
-            assert_eq!(game.player(bob).unwrap().life, 20);
-            assert_eq!(game.player(carol).unwrap().life, 20);
+            assert_eq!(i64::from(game.player(alice).unwrap().life), 20);
+            assert_eq!(i64::from(game.player(bob).unwrap().life), 20);
+            assert_eq!(i64::from(game.player(carol).unwrap().life), 20);
             assert!(
                 game.effect_store
                     .replacement_effects
@@ -295,13 +295,13 @@ fn split_damage_payload_failure_and_pause_restore_all_branches_and_replay_once()
                     .execute(&mut game, &mut ctx)
                     .unwrap();
                 assert_eq!(outcome.count_or_zero(), if on_remainder { 2 } else { 3 });
-                assert_eq!(game.player(alice).unwrap().life, 26);
+                assert_eq!(i64::from(game.player(alice).unwrap().life), 26);
                 assert_eq!(
-                    game.player(bob).unwrap().life,
+                    i64::from(game.player(bob).unwrap().life),
                     if on_remainder { 20 } else { 17 }
                 );
                 assert_eq!(
-                    game.player(carol).unwrap().life,
+                    i64::from(game.player(carol).unwrap().life),
                     if on_remainder { 18 } else { 20 }
                 );
                 assert!(

@@ -4,7 +4,7 @@ use crate::decision::FallbackStrategy;
 use crate::decisions::{CounterRemovalSpec, DecisionSpec as _, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{
-    resolve_single_object_for_effect, resolve_single_target_from_spec, resolve_value,
+    resolve_single_object_for_effect, resolve_single_target_from_spec, resolve_value_wide,
 };
 use crate::effects::{EffectExecutor, RemoveAnyCountersAmongEffect};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
@@ -57,8 +57,12 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
 }
 
 fn execute_up_to_any_counter_removal(effect: &RemoveUpToAnyCountersEffect, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
-        let max_count = resolve_value(game, &effect.max_count, ctx)?.max(0) as u32;
+        let max_count = resolve_value_wide(game, &effect.max_count, ctx)?.max(0) as u64;
         if let ChooseSpec::All(filter) = effect.target.unhinted() {
+            if max_count > u64::from(u32::MAX) {
+                return super::remove_any_counters_among::execute_wide_counter_removal_among(game, ctx, filter.clone(), None, max_count, effect.up_to);
+            }
+            let max_count = u32::try_from(max_count).expect("bounded branch");
             let min_count = if effect.up_to { 0 } else { max_count };
             let distributed =
                 RemoveAnyCountersAmongEffect::dynamic(min_count, max_count, filter.clone(), false);
@@ -101,7 +105,7 @@ fn execute_up_to_any_counter_removal(effect: &RemoveUpToAnyCountersEffect, game:
         .unwrap_or_default();
 
         // Count total counters available
-        let total_counters: u32 = available_counters.iter().try_fold(0u32, |total, (_, count)| total.checked_add(*count)
+        let total_counters: u64 = available_counters.iter().try_fold(0u64, |total, (_, count)| total.checked_add(u64::from(*count))
             .ok_or_else(|| ExecutionError::InternalError("available counter total overflow".into())))?;
 
         // The actual maximum we can remove is the lesser of max_count and total available
@@ -118,13 +122,13 @@ fn execute_up_to_any_counter_removal(effect: &RemoveUpToAnyCountersEffect, game:
             ResolvedTarget::Object(id) => Target::Object(id),
             ResolvedTarget::Player(id) => Target::Player(id),
         };
-        let spec = CounterRemovalSpec::for_target(
+        let spec = CounterRemovalSpec::for_target_wide(
             ctx.source,
             decision_target,
             actual_max,
             available_counters.clone(),
         )
-        .with_min_total(min_count);
+        .with_min_total_wide(min_count);
         let mandatory_fallback = spec.default_response(FallbackStrategy::Maximum);
         let mut selections = make_decision_with_fallback(
             game,
@@ -137,17 +141,17 @@ fn execute_up_to_any_counter_removal(effect: &RemoveUpToAnyCountersEffect, game:
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        if selections.iter().try_fold(0u32, |total, (_, count)| total.checked_add(*count)
+        if selections.iter().try_fold(0u64, |total, (_, count)| total.checked_add(u64::from(*count))
             .ok_or_else(|| ExecutionError::InternalError("selected counter total overflow".into())))? < min_count {
             selections = mandatory_fallback;
         }
 
-        let mut selected_total = 0u32;
-        let mut removed_total = 0u32;
+        let mut selected_total = 0u64;
+        let mut removed_total = 0u64;
         let mut outcomes = Vec::new();
         for (counter_type, requested) in selections {
             if selected_total >= actual_max { break; }
-            let amount = requested.min(actual_max - selected_total);
+            let amount = requested.min(u32::try_from(actual_max - selected_total).unwrap_or(u32::MAX));
             if amount == 0 { continue; }
             let outcome = match target {
                 ResolvedTarget::Object(target_id) => {
@@ -159,18 +163,18 @@ fn execute_up_to_any_counter_removal(effect: &RemoveUpToAnyCountersEffect, game:
                 // Preserve its existing primitive path until that model is migrated.
                 ResolvedTarget::Player(player) => {
                     if let Some((removed, event)) = game.remove_player_counters_with_source(player, counter_type, amount, Some(ctx.source), Some(ctx.controller)) {
-                        let count = i32::try_from(removed).map_err(|_| ExecutionError::InternalError("player removal exceeds the supported outcome range".into()))?;
+                        let count = i64::from(removed);
                         EffectOutcome::count(count).with_event(event)
                     } else { EffectOutcome::count(0) }
                 }
             };
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             let removed = u32::try_from(outcome.count_or_zero()).map_err(|_| ExecutionError::InternalError("invalid counter-removal count".into()))?;
-            removed_total = removed_total.checked_add(removed).ok_or_else(|| ExecutionError::InternalError("counter-removal total overflow".into()))?;
-            selected_total += amount;
+            removed_total = removed_total.checked_add(u64::from(removed)).ok_or_else(|| ExecutionError::InternalError("counter-removal total overflow".into()))?;
+            selected_total += u64::from(amount);
             outcomes.push(outcome);
         }
-        let count = i32::try_from(removed_total).map_err(|_| ExecutionError::InternalError("counter-removal total exceeds outcome range".into()))?;
+        let count = i64::try_from(removed_total).map_err(|_| ExecutionError::InternalError("counter-removal total exceeds outcome range".into()))?;
         let mut outcome = EffectOutcome::aggregate(outcomes);
         outcome.set_value(crate::effect::OutcomeValue::Count(count));
         Ok(outcome)
@@ -311,5 +315,41 @@ mod tests {
         let effect = RemoveUpToAnyCountersEffect::new(1, ChooseSpec::creature());
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("RemoveUpToAnyCountersEffect"));
+    }
+}
+
+#[cfg(test)]
+mod removal_quantity_event_contract_tests {
+    use super::*;
+    use crate::effect::{Effect,EffectId,Value};
+    use crate::effects::{execute_effect,PutCountersEffect,RemoveUpToCountersEffect};
+    use crate::ids::{CardId,PlayerId,ObjectId};
+    fn object(game:&mut GameState,alice:PlayerId)->ObjectId {
+        let card=crate::card::CardBuilder::new(CardId::new(),"Counter removal quantity owner").card_types(vec![crate::types::CardType::Artifact]).build();game.create_object_from_card(&card,alice,crate::zone::Zone::Battlefield)
+    }
+    fn put(game:&mut GameState,ctx:&mut ExecutionContext,id:ObjectId,kind:CounterType,count:u32,receipt:u32) {
+        let effect=Effect::with_id(receipt,Effect::new(PutCountersEffect::new(kind,count,ChooseSpec::SpecificObject(id))));let out=execute_effect(game,&effect,ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(count)));assert_eq!(game.counter_count(id,kind),count);
+    }
+    fn bounded_prior(any:bool) {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);let target=object(&mut game,alice);let following=object(&mut game,alice);let mut ctx=ExecutionContext::new_default(source,alice);
+            put(&mut game,&mut ctx,source,CounterType::Charge,amount,31);put(&mut game,&mut ctx,target,CounterType::Charge,3,32);
+            let value=Value::EffectValue(EffectId(31));let removal=if any {Effect::new(RemoveUpToAnyCountersEffect::new(value,ChooseSpec::SpecificObject(target)))} else {Effect::new(RemoveUpToCountersEffect::new(CounterType::Charge,value,ChooseSpec::SpecificObject(target)))};
+            let out=execute_effect(&mut game,&Effect::with_id(57,removal),&mut ctx).expect("wide real maximum must be capped by available counters before the decision");assert_eq!(out.as_count(),Some(3));assert_eq!(game.counter_count(target,CounterType::Charge),0);assert_eq!(game.counter_count(source,CounterType::Charge),amount);assert!(!out.events.is_empty());
+            let follow=Effect::new(PutCountersEffect::new(CounterType::Charge,Value::EffectValue(EffectId(57)),ChooseSpec::SpecificObject(following)));assert_eq!(execute_effect(&mut game,&follow,&mut ctx).unwrap().as_count(),Some(3));assert_eq!(game.counter_count(following,CounterType::Charge),3);
+        }
+    }
+    #[test] fn typed_up_to_removal_caps_real_unsigned_prior_by_available_kind() {bounded_prior(false);}
+    #[test] fn any_up_to_removal_caps_real_unsigned_prior_by_available_kinds() {bounded_prior(true);}
+    #[test] fn small_any_removal_budget_works_with_mixed_total_above_u32() {
+        let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);let mut ctx=ExecutionContext::new_default(source,alice);
+        for (kind,id) in [(CounterType::Charge,31),(CounterType::PlusOnePlusOne,32)] {put(&mut game,&mut ctx,source,kind,u32::MAX,id);}
+        let out=RemoveUpToAnyCountersEffect::new(5,ChooseSpec::SpecificObject(source)).execute(&mut game,&mut ctx).expect("small realizable budget must not reject mixed available total");assert_eq!(out.as_count(),Some(5));let remaining=u64::from(game.counter_count(source,CounterType::Charge))+u64::from(game.counter_count(source,CounterType::PlusOnePlusOne));assert_eq!(remaining,2*u64::from(u32::MAX)-5);assert!(!out.events.is_empty());
+    }
+    #[test] fn any_removal_wide_budget_preserves_two_real_prior_receipts_and_followup() {
+        let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);let following=object(&mut game,alice);let mut ctx=ExecutionContext::new_default(source,alice);
+        for (kind,id) in [(CounterType::Charge,31),(CounterType::PlusOnePlusOne,32)] {put(&mut game,&mut ctx,source,kind,u32::MAX,id);}
+        let maximum=Value::Add(Box::new(Value::EffectValue(EffectId(31))),Box::new(Value::EffectValue(EffectId(32))));let removal=Effect::with_id(57,Effect::new(RemoveUpToAnyCountersEffect::exact(maximum,ChooseSpec::SpecificObject(source))));let out=execute_effect(&mut game,&removal,&mut ctx).expect("logical mixed removal budget may exceed individual kind storage");assert_eq!(out.as_count(),Some(2*i64::from(u32::MAX)));assert_eq!(game.counter_count(source,CounterType::Charge),0);assert_eq!(game.counter_count(source,CounterType::PlusOnePlusOne),0);assert_eq!(out.events.len(),2);
+        let follow=Effect::new(PutCountersEffect::new(CounterType::Charge,Value::HalfRoundedDown(Box::new(Value::EffectValue(EffectId(57)))),ChooseSpec::SpecificObject(following)));assert_eq!(execute_effect(&mut game,&follow,&mut ctx).unwrap().as_count(),Some(i64::from(u32::MAX)));assert_eq!(game.counter_count(following,CounterType::Charge),u32::MAX);
     }
 }

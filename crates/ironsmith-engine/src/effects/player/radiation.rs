@@ -48,7 +48,7 @@ impl RadiationEffect {
         }
 
         let outcome =
-            MillEffect::new(rad_count as i32, PlayerFilter::Specific(player)).execute(game, ctx)?;
+            MillEffect::new(rad_count, PlayerFilter::Specific(player)).execute(game, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
@@ -85,4 +85,18 @@ impl RadiationEffect {
         outcome.value = milled_summary;
         Ok(outcome)
     }
+}
+
+#[cfg(test)]
+mod unsigned_radiation_and_mill_public_contract_tests {
+use crate::{GameState,PlayerId,Zone,CardId,Effect};
+use crate::effects::{EffectContext,RadiationEffect,MillEffect,execute_effect};
+use crate::target::PlayerFilter;
+use crate::object::CounterType;
+fn setup(amount:u32)->(GameState,crate::ObjectId,PlayerId){let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let card=crate::cards::builders::CardDefinitionBuilder::new(CardId::new(),"Natural mill quantity owner").card_types(vec![crate::types::CardType::Artifact]).build();let source=game.create_object_from_definition(&card,alice,Zone::Battlefield);let card=crate::cards::builders::CardDefinitionBuilder::new(CardId::new(),"Nonland library object").card_types(vec![crate::types::CardType::Artifact]).build();game.create_object_from_definition(&card,alice,Zone::Library);let out=game.add_player_counters_with_source(alice,CounterType::Rad,amount,Some(source),Some(alice)).unwrap();assert_eq!(out.as_count(),Some(i64::from(amount)));assert_eq!(game.player(alice).unwrap().library.len(),1);(game,source,alice)}
+fn radiation(amount:u32){let (mut game,source,alice)=setup(amount);let mut ctx=EffectContext::new_default(source,alice);let out=execute_effect(&mut game,&Effect::new(RadiationEffect::new()),&mut ctx).unwrap();assert!(game.player(alice).unwrap().library.is_empty(),"radiation must retain its unsigned mill instruction");assert_eq!(game.player(alice).unwrap().graveyard.len(),1);assert_eq!(game.player(alice).unwrap().life,19);assert_eq!(game.player(alice).unwrap().counter_count(CounterType::Rad),amount-1);assert_eq!(out.affected_object_memory().unwrap().len(),1);}
+#[test] fn bounded_radiation_control(){radiation(7);}
+#[test] fn unsigned_radiation_instruction_reaches_actual_library(){radiation(u32::MAX);}
+#[test] fn unsigned_direct_mill_caps_to_actual_library(){let (mut game,source,alice)=setup(0);let mut ctx=EffectContext::new_default(source,alice);execute_effect(&mut game,&Effect::new(MillEffect::new(u32::MAX,PlayerFilter::You)),&mut ctx).expect("natural mill quantity must cap to actual library before signed narrowing");assert!(game.player(alice).unwrap().library.is_empty());assert_eq!(game.player(alice).unwrap().graveyard.len(),1);}
+
 }

@@ -7952,3 +7952,11 @@ pub(super) fn coordinated_color_adjectives_do_not_pluralize_as_nouns() {
         "black creatures or red cards"
     );
 }
+
+#[test]
+pub(super) fn authored_counter_transfer_mode_controls_rendered_operation() {
+    let movement = Effect::new(crate::effects::MoveAllCountersEffect::new(ChooseSpec::Source, ChooseSpec::Source));
+    let placement = Effect::new(crate::effects::MoveAllCountersEffect::put_referenced(ChooseSpec::Source, ChooseSpec::Source));
+    assert!(describe_effect(&movement).starts_with("Move all counters from "));
+    assert!(describe_effect(&placement).starts_with("Put its counters on "));
+}

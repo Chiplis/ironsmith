@@ -2611,11 +2611,19 @@ impl TagAttachedToSourceEffect {
 pub struct MoveAllCountersEffect {
     pub from: ChooseSpec,
     pub to: ChooseSpec,
+    /// True for an authored move (CR 122.5); false for placement of the
+    /// referenced counter collection (including CR 122.8/122.9). Required
+    /// in retained payloads: source snapshots cannot determine this intent.
+    pub remove_from_source: bool,
 }
 
 impl MoveAllCountersEffect {
     pub fn new(from: ChooseSpec, to: ChooseSpec) -> Self {
-        Self { from, to }
+        Self { from, to, remove_from_source: true }
+    }
+
+    pub fn put_referenced(from: ChooseSpec, to: ChooseSpec) -> Self {
+        Self { from, to, remove_from_source: false }
     }
 
     pub fn between_creatures() -> Self {
@@ -2638,9 +2646,16 @@ impl MoveOneCounterEffect {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum CounterMoveAmount {
+    Exact(Value),
+    AnyNumber,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct MoveCountersEffect {
     pub counter_type: crate::counter::CounterType,
-    pub count: Value,
+    pub count: CounterMoveAmount,
     pub from: ChooseSpec,
     pub to: ChooseSpec,
 }
@@ -2654,10 +2669,15 @@ impl MoveCountersEffect {
     ) -> Self {
         Self {
             counter_type,
-            count: count.into(),
+            count: CounterMoveAmount::Exact(count.into()),
             from,
             to,
         }
+    }
+
+    /// Choose zero through the number currently available at resolution.
+    pub fn any_number(counter_type: crate::counter::CounterType, from: ChooseSpec, to: ChooseSpec) -> Self {
+        Self { counter_type, count: CounterMoveAmount::AnyNumber, from, to }
     }
 
     pub fn plus_one_counters(count: impl Into<Value>) -> Self {
