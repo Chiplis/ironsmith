@@ -75,6 +75,12 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
                 crate::cards::builders::PlayerAst::You, amount.clone(),
             ),
         )),
+        ActivationCostSegmentCst::DiscardValue { count, filter, random } => CompilerCost::ValidatedEffect(Box::new(
+            crate::cards::builders::EffectAst::subject_verb_discard(
+                crate::cards::builders::PlayerAst::You, count.clone(), *random, false,
+                Some(filter.clone()), None,
+            ),
+        )),
         ActivationCostSegmentCst::DiscardSource => CompilerCost::DiscardSource,
         ActivationCostSegmentCst::DiscardHand => CompilerCost::DiscardHand,
         ActivationCostSegmentCst::DiscardCard(count) => CompilerCost::Discard {

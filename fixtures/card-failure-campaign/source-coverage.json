@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "c2e0f3817664e9f5dae122bf2258d315d55433b4",
+  "source_implementation_commit": "a59a0c96b305b23283974e9f3f6763ceb05e18f7",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 347,
-    "additional_proposed_compile_entries": 347,
+    "additional_proposed_unique_cards": 364,
+    "additional_proposed_compile_entries": 364,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -911,6 +911,74 @@
       "semantic_scope": [
         "Real ordered additive/doubling life-event modification with dynamic conditions; no extra life-gain event.",
         "Phial exact draw and life bodies, replacement recursion scope and complete instead marker."
+      ]
+    },
+    {
+      "id": "typed-discard-cost-values",
+      "stage": 33,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/discard_cost_values.json.fixture",
+      "baseline_entries": [
+        "Knollspine Invocation",
+        "Kozilek, the Great Distortion",
+        "Krovikan Sorcerer",
+        "Sanctum Spirit"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Gix, Yawgmoth Praetor",
+          "remaining_blocker": "Immediate optional play/cast over the whole exiled pool needs ordered selection and correct land-play rules; the current singular CastTaggedEffect cannot represent the plural clause alone."
+        }
+      ],
+      "implementation_commit": "a59a0c96b305b23283974e9f3f6763ceb05e18f7",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed discard filters and actual resource-bounded X; context-aware nonmutating preflight and exact payment selection.",
+        "Kozilek is joint with relative-hand quantities; Gix plural immediate play/cast remains partial."
+      ]
+    },
+    {
+      "id": "relative-hand-quantities-and-rounding",
+      "stage": 33,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/relative_hand_quantities.json.fixture",
+      "baseline_entries": [
+        "Fraying Omnipotence",
+        "Lord Xander, the Collector",
+        "Pox Plague",
+        "Rush of Dread",
+        "Balance of Power",
+        "Sandstone Oracle",
+        "Slithermuse",
+        "Skull Raid",
+        "Heed the Mists",
+        "Kozilek, the Great Distortion"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "a59a0c96b305b23283974e9f3f6763ceb05e18f7",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Per-player half-hand counts and instruction-wide sacrifice rounding.",
+        "Exact compared thresholds, local consequent operands, strict intervening-if promotion and prior-discard result counts including zero."
+      ]
+    },
+    {
+      "id": "disjoint-mana-payment-predicates",
+      "stage": 33,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/mana_payment_predicate_restrictions.json.fixture",
+      "baseline_entries": [
+        "Cultivator Drone",
+        "Discreet Retreat",
+        "Overgrown Zealot",
+        "Tin Street Gossip"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "a59a0c96b305b23283974e9f3f6763ceb05e18f7",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Independent cast, ability, true colorless-symbol and face-up transaction predicates; inclusive Outlaw type set.",
+        "Frozen producing-controller context survives source theft/departure and WASM checkpoint transfer."
       ]
     }
   ],
@@ -2854,8 +2922,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "relative-hand-quantities-and-rounding"
+      ]
     },
     {
       "card_name": "Balancing Act",
@@ -6570,8 +6640,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "disjoint-mana-payment-predicates"
+      ]
     },
     {
       "card_name": "Cunning Giant",
@@ -7679,8 +7751,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "disjoint-mana-payment-predicates"
+      ]
     },
     {
       "card_name": "Diseased Vermin",
@@ -11022,8 +11096,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "relative-hand-quantities-and-rounding"
+      ]
     },
     {
       "card_name": "Freelance Muscle",
@@ -13208,8 +13284,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "relative-hand-quantities-and-rounding"
+      ]
     },
     {
       "card_name": "Heirloom Epic",
@@ -16132,8 +16210,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "typed-discard-cost-values"
+      ]
     },
     {
       "card_name": "Knowledge Is Power",
@@ -16318,8 +16398,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "typed-discard-cost-values",
+        "relative-hand-quantities-and-rounding"
+      ]
     },
     {
       "card_name": "Krang & Shredder",
@@ -16380,8 +16463,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "typed-discard-cost-values"
+      ]
     },
     {
       "card_name": "Krumar Initiate",
@@ -17274,8 +17359,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "relative-hand-quantities-and-rounding"
+      ]
     },
     {
       "card_name": "Lord of Shatterskull Pass",
@@ -20712,8 +20799,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "disjoint-mana-payment-predicates"
+      ]
     },
     {
       "card_name": "Overlord of the Hauntwoods",
@@ -21844,8 +21933,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "relative-hand-quantities-and-rounding"
+      ]
     },
     {
       "card_name": "Prahv, Spires of Order",
@@ -24160,8 +24251,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "relative-hand-quantities-and-rounding"
+      ]
     },
     {
       "card_name": "Rushing-Tide Zubera",
@@ -24392,8 +24485,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "typed-discard-cost-values"
+      ]
     },
     {
       "card_name": "Sandman's Quicksand",
@@ -24432,8 +24527,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "relative-hand-quantities-and-rounding"
+      ]
     },
     {
       "card_name": "Sanguine Spy",
@@ -25986,8 +26083,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "relative-hand-quantities-and-rounding"
+      ]
     },
     {
       "card_name": "Skyblinder Staff",
@@ -26118,8 +26217,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "relative-hand-quantities-and-rounding"
+      ]
     },
     {
       "card_name": "Sliver Gravemother",
@@ -29971,8 +30072,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "disjoint-mana-payment-predicates"
+      ]
     },
     {
       "card_name": "Tinybones, the Pickpocket",

@@ -122,6 +122,7 @@ fn s7_doubled_mana_has_no_inherited_restrictions_or_bonuses() {
     let source = permanent(&mut g, A, CardType::Artifact);
     let old_source = g.new_object_id();
     let restricted = RestrictedManaUnit {
+        source_controller: None,
         symbol: ManaSymbol::Red,
         source: old_source,
         source_chosen_creature_type: None,

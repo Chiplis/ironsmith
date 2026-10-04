@@ -1657,6 +1657,13 @@ fn round_up_unstated_half_values_in_effects(effects: &mut [EffectAst]) {
         }
     }
     for effect in effects.iter_mut() {
+        if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            count_value: Some(value),
+            ..
+        }) = effect
+        {
+            round_up(value);
+        }
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
             match action {
                 SubjectVerbActionAst::LifeResources(

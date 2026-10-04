@@ -141,8 +141,10 @@ pub fn parse_sacrifice_segment_tokens(
 pub fn parse_discard_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
-    let shape = primitives::parse_all(tokens, parse_discard_cost_shape_lexed, "discard-cost")
-        .map_err(|_| unsupported(tokens, "discard"))?;
+    let shape = match primitives::parse_all(tokens, parse_discard_cost_shape_lexed, "discard-cost") {
+        Ok(shape) => shape,
+        Err(_) => return parse_typed_discard_selector(tokens),
+    };
     Ok(match shape {
         DiscardCostShape::Source => ActivationCostSegmentCst::DiscardSource,
         DiscardCostShape::Hand => ActivationCostSegmentCst::DiscardHand,
@@ -199,8 +201,8 @@ pub fn parse_discard_segment_tokens(
             supertypes,
             subtypes,
             random,
-            ..
-        } if card_types.is_empty() && supertypes.is_empty() && subtypes.is_empty() && !random => {
+            other,
+        } if card_types.is_empty() && supertypes.is_empty() && subtypes.is_empty() && !random && !other => {
             ActivationCostSegmentCst::DiscardCard(count)
         }
         DiscardCostShape::Cards {
@@ -224,6 +226,72 @@ pub fn parse_discard_segment_tokens(
             other,
         },
     })
+}
+
+/// Read the full card filter only after the original simple discard shapes.
+/// This preserves existing fixed payloads while admitting colors, historic,
+/// and value predicates without copying a reduced subset of their fields.
+fn parse_typed_discard_selector(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let mut input = LexStream::new(tokens);
+    primitives::kw("discard")
+        .parse_next(&mut input)
+        .map_err(|_| unsupported(tokens, "discard"))?;
+    let count = if primitives::kw("x").parse_next(&mut input).is_ok() {
+        crate::effect::Value::X
+    } else {
+        crate::effect::Value::Fixed(parse_optional_discard_count(&mut input) as i32)
+    };
+    parse_indefinite_articles(&mut input);
+    let remaining = &tokens[tokens.len() - input.len()..];
+    let (filter_tokens, random) = if remaining.len() >= 2
+        && remaining[remaining.len() - 2].is_word("at")
+        && remaining[remaining.len() - 1].is_word("random")
+    {
+        (&remaining[..remaining.len() - 2], true)
+    } else {
+        (remaining, false)
+    };
+    if !filter_tokens
+        .iter()
+        .any(|token| token.is_word("card") || token.is_word("cards"))
+    {
+        return Err(unsupported(tokens, "discard"));
+    }
+    let mut filter =
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)?;
+    // Relations across a selected set need a group-aware selector. The ordinary
+    // discard executor must never silently treat them as per-card predicates.
+    if filter.distinct_names
+        || filter.distinct_mana_values
+        || filter.distinct_powers
+        || filter.shares_land_type
+        || filter.one_per_card_type
+    {
+        return Err(unsupported(tokens, "discard group relation"));
+    }
+    if filter.zone.is_some_and(|zone| zone != Zone::Hand) {
+        return Err(unsupported(tokens, "discard hand selector"));
+    }
+    filter.zone = Some(Zone::Hand);
+    if let crate::effect::Value::Fixed(count) = count {
+        Ok(ActivationCostSegmentCst::DiscardFiltered {
+            count: count.max(0) as u32,
+            card_types: Vec::new(),
+            supertypes: Vec::new(),
+            filter: Some(filter),
+            random,
+            name: None,
+            other: false,
+        })
+    } else {
+        Ok(ActivationCostSegmentCst::DiscardValue {
+            count,
+            filter,
+            random,
+        })
+    }
 }
 
 pub fn parse_unattach_segment_tokens(

@@ -72,6 +72,11 @@ pub enum ActivationCostSegmentCst {
     Life(Value),
     Energy(u32),
     EnergyValue(Value),
+    DiscardValue {
+        count: Value,
+        filter: ObjectFilter,
+        random: bool,
+    },
     DiscardSource,
     DiscardHand,
     DiscardCard(u32),

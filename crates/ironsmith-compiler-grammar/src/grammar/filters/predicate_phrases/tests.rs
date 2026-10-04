@@ -4155,3 +4155,17 @@ fn parse_predicate_tron_control_conjunction_keeps_compound_urzas_subtypes()
     }
     Ok(())
 }
+
+#[test]
+fn strict_hand_comparison_retains_the_authored_operand_for_difference() {
+    let tokens = lex_line("If you have fewer than seven cards in hand", 0).unwrap();
+    let predicate = parse_predicate(&predicate_tokens_after_if(&tokens)).unwrap();
+    assert!(matches!(
+        predicate,
+        PredicateAst::ValueComparison {
+            left: Value::CardsInHand(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::LessThan,
+            right: Value::Fixed(7),
+        }
+    ));
+}

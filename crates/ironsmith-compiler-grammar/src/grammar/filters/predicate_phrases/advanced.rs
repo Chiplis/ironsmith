@@ -1151,6 +1151,22 @@ pub(super) fn parse_player_cards_in_hand_predicate(
         return Some(PredicateAst::YouHaveNoCardsInHand);
     }
 
+    // Retain the authored strict threshold: "fewer than seven" compares
+    // against seven, although its Boolean test is equivalent to at most six.
+    // A consequent may consume the difference between those exact operands.
+    if !at_turn_start
+        && matches!(
+            condition.comparison,
+            crate::effect::Comparison::LessThan(_) | crate::effect::Comparison::GreaterThan(_)
+        )
+    {
+        let (operator, count) = comparison_to_value_comparison_operator(condition.comparison)?;
+        return Some(PredicateAst::ValueComparison {
+            left: Value::CardsInHand(player_filter),
+            operator,
+            right: Value::Fixed(count),
+        });
+    }
     match condition.comparison {
         crate::effect::Comparison::GreaterThanOrEqual(count) if count >= 0 => {
             Some(cards_in_hand_or_more(player, count as u32, at_turn_start))

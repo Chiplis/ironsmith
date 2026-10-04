@@ -106,6 +106,101 @@ impl DiscardEffect {
         Self::new(count, PlayerFilter::Opponent, false)
     }
 
+    fn mana_value_is_cost_x(&self) -> bool {
+        matches!(self.card_filter.as_ref().and_then(|filter| filter.mana_value.as_ref()),
+            Some(crate::filter::Comparison::EqualExpr(value)) if matches!(value.unhinted(), Value::X))
+    }
+
+    /// Inspect the actual payer's current hand. Only the explicitly announced
+    /// mana-value equality may be relaxed before announcement; unknown tags and
+    /// every other filter predicate remain binding.
+    fn cost_candidates(
+        &self,
+        game: &GameState,
+        ctx: &ExecutionContext,
+        reason: crate::costs::PaymentReason,
+        relax_mana_x: bool,
+    ) -> Result<Vec<crate::ids::ObjectId>, crate::effects::CostValidationError> {
+        use crate::effects::CostValidationError;
+        let player = match self.player {
+            PlayerFilter::You => ctx.controller,
+            PlayerFilter::Specific(player) => player,
+            _ => {
+                return Err(CostValidationError::Other(
+                    "discard cost needs an explicit payer".into(),
+                ));
+            }
+        };
+        let hand = &game
+            .player(player)
+            .ok_or_else(|| CostValidationError::Other("discard payer is absent".into()))?
+            .hand;
+        let mut filter = self.card_filter.clone().unwrap_or_default();
+        if relax_mana_x && self.mana_value_is_cost_x() {
+            filter.mana_value = None;
+        }
+        let filter_ctx = ctx.filter_context(game);
+        let eligible = hand.iter().copied().filter(|id| {
+            !ctx.replacement.entry_reserved_objects.contains(id)
+                && !(reason == crate::costs::PaymentReason::CastSpell && *id == ctx.source)
+        });
+        let candidates: Vec<_> = eligible.collect();
+        let placeholders =
+            game.hidden_hand_payable_placeholders(&filter, &filter_ctx, candidates.iter().copied());
+        Ok(candidates
+            .into_iter()
+            .filter(|id| {
+                placeholders.contains(id)
+                    || game.object(*id).is_some_and(|object| {
+                        object.zone == Zone::Hand
+                            && object.owner == player
+                            && filter.matches(object, &filter_ctx, game)
+                    })
+            })
+            .collect())
+    }
+
+    pub(crate) fn check_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &ExecutionContext,
+        reason: crate::costs::PaymentReason,
+        allow_unannounced_x: bool,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        use crate::effects::CostValidationError;
+        let unannounced = ctx.x_value.is_none() && self.references_cost_x();
+        if unannounced && !allow_unannounced_x {
+            return Err(CostValidationError::Other(
+                "X was not announced for discard cost".into(),
+            ));
+        }
+        let required = if unannounced && matches!(self.count.unhinted(), Value::X) {
+            0
+        } else {
+            resolve_value(game, &self.count, ctx)
+                .map_err(|_| CostValidationError::Other("discard count is unresolved".into()))?
+                .max(0) as usize
+        };
+        let candidates = self.cost_candidates(game, ctx, reason, unannounced)?;
+        if candidates.len() < required {
+            return Err(CostValidationError::NotEnoughCards);
+        }
+        if unannounced && self.mana_value_is_cost_x() && required > 1 {
+            let mut counts = std::collections::HashMap::new();
+            for id in candidates {
+                if let Some(object) = game.object(id) {
+                    *counts
+                        .entry(crate::filter::object_mana_value_for_filter(object))
+                        .or_insert(0usize) += 1;
+                }
+            }
+            if !counts.values().any(|count| *count >= required) {
+                return Err(CostValidationError::NotEnoughCards);
+            }
+        }
+        Ok(())
+    }
+
     fn discards_source_as_cost(&self) -> bool {
         self.card_filter
             .as_ref()
@@ -673,6 +768,55 @@ impl EffectExecutor for DiscardEffect {
         outcome
     }
 
+    fn references_cost_x(&self) -> bool {
+        matches!(self.count.unhinted(), Value::X) || self.mana_value_is_cost_x()
+    }
+
+    fn max_cost_x(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        let ctx = ExecutionContext::new_default(source, controller);
+        let candidates = self
+            .cost_candidates(
+                game,
+                &ctx,
+                crate::costs::PaymentReason::ActivateAbility,
+                true,
+            )
+            .ok()?;
+        if self.mana_value_is_cost_x() {
+            let mut counts = std::collections::HashMap::new();
+            for id in candidates {
+                let amount =
+                    crate::filter::object_mana_value_for_filter(game.object(id)?).max(0) as u32;
+                *counts.entry(amount).or_insert(0usize) += 1;
+            }
+            let count_is_x = matches!(self.count.unhinted(), Value::X);
+            let fixed = if count_is_x {
+                0
+            } else {
+                resolve_value(game, &self.count, &ctx).ok()?.max(0) as usize
+            };
+            return Some(
+                counts
+                    .into_iter()
+                    .filter(|(amount, count)| {
+                        *count >= if count_is_x { *amount as usize } else { fixed }
+                    })
+                    .map(|(amount, _)| amount)
+                    .max()
+                    .unwrap_or(0),
+            );
+        }
+        u32::try_from(candidates.len()).ok()
+    }
+
     fn cost_description(&self) -> Option<String> {
         if self.discards_source_as_cost() {
             return Some("Discard this card".to_string());
@@ -686,6 +830,17 @@ impl EffectExecutor for DiscardEffect {
             Value::Fixed(n) if n > 0 => n as usize,
             _ => return None,
         };
+        if let Some(filter) = &self.card_filter {
+            let mut unrendered = filter.clone();
+            unrendered.zone = None;
+            unrendered.card_types.clear();
+            unrendered.subtypes.clear();
+            if unrendered != ObjectFilter::default() || filter.subtypes.len() > 1 {
+                // The full typed renderer retains colors, historic, mana-value,
+                // and linked identity predicates; never label these a plain card.
+                return None;
+            }
+        }
         let card_types = self
             .card_filter
             .as_ref()
@@ -731,71 +886,8 @@ impl CostExecutableEffect for DiscardEffect {
         controller: crate::ids::PlayerId,
         reason: crate::costs::PaymentReason,
     ) -> Result<(), crate::effects::CostValidationError> {
-        use crate::effects::CostValidationError;
-
-        if !matches!(self.player, PlayerFilter::You | PlayerFilter::Specific(_)) {
-            return Err(CostValidationError::Other(
-                "discard cost supports only 'you' or a specific player".to_string(),
-            ));
-        }
-
-        let required = match self.count {
-            Value::Fixed(n) => n.max(0) as usize,
-            // A variable amount ("discard X cards") is checked before X is
-            // announced, and X = 0 is always an available announcement
-            // (CR 107.3a), so the minimum requirement is evaluated at X = 0.
-            // Payment resolves the real amount from the announced X.
-            ref count => {
-                let ctx =
-                    crate::effects::ExecutionContext::new_default(source, controller).with_x(0);
-                crate::effects::helpers::resolve_value(game, count, &ctx)
-                    .map_or(0, |amount| amount.max(0) as usize)
-            }
-        };
-        if required == 0 {
-            return Ok(());
-        }
-
-        let player_id = match self.player {
-            PlayerFilter::You => controller,
-            PlayerFilter::Specific(id) => id,
-            _ => unreachable!("validated above"),
-        };
-
-        let mut hand_cards: Vec<_> = game
-            .player(player_id)
-            .map(|p| p.hand.to_vec())
-            .unwrap_or_default();
-
-        // Casting moves the source to the stack before costs are paid. During
-        // action discovery it may still be in hand, but cannot pay for itself.
-        // Other costs (such as cycling) may explicitly discard their source.
-        if reason == crate::costs::PaymentReason::CastSpell {
-            hand_cards.retain(|card_id| *card_id != source);
-        }
-
-        if let Some(filter) = &self.card_filter {
-            let filter_ctx = crate::filter::FilterContext::new(controller).with_source(source);
-            // Peers holding hidden-card placeholders cannot evaluate the
-            // filter; count them as payable (see `game_state::hidden_hand_choices`).
-            let placeholders = game.hidden_hand_payable_placeholders(
-                filter,
-                &filter_ctx,
-                hand_cards.iter().copied(),
-            );
-            hand_cards.retain(|card_id| {
-                placeholders.contains(card_id)
-                    || game
-                        .object(*card_id)
-                        .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
-            });
-        }
-
-        if hand_cards.len() < required {
-            return Err(CostValidationError::NotEnoughCards);
-        }
-
-        Ok(())
+        let ctx = ExecutionContext::new_default(source, controller);
+        self.check_cost_with_context(game, &ctx, reason, true)
     }
 }
 

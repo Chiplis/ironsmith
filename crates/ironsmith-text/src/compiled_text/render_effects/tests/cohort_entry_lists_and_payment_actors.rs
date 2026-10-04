@@ -112,6 +112,7 @@ fn cohort_subtype_mana_allows_kindred_spells_and_matching_sources_in_other_zones
             let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
             game.player_mut(alice).unwrap().add_restricted_mana(
                 crate::ability::RestrictedManaUnit {
+                    source_controller: None,
                     symbol: ManaSymbol::Green,
                     source,
                     source_chosen_creature_type: None,

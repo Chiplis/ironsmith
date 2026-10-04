@@ -1614,6 +1614,11 @@ pub(super) fn describe_mana_usage_restriction(
             ) {
                 return Some("Spend this mana only on costs that contain {X}".to_string());
             }
+            if on_spend.is_empty()
+                && let Some(text) = restriction.as_ref().and_then(describe_payment_action_predicate)
+            {
+                return Some(format!("Spend this mana only to {text}"));
+            }
             let [payload] = on_spend.as_slice() else {
                 return None;
             };
@@ -1827,6 +1832,9 @@ pub(super) fn describe_mana_usage_spell_filter_target_with_options(
     if let Some(x_cost) = describe_mana_usage_x_cost_spell_filter(filter) {
         return Some(x_cost);
     }
+    if filter == &ObjectFilter::default().face_down() {
+        return Some(if pluralize_origin_spell { "face-down spells" } else { "a face-down spell" }.to_string());
+    }
     if let Some(special) =
         describe_special_mana_usage_spell_filter_target(filter, pluralize_origin_spell)
     {
@@ -1893,7 +1901,11 @@ pub(super) fn describe_mana_usage_ability_source_filter(filter: &ObjectFilter) -
             .iter()
             .map(|card_type| card_type.name().to_string()),
     );
-    descriptors.extend(filter.subtypes.iter().map(|subtype| subtype.to_string()));
+    let outlaw = [crate::types::Subtype::Assassin, crate::types::Subtype::Mercenary,
+        crate::types::Subtype::Pirate, crate::types::Subtype::Rogue, crate::types::Subtype::Warlock];
+    let includes_outlaw = outlaw.iter().all(|kind| filter.subtypes.contains(kind));
+    if includes_outlaw { descriptors.push("outlaw".to_string()); }
+    descriptors.extend(filter.subtypes.iter().filter(|kind| !includes_outlaw || !outlaw.contains(kind)).map(|kind| kind.to_string()));
 
     if descriptors.is_empty() {
         return Some("a source".to_string());
@@ -5898,5 +5910,42 @@ mod next_turn_draw_surface_tests {
             join_activation_restriction_clauses(&clauses),
             "Activate only if an opponent lost life this turn and only once each turn"
         );
+    }
+}
+
+
+/// Render only complete known transaction predicates. No predicate may be
+/// dropped merely because one branch has a familiar payment purpose.
+fn describe_payment_action_predicate(predicate: &crate::ability::ManaPaymentPredicate) -> Option<String> {
+    use crate::ability::{ManaPaymentPredicate as P, ManaPaymentPurpose as Purpose};
+    match predicate {
+        P::AnyOf(parts) if !parts.is_empty() => {
+            let parts = parts.iter().map(describe_payment_action_predicate).collect::<Option<Vec<_>>>()?;
+            Some(join_with_or(&parts))
+        }
+        P::CostContains(symbol) => Some(format!("pay a cost that contains {}", crate::mana::ManaCost::from_symbols(vec![*symbol]).to_oracle())),
+        P::All(parts) => {
+            let [purpose, P::SourceMatches(filter)] = parts.as_slice() else { return None; };
+            if purpose == &P::Purpose(Purpose::CastSpell) {
+                return Some(format!("cast {}", describe_mana_usage_spell_filter_target_with_options(filter, false)?));
+            }
+            if purpose == &P::Purpose(Purpose::TurnFaceUp) {
+                let mut rest = filter.clone();
+                if rest.zone.take() != Some(Zone::Battlefield) || rest.face_down.take() != Some(true) { return None; }
+                let types = std::mem::take(&mut rest.card_types);
+                if rest != ObjectFilter::default() { return None; }
+                let noun = if types.is_empty() { "permanents" } else if types == [crate::types::CardType::Creature] { "creatures" } else { return None; };
+                return Some(format!("turn {noun} face up"));
+            }
+            let P::AnyOf(purposes) = purpose else { return None; };
+            if purposes.len() != 2 || !purposes.contains(&P::Purpose(Purpose::ActivateAbility)) || !purposes.contains(&P::Purpose(Purpose::ActivateManaAbility)) { return None; }
+            let mut filter = filter.clone();
+            let battlefield = filter.zone == Some(Zone::Battlefield);
+            if battlefield { filter.zone = None; }
+            let mut source = describe_mana_usage_ability_source_filter(&filter)?;
+            if battlefield { source = source.strip_suffix(" source").map(|s| format!("{s} permanent"))?; }
+            Some(format!("activate an ability of {source}"))
+        }
+        _ => None,
     }
 }

@@ -43,6 +43,31 @@ pub fn parse_if_result_predicate_lexed_tokens(
             crate::effect::Comparison::GreaterThan(0),
         ));
     }
+    // A bounded cardinal comparison over the actual discard result, including
+    // zero discarded cards. Keep its action and threshold for the consequent's
+    // "difference", rather than inferring a count from the player's new hand.
+    {
+        let words = normalized
+            .iter()
+            .map(OwnedLexToken::parser_text)
+            .collect::<Vec<_>>();
+        if let Some(tail) = words.strip_prefix(&["fewer", "than"])
+            && let Some((count, used)) = crate::util::parse_value_expr_words(tail)
+            && let Value::Fixed(count) = count
+            && count > 0
+            && tail[used..] == ["cards", "were", "discarded", "this", "way"]
+        {
+            let mut surface = PriorEffectResultSurface::new(
+                PriorEffectAction::Discarded,
+                crate::target::ObjectFilter::default(),
+                PriorEffectResultActor::Passive,
+                PriorEffectResultQuantifier::OneOrMore,
+            );
+            surface.required_count = Some(count as u32);
+            surface.negated = true;
+            return Some(IfResultPredicate::PriorEffectResult(surface));
+        }
+    }
     let direct_surface = parse_direct_prior_effect_result_surface(tokens);
     // A passive, unfiltered negated result such as "no counters were removed
     // this way" asks whether the antecedent action changed anything at all.

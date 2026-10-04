@@ -758,6 +758,7 @@ mod tests {
             if restricted {
                 game.player_mut(alice).unwrap().add_restricted_mana(
                     crate::ability::RestrictedManaUnit {
+                        source_controller: None,
                         symbol: ManaSymbol::Blue,
                         source: land,
                         source_chosen_creature_type: None,

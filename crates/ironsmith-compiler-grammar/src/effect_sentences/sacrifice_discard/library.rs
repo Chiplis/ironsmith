@@ -6,6 +6,28 @@ pub fn parse_discard(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
+    if let Some((your_hand, rounded_up)) =
+        sacrifice_discard_grammar::parse_half_hand_discard(tokens)
+    {
+        let owner = if your_hand {
+            PlayerFilter::You
+        } else {
+            discard_subject_owner_filter(subject).unwrap_or(PlayerFilter::IteratedPlayer)
+        };
+        let mut hand = Value::CardsInHand(owner);
+        if rounded_up {
+            hand = Value::Add(Box::new(hand), Box::new(Value::Fixed(1)));
+        }
+        return Ok(EffectAst::subject_verb_discard(
+            player,
+            Value::HalfRoundedDown(Box::new(hand)),
+            false,
+            false,
+            None,
+            None,
+        ));
+    }
+
     let clause_words = crate::lexer::token_word_refs(tokens);
     let clause_shape = sacrifice_discard_grammar::parse_discard_clause_shape(tokens).map_err(
         |error| match error {

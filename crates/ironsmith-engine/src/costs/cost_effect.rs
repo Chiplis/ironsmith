@@ -6,7 +6,7 @@
 use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPayer, CostPaymentResult};
 use crate::effect::Effect;
-use crate::effects::{CostExecutableEffect, CostValidationError};
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, execute_effect};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -387,8 +387,43 @@ fn simple_exile_from_graveyard_filter(
     (filter == &expected).then_some(card_type)
 }
 
+fn discard_cost_precheck(
+    effect: &Effect,
+    game: &GameState,
+    ctx: &CostContext,
+    allow_unannounced_x: bool,
+) -> Option<Result<(), CostPaymentError>> {
+    let discard =
+        transparent_cost_effect(effect).downcast_ref::<crate::effects::DiscardEffect>()?;
+    let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
+        .with_tagged_objects(ctx.tagged_objects.clone());
+    exec.replacement = ctx.replacement.clone();
+    exec.source_snapshot = ctx.source_snapshot.clone();
+    exec.x_value = ctx.x_value;
+    exec.effect_outcomes = ctx.effect_outcomes.clone();
+    exec.announced_targets = Some(
+        ctx.announced_targets
+            .iter()
+            .map(|target| match target {
+                crate::game_state::Target::Object(id) => {
+                    crate::effects::ResolvedTarget::Object(*id)
+                }
+                crate::game_state::Target::Player(player) => {
+                    crate::effects::ResolvedTarget::Player(*player)
+                }
+            })
+            .collect(),
+    );
+    Some(
+        discard
+            .check_cost_with_context(game, &exec, ctx.reason, allow_unannounced_x)
+            .map_err(convert_validation_error),
+    )
+}
+
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
+        if let Some(result) = discard_cost_precheck(&self.effect, game, ctx, true) { return result; }
         if !ctx.replacement.entry_reserved_objects.is_empty()
             && let crate::costs::CostProcessingMode::DiscardCards { count, filter } = self.processing_mode()
             && crate::costs::legal_discard_cost_cards_in_context(game, ctx, &filter).len()
@@ -522,6 +557,7 @@ impl CostPayer for CostEffect {
         game: &mut GameState,
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, CostPaymentError> {
+        if let Some(result) = discard_cost_precheck(&self.effect, game, ctx, false) { result?; }
         if let Some(result) = sacrifice_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
@@ -877,6 +913,7 @@ impl CostPayer for CostEffect {
 
         if let Some(effect) = self.effect.downcast_ref::<DiscardEffect>()
             && effect.player == PlayerFilter::You
+            && !effect.references_cost_x()
             && !effect.random
             && let crate::effect::Value::Fixed(count) = effect.count
         {

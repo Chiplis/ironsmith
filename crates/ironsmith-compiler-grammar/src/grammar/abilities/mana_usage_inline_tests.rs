@@ -108,3 +108,16 @@ fn u078_parses_generic_scry_and_copy_on_spend_payloads() {
         );
     }
 }
+
+
+#[test]
+fn outlaw_cast_and_activation_arms_both_keep_the_inclusive_subtype_set() {
+    let tokens=lex("Spend this mana only to cast outlaw spells or activate abilities of outlaw sources.");
+    let Some(ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching { spell_filter, ability_source_filter }) = parse_mana_usage_restriction_sentence_lexed(&tokens) else { panic!("outlaw transaction"); };
+    for filter in [spell_filter,ability_source_filter] {
+        assert_eq!(filter.subtypes.len(),5);
+        assert!(filter.all_subtypes.is_empty());
+        assert!(filter.card_types.is_empty(), "a noncreature Kindred outlaw spell still qualifies");
+        assert!(!filter.subtypes.contains(&crate::types::Subtype::Human));
+    }
+}

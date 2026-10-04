@@ -38,6 +38,7 @@ fn cohort_restricted_mana_accepts_each_spell_union_arm_and_only_matching_ability
             let source = game.create_object_from_definition(&land, alice, Zone::Battlefield);
             game.player_mut(alice).unwrap().add_restricted_mana(
                 crate::ability::RestrictedManaUnit {
+                    source_controller: None,
                     symbol: crate::mana::ManaSymbol::Red,
                     source,
                     source_chosen_creature_type: None,
