@@ -2054,6 +2054,8 @@ impl StaticAbilityModelInterpreter {
                 *factor,
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::AddLifeGainReplacement { player, additional, display } =>
+                StaticAbility::add_life_gain_replacement(player.clone(), *additional, display.clone()),
             ironsmith_core::StaticAbilityPayload::DoubleLifeChangeReplacement {
                 player,
                 loss,

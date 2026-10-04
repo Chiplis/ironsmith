@@ -1366,6 +1366,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     CanBlockAdditionalForEach { additional: u32, filter: ObjectFilter },
     PreventMatchingDamage(PreventMatchingDamageSpec),
     PreventMatchingDamageWithFollowUp(StaticDamagePreventionFollowUp<E>),
+    AddLifeGainReplacement { player: PlayerFilter, additional: i32, display: String },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2884,6 +2885,8 @@ where
                 replacement_mana,
                 display,
             },
+            StaticAbilityPayload::AddLifeGainReplacement { player, additional, display } =>
+                StaticAbilityPayload::AddLifeGainReplacement { player, additional, display },
             StaticAbilityPayload::DoubleLifeChangeReplacement {
                 player,
                 loss,
@@ -7075,6 +7078,15 @@ impl<
             },
         }
     }
+    pub fn add_life_gain_replacement(player: PlayerFilter, additional: i32, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddLifeGainReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddLifeGainReplacement { player, additional, display },
+        }
+    }
+
     pub fn double_life_change_replacement(
         player: PlayerFilter,
         loss: bool,

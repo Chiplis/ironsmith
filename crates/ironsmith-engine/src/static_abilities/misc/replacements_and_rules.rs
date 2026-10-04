@@ -4602,3 +4602,36 @@ impl StaticAbilityKind for PreventMatchingDamageWithFollowUp {
         ))
     }
 }
+
+
+/// One additive life-gain replacement, participating in the ordinary CR 616
+/// ordering and replacement-application identity machinery.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddLifeGainReplacement {
+    pub player: PlayerFilter,
+    pub additional: i32,
+    pub condition: Option<Condition>,
+    pub display: String,
+}
+
+impl StaticAbilityKind for AddLifeGainReplacement {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::AddLifeGainReplacement }
+    fn display(&self) -> String { self.display.clone() }
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let mut combined = self.clone();
+        combined.condition = Some(match combined.condition.take() {
+            Some(existing) => Condition::And(Box::new(condition), Box::new(existing)),
+            None => condition,
+        });
+        Some(StaticAbility::new(combined))
+    }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(source, controller,
+            ConditionalWouldChangeLifeMatcher {
+                player: self.player.clone(), loss: false,
+                condition: self.condition.clone(), display: self.display.clone(),
+            },
+            ReplacementAction::Modify(EventModification::Add(self.additional)),
+        ))
+    }
+}

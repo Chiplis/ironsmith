@@ -63,6 +63,7 @@ pub enum DamagePreventionActionAst {
     PreventAllDamageToTarget {
         target: TargetAst,
         duration: Until,
+        combat_only: bool,
         source_of_your_choice: bool,
         source_choice_shares_activation_mana_color: bool,
         source_target: Option<TargetAst>,
