@@ -151,6 +151,8 @@ pub enum EventKind {
     ObjectBecameAttached,
     /// A permanent phased in (not a zone change).
     PermanentPhasedIn,
+    /// One card was moved by an actual mill instruction.
+    CardMilled,
 }
 
 /// A target within an event that can potentially be redirected.

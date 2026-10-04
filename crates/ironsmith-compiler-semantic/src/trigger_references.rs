@@ -276,3 +276,19 @@ mod excess_damage_amount_tests {
         )));
     }
 }
+
+/// The exact card predicate used by the event's numeric count. A query can use
+/// that number only after proving semantic equality, including all qualifiers.
+/// Mixed-event or differently filtered alternatives deliberately have no proof.
+pub fn trigger_milling_event_filter(trigger: &TriggerSpec) -> Option<std::sync::Arc<ObjectFilter>> {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_milling_event_filter(trigger),
+        TriggerSpec::CardsMilled { filter, one_or_more: true, .. } => Some(std::sync::Arc::new(filter.clone().unwrap_or_default())),
+        TriggerSpec::Either(left, right) => {
+            let left = trigger_milling_event_filter(left)?;
+            let right = trigger_milling_event_filter(right)?;
+            (left == right).then_some(left)
+        }
+        _ => None,
+    }
+}

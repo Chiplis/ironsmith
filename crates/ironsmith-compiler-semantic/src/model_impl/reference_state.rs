@@ -237,6 +237,7 @@ pub struct ReferenceFrame {
     pub force_auto_tag_object_targets: bool,
     pub allow_life_event_value: bool,
     pub allow_excess_damage_event_value: bool,
+    pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
     pub bind_unbound_x_to_last_effect: bool,
 }
 
@@ -259,6 +260,7 @@ impl ReferenceFrame {
             force_auto_tag_object_targets: frame.force_auto_tag_object_targets,
             allow_life_event_value: frame.allow_life_event_value,
             allow_excess_damage_event_value: frame.allow_excess_damage_event_value,
+            milling_event_filter: frame.milling_event_filter.clone(),
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
         }
     }
@@ -286,6 +288,7 @@ impl ReferenceFrame {
             force_auto_tag_object_targets: self.force_auto_tag_object_targets,
             allow_life_event_value: self.allow_life_event_value,
             allow_excess_damage_event_value: self.allow_excess_damage_event_value,
+            milling_event_filter: self.milling_event_filter.clone(),
             bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
         }
     }
@@ -397,6 +400,7 @@ pub struct ReferenceEnv {
     pub iterated_object: bool,
     pub allow_life_event_value: bool,
     pub allow_excess_damage_event_value: bool,
+    pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
     pub bind_unbound_x_to_last_effect: bool,
 }
 
@@ -416,6 +420,7 @@ impl Default for ReferenceEnv {
             iterated_object: false,
             allow_life_event_value: false,
             allow_excess_damage_event_value: false,
+            milling_event_filter: None,
             bind_unbound_x_to_last_effect: false,
         }
     }
@@ -447,6 +452,7 @@ impl ReferenceEnv {
             iterated_object: imports.iterated_object,
             allow_life_event_value,
             allow_excess_damage_event_value: false,
+            milling_event_filter: None,
             bind_unbound_x_to_last_effect,
         }
     }
@@ -468,6 +474,7 @@ impl ReferenceEnv {
             iterated_object: frame.iterated_object,
             allow_life_event_value: frame.allow_life_event_value,
             allow_excess_damage_event_value: frame.allow_excess_damage_event_value,
+            milling_event_filter: frame.milling_event_filter.clone(),
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
         }
     }
@@ -498,6 +505,7 @@ impl ReferenceEnv {
             force_auto_tag_object_targets,
             allow_life_event_value: self.allow_life_event_value,
             allow_excess_damage_event_value: self.allow_excess_damage_event_value,
+            milling_event_filter: self.milling_event_filter.clone(),
             bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
         }
     }

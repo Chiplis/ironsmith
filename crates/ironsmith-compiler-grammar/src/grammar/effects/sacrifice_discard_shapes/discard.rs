@@ -206,23 +206,22 @@ fn is_full_hand_discard(words: &[&str]) -> bool {
 /// A half-hand discard carries its own card noun. Keep its recipient-relative
 /// hand distinct from an explicitly authored "your hand".
 pub fn parse_half_hand_discard(tokens: &[OwnedLexToken]) -> Option<(bool, bool)> {
+    let (denominator, your_hand, up) = parse_fraction_hand_discard(tokens)?;
+    (denominator == 2).then_some((your_hand, up))
+}
+
+pub fn parse_fraction_hand_discard(tokens: &[OwnedLexToken]) -> Option<(i32, bool, bool)> {
+    use crate::grammar::shared_util::fraction_shapes;
     let words = parser_token_word_refs(tokens);
-    let rest = words.strip_prefix(&["half", "the", "cards", "in"])?;
-    let (rest, up) = if let Some(rest) = rest.strip_suffix(&["rounded", "up"]) {
-        (rest, true)
-    } else {
-        (
-            rest.strip_suffix(&["rounded", "down"]).unwrap_or(rest),
-            false,
-        )
+    let (body, up) = fraction_shapes::without_rounding_suffix(&words);
+    let (denominator, used) = fraction_shapes::unit_fraction_prefix(body)?;
+    let rest = body[used..].strip_prefix(&["the", "cards", "in"])?;
+    let your_hand = match rest {
+        ["your", "hand"] => true,
+        ["their", "hand"] | ["that", "players", "hand"] | ["that", "player's", "hand"] => false,
+        _ => return None,
     };
-    match rest {
-        ["your", "hand"] => Some((true, up)),
-        ["their", "hand"] | ["that", "players", "hand"] | ["that", "player's", "hand"] => {
-            Some((false, up))
-        }
-        _ => None,
-    }
+    Some((denominator, your_hand, up))
 }
 
 pub fn parse_discard_clause_shape(

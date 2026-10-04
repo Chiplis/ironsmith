@@ -1,0 +1,74 @@
+[
+  {
+    "name": "Dense Foliage",
+    "oracle_id": "fb1369aa-25a2-4e2a-9cbe-6cfe7e238b1b",
+    "mana_cost": "{2}{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "Creatures can't be the targets of spells.",
+    "scryfall_uri": "https://scryfall.com/card/6ed/221/dense-foliage?utm_source=api"
+  },
+  {
+    "name": "Fiendslayer Paladin",
+    "oracle_id": "3eb02993-b2fc-4185-aa67-08c8f133ce42",
+    "mana_cost": "{1}{W}{W}",
+    "type_line": "Creature — Human Knight",
+    "oracle_text": "First strike (This creature deals combat damage before creatures without first strike.)\nLifelink (Damage dealt by this creature also causes you to gain that much life.)\nThis creature can't be the target of black or red spells your opponents control.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/plst/M14-18/fiendslayer-paladin?utm_source=api"
+  },
+  {
+    "name": "Shanna, Sisay's Legacy",
+    "oracle_id": "546201d0-3fa5-44e4-a526-ab0945711e49",
+    "mana_cost": "{G}{W}",
+    "type_line": "Legendary Creature — Human Warrior",
+    "oracle_text": "Shanna can't be the target of abilities your opponents control.\nShanna gets +1/+1 for each creature you control.",
+    "power": "0",
+    "toughness": "0",
+    "scryfall_uri": "https://scryfall.com/card/mul/59/shanna-sisays-legacy?utm_source=api"
+  },
+  {
+    "name": "Ground Seal",
+    "oracle_id": "13f6f960-ef79-4f2c-8874-90fe9e77099e",
+    "mana_cost": "{1}{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "When this enchantment enters, draw a card.\nCards in graveyards can't be the targets of spells or abilities.",
+    "scryfall_uri": "https://scryfall.com/card/wot/54/ground-seal?utm_source=api"
+  },
+  {
+    "name": "Silent Gravestone",
+    "oracle_id": "803815c5-12be-48b3-a101-f416c1ef9b7b",
+    "mana_cost": "{1}",
+    "type_line": "Artifact",
+    "oracle_text": "Cards in graveyards can't be the targets of spells or abilities.\n{4}, {T}: Exile this artifact and all cards from all graveyards. Draw a card.",
+    "scryfall_uri": "https://scryfall.com/card/rix/182/silent-gravestone?utm_source=api"
+  },
+  {
+    "name": "Underworld Cerberus",
+    "oracle_id": "a36c2b76-d595-42ba-b8c2-bb8f02639981",
+    "mana_cost": "{3}{B}{R}",
+    "type_line": "Creature — Dog",
+    "oracle_text": "This creature can't be blocked except by three or more creatures.\nCards in graveyards can't be the targets of spells or abilities.\nWhen this creature dies, exile it and each player returns all creature cards from their graveyard to their hand.",
+    "power": "6",
+    "toughness": "6",
+    "scryfall_uri": "https://scryfall.com/card/ths/208/underworld-cerberus?utm_source=api"
+  },
+  {
+    "name": "Thrun, Breaker of Silence",
+    "oracle_id": "789b7af5-ac15-40b6-b5b7-f3fcdcfb52e1",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Legendary Creature — Troll Shaman",
+    "oracle_text": "This spell can't be countered.\nTrample\nThrun can't be the target of nongreen spells your opponents control or abilities from nongreen sources your opponents control.\nDuring your turn, Thrun has indestructible.",
+    "power": "5",
+    "toughness": "5",
+    "scryfall_uri": "https://scryfall.com/card/pone/186s/thrun-breaker-of-silence?utm_source=api"
+  },
+  {
+    "name": "Display of Dominance",
+    "oracle_id": "4a2233de-50bd-49be-ac49-4a3c0f02dd52",
+    "mana_cost": "{1}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Choose one —\n• Destroy target blue or black noncreature permanent.\n• Permanents you control can't be the targets of blue or black spells your opponents control this turn.",
+    "scryfall_uri": "https://scryfall.com/card/dtk/182/display-of-dominance?utm_source=api"
+  }
+]

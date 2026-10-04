@@ -930,6 +930,12 @@ impl Auditor {
                 scope.player = Binding::Present;
                 scope.amount = Binding::Present;
             }
+            "CardsMilled" => {
+                scope.player = Binding::Present;
+                scope.amount = Binding::Present;
+                // Hidden replacement destinations cannot expose a card.
+                scope.event_object = Binding::Unknown;
+            }
             "PhasingChanged" => {
                 scope.event_object = Binding::Present;
                 scope.amount = Binding::Present;

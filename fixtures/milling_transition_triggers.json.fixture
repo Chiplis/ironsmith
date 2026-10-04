@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Glowing One",
+    "text": "Mana cost: {2}{G}\nType: Creature \u2014 Zombie Mutant\nPower/Toughness: 2/2\nDeathtouch\nWhenever this creature deals combat damage to a player, they get four rad counters.\nWhenever a player mills a nonland card, you gain 1 life.",
+    "oracle_id": "b30eae2a-bc1c-45a3-93ae-e1c30d26797c",
+    "source": "https://scryfall.com/card/pip/76/glowing-one?utm_source=api",
+    "baseline_content_hash": "efe3e384b0e633478a90eaea592eaf41a61c5b6b98d94e914aed163c212d1dc5",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever a player mills a nonland card, you gain 1 life.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a player mills a nonland card, you gain 1 life.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source and authored regressions only; no build or test execution."
+  },
+  {
+    "name": "Infesting Radroach",
+    "text": "Mana cost: {2}{B}\nType: Creature \u2014 Insect Mutant\nPower/Toughness: 2/2\nFlying\nThis creature can't block.\nWhenever this creature deals combat damage to a player, they get that many rad counters.\nWhenever an opponent mills a nonland card, if this creature is in your graveyard, you may return it to your hand.",
+    "oracle_id": "064f371c-e4f2-423b-9f35-443191dfbb4c",
+    "source": "https://scryfall.com/card/pip/574/infesting-radroach?utm_source=api",
+    "baseline_content_hash": "b40ef7b1fe298ab54e0ec370c527a78d02a20f79760b69f9e269644c6196b0cc",
+    "baseline_diagnostic": "unsupported trigger clause (clause: 'an opponent mills a nonland card') [rule-path=compiler-trigger-facts]; oracle-only fallback also failed: unsupported trigger clause (clause: 'an opponent mills a nonland card') [rule-path=compiler-trigger-facts]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source and authored regressions only; no build or test execution."
+  },
+  {
+    "name": "Lo and Li, Royal Advisors",
+    "text": "Mana cost: {2}{B}{B}\nType: Legendary Creature \u2014 Human Advisor\nPower/Toughness: 3/3\nWhenever an opponent discards a card or mills one or more cards, put a +1/+1 counter on each Advisor you control.\n{2}{U/B}: Target player mills four cards. (They put the top four cards of their library into their graveyard.)",
+    "oracle_id": "b5018037-cf4e-46d2-86c3-fb8eec6e44d1",
+    "source": "https://scryfall.com/card/tle/189/lo-and-li-royal-advisors?utm_source=api",
+    "baseline_content_hash": "85e76ed8ec0c0e36c0880a2c86517caa21e7b6fed6fbc13a6539111ff0cf2ecd",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever an opponent discards a card or mills one or more cards, put a +1/+1 counter on each Advisor you control.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever an opponent discards a card or mills one or more cards, put a +1/+1 counter on each Advisor you control.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source and authored regressions only; no build or test execution."
+  },
+  {
+    "name": "Mirelurk Queen",
+    "text": "Mana cost: {4}{U}\nType: Creature \u2014 Crab Mutant\nPower/Toughness: 4/4\nVigilance\nWhen this creature enters, target player gets two rad counters.\nWhenever one or more nonland cards are milled, draw a card, then put a +1/+1 counter on this creature. This ability triggers only once each turn.",
+    "oracle_id": "116ef9ea-d199-49b8-89c7-d61dd92711f5",
+    "source": "https://scryfall.com/card/pip/905/mirelurk-queen?utm_source=api",
+    "baseline_content_hash": "78874f4599f579bf3d962e861d1f3382977abd8694277cddb6da0db772a7cc27",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more nonland cards are milled, draw a card, then put a +1/+1 counter on this creature. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more nonland cards are milled, draw a card, then put a +1/+1 counter on this creature. This ability triggers only once each turn.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source and authored regressions only; no build or test execution."
+  },
+  {
+    "name": "Screeching Scorchbeast",
+    "text": "Mana cost: {4}{B}{B}\nType: Creature \u2014 Bat Mutant\nPower/Toughness: 5/5\nFlying, menace\nWhenever this creature attacks, each player gets two rad counters.\nWhenever one or more nonland cards are milled, you may create that many 2/2 black Zombie Mutant creature tokens. Do this only once each turn.",
+    "oracle_id": "ed5889c9-e524-40c1-9011-7559a992bb1b",
+    "source": "https://scryfall.com/card/pip/860/screeching-scorchbeast?utm_source=api",
+    "baseline_content_hash": "415ca32eff5393a25031e9ce7306e1aca7e69d5d276f0e86eb101143c376f3bc",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more nonland cards are milled, you may create that many 2/2 black Zombie Mutant creature tokens. Do this only once each turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more nonland cards are milled, you may create that many 2/2 black Zombie Mutant creature tokens. Do this only once each turn.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source and authored regressions only; no build or test execution."
+  },
+  {
+    "name": "The Wise Mothman",
+    "text": "Mana cost: {1}{B}{G}{U}\nType: Legendary Creature \u2014 Insect Mutant\nPower/Toughness: 3/3\nFlying\nWhenever The Wise Mothman enters or attacks, each player gets a rad counter.\nWhenever one or more nonland cards are milled, put a +1/+1 counter on each of up to X target creatures, where X is the number of nonland cards milled this way.",
+    "oracle_id": "7656f93b-336f-49cb-b8fe-c2b5c014258f",
+    "source": "https://scryfall.com/card/sld/2455/the-wise-mothman?utm_source=api",
+    "baseline_content_hash": "69b0bec439882d517814dda0e1561d96acbabbdec5e9aee766c6a9bad2e6ec88",
+    "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more nonland cards are milled, put a +1/+1 counter on each of up to X target creatures, where X is the number of nonland cards milled this way.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more nonland cards are milled, put a +1/+1 counter on each of up to X target creatures, where X is the number of nonland cards milled this way.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source and authored regressions only; no build or test execution."
+  },
+  {
+    "name": "Zellix, Sanity Flayer",
+    "text": "Mana cost: {2}{U}\nType: Legendary Creature \u2014 Horror\nPower/Toughness: 2/3\nHive Mind \u2014 Whenever a player mills one or more creature cards, you create a 1/1 black Horror creature token.\n{1}, {T}: Target player mills three cards.\nChoose a Background (You can have a Background as a second commander.)",
+    "oracle_id": "4dde484a-8d5b-4eb6-ab4a-e30cc370431c",
+    "source": "https://scryfall.com/card/plst/CLB-652/zellix-sanity-flayer?utm_source=api",
+    "baseline_content_hash": "172e0aaa6dab383ae4af05cfb121dddcf5a7a17e10ea200bd2d17ee6172e920d",
+    "baseline_diagnostic": "parser does not yet support line family: 'Hive Mind \u2014 Whenever a player mills one or more creature cards, you create a 1/1 black Horror creature token.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Hive Mind \u2014 Whenever a player mills one or more creature cards, you create a 1/1 black Horror creature token.' [rule-path=unsupported-line-family]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: source and authored regressions only; no build or test execution."
+  }
+]

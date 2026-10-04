@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "865e1be8501c212079d3d783dfd84a4dc3fac5b9",
+  "source_implementation_commit": "17d6261058c28883f53ba5a8b1ecc1e472d2b639",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 398,
-    "additional_proposed_compile_entries": 398,
+    "additional_proposed_unique_cards": 415,
+    "additional_proposed_compile_entries": 415,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 4
@@ -1140,6 +1140,68 @@
       "semantic_scope": [
         "Explicit compiler/artifact exchange captures both original sets and calls one atomic producer.",
         "Sequential instructions remain sequential; no newly phased-in outgoing observer and no resolution-wide phase-in exclusion tag."
+      ]
+    },
+    {
+      "id": "ordinal-resource-fractions",
+      "stage": 35,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/ordinal_fraction_quantities.json.fixture",
+      "baseline_entries": [
+        "Pox",
+        "Dire Fleet Ravager"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "ca230268f66ee589e530ee33eaab15ef0199f561",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Shared complete ordinal fractions for life, discard and sacrifice quantities; retain recipient, chooser and rounding.",
+        "Widen rounding-offset intermediate arithmetic while preserving bounded core values."
+      ]
+    },
+    {
+      "id": "source-filtered-targeting",
+      "stage": 35,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/source_filtered_targeting.json.fixture",
+      "baseline_entries": [
+        "Dense Foliage",
+        "Fiendslayer Paladin",
+        "Shanna, Sisay's Legacy",
+        "Ground Seal",
+        "Silent Gravestone",
+        "Underworld Cerberus",
+        "Thrun, Breaker of Silence",
+        "Display of Dominance"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "ca230268f66ee589e530ee33eaab15ef0199f561",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Source-role and controller-aware targeting restrictions across authored zones, current incarnations and source LKI.",
+        "Independent prohibitions remain separate from hexproof/shroud bypass; temporary restrictions remain dynamic."
+      ]
+    },
+    {
+      "id": "actual-milling-transitions",
+      "stage": 35,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/milling_transition_triggers.json.fixture",
+      "baseline_entries": [
+        "Glowing One",
+        "Infesting Radroach",
+        "Lo and Li, Royal Advisors",
+        "Mirelurk Queen",
+        "Screeching Scorchbeast",
+        "The Wise Mothman",
+        "Zellix, Sanity Flayer"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "17d6261058c28883f53ba5a8b1ecc1e472d2b639",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Actual mill keyword events, exact identities and public completed-state snapshots; unrelated library movement does not match.",
+        "Grouped matching-filter event quantities and target caps preserve exact scope; all simultaneous originals and receipt snapshots precede replacement additions."
       ]
     }
   ],
@@ -7662,8 +7724,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-filtered-targeting"
+      ]
     },
     {
       "card_name": "Denzilore Fatehold",
@@ -7888,8 +7952,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "ordinal-resource-fractions"
+      ]
     },
     {
       "card_name": "Dire Wolves",
@@ -8004,8 +8070,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-filtered-targeting"
+      ]
     },
     {
       "card_name": "Display of Power",
@@ -10640,8 +10708,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-filtered-targeting"
+      ]
     },
     {
       "card_name": "Fiery Gambit",
@@ -12227,8 +12297,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actual-milling-transitions"
+      ]
     },
     {
       "card_name": "Glyph of Delusion",
@@ -12905,8 +12977,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-filtered-targeting"
+      ]
     },
     {
       "card_name": "Growing Dread",
@@ -14652,8 +14726,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actual-milling-transitions"
+      ]
     },
     {
       "card_name": "Infiltrator's Magemark",
@@ -17484,8 +17560,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actual-milling-transitions"
+      ]
     },
     {
       "card_name": "Loading Zone",
@@ -18814,8 +18892,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actual-milling-transitions"
+      ]
     },
     {
       "card_name": "Mirko, Obsessive Theorist",
@@ -22134,8 +22214,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "ordinal-resource-fractions"
+      ]
     },
     {
       "card_name": "Pox Plague",
@@ -25026,8 +25108,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actual-milling-transitions"
+      ]
     },
     {
       "card_name": "Scroll Rack",
@@ -25524,8 +25608,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-filtered-targeting"
+      ]
     },
     {
       "card_name": "Shape Stealer",
@@ -25998,8 +26084,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-filtered-targeting"
+      ]
     },
     {
       "card_name": "Silhouette",
@@ -29844,8 +29932,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actual-milling-transitions"
+      ]
     },
     {
       "card_name": "The Wretched",
@@ -30119,8 +30209,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-filtered-targeting"
+      ]
     },
     {
       "card_name": "Thunderdrum Soloist",
@@ -31243,8 +31335,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-filtered-targeting"
+      ]
     },
     {
       "card_name": "Unerring Sling",
@@ -34154,8 +34248,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actual-milling-transitions"
+      ]
     },
     {
       "card_name": "Zethi, Arcane Blademaster",
@@ -34376,7 +34472,9 @@
         "Ormos, Archive Keeper"
       ],
       "evidence": "architecture/card-failure-payment-disclosure-boundary.md",
-      "complete_coverage_claims_withheld": true
+      "complete_coverage_claims_withheld": true,
+      "completed_action_guard_source_commit": "649a0c72",
+      "remaining_boundary": "Precommit opening previews and independent payment failure/cancellation routes remain under source review."
     }
   ]
 }

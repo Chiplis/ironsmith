@@ -1378,10 +1378,14 @@ impl ForPlayersEffect {
                     match ctx.with_temp_iterated_player(Some(players[player_index]), |ctx| {
                         in_optional_action(ctx, optional, |ctx| {
                             let scopes = program_path_scopes(&path, &program_groups, player_index);
-                            with_program_scope(ctx, &scopes, |ctx| proposal.commit(game, ctx))
+                            with_program_scope(ctx, &scopes, |ctx| proposal.commit_original(game, ctx))
                         })
                     }) {
-                        Ok(outcome) => {
+                        Ok(committed) => {
+                            let completion = committed.completion.map(|completion| (
+                                completion, crate::effects::ExecutionContextCheckpoint::capture(ctx),
+                                optional, path.clone(),
+                            ));
                             effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
                             tagged_players_by_player[player_index] = ctx.tagged_players.clone();
                             capture_player_tagged_object_deltas(
@@ -1390,7 +1394,7 @@ impl ForPlayersEffect {
                                 &mut tagged_objects_by_player[player_index],
                                 &mut loop_local_tags,
                             );
-                            batch_outcomes.push((player_index, outcome));
+                            batch_outcomes.push((player_index, committed.outcome, completion));
                         }
                         Err(error) => {
                             *game = game_checkpoint;
@@ -1414,6 +1418,33 @@ impl ForPlayersEffect {
                     pinned_lookback,
                 );
                 merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
+                // Freeze every receipt against the same completed original
+                // state before any replacement-added program can move a card.
+                for (_, _, completion) in &mut batch_outcomes {
+                    if let Some((completion, _, _, _)) = completion { completion.freeze(game)?; }
+                }
+                let mut completed_outcomes = Vec::with_capacity(batch_outcomes.len());
+                for (player_index, mut outcome, completion) in batch_outcomes {
+                    if let Some((completion, captured, optional, path)) = completion {
+                        captured.restore(ctx);
+                        let baseline = ctx.tagged_objects.clone();
+                        outcome = ctx.with_temp_iterated_player(Some(players[player_index]), |ctx| {
+                            in_optional_action(ctx, optional, |ctx| {
+                                let scopes = program_path_scopes(&path, &program_groups, player_index);
+                                with_program_scope(ctx, &scopes, |ctx| completion.complete(game, ctx, outcome))
+                            })
+                        })?;
+                        // The outer ForPlayers checkpoint owns all original
+                        // mutations, notifications and completed additions.
+                        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                        effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
+                        tagged_players_by_player[player_index] = ctx.tagged_players.clone();
+                        capture_player_tagged_object_deltas(&baseline, &ctx.tagged_objects,
+                            &mut tagged_objects_by_player[player_index], &mut loop_local_tags);
+                        merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
+                    }
+                    completed_outcomes.push((player_index, outcome));
+                }
                 ctx.tagged_objects = accumulated_unit_tags;
                 // Keep each player's scalar result local ("that many"), while
                 // attaching the completed action's per-player counts for
@@ -1425,7 +1456,7 @@ impl ForPlayersEffect {
                     &players,
                     &mut effect_outcomes_by_player,
                 );
-                for (player_index, outcome) in batch_outcomes {
+                for (player_index, outcome) in completed_outcomes {
                     let path = &optional_program.paths[*unit.last().expect("action unit")];
                     retain_optional_outcome(
                         outcome,

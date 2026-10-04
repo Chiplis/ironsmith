@@ -5054,6 +5054,9 @@ impl GameState {
                 self.objects
                     .iter()
                     .flat_map(|(&object_id, object)| {
+                        // CR 702.26b: phased-out sources do not supply static
+                        // rule restrictions, even on the printed-only fast path.
+                        if self.is_phased_out(object_id) { return Vec::new(); }
                         let zone = object.zone;
                         let controller = self.controller_of(object);
                         let mut abilities = object
@@ -5115,6 +5118,9 @@ impl GameState {
                 self.objects
                     .iter()
                     .flat_map(|(&object_id, object)| {
+                        // CR 702.26b: phased-out sources do not supply static
+                        // rule restrictions, even on the printed-only fast path.
+                        if self.is_phased_out(object_id) { return Vec::new(); }
                         let zone = object.zone;
                         let controller = self.controller_of(object);
                         match zone {

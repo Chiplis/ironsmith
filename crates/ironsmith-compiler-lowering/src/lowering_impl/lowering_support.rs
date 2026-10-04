@@ -2577,6 +2577,7 @@ fn stage_effects_from_normalized(
         config.initial_last_effect_id,
     );
     initial_env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
+    initial_env.milling_event_filter = config.milling_event_filter.clone();
     let implicit_trigger_references = include_trigger_prelude.then(|| {
         semantic_effects
             .iter()
@@ -2586,7 +2587,7 @@ fn stage_effects_from_normalized(
             .collect::<Vec<_>>()
     });
     let annotated =
-        annotate_effect_sequence_owned(semantic_effects, &imports, config, Default::default())?;
+        annotate_effect_sequence_owned(semantic_effects, &imports, config.clone(), Default::default())?;
 
     if include_trigger_prelude {
         let needs_triggering_prelude = annotated
@@ -3353,6 +3354,7 @@ pub fn stage_effects_with_trigger_context_for_lowering(
             allow_excess_damage_event_value: trigger.is_some_and(
                 ironsmith_compiler_semantic::trigger_references::trigger_binds_excess_damage_amount,
             ),
+            milling_event_filter: trigger.and_then(ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter),
             ..Default::default()
         },
         trigger.and_then(inferred_trigger_player_filter),
@@ -4026,6 +4028,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
                 ironsmith_compiler_semantic::trigger_references::trigger_binds_excess_damage_amount(
                     &trigger,
                 ),
+            milling_event_filter: ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter(&trigger),
             ..Default::default()
         },
         inferred_trigger_player_filter(&trigger),

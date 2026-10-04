@@ -172,6 +172,7 @@ pub fn compile_effects(
         EffectReferenceResolutionConfig {
             allow_life_event_value: ctx.allow_life_event_value,
             allow_excess_damage_event_value: ctx.allow_excess_damage_event_value,
+            milling_event_filter: ctx.milling_event_filter.clone(),
             bind_unbound_x_to_last_effect: ctx.bind_unbound_x_to_last_effect,
             initial_last_effect_id: ctx.last_effect_id,
             initial_iterated_player: ctx.iterated_player,

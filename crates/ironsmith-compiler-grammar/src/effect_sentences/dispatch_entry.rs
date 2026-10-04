@@ -1633,8 +1633,8 @@ fn maybe_append_trailing_that_much_life_loss(
     }
 }
 
-/// "Round up each time." follows a sentence whose halves state no rounding.
-/// Such a half defaults to rounding down, so lift each one to rounding up.
+/// "Round up each time." follows a sentence whose unit fractions state no
+/// rounding. Lift their default downward division to upward division.
 fn round_up_unstated_half_values_in_effects(effects: &mut [EffectAst]) {
     fn round_up(value: &mut Value) {
         match value {
@@ -1647,6 +1647,15 @@ fn round_up_unstated_half_values_in_effects(effects: &mut [EffectAst]) {
                 if !already_up {
                     let inner = std::mem::replace(base.as_mut(), Value::Fixed(0));
                     **base = Value::Add(Box::new(inner), Box::new(Value::Fixed(1)));
+                }
+            }
+            Value::DividedRoundedDown(base, denominator) if *denominator > 1 => {
+                let offset = *denominator - 1;
+                let already_up = matches!(base.as_ref(), Value::Add(_, amount)
+                    if matches!(amount.as_ref(), Value::Fixed(value) if *value == offset));
+                if !already_up {
+                    let inner = std::mem::replace(base.as_mut(), Value::Fixed(0));
+                    **base = Value::Add(Box::new(inner), Box::new(Value::Fixed(offset)));
                 }
             }
             Value::HalfLifeTotalRoundedDown(player) => {
@@ -3228,7 +3237,7 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
         if sentence_effects.is_empty() && is_round_up_each_time_sentence(&parse_plan.tokens) {
             // "... draws cards equal to half ... and loses half their life.
-            // Round up each time.": every unstated half rounds up.
+            // Round up each time.": every unstated unit fraction rounds up.
             round_up_unstated_half_values_in_effects(&mut effects);
         }
         for effect in &mut sentence_effects {
@@ -14083,4 +14092,38 @@ fn parse_each_player_who_lost_life_sentence(
         _ => return Ok(None),
     };
     Ok(Some(vec![narrowed]))
+}
+
+#[cfg(test)]
+mod ordinal_rounding_tests {
+    use super::*;
+    #[test]
+    fn sentence_wide_round_up_reaches_fractional_choice_counts_once() {
+        let mut effects = vec![EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjects {
+                filter: ObjectFilter::creature().you_control(),
+                count: crate::effect::ChoiceCount::dynamic_x(),
+                count_value: Some(Value::DividedRoundedDown(
+                    Box::new(Value::Count(ObjectFilter::creature().you_control())),
+                    3,
+                )),
+                player: PlayerAst::You,
+                tag: crate::tag::declared_key("ordinal_choice"),
+            },
+        )];
+        round_up_unstated_half_values_in_effects(&mut effects);
+        let once = effects.clone();
+        round_up_unstated_half_values_in_effects(&mut effects);
+        assert_eq!(effects, once);
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            count_value: Some(Value::DividedRoundedDown(base, 3)),
+            ..
+        }) = &effects[0]
+        else {
+            panic!("fractional choice")
+        };
+        assert!(
+            matches!(base.as_ref(), Value::Add(_, offset) if offset.as_ref() == &Value::Fixed(2))
+        );
+    }
 }
