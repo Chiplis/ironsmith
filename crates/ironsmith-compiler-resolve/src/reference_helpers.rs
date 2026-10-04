@@ -411,6 +411,7 @@ fn append_object_filter_target_player_choices(
             .map(|constraint| &constraint.source_controller),
         filter.discarded_or_cycled_this_turn_by.as_ref(),
         filter.dealt_damage_to_player_this_turn.as_ref(),
+        filter.last_drawn_this_turn.as_ref(),
     ]
     .into_iter()
     .flatten()

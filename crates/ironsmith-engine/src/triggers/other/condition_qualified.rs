@@ -56,6 +56,24 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
             )
     }
 
+    fn trigger_count(&self, event: &TriggerEvent) -> u32 {
+        self.trigger.trigger_count(event)
+    }
+
+    fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
+        if self.matches(event, ctx) { self.trigger.trigger_count_with_context(event, ctx) } else { 0 }
+    }
+
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        self.matches(event, ctx).then(|| self.trigger.event_value_amount(event, ctx)).flatten()
+    }
+
+    fn uses_snapshot(&self) -> bool { self.trigger.uses_snapshot() }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        self.trigger.looks_back_for_source(event)
+    }
+
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
         self.trigger.subscribed_kinds()
     }

@@ -108,6 +108,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "CrewCostEffect" => Some(EffectFamily::Permanent),
         "CumulativeUpkeepEffect" => Some(EffectFamily::CompositionAL),
         "DealDamageEffect" => Some(EffectFamily::Combat),
+        "DealDamageToRecipientsEffect" => Some(EffectFamily::Combat),
         "DealDistributedDamageEffect" => Some(EffectFamily::Combat),
         "DestroyEffect" => Some(EffectFamily::ZoneLibrary),
         "DestroyNoRegenerationEffect" => Some(EffectFamily::ZoneLibrary),

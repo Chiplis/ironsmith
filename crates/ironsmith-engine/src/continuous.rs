@@ -5468,6 +5468,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.was_dealt_damage_by_source_this_game
         || filter.dealt_damage_to_player_this_turn.is_some()
         || filter.drawn_this_turn
+        || filter.last_drawn_this_turn.is_some()
         || filter.power_parity.is_some()
         || filter.power_greater_than_base_power
         || filter.total_power_toughness.is_some()

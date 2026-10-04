@@ -42,13 +42,7 @@ impl TriggerMatcher for PlayerDrawsCardExceptFirstInDrawStepTrigger {
             return false;
         };
 
-        let player_matches = match &self.player {
-            PlayerFilter::You => e.player == ctx.controller,
-            PlayerFilter::Opponent => e.player != ctx.controller,
-            PlayerFilter::Any => true,
-            PlayerFilter::Specific(id) => e.player == *id,
-            _ => true,
-        };
+        let player_matches = crate::filter::player_filter_matches_game(&self.player, e.player, ctx.game, &ctx.filter_ctx);
         player_matches && self.matching_cards_drawn(e) > 0
     }
 

@@ -4973,3 +4973,12 @@ pub struct RegisterDamageMultiplierEffect {
     pub noncombat_only: bool,
     pub mode: ReplacementApplyMode,
 }
+
+/// One source deals one amount to the complete union of recipients at once.
+/// Specs are resolution references or quantified groups, not fresh choices.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct DealDamageToRecipientsEffect {
+    pub amount: Value,
+    pub recipients: Vec<ChooseSpec>,
+}

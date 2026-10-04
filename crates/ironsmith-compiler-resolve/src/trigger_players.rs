@@ -14,7 +14,7 @@ use crate::filter::{ObjectRef, PlayerFilter};
 /// reads only the trigger, never the card's words.
 pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => inferred_trigger_player_filter(trigger),
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => inferred_trigger_player_filter(trigger),
         TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
         // Private-zone possessors name the owner, even when a stolen permanent
         // was controlled by somebody else immediately before the move.
@@ -103,6 +103,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         }
         TriggerSpec::PlayerLosesGame(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLifeDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerDrawsCardDuringTurn { .. } | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCard(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCardNotDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_) => Some(PlayerFilter::IteratedPlayer),

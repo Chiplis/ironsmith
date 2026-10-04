@@ -366,6 +366,17 @@ impl TurnHistory {
             .sum()
     }
 
+    /// The latest actual draw, not the latest attempted draw. Empty/replaced
+    /// draws contribute no identity. Preserve this historical identity even if
+    /// its current object later leaves Hand; consumers must not choose an older
+    /// draw as a substitute.
+    pub fn last_card_drawn_by_player(&self, player: PlayerId) -> Option<ObjectId> {
+        self.projected_records().rev()
+            .filter_map(|record| record.event.downcast::<CardsDrawnEvent>())
+            .filter(|event| event.player == player)
+            .find_map(|event| event.cards.last().copied())
+    }
+
     pub fn object_was_drawn_this_turn(&self, object: ObjectId) -> bool {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<CardsDrawnEvent>())

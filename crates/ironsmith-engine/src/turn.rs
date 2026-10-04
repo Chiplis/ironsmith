@@ -361,6 +361,7 @@ fn legacy_finish_step(
     step: Step,
     normal_next: TurnScheduleDestination,
 ) -> Result<(), TurnError> {
+    if step == Step::Draw { game.finish_draw_step_tracking(); }
     let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
     let active = game.turn_store.active_added_step.take();
     if let Some(scheduled) = active {
@@ -383,6 +384,7 @@ fn legacy_finish_step_and_phase(
     phase: Phase,
     normal_next: TurnScheduleDestination,
 ) -> Result<(), TurnError> {
+    if step == Step::Draw { game.finish_draw_step_tracking(); }
     let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
     let active = game.turn_store.active_added_step.take();
     if active.is_none() || active.is_some_and(|scheduled| scheduled.isolated_phase) {
@@ -410,6 +412,10 @@ fn legacy_finish_phase(
     phase: Phase,
     normal_next: TurnScheduleDestination,
 ) -> Result<(), TurnError> {
+    if phase == Phase::Beginning && game.turn.step == Some(Step::Draw) {
+        game.finish_draw_step_tracking();
+    }
+
     if matches!(phase, Phase::Combat) {
         game.cleanup_effects_end_of_combat();
     }
@@ -1001,8 +1007,6 @@ pub fn execute_draw_step_with(
             decision_maker,
         ));
     }
-    game.turn_store.tracked_draw_step_player = None;
-    game.turn_store.cards_drawn_this_draw_step = 0;
     game.reset_priority_for_new_window();
     events
 }
@@ -2187,5 +2191,56 @@ mod tests {
             1
         );
         assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+    }
+}
+
+#[cfg(test)]
+mod draw_step_ordinal_tests {
+    use super::*;
+    use crate::events::other::CardsDrawnEvent;
+    use crate::ids::{CardId, PlayerId};
+    use crate::zone::Zone;
+    fn setup() -> GameState {
+        let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into(), "D".into()], 20);
+        game.turn.turn_number = 3;
+        game.turn.active_player = PlayerId(0);
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Draw);
+        let card = crate::cards::CardDefinitionBuilder::new(CardId::new(), "Draw resource").build();
+        for player in [PlayerId(0), PlayerId(1)] {
+            for _ in 0..5 { game.create_object_from_definition(&card, player, Zone::Library); }
+        }
+        game
+    }
+    #[test]
+    fn turn_draw_retains_ordinal_through_priority_and_resets_for_adjacent_extra_step() {
+        let mut game = setup();
+        let events = execute_draw_step(&mut game);
+        let draw = events.iter().find_map(|event| event.downcast::<CardsDrawnEvent>()).unwrap();
+        assert_eq!(draw.cards_previously_drawn_this_draw_step, 0);
+        assert_eq!(game.draw_step_context_for_player(PlayerId(0)), (true, 1));
+        game.record_cards_drawn_in_current_draw_step(PlayerId(0), 2);
+        assert_eq!(game.draw_step_context_for_player(PlayerId(0)), (true, 3));
+        game.add_step_after(Step::Draw, Step::Draw);
+        advance_step(&mut game).unwrap();
+        assert_eq!(game.turn.step, Some(Step::Draw));
+        assert_eq!(game.draw_step_context_for_player(PlayerId(0)), (true, 0));
+        execute_draw_step(&mut game);
+        assert_eq!(game.draw_step_context_for_player(PlayerId(0)), (true, 1));
+        advance_step(&mut game).unwrap();
+        assert_eq!(game.draw_step_context_for_player(PlayerId(0)), (false, 0));
+    }
+    #[test]
+    fn shared_turn_partners_keep_independent_draw_step_ordinals() {
+        let mut game = setup();
+        game.restore_two_headed_giant(vec![vec![PlayerId(0), PlayerId(1)], vec![PlayerId(2), PlayerId(3)]], 0, PlayerId(0)).unwrap();
+        execute_draw_step(&mut game);
+        for player in [PlayerId(0), PlayerId(1)] { assert_eq!(game.draw_step_context_for_player(player), (true, 1)); }
+        game.record_cards_drawn_in_current_draw_step(PlayerId(0), 2);
+        game.record_cards_drawn_in_current_draw_step(PlayerId(1), 1);
+        assert_eq!(game.draw_step_context_for_player(PlayerId(0)), (true, 3));
+        assert_eq!(game.draw_step_context_for_player(PlayerId(1)), (true, 2));
+        game.record_cards_drawn_in_current_draw_step(PlayerId(2), 7);
+        assert_eq!(game.draw_step_context_for_player(PlayerId(2)), (false, 0));
     }
 }

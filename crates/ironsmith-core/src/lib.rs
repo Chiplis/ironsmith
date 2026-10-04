@@ -263,3 +263,4 @@ pub use zone::Zone;
 pub use filter_model::describe_filter_static_ability;
 
 pub use effect::RegisterDamageMultiplierEffect;
+pub use effect::DealDamageToRecipientsEffect;

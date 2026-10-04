@@ -43,7 +43,8 @@ pub(super) fn append_shared_damage_player_operand(
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
-                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }),
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { amount, .. }),
             ..
         })) => EffectAst::subject_verb_damage(
             amount.clone(),

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "Chiplis/ironsmith",
   "frozen_baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "published_through_stage": 39,
+  "published_through_stage": 40,
   "purpose": "Verified published tree/ref/parent and draft-PR lookup for the source-coverage stage IDs. Only historical compile/runtime evidence is verification; stages08+ remain UNVALIDATED. The current stage appears in the next cumulative source update to avoid a self-referential commit.",
   "entries": [
     {
@@ -580,6 +580,20 @@
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/805",
       "local_commit": "7f8a717f4ee92bfdbb2d168c6532eaea5cfac867"
+    },
+    {
+      "stage": 40,
+      "branch": "fix/card-failures-40-transformation-and-payment-roots",
+      "base": "fix/card-failures-39-replacement-context-roots",
+      "remote_commit": "18310394322e2365e0f69e355d5406592230aca9",
+      "tree": "6521f4f5ff19f5674aff65aec337b8ffabb33c7a",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 806,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/806",
+      "local_commit": "e1a0f5e84e3eb82c185c356dba779002cf7fe3c7"
     }
   ]
 }

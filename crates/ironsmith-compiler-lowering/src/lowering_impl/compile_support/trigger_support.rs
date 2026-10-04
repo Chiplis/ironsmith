@@ -750,6 +750,8 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             during_turn,
         } => Trigger::player_loses_life_during_turn(player, during_turn),
         TriggerSpec::YouDrawCard => Trigger::you_draw_card(),
+        TriggerSpec::PlayerDrawsCardDuringTurn { player, during_turn } => Trigger::player_draws_card_during_turn(player, during_turn),
+        TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(player) => Trigger::player_draws_first_card_in_own_draw_step(player),
         TriggerSpec::PlayerDrawsCard(player) => Trigger::player_draws_card(player),
         TriggerSpec::PlayerDrawsCardNotDuringTurn {
             player,
@@ -1418,7 +1420,7 @@ pub fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTex
 
 fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
     match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => trigger_binds_iterated_player(trigger),
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_binds_iterated_player(trigger),
         TriggerSpec::SpellCast { .. }
         | TriggerSpec::SpellCastSameNameCardInZone { .. }
         | TriggerSpec::NthSpellOfTurnCast { .. }
@@ -1430,6 +1432,8 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::OpponentsEachLoseExactLife { .. }
         | TriggerSpec::PlayerLosesGame(_)
         | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
+        | TriggerSpec::PlayerDrawsCardDuringTurn { .. }
+        | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(_)
         | TriggerSpec::PlayerDrawsCard(_)
         | TriggerSpec::PlayerDrawsCardNotDuringTurn { .. }
         | TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_)
@@ -1511,7 +1515,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
                     && (!*for_controller || event.player == PlayerFilter::You))
         }
         EventValueSpec::DieResult => match trigger {
-            TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
+            TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::PlayerRollsToVisitAttractions { .. }
             | TriggerSpec::PlayerRollsResult { .. }
             | TriggerSpec::PlayerRollsHighestNaturalResult { .. }
@@ -1523,7 +1527,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             _ => false,
         },
         EventValueSpec::Amount | EventValueSpec::LifeAmount => match trigger {
-            TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
+            TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::SpellCast {
                 filter: Some(filter),
                 ..
@@ -1583,7 +1587,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             _ => false,
         },
         EventValueSpec::BlockersBeyondFirst { .. } => match trigger {
-            TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
+            TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::ThisBecomesBlocked
             | TriggerSpec::BecomesBlocked(_)
             | TriggerSpec::ThisBecomesBlockedByObject(_) => true,

@@ -2595,8 +2595,6 @@ impl TurnRunner {
 
         loop {
             let Some(active_player) = self.remaining_draw_players.first().copied() else {
-                game.turn_store.tracked_draw_step_player = None;
-                game.turn_store.cards_drawn_this_draw_step = 0;
                 game.reset_priority_for_new_window();
                 return Ok(RunnerProgress::Complete(std::mem::take(&mut self.shared_draw_events)));
             };
@@ -3442,6 +3440,7 @@ fn finish_step(
     step: Step,
     normal_next: TurnScheduleDestination,
 ) -> TurnState {
+    if step == Step::Draw { game.finish_draw_step_tracking(); }
     let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
     let active = game.turn_store.active_added_step.take();
     if let Some(scheduled) = active {
@@ -3464,6 +3463,7 @@ fn finish_step_and_phase(
     phase: Phase,
     normal_next: TurnScheduleDestination,
 ) -> TurnState {
+    if step == Step::Draw { game.finish_draw_step_tracking(); }
     let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
     let active = game.turn_store.active_added_step.take();
     if active.is_none() || active.is_some_and(|scheduled| scheduled.isolated_phase) {
@@ -3492,6 +3492,10 @@ fn finish_phase(
     phase: Phase,
     normal_next: TurnScheduleDestination,
 ) -> TurnState {
+    if phase == Phase::Beginning && game.turn.step == Some(Step::Draw) {
+        game.finish_draw_step_tracking();
+    }
+
     begin_phase_schedule(game, phase, normal_next)
 }
 

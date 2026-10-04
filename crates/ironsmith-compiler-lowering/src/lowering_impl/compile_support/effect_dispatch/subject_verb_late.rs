@@ -58,6 +58,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Tokens(TokenActionAst::CreateEmblem { .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
@@ -583,6 +584,52 @@ pub(super) fn compile_subject_verb_late(
                 ctx.last_player_filter = Some(PlayerFilter::DamagedPlayer);
             }
             Ok((effects, choices))
+        }
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+            amount,
+            recipients,
+            object_groups,
+            player_groups,
+        }) => {
+            let refs = current_reference_env(ctx);
+            let amount = resolve_value_it_tag(amount, &refs)?;
+            let mut specs = Vec::new();
+            for target in recipients {
+                let (spec, choices) = resolve_target_spec_with_choices(target, &refs)?;
+                if !choices.is_empty() || spec.is_target() {
+                    return Err(CardTextError::ParseError(
+                        "shared damage recipient set requires previously bound references".into(),
+                    ));
+                }
+                specs.push(spec);
+            }
+            for filter in object_groups {
+                specs.push(ChooseSpec::All(resolve_it_tag(filter, &refs)?));
+            }
+            for filter in player_groups {
+                let (spec, choices) = resolve_target_spec_with_choices(
+                    &TargetAst::Player(filter.clone(), None),
+                    &refs,
+                )?;
+                if !choices.is_empty() {
+                    return Err(CardTextError::ParseError(
+                        "shared damage player group cannot declare a target".into(),
+                    ));
+                }
+                let ChooseSpec::Player(player) = spec.unhinted() else {
+                    return Err(CardTextError::ParseError(
+                        "unsupported shared damage player group".into(),
+                    ));
+                };
+                specs.push(ChooseSpec::EachPlayer(player.clone()));
+            }
+            Ok((
+                vec![Effect::new(crate::effects::DealDamageToRecipientsEffect {
+                    amount,
+                    recipients: specs,
+                })],
+                Vec::new(),
+            ))
         }
         SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, filter }) => {
             let resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;

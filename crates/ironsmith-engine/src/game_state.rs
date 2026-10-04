@@ -901,10 +901,9 @@ pub struct TurnStore {
     pub active_added_step: Option<ScheduledStep>,
     /// Normal turn position restored after the current additional-step group.
     pub added_step_continuation: Option<TurnScheduleDestination>,
-    /// The active player whose draw step is currently being tracked for draw-count-sensitive triggers.
-    pub tracked_draw_step_player: Option<PlayerId>,
-    /// Cards the tracked player has already drawn in the current draw step.
-    pub cards_drawn_this_draw_step: u32,
+    /// Actual draws by each active player in this draw step. Shared turns must
+    /// not reset one player's ordinal when another active player draws.
+    pub cards_drawn_this_draw_step: HashMap<PlayerId, u32>,
     /// Players who will skip their next combat phase this turn.
     /// Checked and cleared when entering combat phase.
     pub skip_next_combat_phases: HashSet<PlayerId>,
@@ -5534,6 +5533,7 @@ impl GameState {
             || filter.dealt_damage_by_source_this_turn.is_some()
             || filter.was_dealt_damage_by_source_this_game
             || filter.drawn_this_turn
+            || filter.last_drawn_this_turn.is_some()
             || Self::player_filter_option_is_turn_context_sensitive(filter.controller.as_ref())
             || Self::player_filter_option_is_turn_context_sensitive(filter.cast_by.as_ref())
             || Self::player_filter_option_is_turn_context_sensitive(filter.owner.as_ref())
@@ -7210,49 +7210,39 @@ impl GameState {
             })
     }
 
-    /// Sync draw-step tracking to the current turn position.
+    /// Clear draw ordinals at the actual step boundary, not after the
+    /// turn-based draw. Draw-step priority and resolving abilities belong to
+    /// the same step; an immediately following extra draw step is distinct.
+    pub fn finish_draw_step_tracking(&mut self) {
+        self.turn_store.cards_drawn_this_draw_step.clear();
+    }
+
+    /// Sync draw-step tracking for callers outside the turn runners.
     pub fn sync_draw_step_tracking(&mut self) {
-        if self.turn.phase == Phase::Beginning && self.turn.step == Some(Step::Draw) {
-            if self
-                .turn_store
-                .tracked_draw_step_player
-                .is_none_or(|player| !self.is_active_player(player))
-            {
-                self.turn_store.tracked_draw_step_player = Some(self.turn.active_player);
-                self.turn_store.cards_drawn_this_draw_step = 0;
-            }
-        } else {
-            self.turn_store.tracked_draw_step_player = None;
-            self.turn_store.cards_drawn_this_draw_step = 0;
+        if self.turn.phase != Phase::Beginning || self.turn.step != Some(Step::Draw) {
+            self.finish_draw_step_tracking();
         }
     }
 
-    /// Returns whether the given player is drawing during their own draw step, plus prior draws in that step.
+    /// Whether this is the player's own draw step, and their prior actual draws.
     pub fn draw_step_context_for_player(&mut self, player: PlayerId) -> (bool, u32) {
         self.sync_draw_step_tracking();
         if self.turn.phase == Phase::Beginning
             && self.turn.step == Some(Step::Draw)
             && self.is_active_player(player)
-            && self.turn_store.tracked_draw_step_player != Some(player)
         {
-            self.turn_store.tracked_draw_step_player = Some(player);
-            self.turn_store.cards_drawn_this_draw_step = 0;
-        }
-        if self.turn_store.tracked_draw_step_player == Some(player) {
-            (true, self.turn_store.cards_drawn_this_draw_step)
+            (true, self.turn_store.cards_drawn_this_draw_step.get(&player).copied().unwrap_or(0))
         } else {
             (false, 0)
         }
     }
 
-    /// Records cards drawn in the currently tracked draw step.
+    /// Record completed draws only. Replaced or prevented proposals contribute
+    /// nothing; draws by nonactive players are not their own draw-step draws.
     pub fn record_cards_drawn_in_current_draw_step(&mut self, player: PlayerId, amount: u32) {
-        self.sync_draw_step_tracking();
-        if self.turn_store.tracked_draw_step_player == Some(player) {
-            self.turn_store.cards_drawn_this_draw_step = self
-                .turn_store
-                .cards_drawn_this_draw_step
-                .saturating_add(amount);
+        if self.draw_step_context_for_player(player).0 && amount > 0 {
+            let count = self.turn_store.cards_drawn_this_draw_step.entry(player).or_default();
+            *count = count.saturating_add(amount);
         }
     }
 

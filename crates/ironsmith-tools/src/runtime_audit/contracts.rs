@@ -1039,6 +1039,8 @@ impl Auditor {
             | "PlayerDiscardsCardCausedByController"
             | "YouDrawCard"
             | "Miracle"
+            | "PlayerDrawsCardDuringTurn"
+            | "PlayerDrawsFirstCardInOwnDrawStep"
             | "PlayerDrawsCard"
             | "PlayerDrawsCardNotDuringTurn"
             | "PlayerDrawsCardExceptFirstInDrawStep"

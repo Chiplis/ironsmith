@@ -321,6 +321,15 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    if let Some(player_filter) = &filter.last_drawn_this_turn {
+        if !subject.is_live() || !game.players.iter().any(|player|
+            player.is_in_game() && player_filter.matches_player(player.id, ctx)
+                && game.turn_store.turn_history.last_card_drawn_by_player(player.id) == Some(subject.object_id()))
+        {
+            return false;
+        }
+    }
+
     let Some(stack_entry) = subject.stack_context(filter, ctx, game) else {
         return false;
     };

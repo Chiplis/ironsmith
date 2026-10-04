@@ -249,6 +249,14 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
     assert_effect_ast_variant_coverage(effect);
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &subject_verb.action {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                recipients,
+                ..
+            }) => {
+                for target in recipients {
+                    visit(target);
+                }
+            }
             SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 target,
                 source,
@@ -757,6 +765,7 @@ pub fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
             .dealt_damage_to_player_this_turn
             .as_ref()
             .is_some_and(|player| player_filter_references_tag(player, tag))
+        || filter.last_drawn_this_turn.as_ref().is_some_and(|player| player_filter_references_tag(player, tag))
         || filter
             .could_be_targeted_by
             .as_ref()
@@ -1397,6 +1406,9 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         })
         | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount, .. })
         | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+        | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+            amount, ..
+        })
         | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
             amount,
             ..
@@ -2139,6 +2151,12 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
 
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { amount, recipients, object_groups, player_groups }) => {
+                let tag=crate::tag::CompilerReferenceTag::It.as_str();
+                value_references_tag(amount,tag) || recipients.iter().any(|target| target_references_tag(target,tag))
+                    || object_groups.iter().any(|filter| filter_references_tag(filter,tag))
+                    || player_groups.iter().any(|filter| player_filter_references_tag(filter,tag))
+            }
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, filter }) => {
                 value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str())
                     || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())

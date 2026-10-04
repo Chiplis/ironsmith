@@ -3114,6 +3114,7 @@ pub(super) fn collect_object_filter_player_target_choices(
             .as_ref()
             .map(|constraint| &constraint.source_controller),
         filter.dealt_damage_to_player_this_turn.as_ref(),
+        filter.last_drawn_this_turn.as_ref(),
     ]
     .into_iter()
     .flatten()

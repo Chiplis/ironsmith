@@ -2550,6 +2550,8 @@ fn specialize_iterated_player_object_filter(
         .dealt_damage_to_player_this_turn
         .as_ref()
         .map(|damaged| specialize_iterated_player_filter(damaged, player));
+    filter.last_drawn_this_turn = filter.last_drawn_this_turn.as_ref()
+        .map(|drawer| specialize_iterated_player_filter(drawer, player));
     if let Some(constraint) = filter.counters_put_on_this_turn.as_mut() {
         constraint.source_controller =
             specialize_iterated_player_filter(&constraint.source_controller, player);

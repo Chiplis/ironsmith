@@ -45,6 +45,7 @@ pub fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
             .map(|constraint| &constraint.source_controller),
         filter.discarded_or_cycled_this_turn_by.as_ref(),
         filter.dealt_damage_to_player_this_turn.as_ref(),
+        filter.last_drawn_this_turn.as_ref(),
     ]
     .into_iter()
     .flatten()

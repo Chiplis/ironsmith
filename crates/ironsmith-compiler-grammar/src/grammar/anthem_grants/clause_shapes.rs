@@ -37,6 +37,7 @@ pub struct AnthemModifierShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnthemTailShape<'a> {
     ForEach(&'a [OwnedLexToken]),
+    ForEvery { divisor: u32, filter_tokens: &'a [OwnedLexToken] },
     WhereX(&'a [OwnedLexToken]),
     AsLongAs {
         condition_tokens: &'a [OwnedLexToken],
@@ -107,6 +108,10 @@ pub fn parse_modifier_shape(
 
 pub fn parse_tail_shape(tokens: &[OwnedLexToken]) -> Option<AnthemTailShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
+    if let Some((_, rest)) = primitives::parse_prefix(tokens, primitives::phrase(&["for", "every"])) {
+        let (divisor, filter_tokens) = primitives::parse_prefix(rest, leaf::parse_leaf_number_prefix_lexed)?;
+        return (divisor > 0 && !filter_tokens.is_empty()).then_some(AnthemTailShape::ForEvery { divisor, filter_tokens });
+    }
     if primitives::parse_prefix(tokens, primitives::phrase(&["for", "each"])).is_some() {
         return Some(AnthemTailShape::ForEach(tokens));
     }

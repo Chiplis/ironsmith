@@ -734,6 +734,8 @@ pub enum TriggerKind {
         player: PlayerFilter,
         during_turn: Option<PlayerFilter>,
     },
+    PlayerDrawsCardDuringTurn { player: PlayerFilter, during_turn: PlayerFilter },
+    PlayerDrawsFirstCardInOwnDrawStep { player: PlayerFilter },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1789,6 +1791,12 @@ impl Trigger {
     }
     pub fn miracle() -> Self {
         Self::typed("miracle", TriggerKind::Miracle)
+    }
+    pub fn player_draws_card_during_turn(player: PlayerFilter, during_turn: PlayerFilter) -> Self {
+        Self::typed("player_draws_card_during_turn", TriggerKind::PlayerDrawsCardDuringTurn { player, during_turn })
+    }
+    pub fn player_draws_first_card_in_own_draw_step(player: PlayerFilter) -> Self {
+        Self::typed("player_draws_first_card_in_own_draw_step", TriggerKind::PlayerDrawsFirstCardInOwnDrawStep { player })
     }
     pub fn player_draws_card(player: PlayerFilter) -> Self {
         Self::typed("player_draws_card", TriggerKind::PlayerDrawsCard { player })

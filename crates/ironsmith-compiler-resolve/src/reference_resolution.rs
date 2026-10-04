@@ -116,7 +116,7 @@ struct EffectReferenceResolutionState<'a> {
 
 fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
     match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_amount(trigger),
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_amount(trigger),
         TriggerSpec::SpellCast {
             filter: Some(filter),
             ..
@@ -979,6 +979,10 @@ fn rebind_noun_excluded_antecedent_references(effect: &mut EffectAst, env: &Refe
                 SubjectVerbActionAst::Control(ControlActionAst::Attach { object, .. }) => {
                     (vec![object], true)
                 }
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                    recipients,
+                    ..
+                }) => (recipients.iter_mut().collect(), false),
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. }) => {
                     (vec![target], false)
                 }
@@ -1824,6 +1828,9 @@ fn advance_reference_frame_for_effect(
                             frame.last_player_filter = Some(PlayerFilter::DamagedPlayer);
                         }
                     }
+                }
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. }) => {
+                    // A union is not a new singular object/player antecedent.
                 }
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { filter, .. }) => {
                     if frame.auto_tag_object_targets {
@@ -4368,6 +4375,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { .. })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
                 | SubjectVerbActionAst::Stack(StackActionAst::Counter { .. })
@@ -4732,6 +4740,7 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
             producer_action,
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
         ),
@@ -5111,6 +5120,10 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             ..
         })
         | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount: count, .. })
+        | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+            amount: count,
+            ..
+        })
         | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
             amount: count,
             ..
@@ -6164,6 +6177,10 @@ fn resolve_effect_result_values_in_fields(
                 amount, ..
             })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                ..
+            })
             | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
                 amount,
                 ..
@@ -7535,6 +7552,24 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             ) => {
                 bind_unresolved_it_in_tag(&mut tag.key, seed_tag)
                     + bind_unresolved_it_in_filter(filter, seed_tag)
+            }
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                recipients,
+                object_groups,
+                player_groups,
+            }) => {
+                let mut count = bind_unresolved_it_in_value(amount, seed_tag);
+                for target in recipients {
+                    count += bind_unresolved_it_in_target(target, seed_tag);
+                }
+                for filter in object_groups {
+                    count += bind_unresolved_it_in_filter(filter, seed_tag);
+                }
+                // Player references are contextual aliases; their object references
+                // are walked by the ordinary filter resolver during lowering.
+                let _ = player_groups;
+                count
             }
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, filter }) => {
                 bind_unresolved_it_in_value(amount, seed_tag)

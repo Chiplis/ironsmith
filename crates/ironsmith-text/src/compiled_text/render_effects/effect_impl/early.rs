@@ -2947,6 +2947,10 @@
         }
         return describe_effect(&with_source.effect);
     }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageToRecipientsEffect>() {
+        let recipients=damage.recipients.iter().map(describe_choose_spec).collect::<Vec<_>>().join(" and ");
+        return format!("This deals damage to {recipients} equal to {}", describe_value(&damage.amount));
+    }
     if let Some(deal_damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
         if let Some(redirect) = &deal_damage.excess_to_controller {
             let mut plain = deal_damage.clone();

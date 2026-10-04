@@ -3910,6 +3910,15 @@ pub fn parse_anthem_clause(
     }
     if explicit_values.is_none() && !anthem_tail_tokens.is_empty() {
         match anthem_grant_grammar::parse_tail_shape(anthem_tail_tokens) {
+            Some(anthem_grant_grammar::AnthemTailShape::ForEvery { divisor, filter_tokens }) => {
+                let filter = parse_object_filter_lexed(filter_tokens, false)?;
+                let divisor = i32::try_from(divisor).map_err(|_| CardTextError::ParseError("anthem grouping exceeds numeric representation".into()))?;
+                let value = Value::DividedRoundedDown(Box::new(Value::Count(filter)), divisor);
+                if !dynamic_anthem_values::supports_game_state_binding(&value) {
+                    return Err(CardTextError::ParseError("unsupported grouped static count".into()));
+                }
+                value_scale = Some(value);
+            }
             Some(anthem_grant_grammar::AnthemTailShape::ForEach(tail)) => {
                 if anthem_for_each_prefers_specialized_parser(tail) {
                     scale = Some(parse_anthem_for_each_expression(tail)?);
