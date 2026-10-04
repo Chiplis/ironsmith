@@ -58,7 +58,7 @@ for (const cardName of ['Windfall', 'Wheel of Fortune']) {
           worker.onmessage = ({ data }) => {
             if (data.type === 'error') return reject(new Error(data.error.stack || data.error.message));
             if (data.type === 'ready') return resolve();
-            if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
+            if (data.type === 'priorityAnalysis') { if (data.decision?.analysis_complete !== true) return; analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
             if (data.type !== 'result') return;
             const request = pending.get(data.id); if (!request) return;
             pending.delete(data.id);
@@ -82,16 +82,15 @@ for (const cardName of ['Windfall', 'Wheel of Fortune']) {
       let stage = 'fixture', initial, spellStableId;
       const hashPair = async () => Promise.all(engines.map(async engine => publicCheckpointHash(await engine.call('exportPublicAuditCheckpoint'))));
       const summarize = checkpoint => ({ players: checkpoint.players.map(player => ({ id: player.id, hand: player.hand.length,
-        library: player.library.length, graveyard: player.graveyard.length })),
+        library: checkpoint.objects.filter(object => object.hiddenCard?.owner === player.id && object.zone === 'library').length, graveyard: player.graveyard.length })),
         graveyard: checkpoint.objects.filter(object => object.zone === 'graveyard').map(object => ({ id: object.id, stableId: object.stableId,
-          owner: object.owner, name: object.name, hiddenCard: object.hiddenCard })),
+          owner: object.hiddenCard?.owner, name: object.name, hiddenCard: object.hiddenCard })),
         spell: checkpoint.objects.find(object => object.stableId === spellStableId) });
       try {
         await Promise.all(engines.map(engine => engine.ready));
         const owner = engines[1], matchId = `batch-zone:${cardName}`;
         const deck = Array(61).fill('Mountain');
         deck[4] = cardName; deck[5] = 'Grizzly Bears'; deck[6] = 'Lightning Bolt'; deck[7] = 'Forest';
-        const manifests = await Promise.all([0, 1].map(seat => buildPrivateDeckManifest({ matchId, owner: seat, deck })));
         const deckCount = deck.length, context = matchId;
         const identities = ['11', '22'].map(byte => api.ziffleKeygen({ deckCount, context, entropyHex: byte.repeat(32) }));
         const keys = identities.map((identity, player) => ({ player, publicKeyHex: identity.publicKeyHex, ownershipProofHex: identity.ownershipProofHex }));
@@ -105,48 +104,49 @@ for (const cardName of ['Windfall', 'Wheel of Fortune']) {
         const tokens = identities.flatMap((identity, index) => api.ziffleBuildRevealTokens({ deckCount, context, keys, steps,
           ...identity, cardPositions: positions, entropyHex: ['55', '66'][index].repeat(32) }));
         const reveals = api.ziffleRevealCards({ deckCount, context, keys, steps, cardPositions: positions, tokens });
+        const handNames = [['Grizzly Bears', 'Lightning Bolt', 'Forest'], [cardName, 'Grizzly Bears', 'Forest']];
+        const decks = [deck.slice(), deck.slice()];
+        const subjects = [1, 0].flatMap(seat => handNames[seat].map((name, index) => {
+          const position = deckCount - 1 - index;
+          const slot = reveals.find(reveal => reveal.cardPosition === position).originalSlot;
+          decks[seat][slot] = name;
+          return { seat, slot, position };
+        }));
+        const manifests = await Promise.all(decks.map((cards, seat) => buildPrivateDeckManifest({ matchId, owner: seat, deck: cards })));
         const ceremony = { owner: 1, deckCount, context, keys, steps, deckHash: verified.deckHash, tokens, reveals };
+        const setupCall = async (method, ...args) => {
+          await engines[0].call(method, ...args);
+          return engines[1].call(method, ...args);
+        };
+        await engines[0].call('setPerspective', 0);
         await owner.call('setPerspective', 1);
-        let state = await owner.call('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
-          format: 'normal', startingPlayer: 1, openingHandSize: 0, decks: [[], []], publicDecklists: [deck, deck],
+        let state = await setupCall('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
+          format: 'normal', startingPlayer: 1, openingHandSize: 0, decks: [[], []], publicDecklists: decks,
           hiddenDeckManifests: manifests.map((manifest, seat) => buildZiffleRuntimeManifest(manifest, { ...ceremony, owner: seat })) });
         for (let index = 0; index < 30 && state.phase !== 'first main phase'; index++) {
           const action = state.decision?.actions?.find(item => ['keep_opening_hand', 'continue_pregame', 'begin_game', 'pass_priority'].includes(item.action_ref?.kind));
           if (!action) throw new Error(`Unexpected pregame ${JSON.stringify(state.decision)}`);
-          state = await owner.call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
+          state = await setupCall('dispatch', { type: 'priority_action', action_ref: action.action_ref });
         }
         if (state.phase !== 'first main phase') throw new Error('Main phase missing');
-        const subjects = [{ seat: 1, slot: 4 }, { seat: 1, slot: 5 }, { seat: 1, slot: 7 },
-          { seat: 0, slot: 5 }, { seat: 0, slot: 6 }, { seat: 0, slot: 7 }];
+        // Draw each three-card hand on both engines, opening its identities
+        // only on the owning client before the simultaneous discard spell.
         for (const subject of subjects) {
-          const checkpoint = await owner.call('exportSyncCheckpoint');
-          const position = reveals.find(reveal => reveal.originalSlot === subject.slot).cardPosition;
-          const object = checkpoint.objects.find(item => item.owner === subject.seat && item.hiddenCard?.slot === position);
-          if (!object) throw new Error(`Missing subject ${JSON.stringify(subject)}`);
+          const session = engines[subject.seat];
+          const metadata = await session.call('getHiddenCardState');
+          const object = metadata.objects.find(item => item.hiddenCard?.owner === subject.seat && item.hiddenCard.slot === subject.position);
+          if (!object) throw new Error('Missing committed hand subject');
           const secret = manifests[subject.seat].slotSecrets.find(entry => entry.slot === subject.slot);
-          await owner.call('revealHiddenPosition', { owner: subject.seat, objectId: object.id, position,
+          await session.call('revealHiddenPosition', { owner: subject.seat, objectId: object.id, position: subject.position,
             originalSlot: subject.slot, cardName: secret.card, commitment: secret.commitment,
-            positionCommitment: `ziffle:${ceremony.deckHash}:${position}` });
-          subject.id = object.id;
+            positionCommitment: `ziffle:${ceremony.deckHash}:${subject.position}` });
+          if (subject.seat === 1 && subject === subjects.find(entry => entry.seat === 1)) spellStableId = object.stableId;
+          await setupCall('drawCard', subject.seat);
+          const drawn = await session.call('getHiddenCardState');
+          subject.id = drawn.objects.find(item => item.stableId === object.stableId).id;
         }
-        for (let index = 0; index < 3; index++) await owner.call('addCardToZone', 1, cardName === 'Wheel of Fortune' ? 'Mountain' : 'Island', 'battlefield', true);
-        const fixture = await owner.call('exportSyncCheckpoint');
-        for (const player of fixture.players) {
-          const cards = fixture.objects.filter(object => object.owner === player.id && ['hand', 'library'].includes(object.zone));
-          const hand = subjects.filter(subject => subject.seat === player.id).map(subject => subject.id);
-          player.hand = hand;
-          player.library = cards.filter(object => !hand.includes(object.id))
-            .sort((left, right) => (left.hiddenCard.publicSlot ?? left.hiddenCard.slot) - (right.hiddenCard.publicSlot ?? right.hiddenCard.slot))
-            .map(object => object.id);
-          for (const object of cards) object.zone = hand.includes(object.id) ? 'hand' : 'library';
-        }
-        spellStableId = fixture.objects.find(object => object.id === subjects[0].id).stableId;
-        // Initial hands/mana are arranged directly. Each running worker then
-        // receives only its own legal hand knowledge and executes the real spell.
-        await owner.call('importSyncCheckpoint', fixture, 1);
-        const perspectives = await Promise.all([0, 1].map(seat => owner.call('exportRedactedSyncCheckpoint', seat)));
+        for (let index = 0; index < 3; index++) await setupCall('addCardToZone', 1, cardName === 'Wheel of Fortune' ? 'Mountain' : 'Island', 'battlefield', true);
         for (const seat of [0, 1]) {
-          await engines[seat].call('importSyncCheckpoint', perspectives[seat], seat);
           states[seat] = await engines[seat].call('uiState');
           const game = new Proxy({}, { get: (_, method) => method.startsWith('ziffle')
             ? async input => api[method](input) : (...args) => engines[seat].call(method, ...args) });
@@ -164,9 +164,9 @@ for (const cardName of ['Windfall', 'Wheel of Fortune']) {
           roots.push(mountBatchServices(base, services, document.getElementById(`root${seat}`)));
           contexts[seat] = { refs, services: services.current };
         }
-        const checkpoints = await Promise.all(engines.map(engine => engine.call('exportSyncCheckpoint')));
+        const checkpoints = await Promise.all(engines.map(engine => engine.call('getHiddenCardState')));
         initial = { hashes: await hashPair(), hands: checkpoints.map((checkpoint, seat) => [0, 1].map(ownerSeat =>
-          checkpoint.objects.filter(object => object.owner === ownerSeat && object.zone === 'hand').map(object => ({ name: object.name, knownTo: seat })))) };
+          checkpoint.objects.filter(object => object.hiddenCard?.owner === ownerSeat && object.zone === 'hand').map(object => ({ name: object.name, knownTo: seat })))) };
         const refresh = async () => { for (const seat of [0, 1]) {
           states[seat] = await engines[seat].call('uiState'); contexts[seat].refs.stateRef.current = states[seat];
         } };
@@ -243,7 +243,7 @@ for (const cardName of ['Windfall', 'Wheel of Fortune']) {
         if (!action) throw new Error('Batch spell not playable');
         await dispatchBoth({ type: 'priority_action', action_ref: action.action_ref, object_id: subjects[0].id });
         for (let index = 0; index < 24; index++) {
-          const checkpoint = await engines[1].call('exportSyncCheckpoint');
+          const checkpoint = await engines[1].call('getHiddenCardState');
           if (states[1].decision?.kind === 'priority' && checkpoint.objects.find(object => object.stableId === spellStableId)?.zone === 'graveyard') break;
           const actor = states[1].decision?.player ?? 1;
           const decision = states[actor].decision;
@@ -263,13 +263,13 @@ for (const cardName of ['Windfall', 'Wheel of Fortune']) {
             await dispatchBoth({ type: 'select_options', option_indices: decision.options.map(option => option.index) });
           } else throw new Error(`Unsupported fixture decision ${JSON.stringify(decision)}`);
         }
-        const final = await Promise.all(engines.map(engine => engine.call('exportSyncCheckpoint')));
+        const final = await Promise.all(engines.map(engine => engine.call('getHiddenCardState')));
         return { ok: true, cardName, initial, trace, final: final.map(summarize), finalHands: final.map((checkpoint, seat) =>
-          [0, 1].map(ownerSeat => checkpoint.objects.filter(object => object.owner === ownerSeat && object.zone === 'hand')
+          [0, 1].map(ownerSeat => checkpoint.objects.filter(object => object.hiddenCard?.owner === ownerSeat && object.zone === 'hand')
             .map(object => ({ name: object.name, originalCardName: object.originalCardName, knownTo: seat })))), hashes: await hashPair() };
       } catch (error) {
         return { ok: false, cardName, stage, error: String(error.message), initial, trace,
-          final: await Promise.all(engines.map(async engine => summarize(await engine.call('exportSyncCheckpoint')))), hashes: await hashPair() };
+          final: await Promise.all(engines.map(async engine => summarize(await engine.call('getHiddenCardState')))), hashes: await hashPair() };
       } finally { roots.forEach(reactRoot => reactRoot.unmount()); engines.forEach(engine => engine.worker.terminate()); }
     }, { cardName, verifierUrl: `/@fs/${path.resolve(root, '../wasm_demo/pkg/verifier.js')}` });
     await mkdir(reportRoot, { recursive: true });

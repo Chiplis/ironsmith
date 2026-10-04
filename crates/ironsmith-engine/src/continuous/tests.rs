@@ -1741,40 +1741,6 @@ fn derived_ability_view_preserves_keyword_counters_without_continuous_effects() 
 }
 
 
-#[test]
-fn timestamp_checkpoint_restoration_is_atomic_and_keeps_future_order() {
-    let source = ObjectId::from_raw(10);
-    let attachment = ObjectId::from_raw(11);
-    let mut manager = ContinuousEffectManager::new();
-    manager.record_entry(source);
-    manager.record_counter_change(source, CounterType::Flying);
-    manager.record_attachment(attachment);
-    let original = manager.timestamp_state();
-    let mut restored = ContinuousEffectManager::new();
-    restored.restore_timestamp_state(original.clone()).expect("valid chronology restores");
-    assert_eq!(restored.timestamp_state(), original);
-    let before_revision = restored.revision();
-    let mut invalid = Vec::new();
-    let mut duplicate_entry = original.clone(); duplicate_entry.object_entries.push(duplicate_entry.object_entries[0]); invalid.push(duplicate_entry);
-    let mut duplicate_counter = original.clone(); duplicate_counter.counters.push(duplicate_counter.counters[0]); invalid.push(duplicate_counter);
-    let mut duplicate_attachment = original.clone(); duplicate_attachment.attachments.push(duplicate_attachment.attachments[0]); invalid.push(duplicate_attachment);
-    let mut future_entry = original.clone(); future_entry.object_entries[0].1 = original.current_timestamp + 1; invalid.push(future_entry);
-    let mut future_counter = original.clone(); future_counter.counters[0].1 = original.current_timestamp + 1; invalid.push(future_counter);
-    let mut future_attachment = original.clone(); future_attachment.attachments[0].1 = original.current_timestamp + 1; invalid.push(future_attachment);
-    let mut exhausted = original.clone(); exhausted.current_timestamp = u64::MAX; invalid.push(exhausted);
-    for state in invalid {
-        assert!(restored.restore_timestamp_state(state).is_err(), "malformed chronology fails explicitly");
-        assert_eq!(restored.timestamp_state(), original, "failure cannot publish partial maps or reset the clock");
-        assert_eq!(restored.revision(), before_revision, "failure does not invalidate unchanged state");
-    }
-    manager.record_counter_change(source, CounterType::Flying);
-    restored.record_counter_change(source, CounterType::Flying);
-    assert_eq!(restored.timestamp_state(), manager.timestamp_state());
-    assert!(restored.get_counter_timestamp(source, CounterType::Flying)
-        .expect("new counter placement has its timestamp") > original.current_timestamp);
-    assert_eq!(restored.get_attachment_timestamp(attachment), manager.get_attachment_timestamp(attachment),
-        "placing counters leaves attachment chronology intact");
-}
 
 #[test]
 fn keyword_counter_abilities_apply_in_every_card_zone() {
@@ -1987,35 +1953,9 @@ fn shadow_counter_abilities_apply_in_every_card_zone() {
     }
 }
 
-#[test]
-fn counter_timestamp_snapshots_order_equal_display_names_by_typed_identity() {
-    for object in [1, 2, 17, 32] {
-        let id = ObjectId::from_raw(object);
-        let expected = vec![
-            ((id, CounterType::Flying), 2),
-            ((id, CounterType::Named("flying".into())), 3),
-        ];
-        for reversed in [false, true] {
-            let mut counters = expected.clone();
-            if reversed { counters.reverse(); }
-            let mut manager = ContinuousEffectManager::new();
-            manager.restore_timestamp_state(ContinuousTimestampState {
-                current_timestamp: 3,
-                object_entries: Vec::new(),
-                counters,
-                attachments: Vec::new(),
-            }).expect("two distinct equal-display counter kinds are valid chronology");
-            assert_eq!(manager.counter_timestamps_snapshot(), expected,
-                "canonical snapshot order must distinguish exact counter identity");
-            assert_eq!(manager.timestamp_state().counters, expected,
-                "full state export must use the same complete ordering");
-        }
-    }
-}
-
 
 #[test]
-fn registered_state_restore_preserves_expired_duration_and_allocator_history() {
+fn native_clone_preserves_expired_duration_and_allocator_history() {
     let mut game = dynamic_value_test_game();
     let alice = PlayerId::from_index(0);
     let card = CardBuilder::new(CardId::from_raw(99301), "Duration snapshot land")
@@ -2051,10 +1991,10 @@ fn registered_state_restore_preserves_expired_duration_and_allocator_history() {
         .counters
         .remove(&CounterType::Flood);
     assert!(!continuous_effect_duration_is_active(&registered, &game));
-    let snapshot = game.effect_store.continuous_effects.registered_state();
+    let snapshot = game.effect_store.continuous_effects.clone();
     assert_eq!(
-        snapshot.duration_latches,
-        vec![(id, ContinuousDurationLatch::Expired)]
+        *snapshot.latched_duration_states.borrow().get(&id).unwrap(),
+        ContinuousDurationLatch::Expired
     );
     game.object_mut(object)
         .expect("land exists")
@@ -2062,11 +2002,7 @@ fn registered_state_restore_preserves_expired_duration_and_allocator_history() {
         .insert(CounterType::Flood, 1);
 
     // The duration's predicate is true again, but restoring must not restart it.
-    let mut restored = ContinuousEffectManager::new();
-    restored
-        .restore_registered_state(snapshot.clone())
-        .expect("snapshot restores");
-    assert_eq!(restored.registered_state(), snapshot);
+    let restored = snapshot.clone();
     game.effect_store.continuous_effects = restored;
     assert!(!continuous_effect_duration_is_active(&registered, &game));
     let manager = &mut game.effect_store.continuous_effects;
@@ -2089,122 +2025,8 @@ fn registered_state_restore_preserves_expired_duration_and_allocator_history() {
     );
     assert_eq!(
         manager.current_timestamp(),
-        snapshot.timestamps.current_timestamp + 1
+        snapshot.current_timestamp + 1
     );
-}
-
-#[test]
-fn registered_state_restore_preserves_descriptors_and_invalidates_static_cache() {
-    let alice = PlayerId::from_index(0);
-    let bob = PlayerId::from_index(1);
-    let source = ObjectId::from_raw(99302);
-    let target = ObjectId::from_raw(99303);
-    let mut manager = ContinuousEffectManager::new();
-    let group = manager.next_effect_group_id();
-    let mut effect = ContinuousEffect::new(
-        source,
-        bob,
-        EffectTarget::Specific(target),
-        Modification::ChangeController(bob),
-    )
-    .with_group(group)
-    .until(Until::YourNextTurn);
-    effect.expires_end_of_turn = 23;
-    effect.condition = Some(crate::ConditionExpr::YourTurn);
-    effect.source_type = EffectSourceType::Resolution {
-        locked_targets: vec![target],
-    };
-    manager.add_effect(effect);
-    manager.add_effect(
-        ContinuousEffect::new(
-            source,
-            alice,
-            EffectTarget::Specific(target),
-            Modification::AddSubtypes(vec![Subtype::Island]),
-        )
-        .with_group(group),
-    );
-    manager.record_entry(target);
-    let snapshot = manager.registered_state();
-    let mut destination = ContinuousEffectManager::new();
-    destination.set_static_ability_effects(vec![ContinuousEffect::new(
-        source,
-        alice,
-        EffectTarget::Specific(target),
-        Modification::ChangeController(alice),
-    )]);
-    let revision = destination.revision();
-    destination
-        .restore_registered_state(snapshot.clone())
-        .expect("valid state");
-    assert_eq!(destination.registered_state(), snapshot);
-    assert!(
-        destination.static_ability_effects().is_empty(),
-        "old-world static cache cannot survive import"
-    );
-    assert!(
-        destination.revision() > revision,
-        "cached characteristics must invalidate"
-    );
-}
-
-#[test]
-fn registered_state_restore_rejects_corruption_without_partial_publication() {
-    let alice = PlayerId::from_index(0);
-    let source = ObjectId::from_raw(99304);
-    let mut manager = ContinuousEffectManager::new();
-    let group = manager.next_effect_group_id();
-    manager.add_effect(
-        ContinuousEffect::new(
-            source,
-            alice,
-            EffectTarget::Specific(source),
-            Modification::AddSubtypes(vec![Subtype::Island]),
-        )
-        .with_group(group)
-        .until(Until::YouStopControllingThis),
-    );
-    manager.set_static_ability_effects(vec![ContinuousEffect::new(
-        source,
-        alice,
-        EffectTarget::Specific(source),
-        Modification::ChangeController(alice),
-    )]);
-    let original = manager.registered_state();
-    let static_effects = manager.static_ability_effects().to_vec();
-    let revision = manager.revision();
-    for corruption in 0..13 {
-        let mut bad = original.clone();
-        match corruption {
-            0 => bad.effects.push(bad.effects[0].clone()),
-            1 => bad.effects[0].registration_id = None,
-            2 => bad.next_id = bad.effects[0].id.0,
-            3 => bad.next_id = u64::MAX,
-            4 => bad.next_group_id = ContinuousEffectGroupId::STATIC_SOURCE_PREFIX - 1,
-            5 => {
-                bad.effects[0].group = Some(ContinuousEffectGroupId::runtime(bad.next_group_id + 1))
-            }
-            6 => bad.duration_latches.clear(),
-            7 => bad.duration_latches.push(bad.duration_latches[0]),
-            8 => bad.duration_latches[0].0 = ContinuousEffectId::new(bad.next_id),
-            9 => bad.effects[0].duration = Until::Forever,
-            10 => bad.effects[0].timestamp = bad.timestamps.current_timestamp + 1,
-            11 => bad.timestamps.current_timestamp = u64::MAX,
-            12 => bad.timestamps.object_entries = vec![(source, 1), (source, 1)],
-            _ => unreachable!(),
-        }
-        assert!(
-            manager.restore_registered_state(bad).is_err(),
-            "corruption {corruption} rejected"
-        );
-        assert_eq!(
-            manager.registered_state(),
-            original,
-            "corruption {corruption} cannot publish state"
-        );
-        assert_eq!(manager.static_ability_effects(), static_effects.as_slice());
-        assert_eq!(manager.revision(), revision);
-    }
 }
 
 
@@ -2344,97 +2166,6 @@ fn complete_modification_schema_propagates_nested_payload_failure() {
     );
 }
 
-#[cfg(feature = "serialization")]
-#[test]
-fn complete_registered_schema_json_preserves_context_provenance_and_expiry() {
-    type Descriptor = ContinuousEffect<String, String, String>;
-    let object = ObjectId::from_raw(99321);
-    let target = ObjectId::from_raw(99322);
-    let original = RegisteredContinuousEffectState {
-        effects: vec![Descriptor {
-            id: ContinuousEffectId::new(5),
-            registration_id: Some(ContinuousEffectId::new(5)),
-            source: object,
-            controller: PlayerId::from_index(1),
-            applies_to: EffectTarget::Specific(target),
-            modification: "complete copy/ability payload".into(),
-            timestamp: 11,
-            group: Some(ContinuousEffectGroupId::runtime(3)),
-            duration: Until::YouStopControllingThis,
-            expires_end_of_turn: 23,
-            condition: Some(crate::ConditionExpr::YourTurn),
-            source_type: EffectSourceType::Resolution {
-                locked_targets: vec![target],
-            },
-            originating_static_ability: Some("generating static instance".into()),
-            originating_ability: Some(Box::new(
-                "host, printed face, branch and nested occurrence".into(),
-            )),
-        }],
-        next_id: 9,
-        next_group_id: 4,
-        duration_latches: vec![(ContinuousEffectId::new(5), ContinuousDurationLatch::Expired)],
-        timestamps: ContinuousTimestampState {
-            current_timestamp: 17,
-            object_entries: vec![(object, 1), (target, 8)],
-            counters: vec![((target, CounterType::Flood), 13)],
-            attachments: vec![(object, 15)],
-        },
-    };
-    let encoded = original
-        .clone()
-        .try_map_effects(|effect| {
-            effect.try_map_payloads(
-                |v| Ok::<_, String>(format!("modification:{v}")),
-                |v| Ok::<_, String>(format!("static:{v}")),
-                |v| Ok::<_, String>(format!("origin:{v}")),
-            )
-        })
-        .expect("all descriptor payloads encoded");
-    let json = serde_json::to_string(&encoded).expect("complete state serializes");
-    let decoded: RegisteredContinuousEffectState<Descriptor> =
-        serde_json::from_str(&json).expect("complete state deserializes");
-    let restored = decoded
-        .try_map_effects(|effect| {
-            effect.try_map_payloads(
-                |v| {
-                    Ok::<_, String>(
-                        v.strip_prefix("modification:")
-                            .expect("modification converter")
-                            .to_owned(),
-                    )
-                },
-                |v| {
-                    Ok::<_, String>(
-                        v.strip_prefix("static:")
-                            .expect("static converter")
-                            .to_owned(),
-                    )
-                },
-                |v| {
-                    Ok::<_, String>(
-                        v.strip_prefix("origin:")
-                            .expect("origin converter")
-                            .to_owned(),
-                    )
-                },
-            )
-        })
-        .expect("all descriptor payloads restored");
-    assert_eq!(
-        restored, original,
-        "captured controller/locked targets/provenance/turn anchor/identity/clock/latches cannot be reconstructed from characteristic projections"
-    );
-    let mut malformed: serde_json::Value = serde_json::from_str(&json).unwrap();
-    malformed
-        .as_object_mut()
-        .unwrap()
-        .remove("duration_latches");
-    assert!(
-        serde_json::from_value::<RegisteredContinuousEffectState<Descriptor>>(malformed).is_err(),
-        "missing lifetime state cannot silently initialize expired durations as started"
-    );
-}
 
 #[test]
 fn complete_registered_schema_propagates_generating_occurrence_failure() {

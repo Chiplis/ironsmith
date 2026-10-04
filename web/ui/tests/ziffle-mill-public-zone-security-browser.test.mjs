@@ -40,7 +40,7 @@ for (const { restInPeace, knownControl } of [
           worker.onmessage = ({ data }) => {
             if (data.type === 'error') return reject(new Error(data.error.stack || data.error.message));
             if (data.type === 'ready') return resolve();
-            if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
+            if (data.type === 'priorityAnalysis') { if (data.decision?.analysis_complete !== true) return; analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
             if (data.type !== 'result') return;
             const request = pending.get(data.id); if (!request) return;
             pending.delete(data.id);
@@ -85,55 +85,45 @@ for (const { restInPeace, knownControl } of [
         expectedCards.forEach((name, index) => { deck[reveals.find(reveal => reveal.cardPosition === 60 - index).originalSlot] = name; });
         const manifests = await Promise.all([0, 1].map(seat => buildPrivateDeckManifest({ matchId, owner: seat, deck })));
         const ceremony = { owner: 1, deckCount, context, keys, steps, deckHash: verified.deckHash, tokens, reveals };
+        peer = createWorkerSession(); await peer.ready;
         await owner.call('setPerspective', 1);
-        let state = await owner.call('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
+        await peer.call('setPerspective', 0);
+        const setupCall = async (method, ...args) => {
+          const result = await owner.call(method, ...args);
+          await peer.call(method, ...args);
+          return result;
+        };
+        let state = await setupCall('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
           format: 'normal', startingPlayer: 1, openingHandSize: 0, decks: [[], []], publicDecklists: [deck, deck],
           hiddenDeckManifests: manifests.map((manifest, seat) => buildZiffleRuntimeManifest(manifest, { ...ceremony, owner: seat })) });
         for (let index = 0; index < 30 && state.phase !== 'first main phase'; index++) {
           const action = state.decision?.actions?.find(item => ['keep_opening_hand', 'continue_pregame', 'begin_game', 'pass_priority'].includes(item.action_ref?.kind));
           if (!action) throw new Error(`Unexpected pregame decision ${JSON.stringify(state.decision)}`);
-          state = await owner.call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
+          state = await setupCall('dispatch', { type: 'priority_action', action_ref: action.action_ref });
         }
         if (state.phase !== 'first main phase') throw new Error('Fixture did not reach main phase');
-        const creatureOwner = 1;
-        const subjects = [{ seat: 1, slot: 4, zone: 'hand' },
-          { seat: creatureOwner, slot: 5, zone: 'battlefield' }];
-        for (const subject of subjects) {
-          const checkpoint = await owner.call('exportSyncCheckpoint');
-          const position = reveals.find(reveal => reveal.originalSlot === subject.slot).cardPosition;
-          const object = checkpoint.objects.find(item => item.owner === subject.seat && item.hiddenCard?.slot === position);
-          if (!object) throw new Error(`Missing fixture subject ${JSON.stringify(subject)}`);
-          const secret = manifests[subject.seat].slotSecrets.find(entry => entry.slot === subject.slot);
-          await owner.call('revealHiddenPosition', { owner: subject.seat, objectId: object.id, position,
-            originalSlot: subject.slot, cardName: secret.card, commitment: secret.commitment,
-            positionCommitment: `ziffle:${ceremony.deckHash}:${position}` });
-          subject.id = object.id;
-        }
-        await owner.call('addCardToZone', 1, 'Island', 'battlefield', true);
-        if (restInPeace) await owner.call('addCardToZone', 1, 'Rest in Peace', 'battlefield', true);
-        // Only the initial positions and mana are arranged directly. The
-        // tested abilities, payments, and zone changes execute normally.
-        const fixture = await owner.call('exportSyncCheckpoint');
-        for (const subject of subjects) {
-          const object = fixture.objects.find(item => item.id === subject.id);
-          for (const player of fixture.players) for (const zone of ['library', 'hand', 'graveyard']) {
-            player[zone] = player[zone].filter(id => id !== subject.id);
-          }
-          fixture.battlefield = fixture.battlefield.filter(id => id !== subject.id);
-          object.zone = subject.zone;
-          if (subject.zone === 'battlefield') fixture.battlefield.push(subject.id);
-          else fixture.players[subject.seat][subject.zone].push(subject.id);
-        }
-        await owner.call('importSyncCheckpoint', fixture, 1);
+        const position = reveals.find(reveal => reveal.originalSlot === 4).cardPosition;
+        const initial = await owner.call('getHiddenCardState');
+        const source = initial.objects.find(object => object.hiddenCard?.owner === 1 && object.hiddenCard.slot === position);
+        if (!source) throw new Error('Missing committed spell in library');
+        const secret = manifests[1].slotSecrets.find(entry => entry.slot === 4);
+        await owner.call('revealHiddenPosition', { owner: 1, objectId: source.id, position,
+          originalSlot: 4, cardName: secret.card, commitment: secret.commitment,
+          positionCommitment: `ziffle:${ceremony.deckHash}:${position}` });
+        // Both engines draw the same committed cards. The hand spell remains
+        // concealed on the receiving peer until its verified public opening.
+        for (let index = deckCount - 1; index >= position; index--) await setupCall('drawCard', 1);
+        await setupCall('addCardToZone', 1, 'Island', 'battlefield', true);
+        if (restInPeace) await setupCall('addCardToZone', 1, 'Rest in Peace', 'battlefield', true);
         state = await owner.call('uiState');
-        peer = createWorkerSession(); await peer.ready;
-        await peer.call('importSyncCheckpoint', await owner.call('exportRedactedSyncCheckpoint', 0), 0);
+        const fixture = await owner.call('getHiddenCardState');
+        const spell = fixture.objects.find(object => object.stableId === source.stableId);
         // The mixed case starts with only the top card privately known to its
         // owner (seat 0). The acting peer still sees five encrypted cards.
         if (knownControl) {
           for (const session of [peer]) {
-            const checkpoint = await session.call('exportSyncCheckpoint');
-            for (const id of checkpoint.players[0].library.slice(-1)) {
+            const checkpoint = await session.call('getHiddenCardState');
+            for (const id of checkpoint.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library').sort((left, right) => (left.hiddenCard.publicSlot ?? left.hiddenCard.slot) - (right.hiddenCard.publicSlot ?? right.hiddenCard.slot)).slice(-1).map(object => object.id)) {
               const object = checkpoint.objects.find(entry => entry.id === id);
               const position = object.hiddenCard.publicSlot ?? object.hiddenCard.slot;
               const originalSlot = reveals.find(reveal => reveal.cardPosition === position).originalSlot;
@@ -144,8 +134,8 @@ for (const { restInPeace, knownControl } of [
             }
           }
         }
-        const peerBefore = await peer.call('exportSyncCheckpoint');
-        const actorBefore = await owner.call('exportSyncCheckpoint');
+        const peerBefore = await peer.call('getHiddenCardState');
+        const actorBefore = await owner.call('getHiddenCardState');
         const wrap = session => new Proxy({}, { get: (_, method) => method.startsWith('ziffle')
           ? async input => api[method](input) : (...args) => session.call(method, ...args) });
         const refs = { gameRef: { current: wrap(owner) }, stateRef: { current: state },
@@ -166,7 +156,7 @@ for (const { restInPeace, knownControl } of [
           // A private look hydrates the owner's engine and retains its proved
           // opening in the owner's local cache. Reconstruct that fixture state
           // without sharing the card with the acting peer.
-          const known = peerBefore.objects.find(object => object.owner === 0 && object.zone === 'library' && object.name !== 'Hidden Card');
+          const known = peerBefore.objects.find(object => object.hiddenCard?.owner === 0 && object.zone === 'library' && object.name !== 'Hidden Card');
           refs.gameRef.current = wrap(peer); refs.multiplayerRef.current.localPlayerIndex = 0;
           refs.privateDeckManifestsRef.current = new Map([[`${matchId}:0`, manifests[0]]]);
           const exported = await peer.call('exportHiddenCardOpening', BigInt(known.id));
@@ -237,7 +227,7 @@ for (const { restInPeace, knownControl } of [
           stage = `${trace.length}:${command.type}:pre-opening`;
           await applyPeer(prepared, 'pre', command);
           await services.current.revealAuditOpenings(prepared, { timing: 'pre', command, updateState: false, previewInspector: false });
-          const sourceStates = await Promise.all([owner, peer].map(session => session.call('exportSyncCheckpoint')));
+          const sourceStates = await Promise.all([owner, peer].map(session => session.call('getHiddenCardState')));
           const preHydratedPublicMoves = publicPreRequirements.filter(requirement => requirement.owner === 0).map(requirement => {
             const id = requirement.objectId ?? requirement.object_id;
             return { requirementId: requirement.id, id, sources: sourceStates.map(checkpoint => {
@@ -263,15 +253,13 @@ for (const { restInPeace, knownControl } of [
           trace.push({ command, publicMoveDeclarations, preRequirementChecks, preHydratedPublicMoves, decision: state.decision?.kind, ordering: state.decision?.reason === 'Ordering' ? state.decision.options.map(option => option.description) : null, prepared: prepared.map(opening => ({ owner: opening.owner, slot: opening.slot, position: opening.position, origin: opening.originPosition, card: opening.card, timing: opening.timing })),
             requirements: [...requirements, ...afterRequirements].map(requirement => ({ type: requirement.type, owner: requirement.owner, slot: requirement.slot, from: requirement.from, to: requirement.to })) });
         };
-        const spell = fixture.objects.find(object => object.id === subjects[0].id);
-        const creature = fixture.objects.find(object => object.id === subjects[1].id);
         stage = 'find-cast-action';
         const action = state.decision?.actions?.find(item => item.action_ref?.kind === 'cast_spell' && Number(item.object_id) === spell.id);
         if (!action) throw new Error(`Card not playable: ${JSON.stringify(state.decision)}`);
         await dispatchBoth({ type: 'priority_action', action_ref: action.action_ref, object_id: spell.id });
         let after;
         for (let index = 0; index < 12; index++) {
-          after = await owner.call('exportSyncCheckpoint');
+          after = await owner.call('getHiddenCardState');
           const currentSpell = after.objects.find(object => object.stableId === spell.stableId);
           if (state.decision?.kind === 'priority' && currentSpell && !['hand', 'stack'].includes(currentSpell.zone)) break;
           const decision = state.decision;
@@ -287,23 +275,23 @@ for (const { restInPeace, knownControl } of [
             await dispatchBoth({ type: 'priority_action', action_ref: pass.action_ref });
           } else throw new Error(`Unexpected decision ${JSON.stringify(decision)}`);
         }
-        after = await owner.call('exportSyncCheckpoint');
-        const peerAfter = await peer.call('exportSyncCheckpoint');
+        after = await owner.call('getHiddenCardState');
+        const peerAfter = await peer.call('getHiddenCardState');
         const destination = restInPeace ? 'exile' : 'graveyard';
-        const summarize = object => ({ id: object.id, stableId: object.stableId, owner: object.owner,
+        const summarize = object => ({ id: object.id, stableId: object.stableId, owner: object.hiddenCard?.owner,
           zone: object.zone, name: object.name, originalCardName: object.originalCardName, hiddenCard: object.hiddenCard });
-        const publicCards = after.objects.filter(object => object.owner === 0 && object.zone === destination);
-        const peerPublicCards = peerAfter.objects.filter(object => object.owner === 0 && object.zone === destination);
-        const library = after.objects.filter(object => object.owner === 0 && object.zone === 'library');
-        const peerLibrary = peerAfter.objects.filter(object => object.owner === 0 && object.zone === 'library');
+        const publicCards = after.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === destination);
+        const peerPublicCards = peerAfter.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === destination);
+        const library = after.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library');
+        const peerLibrary = peerAfter.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library');
         return { restInPeace, knownControl, trace, expectedCards, destination,
-          initialActorKnownLibraryCards: actorBefore.objects.filter(object => object.owner === 0 && object.zone === 'library' && object.name !== 'Hidden Card').length,
-          initialKnownLibraryCards: peerBefore.objects.filter(object => object.owner === 0 && object.zone === 'library' && object.name !== 'Hidden Card').length,
+          initialActorKnownLibraryCards: actorBefore.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library' && object.name !== 'Hidden Card').length,
+          initialKnownLibraryCards: peerBefore.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library' && object.name !== 'Hidden Card').length,
           publicCards: publicCards.map(summarize), peerPublicCards: peerPublicCards.map(summarize),
           graveyardIds: after.players[0].graveyard, peerGraveyardIds: peerAfter.players[0].graveyard,
           libraryCount: library.length, peerLibraryCount: peerLibrary.length,
-          libraryStillPrivate: library.every(object => object.name === 'Hidden Card' && object.originalCardName === undefined),
-          peerLibraryStillPrivate: peerLibrary.every(object => object.name === 'Hidden Card' && object.originalCardName === undefined),
+          libraryStillPrivate: library.every(object => object.name === 'Hidden Card' && object.originalCardName == null),
+          peerLibraryStillPrivate: peerLibrary.every(object => object.name === 'Hidden Card' && object.originalCardName == null),
           peerBeforeSpell: peerBefore.objects.find(object => object.stableId === spell.stableId),
           afterSpell: after.objects.find(object => object.stableId === spell.stableId),
           decision: state.decision?.kind };

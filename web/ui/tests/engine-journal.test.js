@@ -103,7 +103,7 @@ test("a redacted journal withholds arguments and refuses to claim it is replayab
 });
 
 test("peer transport arguments are never captured even under the full policy", () => {
-  const entry = beginJournalEntry("importSyncCheckpoint", [{ blob: "other players' hidden state" }]);
+  const entry = beginJournalEntry("applyVerifiedHiddenLibraryShuffle", [{ blob: "other players' hidden state" }]);
   completeJournalEntry(entry, null);
   const [recorded] = getJournal().entries;
   assert.equal(recorded.args, null);

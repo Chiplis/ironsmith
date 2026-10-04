@@ -6,29 +6,39 @@ import { createLocalAnalysisJournal, createLocalAnalysisReplica } from '../src/l
 
 await init({ module_or_path: await readFile(new URL('../../wasm_demo/pkg/engine_bg.wasm', import.meta.url)) });
 
+function reachFirstMain(game) {
+  for (let step = 0; step < 40; step++) {
+    const state = game.uiState();
+    if (state.active_player === 0 && /first.main/i.test(state.phase)) return;
+    const pass = state.decision?.actions?.find(action => action.action_ref?.kind === "pass_priority");
+    assert.ok(pass, `Expected priority while advancing fixture: ${JSON.stringify(state.decision)}`);
+    game.dispatch({ type: "priority_action", action_ref: pass.action_ref });
+  }
+  throw new Error('Fixture did not reach first main phase');
+}
+
 for (const [name, text] of [
   ['Exhaust Replay Probe', 'Exhaust — {0}: You gain 1 life. (Activate each exhaust ability only once.)'],
   ['Turn Limit Replay Probe', '{0}: You gain 1 life. Activate only once each turn.'],
 ]) {
-  test(`native analysis preserves ${name} usage omitted by resync checkpoints`, async () => {
+  test(`native analysis preserves ${name} ability usage through native replay`, async () => {
     const journal = createLocalAnalysisJournal(new WasmGame(), name), game = journal.game;
+    game.initializeRuntimeIdentityOrigin(journal.capture().identityOrigin);
     const source = { canonicalName: name, group: { kind: 'single', name,
       block: `Mana Cost: {0}\nType: Artifact\n${text}` } };
-    let lossy, exact;
+    let exact;
     try {
       assert.deepEqual(JSON.parse(game.registerExternalCardSourcesJson(JSON.stringify([source]))).failed, []);
       game.resetEmpty(['Alice', 'Bob'], 20);
       game.addCardToZone(0, name, 'battlefield', true);
+      for (const seat of [0, 1]) for (let card = 0; card < 5; card++) game.addCardToZone(seat, name, "library", true);
       game.finishPuzzleSetup();
       for (let i = 0; i < 4; i++) {
         const action = game.uiState().decision.actions.find(a => ['keep_opening_hand', 'continue_pregame', 'begin_game'].includes(a.action_ref?.kind));
         assert.ok(action);
         game.dispatch({ type: 'priority_action', action_ref: action.action_ref });
       }
-      const setup = game.exportSyncCheckpoint();
-      setup.turn = { ...setup.turn, activePlayer: 0, priorityPlayer: 0, turnNumber: 2, phase: 'first_main', step: null };
-      setup.priorityRuntime.turnRunnerState = 'first_main_priority';
-      game.importSyncCheckpoint(setup, 0);
+      reachFirstMain(game);
       const action = game.uiState().decision.actions.find(a => a.kind === 'activate_ability');
       assert.ok(action, 'the unused ability must be available');
       game.dispatch({ type: 'priority_action', action_ref: action.action_ref });
@@ -38,13 +48,6 @@ for (const [name, text] of [
       const expected = game.uiState().decision;
       assert.equal(expected.actions.some(a => a.kind === 'activate_ability'), false);
 
-      // Negative control: prove this fixture exercises an actual omission,
-      // rather than merely comparing two identical initialization paths.
-      lossy = new WasmGame();
-      lossy.registerExternalCardSourcesJson(JSON.stringify([source]));
-      lossy.importSyncCheckpoint(game.exportSyncCheckpoint(), 0);
-      assert.equal(lossy.uiState().decision.actions.some(a => a.kind === 'activate_ability'), true);
-
       const replica = createLocalAnalysisReplica(() => new WasmGame());
       exact = await replica.hydrate(journal.capture());
       assert.deepEqual(exact.uiState().decision.actions, expected.actions);
@@ -52,7 +55,7 @@ for (const [name, text] of [
       exact.dispatch({ type: 'priority_action', action_ref: { kind: 'pass_priority' } });
       exact = await replica.hydrate(journal.capture());
       assert.deepEqual(exact.uiState().decision.actions, expected.actions);
-    } finally { exact?.free(); lossy?.free(); game.free(); }
+    } finally { exact?.free(); game.free(); }
   });
 }
 
@@ -84,15 +87,13 @@ test('real auxiliary workers retain a pending payment and preview targets from t
     game.addCardToZone(0, 'Mana Replay Probe', 'battlefield', true);
     game.addCardToZone(0, 'Payment Replay Probe', 'hand', true);
     game.addCardToZone(0, 'Target Replay Probe', 'hand', true);
+    for (const seat of [0, 1]) for (let card = 0; card < 5; card++) game.addCardToZone(seat, "Mana Replay Probe", "library", true);
     game.finishPuzzleSetup();
     for (let i = 0; i < 4; i++) {
       const action = game.uiState().decision.actions.find(a => ['keep_opening_hand', 'continue_pregame', 'begin_game'].includes(a.action_ref?.kind));
       game.dispatch({ type: 'priority_action', action_ref: action.action_ref });
     }
-    const setup = game.exportSyncCheckpoint();
-    setup.turn = { ...setup.turn, activePlayer: 0, priorityPlayer: 0, turnNumber: 2, phase: 'first_main', step: null };
-    setup.priorityRuntime.turnRunnerState = 'first_main_priority';
-    game.importSyncCheckpoint(setup, 0);
+    reachFirstMain(game);
     const actions = game.uiState().decision.actions;
     const targeted = actions.find(a => a.kind === 'cast_spell' && a.label.includes('Target Replay Probe'));
     assert.ok(targeted);

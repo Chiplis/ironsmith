@@ -37,7 +37,7 @@ for (const scenario of [
         worker.onmessage = ({ data }) => {
           if (data.type === 'error') return reject(new Error(data.error.message));
           if (data.type === 'ready') return resolve();
-          if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); analysisWaiters.get(data.revision)?.(data.decision); return; }
+          if (data.type === 'priorityAnalysis') { if (data.decision?.analysis_complete !== true) return; analyses.set(data.revision, data.decision); analysisWaiters.get(data.revision)?.(data.decision); return; }
           if (data.type !== 'result') return;
           const request = pending.get(data.id); if (!request) return;
           pending.delete(data.id);
@@ -56,7 +56,15 @@ for (const scenario of [
       worker.postMessage({ type: 'init', assetBaseUrl: `${location.origin}/` });
       return { worker, call, ready };
     }
-    const { worker, call, ready } = createWorkerSession();
+    const { worker, call: ownerCall, ready } = createWorkerSession();
+    const setupCommands = [];
+    const setupMethods = new Set(['startMatch', 'dispatch', 'revealHiddenPosition', 'drawCard', 'addCardToZone']);
+    let recordingSetup = true;
+    const call = async (method, ...args) => {
+      const result = await ownerCall(method, ...args);
+      if (recordingSetup && setupMethods.has(method)) setupCommands.push([method, structuredClone(args)]);
+      return result;
+    };
     let peer;
     let reactRoot;
     try {
@@ -91,9 +99,10 @@ for (const scenario of [
         state = await call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
       }
       if (state.phase !== 'first main phase') throw new Error('Main phase missing');
-      const beforeCheckpoint = await call('exportSyncCheckpoint');
-      const beforeOrder = [...beforeCheckpoint.players[1].library];
-      const originalFourId = beforeCheckpoint.objects.find(o => o.owner === 1 && o.hiddenCard?.slot === originPosition)?.id;
+      const beforeCheckpoint = await call('getHiddenCardState');
+      const beforeOrder = beforeCheckpoint.objects.filter(object => object.hiddenCard?.owner === 1 && object.zone === 'library')
+        .sort((left, right) => left.hiddenCard.slot - right.hiddenCard.slot).map(object => object.id);
+      const originalFourId = beforeCheckpoint.objects.find(o => o.hiddenCard?.owner === 1 && o.hiddenCard?.slot === originPosition)?.id;
       if (!beforeOrder.includes(originalFourId)) throw new Error('Original slot4 not in library');
       const ceremony = genesis;
       const { deckCount } = genesis;
@@ -131,11 +140,11 @@ for (const scenario of [
       const preOpenings = await services.current.buildLocalOpeningsForCommand(command, requirements);
       {
         peer = createWorkerSession(); await peer.ready;
-        // Start the receiver from the same known pre-command state. This
-        // fixture exercises subsequent public-opening application, not transport.
-        await peer.call('importSyncCheckpoint', await call('exportSyncCheckpoint'));
+        // Independently reproduce setup, including the announced public card.
         await peer.call('setPerspective', 0);
+        for (const [method, args] of setupCommands) await peer.call(method, ...args);
       }
+      recordingSetup = false;
       state = await call('dispatch', command); refs.stateRef.current = state;
       await peer.call('dispatch', command);
       const firstDecision = state.decision;
@@ -147,14 +156,16 @@ for (const scenario of [
         state = await call('dispatch', choice); refs.stateRef.current = state;
         await peer.call('dispatch', choice);
       }
-      const afterCheckpoint = await call('exportSyncCheckpoint');
-      const fieldCard = afterCheckpoint.objects.find(o => o.zone === 'battlefield' && o.name === backFaceName);
-      if (!fieldCard) throw new Error('Back face did not enter battlefield');
+      const afterCheckpoint = await call('getHiddenCardState');
+      const fieldIdentity = afterCheckpoint.objects.find(o => o.zone === 'battlefield' && o.name === backFaceName);
+      if (!fieldIdentity) throw new Error('Back face did not enter battlefield');
+      const visibleCard = state.players.flatMap(player => player.battlefield).find(card => card.id === fieldIdentity.id);
+      const fieldCard = { ...fieldIdentity, tapped: visibleCard?.tapped };
       const postRequirements = state.crypto_requirements || state.cryptoRequirements || [];
       const openings = await services.current.buildLocalRequirementOpeningsForRequirements([...requirements, ...postRequirements], { forceZiffleOpeningProof: true, timing: 'post' });
       await services.current.verifyAuditOpeningsAgainstManifests(openings);
       const peerState = await peer.call('uiState');
-      const beforeApply = await peer.call('exportSyncCheckpoint');
+      const beforeApply = await peer.call('getHiddenCardState');
       const ownerHashBefore = await publicCheckpointHash(await call('exportPublicAuditCheckpoint'));
       const peerHashBefore = await publicCheckpointHash(await peer.call('exportPublicAuditCheckpoint'));
       refs.gameRef.current = new Proxy({}, { get: (_, method) => method.startsWith('ziffle')
@@ -175,17 +186,22 @@ for (const scenario of [
       const wrongOriginError = await rejectedOpeningError({ ...originalOpening,
         originPosition: wrongOriginPosition,
         originPositionCommitment: `ziffle:${genesis.deckHash}:${wrongOriginPosition}` });
-      const afterRejected = await peer.call('exportSyncCheckpoint');
+      const afterRejected = await peer.call('getHiddenCardState');
       const rejectedOpeningsPreserveObjects = JSON.stringify(beforeApply.objects) === JSON.stringify(afterRejected.objects);
       let applyError = null;
       try { await services.current.revealAuditOpenings(openings, revealOptions); }
       catch (error) { applyError = error.message; }
-      const afterApply = await peer.call('exportSyncCheckpoint');
+      const afterApply = await peer.call('getHiddenCardState');
       const ownAudit = await call('exportPublicAuditCheckpoint');
       const peerAudit = await peer.call('exportPublicAuditCheckpoint');
       const peerAuditMatches = await publicCheckpointHash(ownAudit) === await publicCheckpointHash(peerAudit);
-      const compactObject = object => object && ({ id: object.id, owner: object.owner, controller: object.controller,
-        zone: object.zone, name: object.name, tapped: object.tapped, hiddenCard: object.hiddenCard });
+      const peerStateAfter = await peer.call('uiState');
+      const compactObject = (object, ui) => {
+        if (!object) return null;
+        const visible = ui.players.flatMap(player => player.battlefield).find(card => card.id === object.id);
+        return { id: object.id, owner: object.hiddenCard?.owner, controller: visible?.controller,
+          zone: object.zone, name: object.name, tapped: visible?.tapped, hiddenCard: object.hiddenCard };
+      };
       const peerBefore = beforeApply.objects.find(o => o.id === fieldCard.id);
       const peerAfter = afterApply.objects.find(o => o.id === fieldCard.id);
       return { cardName, backFaceName, firstDecision: firstDecision.kind, finalDecision: state.decision.kind,
@@ -196,7 +212,7 @@ for (const scenario of [
           ({ owner, slot, card, objectId, timing, position, originPosition })),
         proofsVerified: true, applyError, forgedIdentityError, swappedCopyError, wrongOriginError, rejectedOpeningsPreserveObjects, peerAuditMatches, beforeHydrationHashesMatch: ownerHashBefore === peerHashBefore,
         allPeerObjectsPreserved: JSON.stringify(beforeApply.objects) === JSON.stringify(afterApply.objects),
-        ownerCard: compactObject(fieldCard), peerBefore: compactObject(peerBefore), peerAfter: compactObject(peerAfter),
+        ownerCard: compactObject(fieldCard, state), peerBefore: compactObject(peerBefore, peerState), peerAfter: compactObject(peerAfter, peerStateAfter),
       };
     } finally { reactRoot?.unmount(); worker.terminate(); peer?.worker.terminate(); }
   }, { scenario, verifierUrl: `/@fs/${path.resolve(root, '../wasm_demo/pkg/verifier.js')}` });

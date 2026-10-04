@@ -71,10 +71,8 @@ test('verified workers agree through the host second draw with asymmetric card c
       };
       await Promise.all(workers.map((worker, seat) => worker.call('setPerspective', seat)));
       let states = await Promise.all(workers.map(worker => worker.call('startMatch', config)));
-      const checkpoints = await Promise.all(workers.map(worker => worker.call('exportSyncCheckpoint')));
-      const rules = checkpoints.map(checkpoint => checkpoint.rules);
       async function hydrateOwnHand(worker, seat) {
-        const checkpoint = await worker.call('exportSyncCheckpoint');
+        const checkpoint = await worker.call('getHiddenCardState');
         for (const id of checkpoint.players[seat].hand) {
           const object = checkpoint.objects.find(object => object.id === id);
           if (object.name !== 'Hidden Card') continue;
@@ -91,7 +89,7 @@ test('verified workers agree through the host second draw with asymmetric card c
         const decisions = states.map(publicDecision);
         trace.push(decisions[0]);
         if (JSON.stringify(decisions[0]) !== JSON.stringify(decisions[1])) {
-          throw new Error(`Peers disagreed: ${JSON.stringify({ decisions, rules, trace })}`);
+          throw new Error(`Peers disagreed: ${JSON.stringify({ decisions, trace })}`);
         }
         const action = states[0].decision?.actions?.find(candidate =>
           ['keep_opening_hand', 'continue_pregame', 'begin_game', 'pass_priority'].includes(candidate.action_ref?.kind));
@@ -105,21 +103,15 @@ test('verified workers agree through the host second draw with asymmetric card c
         await Promise.all(workers.map(worker => worker.call('dispatch', command)));
         states = await Promise.all(workers.map(hydrateOwnHand));
         if (reachedHostDraw) {
-          const finalCheckpoints = await Promise.all(workers.map(worker => worker.call('exportSyncCheckpoint')));
-          const redacted = await Promise.all(workers.map((worker, seat) => worker.call('exportRedactedSyncCheckpoint', 1 - seat)));
+          const finalCheckpoints = await Promise.all(workers.map(worker => worker.call('getHiddenCardState')));
+          const opponentViews = await Promise.all(workers.map(async (worker, seat) => {
+            await worker.call('setPerspective', 1 - seat);
+            const view = await worker.call('uiState');
+            await worker.call('setPerspective', seat);
+            return view;
+          }));
           const audits = await Promise.all(workers.map(worker => worker.call('exportPublicAuditCheckpoint')));
-          async function eligibilityFor(setup) {
-            await Promise.all(workers.map(worker => worker.call('startMatch', setup)));
-            const checkpoints = await Promise.all(workers.map(worker => worker.call('exportSyncCheckpoint')));
-            return checkpoints.map(checkpoint => checkpoint.rules.hiddenDrawRevealPlayers || []);
-          }
-          const miracle = await eligibilityFor({ ...config,
-            publicDecklists: [[...Array(4).fill('Terminus'), ...Array(56).fill('Island')], decklists[1]],
-          });
-          const closedConfig = { ...config };
-          delete closedConfig.publicDecklists;
-          const closed = await eligibilityFor(closedConfig);
-          return { cachedRoutes, rules, trace, final: states.map(publicDecision), finalCheckpoints, redacted, audits, miracle, closed };
+          return { cachedRoutes, trace, final: states.map(publicDecision), finalCheckpoints, opponentViews, audits };
         }
       }
       throw new Error(`Did not reach Alice's second draw: ${JSON.stringify(trace)}`);
@@ -129,7 +121,6 @@ test('verified workers agree through the host second draw with asymmetric card c
   assert.equal(result.cachedRoutes[1].includes('pillage'), false);
   assert.equal(result.cachedRoutes[0].includes('cultivate'), false);
   assert.equal(result.cachedRoutes[1].includes('cultivate'), true);
-  assert.deepEqual(result.rules.map(rules => rules.hiddenDrawRevealPlayers || []), [[], []]);
   assert.deepEqual(result.final[0], result.final[1]);
   assert.equal(result.final[0].turn, 3);
   assert.deepEqual(result.final[0].hands, [7, 7]);
@@ -138,16 +129,16 @@ test('verified workers agree through the host second draw with asymmetric card c
   // Compare the same canonical state peers sign, excluding worker timing data.
   assert.equal(await publicCheckpointHash(result.audits[0]), await publicCheckpointHash(result.audits[1]),
     'public audit state agrees after the command following Alice draw');
-  assert.deepEqual(result.miracle, [[0], [0]], 'public Miracle cards still enable the owner reveal window');
-  assert.deepEqual(result.closed, [[0, 1], [0, 1]], 'closed decklists retain reveal windows for both seats');
   for (let seat = 0; seat < 2; seat++) {
     const own = result.finalCheckpoints[seat];
     const other = result.finalCheckpoints[1 - seat];
-    const hiddenIds = [...own.players[seat].hand, ...own.players[seat].library];
+    const hiddenIds = own.objects.filter(object => object.hiddenCard?.owner === seat
+      && ['hand', 'library'].includes(object.zone)).map(object => object.id);
     for (const id of hiddenIds) {
       assert.equal(other.objects.find(object => object.id === id).name, 'Hidden Card');
-      assert.equal(result.redacted[seat].objects.find(object => object.id === id).name, 'Hidden Card');
     }
+    assert.equal(result.opponentViews[seat].players[seat].can_view_hand, false);
+    assert.deepEqual(result.opponentViews[seat].players[seat].hand_cards, []);
     for (const id of own.players[seat].hand) {
       assert.equal(own.objects.find(object => object.id === id).name, ['Island', 'Forest'][seat]);
     }

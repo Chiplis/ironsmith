@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
 import { buildSignedResyncEnvelope, verifySignedResyncEnvelope, createAuditSessionKey } from '../src/lib/multiplayer-audit.js';
-import { assertResyncCheckpointCarrier } from '../src/lib/resync-checkpoint-carrier.js';
+import { assertResyncTranscriptCarrier } from '../src/lib/resync-transcript-carrier.js';
 
 const source = readFileSync(new URL('../src/hooks/peer-lobby/crypto-resync.js', import.meta.url), 'utf8');
 const begin = source.indexOf('  const sendHostedStateMessage = useCallback(');
 const end = source.indexOf('\n  function sequencedActionRelayKey', begin);
 assert.ok(begin >= 0 && end > begin);
 
-async function sender({ cached = null, trusted = false } = {}) {
+async function sender({ trusted = false } = {}) {
   const keys = await createAuditSessionKey(webcrypto);
   const actions = [{ seq: 1, command: { type: 'priority_action' } }];
   const sent = [];
@@ -32,7 +32,6 @@ async function sender({ cached = null, trusted = false } = {}) {
     relayMatchId: () => 'match1',
     matchingActionPrefix: () => false,
     actionHistoryRef: { current: actions },
-    selectResyncReplayCheckpoint: () => cached,
     wireStablePayload: value => value === undefined ? null : structuredClone(value),
     buildSignedResyncEnvelope: payload => buildSignedResyncEnvelope(payload, webcrypto),
     auditKeyPairRef: { current: keys },
@@ -48,51 +47,32 @@ async function sender({ cached = null, trusted = false } = {}) {
   return { message: sent[0], exports, keys };
 }
 
-test('verified resync sends a signed complete transcript without requiring checkpoint export', async () => {
+test('verified recovery sends only signed actions without exporting engine state', async () => {
   const { message, exports, keys } = await sender();
   assert.equal(exports, 0);
   assert.equal(message.replayOnly, true);
-  assert.equal(message.checkpoint, null);
+  assert.equal('checkpoint' in message, false);
   assert.equal(message.actions.length, 1);
-  assert.equal(message.resyncEnvelope.checkpointSequence, undefined);
-  const verified = await verifySignedResyncEnvelope({ envelope: message.resyncEnvelope,
-    publicKey: keys.publicKey, checkpoint: message.checkpoint, actions: message.actions }, webcrypto);
-  assert.equal(verified.valid, true);
-  assert.equal(verified.checkpointSequence, null);
-  assert.equal(message.resyncEnvelope.lastSequence, 1);
-  assertResyncCheckpointCarrier(message, { trusted: false, verified: true });
+  const report = await verifySignedResyncEnvelope({ envelope: message.resyncEnvelope,
+    publicKey: keys.publicKey, actions: message.actions }, webcrypto);
+  assert.equal(report.valid, true);
+  assertResyncTranscriptCarrier(message, { trusted: false, verified: true });
   await assert.rejects(verifySignedResyncEnvelope({ envelope: message.resyncEnvelope,
-    publicKey: keys.publicKey, checkpoint: {}, actions: message.actions }, webcrypto), /checkpoint hash/i);
-  await assert.rejects(verifySignedResyncEnvelope({ envelope: message.resyncEnvelope,
-    publicKey: keys.publicKey, checkpoint: null, actions: [] }, webcrypto), /action|sequence/i);
+    publicKey: keys.publicKey, actions: [] }, webcrypto), /action|sequence/i);
 });
 
-test('receiver rejects ambiguous and missing checkpoint carriers', () => {
-  const mode = { trusted: false, verified: true };
-  assert.throws(() => assertResyncCheckpointCarrier({}, mode), /missing WASM checkpoint/);
-  assert.throws(() => assertResyncCheckpointCarrier({ checkpoint: [] }, mode), /missing WASM checkpoint/);
-  assert.throws(() => assertResyncCheckpointCarrier({ replayOnly: true, checkpoint: {} }, mode), /cannot contain/);
-  assert.throws(() => assertResyncCheckpointCarrier({ replayOnly: true, checkpoint: null,
-    resyncEnvelope: { checkpointSequence: 1 } }, mode), /cannot claim/);
-  assert.throws(() => assertResyncCheckpointCarrier({ replayOnly: true }, { trusted: false, verified: false }), /security mode/);
-  assertResyncCheckpointCarrier({ replayOnly: true }, { trusted: true, verified: false });
-  assertResyncCheckpointCarrier({ checkpoint: { version: 2 } }, mode);
-});
-
-test('verified resync retains a cached importable checkpoint and its signed sequence', async () => {
-  const cached = { seq: 1, checkpoint: { version: 2, perspective: 1, players: [] } };
-  const { message, exports, keys } = await sender({ cached });
-  assert.equal(exports, 0);
-  assert.equal(message.replayOnly, undefined);
-  assert.deepEqual(message.checkpoint, cached.checkpoint);
-  assert.equal(message.resyncEnvelope.checkpointSequence, 1);
-  await verifySignedResyncEnvelope({ envelope: message.resyncEnvelope,
-    publicKey: keys.publicKey, checkpoint: message.checkpoint, actions: message.actions }, webcrypto);
-});
-
-test('trusted resync still sends its existing replay-only message', async () => {
+test('trusted recovery also sends actions without engine serialization', async () => {
   const { message, exports } = await sender({ trusted: true });
   assert.equal(exports, 0);
   assert.equal(message.replayOnly, true);
-  assert.equal(message.resyncEnvelope, undefined);
+  assert.equal('checkpoint' in message, false);
+  assertResyncTranscriptCarrier(message, { trusted: true, verified: false });
+});
+
+test('recovery rejects foreign engine state and unsupported carrier modes', () => {
+  const mode = { trusted: false, verified: true };
+  assert.throws(() => assertResyncTranscriptCarrier({}, mode), /replay-only/);
+  assert.throws(() => assertResyncTranscriptCarrier({ replayOnly: true, checkpoint: {} }, mode), /serialized engine/);
+  assert.throws(() => assertResyncTranscriptCarrier({ replayOnly: true,
+    resyncEnvelope: { checkpointSequence: 1 } }, mode), /cannot claim/);
 });

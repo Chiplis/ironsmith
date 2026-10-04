@@ -2667,7 +2667,7 @@ test("live audit transcript verifier requires a shuffle-proof verifier", async (
   );
 });
 
-test("match genesis and resync envelopes bind roster and checkpoints", async () => {
+test("match genesis and resync envelopes bind roster, actions and final state", async () => {
   const hostKey = await createAuditSessionKey(webcrypto);
   const playerKeys = [
     hostKey,
@@ -2791,7 +2791,6 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
     /genesis payload hash mismatch/,
   );
 
-  const checkpoint = { players: [{ id: 0, hand: [] }], objects: [] };
   const actions = [];
   const envelope = await buildSignedResyncEnvelope({
     keyPair: hostKey,
@@ -2799,7 +2798,6 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
     signer: 0,
     lastSequence: 0,
     finalStateHash: "0".repeat(64),
-    checkpoint,
     actions,
   }, webcrypto);
   const hostPublicCryptoKey = await importAuditPublicKey(hostPublicKey, webcrypto);
@@ -2807,19 +2805,17 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
     (await verifySignedResyncEnvelope({
       envelope,
       publicKey: hostPublicCryptoKey,
-      checkpoint,
-      actions,
+        actions,
     }, webcrypto)).valid,
     true,
   );
   await assert.rejects(
     () => verifySignedResyncEnvelope({
-      envelope,
+      envelope: { ...envelope, finalStateHash: "f".repeat(64) },
       publicKey: hostPublicCryptoKey,
-      checkpoint: { ...checkpoint, forged: true },
       actions,
     }, webcrypto),
-    /checkpoint hash mismatch/,
+    /signature is invalid/,
   );
 
   const signedAction = {
@@ -2835,15 +2831,13 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
     signer: 0,
     lastSequence: 1,
     finalStateHash: "1".repeat(64),
-    checkpoint,
     actions: [signedAction],
   }, webcrypto);
   assert.equal(
     (await verifySignedResyncEnvelope({
       envelope: actionEnvelope,
       publicKey: hostPublicCryptoKey,
-      checkpoint,
-      actions: [signedAction],
+        actions: [signedAction],
     }, webcrypto)).valid,
     true,
   );
@@ -2854,8 +2848,7 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
       signer: 0,
       lastSequence: 2,
       finalStateHash: "1".repeat(64),
-      checkpoint,
-      actions: [signedAction],
+        actions: [signedAction],
     }, webcrypto),
     /last sequence/,
   );
@@ -2863,8 +2856,7 @@ test("match genesis and resync envelopes bind roster and checkpoints", async () 
     () => verifySignedResyncEnvelope({
       envelope: actionEnvelope,
       publicKey: hostPublicCryptoKey,
-      checkpoint,
-      actions: [],
+        actions: [],
     }, webcrypto),
     /last sequence/,
   );

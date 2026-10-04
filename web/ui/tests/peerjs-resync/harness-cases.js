@@ -1274,13 +1274,13 @@ test("PeerJS local pass reuses checkpoint hash and skips unchanged ziffle hand s
 
     assert.equal(
       hostAfterPass.instrumentation.exportPublicAuditCheckpoint,
-      1,
-      "local pass should export/hash the public audit checkpoint once",
+      3,
+      "action verification and the first local recovery anchor require three public digest reads",
     );
 	    assert.equal(
-	      hostAfterPass.instrumentation.exportSyncCheckpoint,
-	      1,
-	      "local pass should only export the validation snapshot checkpoint, not an extra ziffle hand reveal checkpoint",
+	      hostAfterPass.instrumentation.createRuntimeSavepoint >= 1,
+	      true,
+	      "local validation and recovery retain native savepoints",
 	    );
     assertNoPageErrors(hostPage, guestPage);
   } finally {
@@ -1380,7 +1380,6 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
     );
 
     // Recovery must not require exporting an unsupported executable effect.
-    await hostPage.evaluate(() => window.__peerHarness.setFailCheckpointExport(true));
 
     await guestPage.close();
     guestPage = null;
@@ -1408,6 +1407,10 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
         && snap.statusEvents.some((event) => event.message.includes("Resynced with host at action 1")),
       "guest reconnect receives state_resync",
     );
+    const guestRecovery = await guestPage.evaluate(() => window.__peerHarness.recoveryEvents());
+    assert.ok(guestRecovery.some(event => event.kind === 'recovery:completed'
+      && event.meta.level === 'genesis' && event.meta.head === 1),
+      'a reloaded client rebuilds the verified runtime from genesis');
     assert.equal(guestResync.visibleState.snapshot_id, 1);
     assert.equal(guestResync.visibleState.perspective, 1);
     assert.equal(guestResync.visibleState.players[0].battlefield.length, 1);
@@ -1428,7 +1431,6 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
       30000,
     );
     assert.equal(promotedGuest.multiplayer.localPlayerIndex, 1);
-    await guestPage.evaluate(() => window.__peerHarness.setFailCheckpointExport(true));
 
     await sleep(2500);
     hostPage = await openHarness(hostContext, baseUrl, "host-reconnect");
@@ -1451,6 +1453,10 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
       "original host reconnects to promoted host and receives state_resync",
       30000,
     );
+    const hostRecovery = await hostPage.evaluate(() => window.__peerHarness.recoveryEvents());
+    assert.ok(hostRecovery.some(event => event.kind === 'recovery:completed'
+      && event.meta.level === 'genesis' && event.meta.head === 1),
+      'a reloaded original host verifies genesis replay against the promoted host transcript');
     assert.equal(hostResync.visibleState.snapshot_id, 1);
     assert.equal(hostResync.visibleState.perspective, 0);
     assert.equal(hostResync.visibleState.players[0].battlefield.length, 1);
@@ -1466,7 +1472,6 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
       "promoted host marks original host reconnected",
     );
 
-    await guestPage.evaluate(() => window.__peerHarness.setFailCheckpointExport(false));
     await guestPage.evaluate(async () => {
       const snap = await window.__peerHarness.snapshot();
       const action = snap.visibleState?.decision?.actions?.[0];

@@ -777,37 +777,6 @@ pub struct SuspendedReplacementEffect {
     until_end_of_turn: bool,
 }
 
-/// Complete persistent replacement registrations. Static descriptors are rebuilt
-/// from the restored object world; their allocated identity gaps remain reserved.
-/// A codec must convert every executable descriptor, not its display string.
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
-pub struct RegisteredReplacementEffectState<E = ReplacementEffect> {
-    pub effects: Vec<E>,
-    pub next_id: u64,
-    pub effect_sources: Vec<(ReplacementEffectId, ReplacementEffectSource)>,
-    pub one_shot_effects: Vec<ReplacementEffectId>,
-    pub batch_one_shot_effects: Vec<ReplacementEffectId>,
-    pub pending_batch_one_shot_effects: Vec<ReplacementEffectId>,
-    pub until_end_of_turn_effects: Vec<ReplacementEffectId>,
-    pub until_next_turn_effects: Vec<(ReplacementEffectId, (PlayerId, u32, Option<u32>))>,
-}
-
-impl<E> RegisteredReplacementEffectState<E> {
-    pub fn try_map_effects<E2, Error>(
-        self, convert: impl FnMut(E) -> Result<E2, Error>,
-    ) -> Result<RegisteredReplacementEffectState<E2>, Error> {
-        let Self { effects, next_id, effect_sources, one_shot_effects,
-            batch_one_shot_effects, pending_batch_one_shot_effects,
-            until_end_of_turn_effects, until_next_turn_effects } = self;
-        Ok(RegisteredReplacementEffectState {
-            effects: effects.into_iter().map(convert).collect::<Result<Vec<_>, _>>()?,
-            next_id, effect_sources, one_shot_effects, batch_one_shot_effects,
-            pending_batch_one_shot_effects, until_end_of_turn_effects, until_next_turn_effects,
-        })
-    }
-}
-
 /// Manages all replacement effects in the game.
 #[derive(Debug, Clone, Default)]
 pub struct ReplacementEffectManager {
@@ -842,94 +811,6 @@ pub struct ReplacementEffectManager {
 }
 
 impl ReplacementEffectManager {
-    /// Capture full persistent state, rejecting inconsistent native bookkeeping
-    /// rather than dropping it from an apparently successful checkpoint.
-    pub fn registered_state(&self) -> Result<RegisteredReplacementEffectState, String> {
-        // Exhaustive destructuring makes new manager state require an explicit
-        // checkpoint decision rather than silently omitting it.
-        let Self { effects, effect_sources, one_shot_effects, batch_one_shot_effects,
-            pending_batch_one_shot_effects, until_end_of_turn_effects,
-            until_next_turn_effects, next_id } = self;
-        let mut allocated_ids = std::collections::HashSet::new();
-        for effect in effects {
-            if effect.id.0 >= *next_id || !allocated_ids.insert(effect.id) {
-                return Err("invalid replacement manager allocation".into());
-            }
-        }
-        let static_ids: std::collections::HashSet<_> = effects.iter()
-            .filter(|effect| effect.registration_id.is_none()
-                && effect_sources.get(&effect.id.0) == Some(&ReplacementEffectSource::StaticAbility))
-            .map(|effect| effect.id).collect();
-        let sorted_ids = |ids: &std::collections::HashSet<ReplacementEffectId>| {
-            let mut ids: Vec<_> = ids.iter().copied().collect(); ids.sort_by_key(|id| id.0); ids
-        };
-        let mut sources: Vec<_> = effect_sources.iter()
-            .filter(|(id, _)| !static_ids.contains(&ReplacementEffectId(**id)))
-            .map(|(id, source)| (ReplacementEffectId(*id), *source)).collect();
-        sources.sort_by_key(|(id, _)| id.0);
-        let mut next_turn: Vec<_> = until_next_turn_effects.iter()
-            .map(|(id, anchor)| (*id, *anchor)).collect();
-        next_turn.sort_by_key(|(id, _)| id.0);
-        let state = RegisteredReplacementEffectState {
-            effects: effects.iter().filter(|effect| !static_ids.contains(&effect.id)).cloned().collect(),
-            next_id: *next_id, effect_sources: sources,
-            one_shot_effects: sorted_ids(one_shot_effects),
-            batch_one_shot_effects: sorted_ids(batch_one_shot_effects),
-            pending_batch_one_shot_effects: sorted_ids(pending_batch_one_shot_effects),
-            until_end_of_turn_effects: sorted_ids(until_end_of_turn_effects),
-            until_next_turn_effects: next_turn,
-        };
-        Self::new().restore_registered_state(state.clone())?;
-        Ok(state)
-    }
-
-    /// Validate all identities and lifetime memberships before publishing. The
-    /// owning importer must validate object/player references and regenerate
-    /// static descriptors; departed sources remain valid stored identities.
-    pub fn restore_registered_state(&mut self, state: RegisteredReplacementEffectState) -> Result<(), String> {
-        if state.next_id == u64::MAX {
-            return Err("serialized replacement allocator cannot advance".into());
-        }
-        let mut ids = std::collections::HashSet::new();
-        for effect in &state.effects {
-            if effect.registration_id != Some(effect.id) || effect.id.0 >= state.next_id || !ids.insert(effect.id) {
-                return Err("invalid registered replacement identity".into());
-            }
-        }
-        let mut sources = std::collections::HashMap::new();
-        for (id, source) in state.effect_sources {
-            if !ids.contains(&id) || source == ReplacementEffectSource::StaticAbility || sources.insert(id.0, source).is_some() {
-                return Err("invalid registered replacement source".into());
-            }
-        }
-        let checked_ids = |entries: Vec<ReplacementEffectId>| -> Result<std::collections::HashSet<ReplacementEffectId>, String> {
-            let mut result = std::collections::HashSet::new();
-            for id in entries {
-                if !ids.contains(&id) || !result.insert(id) { return Err("invalid registered replacement lifetime membership".into()); }
-            }
-            Ok(result)
-        };
-        let one_shot = checked_ids(state.one_shot_effects)?;
-        let batch = checked_ids(state.batch_one_shot_effects)?;
-        if !one_shot.is_disjoint(&batch) { return Err("replacement cannot be both ordinary and batch one-shot".into()); }
-        let pending = checked_ids(state.pending_batch_one_shot_effects)?;
-        if !pending.is_subset(&batch) { return Err("pending replacement consumption is not a batch one-shot".into()); }
-        let cleanup = checked_ids(state.until_end_of_turn_effects)?;
-        let mut next_turn = std::collections::HashMap::new();
-        for (id, anchor) in state.until_next_turn_effects {
-            if !ids.contains(&id) || next_turn.insert(id, anchor).is_some() {
-                return Err("invalid registered replacement next-turn anchor".into());
-            }
-        }
-        *self = Self {
-            effects: state.effects, effect_sources: sources, next_id: state.next_id,
-            one_shot_effects: one_shot, batch_one_shot_effects: batch,
-            pending_batch_one_shot_effects: pending, until_end_of_turn_effects: cleanup,
-            until_next_turn_effects: next_turn,
-        };
-        Ok(())
-    }
-
     /// Create a new empty manager.
     pub fn new() -> Self {
         Self::default()
@@ -1559,7 +1440,7 @@ impl ReplacementEffect {
 mod tests {
     use super::*;
 
-    fn registered_transport_fixture() -> (ReplacementEffectManager, [ReplacementEffectId; 5]) {
+    fn registered_lifetime_fixture() -> (ReplacementEffectManager, [ReplacementEffectId; 5]) {
         let source = ObjectId::from_raw(71);
         let player = PlayerId::from_index(1);
         let mut manager = ReplacementEffectManager::new();
@@ -1724,14 +1605,10 @@ mod tests {
     }
 
     #[test]
-    fn registered_replacement_transport_preserves_consumption_expiry_and_identity() {
-        let (original, ids) = registered_transport_fixture();
-        let state = original.registered_state().unwrap();
-        assert_eq!(state.effects.iter().map(|effect| effect.id).collect::<Vec<_>>(), ids);
-        let keys = state.effects.iter().map(ReplacementEffect::application_key).collect::<Vec<_>>();
-        let mut restored = ReplacementEffectManager::new();
-        restored.add_static_ability_effect(ReplacementEffect::indestructible(ObjectId::from_raw(91), PlayerId::from_index(0)));
-        restored.restore_registered_state(state).unwrap();
+    fn native_clone_preserves_replacement_consumption_expiry_and_identity() {
+        let (original, ids) = registered_lifetime_fixture();
+        let keys = original.effects().iter().map(ReplacementEffect::application_key).collect::<Vec<_>>();
+        let mut restored = original.clone();
         assert_eq!(restored.effects().iter().map(ReplacementEffect::application_key).collect::<Vec<_>>(), keys);
         assert_eq!(restored.next_id(), original.next_id());
         assert!(restored.mark_effect_used(ids[1]));
@@ -1750,9 +1627,8 @@ mod tests {
     }
 
     #[test]
-    fn registered_replacement_action_mapping_executes_each_retained_instead_body() {
+    fn native_clone_executes_each_replacement_instead_body() {
         use crate::effects::{EffectExecutor, ExecutionContext};
-        use std::cell::Cell;
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
         let source = game.new_object_id();
@@ -1761,15 +1637,8 @@ mod tests {
         let id = original.add_until_end_of_turn_effect(ReplacementEffect::with_matcher(
             source, bob, WouldGainLifeMatcher::you(), ReplacementAction::Instead(vec![body.clone(), body]),
         ));
-        let calls = Cell::new(0);
-        let state = original.registered_state().unwrap().try_map_effects(|effect|
-            effect.try_map_payloads(|action| action.try_map_payloads(
-                |body| { calls.set(calls.get() + 1); Ok::<_, String>(body) }, Ok, Ok, Ok,
-            ), Ok, Ok, Ok)
-        ).unwrap();
-        assert_eq!(calls.get(), 2, "retain both equal independent executable occurrences");
-        assert_eq!(state.effects[0].application_key(), ReplacementEffectKey::Registered(id));
-        game.effect_store.replacement_effects.restore_registered_state(state).unwrap();
+        assert_eq!(original.effects()[0].application_key(), ReplacementEffectKey::Registered(id));
+        game.effect_store.replacement_effects = original.clone();
         let effect = crate::effects::GainLifeEffect::new(2, ChooseSpec::Player(PlayerFilter::You));
         let mut context = ExecutionContext::new_default(source, bob);
         let outcome = effect.execute(&mut game, &mut context).unwrap();
@@ -1787,7 +1656,7 @@ mod tests {
     }
 
     #[test]
-    fn registered_replacement_transport_executes_captured_controller_after_restore() {
+    fn native_clone_executes_replacement_captured_controller() {
         use crate::effects::{EffectExecutor, ExecutionContext};
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
@@ -1796,10 +1665,7 @@ mod tests {
         original.add_until_next_turn_effect(ReplacementEffect::with_matcher(
             source, bob, WouldGainLifeMatcher::you(), ReplacementAction::Double,
         ), bob, 4);
-        let state = original.registered_state().unwrap().try_map_effects(|effect|
-            effect.try_map_payloads(Ok::<_, String>, Ok, Ok, Ok)
-        ).unwrap();
-        game.effect_store.replacement_effects.restore_registered_state(state).unwrap();
+        game.effect_store.replacement_effects = original.clone();
         let effect = crate::effects::GainLifeEffect::new(2, ChooseSpec::Player(PlayerFilter::You));
         let mut bob_ctx = ExecutionContext::new_default(source, bob);
         effect.execute(&mut game, &mut bob_ctx).unwrap();
@@ -1815,57 +1681,7 @@ mod tests {
         assert_eq!(game.player(bob).unwrap().life, 30);
     }
 
-    #[test]
-    fn registered_replacement_transport_capture_diagnoses_inconsistent_native_state() {
-        let (valid, ids) = registered_transport_fixture();
-        for case in 0..4 {
-            let mut manager = valid.clone();
-            match case {
-                0 => manager.effects.iter_mut().find(|effect| effect.id == ids[0]).unwrap().registration_id = None,
-                1 => { manager.one_shot_effects.insert(ReplacementEffectId(manager.next_id + 1)); },
-                2 => { manager.effect_sources.insert(manager.next_id + 1, ReplacementEffectSource::StaticAbility); },
-                3 => manager.next_id = ids[4].0,
-                _ => unreachable!(),
-            }
-            let before = format!("{manager:?}");
-            assert!(manager.registered_state().is_err(), "inconsistent native state {case} cannot disappear from export");
-            assert_eq!(format!("{manager:?}"), before);
-        }
-    }
 
-    #[test]
-    fn registered_replacement_transport_rejects_malformed_state_atomically() {
-        let (mut manager, ids) = registered_transport_fixture();
-        let valid = manager.registered_state().unwrap();
-        let before = format!("{manager:?}");
-        for case in 0..15 {
-            let mut state = valid.clone();
-            let foreign = ReplacementEffectId(state.next_id + 1);
-            match case {
-                0 => state.next_id = u64::MAX,
-                1 => state.effects.push(state.effects[0].clone()),
-                2 => state.effects[0].registration_id = None,
-                3 => state.effects[0].registration_id = Some(ids[1]),
-                4 => state.next_id = ids[4].0,
-                5 => state.effect_sources.push(state.effect_sources[0]),
-                6 => state.effect_sources.push((foreign, ReplacementEffectSource::Resolution)),
-                7 => state.effect_sources[0].1 = ReplacementEffectSource::StaticAbility,
-                8 => state.one_shot_effects.push(foreign),
-                9 => state.one_shot_effects.push(ids[1]),
-                10 => state.batch_one_shot_effects.push(ids[1]),
-                11 => state.pending_batch_one_shot_effects.push(ids[0]),
-                12 => state.until_end_of_turn_effects.push(foreign),
-                13 => state.until_next_turn_effects.push(state.until_next_turn_effects[0]),
-                14 => state.until_next_turn_effects.push((foreign, (PlayerId::from_index(1), 4, None))),
-                _ => unreachable!(),
-            }
-            assert!(manager.restore_registered_state(state).is_err(), "malformed case {case}");
-            assert_eq!(format!("{manager:?}"), before, "failure must not publish any field: {case}");
-        }
-        manager.restore_registered_state(valid).unwrap();
-        manager.consume_pending_batch_one_shot_effects();
-        assert!(manager.get_effect(ids[2]).is_none());
-    }
 
     #[test]
     fn source_removal_clears_lifetime_state_without_touching_other_registrations() {

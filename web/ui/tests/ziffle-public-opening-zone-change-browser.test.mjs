@@ -34,7 +34,7 @@ for (const scenario of ['land', 'cast']) test(`real shuffled reveal retains its 
         worker.onmessage = ({ data }) => {
           if (data.type === 'error') return reject(new Error(data.error.message));
           if (data.type === 'ready') return resolve();
-          if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); analysisWaiters.get(data.revision)?.(data.decision); return; }
+          if (data.type === 'priorityAnalysis') { if (data.decision?.analysis_complete !== true) return; analyses.set(data.revision, data.decision); analysisWaiters.get(data.revision)?.(data.decision); return; }
           if (data.type !== 'result') return;
           const request = pending.get(data.id); if (!request) return;
           pending.delete(data.id);
@@ -53,7 +53,16 @@ for (const scenario of ['land', 'cast']) test(`real shuffled reveal retains its 
       worker.postMessage({ type: 'init', assetBaseUrl: `${location.origin}/` });
       return { worker, call, ready };
     }
-    const { worker, call, ready } = createWorkerSession();
+    const { worker, call: ownerCall, ready } = createWorkerSession();
+    const setupCommands = [];
+    const setupMethods = new Set(['startMatch', 'dispatch', 'applyVerifiedHiddenLibraryShuffle',
+      'revealHiddenPosition', 'drawCard', 'addCardToZone']);
+    let recordingSetup = true;
+    const call = async (method, ...args) => {
+      const result = await ownerCall(method, ...args);
+      if (recordingSetup && setupMethods.has(method)) setupCommands.push([method, structuredClone(args)]);
+      return result;
+    };
     let peer;
     let reactRoot;
     try {
@@ -88,9 +97,10 @@ for (const scenario of ['land', 'cast']) test(`real shuffled reveal retains its 
         state = await call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
       }
       if (state.phase !== 'first main phase') throw new Error('Main phase missing');
-      const beforeCheckpoint = await call('exportSyncCheckpoint');
-      const beforeOrder = [...beforeCheckpoint.players[1].library];
-      const originalFourId = beforeCheckpoint.objects.find(o => o.owner === 1 && o.hiddenCard?.slot === originPosition)?.id;
+      const beforeCheckpoint = await call('getHiddenCardState');
+      const beforeOrder = beforeCheckpoint.objects.filter(object => object.hiddenCard?.owner === 1 && object.zone === 'library')
+        .sort((left, right) => left.hiddenCard.slot - right.hiddenCard.slot).map(object => object.id);
+      const originalFourId = beforeCheckpoint.objects.find(o => o.hiddenCard?.owner === 1 && o.hiddenCard?.slot === originPosition)?.id;
       const sourceIndex = beforeOrder.indexOf(originalFourId);
       if (sourceIndex < 0) throw new Error('Original slot4 not in library');
       if (sourceIndex === 2) [beforeOrder[2], beforeOrder[3]] = [beforeOrder[3], beforeOrder[2]];
@@ -139,13 +149,14 @@ for (const scenario of ['land', 'cast']) test(`real shuffled reveal retains its 
       const preOpenings = await services.current.buildLocalOpeningsForCommand(command, requirements);
       if (scenario === 'cast') {
         peer = createWorkerSession(); await peer.ready;
-        // The receiver has independently checked and hydrated the public opening
-        // before dispatch. Copy that known pre-command state into a second engine.
-        await peer.call('importSyncCheckpoint', await call('exportSyncCheckpoint'));
+        // Reproduce the fixture's commands, including the card opening that is
+        // public when announced, instead of transferring an engine snapshot.
         await peer.call('setPerspective', 0);
+        for (const [method, args] of setupCommands) await peer.call(method, ...args);
       }
+      recordingSetup = false;
       state = await call('dispatch', command); refs.stateRef.current = state;
-      const afterCheckpoint = await call('exportSyncCheckpoint');
+      const afterCheckpoint = await call('getHiddenCardState');
       const fieldRing = afterCheckpoint.objects.find(o => o.zone === (scenario === 'cast' ? 'stack' : 'battlefield') && o.name === cardName);
       const postRequirements = state.crypto_requirements || state.cryptoRequirements || [];
       const openings = await services.current.buildLocalRequirementOpeningsForRequirements([...requirements, ...postRequirements], { forceZiffleOpeningProof: true });

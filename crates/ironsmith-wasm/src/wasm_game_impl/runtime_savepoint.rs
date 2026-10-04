@@ -117,27 +117,65 @@ runtime_savepoint! {
     cached_snapshot: Option<CachedSnapshot>,
 }
 
-impl WasmGame {
-    /// Execute on a candidate branch while retaining the original runtime and
-    /// its analysis jobs. Session catalog registrations remain shared.
-    fn with_runtime_transaction<T, E>(
-        &mut self,
-        operation: impl FnOnce(&mut Self) -> Result<T, E>,
-    ) -> Result<T, E> {
-        let mut previous = RuntimeSavepoint::capture(self);
-        previous.exchange(self);
-        match operation(self) {
-            Ok(value) => Ok(value),
-            Err(error) => {
-                previous.exchange(self);
-                Err(error)
-            }
-        }
-    }
+// Only allocator metadata crosses to a fresh local analysis worker. This is
+// not gameplay state and cannot reconstruct or replace an active runtime.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RuntimeIdentityOrigin {
+    player: u8,
+    object: u64,
+    card: u32,
+    stack_ability: u64,
 }
 
 #[wasm_bindgen]
 impl WasmGame {
+    #[wasm_bindgen(js_name = getRuntimeIdentityOrigin)]
+    pub fn get_runtime_identity_origin(&self) -> Result<JsValue, JsValue> {
+        let ids = snapshot_id_counters();
+        RuntimeIdentityOrigin {
+            player: ids.player,
+            object: self.game.next_object_id_counter(),
+            card: ids.card,
+            stack_ability: self.game.next_stack_ability_id_counter(),
+        }.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = initializeRuntimeIdentityOrigin)]
+    pub fn initialize_runtime_identity_origin(&mut self, origin: JsValue) -> Result<(), JsValue> {
+        if !self.runtime_identity_origin_available || self.snapshot_serial != 0 || !self.game.objects_in_deterministic_order().is_empty()
+            || !self.runtime_savepoints.is_empty() || self.runner.is_some()
+            || self.pregame.is_some() || self.pending_decision.is_some() {
+            return Err(JsValue::from_str("Identity origin requires a fresh runtime"));
+        }
+        if !origin.is_object() || origin.is_null() {
+            return Err(JsValue::from_str("Invalid runtime identity origin"));
+        }
+        // serde-wasm-bindgen's struct reader visits declared fields only, so
+        // deny_unknown_fields alone does not reject extra JS properties.
+        for key in js_sys::Object::keys(&js_sys::Object::from(origin.clone())).iter() {
+            if !matches!(key.as_string().as_deref(), Some("player" | "object" | "card" | "stackAbility")) {
+                return Err(JsValue::from_str("Runtime identity origin contains an unknown field"));
+            }
+        }
+        let origin: RuntimeIdentityOrigin = serde_wasm_bindgen::from_value(origin)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        if origin.object == 0 || origin.object >= (1_u64 << 53)
+            || origin.stack_ability >= (1_u64 << 53) || origin.card == 0 {
+            return Err(JsValue::from_str("Invalid runtime identity origin"));
+        }
+        restore_id_counters(ironsmith::ids::IdCountersSnapshot {
+            player: origin.player,
+            object: origin.object,
+            card: origin.card.max(snapshot_id_counters().card),
+        });
+        self.runtime_identity_origin_available = false;
+        self.game.set_next_object_id_counter(origin.object);
+        self.game.set_next_stack_ability_id_counter(origin.stack_ability);
+        Ok(())
+    }
+
     /// Copy a retained branch into the visible runtime, preserving the branch.
     #[wasm_bindgen(js_name = copyRuntimeSavepoint)]
     pub fn copy_runtime_savepoint(&mut self, handle: u32) -> Result<JsValue, JsValue> {

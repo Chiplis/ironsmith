@@ -2363,9 +2363,23 @@ export function GameProvider({ children }) {
   }, [dispatch, game, setState, stateRef]);
 
   const cancelDecision = useCallback(
-    async () => {
+    async ({ waitForPaymentReady = false } = {}) => {
       if (!game) return;
-      return runWasmInteraction(async () => {
+      const paymentTransaction = stateRef.current?.mana_payment?.transaction_id;
+      const isCurrentPayment = () => stateRef.current?.decision?.kind === "mana_payment"
+        && stateRef.current?.mana_payment?.transaction_id === paymentTransaction
+        && samePlayerId(stateRef.current.decision.player, stateRef.current.perspective);
+      const runCancel = waitForPaymentReady
+        ? async task => {
+          // A payment cancellation is an explicit click, including while a
+          // replan is running. Retain it through the previous action's cooldown.
+          while (isCurrentPayment() && shouldSuppressImmediateCancel()) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          return wasmInteractionGateRef.current.runWhenReady(task, isCurrentPayment);
+        }
+        : runWasmInteraction;
+      return runCancel(async () => {
         if (multiplayer.matchStarted) {
           const currentState = stateRef.current;
           if (!currentState?.decision) {
@@ -2541,14 +2555,13 @@ export function GameProvider({ children }) {
         if (!currentGame) {
           throw new Error("WASM game is not ready");
         }
-        if (typeof currentGame.exportSyncCheckpoint !== "function") {
+        if (!currentGame.supportsRuntimeSavepoints) {
           throw new Error("Game engine cannot start replay mode");
         }
         const existingSession = auditReplaySessionRef.current;
-        // The live match is restored from a lossless runtime savepoint; the
-        // checkpoint only backs it up if the engine instance is replaced.
+        // Preserve the complete live runtime while replay uses this engine.
         const restorePoint = existingSession?.restorePoint
-          || await captureEngineRestorePoint(currentGame, { keepCheckpoint: true });
+          || await captureEngineRestorePoint(currentGame);
         const restorePerspective = Number(
           existingSession?.restorePerspective ?? stateRef.current?.perspective ?? 0
         );
@@ -2583,7 +2596,7 @@ export function GameProvider({ children }) {
           auditReplaySessionRef.current = existingSession || null;
           if (!existingSession) {
             try {
-              await restoreEngineRestorePoint(currentGame, restorePoint, restorePerspective);
+              await restoreEngineRestorePoint(currentGame, restorePoint);
               const restored = typeof currentGame.uiState === "function"
                 ? await currentGame.uiState()
                 : stateRef.current;
@@ -2689,7 +2702,6 @@ export function GameProvider({ children }) {
             await restoreEngineRestorePoint(
               currentGame,
               session.restorePoint,
-              session.restorePerspective,
             );
             const restored = typeof currentGame.uiState === "function"
               ? await currentGame.uiState()
@@ -2869,7 +2881,6 @@ export function GameProvider({ children }) {
       snapshot,
       priorityAnalysis: () => game?.latestPriorityAnalysis?.() || null,
       runtimeState: () => gameRef.current?.uiState?.() || null,
-      checkpoint: () => gameRef.current?.exportSyncCheckpoint?.() || null,
       publicCheckpoint: () => gameRef.current?.exportPublicAuditCheckpoint?.() || null,
       auditTranscript: () => exportAuditTranscript?.({ includeLiveCheckpoint: false }) || null,
       dispatch: (command, label) => dispatch(command, label),

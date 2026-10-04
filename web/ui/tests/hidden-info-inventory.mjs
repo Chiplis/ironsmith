@@ -18,7 +18,7 @@ const categories = [
   ["face-down", /face[-_ ]?down|\bmanifest\b|\bcloak\b|\bdisguise\b|\bmorph\b/gi],
   ["exile-hidden", /\bexile\b.*\bface[-_ ]?down\b|\bhiddenCard\b/gi],
   ["sideboard-rematch", /\bsideboard\b|\brematch\b/gi],
-  ["redacted-sync", /\bredact(?:ed|ion)?\b|\bhiddenDeckManifests\b|\bexportRedactedSyncCheckpoint\b/gi],
+  ["redacted-sync", /\bredact(?:ed|ion)?\b|\bhiddenDeckManifests\b/gi],
   ["audit-opening", /\bdeckAuditManifest\b|\bbuildDeckSlotOpening\b|\bverifyCardOpeningAgainstManifest\b/gi],
 ];
 

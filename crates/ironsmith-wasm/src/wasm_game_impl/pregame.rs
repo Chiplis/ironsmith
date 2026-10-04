@@ -379,6 +379,7 @@ impl WasmGame {
         starting_life: i32,
         seed: u64,
     ) {
+        self.runtime_identity_origin_available = false;
         let player_count = player_names.len();
         self.game = GameState::new_with_runtime_id_reset(player_names, starting_life);
         // Card definitions are a session-level catalog, not match state. In the
@@ -4357,17 +4358,7 @@ mod commander_draft_setup_tests {
         );
         assert_eq!(profile.range_of_influence(), None);
 
-        let checkpoint = host.build_sync_checkpoint();
-        let mut guest = WasmGame::new();
-        guest
-            .apply_sync_checkpoint(checkpoint)
-            .expect("Commander Draft checkpoint should import");
-        assert_eq!(guest.match_format, MatchFormatInput::CommanderDraft);
-        assert!(guest.game.commander_damage_loss_enabled());
-        assert_eq!(
-            guest.game.free_for_all().unwrap().attack_option(),
-            ironsmith::FreeForAllAttackOption::MultiplePlayers
-        );
+
     }
 
     #[test]

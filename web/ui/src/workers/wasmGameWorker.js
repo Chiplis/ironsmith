@@ -1,6 +1,5 @@
 import { createLocalAnalysisJournal } from "../lib/local-analysis-replay.js";
 import { createPaymentOptionsAnalysis } from "../lib/payment-options-analysis.js";
-import { hiddenCardMetadataForObjectFromCheckpoint, hiddenCardMetadataAtPositionFromCheckpoint } from "../lib/hidden-card-metadata.js";
 import { createAsyncLimiter } from "../lib/bounded-async.js";
 import { inRuntimeBranch } from "../lib/runtime-branches.js";
 import { CARD_ASSET_MISSING, fetchCardAssetJson, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
@@ -74,8 +73,6 @@ const SNAPSHOT_METHODS = new Set([
   "cancelDecision",
   "dispatch",
   "forfeitPlayer",
-  "importSyncCheckpoint",
-  "importForeignSyncCheckpoint",
   "injectTranscriptRandomSeeds",
   "revealHiddenObject",
   "revealHiddenPosition",
@@ -104,8 +101,6 @@ const RUNTIME_EVALUATION_METHODS = new Set([
 // method that starts or rebuilds a game loads the baked dungeon routes the
 // card index lists, so venturing into the dungeon has compiled rooms.
 const DUNGEON_LOADING_METHODS = new Set([
-  "importSyncCheckpoint",
-  "importForeignSyncCheckpoint",
   "loadDecks",
   "loadDemoDecks",
   "replayTrustedMatch",
@@ -127,7 +122,7 @@ const CARD_ZONE_KEYS = [
 
 // Unknown methods invalidate by default. Presentation reads cannot cancel a
 // long search merely because the user hovered a card or requested a snapshot.
-const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|isReplayCheckpointBoundary|hiddenCardOpenState|pendingVerifiedHiddenLibraryPosition|runtimeVersion|cardLoadDiagnostics|validateMatchConfig|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
+const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|hiddenCardOpenState|pendingVerifiedHiddenLibraryPosition|runtimeVersion|cardLoadDiagnostics|validateMatchConfig|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
 let priorityIdentity = null;
 let priorityViewRevision = 0;
 const workerTasks = createWorkerTaskDiagnostics({ publish: message => self.postMessage(message) });
@@ -355,22 +350,6 @@ function collectDeckNames(payload, out = []) {
   return out;
 }
 
-function collectCheckpointCardNames(checkpoint, out = []) {
-  if (!checkpoint || typeof checkpoint !== "object") {
-    return out;
-  }
-  const objects = Array.isArray(checkpoint.objects) ? checkpoint.objects : [];
-  for (const object of objects) {
-    if (!object || typeof object !== "object") continue;
-    const name = String(object.name || "").trim();
-    const isToken = Boolean(object.token);
-    if (name && !isToken && name.toLocaleLowerCase("en-US") !== "hidden card") {
-      out.push(name);
-    }
-  }
-  return out;
-}
-
 function collectNamesForMethod(method, args) {
   const names = [];
   switch (method) {
@@ -428,10 +407,6 @@ function collectNamesForMethod(method, args) {
     case "getCardSemanticScore":
     case "isKnownCardName":
       names.push(args?.[0]);
-      break;
-    case "importSyncCheckpoint":
-    case "importForeignSyncCheckpoint":
-      collectCheckpointCardNames(args?.[0], names);
       break;
     case "dispatch": {
       const command = args?.[0] || {};
@@ -908,7 +883,7 @@ function handleCall(msg) {
     return;
   }
   if (msg.runtimeBranch == null && method === "previewCastTargets") { handleTargetPreview(id, args); return; }
-  if (!/^(snapshot|uiState|last\w*Perf|exportSyncCheckpoint|exportPublicAuditCheckpoint|isReplayCheckpointBoundary|autocompleteCardNames|getCardSemanticScore|cardsMeetingThreshold)$/.test(method)) {
+  if (!/^(snapshot|uiState|last\w*Perf|exportPublicAuditCheckpoint|autocompleteCardNames|getCardSemanticScore|cardsMeetingThreshold)$/.test(method)) {
     try {
       console.debug(`[ironsmith] worker call: ${method} ${JSON.stringify({ argumentCount: args.length, commandType: args[0]?.type })}`);
     } catch {
@@ -1019,9 +994,6 @@ function handleCall(msg) {
     const fn = method === "replayTrustedMatch" ? (config, actions, perspective) => replayTrustedMatch(game, config, actions, perspective, replayOptions)
       : method === "replayTrustedActions" ? (actions, sequence) => replayTrustedActions(game, actions, sequence, replayOptions)
       : method === "previewCryptoRequirementsWithMaterial" ? (command, material) => previewCryptoRequirementsWithMaterial(game, command, material)
-      : method === "getHiddenCardState" && typeof game.getHiddenCardState !== "function" ? () => game.exportSyncCheckpoint()
-      : method === "getHiddenCardMetadata" && typeof game.getHiddenCardMetadata !== "function" ? objectId => hiddenCardMetadataForObjectFromCheckpoint(game.exportSyncCheckpoint(), objectId)
-      : method === "getHiddenCardMetadataAtPosition" && typeof game.getHiddenCardMetadataAtPosition !== "function" ? (owner, position, commitment) => hiddenCardMetadataAtPositionFromCheckpoint(game.exportSyncCheckpoint(), owner, position, commitment)
       : game[method];
     if (typeof fn !== "function") {
       throw new Error(`Unknown game method: ${method}`);

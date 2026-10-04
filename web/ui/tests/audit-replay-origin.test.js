@@ -5,7 +5,7 @@ import { applyAuditReplayActionWithGame } from '../src/lib/audit-replay.js';
 function replayGame() {
   const calls = [];
   const game = {
-    exportSyncCheckpoint: async () => ({ objects: [{ id: 212, stableId: 85, hiddenCard: {
+    getHiddenCardState: async () => ({ objects: [{ id: 212, stableId: 85, hiddenCard: {
       owner: 1, slot: 4, commitment: 'salted-ring-4', publicSlot: 51, publicCommitment: 'ziffle:current:51',
       originSlot: 23, originCommitment: 'ziffle:initial:23',
     } }] }),
@@ -40,7 +40,7 @@ test('post-action replay reopens a revealed card through its authenticated ident
   const calls = [];
   let objectId = 168;
   const game = {
-    exportSyncCheckpoint: async () => ({ objects: [{ id: objectId, stableId: 116,
+    getHiddenCardState: async () => ({ objects: [{ id: objectId, stableId: 116,
       name: 'Goblin Guide', zone: objectId === 168 ? 'stack' : 'battlefield', hiddenCard: {
         owner: 1, slot: 22, commitment: 'salted-guide-22', publicSlot: 54,
         publicCommitment: 'ziffle:initial:54', originSlot: 54,
@@ -70,9 +70,9 @@ test('post-action replay reopens a revealed card through its authenticated ident
 
 test('engine replay rejects duplicate current commitment identities before revealing', async () => {
   const { game, calls } = replayGame();
-  const checkpoint = await game.exportSyncCheckpoint();
+  const checkpoint = await game.getHiddenCardState();
   checkpoint.objects.push({ ...checkpoint.objects[0], id: 213 });
-  game.exportSyncCheckpoint = async () => checkpoint;
+  game.getHiddenCardState = async () => checkpoint;
   await assert.rejects(replay(game, opening), /does not identify one current committed card/);
   assert.deepEqual(calls, []);
 });

@@ -1,13 +1,9 @@
-// Private, local-only transport. A resync checkpoint is a public projection of
-// gameplay state, not a savepoint. Replaying the exact engine calls preserves
-// live programs, choices, mana provenance, history, and future engine fields.
-// Never send this journal to a peer: it includes this seat's private inputs.
+// Replay exact engine calls in a private local worker; native branches retain
+// live programs and continuations. Never send this journal to another seat.
 const errorMessage = error => String(error?.message ?? error);
 
 export function createLocalAnalysisJournal(runtime, epoch) {
-  // Only the empty constructor state uses the wire format (allocator origins).
-  // No live gameplay state is reconstructed from a checkpoint for analysis.
-  const genesis = structuredClone(runtime.exportSyncCheckpoint());
+  let identityOrigin = structuredClone(runtime.getRuntimeIdentityOrigin());
   const operations = [];
   const wrappers = new Map();
   const game = new Proxy(runtime, {
@@ -15,6 +11,16 @@ export function createLocalAnalysisJournal(runtime, epoch) {
       const value = Reflect.get(target, method, target);
       if (typeof value !== 'function') return value;
       if (!wrappers.has(method)) wrappers.set(method, (...args) => {
+        // Allocator initialization is fresh-runtime bootstrap, already applied
+        // by the replica. Record its resulting origin, not a second execution.
+        if (method === 'initializeRuntimeIdentityOrigin') {
+          const updateOrigin = result => {
+            identityOrigin = structuredClone(runtime.getRuntimeIdentityOrigin());
+            return result;
+          };
+          const result = value.apply(target, args);
+          return result?.then ? result.then(updateOrigin) : updateOrigin(result);
+        }
         // Record even reads and failures: either can have engine side effects.
         // Calling on the original receiver avoids recording facade calls twice.
         const operation = { method, args: structuredClone(args), failed: false };
@@ -37,11 +43,11 @@ export function createLocalAnalysisJournal(runtime, epoch) {
       return wrappers.get(method);
     },
   });
-  return { game, capture: () => ({ epoch, genesis, operations: operations.slice() }) };
+  return { game, capture: () => ({ epoch, identityOrigin, operations: operations.slice() }) };
 }
 
 export function createLocalAnalysisReplica(createGame) {
-  let game, epoch, position = 0, canonical = null, rebuild = false, lastJournal;
+  let game, epoch, identityOriginKey, position = 0, canonical = null, rebuild = false, lastJournal;
   const handles = new Map();
   const restore = () => {
     if (canonical == null) return;
@@ -54,12 +60,14 @@ export function createLocalAnalysisReplica(createGame) {
   return {
     async hydrate(journal, yieldControl = async () => {}) {
       if (!journal || !Array.isArray(journal.operations)) throw new Error('Missing local analysis journal');
-      if (!game || rebuild || epoch !== journal.epoch || position > journal.operations.length) {
+      const incomingOriginKey = JSON.stringify(journal.identityOrigin);
+      if (!game || rebuild || epoch !== journal.epoch || identityOriginKey !== incomingOriginKey || position > journal.operations.length) {
         rebuild = true;
         game?.free();
         game = createGame();
-        game.importSyncCheckpoint(journal.genesis, journal.genesis.perspective);
+        game.initializeRuntimeIdentityOrigin(journal.identityOrigin);
         epoch = journal.epoch;
+        identityOriginKey = incomingOriginKey;
         position = 0;
         canonical = null;
         rebuild = false;

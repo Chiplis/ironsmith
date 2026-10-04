@@ -1,3 +1,4 @@
+import { getDiagnosticsSnapshot } from "/src/lib/action-diagnostics.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { usePeerLobby } from "/src/hooks/usePeerLobby.js";
@@ -32,12 +33,12 @@ function createFakeGame() {
   let latePublicOpenDispatched = false;
   let omitOwnerOpenedLandPosition = false;
   let failOpenedLandExport = false;
-  let failCheckpointExport = false;
   let includeOpenedLandInCheckpointHand = false;
   const syncEvents = [];
   const instrumentation = {
     exportPublicAuditCheckpoint: 0,
-    exportSyncCheckpoint: 0,
+    getHiddenCardState: 0,
+    createRuntimeSavepoint: 0,
     revealHiddenSlot: 0,
     postPublicOpenRevealSlot: 0,
     latePublicOpenRevealSlot: 0,
@@ -475,11 +476,8 @@ function createFakeGame() {
       return card.id;
     },
     cancelDecision: async () => buildState(),
-    exportSyncCheckpoint: async () => {
-      instrumentation.exportSyncCheckpoint += 1;
-      if (failCheckpointExport) {
-        throw new Error("registered continuous effect requires an approved executable identity graph");
-      }
+    getHiddenCardState: async () => {
+      instrumentation.getHiddenCardState += 1;
       const openedLandVisibleToLocal = Number(perspective) === 0 || ziffleOpenedLandRevealed;
       const openedLandHiddenCard = openedLandVisibleToLocal
         ? {
@@ -530,12 +528,6 @@ function createFakeGame() {
         battlefield: JSON.parse(JSON.stringify(battlefield)),
       };
     },
-    exportRedactedSyncCheckpoint: async () => ({
-      matchConfig: JSON.parse(JSON.stringify(matchConfig || {})),
-      perspective,
-      actionSequence,
-      battlefield: JSON.parse(JSON.stringify(battlefield)),
-    }),
     exportPublicAuditCheckpoint: async () => {
       instrumentation.exportPublicAuditCheckpoint += 1;
       return {
@@ -546,41 +538,27 @@ function createFakeGame() {
         battlefield: JSON.parse(JSON.stringify(battlefield)),
       };
     },
-    importSyncCheckpoint: async (checkpoint, perspectiveIndex = 0) => {
-      matchConfig = JSON.parse(JSON.stringify(checkpoint?.matchConfig || {}));
-      perspective = Number(perspectiveIndex ?? checkpoint?.perspective ?? 0);
-      actionSequence = Number(checkpoint?.actionSequence || 0);
-      battlefield = JSON.parse(JSON.stringify(checkpoint?.battlefield || []));
-      addedHands = new Map();
-      zifflePublicOpenRevealed = false;
-      ziffleOpenedLandRevealed = false;
-      postPublicOpenDispatched = false;
-      latePublicOpenDispatched = false;
-      failOpenedLandExport = false;
-      const nextState = buildState();
-      syncEvents.push({
-        type: "sync_checkpoint_import",
-        snapshotId: nextState?.snapshot_id ?? null,
-        perspective: nextState?.perspective ?? null,
-        battlefieldCount: nextState?.players?.[0]?.battlefield?.length ?? 0,
-      });
-      return nextState;
+    captureFixtureState: () => structuredClone({ matchConfig, perspective, actionSequence, nextObjectId, battlefield, addedHands, zifflePublicOpenRevealed, ziffleOpenedLandRevealed, postPublicOpenDispatched, latePublicOpenDispatched, omitOwnerOpenedLandPosition, failOpenedLandExport, includeOpenedLandInCheckpointHand }),
+    restoreFixtureState: point => {
+      ({ matchConfig, perspective, actionSequence, nextObjectId, battlefield, addedHands, zifflePublicOpenRevealed, ziffleOpenedLandRevealed, postPublicOpenDispatched, latePublicOpenDispatched, omitOwnerOpenedLandPosition, failOpenedLandExport, includeOpenedLandInCheckpointHand } = structuredClone(point));
+      const state = buildState();
+      syncEvents.push({ type: 'runtime_restore', snapshotId: state.snapshot_id });
+      return state;
     },
+    noteRuntimeSavepoint: () => { instrumentation.createRuntimeSavepoint += 1; },
     syncEvents: () => [...syncEvents],
     instrumentation: () => ({ ...instrumentation }),
     matchConfig: () => JSON.parse(JSON.stringify(matchConfig || {})),
     resetInstrumentation: () => {
       instrumentation.exportPublicAuditCheckpoint = 0;
-      instrumentation.exportSyncCheckpoint = 0;
+      instrumentation.getHiddenCardState = 0;
+      instrumentation.createRuntimeSavepoint = 0;
       instrumentation.revealHiddenSlot = 0;
       instrumentation.postPublicOpenRevealSlot = 0;
       instrumentation.latePublicOpenRevealSlot = 0;
     },
     setOmitOwnerOpenedLandPosition: (enabled) => {
       omitOwnerOpenedLandPosition = Boolean(enabled);
-    },
-    setFailCheckpointExport: (enabled) => {
-      failCheckpointExport = Boolean(enabled);
     },
     setFailOpenedLandExport: (enabled) => {
       failOpenedLandExport = Boolean(enabled);
@@ -591,28 +569,35 @@ function createFakeGame() {
   };
 }
 
-function enableFakeRuntimeBranches(game) {
+function enableFakeRuntimeBranches(game, { branches = false } = {}) {
+  if (game.supportsRuntimeSavepoints) { game.supportsRuntimeBranches = branches; return; }
   const points = new Map();
   let nextHandle = 0;
   game.supportsRuntimeSavepoints = true;
-  game.supportsRuntimeBranches = true;
+  game.supportsRuntimeBranches = branches;
   game.createRuntimeSavepoint = async () => {
     const handle = ++nextHandle;
-    points.set(handle, { checkpoint: await game.exportSyncCheckpoint(), perspective: (await game.uiState()).perspective });
+    game.noteRuntimeSavepoint();
+    points.set(handle, game.captureFixtureState());
     return handle;
   };
   game.restoreRuntimeSavepoint = async handle => {
     const point = points.get(handle);
     if (!point) throw new Error('Expired fixture savepoint');
     points.delete(handle);
-    return game.importSyncCheckpoint(point.checkpoint, point.perspective);
+    return game.restoreFixtureState(point);
+  };
+  game.copyRuntimeSavepoint = async handle => {
+    const point = points.get(handle);
+    if (!point) throw new Error('Expired fixture savepoint');
+    return game.restoreFixtureState(point);
   };
   game.releaseRuntimeSavepoint = async handle => points.delete(handle);
   game.forkRuntimeBranch = async () => {
     const branch = createFakeGame();
-    enableFakeRuntimeBranches(branch);
-    await branch.importSyncCheckpoint(await game.exportSyncCheckpoint(), (await game.uiState()).perspective);
-    branch.copyToVisible = async () => game.importSyncCheckpoint(await branch.exportSyncCheckpoint(), (await branch.uiState()).perspective);
+    enableFakeRuntimeBranches(branch, { branches: true });
+    branch.restoreFixtureState(game.captureFixtureState());
+    branch.copyToVisible = async () => game.restoreFixtureState(branch.captureFixtureState());
     branch.release = async () => {};
     return branch;
   };
@@ -627,7 +612,11 @@ function Harness() {
   const autoPassAttemptRef = useRef("");
   const applyDelayMsRef = useRef(0);
   const rejectNextVerifiedDispatchRef = useRef(false);
-  const game = useMemo(() => createFakeGame(), []);
+  const game = useMemo(() => {
+    const runtime = createFakeGame();
+    enableFakeRuntimeBranches(runtime);
+    return runtime;
+  }, []);
 
   const setState = useCallback((nextState) => {
     setVisibleState(nextState);
@@ -712,6 +701,7 @@ function Harness() {
   useEffect(() => {
     window.__peerHarness = {
       ready: true,
+      recoveryEvents: () => getDiagnosticsSnapshot().events.filter(event => event.kind.startsWith("recovery:")),
       lobbyState: () => ({ multiplayer: lobby.multiplayer, statusEvents: [...statusEventsRef.current] }),
       createLobby: lobby.createLobby,
       joinLobby: lobby.joinLobby,
@@ -734,7 +724,7 @@ function Harness() {
       setApplyDelay: (delayMs = 0) => {
         applyDelayMsRef.current = Math.max(0, Number(delayMs) || 0);
       },
-      enableOptimisticRuntime: () => enableFakeRuntimeBranches(game),
+      enableOptimisticRuntime: () => enableFakeRuntimeBranches(game, { branches: true }),
       blockNextOptimisticCalculation: () => {
         const preview = game.previewCryptoRequirements;
         game.previewCryptoRequirements = async (...args) => {
@@ -745,9 +735,6 @@ function Harness() {
       rejectNextVerifiedDispatch: () => { rejectNextVerifiedDispatchRef.current = true; },
       setOmitOwnerOpenedLandPosition: (enabled) => {
         game.setOmitOwnerOpenedLandPosition(enabled);
-      },
-      setFailCheckpointExport: (enabled) => {
-        game.setFailCheckpointExport(enabled);
       },
       setFailOpenedLandExport: (enabled) => {
         game.setFailOpenedLandExport(enabled);

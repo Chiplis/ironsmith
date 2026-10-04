@@ -2,14 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLocalAnalysisJournal, createLocalAnalysisReplica } from '../src/lib/local-analysis-replay.js';
 
-// The fake wire format deliberately omits the same classes of information as
-// multiplayer checkpoints. Native branches retain every field without a DTO.
 class Game {
   state = { objects: [], choices: {}, history: [], manaProvenance: [], temporaryPermissions: [] };
   handles = new Map();
   nextHandle = 0;
-  exportSyncCheckpoint() { return { perspective: 0, objects: structuredClone(this.state.objects) }; }
-  importSyncCheckpoint(checkpoint) { this.state.objects = structuredClone(checkpoint.objects); }
+  getRuntimeIdentityOrigin() { return { object: 1 }; }
+  initializeRuntimeIdentityOrigin(origin) { assert.deepEqual(origin, { object: 1 }); }
   edit(field, value) { this.state[field] = structuredClone(value); }
   createRuntimeSavepoint() { const h = ++this.nextHandle; this.handles.set(h, structuredClone(this.state)); return h; }
   exchangeRuntimeSavepoint(h) { const s = this.handles.get(h); if (!s) throw Error('expired'); this.handles.set(h, this.state); this.state = s; }
@@ -128,4 +126,30 @@ test('different failures cannot silently drop side effects and a failed replica 
   });
   await assert.rejects(replica.hydrate(journal.capture()), /replay diverged.*different failure/);
   assert.deepEqual((await replica.hydrate(journal.capture())).state, journal.game.state);
+});
+
+
+test('allocator bootstrap is applied once and a changed origin rebuilds an existing replica', async () => {
+  class BootstrapGame extends Game {
+    origin = { object: 1 };
+    initialized = false;
+    getRuntimeIdentityOrigin() { return this.origin; }
+    initializeRuntimeIdentityOrigin(origin) {
+      if (this.initialized) throw Error('origin already initialized');
+      this.initialized = true;
+      this.origin = structuredClone(origin);
+    }
+  }
+  const original = new BootstrapGame();
+  const journal = createLocalAnalysisJournal(original, 4);
+  const replica = createLocalAnalysisReplica(() => new BootstrapGame());
+  assert.deepEqual((await replica.hydrate(journal.capture())).origin, { object: 1 });
+  journal.game.initializeRuntimeIdentityOrigin({ object: 41 });
+  journal.game.edit('history', ['action after bootstrap']);
+  assert.throws(() => journal.game.initializeRuntimeIdentityOrigin({ object: 99 }), /already initialized/);
+  const captured = journal.capture();
+  assert.ok(!captured.operations.some(operation => operation.method === 'initializeRuntimeIdentityOrigin'));
+  const restored = await replica.hydrate(captured);
+  assert.deepEqual(restored.origin, { object: 41 });
+  assert.deepEqual(restored.state, original.state);
 });

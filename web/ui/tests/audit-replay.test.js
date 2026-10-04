@@ -44,7 +44,7 @@ class FakeReplayGame {
     });
   }
 
-  async exportSyncCheckpoint() {
+  async captureState() {
     return {
       checkpoint: clone(this.checkpoint),
       config: clone(this.config),
@@ -57,7 +57,7 @@ class FakeReplayGame {
     };
   }
 
-  async importSyncCheckpoint(snapshot, perspectiveIndex = 0) {
+  async restoreState(snapshot, perspectiveIndex = 0) {
     this.checkpoint = clone(snapshot.checkpoint);
     this.config = clone(snapshot.config);
     this.commands = clone(snapshot.commands);
@@ -68,6 +68,21 @@ class FakeReplayGame {
     this.perspective = Number(perspectiveIndex);
     this.restoredPerspective = Number(perspectiveIndex);
     return clone(this.checkpoint);
+  }
+
+  async getHiddenCardState() { return this.captureState(); }
+  async createRuntimeSavepoint() {
+    this.savepoints ||= new Map();
+    const handle = (this.nextSavepoint || 0) + 1;
+    this.nextSavepoint = handle;
+    this.savepoints.set(handle, await this.captureState());
+    return handle;
+  }
+  async restoreRuntimeSavepoint(handle) {
+    const state = this.savepoints.get(handle);
+    assert.ok(state, "runtime savepoint exists");
+    this.savepoints.delete(handle);
+    return this.restoreState(state, state.perspective);
   }
 
   async startMatch(config) {
@@ -203,7 +218,7 @@ async function actionHashForTranscript(match, action) {
   return publicCheckpointHash(await game.exportPublicAuditCheckpoint(), webcrypto);
 }
 
-test("replays transcript actions through the engine and restores the live checkpoint", async () => {
+test("replays transcript actions through the engine and restores the complete live runtime", async () => {
   const match = replayMatch();
   const initialPublicCheckpointHash = await initialHashForMatch(match);
   const action = {
@@ -245,7 +260,7 @@ test("replays transcript actions through the engine and restores the live checkp
     actions: [action],
   };
   const game = new FakeReplayGame();
-  const liveCheckpoint = await game.exportSyncCheckpoint();
+  const liveCheckpoint = await game.captureState();
 
   const report = await replayAuditTranscriptWithGame({
     game,
@@ -262,16 +277,13 @@ test("replays transcript actions through the engine and restores the live checkp
       publicCheckpointHash: action.audit.publicCheckpointHash,
     },
   ]);
-  assert.deepEqual(await game.exportSyncCheckpoint(), {
-    ...liveCheckpoint,
-    perspective: 1,
-  });
-  assert.equal(game.restoredPerspective, 1);
+  assert.deepEqual(await game.captureState(), liveCheckpoint);
+  assert.equal(game.restoredPerspective, liveCheckpoint.perspective);
 });
 
-test("restores the live checkpoint after replay rejects an initial hash mismatch", async () => {
+test("restores the complete live runtime after replay rejects an initial hash mismatch", async () => {
   const game = new FakeReplayGame();
-  const liveCheckpoint = await game.exportSyncCheckpoint();
+  const liveCheckpoint = await game.captureState();
 
   await assert.rejects(
     () => replayAuditTranscriptWithGame({
@@ -287,11 +299,8 @@ test("restores the live checkpoint after replay rejects an initial hash mismatch
     /initial public checkpoint hash does not match/
   );
 
-  assert.deepEqual(await game.exportSyncCheckpoint(), {
-    ...liveCheckpoint,
-    perspective: 1,
-  });
-  assert.equal(game.restoredPerspective, 1);
+  assert.deepEqual(await game.captureState(), liveCheckpoint);
+  assert.equal(game.restoredPerspective, liveCheckpoint.perspective);
 });
 
 test("replay preserves complete sideboard slots in runtime manifests and the fallback", async () => {

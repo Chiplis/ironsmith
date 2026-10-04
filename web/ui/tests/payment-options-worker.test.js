@@ -8,7 +8,7 @@ test('payment worker incrementally replays definitions and restores the canonica
   const messages = [], games = [], registered = [];
   class Game {
     constructor() { games.push(this); this.points = new Map(); this.nextHandle = 0; }
-    importSyncCheckpoint() { this.state = {}; }
+    initializeRuntimeIdentityOrigin() { this.state = {}; }
     setState(value, perspective) { this.state = { value, perspective }; }
     registerDefinition(source) { registered.push(source); }
     createRuntimeSavepoint() { const h = ++this.nextHandle; this.points.set(h, structuredClone(this.state)); return h; }
@@ -28,7 +28,7 @@ test('payment worker incrementally replays definitions and restores the canonica
   const operations = [{ method: 'registerDefinition', args: ['definition'], failed: false }];
   const send = (token, value, epoch = 1) => {
     operations.push({ method: 'setState', args: [value, token % 2], failed: false });
-    return self.onmessage({ data: { token, localReplay: { epoch, genesis: { perspective: 0 },
+    return self.onmessage({ data: { token, localReplay: { epoch, identityOrigin: { object: 1 },
       operations: structuredClone(operations) }, request: String(token) } });
   };
   await send(1, 'first');

@@ -20,7 +20,7 @@ function harness({ rejectedSource = null, checkpointError = null } = {}) {
     loadSnapshot(id) { if (checkpointError) throw new Error(checkpointError); imports.push(id); this.steps = 0; }
 
     setDeferredPriorityAnalysis() {}
-    importSyncCheckpoint() { this.steps = 0; }
+    initializeRuntimeIdentityOrigin() { this.steps = 0; }
     beginPriorityAnalysis() { return true; }
     stepPriorityAnalysis() { return { analysis_complete: ++this.steps === 2, actions: [] }; }
     beginInspectorAnalysis() { this.inspectorSteps = 0; }
@@ -38,7 +38,7 @@ function harness({ rejectedSource = null, checkpointError = null } = {}) {
   };
 }
 const analysis = (token, sources = []) => ({ type: 'analyze', token, localReplay: {
-  epoch: 1, genesis: { perspective: 0 }, operations: [
+  epoch: 1, identityOrigin: { object: 1 }, operations: [
     ...sources.map(([, source]) => ({ method: 'registerSource', args: [source], failed: false })),
     ...Array.from({ length: token }, (_, i) => ({ method: 'loadSnapshot', args: [i + 1], failed: false })),
   ],

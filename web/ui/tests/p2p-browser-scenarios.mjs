@@ -54,7 +54,6 @@ window.IronsmithAudit = {
   buildSignedActionQuorumVote,
   buildSignedPlayerGenesis,
   buildSignedResyncEnvelope,
-  checkpointHash,
   canonicalJson,
   createAuditEncryptionKey,
   createAuditSessionKey,

@@ -4684,19 +4684,6 @@ impl GameState {
         }
     }
 
-    /// Restores checkpoint chronology and invalidates derived characteristics together.
-    /// Invalid chronology leaves both the manager and runtime caches unchanged.
-    pub fn restore_continuous_timestamp_state(
-        &mut self,
-        state: crate::continuous::ContinuousTimestampState,
-    ) -> Result<(), String> {
-        self.effect_store
-            .continuous_effects
-            .restore_timestamp_state(state)?;
-        self.mark_continuous_state_dirty();
-        Ok(())
-    }
-
     pub(crate) fn mark_continuous_state_dirty(&self) {
         let counter = &self
             .runtime_cache

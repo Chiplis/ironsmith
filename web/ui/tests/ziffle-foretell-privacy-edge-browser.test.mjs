@@ -35,7 +35,7 @@ for (const cardName of ['Saw It Coming', 'Behold the Multiverse']) {
           worker.onmessage = ({ data }) => {
             if (data.type === 'error') return reject(new Error(data.error.stack || data.error.message));
             if (data.type === 'ready') return resolve();
-            if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
+            if (data.type === 'priorityAnalysis') { if (data.decision?.analysis_complete !== true) return; analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
             if (data.type !== 'result') return;
             const request = pending.get(data.id); if (!request) return;
             pending.delete(data.id);
@@ -63,7 +63,6 @@ for (const cardName of ['Saw It Coming', 'Behold the Multiverse']) {
         const deck = Array(61).fill('Mountain');
         deck[4] = cardName;
         deck[5] = 'Grizzly Bears';
-        const manifests = await Promise.all([0, 1].map(seat => buildPrivateDeckManifest({ matchId, owner: seat, deck })));
         const deckCount = deck.length, context = matchId;
         const identities = ['11', '22'].map(byte => api.ziffleKeygen({ deckCount, context, entropyHex: byte.repeat(32) }));
         const keys = identities.map((identity, player) => ({ player, publicKeyHex: identity.publicKeyHex, ownershipProofHex: identity.ownershipProofHex }));
@@ -77,51 +76,52 @@ for (const cardName of ['Saw It Coming', 'Behold the Multiverse']) {
         const tokens = identities.flatMap((identity, index) => api.ziffleBuildRevealTokens({ deckCount, context, keys, steps,
           ...identity, cardPositions: positions, entropyHex: ['55', '66'][index].repeat(32) }));
         const reveals = api.ziffleRevealCards({ deckCount, context, keys, steps, cardPositions: positions, tokens });
+        const topSlot = reveals.find(reveal => reveal.cardPosition === deckCount - 1).originalSlot;
+        const decks = [deck.slice(), deck.slice()];
+        decks[0][topSlot] = 'Grizzly Bears';
+        decks[1][topSlot] = cardName;
+        const manifests = await Promise.all(decks.map((cards, seat) => buildPrivateDeckManifest({ matchId, owner: seat, deck: cards })));
         const ceremony = { owner: 1, deckCount, context, keys, steps, deckHash: verified.deckHash, tokens, reveals };
+        peer = createWorkerSession(); await peer.ready;
+        await peer.call('setPerspective', 0);
+        const setupCall = async (method, ...args) => {
+          const result = await owner.call(method, ...args);
+          await peer.call(method, ...args);
+          return result;
+        };
         await owner.call('setPerspective', 1);
-        let state = await owner.call('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
-          format: 'normal', startingPlayer: 1, openingHandSize: 0, decks: [[], []], publicDecklists: [deck, deck],
+        let state = await setupCall('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
+          format: 'normal', startingPlayer: 1, openingHandSize: 0, decks: [[], []], publicDecklists: decks,
           hiddenDeckManifests: manifests.map((manifest, seat) => buildZiffleRuntimeManifest(manifest, { ...ceremony, owner: seat })) });
         for (let index = 0; index < 30 && state.phase !== 'first main phase'; index++) {
           const action = state.decision?.actions?.find(item => ['keep_opening_hand', 'continue_pregame', 'begin_game', 'pass_priority'].includes(item.action_ref?.kind));
           if (!action) throw new Error(`Unexpected pregame decision ${JSON.stringify(state.decision)}`);
-          state = await owner.call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
+          state = await setupCall('dispatch', { type: 'priority_action', action_ref: action.action_ref });
         }
         if (state.phase !== 'first main phase') throw new Error('Fixture did not reach main phase');
-        const creatureOwner = 0;
-        const subjects = [{ seat: 1, slot: 4, zone: 'hand' },
-          { seat: creatureOwner, slot: 5, zone: 'hand' }];
+        const subjects = [{ seat: 1, slot: topSlot }, { seat: 0, slot: topSlot }];
         for (const subject of subjects) {
-          const checkpoint = await owner.call('exportSyncCheckpoint');
-          const position = reveals.find(reveal => reveal.originalSlot === subject.slot).cardPosition;
-          const object = checkpoint.objects.find(item => item.owner === subject.seat && item.hiddenCard?.slot === position);
-          if (!object) throw new Error(`Missing fixture subject ${JSON.stringify(subject)}`);
+          const session = subject.seat === 1 ? owner : peer;
+          const metadata = await session.call('getHiddenCardState');
+          const position = deckCount - 1;
+          const object = metadata.objects.find(item => item.hiddenCard?.owner === subject.seat && item.hiddenCard.slot === position);
+          if (!object) throw new Error('Missing committed fixture subject');
           const secret = manifests[subject.seat].slotSecrets.find(entry => entry.slot === subject.slot);
-          await owner.call('revealHiddenPosition', { owner: subject.seat, objectId: object.id, position,
+          // The opponent creature is a known fixture target; the foretold
+          // card is opened only on its owner's engine.
+          const revealCall = subject.seat === 0 ? setupCall : session.call;
+          await revealCall('revealHiddenPosition', { owner: subject.seat, objectId: object.id, position,
             originalSlot: subject.slot, cardName: secret.card, commitment: secret.commitment,
             positionCommitment: `ziffle:${ceremony.deckHash}:${position}` });
-          subject.id = object.id;
+          await setupCall('drawCard', subject.seat);
+          const drawn = await session.call('getHiddenCardState');
+          subject.id = drawn.objects.find(item => item.stableId === object.stableId).id;
         }
-        for (let index = 0; index < 8; index++) await owner.call('addCardToZone', 1, 'Island', 'battlefield', true);
-        for (let index = 0; index < 2; index++) await owner.call('addCardToZone', 0, 'Forest', 'battlefield', true);
-        // Only the initial positions and mana are arranged directly. The
-        // tested abilities, payments, and zone changes execute normally.
-        const fixture = await owner.call('exportSyncCheckpoint');
-        for (const subject of subjects) {
-          const object = fixture.objects.find(item => item.id === subject.id);
-          for (const player of fixture.players) for (const zone of ['library', 'hand', 'graveyard']) {
-            player[zone] = player[zone].filter(id => id !== subject.id);
-          }
-          fixture.battlefield = fixture.battlefield.filter(id => id !== subject.id);
-          object.zone = subject.zone;
-          if (subject.zone === 'battlefield') fixture.battlefield.push(subject.id);
-          else fixture.players[subject.seat][subject.zone].push(subject.id);
-        }
-        await owner.call('importSyncCheckpoint', fixture, 1);
+        for (let index = 0; index < 8; index++) await setupCall('addCardToZone', 1, 'Island', 'battlefield', true);
+        for (let index = 0; index < 2; index++) await setupCall('addCardToZone', 0, 'Forest', 'battlefield', true);
         state = await owner.call('uiState');
-        peer = createWorkerSession(); await peer.ready;
-        await peer.call('importSyncCheckpoint', await owner.call('exportRedactedSyncCheckpoint', 0), 0);
-        const peerBefore = await peer.call('exportSyncCheckpoint');
+        const fixture = await owner.call('getHiddenCardState');
+        const peerBefore = await peer.call('getHiddenCardState');
         const wrap = session => new Proxy({}, { get: (_, method) => method.startsWith('ziffle')
           ? async input => api[method](input) : (...args) => session.call(method, ...args) });
         const refs = { gameRef: { current: wrap(owner) }, stateRef: { current: state },
@@ -192,10 +192,11 @@ for (const cardName of ['Saw It Coming', 'Behold the Multiverse']) {
           if (decision.kind !== 'mana_payment') throw new Error(`Unexpected foretell decision ${JSON.stringify(decision)}`);
           await dispatchBoth({ type: 'mana_payment', response: { action: 'confirm', plan_id: decision.plan_id, request_hash: decision.request_hash } });
         }
-        const after = await owner.call('exportSyncCheckpoint');
-        const peerAfter = await peer.call('exportSyncCheckpoint');
+        const after = await owner.call('getHiddenCardState');
+        const peerAfter = await peer.call('getHiddenCardState');
         const privateCommandCount = trace.length;
         const foretold = after.objects.find(object => object.stableId === spell.stableId);
+        foretold.faceDown = state.players.flatMap(player => player.exile_cards).find(card => card.id === foretold.id)?.face_down;
         if (state.decision.actions.some(item => item.action_ref?.kind === 'cast_spell' && Number(item.object_id) === foretold.id)) {
           throw new Error('Foretold card was castable on the turn it was foretold');
         }
@@ -237,8 +238,8 @@ for (const cardName of ['Saw It Coming', 'Behold the Multiverse']) {
         }
         if (state.decision.kind !== 'mana_payment') throw new Error('Foretold cast did not request payment');
         await dispatchBoth({ type: 'mana_payment', response: { action: 'confirm', plan_id: state.decision.plan_id, request_hash: state.decision.request_hash } });
-        const castCheckpoint = await owner.call('exportSyncCheckpoint');
-        const castPeerCheckpoint = await peer.call('exportSyncCheckpoint');
+        const castCheckpoint = await owner.call('getHiddenCardState');
+        const castPeerCheckpoint = await peer.call('getHiddenCardState');
         return { cardName, trace, unhydratedReplayError, privateCommandCount, castCommandIndex,
           laterSpell: castCheckpoint.objects.find(object => object.stableId === spell.stableId),
           laterPeerSpell: castPeerCheckpoint.objects.find(object => object.stableId === spell.stableId),
@@ -262,7 +263,7 @@ for (const cardName of ['Saw It Coming', 'Behold the Multiverse']) {
       publicOpenings: result.trace.flatMap(step => step.prepared), opponentName: result.peerSpell.name, opponentOriginalName: result.peerSpell.originalCardName }));
     assert.equal(result.afterSpell.zone, 'exile');
     assert.equal(result.afterSpell.faceDown, true);
-    assert.equal(result.peerSpell.originalCardName, undefined, 'foretell must not open the printed identity to the opponent');
+    assert.equal(result.peerSpell.originalCardName ?? null, null, 'foretell must not open the printed identity to the opponent');
     assert.equal(result.peerSpell.name, 'Hidden Card');
     assert.equal(result.laterSpell.zone, 'stack');
     assert.equal(result.laterPeerSpell.zone, 'stack');

@@ -8,7 +8,7 @@ import {
   countByName,
   getAttachedTo,
   getBattlefield,
-  getCheckpoint,
+  getInspectionState,
   getExile,
   getAbilities,
   getGraveyard,
@@ -17,11 +17,9 @@ import {
   getObjectsInZone,
   getObjectDetails,
   getPermanent,
-  importCheckpoint,
   initWasmGame,
   initWasmRuntime,
   names,
-  runCode,
   showAvailableAbilities,
   startEmptyMatch,
 } from "./wasm-test-harness.mjs";
@@ -691,14 +689,14 @@ async function applySupportedJavaHelper(context, operation) {
 
   const wonGame = source.match(/^assertWonTheGame\(([^)]+)\)$/);
   if (wonGame) {
-    const checkpoint = getCheckpoint(context.game);
+    const checkpoint = getInspectionState(context.game);
     const player = checkpoint.players[playerIndex(wonGame[1])];
     assert(player?.hasWon, `expected ${wonGame[1]} to have won the game`);
     return;
   }
   const lostGame = source.match(/^assertLostTheGame\(([^)]+)\)$/);
   if (lostGame) {
-    const checkpoint = getCheckpoint(context.game);
+    const checkpoint = getInspectionState(context.game);
     const player = checkpoint.players[playerIndex(lostGame[1])];
     assert(player?.hasLost, `expected ${lostGame[1]} to have lost the game`);
     return;
@@ -1104,7 +1102,7 @@ async function executeScheduledActions(context, until = null, options = {}) {
     const sameScheduledTime =
       nextOperation && compareScheduled(operation, nextOperation) === 0;
     if (process.env.MAGE_PORT_STACK_TRACE) {
-      const checkpoint = getCheckpoint(context.game);
+      const checkpoint = getInspectionState(context.game);
       console.error(
         `[mage-port-stack] after ${operation.op} ${operation.name || operation.ability || ""}: ${JSON.stringify((checkpoint.stack || []).map((entry) => {
           const id = stackEntryObjectId(entry);
@@ -1210,7 +1208,7 @@ async function executeScheduledActions(context, until = null, options = {}) {
 }
 
 function topStackAbilitySourceIsAlsoStackSpell(game) {
-  const stack = getCheckpoint(game).stack || [];
+  const stack = getInspectionState(game).stack || [];
   if (stack.length < 2) return false;
   const top = stack[stack.length - 1];
   if (!Boolean(top.isAbility ?? top.is_ability)) return false;
@@ -1283,17 +1281,7 @@ async function castSpell(context, operation) {
     }
     action = (state.decision?.actions || []).find(matchesCast);
   }
-  if (!action && cardId !== null) {
-    if (castingMethod === "face down" && typeof context.game.moveHandCardToBattlefieldFaceDown === "function") {
-      makeCurrentScheduledChoicesAvailable(context);
-      const wardGenericCost = /\b(?:using|with)\s+disguise\b/i.test(String(operation.name ?? "")) ? 2 : 0;
-      context.game.moveHandCardToBattlefieldFaceDown(player, BigInt(cardId), wardGenericCost);
-      return context.game.uiState();
-    }
-    makeCurrentScheduledChoicesAvailable(context);
-    moveHandCardToBattlefield(context, player, cardId);
-    return context.game.uiState();
-  }
+
   action = action ?? actionByPredicate(
     state,
     matchesCast,
@@ -1305,9 +1293,6 @@ async function castSpell(context, operation) {
   await answerPendingDecisions(context, operation.target);
   if (castingMethod && context.castingMethods[0] === castingMethod) {
     context.castingMethods.shift();
-  }
-  if (name === "Puca's Mischief") {
-    applyPucasMischiefExchange(context, player);
   }
   return state;
 }
@@ -1328,22 +1313,6 @@ function applyDayNightCastSideEffects(context, operation) {
   }
 }
 
-function applyPucasMischiefExchange(context, player) {
-  if (!ALLOW_ENGINE_SHIMS) return;
-  const wanted = context.targets
-    .filter((entry) => entry.player === player)
-    .splice(0, 2)
-    .map((entry) => cardName(entry.value));
-  const [first, second] = wanted.length >= 2 ? wanted : ["Illusions of Grandeur", "Kor Celebrant"];
-  runCode(context.game, (checkpoint) => {
-    const firstObject = (checkpoint.objects || []).find((object) => object.zone === "battlefield" && cardName(object.name) === first);
-    const secondObject = (checkpoint.objects || []).find((object) => object.zone === "battlefield" && cardName(object.name) === second);
-    if (!firstObject || !secondObject) return;
-    const firstController = Number(firstObject.controller ?? firstObject.owner);
-    firstObject.controller = Number(secondObject.controller ?? secondObject.owner);
-    secondObject.controller = firstController;
-  }, { perspective: player });
-}
 
 function castingMethodChoice(name) {
   const text = String(name ?? "").toLowerCase();
@@ -1400,13 +1369,9 @@ function shouldResolveCurrentSpellBeforeNextSameTimeCast(context, operation) {
 }
 
 function ensurePerspective(context, player) {
-  const checkpoint = getCheckpoint(context.game);
-  if (Number(checkpoint.perspective) === Number(player)) return;
-  if (typeof context.game.setPerspective === "function") {
+  if (Number(context.game.uiState().perspective) !== Number(player)) {
     context.game.setPerspective(playerIndex(player));
-    return;
   }
-  importCheckpoint(context.game, checkpoint, { perspective: player });
 }
 
 async function playLand(context, operation) {
@@ -1482,14 +1447,8 @@ async function activateAbility(context, operation) {
       const sourceMatches = !sourceName || candidateLabel.includes(sourceName);
       return sourceMatches && actionLabelMatches(candidate, label) && loyaltyLabelMatches(candidateLabel, label);
   };
-  if (ALLOW_ENGINE_SHIMS && isManualMarathDamageScenario(context, operation)) {
-    makeCurrentScheduledChoicesAvailable(context);
-    return activateManualMarathDamage(context, operation);
-  }
-  if (ALLOW_ENGINE_SHIMS && isManualCyclingScenario(context, player, label)) {
-    makeCurrentScheduledChoicesAvailable(context);
-    return activateManualCycling(context, operation);
-  }
+
+
   let action = preferredActivatedAbilityAction(context, state, matchesAbility, label);
   if (!action && normalizeActionSearch(label).includes("target destroy")) {
     const refreshed = refreshCustomTargetDestroyHelper(context, player);
@@ -1508,21 +1467,14 @@ async function activateAbility(context, operation) {
     }
     action = preferredActivatedAbilityAction(context, state, matchesAbility, label);
   }
-  if (ALLOW_ENGINE_SHIMS && !action && isCraftAbilityLabel(label) && canActivateCraft(context, player)) {
-    return activateCraftAbility(context, operation);
-  }
-  if (ALLOW_ENGINE_SHIMS && !action && isCraftManaAbilityLabel(label)) {
-    return activateCraftManaProxy(context, player);
-  }
-  if (ALLOW_ENGINE_SHIMS && !action && normalizeActionSearch(label).startsWith("crew")) {
-    makeCurrentScheduledChoicesAvailable(context);
-    return activateCrewFallback(context, operation);
-  }
+
+
+
   if (!action && (isTurnFaceUpAbilityLabel(label) || isManaCostOnlyAbilityLabel(label))) {
     state = await activateAvailableManaAndRetryAction(context, player, matchesAbility, label);
     action = preferredActivatedAbilityAction(context, state, matchesAbility, label);
     if (ALLOW_ENGINE_SHIMS && !action && typeof context.game.forceTurnFaceUp === "function") {
-      const faceDown = getBattlefield(getCheckpoint(context.game), player)
+      const faceDown = getBattlefield(getInspectionState(context.game), player)
         .find((object) => isFaceDownPermanent(object));
       if (faceDown) {
         context.game.forceTurnFaceUp(player, BigInt(faceDown.id));
@@ -1579,36 +1531,12 @@ async function activateAvailableManaAndRetryPredicate(context, player, predicate
   return state;
 }
 
-function isManualMarathDamageScenario(context, operation) {
-  const ability = String(operation.ability || "").toLowerCase();
-  return (
-    String(context.sourcePath || "").endsWith("DeathtouchTest.java") &&
-    ability.includes("remove x") &&
-    ability.includes("counters from marath")
-  );
-}
 
-function activateManualMarathDamage(context, operation) {
-  const player = playerIndex(operation.player);
-  const targetName = cardName(operation.target);
-  const queuedX = context.choices.find((choice) => /^x\s*=/i.test(String(choice).trim()));
-  const amount = numericValue(String(queuedX ?? "X=1").match(/x\s*=\s*(\d+)/i)?.[1] ?? 1);
-  runCode(context.game, (checkpoint) => {
-    moveFirstBattlefieldPermanentToGraveyard(checkpoint, player, "Marath, Will of the Wild");
-    moveFirstBattlefieldPermanentToGraveyard(checkpoint, playerIndex(operation.targetPlayer ?? 1), targetName);
-    const controller = checkpoint.players?.[player];
-    if (controller) controller.life = Number(controller.life || 0) + amount;
-  }, { perspective: player });
-  return context.game.uiState();
-}
 
 function isCraftAbilityLabel(label) {
   return normalizeActionSearch(label || "").startsWith("craft");
 }
 
-function isCraftManaAbilityLabel(label) {
-  return normalizeActionSearch(label || "").startsWith("t for each");
-}
 
 function loadScryfallFaces() {
   if (scryfallFaceCache) return scryfallFaceCache;
@@ -1688,193 +1616,18 @@ function craftExileTriggerFixtureForName(name) {
   };
 }
 
-function canActivateCraft(context, player) {
-  const checkpoint = getCheckpoint(context.game);
-  return getBattlefield(checkpoint, player).some((source) => {
-    const info = craftInfoForName(source.name);
-    return info && craftMaterialCandidates(checkpoint, player, source, info).length >= craftMaterialMinimum(info);
-  });
-}
 
-function activateCraftAbility(context, operation) {
-  const player = playerIndex(operation.player);
-  const checkpoint = getCheckpoint(context.game);
-  const source = getBattlefield(checkpoint, player).find((candidate) => {
-    if (operation.source && !cardName(candidate.name).includes(cardName(operation.source))) return false;
-    const info = craftInfoForName(candidate.name);
-    return info && craftMaterialCandidates(checkpoint, player, candidate, info).length >= craftMaterialMinimum(info);
-  });
-  assert(source, "no craft permanent can be activated");
-  const info = craftInfoForName(source.name);
-  const candidates = craftMaterialCandidates(checkpoint, player, source, info);
-  const selected = chooseCraftMaterials(context, candidates, craftMaterialMinimum(info));
-  assert(selected.length >= craftMaterialMinimum(info), `not enough craft materials for ${source.name}`);
 
-  runCode(context.game, (mutable) => {
-    const playerSnapshot = mutable.players.find((candidate) => Number(candidate.id) === player);
-    const objectById = new Map((mutable.objects || []).map((object) => [Number(object.id), object]));
-    for (const object of mutable.objects || []) {
-      if (
-        craftFrontFixtureForName(object.name) ||
-        craftExileTriggerFixtureForName(object.name) ||
-        CARD_FIXTURES.has(cardName(object.name))
-      ) {
-        object.token = true;
-      }
-    }
-    const mutableSource = objectById.get(Number(source.id));
-    assert(mutableSource, `craft source disappeared: ${source.name}`);
 
-    const exiledIds = [];
-    for (const material of selected) {
-      const mutableMaterial = objectById.get(Number(material.id));
-      if (!mutableMaterial) continue;
-      const fromZone = mutableMaterial.zone;
-      removeObjectIdFromAllZones(mutable, Number(material.id));
-      mutableMaterial.zone = "exile";
-      mutable.exile = [...(mutable.exile || []), Number(material.id)];
-      exiledIds.push(Number(material.id));
-      if (craftExileTriggerFixtureForName(material.name) || CARD_FIXTURES.has(cardName(material.name))) {
-        context.syntheticExileCounts.set(cardName(material.name), (context.syntheticExileCounts.get(cardName(material.name)) || 0) + 1);
-      }
-      if (
-        fromZone === "battlefield" &&
-        materialHasCraftExileTrigger(material)
-      ) {
-        playerSnapshot.life += 1;
-        drawOneCardFromCheckpoint(mutable, player);
-      }
-    }
 
-    mutableSource.name = info.backFace.name;
-    mutableSource.oracleText = info.backFace.oracle_text || "";
-    mutableSource.cardTypes = typeLineParts(info.backFace.type_line).cardTypes;
-    mutableSource.subtypes = typeLineParts(info.backFace.type_line).subtypes;
-    const craftColors = countCraftMaterialColors(selected);
-    mutableSource.power = numericOrNull(info.backFace.power) ?? (info.backFace.power === "*" ? craftColors : null);
-    mutableSource.toughness = numericOrNull(info.backFace.toughness) ?? (info.backFace.toughness === "*" ? craftColors : null);
-    mutableSource.token = true;
-    mutableSource.zone = "battlefield";
-    mutableSource.tapped = false;
-    mutableSource.summoningSick = true;
-    mutable.battlefield = uniqueNumbers([...(mutable.battlefield || []), Number(source.id)]);
-    mutable.exiledWithSource = [
-      ...(mutable.exiledWithSource || []).filter(([id]) => Number(id) !== Number(source.id)),
-      [Number(source.id), exiledIds],
-    ];
-  }, { perspective: player });
-  return context.game.uiState();
-}
 
-function moveHandCardToBattlefield(context, player, cardId) {
-  runCode(context.game, (checkpoint) => {
-    const object = (checkpoint.objects || []).find((candidate) => Number(candidate.id) === Number(cardId));
-    const playerSnapshot = checkpoint.players.find((candidate) => Number(candidate.id) === player);
-    assert(object && playerSnapshot, `cannot move hand card ${cardId} to battlefield`);
-    playerSnapshot.hand = (playerSnapshot.hand || []).filter((id) => Number(id) !== Number(cardId));
-    object.zone = "battlefield";
-    object.controller = player;
-    object.summoningSick = true;
-    checkpoint.battlefield = uniqueNumbers([...(checkpoint.battlefield || []), Number(cardId)]);
-  }, { perspective: player });
-}
 
-function materialHasCraftExileTrigger(material) {
-  const localText = String(material.oracleText || material.oracle_text || "");
-  const scryfallText = String(loadScryfallFaces().get(cardName(material.name))?.face?.oracle_text || "");
-  return `${localText}\n${scryfallText}`
-    .toLowerCase()
-    .includes("exiled from the battlefield while you're activating a craft ability");
-}
 
-function canActivateCraftManaProxy(context, player) {
-  return getBattlefield(getCheckpoint(context.game), player).some((object) =>
-    String(object.oracleText || "").toLowerCase().includes("for each color among the exiled cards used to craft"),
-  );
-}
 
-function activateCraftManaProxy(context, player) {
-  runCode(context.game, (checkpoint) => {
-    const source = getBattlefield(checkpoint, player).find((object) =>
-      String(object.oracleText || "").toLowerCase().includes("for each color among the exiled cards used to craft"),
-    );
-    if (source) {
-      const mutable = (checkpoint.objects || []).find((object) => Number(object.id) === Number(source.id));
-      if (mutable) mutable.tapped = true;
-    }
-  }, { perspective: player });
-  return context.game.uiState();
-}
 
-function craftMaterialMinimum(info) {
-  if (/\bfour or more\b/.test(info.materials)) return 4;
-  return 1;
-}
 
-function craftMaterialCandidates(checkpoint, player, source, info) {
-  const battlefield = getBattlefield(checkpoint, player).filter((object) => Number(object.id) !== Number(source.id));
-  const graveyard = getGraveyard(checkpoint, player, { topFirst: false });
-  return [...battlefield, ...graveyard].filter((object) => craftMaterialMatches(object, info));
-}
 
-function craftMaterialMatches(object, info) {
-  const materials = info.materials;
-  if (materials === "one or more") return object.zone === "battlefield" || object.zone === "graveyard";
-  const face = loadScryfallFaces().get(cardName(object.name))?.face;
-  const typeLine = String(face?.type_line || "");
-  const oracleText = String(face?.oracle_text || object.oracleText || "");
-  if (materials === "artifact") return /\bArtifact\b/i.test(typeLine) || (object.cardTypes || []).includes("Artifact");
-  if (materials.includes("red instant") || materials.includes("sorcery")) {
-    const colors = new Set(face?.colors || []);
-    const isRed = colors.has("R") || /\{R\}/i.test(String(face?.mana_cost || oracleText));
-    const isInstantOrSorcery = /\b(Instant|Sorcery)\b/i.test(typeLine) || (object.cardTypes || []).some((kind) => kind === "Instant" || kind === "Sorcery");
-    return object.zone === "graveyard" && isRed && isInstantOrSorcery;
-  }
-  return true;
-}
 
-function countCraftMaterialColors(materials) {
-  const colors = new Set();
-  for (const material of materials) {
-    const face = loadScryfallFaces().get(cardName(material.name))?.face;
-    for (const color of face?.colors || []) colors.add(color);
-  }
-  return colors.size;
-}
-
-function chooseCraftMaterials(context, candidates, minimum) {
-  const queuedIndex = context.targets.findIndex((entry) => entry.value !== undefined);
-  if (queuedIndex < 0) return candidates.slice(0, minimum);
-  const queued = context.targets.splice(queuedIndex, 1)[0].value;
-  const wantedNames = String(queued).split("^").map(cardName).filter(Boolean);
-  const selected = [];
-  for (const wanted of wantedNames) {
-    const found = candidates.find((candidate) => !selected.includes(candidate) && cardName(candidate.name) === wanted);
-    assert(found, `craft material not found: ${wanted}`, candidates.map((candidate) => candidate.name));
-    selected.push(found);
-  }
-  return selected.length > 0 ? selected : candidates.slice(0, minimum);
-}
-
-function removeObjectIdFromAllZones(checkpoint, id) {
-  checkpoint.battlefield = (checkpoint.battlefield || []).filter((candidate) => Number(candidate) !== id);
-  checkpoint.exile = (checkpoint.exile || []).filter((candidate) => Number(candidate) !== id);
-  checkpoint.command = (checkpoint.command || []).filter((candidate) => Number(candidate) !== id);
-  for (const player of checkpoint.players || []) {
-    for (const zone of ["library", "hand", "graveyard", "sideboard", "commanders"]) {
-      player[zone] = (player[zone] || []).filter((candidate) => Number(candidate) !== id);
-    }
-  }
-}
-
-function drawOneCardFromCheckpoint(checkpoint, player) {
-  const playerSnapshot = checkpoint.players.find((candidate) => Number(candidate.id) === player);
-  const drawn = playerSnapshot?.library?.pop?.();
-  if (drawn === undefined) return;
-  playerSnapshot.hand = [...(playerSnapshot.hand || []), drawn];
-  const object = (checkpoint.objects || []).find((candidate) => Number(candidate.id) === Number(drawn));
-  if (object) object.zone = "hand";
-}
 
 function typeLineParts(typeLine) {
   const [, rightRaw = ""] = String(typeLine || "").split(/\s+[—-]\s+/, 2);
@@ -1884,14 +1637,7 @@ function typeLineParts(typeLine) {
   return { cardTypes, subtypes };
 }
 
-function uniqueNumbers(values) {
-  return [...new Set(values.map(Number))];
-}
 
-function numericOrNull(value) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-}
 
 function preferredActivatedAbilityAction(context, state, predicate, label) {
   const matches = (state.decision?.actions || []).filter(predicate);
@@ -1907,137 +1653,13 @@ function preferredActivatedAbilityAction(context, state, predicate, label) {
   }) ?? matches[0];
 }
 
-function activateCrewFallback(context, operation) {
-  const player = playerIndex(operation.player);
-  const label = normalizeActionSearch(operation.ability || "");
-  const amount = Number(label.match(/\bcrew\s+(\d+)/)?.[1] || 0);
-  const choice = context.choices.shift();
-  const chosenName = choice === true ? cardName(context.choices.shift()) : cardName(choice);
-  runCode(context.game, (checkpoint) => {
-    const battlefield = getBattlefield(checkpoint, player);
-    const vehicle = battlefield.find((object) => (object.subtypes || []).map(String).some((subtype) => subtype.toLowerCase() === "vehicle"));
-    assert(vehicle, `no Vehicle available for ${operation.ability}`);
-    const mutableVehicle = (checkpoint.objects || []).find((object) => Number(object.id) === Number(vehicle.id));
-    if (mutableVehicle) {
-      mutableVehicle.token = true;
-      mutableVehicle.cardTypes = uniqueStrings([...(mutableVehicle.cardTypes || []), "Artifact", "Creature"]);
-      mutableVehicle.power = mutableVehicle.power ?? amount;
-      mutableVehicle.toughness = mutableVehicle.toughness ?? amount;
-    }
-    if (chosenName) {
-      for (const object of checkpoint.objects || []) {
-        if (cardName(object.name) !== chosenName) continue;
-        const loyalty = (object.counters || []).find((counter) => String(counter.kind || "").toLowerCase() === "loyalty");
-        if (loyalty) {
-          loyalty.amount = Math.max(0, Number(loyalty.amount || 0) - 1);
-        } else {
-          object.tapped = true;
-        }
-        break;
-      }
-    }
-  }, { perspective: player });
-  return context.game.uiState();
-}
 
-function isManualCyclingScenario(context, player, label) {
-  const normalized = normalizeActionSearch(label);
-  if (!normalized.includes("cycling")) return false;
-  const checkpoint = getCheckpoint(context.game);
-  const hand = getHand(checkpoint, player);
-  return hand.some((card) => ["Shark Typhoon", "Winged Sliver", "Akroma's Vengeance"].includes(cardName(card.name)));
-}
 
-function activateManualCycling(context, operation) {
-  const player = playerIndex(operation.player);
-  const label = normalizeActionSearch(operation.ability || "");
-  const checkpoint = getCheckpoint(context.game);
-  const hand = getHand(checkpoint, player);
-  if (label.includes("slivercycling")) {
-    return activateManualSlivercycling(context, player);
-  }
-  const shark = hand.find((card) => cardName(card.name) === "Shark Typhoon");
-  if (shark) return activateManualSharkCycling(context, player, shark);
-  const akroma = hand.find((card) => cardName(card.name) === "Akroma's Vengeance");
-  if (akroma) return activateManualDrawCycling(context, player, akroma);
-  return context.game.uiState();
-}
 
-function activateManualSharkCycling(context, player, shark) {
-  const choice = String(context.choices.shift() || "X=0");
-  const amount = Number(choice.match(/x\s*=\s*(\d+)/i)?.[1] || 0);
-  runCode(context.game, (checkpoint) => {
-    moveObjectBetweenCheckpointZones(checkpoint, player, Number(shark.id), "hand", "graveyard");
-    for (const object of checkpoint.objects || []) {
-      if (object.zone === "battlefield" && Number(object.controller ?? object.owner) === player && cardName(object.name) === "Island") {
-        object.tapped = true;
-      }
-    }
-    drawOneCardFromCheckpoint(checkpoint, player);
-  }, { perspective: player });
-  context.syntheticTappedCounts.set("Island:true", 8);
-  addCustomCardWithAbility(context.game, {
-    player,
-    zone: "battlefield",
-    name: "Shark Token",
-    manaCost: "",
-    typeLine: "Creature - Shark",
-    oracleText: "Flying",
-    power: String(amount),
-    toughness: String(amount),
-  });
-  return context.game.uiState();
-}
 
-function activateManualSlivercycling(context, player) {
-  runCode(context.game, (checkpoint) => {
-    const winged = getHand(checkpoint, player).find((card) => cardName(card.name) === "Winged Sliver");
-    if (winged) moveObjectBetweenCheckpointZones(checkpoint, player, Number(winged.id), "hand", "graveyard");
-    const wantedName = cardName(context.targets.shift()?.value || "Horned Sliver");
-    const wanted = getLibrary(checkpoint, player, { topFirst: false }).find((card) => cardName(card.name) === wantedName);
-    if (wanted) moveObjectBetweenCheckpointZones(checkpoint, player, Number(wanted.id), "library", "hand");
-  }, { perspective: player });
-  return context.game.uiState();
-}
 
-function activateManualDrawCycling(context, player, card) {
-  if (context.choices[0] === true) context.choices.shift();
-  runCode(context.game, (checkpoint) => {
-    for (const object of checkpoint.objects || []) {
-      if (CARD_FIXTURES.has(cardName(object.name))) object.token = true;
-    }
-    moveObjectBetweenCheckpointZones(checkpoint, player, Number(card.id), "hand", "graveyard");
-    drawOneCardFromCheckpoint(checkpoint, player);
-  }, { perspective: player });
-  return context.game.uiState();
-}
 
-function moveObjectBetweenCheckpointZones(checkpoint, player, objectId, fromZone, toZone) {
-  removeObjectIdFromAllZones(checkpoint, objectId);
-  const object = (checkpoint.objects || []).find((candidate) => Number(candidate.id) === Number(objectId));
-  if (object) object.zone = toZone;
-  const playerSnapshot = checkpoint.players.find((candidate) => Number(candidate.id) === player);
-  if (toZone === "battlefield") {
-    checkpoint.battlefield = uniqueNumbers([...(checkpoint.battlefield || []), objectId]);
-  } else if (toZone === "exile") {
-    checkpoint.exile = uniqueNumbers([...(checkpoint.exile || []), objectId]);
-  } else if (playerSnapshot && ["hand", "graveyard", "library"].includes(toZone)) {
-    playerSnapshot[toZone] = [...(playerSnapshot[toZone] || []), objectId];
-  }
-}
 
-function moveFirstBattlefieldPermanentToGraveyard(checkpoint, player, name) {
-  const object = (checkpoint.objects || []).find(
-    (candidate) =>
-      candidate.zone === "battlefield" &&
-      Number(candidate.controller ?? candidate.owner) === Number(player) &&
-      cardName(candidate.name) === cardName(name),
-  );
-  if (!object) return;
-  moveObjectBetweenCheckpointZones(checkpoint, Number(object.owner ?? player), Number(object.id), "battlefield", "graveyard");
-  object.controller = Number(object.owner ?? player);
-  object.tapped = false;
-}
 
 function uniqueStrings(values) {
   const seen = new Set();
@@ -2072,7 +1694,7 @@ function loyaltyLabelMatches(candidateLabel, wantedLabel) {
 }
 
 function loyaltyCounterCount(context, objectId) {
-  const object = (getCheckpoint(context.game).objects || []).find((candidate) => Number(candidate.id) === Number(objectId));
+  const object = (getInspectionState(context.game).objects || []).find((candidate) => Number(candidate.id) === Number(objectId));
   const counters = object?.counters || [];
   const loyalty = counters.find((counter) => String(counter.kind || counter.type || "").toLowerCase() === "loyalty");
   return Number(loyalty?.amount || loyalty?.count || 0);
@@ -2116,11 +1738,11 @@ async function settleOneStackObject(context) {
 }
 
 function stackObjectIds(game) {
-  return (getCheckpoint(game).stack || []).map((entry) => stackEntryObjectId(entry));
+  return (getInspectionState(game).stack || []).map((entry) => stackEntryObjectId(entry));
 }
 
 function stackObjectsWithCompiledText(context) {
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   return (checkpoint.stack || []).map((entry) => {
     const id = stackEntryObjectId(entry);
     const inspectId = stackEntryInspectObjectId(entry, checkpoint);
@@ -2153,24 +1775,12 @@ function stackEntryInspectObjectId(entry, checkpoint) {
 }
 
 function remainingStackObjectsAreAbilities(game) {
-  const stack = getCheckpoint(game).stack || [];
+  const stack = getInspectionState(game).stack || [];
   return stack.length > 0 && stack.every((entry) => Boolean(entry.isAbility ?? entry.is_ability));
 }
 
 function clearZone(context, operation) {
-  const player = playerIndex(operation.player);
-  const zone = zoneName(operation.zone);
-  runCode(context.game, (checkpoint) => {
-    const playerSnapshot = checkpoint.players.find((candidate) => Number(candidate.id) === player);
-    assert(playerSnapshot, `unknown player ${player}`);
-    const ids = [...(playerSnapshot[zone] || [])].map(Number);
-    playerSnapshot[zone] = [];
-    for (const object of checkpoint.objects || []) {
-      if (ids.includes(Number(object.id))) {
-        object.zone = "outside_game";
-      }
-    }
-  });
+  context.game.clearPlayerZoneForSetup(playerIndex(operation.player), zoneName(operation.zone));
 }
 
 async function assertPlayableAbility(context, operation) {
@@ -2192,11 +1802,9 @@ async function assertPlayableAbility(context, operation) {
   const engineHas = (state.decision?.actions || []).some(
     (action) => action.kind !== "activate_mana_ability" && actionLabelMatches(action, operation.label),
   );
-  const has =
-    engineHas ||
-    (ALLOW_ENGINE_SHIMS && isCraftAbilityLabel(operation.label) && canActivateCraft(context, player));
+  const has = engineHas;
   if (process.env.MAGE_PORT_DUMP_CHECKPOINT) {
-    const checkpoint = getCheckpoint(context.game);
+    const checkpoint = getInspectionState(context.game);
     const battlefield = getBattlefield(checkpoint, null).map((object) => ({
       id: object.id,
       name: object.name,
@@ -2235,7 +1843,7 @@ async function assertStackSize(context, operation) {
   } else {
     await prepareAssertion(context, operation);
   }
-  const stackSize = getObjectsInZone(getCheckpoint(context.game), "stack").length;
+  const stackSize = getObjectsInZone(getInspectionState(context.game), "stack").length;
   assert(stackSize === Number(operation.count), `expected stack size ${operation.count}, got ${stackSize}`);
 }
 
@@ -2405,23 +2013,13 @@ function permanentHasAbilityText(context, objectId, text) {
 }
 
 function maybeEnterPendingAdditionalCombat(context, operation) {
+  if (!ALLOW_ENGINE_SHIMS) return;
   if (context.pendingAdditionalCombats <= 0) return;
   const state = context.game.uiState();
   if (Number(state.turn_number) !== Number(operation.turn || 1)) return;
   if (normalizePhase(state.phase, state.step) !== "POSTCOMBAT_MAIN") return;
 
-  if (typeof context.game.enterAdditionalCombatPhase === "function") {
-    context.game.enterAdditionalCombatPhase();
-  } else {
-    const checkpoint = getCheckpoint(context.game);
-    checkpoint.turn = {
-      ...(checkpoint.turn || {}),
-      phase: "combat",
-      step: "begin_combat",
-      priorityPlayer: checkpoint.turn?.activePlayer ?? playerIndex(operation.player),
-    };
-    importCheckpoint(context.game, checkpoint, { perspective: playerIndex(operation.player) });
-  }
+  context.game.enterAdditionalCombatPhase();
   context.pendingAdditionalCombats -= 1;
 }
 
@@ -3294,7 +2892,7 @@ function chooseLegalTarget(context, legalTargets, wanted, decisionPlayer = undef
   assert(legalTargets.length > 0, "target decision has no legal targets");
   const aliasEntry = resolveMageObjectAlias(context, wanted);
   if (aliasEntry) {
-    const checkpoint = getCheckpoint(context.game);
+    const checkpoint = getInspectionState(context.game);
     const matched = legalTargets.find((target) => targetMatchesAliasEntry(target, aliasEntry, checkpoint));
     if (matched) return matched;
   }
@@ -3444,7 +3042,7 @@ function chooseOption(context, decision, wanted) {
         ...(option.related_object_ids ?? option.relatedObjectIds ?? []),
         option.object_id ?? option.objectId ?? option.object,
       ].filter((id) => id !== undefined && id !== null);
-      const checkpoint = getCheckpoint(context.game);
+      const checkpoint = getInspectionState(context.game);
       for (const objectId of objectIds) {
         const checkpointObject = (checkpoint.objects || [])
           .find((object) => Number(object.id) === Number(objectId));
@@ -3703,7 +3301,7 @@ function manaSymbolsInOption(option) {
 
 function availableManaColors(context) {
   const colors = new Set();
-  for (const permanent of getBattlefield(getCheckpoint(context.game))) {
+  for (const permanent of getBattlefield(getInspectionState(context.game))) {
     if (permanent.tapped) continue;
     const name = String(permanent.name || "");
     if (name === "Plains") colors.add("W");
@@ -3913,16 +3511,16 @@ function readJavaNumericVariables(sourcePath) {
 
 function findCardIdInHand(context, player, name, options = {}) {
   const normalized = cardName(name);
-  const match = getHand(getCheckpoint(context.game), player).find((card) => card.name === normalized);
+  const match = getHand(getInspectionState(context.game), player).find((card) => card.name === normalized);
   if (!match && options.optional) return null;
-  assert(match, `card not found in hand: ${normalized}`, names(getHand(getCheckpoint(context.game), player)));
+  assert(match, `card not found in hand: ${normalized}`, names(getHand(getInspectionState(context.game), player)));
   return Number(match.id);
 }
 
 function findPermanentAnyController(context, name) {
   const normalized = cardName(name);
   for (const player of [0, 1]) {
-    const found = getPermanent(getCheckpoint(context.game), player, normalized, { optional: true });
+    const found = getPermanent(getInspectionState(context.game), player, normalized, { optional: true });
     if (found) return found;
   }
   throw new Error(`permanent not found under any controller: ${normalized}`);
@@ -3940,7 +3538,7 @@ async function prepareAssertion(context, operation) {
 
 async function assertLife(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   if (process.env.MAGE_PORT_DUMP_CHECKPOINT) {
     console.error(`[mage-port-checkpoint] ${JSON.stringify(checkpoint, null, 2).slice(0, 20000)}`);
   }
@@ -3968,7 +3566,7 @@ async function assertLife(context, operation) {
 
 async function assertSuspected(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const wanted = cardName(operation.name);
   const object = (checkpoint.objects || []).find(
     (candidate) => cardName(candidate.name) === wanted && candidate.zone === "battlefield",
@@ -3984,7 +3582,7 @@ async function assertSuspected(context, operation) {
 
 async function assertLibraryOrder(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const names = getLibrary(checkpoint, operation.player, { topFirst: true }).map((card) =>
     cardName(card.name),
   );
@@ -4003,7 +3601,7 @@ async function assertLibraryOrder(context, operation) {
 
 async function assertManaPool(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const player = checkpoint.players[playerIndex(operation.player)];
   const pool = player.manaPool || {};
   const colorKeys = { W: "white", U: "blue", B: "black", R: "red", G: "green", C: "colorless" };
@@ -4022,7 +3620,7 @@ async function assertManaPool(context, operation) {
 
 async function assertPermanentCount(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   if (process.env.MAGE_PORT_DUMP_CHECKPOINT) {
     console.error(`[mage-port-checkpoint] ${JSON.stringify(checkpoint, null, 2).slice(0, 20000)}`);
   }
@@ -4056,7 +3654,7 @@ async function assertPermanentCount(context, operation) {
 
 async function assertTokenCount(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const name = cardName(operation.name);
   const hopefuls = getBattlefield(checkpoint, operation.player).filter((object) => object.name === name);
   const tokenDetails = hopefuls.map((object) => {
@@ -4080,7 +3678,7 @@ async function assertTokenCount(context, operation) {
 
 async function assertBestowEidolonsAreCreatures(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const eidolons = getBattlefield(checkpoint, operation.player).filter(
     (object) => object.name === "Hopeful Eidolon",
   );
@@ -4098,7 +3696,7 @@ async function assertBestowEidolonsAreCreatures(context, operation) {
 
 async function assertBlitzAutomatonPrototypeState(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const automata = getBattlefield(checkpoint, "playerA").filter(
     (object) => effectivePermanentName(context, object) === "Blitz Automaton",
   );
@@ -4140,7 +3738,7 @@ async function assertBlitzAutomatonPrototypeState(context, operation) {
 
 async function assertZoneCount(context, operation, zone) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const cards =
     zone === "hand"
       ? getHand(checkpoint, operation.player)
@@ -4160,7 +3758,7 @@ async function assertZoneCount(context, operation, zone) {
 
 async function assertExileCount(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   if (process.env.MAGE_PORT_DUMP_CHECKPOINT) {
     console.error(`[mage-port-checkpoint] ${JSON.stringify(checkpoint, null, 2).slice(0, 20000)}`);
   }
@@ -4186,7 +3784,7 @@ async function assertExileCount(context, operation) {
 
 async function assertCounterOnExiledCardCount(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const name = cardName(operation.name);
   const expectedCounter = normalizeMageCounterKind(operation.counter);
   const candidates = getExile(checkpoint, null).filter(
@@ -4212,7 +3810,7 @@ async function assertCounterOnExiledCardCount(context, operation) {
 async function assertPowerToughness(context, operation) {
   await prepareAssertion(context, operation);
   const name = cardName(operation.name);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   if (process.env.MAGE_PORT_DUMP_CHECKPOINT) {
     console.error(`[mage-port-checkpoint] ${JSON.stringify(checkpoint, null, 2).slice(0, 20000)}`);
   }
@@ -4249,7 +3847,7 @@ function dayNightSyntheticPowerToughnessMatches(context, operation, name, expect
   const expectsBack =
     expectedPower === transform.backPower && expectedToughness === transform.backToughness;
   if (!expectsFront && !expectsBack) return false;
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   return getBattlefield(checkpoint, operation.player ?? null).some((object) => {
     const objectName = cardName(object.name);
     return objectName === transform.front || objectName === transform.back;
@@ -4259,7 +3857,7 @@ function dayNightSyntheticPowerToughnessMatches(context, operation, name, expect
 async function assertTappedCount(context, operation) {
   await prepareAssertion(context, operation);
   const name = cardName(operation.name);
-  const actual = getBattlefield(getCheckpoint(context.game), operation.player ?? null).filter(
+  const actual = getBattlefield(getInspectionState(context.game), operation.player ?? null).filter(
     (object) => object.name === name && Boolean(object.tapped) === Boolean(operation.tapped),
   ).length +
     (ALLOW_ENGINE_SHIMS
@@ -4308,7 +3906,7 @@ async function assertDamageReceived(context, operation) {
 
 async function assertBlitzed(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   let object = null;
   const requested = cardName(operation.name);
   if (/^[a-z_][a-z0-9_]*$/i.test(requested)) {
@@ -4332,7 +3930,7 @@ async function assertBlitzed(context, operation) {
 
 async function assertAttachedTo(context, operation) {
   await prepareAssertion(context, operation);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const attachment = findPermanentForMageArg(context, operation.player, operation.attachment);
   const target = findPermanentForMageArg(context, operation.player, operation.target);
   const attachedTo = getAttachedTo(checkpoint, attachment.id);
@@ -4346,11 +3944,8 @@ async function assertAttachedTo(context, operation) {
 
 async function assertCounterCount(context, operation) {
   await prepareAssertion(context, operation);
-  if (cardName(operation.name) === "Illusions of Grandeur") {
-    ensurePucasMischiefControlState(context);
-  }
   if (typeof operation.name === "number") {
-    const checkpoint = getCheckpoint(context.game);
+    const checkpoint = getInspectionState(context.game);
     const player = checkpoint.players.find((candidate) => Number(candidate.id) === playerIndex(operation.player));
     assert(player, `unknown player ${operation.player}`);
     const counter = String(operation.counter || "").toLowerCase();
@@ -4378,7 +3973,7 @@ async function assertCounterCount(context, operation) {
 async function assertEmblemCount(context, operation) {
   await prepareAssertion(context, operation);
   const player = playerIndex(operation.player);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const emblems = getObjectsInZone(checkpoint, "command").filter((object) => {
     const controller = Number(object.controller ?? object.owner);
     return controller === player && cardName(object.name).toLowerCase().includes("emblem");
@@ -4390,49 +3985,13 @@ async function assertEmblemCount(context, operation) {
 
 async function addCountersToPermanent(context, operation) {
   await prepareAssertion(context, operation);
-  const player = playerIndex(operation.player);
   const target = findPermanentForMageArg(context, operation.player, operation.name);
   const kind = checkpointCounterKind(operation.counter);
   const amount = numericValue(resolveMageVariable(context, operation.count));
-  runCode(context.game, (checkpoint) => {
-    const object = (checkpoint.objects || []).find((candidate) => Number(candidate.id) === Number(target.id));
-    assert(object, `permanent not found for counters: ${operation.name}`);
-    const counters = object.counters || [];
-    const normalizedKind = normalizeMageCounterKind(kind);
-    const counter = counters.find((candidate) =>
-      normalizeMageCounterKind(candidate.kind ?? candidate.type) === normalizedKind,
-    );
-    if (counter) {
-      counter.amount = Number(counter.amount ?? counter.count ?? 0) + amount;
-    } else {
-      counters.push({ kind, amount });
-    }
-    object.counters = counters;
-  }, { perspective: player });
+  assert(Number.isInteger(amount) && amount >= 0 && amount <= 0xffffffff, "counter amount must be a nonnegative u32");
+  context.game.addObjectCountersForSetup(BigInt(target.id), kind, amount);
 }
 
-function ensurePucasMischiefControlState(context) {
-  if (!ALLOW_ENGINE_SHIMS) return;
-  runCode(context.game, (checkpoint) => {
-    const illusions = (checkpoint.objects || []).find((object) => cardName(object.name) === "Illusions of Grandeur");
-    const celebrant = (checkpoint.objects || []).find((object) => cardName(object.name) === "Kor Celebrant");
-    if (illusions) {
-      illusions.zone = "battlefield";
-      illusions.controller = 1;
-      checkpoint.battlefield = uniqueNumbers([...(checkpoint.battlefield || []), Number(illusions.id)]);
-      const counters = illusions.counters || [];
-      if (!counters.some((counter) => normalizeMageCounterKind(counter.kind) === "age")) {
-        counters.push({ kind: "Age", amount: 2 });
-      }
-      illusions.counters = counters;
-    }
-    if (celebrant) {
-      celebrant.zone = "battlefield";
-      celebrant.controller = 0;
-      checkpoint.battlefield = uniqueNumbers([...(checkpoint.battlefield || []), Number(celebrant.id)]);
-    }
-  });
-}
 
 function normalizeMageCounterKind(counter) {
   const normalized = String(counter || "")
@@ -4470,7 +4029,7 @@ function checkpointCounterKind(counter) {
 async function assertType(context, operation) {
   await prepareAssertion(context, operation);
   if (process.env.MAGE_PORT_DUMP_CHECKPOINT) {
-    const checkpoint = getCheckpoint(context.game);
+    const checkpoint = getInspectionState(context.game);
     const battlefield = getBattlefield(checkpoint, null).map((object) => ({
       id: object.id,
       name: object.name,
@@ -4530,7 +4089,7 @@ async function assertAbility(context, operation) {
   }
   await prepareAssertion(context, operation);
   const name = cardName(operation.name);
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   if (process.env.MAGE_PORT_DUMP_CHECKPOINT) {
     console.error(`[mage-port-checkpoint] ${JSON.stringify(checkpoint, null, 2).slice(0, 20000)}`);
   }
@@ -4614,7 +4173,7 @@ async function assertAbilities(context, operation) {
 }
 
 function findPermanentForMageArg(context, player, raw, { predicate = null } = {}) {
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const aliasEntry = resolveMageObjectAlias(context, raw);
   if (aliasEntry) {
     const candidates = getBattlefield(checkpoint, player ?? null);
@@ -4740,7 +4299,7 @@ function compareScheduled(left, right) {
 function battlefieldHasNamedPermanent(context, name) {
   if (typeof name !== "string") return false;
   const normalized = cardName(name).toLowerCase();
-  return (getCheckpoint(context.game).objects || []).some(
+  return (getInspectionState(context.game).objects || []).some(
     (object) => object.zone === "battlefield" && cardName(object.name).toLowerCase().includes(normalized),
   );
 }
@@ -4748,7 +4307,7 @@ function battlefieldHasNamedPermanent(context, name) {
 function stackHasNamedObject(context, name) {
   if (typeof name !== "string") return false;
   const normalized = cardName(name).toLowerCase();
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   if (
     getObjectsInZone(checkpoint, "stack").some((object) =>
       cardName(object.name).toLowerCase().includes(normalized)
@@ -4779,7 +4338,7 @@ function attackTarget(context, defender, attacker = 0) {
   const attackerPlayer = playerIndex(attacker);
   if (typeof defender === "string" && !/^(alice|bob|player\s*[ab]|\d+)$/i.test(defender.trim())) {
     const normalizedDefender = cardName(defender);
-    const permanent = (getCheckpoint(context.game).objects || []).find((object) =>
+    const permanent = (getInspectionState(context.game).objects || []).find((object) =>
       object.zone === "battlefield" && cardName(object.name) === normalizedDefender
     );
     assert(permanent, `expected attack defender permanent ${defender}`);
@@ -4900,7 +4459,7 @@ function recordMageObjectAlias(context, rawName, objectId) {
   const index = spec.index ?? nextIndex;
   context.aliasGroupCounts.set(spec.group, Math.max(nextIndex, index));
 
-  const checkpoint = getCheckpoint(context.game);
+  const checkpoint = getInspectionState(context.game);
   const object = (checkpoint.objects || []).find((candidate) => Number(candidate.id) === numericId);
   const entry = {
     objectId: numericId,

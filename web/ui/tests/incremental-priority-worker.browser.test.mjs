@@ -1,3 +1,4 @@
+import { setupIncrementalPriorityFixture } from './fixtures/incremental-priority-scenario.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -17,30 +18,12 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
   const rejectedSource = { canonicalName: 'Rejected Analysis Source', group: { kind: 'single',
     name: 'Rejected Analysis Source', block: 'Type: Creature — Test\nMana Cost: {0}\nPower/Toughness: 1/1\nDo an unsupported test thing.' } };
   const game = new WasmGame();
-  let checkpoint, expected, land, secondLand, secondSpell;
+  let expected, land, secondLand, secondSpell;
   try {
     assert.ok(JSON.parse(game.registerExternalCardSourcesJson(JSON.stringify([rejectedSource]))).failed.length);
     game.registerExternalCardSourcesJson(JSON.stringify(sources));
-    game.resetEmpty(['Alice', 'Bob'], 20);
-    for (let i = 0; i < 4; i++) game.addCardToZone(0, 'Nova Hellkite', 'hand', true);
-    for (let i = 0; i < 2; i++) game.addCardToZone(0, 'Magmatic Hellkite', 'hand', true);
-    land = Number(game.addCardToZone(0, 'Sunbillow Verge', 'hand', true));
-    for (let i = 0; i < 3; i++) game.addCardToZone(0, 'Mountain', 'battlefield', true);
-    game.addCardToZone(1, 'Icetill Explorer', 'battlefield', true);
-    game.addCardToZone(0, 'Icetill Explorer', 'battlefield', true);
-    game.addCardToZone(0, 'Mountain', 'graveyard', true);
-    secondLand = Number(game.addCardToZone(1, 'Mountain', 'hand', true));
-    secondSpell = Number(game.addCardToZone(1, 'Ornithopter', 'hand', true));
-    game.finishPuzzleSetup();
-    for (let i = 0; i < 4; i++) {
-      const action = game.uiState().decision.actions.find(a => ['keep_opening_hand', 'continue_pregame', 'begin_game'].includes(a.action_ref?.kind));
-      assert.ok(action); game.dispatch({ type: 'priority_action', action_ref: action.action_ref });
-    }
-    checkpoint = game.exportSyncCheckpoint();
-    checkpoint.turn = { ...checkpoint.turn, activePlayer: 0, priorityPlayer: 0, turnNumber: 2, phase: 'first_main', step: null };
-    checkpoint.priorityRuntime.turnRunnerState = 'first_main_priority';
-    for (const object of checkpoint.objects) object.summoningSick = false;
-    game.importSyncCheckpoint(checkpoint, 0);
+    const fixture = await setupIncrementalPriorityFixture((method, ...args) => game[method](...args));
+    ({ land, secondLand, secondSpell } = fixture);
     expected = refs(game.uiState().decision.actions);
   } finally { game.free(); }
 
@@ -67,7 +50,7 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
     await route.fulfill({ response, body });
   });
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/analysis-test`);
-  const result = await page.evaluate(async ({ checkpoint, sources, rejectedSource, land, secondLand, secondSpell }) => {
+  const result = await page.evaluate(async ({ sources, rejectedSource, land, secondLand, secondSpell }) => {
     const { createSnapshotDecoder } = await import('/src/lib/snapshot-channel.js');
     const { serializePriorityCommand } = await import('/src/lib/sync-commands.js');
     const decoder = createSnapshotDecoder(), requests = new Map(), messages = [], waiters = [];
@@ -104,8 +87,11 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
     try {
       await ready;
       await call('registerExternalCardSourcesJson', [JSON.stringify([rejectedSource, ...sources])]);
+      const { setupIncrementalPriorityFixture, advancePriorityFixture } = await import('/tests/fixtures/incremental-priority-scenario.mjs');
+      const fixtureCall = (method, ...args) => call(method, args);
       const coldStarted = performance.now();
-      const state = await call('importSyncCheckpoint', [checkpoint, 0]);
+      const { state } = await setupIncrementalPriorityFixture(fixtureCall);
+      const main = await call('createRuntimeSavepoint');
       const revision = state.__priority_revision;
       const first = await wait(m => m.revision === revision && m.decision.actions.some(a => a.action_ref?.kind === 'play_land' && Number(a.object_id) === land));
       const coldHighlightMs = performance.now() - coldStarted;
@@ -114,11 +100,12 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
       await call('releaseRuntimeSavepoint', [handle]);
       const commandMs = performance.now() - started;
       const final = await wait(m => m.revision === revision && m.decision.analysis_complete === true);
-      // Re-import, then execute a confirmed partial action while the child is
+      // Restore, then execute a confirmed partial action while the child is
       // busy. Action refs must remain valid without its completed menu.
       await new Promise(resolve => setTimeout(resolve, 100));
       const warmStarted = performance.now();
-      const reset = await call('importSyncCheckpoint', [checkpoint, 0]);
+      await call('dispatch', [{ type: 'priority_action', action_ref: { kind: 'pass_priority' } }]);
+      const reset = await call('copyRuntimeSavepoint', [main]);
       const partial = await wait(m => m.revision === reset.__priority_revision && m.decision.actions.some(a => a.action_ref?.kind === 'play_land' && Number(a.object_id) === land));
       const warmHighlightMs = performance.now() - warmStarted;
       const action = partial.decision.actions.find(a => a.action_ref?.kind === 'play_land' && Number(a.object_id) === land);
@@ -127,23 +114,13 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
       const synced = serializePriorityCommand({ type: 'priority_action', action_ref: action.action_ref }, live.decision);
       const played = await call('dispatch', [synced]);
       const playMs = performance.now() - playStarted;
-      const after = await call('exportSyncCheckpoint');
+      const after = await call('getHiddenCardState');
       let staleRejected = false;
       try { await call('dispatch', [synced]); } catch { staleRejected = true; }
-      const second = structuredClone(checkpoint);
-      second.perspective = 1;
-      second.turn = { ...second.turn, activePlayer: 1, priorityPlayer: 1, turnNumber: 3 };
-      for (const object of second.objects.filter(o => o.zone === 'hand')) {
-        object.hiddenCard = { owner: object.owner, slot: object.id, commitment: `test:${object.id}` };
-        if (object.owner !== 1) {
-          object.name = 'Hidden Card'; delete object.originalCardName;
-          object.cardTypes = []; object.subtypes = []; object.oracleText = ''; object.abilities = [];
-          object.power = null; object.toughness = null;
-        }
-      }
+      await advancePriorityFixture(fixtureCall, 1);
+      await call('setPerspective', [1]);
       const branch = await call('createRuntimeSavepoint');
-      await call('importSyncCheckpoint', [second, 1], branch);
-      const visible = await call('copyRuntimeSavepoint', [branch]);
+      const visible = await call('uiState');
       const secondMenu = await Promise.race([
         wait(m => m.revision === visible.__priority_revision && m.decision.analysis_complete),
         new Promise((_, reject) => setTimeout(() => reject(new Error('second seat never completed analysis')), 15000)),
@@ -152,24 +129,27 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
       const merged = mergePriorityAnalysis(visible, secondMenu);
       const guestLand = merged.decision.actions.find(a => a.action_ref?.kind === 'play_land' && Number(a.object_id) === secondLand);
       const guestSpell = merged.decision.actions.find(a => a.action_ref?.kind === 'cast_spell' && Number(a.object_id) === secondSpell);
+      const guestMetadata = await call('getHiddenCardState');
+      const guestLandStableId = guestMetadata.objects.find(object => Number(object.id) === secondLand).stableId;
       const secondPlayable = Boolean(guestLand && guestSpell);
       let guestPlayedLand = false, guestCastSpell = false;
       if (secondPlayable) {
         await call('dispatch', [serializePriorityCommand({ type: 'priority_action', action_ref: guestSpell.action_ref }, (await call('uiState')).decision)]);
-        const spellAfter = await call('exportSyncCheckpoint');
-        guestCastSpell = spellAfter.objects.some(o => o.name === 'Ornithopter' && Number(o.owner) === 1 && o.zone === 'stack');
+        const spellAfter = await call('getHiddenCardState');
+        guestCastSpell = spellAfter.objects.some(o => o.name === 'Ornithopter' && o.zone === 'stack');
         // Land and spell are independent actions from the same guest prompt.
         // Restore it because casting transfers priority to the other seat.
-        await call('importSyncCheckpoint', [second, 1]);
+        await call('copyRuntimeSavepoint', [branch]);
         await call('dispatch', [serializePriorityCommand({ type: 'priority_action', action_ref: guestLand.action_ref }, (await call('uiState')).decision)]);
-        const landAfter = await call('exportSyncCheckpoint');
-        guestPlayedLand = landAfter.objects.some(o => o.name === 'Mountain' && Number(o.owner) === 1 && o.zone === 'battlefield');
+        const landAfter = await call('getHiddenCardState');
+        guestPlayedLand = landAfter.objects.some(o => o.stableId === guestLandStableId && o.name === 'Mountain' && o.zone === 'battlefield');
       }
       await call('releaseRuntimeSavepoint', [branch]);
+      await call('releaseRuntimeSavepoint', [main]);
       return { secondPlayable, guestPlayedLand, guestCastSpell, first: first.decision, final: final.decision, commandMs, playMs, coldHighlightMs, warmHighlightMs, staleRejected,
         played: after.objects.some(o => o.name === 'Sunbillow Verge' && o.zone === 'battlefield'), newRevision: played.__priority_revision !== reset.__priority_revision };
     } finally { worker.terminate(); }
-  }, { checkpoint, sources, rejectedSource, land, secondLand, secondSpell });
+  }, { sources, rejectedSource, land, secondLand, secondSpell });
   assert.equal(result.secondPlayable, true);
   assert.equal(result.guestPlayedLand, true);
   assert.equal(result.guestCastSpell, true);

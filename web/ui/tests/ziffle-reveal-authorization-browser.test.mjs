@@ -26,7 +26,7 @@ test('real worker draw, fetch, scry and mulligan requirements authorize exact re
         worker.onmessage = ({ data }) => {
           if (data.type === 'error') return reject(new Error(data.error.message));
           if (data.type === 'ready') return resolve();
-          if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); analysisWaiters.get(data.revision)?.(data.decision); return; }
+          if (data.type === 'priorityAnalysis') { if (data.decision.analysis_complete !== true) return; analyses.set(data.revision, data.decision); analysisWaiters.get(data.revision)?.(data.decision); return; }
           if (data.type !== 'result') return;
           const request = pending.get(data.id); if (!request) return;
           pending.delete(data.id);
@@ -61,16 +61,16 @@ test('real worker draw, fetch, scry and mulligan requirements authorize exact re
         for (const scenario of ['mulligan', 'draw', 'fetch', 'scry']) {
           let state = await worker.call('startMatch', config);
           let acted = false, spellId = null;
-          if (scenario === 'fetch') spellId = await worker.call('addCardToZone', 0, 'Evolving Wilds', 'battlefield', true);
+          if (scenario === 'fetch') spellId = Number(await worker.call('addCardToZone', 0, 'Evolving Wilds', 'battlefield', true));
           if (scenario === 'scry') {
-            spellId = await worker.call('addCardToZone', 0, 'Preordain', 'hand', true);
+            spellId = Number(await worker.call('addCardToZone', 0, 'Preordain', 'hand', true));
             await worker.call('addCardToZone', 0, 'Island', 'battlefield', true);
           }
           state = await worker.call('uiState');
           for (let step = 0; step < 160; step++) {
             const actions = state.decision?.actions || [];
             let action = !acted && scenario === 'mulligan' ? actions.find(value => value.action_ref?.kind === 'take_mulligan') : null;
-            if (!action && !acted && scenario === 'fetch') action = actions.find(value => value.action_ref?.kind === 'activate_ability' && Number(value.action_ref.source) === Number(spellId));
+            if (!action && !acted && scenario === 'fetch') action = actions.find(value => value.action_ref?.kind === 'activate_ability' && Number(value.object_id ?? value.action_ref.source ?? value.action_ref.source_id) === Number(spellId));
             if (!action && !acted && scenario === 'scry') action = actions.find(value => value.action_ref?.kind === 'cast_spell' && Number(value.action_ref.spell_id) === Number(spellId));
             if (action) acted = true;
             action ||= actions.find(value => ['keep_opening_hand', 'continue_pregame', 'begin_game', 'pass_priority'].includes(value.action_ref?.kind));
@@ -80,7 +80,7 @@ test('real worker draw, fetch, scry and mulligan requirements authorize exact re
             else if (['attackers', 'blockers'].includes(state.decision?.kind)) command = { type: state.decision.kind === 'attackers' ? 'declare_attackers' : 'declare_blockers', declarations: [] };
             else throw new Error(`${scenario}: ${JSON.stringify(state.decision)}`);
             const decision = state.decision;
-            const checkpoint = await worker.call('exportSyncCheckpoint');
+            const checkpoint = await worker.call('getHiddenCardState');
             const requirements = await worker.call('previewCryptoRequirements', command);
             state = await worker.call('dispatch', command);
             const matches = scenario === 'mulligan' ? requirements.some(value => value.type === 'verifiable_shuffle')

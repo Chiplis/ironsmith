@@ -37,7 +37,8 @@ test('audit replay hydrates a public land before preview and resolves its stable
       pending.set(++id, { resolve, reject }); worker.postMessage({ type: 'call', id, method, args });
     });
     const game = Object.fromEntries(['uiState', 'dispatch', 'previewCryptoRequirements', 'revealHiddenPosition',
-      'revealHiddenSlot', 'revealHiddenObject', 'exportSyncCheckpoint', 'exportPublicAuditCheckpoint']
+      'revealHiddenSlot', 'revealHiddenObject', 'getHiddenCardState', 'exportPublicAuditCheckpoint',
+      'createRuntimeSavepoint', 'restoreRuntimeSavepoint', 'releaseRuntimeSavepoint']
       .map(method => [method, (...args) => call(method, ...args)]));
     worker.postMessage({ type: 'init', assetBaseUrl: `${location.origin}/` });
     try {
@@ -57,7 +58,7 @@ test('audit replay hydrates a public land before preview and resolves its stable
         state = await call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
       }
       if (!state.phase.includes('main')) throw new Error('Did not reach main phase');
-      const checkpoint = await call('exportSyncCheckpoint');
+      const checkpoint = await call('getHiddenCardState');
       const card = checkpoint.objects.find(object => object.id === checkpoint.players[0].hand[0]);
       const opening = { owner: 0, slot: card.hiddenCard.slot, commitment: card.hiddenCard.commitment,
         objectId: card.id, card: 'Island', timing: 'pre' };
@@ -78,7 +79,7 @@ test('audit replay hydrates a public land before preview and resolves its stable
         action_ref: { ...command.action_ref, land_id: card.id + 10000 } };
       const second = await applyAuditReplayActionWithGame({ game, action: { seq: 1, command: remote, audit: { openings: [opening] } } });
       const remapped = await call('exportPublicAuditCheckpoint');
-      const final = await call('exportSyncCheckpoint');
+      const final = await call('getHiddenCardState');
       
       return { expected, exact, remapped, hashes: [first.publicCheckpointHash, second.publicCheckpointHash],
         opponentHand: final.players[1].hand.map(id => final.objects.find(object => object.id === id).name) };
