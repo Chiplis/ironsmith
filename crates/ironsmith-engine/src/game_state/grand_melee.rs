@@ -29,7 +29,7 @@ pub struct GrandMeleeMarkerView {
     pub retained_extra_turn_waiting: bool,
 }
 
-/// Serializable runtime payload used by hosts to restore marker lanes.
+/// Native marker-lane view used to construct public audit projections.
 #[derive(Debug, Clone)]
 pub struct GrandMeleeMarkerRestore {
     pub number: u32,
@@ -95,7 +95,7 @@ pub struct GrandMeleeState {
     starting_player_count: usize,
     focused_marker: u32,
     markers: Vec<GrandMeleeTurnMarker>,
-    // Ordered: snapshotted into the public sync checkpoint as a Vec.
+    // Ordered for deterministic public audit projection.
     deferred_extra_turns: std::collections::BTreeMap<PlayerId, usize>,
     marker_reducing_departures: std::collections::BTreeSet<PlayerId>,
     prepared_simultaneous_departures: std::collections::BTreeSet<PlayerId>,
@@ -349,94 +349,6 @@ impl GameState {
                 .map(|(player, count)| (*player, *count))
                 .collect(),
         })
-    }
-
-    pub fn restore_grand_melee_snapshot(
-        &mut self,
-        snapshot: GrandMeleeRestore,
-    ) -> Result<(), String> {
-        let first_holder = snapshot
-            .markers
-            .iter()
-            .find(|marker| marker.number == 1)
-            .map(|marker| marker.holder)
-            .ok_or_else(|| "Grand Melee checkpoint is missing marker 1".to_string())?;
-        self.restore_grand_melee_with_starting_player(snapshot.seats, first_holder)?;
-        let expected = self
-            .grand_melee
-            .as_ref()
-            .map_or(0, |state| state.markers.len());
-        if snapshot.markers.len() != expected {
-            return Err("Grand Melee checkpoint has the wrong marker count".to_string());
-        }
-        let fallback_range = self.range_of_influence.clone();
-        let Some(state) = self.grand_melee.as_mut() else {
-            unreachable!();
-        };
-        for restored in snapshot.markers {
-            let marker = state
-                .markers
-                .iter_mut()
-                .find(|marker| marker.number == restored.number)
-                .ok_or_else(|| {
-                    format!(
-                        "Grand Melee checkpoint contains unknown marker {}",
-                        restored.number
-                    )
-                })?;
-            marker.holder = restored.holder;
-            marker.status = restored.status;
-            marker.waiting_kind = (restored.status == GrandMeleeMarkerStatus::Waiting).then_some(
-                if restored.retained_extra_turn_waiting {
-                    WaitingTurnKind::RetainedExtra
-                } else {
-                    WaitingTurnKind::Normal
-                },
-            );
-            marker.removal_designations = restored.removal_designations;
-            marker.normal_turn_pending = restored.normal_turn_pending;
-            marker.lane.turn = restored.turn;
-            marker.lane.turn_store = restored.turn_store;
-            marker.lane.stack = restored.stack;
-            marker.lane.combat = restored.combat;
-            marker.lane.range_of_influence = restored
-                .range_of_influence
-                .or_else(|| fallback_range.clone());
-        }
-        state.starting_player_count = snapshot.starting_player_count;
-        state.deferred_extra_turns = snapshot.deferred_extra_turns.into_iter().collect();
-        state.stack_provenance_markers = state
-            .markers
-            .iter()
-            .flat_map(|marker| {
-                marker
-                    .lane
-                    .stack
-                    .iter()
-                    .filter(|entry| entry.provenance != ProvNodeId::default())
-                    .map(|entry| (entry.provenance, marker.number))
-            })
-            .collect();
-        if !state
-            .markers
-            .iter()
-            .any(|marker| marker.number == snapshot.focused_marker)
-        {
-            return Err("Grand Melee checkpoint focuses an unknown marker".to_string());
-        }
-        state.focused_marker = snapshot.focused_marker;
-        let lane = state
-            .markers
-            .iter()
-            .find(|marker| marker.number == state.focused_marker)
-            .expect("validated focused marker")
-            .lane
-            .clone();
-        self.load_grand_melee_lane(&lane);
-        if let Some(holder) = self.focused_grand_melee_holder() {
-            self.focus_planar_controller_for_grand_melee(holder);
-        }
-        Ok(())
     }
 
     /// All players whose numbered markers currently represent active turns.
