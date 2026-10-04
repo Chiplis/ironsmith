@@ -69,8 +69,30 @@ fn source_filtered_target_restriction(
     };
 
     let source_filter = match envelope {
+        TargetRestrictionEnvelope::SpellsOrAbilities => {
+            return Ok(Some(crate::effect::Restriction::be_targeted(target_filter.clone())));
+        }
+        TargetRestrictionEnvelope::SourceAbility { full_source_tokens } => {
+            let mut filter = parse_object_filter(&tokens[full_source_tokens], false)?;
+            filter.zone = Some(crate::zone::Zone::Stack);
+            filter.stack_kind = Some(crate::filter::StackObjectKind::Ability);
+            filter
+        }
+        TargetRestrictionEnvelope::PairedControlledSources {
+            spell_tokens, spell_noun, source_tokens, source_noun,
+        } => {
+            let without_noun = |range: std::ops::Range<usize>, noun| {
+                range.filter(|index| *index != noun).map(|index| tokens[index].clone()).collect::<Vec<_>>()
+            };
+            let spell_filter = parse_object_filter(&without_noun(spell_tokens, spell_noun), false)?;
+            let source_filter = parse_object_filter(&without_noun(source_tokens, source_noun), false)?;
+            if spell_filter != source_filter { return Err(error()); }
+            // No stack-kind constraint: the authored ability qualifier refers
+            // to its source, not to the controller of the ability on the stack.
+            source_filter
+        }
         TargetRestrictionEnvelope::ControlledSpellsOrAbilities { opponents } => {
-            ObjectFilter::default().controlled_by(if opponents {
+            ObjectFilter::spell_or_ability().controlled_by(if opponents {
                 PlayerFilter::Opponent
             } else {
                 PlayerFilter::You

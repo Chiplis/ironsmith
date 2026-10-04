@@ -707,6 +707,13 @@ pub enum TriggerKind {
         attached: bool,
     },
     PhasingChanged { filter: ObjectFilter, phased_in: bool, one_or_more: bool },
+    /// An actual mill action, distinct from an arbitrary library-zone change.
+    CardsMilled {
+        player: PlayerFilter,
+        filter: Option<ObjectFilter>,
+        one_or_more: bool,
+        per_player: bool,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1106,6 +1113,10 @@ impl Trigger {
             TriggerKind::ThisLeavesBattlefield,
         )
     }
+    pub fn cards_milled(player: PlayerFilter, filter: Option<ObjectFilter>, one_or_more: bool, per_player: bool) -> Self {
+        Self::typed("cards_milled", TriggerKind::CardsMilled { player, filter, one_or_more, per_player })
+    }
+
     pub fn phasing_changed(filter: ObjectFilter, phased_in: bool, one_or_more: bool) -> Self {
         Self::typed("phasing_changed", TriggerKind::PhasingChanged { filter, phased_in, one_or_more })
     }

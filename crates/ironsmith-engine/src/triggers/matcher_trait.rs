@@ -41,6 +41,10 @@ pub enum SimultaneousTriggerKey {
     DamageBatch,
     /// All matching zone changes in one simultaneous action.
     ZoneChangeBatch,
+    /// Passive milling clauses combine all players in the same instruction.
+    MillingBatch,
+    /// An explicit player subject keeps each milling player independent.
+    PlayerMillingBatch(PlayerId),
     /// One simultaneous instruction changes several permanents' tap states.
     TapStateBatch { tapped: bool },
     /// One simultaneous phasing transition, including indirect attachments.

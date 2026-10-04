@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::effect::EffectId;
-use crate::filter::PlayerFilter;
+use crate::filter::{ObjectFilter, PlayerFilter};
 use crate::tag::TagKey;
 use crate::zone::Zone;
 
@@ -208,6 +208,7 @@ pub struct LoweringFrame {
     pub force_auto_tag_object_targets: bool,
     pub allow_life_event_value: bool,
     pub allow_excess_damage_event_value: bool,
+    pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
     pub bind_unbound_x_to_last_effect: bool,
 }
 
@@ -362,6 +363,7 @@ impl EffectLoweringContext {
         self.iterated_object = frame.iterated_object;
         self.allow_life_event_value = frame.allow_life_event_value;
         self.allow_excess_damage_event_value = frame.allow_excess_damage_event_value;
+        self.milling_event_filter = frame.milling_event_filter.clone();
         self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
     }
 

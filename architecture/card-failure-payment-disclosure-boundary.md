@@ -43,3 +43,33 @@ A published intermediate decision followed by another cost/replacement decision,
 A disclosure-aware completed-action Undo latch is the first bounded fix. It must recognize the actual information boundary, preserve mana-only Undo, and retain peer proof validation. Any genuinely reachable precommit flow still needs transaction-scoped disclosure handling; late GameState restoration cannot erase knowledge. Availability probes and crypto previews must remain nondisclosing and must not permanently latch speculative state.
 
 No game-state-only cancellation test establishes this property. Authored follow-up tests must inspect Undo availability, the peer-facing reveal metadata/audit buffers, and normal/failed/pending payment paths.
+
+## Bounded completed-action Undo guard (authored, unrun)
+
+`ReplayCheckpoint` now captures the set of already-public hand identity observations at the boundary. `undo.rs` compares against current cost-discard events, hand-reveal events, tracked public hand openings, and public active/audit views (including a captured pending decision game). Every ordinary action, epoch, and replay-chain Undo eligibility path applies the same test. A completed cost's event history keeps the boundary after active view buffers are cleared. No spell/ability names are recognized by the guard.
+
+The comparison is read-only. It does not add a monotonically increasing speculative counter or alter the existing public proof policy. `preview_crypto_requirements` already restores the game, pending decision game, and active/audit buffers, so hypothetical observations disappear with the preview. Existing checkpoint clones and runtime savepoints carry the added knowledge baseline through their derived clone paths. A later checkpoint treats disclosures already known then as part of its safe baseline.
+
+Authored regressions are included from `crates/ironsmith-wasm/src/wasm_game_impl/payment_disclosure_undo_tests.rs`: exact four-card live WASM dispatch to completed activation, reveal-without-zone-change, preselection cancellation availability, private-view/mana-only controls, audit-view observations, and speculative restoration. Direct rejected `cancelDecision` calls are additionally asserted on wasm32, where JS error values are available.
+
+Deferred native command: `cargo test -p ironsmith-web-session payment_disclosure -- --nocapture`.
+
+This guard closes only the demonstrated Undo decision route. It does not stage publications until a whole payment commits, and it does not by itself establish correctness of an engine-level failure/Cancel path that already emitted external material. No partial identity is promoted back to complete by this document alone; the independent precommit analysis remains open.
+
+
+## Separate precommit opening-preview correction (authored, unrun)
+
+The peer progress path contained another concrete earlier disclosure: `usePeerLobby.js::previewBuiltLocalOpening` placed `cardName` and `openingPreview` into `broadcastLocalActionProgress`. The callback runs during `build_local_openings_pre`, before `applySyncedCommand`. A later ordinary apply/proof/quorum failure can restore `localSubmissionSnapshot` and cancel the intent, but cannot undo that already-broadcast preview.
+
+The bounded correction keeps the actor's local inspector preview and sends only a whitelisted generic operation plus numeric progress counts to peers. It does not remove or weaken opening requirements, local opening application, signed action payloads, quorum verification, or peer replay validation. Successful action publication still carries the actual openings through its normal payload. It does not add an early public preview after local apply, because quorum/publication can still fail then.
+
+`web/ui/tests/opening-preparation-progress.test.js` authors identity-redaction and source-wiring contracts. Deferred command: `cd web/ui && node --test tests/opening-preparation-progress.test.js`.
+
+This closes the ancillary progress-packet disclosure only. Actual cryptographic-material requests may carry openings before command publication, and a valid payment can span multiple accepted decision commands. Those are distinct from progress previews and remain subject to the transaction-boundary analysis above. This narrow correction alone does not promote any partial identity.
+
+
+## Legitimate interrupted payment scenario (authored, unrun)
+
+A focused Knollspine scenario now selects a hidden-tracked Fiery Temper while Rest in Peace is on the battlefield. Madness and Rest in Peace offer competing replacements after the public discard selection. The selected card has not yet left the authoritative hand, and the activated ability is not yet on the stack, but the public selection has been disclosed. The regression asserts Undo is unavailable during this replacement prompt and after choosing Rest in Peace; normal preselection cancellation remains available. It also asserts Knollspine's ManaPayment prompt occurs before disclosure, not after it. This exercises the existing guard against a captured pending-decision game rather than relying only on completed discard events.
+
+The core's legitimate payment semantics already treat a legally started discard cost as paid even if replacement/prevention changes its destination (CR 118.11); this scenario must continue through the replacement, not invalidate the cost because the card was exiled. It uses existing final-rule primitives and makes no card-name production exception. The same deferred native test command above includes this regression. It has not run.

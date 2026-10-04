@@ -57,10 +57,11 @@ pub struct BoundEffectsAst {
     pub unresolved_it_after: usize,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct EffectReferenceResolutionConfig {
     pub allow_life_event_value: bool,
     pub allow_excess_damage_event_value: bool,
+    pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
     pub bind_unbound_x_to_last_effect: bool,
     pub initial_last_effect_id: Option<EffectId>,
     pub initial_iterated_player: bool,
@@ -94,6 +95,7 @@ struct EffectReferenceResolutionState<'a> {
     last_exile_cost_tag_index: Option<u32>,
     allow_life_event_value: bool,
     allow_excess_damage_event_value: bool,
+    milling_event_filter: Option<&'a ObjectFilter>,
     bind_unbound_x_to_last_effect: bool,
     /// Inside a delayed trigger's body: the result id of the registering
     /// instruction's last producer. The delayed ability resolves later with
@@ -117,7 +119,8 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
         trigger => {
             matches!(
                 trigger,
-                TriggerSpec::YouGainLife
+                TriggerSpec::CardsMilled { .. }
+                    | TriggerSpec::YouGainLife
                     | TriggerSpec::YouGainLifeCausedBy(_)
                     | TriggerSpec::YouGainLifeDuringTurn(_)
                     | TriggerSpec::PlayerLosesLife(_)
@@ -196,6 +199,7 @@ pub fn annotate_effect_sequence_owned(
         config.initial_last_effect_id,
     );
     env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
+    env.milling_event_filter = config.milling_event_filter.clone();
     let mut id_gen = id_gen;
     let mut effects = effects;
     // Persist result identities before transparent wrappers are traversed again
@@ -3437,6 +3441,7 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
         last_exile_cost_tag_index: cost_tag_index_from_env(env, "exile_cost_"),
         allow_life_event_value: env.allow_life_event_value,
         allow_excess_damage_event_value: env.allow_excess_damage_event_value,
+        milling_event_filter: env.milling_event_filter.as_deref(),
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
         delayed_registration_effect_id: None,
     }
@@ -3778,13 +3783,13 @@ fn annotate_effect_sequence_with_env_internal(
         let suppress_force_auto_tag_object_targets = suppress_for_power_self_damage
             || copy_spell_without_followup_reference
             || (effect_exports_damage_each_object_set(&effect) && !auto_tag_object_targets_for_env);
-        let assigned_effect_id = maybe_assign_effect_result_id(&effect, remaining, id_gen, config);
+        let assigned_effect_id = maybe_assign_effect_result_id(&effect, remaining, id_gen, config.clone());
 
         let comparison_antecedent = effect_comparison_operands(&effect, &resolution_env);
         let mut out_env = advance_reference_env_for_effect(
             &effect,
             &resolution_env,
-            config,
+            config.clone(),
             id_gen,
             auto_tag_object_targets_for_env,
             suppress_force_auto_tag_object_targets,
@@ -5349,6 +5354,7 @@ fn resolve_effect_references_in_effect(
                 last_exile_cost_tag_index: state.last_exile_cost_tag_index,
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
+                milling_event_filter: state.milling_event_filter,
                 bind_unbound_x_to_last_effect: predicate != IfResultPredicate::AcceptedChoice,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
             },
@@ -5382,6 +5388,7 @@ fn resolve_effect_references_in_effect(
                 last_exile_cost_tag_index: state.last_exile_cost_tag_index,
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
+                milling_event_filter: state.milling_event_filter,
                 bind_unbound_x_to_last_effect: true,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
             },
@@ -5441,6 +5448,7 @@ fn resolve_effect_references_in_effect(
             last_exile_cost_tag_index: state.last_exile_cost_tag_index,
             allow_life_event_value: true,
             allow_excess_damage_event_value: false,
+            milling_event_filter: None,
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
             delayed_registration_effect_id: state.delayed_registration_effect_id,
         };
@@ -5457,6 +5465,7 @@ fn resolve_effect_references_in_effect(
         ..
     }) = effect
     {
+        let milling_event_filter = ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter(trigger);
         let nested_state = EffectReferenceResolutionState {
             last_effect_id: state.last_effect_id,
             pinned_effect_metric_id: state.pinned_effect_metric_id,
@@ -5469,6 +5478,7 @@ fn resolve_effect_references_in_effect(
                 ironsmith_compiler_semantic::trigger_references::trigger_binds_excess_damage_amount(
                     trigger,
                 ),
+            milling_event_filter: milling_event_filter.as_deref(),
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
             delayed_registration_effect_id: state.pinned_effect_metric_id.or(state.last_effect_id),
         };
@@ -5553,6 +5563,7 @@ fn resolve_effect_sequence_references_with_state_in_place(
             EffectReferenceResolutionConfig {
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
+                milling_event_filter: state.milling_event_filter.cloned().map(std::sync::Arc::new),
                 ..Default::default()
             },
         );
@@ -5659,7 +5670,7 @@ fn advance_reference_env_for_effect(
             let mut out = advance_reference_env_for_effect(
                 effect,
                 &gated,
-                config,
+                config.clone(),
                 id_gen,
                 auto_tag_object_targets,
                 suppress_force_auto_tag_object_targets,
@@ -5688,7 +5699,7 @@ fn advance_reference_env_for_effect(
             if let Some(player_filter) = predicate_bound_player_filter(predicate) {
                 branch_env.last_player_filter = RefState::Known(player_filter);
             }
-            let mut nested_config = config;
+            let mut nested_config = config.clone();
             nested_config.force_auto_tag_object_targets |=
                 auto_tag_object_targets && !suppress_force_auto_tag_object_targets;
             let true_sequence = annotate_effect_sequence_with_env_internal(
@@ -5750,6 +5761,7 @@ fn advance_reference_env_for_effect(
                     iterated_object: env.iterated_object,
                     allow_life_event_value: env.allow_life_event_value,
                     allow_excess_damage_event_value: env.allow_excess_damage_event_value,
+                    milling_event_filter: env.milling_event_filter.clone(),
                     bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
                 });
             }
@@ -5757,7 +5769,7 @@ fn advance_reference_env_for_effect(
             let false_sequence = annotate_effect_sequence_with_env_internal(
                 if_false.to_vec(),
                 branch_env,
-                config,
+                config.clone(),
                 id_gen,
             )?;
             Ok(ReferenceEnv {
@@ -5785,6 +5797,7 @@ fn advance_reference_env_for_effect(
                 iterated_object: env.iterated_object,
                 allow_life_event_value: env.allow_life_event_value,
                 allow_excess_damage_event_value: env.allow_excess_damage_event_value,
+                milling_event_filter: env.milling_event_filter.clone(),
                 bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
             })
         }
@@ -5799,7 +5812,7 @@ fn advance_reference_env_for_effect(
             // turn. Return that card ...": the gated action's result is the
             // antecedent a later sentence names, so the branch honors the
             // export demand on this node, like a leading conditional does.
-            let mut nested_config = config;
+            let mut nested_config = config.clone();
             nested_config.force_auto_tag_object_targets |=
                 auto_tag_object_targets && !suppress_force_auto_tag_object_targets;
             Ok(annotate_effect_sequence_with_env_internal(
@@ -5825,7 +5838,7 @@ fn advance_reference_env_for_effect(
             // Lowering already compiles the branch with the outer node's
             // auto-tag setting; mirroring it here keeps the exported reference
             // environment aligned with the tags emitted at runtime.
-            let mut nested_config = config;
+            let mut nested_config = config.clone();
             nested_config.force_auto_tag_object_targets |=
                 auto_tag_object_targets && !suppress_force_auto_tag_object_targets;
             let nested = annotate_effect_sequence_with_env_internal(
@@ -5868,7 +5881,7 @@ fn advance_reference_env_for_effect(
             let nested = annotate_effect_sequence_with_env_internal(
                 effects.to_vec(),
                 nested_env,
-                config,
+                config.clone(),
                 id_gen,
             )?;
             let mut out_env = nested.final_env;
@@ -6992,6 +7005,18 @@ fn resolve_effect_result_value(
                 && let Some(tagged_metric) = resolve_exile_cost_tagged_metric(query, index)
             {
                 *value = tagged_metric;
+            } else if state.milling_event_filter.is_some_and(|filter| {
+                query.action == Some(PriorEffectAction::Milled)
+                    && query.source == EffectMetricSource::AffectedObjects
+                    && query.metric == EffectMetric::Count
+                    && query.player.is_none()
+                    && query.counter_type.is_none()
+                    && query.filter.as_ref().unwrap_or(&ObjectFilter::default()) == filter
+            }) {
+                // The event count already applies this *exact* typed predicate.
+                // Never replace a creature-only or differently scoped query
+                // with an unfiltered count of everything that was milled.
+                *value = Value::EventValue(EventValueSpec::Amount);
             } else {
                 return Err(CardTextError::ParseError(
                     "pending filtered effect metric requires a prior memory-producing effect"
@@ -9329,6 +9354,7 @@ mod tests {
                 last_exile_cost_tag_index: None,
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
+                milling_event_filter: None,
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -9355,6 +9381,7 @@ mod tests {
                 last_exile_cost_tag_index: None,
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
+                milling_event_filter: None,
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -9382,6 +9409,7 @@ mod tests {
                 last_exile_cost_tag_index: None,
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
+                milling_event_filter: None,
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -11235,6 +11263,7 @@ mod excess_damage_binding_tests {
             last_exile_cost_tag_index: None,
             allow_life_event_value: true,
             allow_excess_damage_event_value: false,
+            milling_event_filter: None,
             bind_unbound_x_to_last_effect: false,
             delayed_registration_effect_id: None,
         }
@@ -11311,3 +11340,7 @@ mod excess_damage_binding_tests {
 #[cfg(test)]
 #[path = "relative_quantity_tests.rs"]
 mod relative_quantity_tests;
+
+#[cfg(test)]
+#[path = "milling_count_tests.rs"]
+mod milling_count_tests;

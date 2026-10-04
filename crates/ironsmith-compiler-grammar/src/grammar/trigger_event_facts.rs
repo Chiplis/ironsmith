@@ -243,6 +243,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
             ..
         }
         | TriggerSpec::AttachmentChanged { recipient: filter, .. }
+        | TriggerSpec::CardsMilled { filter: Some(filter), .. }
         | TriggerSpec::PhasingChanged { filter, .. }
         | TriggerSpec::PlayerChangesTapState { filter, .. }
         | TriggerSpec::EntersBattlefield { filter, .. }
@@ -363,7 +364,8 @@ fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
         | TriggerSpec::YouDrawCard
         | TriggerSpec::DayNightChanged
         | TriggerSpec::StateBased { .. } => None,
-        TriggerSpec::PhasingChanged { one_or_more: true, .. }
+        TriggerSpec::CardsMilled { one_or_more: true, .. }
+        | TriggerSpec::PhasingChanged { one_or_more: true, .. }
         | TriggerSpec::PlayerChangesTapState { one_or_more: true, .. }
         | TriggerSpec::PermanentBecomesTappedOneOrMore(_)
         | TriggerSpec::PermanentBecomesUntapped { one_or_more: true, .. } => Some(Cardinality::OneOrMore),

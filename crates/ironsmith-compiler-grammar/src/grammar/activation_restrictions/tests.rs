@@ -344,3 +344,16 @@ fn cast_restriction_retains_dynamic_mana_value_comparison() {
     extra.push("nonsense");
     assert!(parse_cant_cast_restriction_fact_words(&extra).is_none());
 }
+
+#[test]
+fn targeting_source_envelopes_keep_single_kinds_and_controller_qualified_pairs() {
+    for text in ["be the target of spells", "be the targets of blue or black spells your opponents control"] {
+        assert!(matches!(parse_target_restriction_envelope_tokens(&lex_line(text, 0).unwrap()), Some(TargetRestrictionEnvelope::SourceSpell { .. })), "{text}");
+    }
+    assert!(matches!(parse_target_restriction_envelope_tokens(&lex_line("be the target of abilities your opponents control", 0).unwrap()), Some(TargetRestrictionEnvelope::SourceAbility { .. })));
+    assert!(matches!(parse_target_restriction_envelope_tokens(&lex_line("be the targets of spells or abilities", 0).unwrap()), Some(TargetRestrictionEnvelope::SpellsOrAbilities)));
+    assert!(matches!(parse_target_restriction_envelope_tokens(&lex_line("be the target of nongreen spells your opponents control or abilities from nongreen sources your opponents control", 0).unwrap()), Some(TargetRestrictionEnvelope::PairedControlledSources { .. })));
+    for text in ["be the target of spells unless it attacked", "be the target of abilities your opponents control this turn and draw a card"] {
+        assert!(parse_target_restriction_envelope_tokens(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+    }
+}

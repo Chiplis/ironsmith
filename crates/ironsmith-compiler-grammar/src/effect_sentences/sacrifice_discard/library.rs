@@ -6,8 +6,8 @@ pub fn parse_discard(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    if let Some((your_hand, rounded_up)) =
-        sacrifice_discard_grammar::parse_half_hand_discard(tokens)
+    if let Some((denominator, your_hand, rounded_up)) =
+        sacrifice_discard_grammar::parse_fraction_hand_discard(tokens)
     {
         let owner = if your_hand {
             PlayerFilter::You
@@ -16,11 +16,15 @@ pub fn parse_discard(
         };
         let mut hand = Value::CardsInHand(owner);
         if rounded_up {
-            hand = Value::Add(Box::new(hand), Box::new(Value::Fixed(1)));
+            hand = Value::Add(Box::new(hand), Box::new(Value::Fixed(denominator - 1)));
         }
         return Ok(EffectAst::subject_verb_discard(
             player,
-            Value::HalfRoundedDown(Box::new(hand)),
+            if denominator == 2 {
+                Value::HalfRoundedDown(Box::new(hand))
+            } else {
+                Value::DividedRoundedDown(Box::new(hand), denominator)
+            },
             false,
             false,
             None,

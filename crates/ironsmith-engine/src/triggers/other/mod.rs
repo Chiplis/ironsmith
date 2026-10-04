@@ -14,6 +14,8 @@ mod mana_added;
 mod player_changes_tap_state;
 mod attachment_changed;
 mod phasing_changed;
+mod cards_milled;
+pub use cards_milled::CardsMilledTrigger;
 pub use phasing_changed::PhasingChangedTrigger;
 pub use attachment_changed::AttachmentChangedTrigger;
 mod permanent_becomes_tapped;

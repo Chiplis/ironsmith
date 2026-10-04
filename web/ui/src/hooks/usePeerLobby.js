@@ -1,5 +1,6 @@
 import { assertMatchNotDisputed, isMatchDisputed } from "./peer-lobby/match-lifecycle.js";
 import { createValueStore } from "../lib/value-store.js";
+import { openingPreparationProgress } from "../lib/opening-preparation-progress.js";
 import { canReuseEmptyCryptoPreview } from "../lib/preview-crypto-material.js";
 import { createProtocolActionOrder } from "../lib/protocol-action-order.js";
 import { describeSubstitutions, withSupportedCards } from "../lib/unsupported-card-substitution.js";
@@ -1017,13 +1018,9 @@ export function usePeerLobby({
             previewTotal: localOpeningPreviewTotal,
             previewZone: preview.zone,
           });
-          const progressPayload = {
-            operation: "Opening revealed card",
-            cardName: preview.card,
-            zone: preview.zone,
-            openingPreview: preview,
-            ...progress,
-          };
+          // Local inspection remains useful, but peer progress precedes the
+          // accepted action. Its eventual signed payload carries the openings.
+          const progressPayload = openingPreparationProgress(progress);
           updateLocalActionProgress(
             {
               kind: "local_ziffle_reveal",

@@ -80,7 +80,7 @@ pub use context::{DoThisLimit, ExecutionError, ReplacementContextMappingError, R
 pub use executor_trait::{
     CostExecutableEffect, CostValidationError, DeferredPlayerActionProposal,
     EffectExecutionCategory, EffectExecutor, ModalEffectSpec, ModalSpec,
-    SimultaneousEffectProposal, TargetReusePolicy, TargetSelectionProfile,
+    SimultaneousEffectProposal, SimultaneousEffectCommit, SimultaneousEffectCompletion, TargetReusePolicy, TargetSelectionProfile,
 };
 pub type EffectContext<'a> = context::ExecutionContext<'a>;
 pub(crate) use context::{ExecutionContext, ExecutionContextCheckpoint};

@@ -296,3 +296,54 @@ fn triggering_die_result_uses_its_event_and_rejects_missing_or_planar_rolls() {
     ));
     assert!(resolve(&value, &EvaluationContext::execution_context(&game, &exec)).is_err());
 }
+
+#[test]
+fn fractional_rounding_uses_a_wide_intermediate_for_representable_results() {
+    let (mut game, source, alice) = fixture();
+    for base in [i32::MIN, -1, 0, 1, i32::MAX] {
+        for divisor in [2, 3, 4, i32::MAX] {
+            let rounded = Value::DividedRoundedDown(
+                Box::new(Value::Add(
+                    Box::new(Value::Fixed(base)),
+                    Box::new(Value::Fixed(divisor - 1)),
+                )),
+                divisor,
+            );
+            let expected =
+                (i64::from(base) + i64::from(divisor) - 1).div_euclid(i64::from(divisor)) as i32;
+            let exec = ExecutionContext::new_default(source, alice);
+            assert_eq!(
+                resolve(
+                    &rounded,
+                    &EvaluationContext::execution_context(&game, &exec)
+                )
+                .unwrap(),
+                expected
+            );
+            assert_eq!(continuous(&rounded, &game, source, alice), expected);
+        }
+    }
+    game.player_mut(alice).unwrap().life = i32::MAX;
+    let exec = ExecutionContext::new_default(source, alice);
+    assert_eq!(
+        resolve(
+            &Value::HalfLifeTotalRoundedUp(PlayerFilter::You),
+            &EvaluationContext::execution_context(&game, &exec)
+        )
+        .unwrap(),
+        1_073_741_824
+    );
+    let half = Value::HalfRoundedDown(Box::new(Value::Add(
+        Box::new(Value::Fixed(i32::MAX)),
+        Box::new(Value::Fixed(1)),
+    )));
+    assert_eq!(continuous(&half, &game, source, alice), 1_073_741_824);
+    let overflow = Value::DividedRoundedDown(Box::new(Value::Fixed(i32::MIN)), -1);
+    assert!(
+        resolve(
+            &overflow,
+            &EvaluationContext::execution_context(&game, &exec)
+        )
+        .is_err()
+    );
+}

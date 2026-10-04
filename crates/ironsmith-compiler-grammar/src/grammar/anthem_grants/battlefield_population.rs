@@ -72,7 +72,11 @@ mod tests {
             let PredicateAst::ValueComparison { left: Value::Count(actual), operator: actual_operator, right: Value::Fixed(actual_threshold) } = parsed else { panic!("{text}: {parsed:?}"); };
             // Surface annotations need not compare equal; the semantic fields do.
             assert_eq!(actual.zone, filter.zone, "{text}");
-            assert_eq!(actual.card_types, filter.card_types, "{text}");
+            if filter.card_types.is_empty() {
+                assert!(actual.card_types.is_empty() || actual.has_all_permanent_card_types(), "{text}");
+            } else {
+                assert_eq!(actual.card_types, filter.card_types, "{text}");
+            }
             assert_eq!(actual.colors, filter.colors, "{text}");
             assert_eq!(actual.controller, filter.controller, "{text}");
             assert_eq!(actual.with_counter, filter.with_counter, "{text}");

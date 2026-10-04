@@ -501,6 +501,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
         TriggerSpec::ThisPhasesOut => Trigger::this_phases_out(),
+        TriggerSpec::CardsMilled { player, filter, one_or_more, per_player } => Trigger::cards_milled(player, filter, one_or_more, per_player),
         TriggerSpec::PhasingChanged { filter, phased_in, one_or_more } => Trigger::phasing_changed(filter, phased_in, one_or_more),
         TriggerSpec::ThisLeavesBattlefieldWithSurface(surface) => Trigger::new(
             crate::triggers::ZoneChangeTrigger::new()
@@ -1561,7 +1562,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             | TriggerSpec::CounterRemovedFrom { .. }
             | TriggerSpec::TokensCreated { .. }
             | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,
-            TriggerSpec::PlayerChangesTapState { .. } | TriggerSpec::PhasingChanged { .. } => matches!(spec, EventValueSpec::Amount),
+            TriggerSpec::CardsMilled { .. } | TriggerSpec::PlayerChangesTapState { .. } | TriggerSpec::PhasingChanged { .. } => matches!(spec, EventValueSpec::Amount),
             TriggerSpec::PutIntoExileFromZones { one_or_more, .. } => *one_or_more,
             TriggerSpec::PlayerDiscardsCard { one_or_more, .. } => *one_or_more,
             TriggerSpec::StateBased { .. } => false,

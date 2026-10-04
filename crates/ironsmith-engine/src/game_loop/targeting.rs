@@ -218,6 +218,8 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                 let key = (trigger.source_stable_id, trigger.trigger_identity, group);
                 if matches!(group,
                     crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::MillingBatch
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerMillingBatch(_)
                         | crate::triggers::matcher_trait::SimultaneousTriggerKey::ObjectLeavesGameBatch
                         | crate::triggers::matcher_trait::SimultaneousTriggerKey::PhasingBatch { .. }
                         | crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { .. }
@@ -4115,6 +4117,14 @@ pub(crate) fn stack_entry_assignment_legal_targets(
     assignment_index: usize,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> AssignmentLegalTargets {
+    // Stack entries retain snapshots for both spells and abilities. Preserve
+    // their explicit role across retargeting and resolution instead of
+    // inferring "ability" merely from a snapshot's presence.
+    if !entry.is_ability && !view.is_casting_spell(entry.object_id) {
+        return view.with_casting_spell(entry.object_id, || {
+            stack_entry_assignment_legal_targets(game, entry, assignment_index, view)
+        });
+    }
     let assignment = &entry.target_assignments[assignment_index];
     let resolved_spec = choose_spec_with_damaged_player_from_event(
         &assignment.spec,
@@ -4227,6 +4237,11 @@ pub(super) fn validate_stack_entry_targets_with_view(
     Vec<crate::game_state::TargetAssignment>,
     bool,
 ) {
+    if !entry.is_ability && !view.is_casting_spell(entry.object_id) {
+        return view.with_casting_spell(entry.object_id, || {
+            validate_stack_entry_targets_with_view(game, entry, view)
+        });
+    }
     if entry.targets.is_empty() {
         return (Vec::new(), Vec::new(), false);
     }
