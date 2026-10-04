@@ -7350,3 +7350,410 @@ html[data-hand-pointer-suspended="true"] * {
     z-index: 200 !important;
   }
 }
+
+@media (min-width: 1024px) {
+  /* The dock's height budget comes from TableCore (room below Graveyard/Exile);
+     the option list shrinks and scrolls to fit it. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="true"]),
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:has(.combat-decision-panel) {
+    max-height: min(60vh, 420px, var(--dock-max-height, 420px)) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel {
+    max-width: 100% !important;
+  }
+}
+
+/* Desktop hand past the packed card limit: scroll horizontally. A scroller
+   clips on both axes, so it reserves transparent headroom (padding pulled
+   back with a negative margin) for the enlarged hover card, and lets clicks
+   through everywhere except the cards themselves. */
+.hand-reveal-shell .hand-zone-scroll-mobile-fan[data-hand-overflow="true"] {
+  --hand-hover-headroom: 640px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: calc(100% + var(--hand-hover-headroom)) !important;
+  margin-top: calc(var(--hand-hover-headroom) * -1);
+  padding-top: var(--hand-hover-headroom);
+  pointer-events: none;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(190, 164, 226, 0.55) transparent;
+}
+
+.hand-reveal-shell .hand-zone-scroll-mobile-fan[data-hand-overflow="true"] > .hand-zone-row {
+  justify-content: flex-start;
+  pointer-events: auto;
+}
+
+/* Dock header: a chevron in the top-right corner folds the options; Submit
+   lives in a footer under the options, outside their scroll area. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-toolbar-side {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-start;
+    margin-left: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-decision-disclosure-chevron {
+    width: 36px !important;
+    min-width: 36px;
+    height: 36px !important;
+    min-height: 36px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 7px !important;
+    color: #dccff2;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-decision-disclosure-chevron svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 160ms ease;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-decision-disclosure-chevron[aria-expanded="false"] svg {
+    transform: rotate(180deg);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-stack-footer {
+    display: flex;
+    width: 100%;
+    align-self: stretch !important;
+    flex: 0 0 auto !important;
+    justify-content: flex-end;
+    margin-top: 8px;
+    padding: 8px 0 0 !important;
+    border-top: 1px solid rgba(183, 146, 235, 0.18);
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .decision-stack-footer .action-strip-submit-button {
+    width: auto !important;
+    min-width: 132px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-decision-stack[data-details-expanded="false"] .decision-stack-footer {
+    display: none !important;
+  }
+
+  /* Decision header uses the full width:
+       [stage chip] [title ...........] [⌄]
+       [description, up to two lines ]
+     The nested wrappers become transparent so their children join one grid. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-decision-stack .action-strip-decision-toolbar {
+    display: grid !important;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "prim chip title side"
+      "prim desc desc side"
+      "search search search search";
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 2px;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    > .flex.min-w-0.flex-1,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    .action-strip-decision-meta,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    .action-strip-decision-meta > div:first-child {
+    display: contents !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    .decision-primary-controls {
+    grid-area: prim;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    .decision-stage-chip {
+    grid-area: chip;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    .action-strip-decision-title {
+    grid-area: title;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    :is(.action-strip-decision-inline-summary, .action-strip-decision-source) {
+    display: -webkit-box !important;
+    grid-area: desc;
+    min-width: 0;
+    max-width: none !important;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.35 !important;
+    text-overflow: clip;
+    white-space: normal !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    .action-strip-decision-toolbar-search {
+    grid-area: search;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    .action-strip-decision-toolbar-search:empty {
+    display: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    .decision-toolbar-side {
+    grid-area: side;
+    margin-left: 0;
+  }
+}
+
+/* Decision options: a vertical list that takes whatever height the dock has
+   left under the header and scrolls, so it holds any number of options. Every
+   wrapper between the panel and the list must be a shrinkable flex column. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:has(.action-strip-decision-stack)
+    :is(.pointer-events-none.absolute.inset-0, .priority-inline-panel, .action-strip-decision-stack,
+      .action-strip-decision-content, .action-strip-decision-content div:has(.decision-strip-scroll)) {
+    display: flex !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    flex: 0 1 auto !important;
+    flex-direction: column !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-decision-content[hidden] {
+    display: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-decision-content {
+    overflow: hidden !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-strip-scroll {
+    min-height: 40px !important;
+    max-height: none !important;
+    flex: 0 1 auto !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(190, 164, 226, 0.55) transparent;
+  }
+}
+
+@media (min-width: 1024px) {
+  /* Lift computed in PlayerZonePiles; the mana rail rises with the piles. */
+  .table-shell[data-focused-hud="true"] [data-local-zone-piles="true"] > .zone-pile-slot {
+    top: calc(var(--local-piles-lift, 0px) * -1);
+  }
+
+  .table-shell[data-focused-hud="true"] [data-my-zone] .player-zone-piles > .my-zone-mana-rail {
+    top: calc(var(--local-piles-lift, 0px) * -1);
+    bottom: var(--local-piles-lift, 0px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
+    .decision-toolbar-side {
+    align-self: start;
+  }
+}
+
+/* Every option-strip variant (choose option, targets, objects, …) reads as
+   one vertical, full-width list in the desktop dock, scrolling as needed. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-decision-content div:has(.decision-strip-options-row) {
+    display: flex !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    flex: 0 1 auto !important;
+    flex-direction: column !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-decision-content div:has(> .decision-strip-options-row) {
+    min-height: 40px !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(190, 164, 226, 0.55) transparent;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-strip-options-row {
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: 0 0 auto !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    gap: 4px !important;
+    padding: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-strip-options-row > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex: 0 0 auto !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-strip-options-row > button {
+    min-height: 36px !important;
+    height: auto !important;
+    justify-content: flex-start !important;
+    padding: 6px 10px !important;
+    text-align: left !important;
+    white-space: normal !important;
+  }
+}
+
+/* Focused desktop HUD header row: [life name] [Lobby chat / Playing as] [hold] [auto-pass].
+   Playing as hangs under the chat tab with the same look; the whole pill
+   opens a player list upward, styled like the chat panel. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .player-header-perspective {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    z-index: 2;
+    pointer-events: auto;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-trigger {
+    display: inline-flex;
+    min-width: 86px;
+    height: 24px;
+    align-items: center;
+    gap: 5px;
+    padding: 0 8px;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 7px;
+    background: rgba(9, 9, 17, 0.95);
+    color: #dccff2;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-trigger:hover,
+  .table-shell[data-focused-hud="true"] .player-header-perspective[data-open="true"] .player-header-perspective-trigger {
+    border-color: rgba(214, 192, 250, 0.6);
+    background: rgba(32, 24, 46, 0.96);
+    color: #fff;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-trigger:focus-visible {
+    outline: 2px solid rgba(220, 196, 255, 0.8);
+    outline-offset: 1px;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-label {
+    opacity: 0.68;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-caret {
+    margin-left: 2px;
+    transition: transform 140ms ease;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective[data-open="true"] .player-header-perspective-caret {
+    transform: rotate(180deg);
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-menu {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    display: flex;
+    min-width: max(100%, 168px);
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 7px;
+    background: rgba(9, 9, 17, 0.97);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-option {
+    display: flex;
+    width: 100%;
+    height: 28px;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #dccff2;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-option:hover,
+  .table-shell[data-focused-hud="true"] .player-header-perspective-option:focus-visible {
+    background: rgba(141, 98, 210, 0.2);
+    color: #fff;
+    outline: none;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-option[aria-selected="true"] {
+    background: rgba(141, 98, 210, 0.12);
+    color: #fff;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-dot {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 8px;
+    border-radius: 999px;
+    background: var(--option-accent, #b79cff);
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .table-shell[data-focused-hud="true"] .player-header-perspective-check {
+    color: #cdb4ff;
+    font-size: 11px;
+  }
+
+  /* An open menu must cover the phase controls and the board like the chat. */
+  .table-shell[data-focused-hud="true"] > .table-shared-control-band:has(.player-header-perspective[data-open="true"]) {
+    z-index: 200 !important;
+  }
+}

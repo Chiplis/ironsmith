@@ -781,6 +781,7 @@ export default function Shell() {
       {renderTopLevelAddCardBar ? addCardBarElement : null}
       <TableErrorBoundary resetKey={state}>
         <Workspace
+          onChangePerspective={handleChangePerspective}
           zoneViews={zoneViews}
           setZoneViews={setZoneViews}
           deckLoadingMode={deckLoadingMode}

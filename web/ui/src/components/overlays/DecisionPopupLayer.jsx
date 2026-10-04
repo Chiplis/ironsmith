@@ -2436,6 +2436,7 @@ function PriorityBar({
   inline = false,
   replaceMiddleControls = false,
   selectedObjectId = null,
+  dockSubmitFooter = false,
 }) {
   const ui = useUiText();
   const {
@@ -2757,7 +2758,18 @@ function PriorityBar({
     && typeof document !== "undefined"
     ? document.querySelector('[data-topbar-main-decision-host="true"]')
     : null;
+  // The desktop dock draws Submit in a footer under the options, outside
+  // their scroll area, instead of porting it to a separate row.
+  const submitInFooter = Boolean(
+    dockSubmitFooter
+    && inline
+    && !isPriorityDecision
+    && effectiveSubmitAction
+    && !showViewedCardsStep
+    && !peerWaiting
+  );
   const decisionSubmitPortalHost = inline
+    && !submitInFooter
     && !isPriorityDecision
     && effectiveSubmitAction
     && !showViewedCardsStep
@@ -3165,7 +3177,7 @@ function PriorityBar({
                     "decision-primary-controls flex min-w-0 shrink-0 items-stretch gap-2",
                     manaPayment ? "max-w-[360px]" : "max-w-[320px]"
                   )}>
-                    {!decisionSubmitPortalHost ? renderExpandedPrimaryControl(false) : null}
+                    {!decisionSubmitPortalHost && !submitInFooter ? renderExpandedPrimaryControl(false) : null}
                     {manaPayment && secondarySubmitAction ? (
                       <Button
                         type="button"
@@ -3229,18 +3241,41 @@ function PriorityBar({
                   />
                 </div>
                 {!isPriorityDecision && (
-                  <button
-                    type="button"
-                    className="battlefield-decision-disclosure-toggle"
-                    aria-expanded={decisionDetailsExpanded}
-                    aria-controls="battlefield-decision-options"
-                    onClick={() => setDecisionDetailsState({
-                      identity: decisionIdentity,
-                      expanded: !decisionDetailsExpanded,
-                    })}
-                  >
-                    {t(decisionDetailsExpanded ? "decision.collapseDetails" : "decision.expandDetails")}
-                  </button>
+                  <div className="decision-toolbar-side">
+                    {dockSubmitFooter ? (
+                      // Desktop dock: a chevron in the top-right corner folds
+                      // the options (down when open, up when folded).
+                      <button
+                        type="button"
+                        className="battlefield-decision-disclosure-toggle battlefield-decision-disclosure-chevron"
+                        aria-expanded={decisionDetailsExpanded}
+                        aria-controls="battlefield-decision-options"
+                        aria-label={t(decisionDetailsExpanded ? "decision.collapseDetails" : "decision.expandDetails")}
+                        title={t(decisionDetailsExpanded ? "decision.collapseDetails" : "decision.expandDetails")}
+                        onClick={() => setDecisionDetailsState({
+                          identity: decisionIdentity,
+                          expanded: !decisionDetailsExpanded,
+                        })}
+                      >
+                        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">
+                          <path d="M4 6l4 4 4-4" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="battlefield-decision-disclosure-toggle"
+                        aria-expanded={decisionDetailsExpanded}
+                        aria-controls="battlefield-decision-options"
+                        onClick={() => setDecisionDetailsState({
+                          identity: decisionIdentity,
+                          expanded: !decisionDetailsExpanded,
+                        })}
+                      >
+                        {t(decisionDetailsExpanded ? "decision.collapseDetails" : "decision.expandDetails")}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
               <div
@@ -3314,6 +3349,11 @@ function PriorityBar({
                   </span>
                 )}
               </div>
+              {submitInFooter ? (
+                <div className="action-strip-submit-row decision-stack-footer">
+                  {renderExpandedPrimaryControl(false, true)}
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -3907,6 +3947,7 @@ export default function DecisionPopupLayer({
   mobileBattleDockInline = false,
   mobileBattleDockHidden = false,
   mobileBattleDockOrientation = "horizontal",
+  dockSubmitFooter = false,
 }) {
   const { state } = useGame();
   const decision = state?.decision || null;
@@ -3941,6 +3982,7 @@ export default function DecisionPopupLayer({
         inline={priorityInline}
         replaceMiddleControls={replaceMiddleControls}
         selectedObjectId={selectedObjectId}
+        dockSubmitFooter={dockSubmitFooter}
       />
     );
   } else if (decision?.kind === "attackers" || decision?.kind === "blockers") {
@@ -3952,6 +3994,7 @@ export default function DecisionPopupLayer({
         inline={priorityInline}
         replaceMiddleControls={replaceMiddleControls}
         selectedObjectId={selectedObjectId}
+        dockSubmitFooter={dockSubmitFooter}
       />
     );
   }

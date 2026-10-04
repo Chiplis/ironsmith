@@ -4,7 +4,6 @@ import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { cloneElement, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
-import { normalizePhaseStep } from "@/lib/constants";
 import useDecisionControlMotion from "@/hooks/useDecisionControlMotion";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import OpponentZone from "./OpponentZone";
@@ -17,29 +16,20 @@ import MobileBattleScene from "./MobileBattleScene";
 import PlanarZone from "./PlanarZone";
 import ManaPool from "@/components/left-rail/ManaPool";
 import LobbyChat from "@/components/right-rail/LobbyChat";
+import PlayerPerspectiveMenu from "./PlayerPerspectiveMenu";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { useI18n } from "@/i18n/I18nContext";
-import { findFloatingDockPosition } from "@/lib/floating-dock-position";
+import { anchorFloatingDock, dockMaxWidth } from "@/lib/floating-dock-position";
+import { ZONE_PILES_MOVED_EVENT } from "./PlayerZonePiles";
 
-const FLOATING_DOCK_OBSTACLES = [
-  ".game-card",
-  ".deck-zone-pile",
-  ".zone-pile-slot",
-  ".zone-pile",
-  ".battlefield-panel-header",
-  ".table-shared-player-header",
-  ".topbar-phase-shell",
-  ".topbar-brand-stack",
-  ".player-header-utility-controls",
-  ".my-zone-stack-rail",
-  ".stack-timeline-rail",
-  ".player-zone-chat-dock",
-  ".zone-pile-menu",
-].join(",");
+// The dock stays anchored bottom-right and sized against the local
+// Graveyard/Exile column only. Look, zone menus and card highlights animate
+// on hover; measuring them made the dock move under the pointer and flicker.
+const FLOATING_DOCK_PROTECTED_ZONES = '[data-local-zone-piles="true"] > .zone-pile-slot';
 
 function visibleRect(element) {
   if (!element || !element.isConnected) return null;
@@ -97,6 +87,7 @@ function decisionCompactPreferredWidth(decision) {
 }
 
 export default function TableCore({
+  onChangePerspective = null,
   selectedObjectId,
   onInspect,
   focusedStackObjectId = null,
@@ -177,10 +168,6 @@ export default function TableCore({
     && (focusedHudDesktop || Boolean(middleTopbar || middleAddCardBar));
   const isActivePlayer = Number(state?.active_player) === Number(me?.id);
   const isPriorityPlayer = Number(state?.priority_player) === Number(me?.id);
-  const activePhaseStep = state ? normalizePhaseStep(state.phase, state.step) : null;
-  const activePhaseLabel = activePhaseStep
-    ? t(`game.track.${activePhaseStep}`, null, activePhaseStep)
-    : "";
   const castPlayerHovered = useCastPlayerHovered(me?.id);
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(me?.id)) || legalTargetPlayerIds.has(Number(me?.index));
@@ -259,41 +246,37 @@ export default function TableCore({
       const dockHeight = dockRect.height || dock.offsetHeight;
       if (!dockWidth || !dockHeight) return;
 
-      const obstacleElements = [...document.querySelectorAll(FLOATING_DOCK_OBSTACLES)]
+      const zoneElements = [...document.querySelectorAll(FLOATING_DOCK_PROTECTED_ZONES)]
         .filter((element) => element !== dock && !dock.contains(element));
-      obstacleElements.forEach(observe);
+      zoneElements.forEach(observe);
       observe(dock);
       observe(table);
-      const obstacles = obstacleElements.map((element) => {
-        const rect = visibleRect(element);
-        return rect ? {
-          ...rect,
-          protected: Boolean(element.closest(".zone-pile-slot, .deck-zone-pile, .zone-pile, .zone-pile-menu")),
-        } : null;
-      }).filter(Boolean);
-      const handTop = [...table.querySelectorAll(".hand-card")]
-        .map(visibleRect)
-        .filter(Boolean)
-        .reduce((top, rect) => Math.min(top, rect.top), Number.POSITIVE_INFINITY);
-      const preferredTop = Number.isFinite(handTop)
-        ? handTop - dockHeight - 18
-        : window.innerHeight - dockHeight - 132;
-      const position = findFloatingDockPosition({
+      const protectedZones = zoneElements.map(visibleRect).filter(Boolean);
+      // Bottom-right corner, beside the hand: the hand keeps a reserve on
+      // its right (see handSideReserve) that bounds the dock's width, and the
+      // dock may only grow up to just below Graveyard/Exile; taller content
+      // scrolls inside it.
+      const bottomLimit = window.innerHeight - 16;
+      const pilesBottom = protectedZones.reduce((bottom, rect) => Math.max(bottom, rect.bottom), -Infinity);
+      const maxHeight = Number.isFinite(pilesBottom)
+        ? Math.max(150, Math.floor(bottomLimit - pilesBottom - 14))
+        : Math.round(window.innerHeight * 0.6);
+      const maxWidth = Math.round(dockMaxWidth(window.innerWidth));
+      const position = anchorFloatingDock({
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
         dockWidth,
         dockHeight,
-        obstacles,
-        preferredLeft: window.innerWidth - dockWidth - 18,
-        preferredTop,
+        bottomLimit,
+        protectedZones,
       });
       if (!position) return;
+      const next = { ...position, maxWidth, maxHeight };
       setHumanActionDockPosition((previous) => (
-        previous?.left === position.left
-          && previous?.top === position.top
-          && previous?.overlaps === position.overlaps
+        previous?.left === next.left && previous?.top === next.top
+          && previous?.maxWidth === next.maxWidth && previous?.maxHeight === next.maxHeight
           ? previous
-          : position
+          : next
       ));
     };
     function schedule() {
@@ -302,18 +285,15 @@ export default function TableCore({
     }
 
     schedule();
-    const mutationObserver = new MutationObserver((records) => {
-      if (records.some((record) => !dock.contains(record.target))) schedule();
-    });
-    mutationObserver.observe(table, { childList: true, subtree: true });
     window.addEventListener("resize", schedule);
     window.addEventListener("scroll", schedule, true);
+    window.addEventListener(ZONE_PILES_MOVED_EVENT, schedule);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       resizeObserver?.disconnect();
-      mutationObserver.disconnect();
       window.removeEventListener("resize", schedule);
       window.removeEventListener("scroll", schedule, true);
+      window.removeEventListener(ZONE_PILES_MOVED_EVENT, schedule);
     };
   }, [focusedHudDesktop, deckLoadingMode, puzzleSetupMode, state?.players, state?.decision, state?.phase, state?.step]);
 
@@ -340,26 +320,29 @@ export default function TableCore({
       />
     </div>
   );
+  // Goldfish (local, non-multiplayer) games let the player switch seats.
+  const canChoosePerspective = focusedHudDesktop
+    && !multiplayer?.role
+    && typeof onChangePerspective === "function"
+    && players.length > 1;
   const humanQuickControlsElement = focusedHudDesktop ? (
-    <div className="battlefield-phase-priority-controls">
-      <div className="battlefield-human-quick-controls">
-        <PriorityHoldControl compact />
-        <button
-          type="button"
-          className="battlefield-auto-pass-toggle"
-          data-enabled={autoPassEnabled ? "true" : "false"}
-          aria-pressed={Boolean(autoPassEnabled)}
-          aria-label={t("action.autoPass")}
-          data-tooltip={t("action.autoPass")}
-          onClick={() => setAutoPassEnabled((enabled) => !enabled)}
-        >
-          <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
-            <path d="m3.25 4.5 5.5 5.5-5.5 5.5" />
-            <path d="m10.25 4.5 5.5 5.5-5.5 5.5" />
-          </svg>
-          <span className="sr-only">{t("action.autoPass")}</span>
-        </button>
-      </div>
+    <div className="battlefield-human-quick-controls">
+      <PriorityHoldControl compact />
+      <button
+        type="button"
+        className="battlefield-auto-pass-toggle"
+        data-enabled={autoPassEnabled ? "true" : "false"}
+        aria-pressed={Boolean(autoPassEnabled)}
+        aria-label={t("action.autoPass")}
+        data-tooltip={t("action.autoPass")}
+        onClick={() => setAutoPassEnabled((enabled) => !enabled)}
+      >
+        <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+          <path d="m3.25 4.5 5.5 5.5-5.5 5.5" />
+          <path d="m10.25 4.5 5.5 5.5-5.5 5.5" />
+        </svg>
+        <span className="sr-only">{t("action.autoPass")}</span>
+      </button>
     </div>
   ) : null;
   const middleTopbarElement = middleTopbar;
@@ -436,8 +419,21 @@ export default function TableCore({
           // hand; the panel opens upward from there.
           <div className="player-header-chat-dock">
             <LobbyChat showOffline />
+            {canChoosePerspective ? (
+              <PlayerPerspectiveMenu
+                label={t("action.playingAs")}
+                currentId={state?.perspective ?? me?.id ?? 0}
+                onSelect={onChangePerspective}
+                players={players.map((player) => ({
+                  id: player.id,
+                  name: playerDisplayName(players, player),
+                  accent: getPlayerAccent(players, player.id, state?.perspective, playerAccentOverrides)?.hex,
+                }))}
+              />
+            ) : null}
           </div>
         ) : null}
+        {humanQuickControlsElement}
         {middleUtilityControls ? (
           <div className="player-header-utility-controls">
             {cloneElement(middleUtilityControls, {
@@ -538,7 +534,6 @@ export default function TableCore({
       ref={humanActionDockRef}
       className="battlefield-human-action-dock"
       data-human-action-dock
-      data-placement-overlap={humanActionDockPosition?.overlaps ? "true" : undefined}
       style={{
         "--decision-panel-content-width": decisionContentPreferredWidth(decision),
         "--decision-panel-compact-width": decisionCompactPreferredWidth(decision),
@@ -546,6 +541,8 @@ export default function TableCore({
           ? {
             left: `${humanActionDockPosition.left}px`,
             top: `${humanActionDockPosition.top}px`,
+            maxWidth: `${humanActionDockPosition.maxWidth}px`,
+            "--dock-max-height": `${humanActionDockPosition.maxHeight}px`,
             right: "auto",
             bottom: "auto",
             visibility: "visible",
@@ -557,22 +554,9 @@ export default function TableCore({
         <div className="table-action-bar battlefield-human-decision-panel">
           <DecisionPopupLayer
             priorityInline
+            dockSubmitFooter
             selectedObjectId={selectedObjectId}
           />
-          <div className="battlefield-human-step-submit-row">
-            <span
-              className="battlefield-human-step-chip"
-              data-phase-name={activePhaseStep || "none"}
-              aria-label={activePhaseLabel || undefined}
-            >
-              <span className="battlefield-human-step-marker" aria-hidden="true" />
-              <span>{activePhaseLabel || ui("Waiting")}</span>
-            </span>
-            <div
-              className="table-decision-submit-slot"
-              data-decision-submit-portal-host="true"
-            />
-          </div>
         </div>
       </div>
     </div>
@@ -638,7 +622,6 @@ export default function TableCore({
       {planarZoneElement}
       {!mergeActionBarIntoMyZone && sharedMiddleElement}
       {!mergeActionBarIntoMyZone && !sharedMiddleElement && middleToolbarElement}
-      {humanQuickControlsElement}
       <MyZone
         player={me}
         selectedObjectId={selectedObjectId}

@@ -24,6 +24,11 @@ import {
 const ZONE_TARGET_GROW_MS = 220;
 const LOOK_STACK_GAP = 12;
 const STACK_MIN_VISIBLE_HEIGHT = 72;
+// Desktop HUD: the local Graveyard/Exile column rises toward the opponent
+// piles above it to leave the decision dock more height underneath.
+const LOCAL_PILES_MAX_LIFT = 120;
+const LOCAL_PILES_CLEARANCE = 20;
+export const ZONE_PILES_MOVED_EVENT = "ironsmith:zone-piles-moved";
 
 function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverride, fading = false, onOpenChange }) {
   const ui = useUiText();
@@ -436,6 +441,23 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
         const pilesTop = Math.max(0, boardBounds.top + zoneTop - bounds.top - containerClientTop);
         const nextPilesTop = bounds.top + containerClientTop + pilesTop;
         piles.style.setProperty("--zone-piles-top", `${pilesTop}px`);
+        if (piles.dataset.localZonePiles === "true") {
+          let lift = 0;
+          const column = piles.querySelector(":scope > .zone-pile-slot")?.getBoundingClientRect();
+          if (column && piles.closest('.table-shell[data-focused-hud="true"]')) {
+            const ceiling = [...document.querySelectorAll('[data-opponent-zone-piles="true"] .zone-pile-slot')]
+              .map((slot) => slot.getBoundingClientRect())
+              .filter((rect) => rect.width > 0 && rect.left < column.right && rect.right > column.left
+                && rect.bottom <= nextPilesTop)
+              .reduce((bottom, rect) => Math.max(bottom, rect.bottom + LOCAL_PILES_CLEARANCE), -Infinity);
+            lift = Math.max(0, Math.min(LOCAL_PILES_MAX_LIFT, nextPilesTop - ceiling));
+          }
+          const nextLift = `${Math.round(lift)}px`;
+          if (piles.style.getPropertyValue("--local-piles-lift") !== nextLift) {
+            piles.style.setProperty("--local-piles-lift", nextLift);
+            window.dispatchEvent(new Event(ZONE_PILES_MOVED_EVENT));
+          }
+        }
         // Chat hangs 6px under Exile; give it whatever the board has left.
         piles.style.setProperty("--exile-chat-room", `${Math.max(0, boardBounds.bottom - nextPilesTop - pilesBounds.height - 12)}px`);
         // Keep Look in a separate row above the stack, with room for the
