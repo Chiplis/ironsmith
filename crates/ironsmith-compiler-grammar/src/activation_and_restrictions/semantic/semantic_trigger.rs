@@ -11,6 +11,8 @@ mod attachment_transitions;
 mod phasing_transitions;
 #[path = "milling_transitions.rs"]
 mod milling_transitions;
+#[path = "player_attack_declarations.rs"]
+mod player_attack_declarations;
 
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
@@ -3361,6 +3363,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    if let Some(trigger) = player_attack_declarations::parse_player_attack_declaration(tokens)? { return Ok(trigger); }
     if let Some(trigger) = milling_transitions::parse_milling_trigger(tokens)? {
         return Ok(trigger);
     }

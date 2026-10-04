@@ -4805,6 +4805,10 @@ fn continuous_effect_duration_is_active(
     game: &crate::game_state::GameState,
 ) -> bool {
     match effect.duration {
+        Until::ObjectIsCast { ref object, from_zone } => {
+            continuous_duration_object_id(object)
+                .is_some_and(|object| !game.object_completed_cast_from(object, from_zone))
+        }
         Until::YourNextTurn => {
             !(game.turn.turn_number > effect.expires_end_of_turn
                 && game.is_active_player(effect.controller))

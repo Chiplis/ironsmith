@@ -186,6 +186,9 @@ fn tagged_permission_object_surface(
         permission_tagged_facts::TaggedPermissionTargetSurface::It => {
             Some(ironsmith_core::GrantPlayTaggedObjectSurface::It)
         }
+        permission_tagged_facts::TaggedPermissionTargetSurface::ThisCard => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThisCard)
+        }
         permission_tagged_facts::TaggedPermissionTargetSurface::ThatCard => {
             Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)
         }
@@ -576,6 +579,9 @@ fn parse_tagged_cast_or_play_target_tokens(
         permission_tagged_facts::TaggedPermissionReference::SourceExiled => {
             crate::tag::CompilerReferenceTag::SourceExiled.bind()
         }
+        permission_tagged_facts::TaggedPermissionReference::SourceExiledSelf => {
+            crate::tag::CompilerReferenceTag::SourceExiledSelf.bind()
+        }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
             crate::tag::CompilerReferenceTag::LastRevealed.bind()
         }
@@ -606,6 +612,9 @@ fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Opt
         }
         permission_tagged_facts::TaggedPermissionReference::SourceExiled => {
             crate::tag::CompilerReferenceTag::SourceExiled.bind()
+        }
+        permission_tagged_facts::TaggedPermissionReference::SourceExiledSelf => {
+            crate::tag::CompilerReferenceTag::SourceExiledSelf.bind()
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
             crate::tag::CompilerReferenceTag::LastRevealed.bind()
@@ -2529,22 +2538,23 @@ pub fn parse_cast_or_play_tagged_clause(
             without_paying_mana_cost,
             lifetime: PermissionLifetime::ForAsLongAsExiled,
             filter,
+            surface,
             ..
         }) if matches!(
             player,
             PlayerAst::Implicit | PlayerAst::You | PlayerAst::ItsOwner
         ) =>
         {
-            Ok(Some(
-                EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-                    crate::tag::TagRef::of(tag),
-                    player,
-                    allow_land,
-                    without_paying_mana_cost,
-                    mana_spend_mode,
-                    filter,
-                ),
-            ))
+            let mut effect = EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+                crate::tag::TagRef::of(tag), player, allow_land,
+                without_paying_mana_cost, mana_spend_mode, filter,
+            );
+            if let EffectAst::SubjectVerb(subject) = &mut effect
+                && let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    surface: grant_surface, ..
+                }) = &mut subject.action
+            { *grant_surface = surface; }
+            Ok(Some(effect))
         }
         Some(PermissionClauseSpec::Tagged {
             tag,

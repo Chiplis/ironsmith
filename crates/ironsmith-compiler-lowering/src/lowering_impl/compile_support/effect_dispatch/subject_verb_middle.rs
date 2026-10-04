@@ -878,6 +878,7 @@ pub(super) fn compile_become_base_pt_creature_action(
         abilities,
         granted_abilities,
         preserve_other_types,
+        preserve_other_colors,
         type_retention_surface,
         animation_pt_surface,
         animation_duration_surface,
@@ -950,8 +951,9 @@ pub(super) fn compile_become_base_pt_creature_action(
             );
         }
         if let Some(colors) = colors {
-            apply = apply
-                .with_additional_modification(crate::continuous::Modification::SetColors(*colors));
+            apply = apply.with_additional_modification(if *preserve_other_colors {
+                crate::continuous::Modification::AddColors(*colors)
+            } else { crate::continuous::Modification::SetColors(*colors) });
         }
         if !subtypes.is_empty() {
             if !preserve_other_types {
@@ -2587,24 +2589,32 @@ pub(super) fn compile_subject_verb_middle(
             target,
             duration,
             set_quantifier_surface,
-        }) => compile_tagged_effect_for_target(target, ctx, "set_base_pt", |spec| {
-            let resolved_power = bind_iterated_value_to_choose_spec(power, &spec);
-            let resolved_toughness = bind_iterated_value_to_choose_spec(toughness, &spec);
-            Effect::new(
-                crate::effects::ApplyContinuousEffect::with_spec(
-                    spec,
-                    crate::continuous::Modification::SetPowerToughness {
-                        power: resolved_power,
-                        toughness: resolved_toughness,
-                        sublayer: crate::continuous::PtSublayer::Setting,
-                    },
-                    duration.clone(),
+        }) => {
+            // Bind the value antecedent before the destination advances the
+            // last-object tag. The copied object's identity may differ from
+            // the permanent whose base characteristics are being assigned.
+            let refs = current_reference_env(ctx);
+            let power = resolve_value_it_tag(power, &refs)?;
+            let toughness = resolve_value_it_tag(toughness, &refs)?;
+            compile_tagged_effect_for_target(target, ctx, "set_base_pt", |spec| {
+                let resolved_power = bind_iterated_value_to_choose_spec(&power, &spec);
+                let resolved_toughness = bind_iterated_value_to_choose_spec(&toughness, &spec);
+                Effect::new(
+                    crate::effects::ApplyContinuousEffect::with_spec(
+                        spec,
+                        crate::continuous::Modification::SetPowerToughness {
+                            power: resolved_power,
+                            toughness: resolved_toughness,
+                            sublayer: crate::continuous::PtSublayer::Setting,
+                        },
+                        duration.clone(),
+                    )
+                    .require_creature_target()
+                    .with_set_quantifier_surface(*set_quantifier_surface)
+                    .resolve_set_pt_values_at_resolution(),
                 )
-                .require_creature_target()
-                .with_set_quantifier_surface(*set_quantifier_surface)
-                .resolve_set_pt_values_at_resolution(),
-            )
-        }),
+            })
+        }
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
             ..
         }) => compile_become_base_pt_creature_action(subject_verb, ctx),
@@ -2612,38 +2622,44 @@ pub(super) fn compile_subject_verb_middle(
             power,
             target,
             duration,
-        }) => compile_tagged_effect_for_target(target, ctx, "set_base_power", |spec| {
-            Effect::new(
-                crate::effects::ApplyContinuousEffect::with_spec(
-                    spec,
-                    crate::continuous::Modification::SetPower {
-                        power: power.clone(),
-                        sublayer: crate::continuous::PtSublayer::Setting,
-                    },
-                    duration.clone(),
+        }) => {
+            let power = resolve_value_it_tag(power, &current_reference_env(ctx))?;
+            compile_tagged_effect_for_target(target, ctx, "set_base_power", |spec| {
+                Effect::new(
+                    crate::effects::ApplyContinuousEffect::with_spec(
+                        spec,
+                        crate::continuous::Modification::SetPower {
+                            power: power.clone(),
+                            sublayer: crate::continuous::PtSublayer::Setting,
+                        },
+                        duration.clone(),
+                    )
+                    .require_creature_target()
+                    .resolve_set_pt_values_at_resolution(),
                 )
-                .require_creature_target()
-                .resolve_set_pt_values_at_resolution(),
-            )
-        }),
+            })
+        }
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness {
             toughness,
             target,
             duration,
-        }) => compile_tagged_effect_for_target(target, ctx, "set_base_toughness", |spec| {
-            Effect::new(
-                crate::effects::ApplyContinuousEffect::with_spec(
-                    spec,
-                    crate::continuous::Modification::SetToughness {
-                        toughness: toughness.clone(),
-                        sublayer: crate::continuous::PtSublayer::Setting,
-                    },
-                    duration.clone(),
+        }) => {
+            let toughness = resolve_value_it_tag(toughness, &current_reference_env(ctx))?;
+            compile_tagged_effect_for_target(target, ctx, "set_base_toughness", |spec| {
+                Effect::new(
+                    crate::effects::ApplyContinuousEffect::with_spec(
+                        spec,
+                        crate::continuous::Modification::SetToughness {
+                            toughness: toughness.clone(),
+                            sublayer: crate::continuous::PtSublayer::Setting,
+                        },
+                        duration.clone(),
+                    )
+                    .require_creature_target()
+                    .resolve_set_pt_values_at_resolution(),
                 )
-                .require_creature_target()
-                .resolve_set_pt_values_at_resolution(),
-            )
-        }),
+            })
+        }
         SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
             power_per,
             toughness_per,

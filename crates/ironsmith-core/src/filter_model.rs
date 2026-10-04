@@ -1537,6 +1537,18 @@ pub enum PlayerFilter {
 }
 
 impl PlayerFilter {
+    /// Live attacking opponents of the attacked player captured by this
+    /// declaration event. The runtime binds the set when constructing a filter
+    /// context; the event's original attacking players are a different role.
+    pub fn opponents_attacking_event_defender() -> Self {
+        Self::excluding(
+            Self::TaggedPlayer(crate::tag::CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG.into()),
+            Self::your_team(),
+        )
+    }
+    pub fn is_opponents_attacking_event_defender(&self) -> bool {
+        self == &Self::opponents_attacking_event_defender()
+    }
     pub fn target_player() -> Self {
         Self::Target(Box::new(Self::Any))
     }
@@ -1812,6 +1824,7 @@ impl PlayerFilter {
             }
             Self::Target(inner) => format!("target {}", inner.description()),
             Self::AliasedTarget(_) => "that player".to_string(),
+            Self::Excluding { .. } if self.is_opponents_attacking_event_defender() => "an opponent attacking that player".into(),
             Self::Excluding { base, excluded } => {
                 format!(
                     "{} other than {}",
@@ -6938,6 +6951,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller's".to_string()
         }
+        PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => "an opponent attacking that player's".into(),
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             describe_possessive_player_filter(base),
@@ -7062,6 +7076,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller".to_string()
         }
+        PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => "opponent attacking that player".into(),
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             describe_player_filter(base),

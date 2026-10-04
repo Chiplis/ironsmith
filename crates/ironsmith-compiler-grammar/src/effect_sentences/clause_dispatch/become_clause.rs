@@ -41,3 +41,6 @@ mod quoted_duration_tests;
 #[path = "become_clause/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::parse_become_clause;
+
+#[path = "become_clause/dynamic_base_values.rs"]
+mod dynamic_base_values;

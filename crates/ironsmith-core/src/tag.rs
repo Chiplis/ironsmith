@@ -15,6 +15,12 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// Exact retained result of an instruction or cost that exiles its source.
+/// A changed/prevented action retains its receipt-result/original incarnation;
+/// permission consumers still require that object actually to be in exile.
+/// Never widened to the source's other linked exile objects.
+pub const SOURCE_EXILED_SELF_TAG: &str = "__source_exiled_self__";
+
 /// Runtime tag for only the cards the current resolution exiled with its
 /// source. Filter contexts widen [`SOURCE_EXILED_TAG`] to every linked card,
 /// so "each other card exiled with ~" excludes the just-exiled card through
@@ -173,6 +179,12 @@ pub const ZONE_CHANGE_GROUP_TAG: &str = "__zone_change_group__";
 pub const TAP_STATE_GROUP_TAG: &str = "__tap_state_group__";
 /// Exact participants of one matched simultaneous phasing transition.
 pub const PHASING_GROUP_TAG: &str = "__phasing_group__";
+/// Frozen actor and directly attacked player of one declared attack pair.
+pub const ATTACK_DECLARATION_ACTOR_TAG: &str = "__attack_declaration_actor__";
+pub const ATTACK_DECLARATION_DEFENDER_TAG: &str = "__attack_declaration_defender__";
+/// Live controllers attacking the event's frozen defender when an effect
+/// constructs its filter context (CR 508.6), not the declaration's old actors.
+pub const CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG: &str = "__current_players_attacking_event_defender__";
 
 /// The player who currently holds the initiative designation.
 ///
@@ -200,6 +212,7 @@ pub const CAST_CONTROLLED_OBJECTS_TAG: &str = "__cast_controlled_objects__";
 /// A parse binds each of them once, in the document's symbol scope.
 pub const WELL_KNOWN_TAGS: &[&str] = &[
     SOURCE_EXILED_TAG,
+    SOURCE_EXILED_SELF_TAG,
     SOURCE_EXILED_THIS_RESOLUTION_TAG,
     EXILED_BY_YOU_TAG,
     ZONE_REPLACEMENT_OBJECT_TAG,
@@ -221,6 +234,9 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     ZONE_CHANGE_GROUP_TAG,
     TAP_STATE_GROUP_TAG,
     PHASING_GROUP_TAG,
+    ATTACK_DECLARATION_ACTOR_TAG,
+    ATTACK_DECLARATION_DEFENDER_TAG,
+    CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG,
     INITIATIVE_HOLDER_TAG,
     PREVIOUS_ITERATED_OBJECTS_TAG,
     CAST_MODIFIED_CREATURES_TAG,

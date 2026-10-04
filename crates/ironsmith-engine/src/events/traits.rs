@@ -153,6 +153,8 @@ pub enum EventKind {
     PermanentPhasedIn,
     /// One card was moved by an actual mill instruction.
     CardMilled,
+    /// A player declared one or more attackers attacking another player.
+    PlayerAttackDeclaration,
 }
 
 /// A target within an event that can potentially be redirected.

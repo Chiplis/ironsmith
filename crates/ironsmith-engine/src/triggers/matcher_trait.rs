@@ -45,6 +45,10 @@ pub enum SimultaneousTriggerKey {
     MillingBatch,
     /// An explicit player subject keeps each milling player independent.
     PlayerMillingBatch(PlayerId),
+    /// One declared attacking player, across all matching defenders.
+    PlayerAttackActor(PlayerId),
+    /// One directly attacked player, across attacking teammates.
+    PlayerAttackDefender(PlayerId),
     /// One simultaneous instruction changes several permanents' tap states.
     TapStateBatch { tapped: bool },
     /// One simultaneous phasing transition, including indirect attachments.

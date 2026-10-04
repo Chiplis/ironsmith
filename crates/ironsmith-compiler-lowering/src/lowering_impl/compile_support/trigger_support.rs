@@ -501,6 +501,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
         TriggerSpec::ThisPhasesOut => Trigger::this_phases_out(),
+        TriggerSpec::PlayerAttackDeclaration { attacker, defender, grouping } => Trigger::player_attack_declaration(attacker, defender, grouping),
         TriggerSpec::CardsMilled { player, filter, one_or_more, per_player } => Trigger::cards_milled(player, filter, one_or_more, per_player),
         TriggerSpec::PhasingChanged { filter, phased_in, one_or_more } => Trigger::phasing_changed(filter, phased_in, one_or_more),
         TriggerSpec::ThisLeavesBattlefieldWithSurface(surface) => Trigger::new(

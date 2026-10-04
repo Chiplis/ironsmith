@@ -591,6 +591,32 @@ impl GameState {
         self.exile_tracking.cast_origin_snapshots.get(&stack_id)
     }
 
+    /// Commit the original incarnation only after every casting cost was paid.
+    /// Proposal snapshots alone must not expire a land's usable mana ability.
+    pub(crate) fn record_completed_cast_origin(&mut self, stack_id: ObjectId, from_zone: Zone) {
+        let Some(origin) = self.cast_origin_snapshot(stack_id)
+            .filter(|origin| origin.zone == from_zone)
+            .map(|origin| origin.object_id) else { return; };
+        self.exile_tracking_mut().completed_cast_origins.insert(origin, from_zone);
+        self.mark_continuous_state_dirty();
+    }
+
+    pub fn object_completed_cast_from(&self, original: ObjectId, from_zone: Zone) -> bool {
+        self.exile_tracking.completed_cast_origins.get(&original) == Some(&from_zone)
+    }
+
+    pub fn completed_cast_origins(&self) -> Vec<(ObjectId, Zone)> {
+        let mut origins = self.exile_tracking.completed_cast_origins.iter()
+            .map(|(&object, &zone)| (object, zone)).collect::<Vec<_>>();
+        origins.sort_by_key(|(object, _)| *object);
+        origins
+    }
+
+    pub fn restore_completed_cast_origins(&mut self, origins: impl IntoIterator<Item = (ObjectId, Zone)>) {
+        self.exile_tracking_mut().completed_cast_origins = origins.into_iter().collect();
+        self.mark_continuous_state_dirty();
+    }
+
     pub fn set_cast_origin_snapshot(&mut self, stack_id: ObjectId, snapshot: ObjectSnapshot) {
         self.exile_tracking_mut()
             .cast_origin_snapshots

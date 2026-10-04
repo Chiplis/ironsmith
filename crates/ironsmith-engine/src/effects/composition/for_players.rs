@@ -768,6 +768,15 @@ impl ForPlayersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.filter.is_opponents_attacking_event_defender()
+            && !ctx.triggering_event.as_ref().is_some_and(|event| {
+                event.downcast::<crate::events::PlayerAttackDeclarationEvent>().is_some()
+            })
+        {
+            return Err(ExecutionError::UnresolvableValue(
+                "attacking-player reward has no captured attacked player".into(),
+            ));
+        }
         let filter_ctx = ctx.filter_context(game);
 
         // Iterate over all players that match the filter

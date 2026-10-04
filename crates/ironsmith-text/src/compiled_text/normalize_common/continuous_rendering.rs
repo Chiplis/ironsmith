@@ -1639,10 +1639,9 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             clauses.push("switches power and toughness".to_string());
         }
         crate::continuous::Modification::SetColors(colors) => {
-            clauses.push(format!(
-                "becomes {}",
-                describe_token_color_words(*colors, false)
-            ));
+            let colors = if colors.count() == 5 { "all colors".to_string() }
+                else { describe_token_color_words(*colors, true) };
+            clauses.push(format!("becomes {colors}"));
         }
         crate::continuous::Modification::AddColors(colors) => {
             let verb = if plural_target { "become" } else { "becomes" };
@@ -2614,6 +2613,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     let mut power = None;
     let mut toughness = None;
     let mut colors = None;
+    let mut preserves_other_colors = false;
     let mut subtypes = Vec::new();
     let mut ability_text = Vec::new();
     let mut has_quoted_generic_ability = false;
@@ -2634,6 +2634,9 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             }
             crate::continuous::Modification::SetColors(candidate_colors) => {
                 colors = Some(*candidate_colors);
+            }
+            crate::continuous::Modification::AddColors(candidate_colors) => {
+                colors = Some(*candidate_colors); preserves_other_colors = true;
             }
             crate::continuous::Modification::AddSubtypes(candidate_subtypes) => {
                 subtypes.extend(candidate_subtypes.iter().copied());
@@ -2798,7 +2801,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             .map(|supertype| supertype.to_string().to_lowercase()),
     );
     if let Some(colors) = colors {
-        descriptor.push(describe_token_color_words(colors, false));
+        descriptor.push(describe_token_color_words(colors, true));
     }
     if !subtypes.is_empty() {
         descriptor.push(
@@ -3053,9 +3056,9 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     if render_as_addition_to_other_types && (explicitly_in_addition || !artifact_type_is_redundant)
     {
         if plural_target {
-            text.push_str(" in addition to their other types");
+            text.push_str(if preserves_other_colors { " in addition to their other colors and types" } else { " in addition to their other types" });
         } else {
-            text.push_str(" in addition to its other types");
+            text.push_str(if preserves_other_colors { " in addition to its other colors and types" } else { " in addition to its other types" });
         }
     }
     let tail = describe_apply_continuous_tail(effect);
@@ -4448,6 +4451,13 @@ pub(crate) fn describe_until(until: &Until) -> String {
         Until::YouStopControllingThis => "for as long as you control this source".to_string(),
         Until::ForAsLongAs(predicate) => describe_continuous_duration_predicate(predicate),
         Until::TurnsPass(turns) => format!("for {} turn(s)", describe_value(turns)),
+        Until::ObjectIsCast { object, from_zone } => format!(
+            "until {} is cast from {}", match object {
+                ironsmith_core::ContinuousDurationObject::Tagged(tag) if tag.as_str() == ironsmith_core::tag::SOURCE_EXILED_SELF_TAG => "this card",
+                _ => describe_duration_object(object),
+            },
+            match from_zone { Zone::Exile => "exile", Zone::Hand => "hand", Zone::Graveyard => "the graveyard", Zone::Library => "the library", Zone::Command => "the command zone", Zone::Battlefield => "the battlefield", Zone::Stack => "the stack", Zone::Ante => "ante", Zone::OutsideGame => "outside the game" }
+        ),
     }
 }
 

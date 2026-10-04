@@ -279,6 +279,14 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         let mut mana_permission_stable_ids =
             std::collections::BTreeMap::<crate::ids::PlayerId, Vec<crate::ids::StableId>>::new();
         for snapshot in snapshots {
+            // An open-ended exile permission names this exile incarnation.
+            // Leaving and later reentering exile must not revive it, and a
+            // card that left before this instruction resolves gets no grant.
+            if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled
+                && (snapshot.zone != crate::zone::Zone::Exile
+                    || !game.object(snapshot.object_id).is_some_and(|object|
+                        object.zone == crate::zone::Zone::Exile))
+            { continue; }
             let mut object_id = snapshot.object_id;
             if game.object(object_id).is_none() {
                 if let Some(found) = game.find_object_by_stable_id(snapshot.stable_id) {

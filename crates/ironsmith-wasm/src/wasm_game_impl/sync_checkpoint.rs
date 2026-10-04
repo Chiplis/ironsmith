@@ -997,6 +997,9 @@ struct SyncRulesState {
     /// public reveal.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     publicly_revealed_hidden_cards: Vec<u64>,
+    /// Successful casting history uses original incarnations, not stable cards.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    completed_cast_origins: Vec<(u64, Zone)>,
     /// Unanswered draw reveal windows as `(player, card)`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pending_hidden_draw_reveals: Vec<(u8, u64)>,
@@ -3554,6 +3557,8 @@ impl WasmGame {
                 .into_iter()
                 .map(|player| player.0)
                 .collect(),
+            completed_cast_origins: self.game.completed_cast_origins().into_iter()
+                .map(|(object, zone)| (object.0, zone)).collect(),
             publicly_revealed_hidden_cards: self
                 .game
                 .publicly_revealed_hidden_cards()
@@ -3857,6 +3862,8 @@ impl WasmGame {
                 .copied()
                 .map(PlayerId::from_index),
         );
+        self.game.restore_completed_cast_origins(rules.completed_cast_origins.iter()
+            .map(|&(object, zone)| (ObjectId::from_raw(object), zone)));
         self.game.restore_publicly_revealed_hidden_cards(
             rules
                 .publicly_revealed_hidden_cards
@@ -10019,5 +10026,30 @@ mod scheduled_skip_transport_tests {
         assert!(saved.restore(&mut game).is_err()); assert!(game.turn_store.skip_next_turn.is_empty());
         let old: SyncRulesState = serde_json::from_str("{}").unwrap();
         assert!(old.scheduled_skips.is_none());
+    }
+}
+
+#[cfg(test)]
+mod completed_cast_origin_wire_tests {
+    use super::*;
+    #[test]
+    fn snc_completed_cast_origins_round_trip_and_legacy_defaults_empty() {
+        let _guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let original = ObjectId::from_raw(29);
+        host.game.restore_completed_cast_origins([(original, Zone::Exile)]);
+        let checkpoint = host.build_sync_checkpoint();
+        let mut encoded = serde_json::to_value(&checkpoint).unwrap();
+        let decoded: SyncCheckpoint = serde_json::from_value(encoded.clone()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.apply_sync_checkpoint(decoded).unwrap();
+        assert!(guest.game.object_completed_cast_from(original, Zone::Exile));
+        assert!(!guest.game.object_completed_cast_from(original, Zone::Graveyard));
+        guest.game.turn.turn_number += 1;
+        assert!(guest.game.object_completed_cast_from(original, Zone::Exile));
+        encoded["rules"].as_object_mut().unwrap().remove("completedCastOrigins");
+        let legacy: SyncCheckpoint = serde_json::from_value(encoded).unwrap();
+        assert!(legacy.rules.completed_cast_origins.is_empty());
     }
 }

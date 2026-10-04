@@ -392,6 +392,7 @@ pub enum CompilerReferenceTag {
     /// plural "those tokens" can name every member's result.
     CoordinatedCreatedResult,
     JobSelectCreated,
+    SourceExiledSelf,
 }
 
 impl CompilerReferenceTag {
@@ -496,6 +497,7 @@ impl CompilerReferenceTag {
             Self::GrantingSource => ironsmith_core::GRANTING_SOURCE_TAG,
             Self::WhereXCommanderManaValue => "__where_x_commander_mana_value",
             Self::SourceExiled => "__source_exiled__",
+            Self::SourceExiledSelf => ironsmith_core::tag::SOURCE_EXILED_SELF_TAG,
             Self::SourceDevoured => "__source_devoured__",
             Self::DiscardedCardReference => "__discarded_card__",
             Self::ThoseCardsReference => "__those_cards__",
@@ -610,6 +612,7 @@ impl CompilerReferenceTag {
             Self::PriorExiledCard
             | Self::ExiledThisWay
             | Self::SourceExiled
+            | Self::SourceExiledSelf
             | Self::ExiledByYou
             | Self::HideawayExiled
             | Self::JunkExiledCard

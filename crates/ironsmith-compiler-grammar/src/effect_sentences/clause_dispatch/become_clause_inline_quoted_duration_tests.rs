@@ -255,3 +255,21 @@ fn creature_animation_without_fixed_size_keeps_type_and_subtype() {
     assert!(debug.contains("AddCardTypes"), "{debug}");
     assert!(debug.contains("Bear"), "{debug}");
 }
+
+#[test]
+fn animation_templates_preserve_legendary_names_retention_and_complete_grants() {
+    use crate::cards::builders::{SubjectVerbActionAst, SubjectVerbEffectAst};
+    let subject = crate::lexer::lex_line("target creature", 0).unwrap();
+    let tokens = crate::lexer::lex_line("a legendary 0/0 Elemental creature with haste named Unlisted Guardian", 0).unwrap();
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { name_override, add_supertypes, granted_abilities, .. }), .. }) = parse_become_clause(&subject, &tokens).unwrap() else { panic!("animation"); };
+    assert_eq!(name_override.as_deref(), Some("Unlisted Guardian"));
+    assert!(add_supertypes.contains(&crate::types::Supertype::Legendary));
+    assert_eq!(granted_abilities.len(), 1);
+    let tokens = crate::lexer::lex_line("a green Bear creature with base power and toughness 4/4 in addition to its other colors and types until end of turn", 0).unwrap();
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { preserve_other_types, preserve_other_colors, duration, .. }), .. }) = parse_become_clause(&subject, &tokens).unwrap() else { panic!("retained animation"); };
+    assert!(preserve_other_types && preserve_other_colors); assert_eq!(duration, Until::EndOfTurn);
+    for text in ["a 4/4 nonexistentdescriptor creature", "a 4/4 Elf creature with nonexistentability", "a legendary 3/3 Beast creature with flying unless the moon explodes"] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        assert!(parse_become_clause(&subject, &tokens).is_err(), "unknown descriptor/ability must never degrade to a bare creature: {text}");
+    }
+}

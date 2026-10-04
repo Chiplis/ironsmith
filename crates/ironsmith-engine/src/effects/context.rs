@@ -1199,6 +1199,16 @@ impl<'a> ExecutionContext<'a> {
     /// voted with Bob, not players who voted with Alice.
     pub fn with_triggering_event(mut self, event: crate::triggers::TriggerEvent) -> Self {
         self.provenance = event.provenance();
+        if let Some(attack) = event.downcast::<crate::events::PlayerAttackDeclarationEvent>() {
+            self.combat.attacking_player = Some(attack.attacker);
+            self.combat.defending_player = Some(attack.defender);
+            self.set_tagged_players(
+                ironsmith_core::tag::ATTACK_DECLARATION_ACTOR_TAG, vec![attack.attacker],
+            );
+            self.set_tagged_players(
+                ironsmith_core::tag::ATTACK_DECLARATION_DEFENDER_TAG, vec![attack.defender],
+            );
+        }
         if let Some(snapshot) = event.snapshot() {
             let snapshots = vec![snapshot.clone()];
             self.set_tagged_objects("triggering", snapshots.clone());
@@ -1387,6 +1397,9 @@ impl<'a> ExecutionContext<'a> {
     /// replaces the seeded history. Filter references to "cards exiled with
     /// ~" still read the full link set through the filter context.
     pub fn tag_source_exiled_result(&mut self, snapshot: ObjectSnapshot) {
+        if self.source_snapshot.as_ref().is_some_and(|source| source.stable_id == snapshot.stable_id) {
+            self.set_tagged_objects(crate::tag::SOURCE_EXILED_SELF_TAG, vec![snapshot.clone()]);
+        }
         const RESOLUTION_MARKER: &str = crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG;
         if !self.tagged_objects.contains_key(RESOLUTION_MARKER) {
             self.tagged_objects.remove(SOURCE_EXILED_TAG);
@@ -1528,6 +1541,31 @@ impl<'a> ExecutionContext<'a> {
         };
         let mut tagged_objects = self.tagged_objects.clone();
         let mut tagged_players = self.tagged_players.clone();
+        // Present-tense "attacking that player" is a live relation. The
+        // attacked player's identity stays bound to the declaration, while
+        // removed attackers stop qualifying and later attacking entrants can
+        // qualify (CR 508.6). Never derive this from the active-player seat.
+        let mut attacking = Vec::new();
+        if let Some(attack) = self.triggering_event.as_ref().and_then(|event| {
+            event.downcast::<crate::events::PlayerAttackDeclarationEvent>()
+        })
+            && attack.turn_number == game.turn.turn_number
+            && attack.combat_phase == game.turn_store.combat_phases_started_this_turn
+            && let Some(combat) = &game.combat
+        {
+            for info in &combat.attackers {
+                if matches!(info.target, crate::combat_state::AttackTarget::Player(player) if player == attack.defender)
+                    && let Some(player) = game.current_controller(info.creature)
+                    && !attacking.contains(&player)
+                {
+                    attacking.push(player);
+                }
+            }
+        }
+        tagged_players.insert(
+            ironsmith_core::tag::CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG.into(),
+            attacking,
+        );
         let source_exiled = game
             .get_exiled_with_source_links(self.source)
             .iter()

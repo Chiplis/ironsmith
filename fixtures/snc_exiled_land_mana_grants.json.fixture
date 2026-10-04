@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Glamorous Outlaw",
+    "oracle_id": "cd4f7912-81c0-44dd-87c2-a98e955fe5a8",
+    "text": "Mana cost: {3}{U}{B}{R}\nType: Creature — Vampire Rogue\nPower/Toughness: 4/5\nWhen this creature enters, it deals 2 damage to each opponent and you scry 2.\n{2}, Exile this card from your hand: Target land gains \"{T}: Add {U}, {B}, or {R}\" until this card is cast from exile. You may cast this card for as long as it remains exiled.",
+    "colors": [
+      "B",
+      "R",
+      "U"
+    ],
+    "proposed_coverage": "partial",
+    "remaining_blocker": "Shared payment-disclosure transaction/error boundary remains open; completed-action Undo guarding alone does not stage a whole payment."
+  },
+  {
+    "name": "Masked Bandits",
+    "oracle_id": "84ac3096-098a-477a-8907-fc30ac15f00f",
+    "text": "Mana cost: {3}{B}{R}{G}\nType: Creature — Raccoon Rogue\nPower/Toughness: 5/5\nVigilance\nMenace (This creature can't be blocked except by two or more creatures.)\n{2}, Exile this card from your hand: Target land gains \"{T}: Add {B}, {R}, or {G}\" until this card is cast from exile. You may cast this card for as long as it remains exiled.",
+    "colors": [
+      "B",
+      "G",
+      "R"
+    ],
+    "proposed_coverage": "partial",
+    "remaining_blocker": "Shared payment-disclosure transaction/error boundary remains open; completed-action Undo guarding alone does not stage a whole payment."
+  },
+  {
+    "name": "Rakish Revelers",
+    "oracle_id": "7db1402e-a434-45d2-9d21-9e0faeeaff10",
+    "text": "Mana cost: {2}{R}{G}{W}\nType: Creature — Elf Druid Rogue\nPower/Toughness: 5/3\nWhen this creature enters, create a 1/1 green and white Citizen creature token.\n{2}, Exile this card from your hand: Target land gains \"{T}: Add {R}, {G}, or {W}\" until this card is cast from exile. You may cast this card for as long as it remains exiled.",
+    "colors": [
+      "G",
+      "R",
+      "W"
+    ],
+    "proposed_coverage": "partial",
+    "remaining_blocker": "Shared payment-disclosure transaction/error boundary remains open; completed-action Undo guarding alone does not stage a whole payment."
+  },
+  {
+    "name": "Shattered Seraph",
+    "oracle_id": "92eae6af-b915-4eb8-93c4-527f732bb712",
+    "text": "Mana cost: {4}{W}{U}{B}\nType: Creature — Angel Rogue\nPower/Toughness: 4/4\nFlying\nWhen this creature enters, you gain 3 life.\n{2}, Exile this card from your hand: Target land gains \"{T}: Add {W}, {U}, or {B}\" until this card is cast from exile. You may cast this card for as long as it remains exiled.",
+    "colors": [
+      "B",
+      "U",
+      "W"
+    ],
+    "proposed_coverage": "partial",
+    "remaining_blocker": "Shared payment-disclosure transaction/error boundary remains open; completed-action Undo guarding alone does not stage a whole payment."
+  },
+  {
+    "name": "Spara's Adjudicators",
+    "oracle_id": "02718076-4c71-4bf5-988f-e6f94fbf0aef",
+    "text": "Mana cost: {2}{G}{W}{U}\nType: Creature — Cat Citizen\nPower/Toughness: 4/4\nWhen this creature enters, target creature an opponent controls can't attack or block until your next turn.\n{2}, Exile this card from your hand: Target land gains \"{T}: Add {G}, {W}, or {U}\" until this card is cast from exile. You may cast this card for as long as it remains exiled.",
+    "colors": [
+      "G",
+      "U",
+      "W"
+    ],
+    "proposed_coverage": "partial",
+    "remaining_blocker": "Shared payment-disclosure transaction/error boundary remains open; completed-action Undo guarding alone does not stage a whole payment."
+  }
+]

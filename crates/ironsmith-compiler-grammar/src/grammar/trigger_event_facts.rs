@@ -192,6 +192,15 @@ fn trigger_kind(full_tokens: &[OwnedLexToken], trigger: &TriggerSpec) -> Trigger
 
 fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
     match core_semantics(trigger) {
+        TriggerSpec::PlayerAttackDeclaration { attacker, defender, grouping } => {
+            TriggerSubjectAst::Player(
+                if *grouping == ironsmith_core::trigger_model::PlayerAttackGrouping::Defender {
+                    defender.clone()
+                } else {
+                    attacker.clone()
+                },
+            )
+        }
         TriggerSpec::ZoneChange(event) if event.this => TriggerSubjectAst::Source,
         TriggerSpec::ZoneChange(event) => event
             .filter

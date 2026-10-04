@@ -3643,6 +3643,8 @@ pub(super) fn finalize_spell_cast(
         );
     }
 
+    game.record_completed_cast_origin(new_id, from_zone);
+
     Ok(SpellCastResult {
         new_id,
         caster,

@@ -930,6 +930,7 @@ impl Auditor {
                 scope.player = Binding::Present;
                 scope.amount = Binding::Present;
             }
+            "PlayerAttackDeclaration" => { scope.player = Binding::Present; }
             "CardsMilled" => {
                 scope.player = Binding::Present;
                 scope.amount = Binding::Present;

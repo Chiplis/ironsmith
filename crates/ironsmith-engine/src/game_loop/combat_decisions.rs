@@ -1127,10 +1127,16 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
             })
             .collect();
     let mut attack_events = Vec::with_capacity(total_attackers);
+    let mut attacked_player_pairs = Vec::new();
     for prepared_decl in surviving_declarations {
         let decl = &prepared_decl.declaration;
 
         let event_target = AttackEventTarget::from(&decl.target);
+        if let crate::combat_state::AttackTarget::Player(defender) = decl.target
+            && !attacked_player_pairs.contains(&(prepared_decl.controller, defender))
+        {
+            attacked_player_pairs.push((prepared_decl.controller, defender));
+        }
 
         let event_provenance = game
             .provenance_graph_mut()
@@ -1146,6 +1152,22 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
             event_provenance,
         );
         attack_events.push(event);
+    }
+    // CR 508.3b/e: player-level conditions observe declarations, not every
+    // creature and not objects entering already attacking. Freeze both roles
+    // before any attack trigger can change control or remove a participant.
+    for (attacker, defender) in attacked_player_pairs {
+        let provenance = game.provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::PlayerAttackDeclaration);
+        attack_events.push(TriggerEvent::new_with_provenance(
+            crate::events::PlayerAttackDeclarationEvent {
+                attacker,
+                defender,
+                turn_number: game.turn.turn_number,
+                combat_phase: game.turn_store.combat_phases_started_this_turn,
+            },
+            provenance,
+        ));
     }
     queue_triggers_for_simultaneous_events(game, trigger_queue, attack_events);
 
