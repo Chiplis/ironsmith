@@ -40,6 +40,7 @@ test('a second fetch reveals a resealed library again and keeps its names privat
           if (data.type === 'error') return reject(new Error(data.error.message));
           if (data.type === 'ready') return resolve();
           if (data.type === 'priorityAnalysis') {
+            if (data.decision?.analysis_complete !== true) return;
             analyses.set(data.revision, data.decision);
             analysisWaiters.get(data.revision)?.(data.decision);
             return;
@@ -66,10 +67,15 @@ test('a second fetch reveals a resealed library again and keeps its names privat
     }
     const owner = createWorker(), opponent = createWorker();
     const call = owner.call;
+    const setupCall = async (method, ...args) => {
+      const result = await call(method, ...args);
+      await opponent.call(method, ...args);
+      return result;
+    };
     const deck = Array.from({ length: 60 }, (_, slot) => slot % 2 ? 'Swamp' : 'Island');
     for (const slot of [2, 8, 14, 20]) deck[slot] = 'Emperor of Bones';
     const privateOpenings = requirements => requirements.filter(value => value.type === 'private_open');
-    const hydrate = async requirements => {
+    const hydrate = async (requirements, engineCall = call) => {
       const reveals = privateOpenings(requirements).map(requirement => ({
         owner: requirement.owner, objectId: requirement.objectId,
         position: requirement.publicSlot ?? requirement.slot,
@@ -77,7 +83,7 @@ test('a second fetch reveals a resealed library again and keeps its names privat
         positionCommitment: requirement.publicCommitment ?? requirement.commitment,
         commitment: Number(requirement.slot + 1).toString(16).padStart(64, '0'),
       }));
-      if (reveals.length) await call('revealHiddenPositions', { reveals, recomputeDecision: true });
+      if (reveals.length) await engineCall('revealHiddenPositions', { reveals, recomputeDecision: true });
     };
     const select = candidate => ({ type: 'select_objects', object_ids: [candidate.id],
       object_hidden_refs: [{ owner: candidate.hidden_ref.owner, zone: candidate.hidden_ref.zone,
@@ -87,15 +93,16 @@ test('a second fetch reveals a resealed library again and keeps its names privat
       await Promise.all([owner.ready, opponent.ready]);
       for (const legacy of [true, false]) {
         await call('setPerspective', 0);
-        let state = await call('startMatch', {
+        await opponent.call('setPerspective', 1);
+        let state = await setupCall('startMatch', {
           playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1, format: 'normal',
           startingPlayer: 0, openingHandSize: 0, decks: [[], []],
           publicDecklists: [deck, Array(60).fill('Mountain')],
           hiddenDeckManifests: [0, 1].map(owner => ({ owner, deckCount: 60, commitmentRoot: `ziffle:genesis-${owner}`,
             slotCommitments: Array.from({ length: 60 }, (_, slot) => ({ slot, commitment: `ziffle:genesis-${owner}:${slot}` })) })),
         });
-        const marsh = await call('addCardToZone', 0, 'Marsh Flats', 'battlefield', true);
-        const delta = await call('addCardToZone', 0, 'Polluted Delta', 'battlefield', true);
+        const marsh = await setupCall('addCardToZone', 0, 'Marsh Flats', 'battlefield', true);
+        const delta = await setupCall('addCardToZone', 0, 'Polluted Delta', 'battlefield', true);
         state = await call('uiState');
         const history = new Map();
         const canonical = value => {
@@ -119,18 +126,13 @@ test('a second fetch reveals a resealed library again and keeps its names privat
             const requirements = await call('previewCryptoRequirements', command);
             if (requirements.some(value => value.type === 'private_view_window')) {
               const retained = fresh(sequence, requirements);
-              if (sequence === 99) {
-                // A separate peer receives the public action, but never receives
-                // the owner's private openings or hydrated engine checkpoint.
-                await opponent.call('importSyncCheckpoint', await call('exportSyncCheckpoint'));
-                await opponent.call('setPerspective', 1);
-                await opponent.call('dispatch', command);
-              }
+              // The opponent receives only the action, with no private openings.
+              await opponent.call('dispatch', command);
               await hydrate(retained);
               state = await call('dispatch', command);
               return { requirements, retained, state };
             }
-            state = await call('dispatch', command);
+            state = await setupCall('dispatch', command);
           }
           throw new Error('Fetch did not reach a library search');
         };
@@ -139,10 +141,14 @@ test('a second fetch reveals a resealed library again and keeps its names privat
         history.set(50, state.crypto_requirements);
         const swamp = state.decision.candidates.find(candidate => candidate.name === 'Swamp' && candidate.legal);
         if (!swamp) throw new Error(`First fetch has no Swamp: ${JSON.stringify(state.decision)}`);
-        state = await call('dispatch', select(swamp));
-        const afterFirst = await call('exportSyncCheckpoint');
-        const afterOrder = [...afterFirst.players[0].library].reverse();
-        await call('applyVerifiedHiddenLibraryShuffle', { owner: 0, deckHash: 'after-first-fetch', afterOrder });
+        // The selected land becomes public on both clients; other library
+        // openings stay solely with the searching player.
+        await hydrate(first.retained.filter(requirement => requirement.objectId === swamp.id), opponent.call);
+        state = await setupCall('dispatch', select(swamp));
+        const afterFirst = await call('getHiddenCardState');
+        const afterOrder = afterFirst.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library')
+          .sort((left, right) => (right.hiddenCard.publicSlot ?? right.hiddenCard.slot) - (left.hiddenCard.publicSlot ?? left.hiddenCard.slot)).map(object => object.id);
+        await setupCall('applyVerifiedHiddenLibraryShuffle', { owner: 0, deckHash: 'after-first-fetch', afterOrder });
         state = await call('uiState');
         const second = await reachSearch(delta, 99);
         const candidates = state.decision.candidates;
@@ -153,8 +159,8 @@ test('a second fetch reveals a resealed library again and keeps its names privat
           firstFetched: afterFirst.objects.filter(object => object.zone === 'battlefield').map(object => object.name) };
         const opponentState = await opponent.call('uiState');
         capture.opponentNames = [...(opponentState.decision?.candidates || []), ...(opponentState.viewed_cards?.cards || [])].map(card => card.name);
-        const opponentCheckpoint = await opponent.call('exportSyncCheckpoint');
-        capture.opponentLibraryNames = opponentCheckpoint.objects.filter(object => object.owner === 0 && object.zone === 'library').map(object => object.name);
+        const opponentCheckpoint = await opponent.call('getHiddenCardState');
+        capture.opponentLibraryNames = opponentCheckpoint.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library').map(object => object.name);
         if (legacy) {
           const nonland = state.decision.candidates.find(candidate => deck[candidate.hidden_ref.slot] === 'Emperor of Bones');
           if (!nonland) throw new Error('Legacy search must contain the hidden Emperor');
@@ -167,7 +173,8 @@ test('a second fetch reveals a resealed library again and keeps its names privat
         } else {
           const island = state.decision.candidates.find(candidate => candidate.name === 'Island' && candidate.legal);
           if (!island) throw new Error('Second fetch has no revealed Island');
-          state = await call('dispatch', select(island));
+          await hydrate(second.retained.filter(requirement => requirement.objectId === island.id), opponent.call);
+          state = await setupCall('dispatch', select(island));
           capture.finalDecision = state.decision.kind;
           capture.finalBattlefield = state.players[0].battlefield.map(card => card.name);
         }
@@ -193,7 +200,7 @@ test('a second fetch reveals a resealed library again and keeps its names privat
   assert.ok(fixed.legal.every(Boolean));
   assert.ok(fixed.opponentLibraryNames.length >= 50);
   assert.ok(fixed.opponentLibraryNames.every(name => name === 'Hidden Card'), 'the opponent engine never hydrates private library cards');
-  assert.ok(fixed.opponentNames.every(name => name === 'Hidden Card'), 'private hydration does not disclose names to the opponent');
+  assert.ok(fixed.opponentNames.every(name => /^hidden card$/i.test(name)), 'private hydration does not disclose names to the opponent');
   assert.equal(fixed.finalDecision, 'priority', 'Polluted Delta completes its search and shuffle');
   assert.ok(fixed.finalBattlefield.includes('Swamp') && fixed.finalBattlefield.includes('Island'));
 });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { initWasmGame, getLibrary } from "./wasm-test-harness.mjs";
+import { initWasmGame, getLibrary, getInspectionState } from "./wasm-test-harness.mjs";
 import { normalizePhase } from "./mage-port-runner/names.mjs";
 import { initializeLibraryFixtures, planInitialLibraryFixtures } from "./mage-port-runner/library-fixtures.mjs";
 
@@ -16,7 +16,7 @@ test("library fixture planning preserves order and never hoists later gameplay a
 });
 
 test("WASM library fixtures retain top order and run the first upkeep exactly once", async () => {
-  const { game } = await initWasmGame();
+  const { game } = await initWasmGame({ pkg: "demo" });
   try {
     const island = { op: "addCard", zone: "LIBRARY", player: 0, name: "Lightning Bolt", count: 10 };
     const forest = { op: "addCard", zone: "LIBRARY", player: 0, name: "Forest", count: 1 };
@@ -28,9 +28,9 @@ test("WASM library fixtures retain top order and run the first upkeep exactly on
     });
     assert.equal(mapped.get(island).length, 10);
     assert.equal(mapped.get(forest).length, 1);
-    let checkpoint = game.exportSyncCheckpoint();
-    assert.equal(checkpoint.turn.activePlayer, 0);
-    assert.equal(checkpoint.turn.turnNumber, 1);
+    let checkpoint = getInspectionState(game);
+    assert.equal(game.uiState().active_player, 0);
+    assert.equal(game.uiState().turn_number, 1);
     const actual = getLibrary(checkpoint, 0, { topFirst: true }).map(card => card.name);
     assert.deepEqual(actual, ["Forest", ...Array(10).fill("Lightning Bolt"), ...Array(71).fill("Mountain")]);
     game.addCardToZone(0, "Ajani's Mantra", "battlefield", true);
@@ -55,11 +55,11 @@ test("WASM library fixtures retain top order and run the first upkeep exactly on
       game.dispatch({ type: "priority_action", action_ref: action.action_ref });
     }
     assert.ok(reachedMain, "fixture must reach the first main phase");
-    checkpoint = game.exportSyncCheckpoint();
+    checkpoint = getInspectionState(game);
     assert.equal(checkpoint.players[0].life, 21, "the source added after staging must see exactly one upkeep");
     assert.equal(checkpoint.players[0].hand.length, 0, "fixture setup must not draw cards");
     game.drawCard(0);
-    checkpoint = game.exportSyncCheckpoint();
+    checkpoint = getInspectionState(game);
     const drawn = checkpoint.objects.find(card => Number(card.id) === Number(checkpoint.players[0].hand[0]));
     assert.equal(drawn.name, "Forest", "actual draw must respect the authored library top");
   } finally {
@@ -68,7 +68,7 @@ test("WASM library fixtures retain top order and run the first upkeep exactly on
 });
 
 test("WASM library clears preserve authored add/clear order independently for each player", async () => {
-  const { game } = await initWasmGame();
+  const { game } = await initWasmGame({ pkg: "demo" });
   try {
     const removed = { op: "addCard", zone: "LIBRARY", player: 0, name: "Island", count: 2 };
     const clear = { op: "clearZone", zone: "library", player: 0 };
@@ -80,7 +80,7 @@ test("WASM library clears preserve authored add/clear order independently for ea
     const mapped = initializeLibraryFixtures(game, ["Alice", "Bob"], records, {
       defaultCard: "Mountain", defaultSize: 71,
     });
-    const checkpoint = game.exportSyncCheckpoint();
+    const checkpoint = getInspectionState(game);
     assert.deepEqual(getLibrary(checkpoint, 0).map(card => card.name), ["Forest"]);
     assert.deepEqual(getLibrary(checkpoint, 1).map(card => card.name), Array(71).fill("Mountain"));
     assert.equal(mapped.get(removed).length, 2);
@@ -90,7 +90,7 @@ test("WASM library clears preserve authored add/clear order independently for ea
     }
     assert.deepEqual(mapped.get(clear), []);
     assert.equal(mapped.get(added).length, 1);
-    assert.equal(checkpoint.turn.turnNumber, 1);
+    assert.equal(game.uiState().turn_number, 1);
   } finally {
     game.free();
   }

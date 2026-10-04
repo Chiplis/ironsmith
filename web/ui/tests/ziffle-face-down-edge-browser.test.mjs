@@ -34,7 +34,7 @@ for (const cardName of ['Den Protector', 'Rattleclaw Mystic']) {
           worker.onmessage = ({ data }) => {
             if (data.type === 'error') return reject(new Error(data.error.stack || data.error.message));
             if (data.type === 'ready') return resolve();
-            if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
+            if (data.type === 'priorityAnalysis') { if (data.decision?.analysis_complete !== true) return; analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
             if (data.type !== 'result') return;
             const request = pending.get(data.id); if (!request) return;
             pending.delete(data.id);
@@ -77,49 +77,47 @@ for (const cardName of ['Den Protector', 'Rattleclaw Mystic']) {
           ...identity, cardPositions: positions, entropyHex: ['55', '66'][index].repeat(32) }));
         const reveals = api.ziffleRevealCards({ deckCount, context, keys, steps, cardPositions: positions, tokens });
         const ceremony = { owner: 1, deckCount, context, keys, steps, deckHash: verified.deckHash, tokens, reveals };
+        peer = createWorkerSession(); await peer.ready;
         await owner.call('setPerspective', 1);
-        let state = await owner.call('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
+        await peer.call('setPerspective', 0);
+        const setupCall = async (method, ...args) => {
+          const result = await owner.call(method, ...args);
+          await peer.call(method, ...args);
+          return result;
+        };
+        const readFixture = async session => {
+          const metadata = await session.call('getHiddenCardState');
+          const ui = await session.call('uiState');
+          const audit = await session.call('exportPublicAuditCheckpoint');
+          return { ...metadata, stack: ui.stack_objects, objects: metadata.objects.map(object => ({
+            ...object, faceDown: audit.objects.find(card => card.id === object.id)?.faceDown ?? false,
+          })) };
+        };
+        let state = await setupCall('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
           format: 'normal', startingPlayer: 1, openingHandSize: 0, decks: [[], []], publicDecklists: [deck, deck],
           hiddenDeckManifests: manifests.map((manifest, seat) => buildZiffleRuntimeManifest(manifest, { ...ceremony, owner: seat })) });
         for (let index = 0; index < 30 && state.phase !== 'first main phase'; index++) {
           const action = state.decision?.actions?.find(item => ['keep_opening_hand', 'continue_pregame', 'begin_game', 'pass_priority'].includes(item.action_ref?.kind));
           if (!action) throw new Error(`Unexpected pregame decision ${JSON.stringify(state.decision)}`);
-          state = await owner.call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
+          state = await setupCall('dispatch', { type: 'priority_action', action_ref: action.action_ref });
         }
         if (state.phase !== 'first main phase') throw new Error('Fixture did not reach main phase');
-        const creatureOwner = 1;
-        const subjects = [{ seat: 1, slot: 4, zone: 'hand' },
-          { seat: creatureOwner, slot: 5, zone: 'graveyard' }];
-        for (const subject of subjects) {
-          const checkpoint = await owner.call('exportSyncCheckpoint');
-          const position = reveals.find(reveal => reveal.originalSlot === subject.slot).cardPosition;
-          const object = checkpoint.objects.find(item => item.owner === subject.seat && item.hiddenCard?.slot === position);
-          if (!object) throw new Error(`Missing fixture subject ${JSON.stringify(subject)}`);
-          const secret = manifests[subject.seat].slotSecrets.find(entry => entry.slot === subject.slot);
-          await owner.call('revealHiddenPosition', { owner: subject.seat, objectId: object.id, position,
-            originalSlot: subject.slot, cardName: secret.card, commitment: secret.commitment,
-            positionCommitment: `ziffle:${ceremony.deckHash}:${position}` });
-          subject.id = object.id;
-        }
-        for (let index = 0; index < 8; index++) await owner.call('addCardToZone', 1, 'Forest', 'battlefield', true);
-        // Only the initial positions and mana are arranged directly. The
-        // tested abilities, payments, and zone changes execute normally.
-        const fixture = await owner.call('exportSyncCheckpoint');
-        for (const subject of subjects) {
-          const object = fixture.objects.find(item => item.id === subject.id);
-          for (const player of fixture.players) for (const zone of ['library', 'hand', 'graveyard']) {
-            player[zone] = player[zone].filter(id => id !== subject.id);
-          }
-          fixture.battlefield = fixture.battlefield.filter(id => id !== subject.id);
-          object.zone = subject.zone;
-          if (subject.zone === 'battlefield') fixture.battlefield.push(subject.id);
-          else fixture.players[subject.seat][subject.zone].push(subject.id);
-        }
-        await owner.call('importSyncCheckpoint', fixture, 1);
+        const position = reveals.find(reveal => reveal.originalSlot === 4).cardPosition;
+        const initial = await owner.call('getHiddenCardState');
+        const source = initial.objects.find(object => object.hiddenCard?.owner === 1 && object.hiddenCard.slot === position);
+        if (!source) throw new Error('Missing committed hand fixture');
+        const secret = manifests[1].slotSecrets.find(entry => entry.slot === 4);
+        await owner.call('revealHiddenPosition', { owner: 1, objectId: source.id, position,
+          originalSlot: 4, cardName: secret.card, commitment: secret.commitment,
+          positionCommitment: `ziffle:${ceremony.deckHash}:${position}` });
+        for (let index = deckCount - 1; index >= position; index--) await setupCall('drawCard', 1);
+        const creatureId = Number(await setupCall('addCardToZone', 1, 'Grizzly Bears', 'graveyard', true));
+        for (let index = 0; index < 8; index++) await setupCall('addCardToZone', 1, 'Forest', 'battlefield', true);
         state = await owner.call('uiState');
-        peer = createWorkerSession(); await peer.ready;
-        await peer.call('importSyncCheckpoint', await owner.call('exportRedactedSyncCheckpoint', 0), 0);
-        const peerBefore = await peer.call('exportSyncCheckpoint');
+        const fixture = await readFixture(owner);
+        const spell = fixture.objects.find(object => object.stableId === source.stableId);
+        const creature = fixture.objects.find(object => object.id === creatureId);
+        const peerBefore = await readFixture(peer);
         const wrap = session => new Proxy({}, { get: (_, method) => method.startsWith('ziffle')
           ? async input => api[method](input) : (...args) => session.call(method, ...args) });
         const refs = { gameRef: { current: wrap(owner) }, stateRef: { current: state },
@@ -174,15 +172,13 @@ for (const cardName of ['Den Protector', 'Rattleclaw Mystic']) {
           trace.push({ command, decision: state.decision?.kind, prepared: prepared.map(opening => ({ owner: opening.owner, slot: opening.slot, origin: opening.originPosition })),
             requirements: [...requirements, ...afterRequirements].map(requirement => ({ type: requirement.type, owner: requirement.owner, slot: requirement.slot, from: requirement.from, to: requirement.to })) });
         };
-        const spell = fixture.objects.find(object => object.id === subjects[0].id);
-        const creature = fixture.objects.find(object => object.id === subjects[1].id);
         stage = 'find-cast-action';
         const action = state.decision?.actions?.find(item => item.action_ref?.kind === 'cast_spell' && Number(item.object_id) === spell.id && item.action_ref.casting_method?.kind === 'face_down');
         if (!action) throw new Error(`Card not playable: ${JSON.stringify(state.decision)}`);
         await dispatchBoth({ type: 'priority_action', action_ref: action.action_ref, object_id: spell.id });
         let after;
         for (let index = 0; index < 12; index++) {
-          after = await owner.call('exportSyncCheckpoint');
+          after = await readFixture(owner);
           const currentSpell = after.objects.find(object => object.stableId === spell.stableId);
           if (state.decision?.kind === 'priority' && currentSpell && !['hand', 'stack'].includes(currentSpell.zone)) break;
           const decision = state.decision;
@@ -196,8 +192,8 @@ for (const cardName of ['Den Protector', 'Rattleclaw Mystic']) {
             await dispatchBoth({ type: 'priority_action', action_ref: pass.action_ref });
           } else throw new Error(`Unexpected decision ${JSON.stringify(decision)}`);
         }
-        const firstResolution = await owner.call('exportSyncCheckpoint');
-        const facedownPeer = await peer.call('exportSyncCheckpoint');
+        const firstResolution = await readFixture(owner);
+        const facedownPeer = await readFixture(peer);
         const facedownObject = firstResolution.objects.find(object => object.stableId === spell.stableId);
         if (!facedownObject.faceDown) throw new Error('Cast did not resolve face down');
         stage = 'find-turn-face-up';
@@ -207,7 +203,7 @@ for (const cardName of ['Den Protector', 'Rattleclaw Mystic']) {
         await dispatchBoth({ type: 'priority_action', action_ref: flip.action_ref, object_id: facedownObject.id });
         for (let index = 0; index < 12; index++) {
           const decision = state.decision;
-          const checkpoint = await owner.call('exportSyncCheckpoint');
+          const checkpoint = await readFixture(owner);
           if (decision?.kind === 'priority' && checkpoint.stack.length === 0) break;
           if (decision?.kind === 'priority') {
             const pass = decision.actions.find(item => item.action_ref?.kind === 'pass_priority');
@@ -220,8 +216,8 @@ for (const cardName of ['Den Protector', 'Rattleclaw Mystic']) {
             await dispatchBoth({ type: 'mana_payment', response: { action: 'confirm', plan_id: decision.plan_id, request_hash: decision.request_hash } });
           } else throw new Error(`Unexpected flip decision ${JSON.stringify(decision)}`);
         }
-        after = await owner.call('exportSyncCheckpoint');
-        const peerAfter = await peer.call('exportSyncCheckpoint');
+        after = await readFixture(owner);
+        const peerAfter = await readFixture(peer);
         return { cardName, trace, facedownObject, facedownPeerObject: facedownPeer.objects.find(object => object.stableId === spell.stableId), beforeSpell: spell, beforeCreature: creature,
           peerBeforeSpell: peerBefore.objects.find(object => object.stableId === spell.stableId),
           firstSpell: firstResolution.objects.find(object => object.stableId === spell.stableId),
@@ -230,7 +226,7 @@ for (const cardName of ['Den Protector', 'Rattleclaw Mystic']) {
           afterCreature: after.objects.find(object => object.stableId === creature.stableId),
           peerSpell: peerAfter.objects.find(object => object.stableId === spell.stableId),
           peerCreature: peerAfter.objects.find(object => object.stableId === creature.stableId),
-          life: after.players.map(player => player.life), decision: state.decision?.kind };
+          life: state.players.map(player => player.life), decision: state.decision?.kind };
       } catch (error) {
         throw new Error(`${cardName} failed at ${stage}: ${error.message}; trace=${JSON.stringify(trace)}`);
       } finally { reactRoot?.unmount(); owner.worker.terminate(); peer?.worker.terminate(); }
@@ -240,12 +236,13 @@ for (const cardName of ['Den Protector', 'Rattleclaw Mystic']) {
     assert.equal(result.decision, 'priority');
     assert.equal(result.facedownObject.faceDown, true);
     assert.equal(result.facedownPeerObject.faceDown, true);
-    assert.equal(result.facedownPeerObject.originalCardName, undefined, 'face-down identity stays private until turned up');
+    assert.equal(result.facedownPeerObject.originalCardName ?? null, null, 'face-down identity stays private until turned up');
     assert.equal(result.afterSpell.zone, 'battlefield');
     assert.equal(result.afterSpell.name, cardName);
     assert.equal(result.afterSpell.faceDown, false);
     assert.deepEqual(result.peerSpell, result.afterSpell);
-    assert.deepEqual(result.afterSpell.hiddenCard, result.beforeSpell.hiddenCard);
+    const provenance = ({ objectId, zone, ...identity }) => identity;
+    assert.deepEqual(provenance(result.afterSpell.hiddenCard), provenance(result.beforeSpell.hiddenCard));
     t.diagnostic(JSON.stringify({ cardName, commands: result.trace.length, trace: result.trace }));
   });
 }

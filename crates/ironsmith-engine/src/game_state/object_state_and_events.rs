@@ -1810,10 +1810,9 @@ impl GameState {
         self.set_foretold_on_turn(id, self.turn.turn_number);
     }
 
-    /// Mark a card as foretold on a specific turn (checkpoint restore).
+    /// Mark a card as foretold on a specific turn.
     pub fn set_foretold_on_turn(&mut self, id: ObjectId, turn: u32) {
-        // Also reconstruct the public claim when importing older checkpoints
-        // that carry the foretold flag but predate its obligation encoding.
+        // Record the public claim alongside the foretell permission.
         self.record_hidden_foretell_obligation(id);
         if self
             .cast_permission_flags_mut()

@@ -2562,17 +2562,11 @@ mod live_action_rollback_tests {
         assert_eq!(request.source, spell);
         let Some(DecisionContext::ManaPayment(context)) = wasm.pending_decision.as_ref() else { unreachable!() };
         assert_eq!(request, context.request);
-        // The browser options worker receives a checkpoint, not the live engine.
-        let checkpoint = wasm.try_build_sync_checkpoint().unwrap();
-        let mut isolated = WasmGame::new();
-        // The browser worker registers the captured card sources before import.
-        isolated.registry.register(CardDefinitionBuilder::new(CardId::new(), "Manual Payment Spell")
-            .card_types(vec![CardType::Sorcery])
-            .mana_cost(ManaCost::new().add_generic(1))
-            .build());
-        isolated.apply_sync_checkpoint(checkpoint).unwrap();
-        let options = mana_activation_option_views(&isolated.game, &request);
+        // Native analysis must retain the same pending payment request.
+        let original = RuntimeSavepoint::capture(&wasm);
+        let options = mana_activation_option_views(&wasm.game, &request);
         assert_eq!(serde_json::to_value(options).unwrap(), serde_json::to_value(eager.editor.activation_options).unwrap());
+        original.restore(&mut wasm);
         assert_eq!(wasm.export_mana_payment_options_request("stale", &immediate.plan_id).unwrap(), "null");
         confirm_pending_mana_payment(&mut wasm);
         assert!(wasm.priority_state.pending_cast.is_none());

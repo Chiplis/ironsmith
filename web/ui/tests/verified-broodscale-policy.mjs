@@ -31,7 +31,7 @@ export async function runVerifiedBroodscale({ pages, row, seat, waitForFullUiPai
     const main = actor === seat && state.active_player === seat
       && state.phase === 'first main phase' && !state.stack_preview.length;
     if (stage.endsWith('-pending') && decision.kind === 'priority' && !state.stack_preview.length) {
-      const checkpoints = await Promise.all(pages.map(page => page.evaluate(() => window.__ironsmithE2E.checkpoint())));
+      const checkpoints = await Promise.all(pages.map(page => page.evaluate(() => window.__ironsmithE2E.publicCheckpoint())));
       const runtimes = await Promise.all(pages.map(page => page.evaluate(() => window.__ironsmithE2E.runtimeState())));
       for (const [index, cp] of checkpoints.entries()) {
         const board = cp.objects.filter(object => object.zone === 'battlefield' && object.controller === seat);
@@ -43,7 +43,7 @@ export async function runVerifiedBroodscale({ pages, row, seat, waitForFullUiPai
             'Blade is attached to the selected Broodscale');
         } else {
           const expected = completed + (stage === 'loop-pending' ? 1 : 0);
-          const tokens = board.filter(object => object.name === spawnName);
+          const tokens = board.filter(object => object.identity?.name === spawnName);
           assert.equal(tokens.length, 1, 'One Spawn is replaced per completed iteration');
           if (stage === 'loop-pending') assert.notEqual(Number(tokens[0].id), sacrificed, 'Sacrificed token identity is gone');
           const card = runtimes[index].players[seat].battlefield.find(object => Number(object.id) === brood);

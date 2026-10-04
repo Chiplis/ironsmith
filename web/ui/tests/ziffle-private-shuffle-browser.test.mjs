@@ -34,7 +34,7 @@ test('private ciphertext epochs survive repeated fetches and a returned card wit
         worker.onmessage = ({ data }) => {
           if (data.type === 'error') return reject(new Error(data.error.stack || data.error.message));
           if (data.type === 'ready') return resolve();
-          if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
+          if (data.type === 'priorityAnalysis') { if (data.decision?.analysis_complete !== true) return; analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
           if (data.type !== 'result') return;
           const request = pending.get(data.id); if (!request) return;
           pending.delete(data.id);
@@ -82,7 +82,7 @@ test('private ciphertext epochs survive repeated fetches and a returned card wit
       const opening = (requirement, checkpoint) => {
         let object = checkpoint.objects.find(item => item.id === Number(requirement.objectId));
         const ref = requirement.publicCommitment || object?.hiddenCard?.publicCommitment || requirement.commitment;
-        object ||= checkpoint.objects.find(item => Number(item.owner) === Number(requirement.owner)
+        object ||= checkpoint.objects.find(item => Number(item.hiddenCard?.owner) === Number(requirement.owner)
           && [item.hiddenCard?.publicCommitment, item.hiddenCard?.commitment].includes(ref));
         if (!object) throw new Error(`Missing current ciphertext object for ${JSON.stringify(requirement)}`);
         const match = /^ziffle:([^:]+):(\d+)$/.exec(ref || '');
@@ -95,28 +95,33 @@ test('private ciphertext epochs survive repeated fetches and a returned card wit
         return { owner: 0, objectId: object.id, position, originalSlot: secret.slot, cardName: secret.card,
           positionCommitment: ref, commitment: secret.commitment };
       };
+      // Reproduce setup commands on each engine, with each client's own view.
+      const setupCall = async (method, ...args) => {
+        const result = await owner.call(method, ...args);
+        await peer.call(method, ...args);
+        return result;
+      };
       await owner.call('setPerspective', 0);
-      state = await owner.call('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1, format: 'normal',
+      await peer.call('setPerspective', 1);
+      state = await setupCall('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1, format: 'normal',
         startingPlayer: 0, openingHandSize: 0, decks: [[], []], publicDecklists: [deck, Array(60).fill('Mountain')],
         hiddenDeckManifests: manifests.map((manifest, seat) => buildZiffleRuntimeManifest(manifest, genesis[seat])) });
       for (let index = 0; index < 40 && state.phase !== 'first main phase'; index++) {
         const action = state.decision?.actions?.find(item => ['keep_opening_hand', 'continue_pregame', 'begin_game', 'pass_priority'].includes(item.action_ref?.kind));
         if (!action) throw new Error(`Cannot reach fixture main phase: ${JSON.stringify(state.decision)}`);
-        state = await owner.call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
+        state = await setupCall('dispatch', { type: 'priority_action', action_ref: action.action_ref });
       }
       if (state.phase !== 'first main phase') throw new Error('Fixture did not reach main phase');
-      const initialLibraryCount = (await owner.call('exportSyncCheckpoint')).players[0].library.length;
+      const initialLibraryCount = (await owner.call('getHiddenCardState')).objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library').length;
       const fetches = [];
-      for (const name of ['Marsh Flats', 'Polluted Delta', 'Polluted Delta']) fetches.push(await owner.call('addCardToZone', 0, name, 'battlefield', true));
-      const returnSpellId = await owner.call('addCardToZone', 0, 'Temporal Eddy', 'hand', true);
-      for (let i = 0; i < 4; i++) await owner.call('addCardToZone', 0, 'Island', 'battlefield', true);
-      await peer.call('importSyncCheckpoint', await owner.call('exportSyncCheckpoint'), 1);
-      await peer.call('setPerspective', 1);
+      for (const name of ['Marsh Flats', 'Polluted Delta', 'Polluted Delta']) fetches.push(await setupCall('addCardToZone', 0, name, 'battlefield', true));
+      const returnSpellId = await setupCall('addCardToZone', 0, 'Temporal Eddy', 'hand', true);
+      for (let i = 0; i < 4; i++) await setupCall('addCardToZone', 0, 'Island', 'battlefield', true);
       state = await owner.call('uiState');
       const dispatchBoth = async command => {
         stage = `${trace.length}:${command.type}`;
         let requirements = await owner.call('previewCryptoRequirements', command);
-        const before = await owner.call('exportSyncCheckpoint');
+        const before = await owner.call('getHiddenCardState');
         const privateRequirements = requirements.filter(req => req.type === 'private_open' && Number(req.owner) === 0);
         if (privateRequirements.length) {
           await owner.call('revealHiddenPositions', { reveals: privateRequirements.map(req => opening(req, before)), recomputeDecision: true });
@@ -124,7 +129,7 @@ test('private ciphertext epochs survive repeated fetches and a returned card wit
         }
         const publicRequirements = requirements.filter(req => req.type === 'public_open' && Number(req.owner) === 0 && req.objectId != null);
         if (publicRequirements.length) {
-          const checkpoint = await owner.call('exportSyncCheckpoint');
+          const checkpoint = await owner.call('getHiddenCardState');
           const reveals = publicRequirements.map(req => opening(req, checkpoint));
           await owner.call('revealHiddenPositions', { reveals, recomputeDecision: true });
           await peer.call('revealHiddenPositions', { reveals, recomputeDecision: true });
@@ -151,9 +156,9 @@ test('private ciphertext epochs survive repeated fetches and a returned card wit
         const peerPublic = await peer.call('exportPublicAuditCheckpoint');
         if (await publicCheckpointHash(ownPublic) !== await publicCheckpointHash(peerPublic)) throw new Error(`Peer public hashes differ at ${stage}`);
         for (const ceremony of epochs) {
-          const after = await owner.call('exportSyncCheckpoint');
-          const oldLibrary = before.objects.filter(object => object.owner === 0 && object.zone === 'library');
-          const currentLibrary = after.objects.filter(object => object.owner === 0 && object.zone === 'library');
+          const after = await owner.call('getHiddenCardState');
+          const oldLibrary = before.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library');
+          const currentLibrary = after.objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library');
           const publicLibrary = ownPublic.objects.filter(object => object.owner === 0 && object.zone === 'library');
           captures.push({ epoch: accepted.indexOf(ceremony), count: currentLibrary.length,
             sourceEpochs: ceremony.inputDeck.sources.map(source => source.epoch),
@@ -181,7 +186,7 @@ test('private ciphertext epochs survive repeated fetches and a returned card wit
       const fetch = async (id, cardName) => {
         await reachSearch(id);
         searchNames.push(state.decision.candidates.map(card => card.name));
-        peerLibraryNames.push((await peer.call('exportSyncCheckpoint')).objects.filter(object => object.owner === 0 && object.zone === 'library').map(object => object.name));
+        peerLibraryNames.push((await peer.call('getHiddenCardState')).objects.filter(object => object.hiddenCard?.owner === 0 && object.zone === 'library').map(object => object.name));
         const target = state.decision.candidates.find(card => card.name === cardName && card.legal);
         if (!target) throw new Error(`No ${cardName} fetch choice: ${JSON.stringify(state.decision)}`);
         await dispatchBoth({ type: 'select_objects', object_ids: [target.id], object_hidden_refs: [{
@@ -190,7 +195,7 @@ test('private ciphertext epochs survive repeated fetches and a returned card wit
       };
       await fetch(fetches[0], 'Swamp');
       await fetch(fetches[1], 'Island');
-      const fetchedSwamp = (await owner.call('exportSyncCheckpoint')).objects.find(object => object.owner === 0 && object.zone === 'battlefield' && object.name === 'Swamp');
+      const fetchedSwamp = (await owner.call('getHiddenCardState')).objects.find(object => object.hiddenCard?.owner === 0 && object.zone === 'battlefield' && object.name === 'Swamp');
       let cast = false;
       for (let i = 0; i < 30; i++) {
         const decision = state.decision;
@@ -198,7 +203,7 @@ test('private ciphertext epochs survive repeated fetches and a returned card wit
           const action = decision?.actions?.find(item => item.action_ref?.kind === 'cast_spell' && Number(item.object_id) === Number(returnSpellId));
           if (action) { await dispatchBoth({ type: 'priority_action', action_ref: action.action_ref, object_id: returnSpellId }); cast = true; continue; }
         }
-        if (cast && (await owner.call('exportSyncCheckpoint')).objects.some(object => object.stableId === fetchedSwamp.stableId && object.zone === 'library')) break;
+        if (cast && (await owner.call('getHiddenCardState')).objects.some(object => object.stableId === fetchedSwamp.stableId && object.zone === 'library')) break;
         if (decision?.kind === 'targets') await dispatchBoth({ type: 'select_targets', targets: [{ kind: 'object', object: fetchedSwamp.id }] });
         else if (decision?.kind === 'number') await dispatchBoth({ type: 'number_choice', value: 0 });
         else if (decision?.kind === 'mana_payment') await dispatchBoth({ type: 'mana_payment', response: { action: 'confirm', plan_id: decision.plan_id, request_hash: decision.request_hash } });
@@ -208,7 +213,7 @@ test('private ciphertext epochs survive repeated fetches and a returned card wit
           await dispatchBoth({ type: 'priority_action', action_ref: action.action_ref });
         }
       }
-      const returned = (await owner.call('exportSyncCheckpoint')).objects.find(object => object.stableId === fetchedSwamp.stableId && object.zone === 'library');
+      const returned = (await owner.call('getHiddenCardState')).objects.find(object => object.stableId === fetchedSwamp.stableId && object.zone === 'library');
       if (!returned) throw new Error('Temporal Eddy did not return the fetched card');
       await fetch(fetches[2], 'Island');
       return { trace, captures, searchNames, peerLibraryNames, initialLibraryCount, returnedCommitment: returned.hiddenCard?.publicCommitment };

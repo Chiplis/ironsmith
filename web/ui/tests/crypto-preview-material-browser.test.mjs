@@ -66,20 +66,20 @@ test('worker previews seeded mulligan atomically and restores pending randomness
       if (!action) throw new Error('Expected normal opening-hand mulligan action');
       const command = { type: 'priority_action', action_ref: action.action_ref };
       const initial = await call('previewCryptoRequirements', command);
-      const before = await call('exportSyncCheckpoint');
+      const before = await call('exportPublicAuditCheckpoint');
       const material = { seeds: ['11'.repeat(32)], libraryShuffles: [] };
-      // These are separate simultaneous worker requests. The checkpoint must
-      // see restored state, never the preview's temporary seed queue.
+      // Concurrent audit reads must see restored state. The repeated unseeded
+      // preview below also verifies that temporary randomness was removed.
       const [seeded, during, repeated] = await Promise.all([
         call('previewCryptoRequirementsWithMaterial', command, material),
-        call('exportSyncCheckpoint'),
+        call('exportPublicAuditCheckpoint'),
         call('previewCryptoRequirementsWithMaterial', command, material),
       ]);
-      const after = await call('exportSyncCheckpoint');
+      const after = await call('exportPublicAuditCheckpoint');
       let rejected = false;
       try { await call('previewCryptoRequirementsWithMaterial', { type: 'not_a_command' }, material); }
       catch { rejected = true; }
-      const afterFailure = await call('exportSyncCheckpoint');
+      const afterFailure = await call('exportPublicAuditCheckpoint');
       const unseededAgain = await call('previewCryptoRequirements', command);
       const savepoint = await call('createRuntimeSavepoint');
       await call('injectTranscriptRandomSeeds', material);
@@ -90,14 +90,14 @@ test('worker previews seeded mulligan atomically and restores pending randomness
       // same result as that command without the temporary material.
       const dispatchSavepoint = await call('createRuntimeSavepoint');
       await call('dispatch', command);
-      const expectedDispatch = await call('exportSyncCheckpoint');
+      const expectedDispatch = await call('exportPublicAuditCheckpoint');
       await call('restoreRuntimeSavepoint', dispatchSavepoint);
       await call('releaseRuntimeSavepoint', dispatchSavepoint);
       await Promise.all([
         call('previewCryptoRequirementsWithMaterial', command, material),
         call('dispatch', command),
       ]);
-      const actualDispatch = await call('exportSyncCheckpoint');
+      const actualDispatch = await call('exportPublicAuditCheckpoint');
       return { initial, seeded, repeated, explicitlySeeded, before, during, after, afterFailure,
         unseededAgain, rejected, expectedDispatch, actualDispatch };
     } finally { worker.terminate(); }

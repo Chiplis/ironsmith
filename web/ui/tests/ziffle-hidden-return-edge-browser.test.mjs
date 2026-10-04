@@ -35,7 +35,7 @@ for (const cardName of ['Unsummon', 'Unexpectedly Absent', 'Boomerang']) {
           worker.onmessage = ({ data }) => {
             if (data.type === 'error') return reject(new Error(data.error.stack || data.error.message));
             if (data.type === 'ready') return resolve();
-            if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
+            if (data.type === 'priorityAnalysis') { if (data.decision?.analysis_complete !== true) return; analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
             if (data.type !== 'result') return;
             const request = pending.get(data.id); if (!request) return;
             pending.delete(data.id);
@@ -79,19 +79,33 @@ for (const cardName of ['Unsummon', 'Unexpectedly Absent', 'Boomerang']) {
           ...identity, cardPositions: positions, entropyHex: ['55', '66'][index].repeat(32) }));
         const reveals = api.ziffleRevealCards({ deckCount, context, keys, steps, cardPositions: positions, tokens });
         const ceremony = { owner: 1, deckCount, context, keys, steps, deckHash: verified.deckHash, tokens, reveals };
+        peer = createWorkerSession(); await peer.ready;
         await owner.call('setPerspective', 1);
-        let state = await owner.call('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
+        await peer.call('setPerspective', 0);
+        const setupCall = async (method, ...args) => {
+          const result = await owner.call(method, ...args);
+          await peer.call(method, ...args);
+          return result;
+        };
+        const readFixture = async session => {
+          const metadata = await session.call('getHiddenCardState');
+          const audit = await session.call('exportPublicAuditCheckpoint');
+          return { ...metadata, objects: metadata.objects.map(object => ({ ...object,
+            owner: object.hiddenCard?.owner ?? audit.objects.find(card => card.id === object.id)?.owner,
+          })) };
+        };
+        let state = await setupCall('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
           format: 'normal', startingPlayer: 1, openingHandSize: 0, decks: [[], []], publicDecklists: [deck, deck],
           hiddenDeckManifests: manifests.map((manifest, seat) => buildZiffleRuntimeManifest(manifest, { ...ceremony, owner: seat })) });
         for (let index = 0; index < 30 && state.phase !== 'first main phase'; index++) {
           const action = state.decision?.actions?.find(item => ['keep_opening_hand', 'continue_pregame', 'begin_game', 'pass_priority'].includes(item.action_ref?.kind));
           if (!action) throw new Error(`Unexpected pregame decision ${JSON.stringify(state.decision)}`);
-          state = await owner.call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
+          state = await setupCall('dispatch', { type: 'priority_action', action_ref: action.action_ref });
         }
         if (state.phase !== 'first main phase') throw new Error('Fixture did not reach main phase');
         const subjects = [4, 5, 6].map(slot => ({ seat: 1, slot, zone: 'hand' }));
         for (const subject of subjects) {
-          const checkpoint = await owner.call('exportSyncCheckpoint');
+          const checkpoint = await readFixture(owner);
           const position = reveals.find(reveal => reveal.originalSlot === subject.slot).cardPosition;
           const object = checkpoint.objects.find(item => item.owner === subject.seat && item.hiddenCard?.slot === position);
           if (!object) throw new Error(`Missing fixture subject ${JSON.stringify(subject)}`);
@@ -99,29 +113,18 @@ for (const cardName of ['Unsummon', 'Unexpectedly Absent', 'Boomerang']) {
           await owner.call('revealHiddenPosition', { owner: subject.seat, objectId: object.id, position,
             originalSlot: subject.slot, cardName: secret.card, commitment: secret.commitment,
             positionCommitment: `ziffle:${ceremony.deckHash}:${position}` });
-          subject.id = object.id;
+          subject.stableId = object.stableId;
+          subject.position = position;
         }
-        for (let index = 0; index < 12; index++) await owner.call('addCardToZone', 1, 'Island', 'battlefield', true);
-        for (let index = 0; index < 4; index++) await owner.call('addCardToZone', 1, 'Plains', 'battlefield', true);
-        await owner.call('addCardToZone', 0, 'Grizzly Bears', 'battlefield', true);
-        // Only the initial positions are arranged directly. All Clone copy, bounce/tuck, draw,
-        // and recast actions execute normally after both workers are initialized.
-        const fixture = await owner.call('exportSyncCheckpoint');
-        for (const subject of subjects) {
-          const object = fixture.objects.find(item => item.id === subject.id);
-          for (const player of fixture.players) for (const zone of ['library', 'hand', 'graveyard']) {
-            player[zone] = player[zone].filter(id => id !== subject.id);
-          }
-          fixture.battlefield = fixture.battlefield.filter(id => id !== subject.id);
-          object.zone = subject.zone;
-          if (subject.zone === 'battlefield') fixture.battlefield.push(subject.id);
-          else fixture.players[subject.seat][subject.zone].push(subject.id);
-        }
-        await owner.call('importSyncCheckpoint', fixture, 1);
+        const lowestPosition = Math.min(...subjects.map(subject => subject.position));
+        for (let index = deckCount - 1; index >= lowestPosition; index--) await setupCall('drawCard', 1);
+        for (let index = 0; index < 12; index++) await setupCall('addCardToZone', 1, 'Island', 'battlefield', true);
+        for (let index = 0; index < 4; index++) await setupCall('addCardToZone', 1, 'Plains', 'battlefield', true);
+        await setupCall('addCardToZone', 0, 'Grizzly Bears', 'battlefield', true);
         state = await owner.call('uiState');
-        peer = createWorkerSession(); await peer.ready;
-        await peer.call('importSyncCheckpoint', await owner.call('exportRedactedSyncCheckpoint', 0), 0);
-        const peerBefore = await peer.call('exportSyncCheckpoint');
+        const fixture = await readFixture(owner);
+        subjects.forEach(subject => { subject.id = fixture.objects.find(object => object.stableId === subject.stableId).id; });
+        const peerBefore = await readFixture(peer);
         const wrap = session => new Proxy({}, { get: (_, method) => method.startsWith('ziffle')
           ? async input => api[method](input) : (...args) => session.call(method, ...args) });
         const refs = { gameRef: { current: wrap(owner) }, stateRef: { current: state },
@@ -180,7 +183,7 @@ for (const cardName of ['Unsummon', 'Unexpectedly Absent', 'Boomerang']) {
         const returnSpell = fixture.objects.find(object => object.id === subjects[1].id);
         const drawSpell = fixture.objects.find(object => object.id === subjects[2].id);
         const snapshots = [];
-        const currentObject = async stableId => (await owner.call('exportSyncCheckpoint')).objects.find(object => object.stableId === stableId);
+        const currentObject = async stableId => (await readFixture(owner)).objects.find(object => object.stableId === stableId);
         const castAndResolve = async (spellStableId, { targetStableId = null, copy = false } = {}) => {
           const before = await currentObject(spellStableId);
           stage = `cast ${before?.name}`;
@@ -230,8 +233,8 @@ for (const cardName of ['Unsummon', 'Unexpectedly Absent', 'Boomerang']) {
           await castAndResolve(committedClone.stableId, { targetStableId: bear.stableId });
         } else await castAndResolve(committedClone.stableId, { copy: true });
         snapshots.push({ label: 'second-public', object: await currentObject(committedClone.stableId) });
-        const after = await owner.call('exportSyncCheckpoint');
-        const peerAfter = await peer.call('exportSyncCheckpoint');
+        const after = await readFixture(owner);
+        const peerAfter = await readFixture(peer);
         return { cardName, subjectName, trace, snapshots, beforeClone: committedClone,
           peerBeforeClone: peerBefore.objects.find(object => object.stableId === committedClone.stableId),
           afterClone: after.objects.find(object => object.stableId === committedClone.stableId),

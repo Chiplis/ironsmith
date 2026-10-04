@@ -9,7 +9,7 @@ import { assertZiffleOpeningOriginMatchesMetadata } from '../src/lib/multiplayer
 import { authorizationHarness } from './ziffle-reveal-authorization-harness.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-test('real worker departure preserves origin-bound final hand and library-anchor requirements', { timeout: 120000 }, async t => {
+test('real worker departure preserves origin-bound final hand disclosure requirements', { timeout: 120000 }, async t => {
   const vite = await createServer({ root, configFile: path.join(root, 'vite.config.js'), logLevel: 'error',
     server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
   await vite.listen(); t.after(() => vite.close());
@@ -43,26 +43,23 @@ test('real worker departure preserves origin-bound final hand and library-anchor
         publicDecklists: [Array(60).fill('Island'), Array(60).fill('Mountain')],
         hiddenDeckManifests: [0, 1].map(owner => ({ owner, deckCount: 60, commitmentRoot: `ziffle:initial-${owner}`,
           slotCommitments: Array.from({ length: 60 }, (_, slot) => ({ slot, commitment: `ziffle:initial-${owner}:${slot}` })) })) });
-      const before = await call('exportSyncCheckpoint');
-      const card = before.objects.find(object => object.owner === 1 && object.zone === 'library' && object.hiddenCard);
-      if (!card) throw new Error('Missing tracked library fixture card');
-      // Seed an obligation anchor using an actual tracked card's checkpoint
-      // identity; the engine generates the final anchor-only requirement.
-      before.rules.hiddenLibraryAnchors = [{ ...card.hiddenCard, owner: 1, objectId: card.id, knownName: 'Mountain' }];
-      await call('importSyncCheckpoint', before);
+      const before = await call('getHiddenCardState');
+      const initialHand = before.objects.filter(object => object.hiddenCard?.owner === 1 && object.zone === 'hand');
       const state = await call('forfeitPlayer', 1);
-      const checkpoint = await call('exportSyncCheckpoint');
+      const checkpoint = await call('getHiddenCardState');
       const requirements = await call('endOfMatchDisclosureRequirements', 1);
       await call('setPerspective', 0);
       const remoteRequirements = await call('endOfMatchDisclosureRequirements', 1);
-      return { state, checkpoint, requirements, remoteRequirements };
+      return { state, checkpoint, initialHand, requirements, remoteRequirements };
     } finally { worker.terminate(); }
   });
   assert.ok(capture.state.game_over);
-  assert.equal(capture.checkpoint.objects.filter(object => object.owner === 1).length, 0);
-  assert.equal(capture.checkpoint.rules.departedHiddenCards.length, 7);
-  assert.equal(capture.requirements.length, 8);
-  assert.equal(capture.requirements.filter(value => value.objectId == null).length, 1);
+  assert.equal(capture.checkpoint.objects.filter(object => object.hiddenCard?.owner === 1).length, 0);
+  assert.equal(capture.initialHand.length, 7);
+  assert.equal(capture.requirements.length, 7);
+  assert.deepEqual(capture.requirements.map(requirement => requirement.originSlot).sort((a, b) => a - b),
+    capture.initialHand.map(object => object.hiddenCard.originSlot).sort((a, b) => a - b),
+    'every departed hand card retains its original ciphertext position');
   const positions = [];
   for (const requirement of capture.requirements) {
     const positionCommitment = requirement.publicCommitment || requirement.public_commitment || requirement.commitment;

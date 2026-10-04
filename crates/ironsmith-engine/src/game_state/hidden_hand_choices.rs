@@ -976,7 +976,7 @@ impl GameState {
             .insert(id, kind);
     }
 
-    /// Hidden face-down cast claims (checkpoint sync).
+    /// Hidden face-down cast claims.
     pub fn hidden_face_down_cast_claims(&self) -> Vec<(ObjectId, FaceDownCastKind)> {
         let mut claims: Vec<_> = self
             .auxiliary_tracking
@@ -988,32 +988,10 @@ impl GameState {
         claims
     }
 
-    /// Restore hidden face-down cast claims (checkpoint sync).
-    pub fn restore_hidden_face_down_cast_claims(
-        &mut self,
-        claims: impl IntoIterator<Item = (ObjectId, FaceDownCastKind)>,
-    ) {
-        self.auxiliary_tracking_mut().hidden_face_down_cast_claims = claims.into_iter().collect();
-    }
-
-    /// The shared obligation ledger (checkpoint sync), in recording order.
+    /// The shared obligation ledger, in recording order.
     /// Identical on every peer (see [`HiddenIdentityObligation`]).
     pub fn hidden_identity_obligations(&self) -> &[HiddenIdentityObligation] {
         &self.auxiliary_tracking.hidden_identity_obligations
-    }
-
-    /// Replace the obligation ledger verbatim (checkpoint sync). The ledger
-    /// is shared and its checkpoint encoding lossless, so a restore (of this
-    /// engine's own savepoint or of another peer's authoritative checkpoint)
-    /// installs exactly the exported entries, in order and without dedup:
-    /// any filtering here would make this engine's ledger differ from the
-    /// other peers'.
-    pub fn restore_hidden_identity_obligations(
-        &mut self,
-        obligations: impl IntoIterator<Item = HiddenIdentityObligation>,
-    ) {
-        self.auxiliary_tracking_mut().hidden_identity_obligations =
-            obligations.into_iter().collect();
     }
 
     /// Whether `obligation` is about a card that currently sits face up in a
@@ -1049,7 +1027,7 @@ impl GameState {
         }
     }
 
-    /// Cards marked as subjects of a pending public claim (checkpoint sync).
+    /// Cards marked as subjects of a pending public claim.
     pub fn hidden_claim_subjects(&self) -> Vec<StableId> {
         self.auxiliary_tracking
             .hidden_claim_subjects
@@ -1058,36 +1036,14 @@ impl GameState {
             .collect()
     }
 
-    /// Restore the claim subjects (checkpoint sync).
-    pub fn restore_hidden_claim_subjects(&mut self, subjects: impl IntoIterator<Item = StableId>) {
-        self.auxiliary_tracking_mut().hidden_claim_subjects = subjects.into_iter().collect();
-    }
-
-    /// Library anchors (checkpoint sync).
+    /// Library anchors.
     pub fn hidden_library_anchors(&self) -> &[HiddenLibraryAnchor] {
         &self.auxiliary_tracking.hidden_library_anchors
     }
 
-    /// Restore the library anchors (checkpoint sync).
-    pub fn restore_hidden_library_anchors(
-        &mut self,
-        anchors: impl IntoIterator<Item = HiddenLibraryAnchor>,
-    ) {
-        self.auxiliary_tracking_mut().hidden_library_anchors = anchors.into_iter().collect();
-    }
-
-    /// Hidden cards snapshotted as their owner left the game (checkpoint
-    /// sync).
+    /// Hidden cards retained when their owner left the game.
     pub fn departed_hidden_cards(&self) -> &[DepartedHiddenCard] {
         &self.auxiliary_tracking.departed_hidden_cards
-    }
-
-    /// Restore the departed hidden-card snapshots (checkpoint sync).
-    pub fn restore_departed_hidden_cards(
-        &mut self,
-        cards: impl IntoIterator<Item = DepartedHiddenCard>,
-    ) {
-        self.auxiliary_tracking_mut().departed_hidden_cards = cards.into_iter().collect();
     }
 
     // ------------------------------------------------------------------
@@ -1121,18 +1077,9 @@ impl GameState {
         }
     }
 
-    /// Face-down cast permissions (checkpoint sync).
+    /// Face-down cast permissions.
     pub fn face_down_cast_permissions(&self) -> &[FaceDownCastPermission] {
         &self.auxiliary_tracking.face_down_cast_permissions
-    }
-
-    /// Restore face-down cast permissions (checkpoint sync).
-    pub fn restore_face_down_cast_permissions(
-        &mut self,
-        permissions: impl IntoIterator<Item = FaceDownCastPermission>,
-    ) {
-        self.auxiliary_tracking_mut().face_down_cast_permissions =
-            permissions.into_iter().collect();
     }
 
     fn face_down_cast_permission_is_active(&self, permission: &FaceDownCastPermission) -> bool {
@@ -1646,21 +1593,13 @@ impl GameState {
         }
     }
 
-    /// Hidden-tracked cards revealed publicly on every peer (checkpoint sync).
+    /// Hidden-tracked cards revealed publicly on every peer.
     pub fn publicly_revealed_hidden_cards(&self) -> Vec<ObjectId> {
         self.auxiliary_tracking
             .publicly_revealed_hidden_cards
             .iter()
             .copied()
             .collect()
-    }
-
-    /// Restore the publicly revealed hidden cards (checkpoint sync).
-    pub fn restore_publicly_revealed_hidden_cards(
-        &mut self,
-        ids: impl IntoIterator<Item = ObjectId>,
-    ) {
-        self.auxiliary_tracking_mut().publicly_revealed_hidden_cards = ids.into_iter().collect();
     }
 
     /// Players for whom drawing a hidden card opens an owner reveal window.
@@ -1704,14 +1643,9 @@ impl GameState {
             .collect()
     }
 
-    /// Draw reveal windows not yet answered (checkpoint sync).
+    /// Draw reveal windows not yet answered.
     pub fn pending_hidden_draw_reveals(&self) -> Vec<(PlayerId, ObjectId)> {
         self.auxiliary_tracking.pending_hidden_draw_reveals.clone()
-    }
-
-    /// Restore unanswered draw reveal windows (checkpoint sync).
-    pub fn restore_pending_hidden_draw_reveals(&mut self, pending: Vec<(PlayerId, ObjectId)>) {
-        self.auxiliary_tracking_mut().pending_hidden_draw_reveals = pending;
     }
 
     /// Open a draw reveal window for a hidden card drawn by an eligible player.
@@ -1837,20 +1771,11 @@ impl GameState {
             .retain(|entry| entry != pending);
     }
 
-    /// Deferred automatic draw reveals not yet answered (checkpoint sync).
+    /// Deferred automatic draw reveals not yet answered.
     pub fn pending_hidden_automatic_draw_reveals(&self) -> Vec<PendingAutomaticDrawReveal> {
         self.auxiliary_tracking
             .pending_hidden_automatic_draw_reveals
             .clone()
-    }
-
-    /// Restore deferred automatic draw reveals (checkpoint sync).
-    pub fn restore_pending_hidden_automatic_draw_reveals(
-        &mut self,
-        pending: Vec<PendingAutomaticDrawReveal>,
-    ) {
-        self.auxiliary_tracking_mut()
-            .pending_hidden_automatic_draw_reveals = pending;
     }
 
     /// Close the draw reveal window for `card`.

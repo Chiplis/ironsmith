@@ -398,7 +398,7 @@ test('production Verified catalog opening controls, both seats and matching audi
       row.timeOrigins = await Promise.all(pages.map(page => page.evaluate(() => performance.timeOrigin)));
       // Capture both authenticated starting perspectives for reproducibility of
       // cryptographic shuffles; these setup reads precede measured gameplay.
-      row.initialCheckpoints = await Promise.all(pages.map(page => page.evaluate(() => window.__ironsmithE2E.checkpoint())));
+      row.initialCheckpoints = await Promise.all(pages.map(page => page.evaluate(() => window.__ironsmithE2E.publicCheckpoint())));
       // Retain setup/cold-start measurements before separating gameplay calls.
       // They must not disappear merely because the match became ready.
       row.setupTimings = await Promise.all(pages.map(page => page.evaluate(() => ({
@@ -636,7 +636,7 @@ test('production Verified catalog opening controls, both seats and matching audi
       row.error = String(error.stack || error);
       row.failureCheckpoints = await Promise.all(pages.map(page => page.evaluate(async () => {
         return Promise.race([
-          window.__ironsmithE2E.checkpoint(),
+          window.__ironsmithE2E.publicCheckpoint(),
           new Promise(resolve => setTimeout(() => resolve({ error: 'checkpoint capture timed out' }), 5000)),
         ]);
       }).catch(error => ({ error: String(error) }))));

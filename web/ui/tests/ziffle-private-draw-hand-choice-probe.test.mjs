@@ -45,7 +45,7 @@ for (const { cardName, topName, acceptKinship } of scenarios) test(`${cardName} 
         worker.onmessage = ({ data }) => {
           if (data.type === 'error') return reject(new Error(data.error.stack || data.error.message));
           if (data.type === 'ready') return resolve();
-          if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); analysisWaiters.get(data.revision)?.(data.decision); return; }
+          if (data.type === 'priorityAnalysis') { if (data.decision?.analysis_complete !== true) return; analyses.set(data.revision, data.decision); analysisWaiters.get(data.revision)?.(data.decision); return; }
           if (data.type !== 'result') return;
           const request = pending.get(data.id); if (!request) return;
           pending.delete(data.id);
@@ -64,7 +64,23 @@ for (const { cardName, topName, acceptKinship } of scenarios) test(`${cardName} 
       worker.postMessage({ type: 'init', assetBaseUrl: `${location.origin}/` });
       return { worker, call, ready };
     }
-    const { worker, call, ready } = createWorkerSession();
+    const { worker, call: ownerCall, ready } = createWorkerSession();
+    const setupCommands = [];
+    const setupMethods = new Set(['startMatch', 'dispatch', 'drawCard', 'addCardToZone']);
+    let recordingSetup = true;
+    const call = async (method, ...args) => {
+      const result = await ownerCall(method, ...args);
+      if (recordingSetup && setupMethods.has(method)) setupCommands.push([method, structuredClone(args)]);
+      return result;
+    };
+    const readFixture = async engineCall => {
+      const metadata = await engineCall('getHiddenCardState');
+      return { ...metadata, objects: metadata.objects.map(object => ({ ...object, owner: object.hiddenCard?.owner })),
+        players: metadata.players.map(player => ({ ...player,
+          library: metadata.objects.filter(object => object.hiddenCard?.owner === player.id && object.zone === 'library')
+            .sort((left, right) => (left.hiddenCard.publicSlot ?? left.hiddenCard.slot) - (right.hiddenCard.publicSlot ?? right.hiddenCard.slot)).map(object => object.id),
+        })) };
+    };
     let peer;
     let reactRoot;
     try {
@@ -104,7 +120,7 @@ for (const { cardName, topName, acceptKinship } of scenarios) test(`${cardName} 
         state = await call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
       }
       if (state.phase !== 'first main phase') throw new Error('Main phase missing');
-      const beforeCheckpoint = await call('exportSyncCheckpoint');
+      const beforeCheckpoint = await readFixture(call);
       const beforeOrder = [...beforeCheckpoint.players[1].library];
       const originalFourId = beforeCheckpoint.objects.find(o => o.owner === 1 && o.hiddenCard?.slot === originPosition)?.id;
       if (!beforeOrder.includes(originalFourId)) throw new Error('Committed spell not in library');
@@ -141,8 +157,9 @@ for (const { cardName, topName, acceptKinship } of scenarios) test(`${cardName} 
         currentObjectIdForHiddenRef: async () => null, currentObjectIdForStableId: async () => null } };
       reactRoot = mountOpeningServices(base, services);
       peer = createWorkerSession(); await peer.ready;
-      await peer.call('importSyncCheckpoint', await call('exportSyncCheckpoint'));
       await peer.call('setPerspective', 0);
+      for (const [method, args] of setupCommands) await peer.call(method, ...args);
+      recordingSetup = false;
       const ownerGame = refs.gameRef.current;
       const peerGame = new Proxy({}, { get: (_, method) => method.startsWith('ziffle')
         ? async input => api[method](input)
@@ -169,7 +186,7 @@ for (const { cardName, topName, acceptKinship } of scenarios) test(`${cardName} 
       const hydratePrivate = async requirements => {
         const privateRequirements = requirements.filter(value => value.type === 'private_open' && value.owner === 1);
         const reveals = [];
-        const checkpoint = await call('exportSyncCheckpoint');
+        const checkpoint = await readFixture(call);
         for (const requirement of privateRequirements) {
           const currentObject = checkpoint.objects.find(object => object.id === requirement.objectId)
             || checkpoint.objects.find(object => object.owner === requirement.owner
@@ -247,22 +264,22 @@ for (const { cardName, topName, acceptKinship } of scenarios) test(`${cardName} 
         const action = state.decision.actions.find(a => a.action_ref?.kind === 'cast_spell' && Number(a.object_id) === handSpell.id);
         if (!action) throw new Error('Committed spell is not playable');
         await resolveCast(action);
-        const normalResolution = { owner: playerSummary(await call('exportSyncCheckpoint')),
-          peer: playerSummary(await peer.call('exportSyncCheckpoint')), hashesEqual: await publicHash(call) === await publicHash(peer.call) };
+        const normalResolution = { owner: playerSummary(await readFixture(call)),
+          peer: playerSummary(await readFixture(peer.call)), hashesEqual: await publicHash(call) === await publicHash(peer.call) };
         if (topName) {
-          // Resume both complete engine views at the end of Alice's turn, so
-          // Bob's next upkeep generates the Kinship trigger normally.
-          for (const engineCall of [call, peer.call]) {
-            const checkpoint = await engineCall('exportSyncCheckpoint');
-            checkpoint.turn = { ...checkpoint.turn, activePlayer: 0, priorityPlayer: 0,
-              turnNumber: 2, phase: 'ending', step: 'end' };
-            checkpoint.priorityRuntime = { ...checkpoint.priorityRuntime,
-              turnRunnerState: 'end_step_priority', consecutivePriorityPasses: 0 };
-            await engineCall('importSyncCheckpoint', checkpoint);
-          }
-          state = await call('uiState'); refs.stateRef.current = state;
-          for (let index = 0; index < 8 && state.decision.kind === 'priority'; index++) {
-            await dispatchBoth({ type: 'priority_action', action_ref: { kind: 'pass_priority' } }, `kinship-pass-${index}`);
+          // Advance from the actual resolution through both turns until
+          // Bob's next upkeep generates Kinship, preserving real continuations.
+          for (let index = 0; index < 100 && state.decision.description !== 'Look at the top card of your library'; index++) {
+            const decision = state.decision;
+            let command;
+            if (decision.kind === 'attackers') command = { type: 'declare_attackers', declarations: [], bands: [] };
+            else if (decision.kind === 'blockers') command = { type: 'declare_blockers', declarations: [] };
+            else {
+              const pass = decision.actions?.find(action => action.action_ref?.kind === 'pass_priority');
+              if (!pass) throw new Error(`Cannot reach Kinship upkeep: ${JSON.stringify(decision)}`);
+              command = { type: 'priority_action', action_ref: pass.action_ref };
+            }
+            await dispatchBoth(command, `kinship-advance-${index}`);
           }
           if (state.decision.description !== 'Look at the top card of your library') {
             throw new Error(`Missing Kinship look offer: ${JSON.stringify(state.decision)}`);
@@ -270,14 +287,14 @@ for (const { cardName, topName, acceptKinship } of scenarios) test(`${cardName} 
           await dispatchBoth({ type: 'select_options', option_indices: [1] }, 'kinship-look');
           const revealOffer = state.decision;
           if (revealOffer.description !== 'Reveal it') throw new Error(`Missing reveal offer: ${JSON.stringify(revealOffer)}`);
-          const peerBeforeReveal = await peer.call('exportSyncCheckpoint');
+          const peerBeforeReveal = await readFixture(peer.call);
           const hiddenTopId = peerBeforeReveal.players[1].library.at(-1);
           if (peerBeforeReveal.objects.find(object => object.id === hiddenTopId).name !== 'Hidden Card') {
             throw new Error('Private look leaked the top card to the peer');
           }
           await dispatchBoth({ type: 'select_options', option_indices: [acceptKinship ? 1 : 0] }, 'kinship-reveal');
-          const finalOwner = await call('exportSyncCheckpoint');
-          const finalPeer = await peer.call('exportSyncCheckpoint');
+          const finalOwner = await readFixture(call);
+          const finalPeer = await readFixture(peer.call);
           return { cardName, topName, acceptKinship, stage: 'kinship-complete', error: null, stages,
             normalResolution, revealOffer, finalDecision: state.decision.kind,
             wolfCount: finalOwner.objects.filter(object => object.name === 'Wolf' && object.zone === 'battlefield').length,
@@ -293,20 +310,20 @@ for (const { cardName, topName, acceptKinship } of scenarios) test(`${cardName} 
             await peer.call('addCardToZone', 1, 'Mountain', 'battlefield', true);
           }
           state = await call('uiState'); refs.stateRef.current = state;
-          const checkpoint = await call('exportSyncCheckpoint');
+          const checkpoint = await readFixture(call);
           const spell = checkpoint.objects.find(object => object.name === cardName && object.zone === 'graveyard');
           flashbackAction = state.decision.actions.find(action => action.action_ref?.kind === 'cast_spell' && Number(action.object_id) === spell.id);
           if (!flashbackAction) throw new Error(`No flashback action: ${JSON.stringify(state.decision)}`);
           await resolveCast(flashbackAction, 'flashback-');
         }
         stage = 'final-checkpoint';
-        const own = await call('exportSyncCheckpoint');
-        const other = await peer.call('exportSyncCheckpoint');
+        const own = await readFixture(call);
+        const other = await readFixture(peer.call);
         return { cardName, stage, error: null, stages, normalResolution, flashbackAction, finalDecision: state.decision?.kind,
           owner: playerSummary(own), peer: playerSummary(other), hashesEqual: await publicHash(call) === await publicHash(peer.call) };
       } catch (error) {
         return { cardName, stage, error: error.message, stages, pendingRequirements, decision: state.decision,
-          ownerCheckpoint: await call('exportSyncCheckpoint'), peerCheckpoint: await peer.call('exportSyncCheckpoint') };
+          ownerCheckpoint: await readFixture(call), peerCheckpoint: await readFixture(peer.call) };
       }
     } finally { reactRoot?.unmount(); worker.terminate(); peer?.worker.terminate(); }
   }, { cardName, topName, acceptKinship, verifierUrl: `/@fs/${path.resolve(root, '../wasm_demo/pkg/verifier.js')}` });

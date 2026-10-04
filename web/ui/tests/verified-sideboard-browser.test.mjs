@@ -78,20 +78,25 @@ for (const explicitSideboards of [false, true]) {
         }
         await Promise.all(workers.map((worker, seat) => worker.call('setPerspective', seat)));
         await Promise.all(workers.map(worker => worker.call('startMatch', config)));
-        const before = await Promise.all(workers.map(worker => worker.call('exportSyncCheckpoint')));
-        const initialRedacted = await Promise.all(workers.map((worker, seat) => worker.call('exportRedactedSyncCheckpoint', 1 - seat)));
-        // Owners can hydrate their committed sideboards without disclosing them
-        // to the other engine or to an opponent-redacted snapshot.
+        const before = await Promise.all(workers.map(worker => worker.call('getHiddenCardState')));
+        const beforeViews = await Promise.all(workers.map(worker => worker.call('uiState')));
+        // Owners hydrate their committed sideboards; opponent UI views keep
+        // those identities private.
         for (let seat = 0; seat < workers.length; seat++) {
           for (const id of before[seat].players[seat].sideboard) {
             const object = before[seat].objects.find(object => object.id === id);
             await workers[seat].call('revealHiddenSlot', { ...object.hiddenCard, cardName: sideboards[seat][0] });
           }
         }
-        const after = await Promise.all(workers.map(worker => worker.call('exportSyncCheckpoint')));
-        const redacted = await Promise.all(workers.map((worker, seat) => worker.call('exportRedactedSyncCheckpoint', 1 - seat)));
+        const after = await Promise.all(workers.map(worker => worker.call('getHiddenCardState')));
+        const opponentViews = await Promise.all(workers.map(async (worker, seat) => {
+          await worker.call('setPerspective', 1 - seat);
+          const view = await worker.call('uiState');
+          await worker.call('setPerspective', seat);
+          return view;
+        }));
         const audits = await Promise.all(workers.map(worker => worker.call('exportPublicAuditCheckpoint')));
-        return { errors, before, initialRedacted, after, redacted, audits };
+        return { errors, before, beforeViews, after, opponentViews, audits };
       } finally { workers.forEach(worker => worker.terminate()); }
     }, { manifests, decks, sideboards, explicitSideboards });
     assert.match(result.errors[0], /must commit every main-deck and sideboard slot/);
@@ -100,14 +105,18 @@ for (const explicitSideboards of [false, true]) {
     for (let seat = 0; seat < 2; seat++) {
       assert.equal(manifests[seat].slotCommitments.length, 76);
       assert.deepEqual(manifests[seat].slotCommitments.slice(61), originals[seat].slotCommitments.slice(61));
-      for (const checkpoint of result.before) {
-        assert.equal(checkpoint.players[seat].library.length, 54);
-        assert.equal(checkpoint.players[seat].hand.length, 7);
-        assert.equal(checkpoint.players[seat].sideboard.length, 15);
+      for (const view of result.beforeViews) {
+        assert.equal(view.players[seat].library_size, 54);
+        assert.equal(view.players[seat].hand_size, 7);
+      }
+      for (const metadata of result.before) {
+        assert.equal(metadata.players[seat].sideboard.length, 15);
       }
       const ids = result.before[seat].players[seat].sideboard;
       assert.deepEqual(ids.map(id => result.before[seat].objects.find(object => object.id === id).hiddenCard.slot),
         Array.from({ length: 15 }, (_, index) => 61 + index));
+      assert.deepEqual(result.opponentViews[seat].players[seat].sideboard_cards, [],
+        "opponent UI exposes no private sideboard identities");
       for (const id of ids) {
         const original = result.before[seat].objects.find(object => object.id === id);
         assert.equal(original.zone, 'outside_game');
@@ -116,8 +125,6 @@ for (const explicitSideboards of [false, true]) {
         assert.equal(original.hiddenCard.commitment, originals[seat].slotCommitments[original.hiddenCard.slot].commitment);
         assert.equal(result.after[seat].objects.find(object => object.id === id).name, sideboards[seat][0]);
         assert.equal(result.after[1 - seat].objects.find(object => object.id === id).name, explicitSideboards ? sideboards[seat][0] : 'Hidden Card');
-        assert.equal(result.initialRedacted[seat].objects.find(object => object.id === id).name, 'Hidden Card');
-        assert.equal(result.redacted[seat].objects.find(object => object.id === id).name, 'Hidden Card');
       }
     }
     assert.equal(await publicCheckpointHash(result.audits[0]), await publicCheckpointHash(result.audits[1]));

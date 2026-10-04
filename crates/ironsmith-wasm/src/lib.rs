@@ -4528,6 +4528,7 @@ struct GrandMeleeHostLane {
 
 #[wasm_bindgen]
 pub struct WasmGame {
+    runtime_identity_origin_available: bool,
     runtime_savepoints: HashMap<u32, Box<wasm_game_impl::RuntimeSavepoint>>,
     next_runtime_savepoint: u32,
     priority_analysis_job: Option<Box<PriorityAnalysisJob>>,
@@ -6793,61 +6794,6 @@ mod native_tests {
                 && requirement.object_id == Some(bob_top.0)
                 && requirement.commitment.as_deref() == Some("bob-parley-top")
         }));
-    }
-}
-
-#[cfg(all(test, not(target_arch = "wasm32")))]
-mod determinism_tests {
-    use super::*;
-    use ironsmith::ids::{IdCountersSnapshot, restore_id_counters};
-    use ironsmith::zone::Zone;
-    use ironsmith_registry_test::cards::definitions::{grizzly_bears, ornithopter};
-
-    fn scripted_checkpoint_bytes() -> (Vec<u8>, Vec<HiddenInfoOperation>) {
-        restore_id_counters(IdCountersSnapshot {
-            player: 0,
-            object: 1,
-            card: 1,
-        });
-        let mut wasm = WasmGame::new();
-        wasm.game =
-            GameState::new_with_runtime_id_reset(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        restore_id_counters(IdCountersSnapshot {
-            player: 0,
-            object: 1,
-            card: 1,
-        });
-        wasm.game.set_random_seed(0x5eed);
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        wasm.game
-            .create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
-        wasm.game
-            .create_object_from_definition(&grizzly_bears(), bob, Zone::Hand);
-        wasm.game.refresh_continuous_state();
-
-        let checkpoint = wasm.build_sync_checkpoint();
-        let mut checkpoint_value =
-            serde_json::to_value(&checkpoint).expect("sync checkpoint should serialize");
-        if let Some(fields) = checkpoint_value.as_object_mut() {
-            fields.insert(
-                "idCounters".to_string(),
-                serde_json::json!("normalized-for-parallel-native-test"),
-            );
-        }
-        let bytes = serde_json::to_vec(&checkpoint_value)
-            .expect("normalized sync checkpoint should serialize");
-        let audit = wasm.game.crypto_audit_operations_since(0);
-        (bytes, audit)
-    }
-
-    #[test]
-    fn same_seed_double_run_sync_checkpoint_is_byte_identical() {
-        let _id_counter_guard = crate::test_id_counter_guard();
-        let first = scripted_checkpoint_bytes();
-        let second = scripted_checkpoint_bytes();
-        assert_eq!(first.0, second.0);
-        assert_eq!(first.1, second.1);
     }
 }
 

@@ -777,37 +777,6 @@ pub struct SuspendedReplacementEffect {
     until_end_of_turn: bool,
 }
 
-/// Complete persistent replacement registrations. Static descriptors are rebuilt
-/// from the restored object world; their allocated identity gaps remain reserved.
-/// A codec must convert every executable descriptor, not its display string.
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
-pub struct RegisteredReplacementEffectState<E = ReplacementEffect> {
-    pub effects: Vec<E>,
-    pub next_id: u64,
-    pub effect_sources: Vec<(ReplacementEffectId, ReplacementEffectSource)>,
-    pub one_shot_effects: Vec<ReplacementEffectId>,
-    pub batch_one_shot_effects: Vec<ReplacementEffectId>,
-    pub pending_batch_one_shot_effects: Vec<ReplacementEffectId>,
-    pub until_end_of_turn_effects: Vec<ReplacementEffectId>,
-    pub until_next_turn_effects: Vec<(ReplacementEffectId, (PlayerId, u32, Option<u32>))>,
-}
-
-impl<E> RegisteredReplacementEffectState<E> {
-    pub fn try_map_effects<E2, Error>(
-        self, convert: impl FnMut(E) -> Result<E2, Error>,
-    ) -> Result<RegisteredReplacementEffectState<E2>, Error> {
-        let Self { effects, next_id, effect_sources, one_shot_effects,
-            batch_one_shot_effects, pending_batch_one_shot_effects,
-            until_end_of_turn_effects, until_next_turn_effects } = self;
-        Ok(RegisteredReplacementEffectState {
-            effects: effects.into_iter().map(convert).collect::<Result<Vec<_>, _>>()?,
-            next_id, effect_sources, one_shot_effects, batch_one_shot_effects,
-            pending_batch_one_shot_effects, until_end_of_turn_effects, until_next_turn_effects,
-        })
-    }
-}
-
 /// Manages all replacement effects in the game.
 #[derive(Debug, Clone, Default)]
 pub struct ReplacementEffectManager {
@@ -842,94 +811,6 @@ pub struct ReplacementEffectManager {
 }
 
 impl ReplacementEffectManager {
-    /// Capture full persistent state, rejecting inconsistent native bookkeeping
-    /// rather than dropping it from an apparently successful checkpoint.
-    pub fn registered_state(&self) -> Result<RegisteredReplacementEffectState, String> {
-        // Exhaustive destructuring makes new manager state require an explicit
-        // checkpoint decision rather than silently omitting it.
-        let Self { effects, effect_sources, one_shot_effects, batch_one_shot_effects,
-            pending_batch_one_shot_effects, until_end_of_turn_effects,
-            until_next_turn_effects, next_id } = self;
-        let mut allocated_ids = std::collections::HashSet::new();
-        for effect in effects {
-            if effect.id.0 >= *next_id || !allocated_ids.insert(effect.id) {
-                return Err("invalid replacement manager allocation".into());
-            }
-        }
-        let static_ids: std::collections::HashSet<_> = effects.iter()
-            .filter(|effect| effect.registration_id.is_none()
-                && effect_sources.get(&effect.id.0) == Some(&ReplacementEffectSource::StaticAbility))
-            .map(|effect| effect.id).collect();
-        let sorted_ids = |ids: &std::collections::HashSet<ReplacementEffectId>| {
-            let mut ids: Vec<_> = ids.iter().copied().collect(); ids.sort_by_key(|id| id.0); ids
-        };
-        let mut sources: Vec<_> = effect_sources.iter()
-            .filter(|(id, _)| !static_ids.contains(&ReplacementEffectId(**id)))
-            .map(|(id, source)| (ReplacementEffectId(*id), *source)).collect();
-        sources.sort_by_key(|(id, _)| id.0);
-        let mut next_turn: Vec<_> = until_next_turn_effects.iter()
-            .map(|(id, anchor)| (*id, *anchor)).collect();
-        next_turn.sort_by_key(|(id, _)| id.0);
-        let state = RegisteredReplacementEffectState {
-            effects: effects.iter().filter(|effect| !static_ids.contains(&effect.id)).cloned().collect(),
-            next_id: *next_id, effect_sources: sources,
-            one_shot_effects: sorted_ids(one_shot_effects),
-            batch_one_shot_effects: sorted_ids(batch_one_shot_effects),
-            pending_batch_one_shot_effects: sorted_ids(pending_batch_one_shot_effects),
-            until_end_of_turn_effects: sorted_ids(until_end_of_turn_effects),
-            until_next_turn_effects: next_turn,
-        };
-        Self::new().restore_registered_state(state.clone())?;
-        Ok(state)
-    }
-
-    /// Validate all identities and lifetime memberships before publishing. The
-    /// owning importer must validate object/player references and regenerate
-    /// static descriptors; departed sources remain valid stored identities.
-    pub fn restore_registered_state(&mut self, state: RegisteredReplacementEffectState) -> Result<(), String> {
-        if state.next_id == u64::MAX {
-            return Err("serialized replacement allocator cannot advance".into());
-        }
-        let mut ids = std::collections::HashSet::new();
-        for effect in &state.effects {
-            if effect.registration_id != Some(effect.id) || effect.id.0 >= state.next_id || !ids.insert(effect.id) {
-                return Err("invalid registered replacement identity".into());
-            }
-        }
-        let mut sources = std::collections::HashMap::new();
-        for (id, source) in state.effect_sources {
-            if !ids.contains(&id) || source == ReplacementEffectSource::StaticAbility || sources.insert(id.0, source).is_some() {
-                return Err("invalid registered replacement source".into());
-            }
-        }
-        let checked_ids = |entries: Vec<ReplacementEffectId>| -> Result<std::collections::HashSet<ReplacementEffectId>, String> {
-            let mut result = std::collections::HashSet::new();
-            for id in entries {
-                if !ids.contains(&id) || !result.insert(id) { return Err("invalid registered replacement lifetime membership".into()); }
-            }
-            Ok(result)
-        };
-        let one_shot = checked_ids(state.one_shot_effects)?;
-        let batch = checked_ids(state.batch_one_shot_effects)?;
-        if !one_shot.is_disjoint(&batch) { return Err("replacement cannot be both ordinary and batch one-shot".into()); }
-        let pending = checked_ids(state.pending_batch_one_shot_effects)?;
-        if !pending.is_subset(&batch) { return Err("pending replacement consumption is not a batch one-shot".into()); }
-        let cleanup = checked_ids(state.until_end_of_turn_effects)?;
-        let mut next_turn = std::collections::HashMap::new();
-        for (id, anchor) in state.until_next_turn_effects {
-            if !ids.contains(&id) || next_turn.insert(id, anchor).is_some() {
-                return Err("invalid registered replacement next-turn anchor".into());
-            }
-        }
-        *self = Self {
-            effects: state.effects, effect_sources: sources, next_id: state.next_id,
-            one_shot_effects: one_shot, batch_one_shot_effects: batch,
-            pending_batch_one_shot_effects: pending, until_end_of_turn_effects: cleanup,
-            until_next_turn_effects: next_turn,
-        };
-        Ok(())
-    }
-
     /// Create a new empty manager.
     pub fn new() -> Self {
         Self::default()
@@ -1559,7 +1440,7 @@ impl ReplacementEffect {
 mod tests {
     use super::*;
 
-    fn registered_transport_fixture() -> (ReplacementEffectManager, [ReplacementEffectId; 5]) {
+    fn registered_lifetime_fixture() -> (ReplacementEffectManager, [ReplacementEffectId; 5]) {
         let source = ObjectId::from_raw(71);
         let player = PlayerId::from_index(1);
         let mut manager = ReplacementEffectManager::new();
@@ -1724,14 +1605,10 @@ mod tests {
     }
 
     #[test]
-    fn registered_replacement_transport_preserves_consumption_expiry_and_identity() {
-        let (original, ids) = registered_transport_fixture();
-        let state = original.registered_state().unwrap();
-        assert_eq!(state.effects.iter().map(|effect| effect.id).collect::<Vec<_>>(), ids);
-        let keys = state.effects.iter().map(ReplacementEffect::application_key).collect::<Vec<_>>();
-        let mut restored = ReplacementEffectManager::new();
-        restored.add_static_ability_effect(ReplacementEffect::indestructible(ObjectId::from_raw(91), PlayerId::from_index(0)));
-        restored.restore_registered_state(state).unwrap();
+    fn native_clone_preserves_replacement_consumption_expiry_and_identity() {
+        let (original, ids) = registered_lifetime_fixture();
+        let keys = original.effects().iter().map(ReplacementEffect::application_key).collect::<Vec<_>>();
+        let mut restored = original.clone();
         assert_eq!(restored.effects().iter().map(ReplacementEffect::application_key).collect::<Vec<_>>(), keys);
         assert_eq!(restored.next_id(), original.next_id());
         assert!(restored.mark_effect_used(ids[1]));
@@ -1750,9 +1627,8 @@ mod tests {
     }
 
     #[test]
-    fn registered_replacement_action_mapping_executes_each_retained_instead_body() {
+    fn native_clone_executes_each_replacement_instead_body() {
         use crate::effects::{EffectExecutor, ExecutionContext};
-        use std::cell::Cell;
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
         let source = game.new_object_id();
@@ -1761,15 +1637,8 @@ mod tests {
         let id = original.add_until_end_of_turn_effect(ReplacementEffect::with_matcher(
             source, bob, WouldGainLifeMatcher::you(), ReplacementAction::Instead(vec![body.clone(), body]),
         ));
-        let calls = Cell::new(0);
-        let state = original.registered_state().unwrap().try_map_effects(|effect|
-            effect.try_map_payloads(|action| action.try_map_payloads(
-                |body| { calls.set(calls.get() + 1); Ok::<_, String>(body) }, Ok, Ok, Ok,
-            ), Ok, Ok, Ok)
-        ).unwrap();
-        assert_eq!(calls.get(), 2, "retain both equal independent executable occurrences");
-        assert_eq!(state.effects[0].application_key(), ReplacementEffectKey::Registered(id));
-        game.effect_store.replacement_effects.restore_registered_state(state).unwrap();
+        assert_eq!(original.effects()[0].application_key(), ReplacementEffectKey::Registered(id));
+        game.effect_store.replacement_effects = original.clone();
         let effect = crate::effects::GainLifeEffect::new(2, ChooseSpec::Player(PlayerFilter::You));
         let mut context = ExecutionContext::new_default(source, bob);
         let outcome = effect.execute(&mut game, &mut context).unwrap();
@@ -1787,7 +1656,7 @@ mod tests {
     }
 
     #[test]
-    fn registered_replacement_transport_executes_captured_controller_after_restore() {
+    fn native_clone_executes_replacement_captured_controller() {
         use crate::effects::{EffectExecutor, ExecutionContext};
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
@@ -1796,10 +1665,7 @@ mod tests {
         original.add_until_next_turn_effect(ReplacementEffect::with_matcher(
             source, bob, WouldGainLifeMatcher::you(), ReplacementAction::Double,
         ), bob, 4);
-        let state = original.registered_state().unwrap().try_map_effects(|effect|
-            effect.try_map_payloads(Ok::<_, String>, Ok, Ok, Ok)
-        ).unwrap();
-        game.effect_store.replacement_effects.restore_registered_state(state).unwrap();
+        game.effect_store.replacement_effects = original.clone();
         let effect = crate::effects::GainLifeEffect::new(2, ChooseSpec::Player(PlayerFilter::You));
         let mut bob_ctx = ExecutionContext::new_default(source, bob);
         effect.execute(&mut game, &mut bob_ctx).unwrap();
@@ -1815,57 +1681,7 @@ mod tests {
         assert_eq!(game.player(bob).unwrap().life, 30);
     }
 
-    #[test]
-    fn registered_replacement_transport_capture_diagnoses_inconsistent_native_state() {
-        let (valid, ids) = registered_transport_fixture();
-        for case in 0..4 {
-            let mut manager = valid.clone();
-            match case {
-                0 => manager.effects.iter_mut().find(|effect| effect.id == ids[0]).unwrap().registration_id = None,
-                1 => { manager.one_shot_effects.insert(ReplacementEffectId(manager.next_id + 1)); },
-                2 => { manager.effect_sources.insert(manager.next_id + 1, ReplacementEffectSource::StaticAbility); },
-                3 => manager.next_id = ids[4].0,
-                _ => unreachable!(),
-            }
-            let before = format!("{manager:?}");
-            assert!(manager.registered_state().is_err(), "inconsistent native state {case} cannot disappear from export");
-            assert_eq!(format!("{manager:?}"), before);
-        }
-    }
 
-    #[test]
-    fn registered_replacement_transport_rejects_malformed_state_atomically() {
-        let (mut manager, ids) = registered_transport_fixture();
-        let valid = manager.registered_state().unwrap();
-        let before = format!("{manager:?}");
-        for case in 0..15 {
-            let mut state = valid.clone();
-            let foreign = ReplacementEffectId(state.next_id + 1);
-            match case {
-                0 => state.next_id = u64::MAX,
-                1 => state.effects.push(state.effects[0].clone()),
-                2 => state.effects[0].registration_id = None,
-                3 => state.effects[0].registration_id = Some(ids[1]),
-                4 => state.next_id = ids[4].0,
-                5 => state.effect_sources.push(state.effect_sources[0]),
-                6 => state.effect_sources.push((foreign, ReplacementEffectSource::Resolution)),
-                7 => state.effect_sources[0].1 = ReplacementEffectSource::StaticAbility,
-                8 => state.one_shot_effects.push(foreign),
-                9 => state.one_shot_effects.push(ids[1]),
-                10 => state.batch_one_shot_effects.push(ids[1]),
-                11 => state.pending_batch_one_shot_effects.push(ids[0]),
-                12 => state.until_end_of_turn_effects.push(foreign),
-                13 => state.until_next_turn_effects.push(state.until_next_turn_effects[0]),
-                14 => state.until_next_turn_effects.push((foreign, (PlayerId::from_index(1), 4, None))),
-                _ => unreachable!(),
-            }
-            assert!(manager.restore_registered_state(state).is_err(), "malformed case {case}");
-            assert_eq!(format!("{manager:?}"), before, "failure must not publish any field: {case}");
-        }
-        manager.restore_registered_state(valid).unwrap();
-        manager.consume_pending_batch_one_shot_effects();
-        assert!(manager.get_effect(ids[2]).is_none());
-    }
 
     #[test]
     fn source_removal_clears_lifetime_state_without_touching_other_registrations() {
@@ -2260,234 +2076,5 @@ mod replacement_identity_binding_tests {
             .try_map_card_ids(&mut |value| { visits += 1; Ok::<_, String>(value) }).unwrap();
         assert_eq!(visits, 0);
         assert_eq!(mapped, Key::Registered(ReplacementEffectId(19)));
-    }
-}
-
-/// A frozen matcher capture could not be projected. Unknown predicates and
-/// failed authorization are explicit errors, never absent matchers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReplacementHistoryProjectionError<E> {
-    MatcherExport(String),
-    History(crate::snapshot::SnapshotProjectionError<E>),
-    MatcherRestore(String),
-}
-impl<E: std::fmt::Display> std::fmt::Display for ReplacementHistoryProjectionError<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::MatcherExport(error) => write!(f, "replacement matcher export failed: {error}"),
-            Self::History(error) => write!(f, "{error}"),
-            Self::MatcherRestore(error) => write!(f, "replacement matcher restore failed: {error}"),
-        }
-    }
-}
-impl<E: std::error::Error + 'static> std::error::Error for ReplacementHistoryProjectionError<E> {}
-impl ReplacementEffect {
-    /// Project only historical captures reachable from the matcher predicate.
-    /// The policy must separately authorize every fact and executable root it
-    /// receives. This is not approval of the replacement action or live roots.
-    pub fn try_project_predicate_history<E>(
-        self,
-        mut project: impl FnMut(crate::snapshot::ObjectSnapshot) -> Result<crate::snapshot::ObjectSnapshot, E>,
-    ) -> Result<Self, ReplacementHistoryProjectionError<E>> {
-        self.try_map_payloads(Ok, |matcher| {
-            let descriptor = matcher.export_descriptor().map_err(ReplacementHistoryProjectionError::MatcherExport)?;
-            let descriptor = descriptor.retain_predicate_history()
-                .try_map_snapshots(|snapshot| snapshot.try_project_tree(&mut project))
-                .map_err(ReplacementHistoryProjectionError::History)?;
-            crate::replacement_matcher_descriptor::restore_replacement_matcher_descriptor(descriptor)
-                .map_err(ReplacementHistoryProjectionError::MatcherRestore)
-        }, Ok, Ok)
-    }
-
-    /// Project the complete trees captured by this native matcher before graph
-    /// discovery. Preserve the descriptor's registration/application identity,
-    /// action, originating occurrence, controller, priority and optionality.
-    /// The owner must project/authorize action, cost and template roots separately;
-    /// this method is not approval of the entire descriptor or its predicates.
-    /// A policy requiring disclosure must return an error, not fabricate a false
-    /// characteristic. External policy mutations need owner-level rollback.
-    pub fn try_project_matcher_history<E>(
-        self,
-        mut project: impl FnMut(crate::snapshot::ObjectSnapshot) -> Result<crate::snapshot::ObjectSnapshot, E>,
-    ) -> Result<Self, ReplacementHistoryProjectionError<E>> {
-        self.try_map_payloads(Ok, |matcher| {
-            let descriptor = matcher.export_descriptor().map_err(ReplacementHistoryProjectionError::MatcherExport)?;
-            let descriptor = descriptor.try_map_snapshots(|snapshot| snapshot.try_project_tree(&mut project))
-                .map_err(ReplacementHistoryProjectionError::History)?;
-            crate::replacement_matcher_descriptor::restore_replacement_matcher_descriptor(descriptor)
-                .map_err(ReplacementHistoryProjectionError::MatcherRestore)
-        }, Ok, Ok)
-    }
-}
-#[cfg(test)]
-mod registered_matcher_history_projection_contract_tests {
-    use super::*;
-    use crate::snapshot::{ObjectSnapshot, SnapshotProjectionError};
-    fn fixture() -> (crate::GameState, ObjectId, ReplacementEffectManager, ReplacementEffectId) {
-        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
-        let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(crate::CardId::new(), "Public redirect source")
-            .card_types(vec![CardType::Artifact])
-            .with_ability(Ability::static_ability(crate::static_abilities::StaticAbility::flying())).build();
-        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-        let private = crate::cards::builders::CardDefinitionBuilder::new(crate::CardId::new(), "Private history marker")
-            .card_types(vec![CardType::Sorcery])
-            .with_ability(Ability::static_ability(crate::static_abilities::StaticAbility::flying())).build();
-        let hidden = game.create_object_from_definition(&private, bob, Zone::Hand);
-        let mut snapshot = ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
-        let hidden = ObjectSnapshot::from_object(game.object(hidden).unwrap(), &game);
-        snapshot.chosen_object = Some(Box::new(hidden.clone()));
-        snapshot.mana_sources_spent_to_cast = vec![hidden.clone()];
-        snapshot.attachment_snapshots = vec![hidden];
-        let matcher = WouldChangeZoneMatcher::new(ObjectFilter::permanent(), Some(Zone::Battlefield), Some(Zone::Graveyard))
-            .with_frozen_tagged_objects(std::collections::HashMap::from([(crate::tag::TagKey::from("history"), vec![snapshot])]));
-        let mut effect = ReplacementEffect::with_matcher(source, alice, matcher, ReplacementAction::ChangeDestination(Zone::Exile));
-        effect.priority_override = Some(crate::events::ReplacementPriority::Other);
-        let mut manager = ReplacementEffectManager::new();
-        let id = manager.add_one_shot_effect(effect);
-        (game, source, manager, id)
-    }
-    #[test]
-    fn registered_projection_preserves_bookkeeping_and_actual_redirect() {
-        use crate::effects::{EffectExecutor, ExecutionContext};
-        let (mut game, source, original, id) = fixture();
-        let state = original.registered_state().unwrap();
-        let before = state.clone();
-        let key = state.effects[0].application_key();
-        let mut visits = Vec::new();
-        let state = state.try_map_effects(|effect| effect.try_project_matcher_history(|snapshot| {
-            visits.push(snapshot.object_id);
-            Ok::<_, &'static str>(if snapshot.owner == PlayerId::from_index(1) {
-                ObjectSnapshot::public_placeholder(snapshot.object_id, snapshot.stable_id, snapshot.owner, snapshot.controller, snapshot.zone)
-            } else { snapshot })
-        })).unwrap();
-        assert_eq!(visits.len(), 4);
-        assert_eq!(state.effects[0].application_key(), key);
-        assert_eq!(state.next_id, before.next_id);
-        assert_eq!(state.effect_sources, before.effect_sources);
-        assert_eq!(state.one_shot_effects, before.one_shot_effects);
-        assert_eq!(state.batch_one_shot_effects, before.batch_one_shot_effects);
-        assert_eq!(state.pending_batch_one_shot_effects, before.pending_batch_one_shot_effects);
-        assert_eq!(state.until_end_of_turn_effects, before.until_end_of_turn_effects);
-        assert_eq!(state.until_next_turn_effects, before.until_next_turn_effects);
-        let after = &state.effects[0]; let before = &before.effects[0];
-        assert_eq!(after.replacement, before.replacement);
-        assert_eq!(after.source, before.source); assert_eq!(after.controller, before.controller);
-        assert_eq!(after.static_ability_instance, before.static_ability_instance);
-        assert_eq!(after.ability_origin, before.ability_origin);
-        assert_eq!(after.priority_override, before.priority_override); assert_eq!(after.optional, before.optional);
-        let matcher = after.matcher.as_ref().unwrap().downcast_ref::<WouldChangeZoneMatcher>().unwrap();
-        let root = &matcher.frozen_tagged_objects[&crate::tag::TagKey::from("history")][0];
-        assert_eq!(root.name, "Public redirect source"); assert_eq!(root.abilities.len(), 1);
-        for hidden in [root.chosen_object.as_ref().unwrap().as_ref(), &root.mana_sources_spent_to_cast[0], &root.attachment_snapshots[0]] {
-            assert!(hidden.card.is_none()); assert!(hidden.name.is_empty());
-            assert!(hidden.abilities.is_empty()); assert!(hidden.copiable_values.abilities.is_empty());
-        }
-        game.effect_store.replacement_effects.restore_registered_state(state).unwrap();
-        let effect = Effect::move_to_zone(ChooseSpec::SpecificObject(source), Zone::Graveyard, true);
-        let mut context = ExecutionContext::new_default(source, PlayerId::from_index(0));
-        let outcome = effect.0.execute(&mut game, &mut context).unwrap();
-        assert!(game.object(source).is_none());
-        assert_eq!(game.exile.len(), 1);
-        assert_eq!(game.object(game.exile[0]).unwrap().name, "Public redirect source");
-        assert!(game.effect_store.replacement_effects.get_effect(id).is_none());
-        assert_eq!(outcome.events.iter().filter(|event| event.downcast::<crate::events::ZoneChangeEvent>().is_some()).count(), 0, "movement notifications are queued, not duplicated in the effect receipt");
-        let notifications = game.take_pending_trigger_events();
-        let changes = notifications.iter().filter_map(|event| event.downcast::<crate::events::ZoneChangeEvent>()).collect::<Vec<_>>();
-        assert_eq!(changes.len(), 1); assert_eq!(changes[0].to, Zone::Exile);
-        assert_eq!(changes[0].from, Zone::Battlefield); assert_eq!(changes[0].objects, vec![source]);
-        assert_eq!(changes[0].result_objects, game.exile);
-        assert!(game.take_pending_trigger_events().is_empty());
-        assert!(original.get_effect(id).is_some(), "projecting candidate must not mutate source manager");
-    }
-    #[test]
-    fn policy_failure_keeps_original_registration_available() {
-        let (_, _, original, id) = fixture(); let before = original.registered_state().unwrap();
-        let mut calls = 0;
-        let error = before.clone().try_map_effects(|effect| effect.try_project_matcher_history(|snapshot| {
-            calls += 1;
-            if snapshot.owner == PlayerId::from_index(1) { Err("disclosure required") } else { Ok(snapshot) }
-        })).unwrap_err();
-        assert_eq!(calls, 2);
-        assert_eq!(error, ReplacementHistoryProjectionError::History(SnapshotProjectionError::Policy("disclosure required")));
-        let current = original.registered_state().unwrap();
-        let strip = |state: RegisteredReplacementEffectState| state.try_map_effects(|effect|
-            effect.try_map_payloads(Ok::<_, ()>, |_| Ok(()), Ok, Ok)).unwrap();
-        assert_eq!(strip(current.clone()), strip(before.clone()));
-        let current = current.effects[0].matcher.as_ref().unwrap().downcast_ref::<WouldChangeZoneMatcher>().unwrap();
-        let before = before.effects[0].matcher.as_ref().unwrap().downcast_ref::<WouldChangeZoneMatcher>().unwrap();
-        assert_eq!(current.frozen_tagged_objects, before.frozen_tagged_objects);
-        assert_eq!(current.filter, before.filter); assert_eq!(current.from_zone, before.from_zone);
-        assert_eq!(current.to_zone, before.to_zone); assert_eq!(current.cause_filter, before.cause_filter);
-        assert_eq!(current.require_cause_source_match, before.require_cause_source_match);
-        assert!(original.get_effect(id).is_some());
-    }
-    fn predicate_projection_gameplay(kind: u8) {
-        use crate::effects::{EffectExecutor, ExecutionContext};
-        let (mut game, source, original, id) = fixture();
-        let mut state = original.registered_state().unwrap();
-        let key = state.effects[0].application_key();
-        let mut matcher = state.effects[0].matcher.as_ref().unwrap().downcast_ref::<WouldChangeZoneMatcher>().unwrap().clone();
-        let hidden = matcher.frozen_tagged_objects[&crate::tag::TagKey::from("history")][0]
-            .chosen_object.as_ref().unwrap().as_ref().clone();
-        matcher.frozen_tagged_objects.insert("noise".into(), vec![hidden]);
-        if kind == 1 {
-            matcher.filter.controller = Some(PlayerFilter::OwnerOf(crate::target::ObjectRef::Specific(source)));
-        } else if kind == 2 {
-            matcher.filter.controller = Some(PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged("history".into())));
-        }
-        state.effects[0].matcher = Some(Box::new(matcher));
-        let mut visits = Vec::new();
-        let state = state.try_map_effects(|effect| effect.try_project_predicate_history(|snapshot| {
-            visits.push(snapshot.object_id);
-            // This scenario only needs public identity/owner/controller facts.
-            Ok::<_, &'static str>(ObjectSnapshot::public_placeholder(snapshot.object_id,
-                snapshot.stable_id, snapshot.owner, snapshot.controller, snapshot.zone))
-        })).unwrap();
-        assert_eq!(visits, if kind == 0 { vec![] } else { vec![source] },
-            "unreferenced captures must not reach a perspective disclosure policy");
-        assert_eq!(state.effects[0].application_key(), key);
-        let matcher = state.effects[0].matcher.as_ref().unwrap().downcast_ref::<WouldChangeZoneMatcher>().unwrap();
-        assert_eq!(matcher.frozen_tagged_objects.len(), usize::from(kind != 0));
-        game.effect_store.replacement_effects.restore_registered_state(state).unwrap();
-        let mut context = ExecutionContext::new_default(source, PlayerId::from_index(0));
-        Effect::move_to_zone(ChooseSpec::SpecificObject(source), Zone::Graveyard, true)
-            .0.execute(&mut game, &mut context).unwrap();
-        assert_eq!(game.exile.len(), 1, "projected replacement must still redirect owning movement");
-        assert_eq!(game.object(game.exile[0]).unwrap().name, "Public redirect source");
-        assert!(game.effect_store.replacement_effects.get_effect(id).is_none());
-        let events = game.take_pending_trigger_events();
-        let changes = events.iter().filter_map(|event| event.downcast::<crate::events::ZoneChangeEvent>()).collect::<Vec<_>>();
-        assert_eq!(changes.len(), 1);
-        assert_eq!(changes[0].to, Zone::Exile);
-        assert!(original.get_effect(id).is_some());
-    }
-    #[test] fn predicate_projection_drops_unused_private_history_before_policy() {
-        predicate_projection_gameplay(0);
-    }
-    #[test] fn predicate_projection_retains_specific_object_capture_without_tag_reference() {
-        predicate_projection_gameplay(1);
-    }
-    #[test] fn predicate_projection_retains_named_capture_and_redirects_once() {
-        predicate_projection_gameplay(2);
-    }
-    #[derive(Debug, Clone)] struct UnknownMatcher;
-    impl ReplacementMatcher for UnknownMatcher {
-        fn matches_prepared_event(&self, _: &dyn crate::events::GameEventType, _: &crate::events::context::PreparedEventContext) -> bool { true }
-        fn display(&self) -> String { "unknown captured predicate".into() }
-    }
-    #[test]
-    fn unsupported_predicate_is_explicit_and_snapshot_free_matchers_do_not_call_policy() {
-        let effect = ReplacementEffect::with_matcher(ObjectId::from_raw(91), PlayerId::from_index(0), UnknownMatcher, ReplacementAction::Prevent);
-        let error = effect.try_project_matcher_history(Ok::<_, &'static str>).unwrap_err();
-        assert!(matches!(error, ReplacementHistoryProjectionError::MatcherExport(message) if message.contains("UnknownMatcher")));
-        let effect = ReplacementEffect::with_matcher(ObjectId::from_raw(91), PlayerId::from_index(0), WouldGainLifeMatcher::you(), ReplacementAction::Double);
-        let before = effect.clone();
-        let projected = effect.try_project_matcher_history::<&'static str>(|_| panic!("snapshot-free matcher must not invoke policy")).unwrap();
-        let projected_filter = &projected.matcher.as_ref().unwrap().downcast_ref::<WouldGainLifeMatcher>().unwrap().player_filter;
-        let original_filter = &before.matcher.as_ref().unwrap().downcast_ref::<WouldGainLifeMatcher>().unwrap().player_filter;
-        assert_eq!(projected_filter, original_filter);
-        let strip = |effect: ReplacementEffect| effect.try_map_payloads(Ok::<_, ()>, |_| Ok(()), Ok, Ok).unwrap();
-        assert_eq!(strip(projected), strip(before));
     }
 }

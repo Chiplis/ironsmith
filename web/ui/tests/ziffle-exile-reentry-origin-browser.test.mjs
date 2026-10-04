@@ -19,6 +19,7 @@ for (const cardName of ['Ephemerate', 'Swords to Plowshares', 'Unearth']) {
     await page.route('**/exile-reentry-test', route => route.fulfill({ contentType: 'text/html', body: '<div id="root"></div>' }));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/exile-reentry-test`);
     const result = await page.evaluate(async ({ verifierUrl, cardName }) => {
+      const { castAndResolveFixtureSpell, advanceFixtureToMain } = await import('/tests/fixtures/native-worker-game-setup.mjs');
       const { mountOpeningServices } = await import('/tests/ziffle-public-opening-zone-change-harness.js');
       const { buildPrivateDeckManifest, publicDeckManifest, publicCheckpointHash } = await import('/src/lib/multiplayer-audit.js');
       const { buildZiffleRuntimeManifest } = await import('/src/lib/ziffle-runtime-manifest.js');
@@ -34,7 +35,7 @@ for (const cardName of ['Ephemerate', 'Swords to Plowshares', 'Unearth']) {
           worker.onmessage = ({ data }) => {
             if (data.type === 'error') return reject(new Error(data.error.stack || data.error.message));
             if (data.type === 'ready') return resolve();
-            if (data.type === 'priorityAnalysis') { analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
+            if (data.type === 'priorityAnalysis') { if (data.decision?.analysis_complete !== true) return; analyses.set(data.revision, data.decision); waiters.get(data.revision)?.(data.decision); return; }
             if (data.type !== 'result') return;
             const request = pending.get(data.id); if (!request) return;
             pending.delete(data.id);
@@ -62,7 +63,6 @@ for (const cardName of ['Ephemerate', 'Swords to Plowshares', 'Unearth']) {
         const deck = Array(61).fill('Mountain');
         deck[4] = cardName;
         deck[5] = 'Grizzly Bears';
-        const manifests = await Promise.all([0, 1].map(seat => buildPrivateDeckManifest({ matchId, owner: seat, deck })));
         const deckCount = deck.length, context = matchId;
         const identities = ['11', '22'].map(byte => api.ziffleKeygen({ deckCount, context, entropyHex: byte.repeat(32) }));
         const keys = identities.map((identity, player) => ({ player, publicKeyHex: identity.publicKeyHex, ownershipProofHex: identity.ownershipProofHex }));
@@ -76,50 +76,68 @@ for (const cardName of ['Ephemerate', 'Swords to Plowshares', 'Unearth']) {
         const tokens = identities.flatMap((identity, index) => api.ziffleBuildRevealTokens({ deckCount, context, keys, steps,
           ...identity, cardPositions: positions, entropyHex: ['55', '66'][index].repeat(32) }));
         const reveals = api.ziffleRevealCards({ deckCount, context, keys, steps, cardPositions: positions, tokens });
+        const creatureOwner = cardName === 'Swords to Plowshares' ? 0 : 1;
+        const subjects = [{ seat: 1, position: deckCount - 1, name: cardName },
+          { seat: creatureOwner, position: deckCount - (creatureOwner === 1 ? 2 : 1), name: 'Grizzly Bears' }];
+        const decks = [deck.slice(), deck.slice()];
+        for (const subject of subjects) {
+          subject.slot = reveals.find(reveal => reveal.cardPosition === subject.position).originalSlot;
+          decks[subject.seat][subject.slot] = subject.name;
+        }
+        const manifests = await Promise.all(decks.map((cards, seat) => buildPrivateDeckManifest({ matchId, owner: seat, deck: cards })));
         const ceremony = { owner: 1, deckCount, context, keys, steps, deckHash: verified.deckHash, tokens, reveals };
+        peer = createWorkerSession(); await peer.ready;
+        await peer.call('setPerspective', 0);
+        const setupCall = async (method, ...args) => {
+          const result = await owner.call(method, ...args);
+          await peer.call(method, ...args);
+          return result;
+        };
+        const readFixture = async session => {
+          const metadata = await session.call('getHiddenCardState');
+          const audit = await session.call('exportPublicAuditCheckpoint');
+          return { ...metadata, objects: metadata.objects.map(object => ({ ...object,
+            owner: object.hiddenCard?.owner ?? audit.objects.find(card => card.id === object.id)?.owner,
+          })) };
+        };
         await owner.call('setPerspective', 1);
-        let state = await owner.call('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
-          format: 'normal', startingPlayer: 1, openingHandSize: 0, decks: [[], []], publicDecklists: [deck, deck],
+        let state = await setupCall('startMatch', { playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1,
+          format: 'normal', startingPlayer: creatureOwner, openingHandSize: 0, decks: [[], []], publicDecklists: decks,
           hiddenDeckManifests: manifests.map((manifest, seat) => buildZiffleRuntimeManifest(manifest, { ...ceremony, owner: seat })) });
         for (let index = 0; index < 30 && state.phase !== 'first main phase'; index++) {
           const action = state.decision?.actions?.find(item => ['keep_opening_hand', 'continue_pregame', 'begin_game', 'pass_priority'].includes(item.action_ref?.kind));
           if (!action) throw new Error(`Unexpected pregame decision ${JSON.stringify(state.decision)}`);
-          state = await owner.call('dispatch', { type: 'priority_action', action_ref: action.action_ref });
+          state = await setupCall('dispatch', { type: 'priority_action', action_ref: action.action_ref });
         }
         if (state.phase !== 'first main phase') throw new Error('Fixture did not reach main phase');
-        const creatureOwner = cardName === 'Swords to Plowshares' ? 0 : 1;
-        const subjects = [{ seat: 1, slot: 4, zone: 'hand' },
-          { seat: creatureOwner, slot: 5, zone: cardName === 'Unearth' ? 'graveyard' : 'battlefield' }];
-        for (const subject of subjects) {
-          const checkpoint = await owner.call('exportSyncCheckpoint');
-          const position = reveals.find(reveal => reveal.originalSlot === subject.slot).cardPosition;
-          const object = checkpoint.objects.find(item => item.owner === subject.seat && item.hiddenCard?.slot === position);
-          if (!object) throw new Error(`Missing fixture subject ${JSON.stringify(subject)}`);
+        for (const [index, subject] of subjects.entries()) {
+          const initial = await owner.call('getHiddenCardState');
+          const object = initial.objects.find(item => item.hiddenCard?.owner === subject.seat && item.hiddenCard.slot === subject.position);
+          if (!object) throw new Error('Missing committed setup card');
           const secret = manifests[subject.seat].slotSecrets.find(entry => entry.slot === subject.slot);
-          await owner.call('revealHiddenPosition', { owner: subject.seat, objectId: object.id, position,
+          const reveal = { owner: subject.seat, objectId: object.id, position: subject.position,
             originalSlot: subject.slot, cardName: secret.card, commitment: secret.commitment,
-            positionCommitment: `ziffle:${ceremony.deckHash}:${position}` });
-          subject.id = object.id;
+            positionCommitment: `ziffle:${ceremony.deckHash}:${subject.position}` };
+          // The tested hand spell stays private; the setup creature is cast publicly.
+          if (index === 0) await owner.call('revealHiddenPosition', reveal);
+          else await setupCall('revealHiddenPosition', reveal);
+          await setupCall('drawCard', subject.seat);
+          subject.stableId = object.stableId;
+          subject.id = (await owner.call('getHiddenCardState')).objects.find(item => item.stableId === object.stableId).id;
         }
-        await owner.call('addCardToZone', 1, cardName === 'Unearth' ? 'Swamp' : 'Plains', 'battlefield', true);
-        // Only the initial positions are arranged directly. Cast, payment,
-        // targeting, blink/exile/reanimation, and rebound cleanup execute normally.
-        const fixture = await owner.call('exportSyncCheckpoint');
-        for (const subject of subjects) {
-          const object = fixture.objects.find(item => item.id === subject.id);
-          for (const player of fixture.players) for (const zone of ['library', 'hand', 'graveyard']) {
-            player[zone] = player[zone].filter(id => id !== subject.id);
-          }
-          fixture.battlefield = fixture.battlefield.filter(id => id !== subject.id);
-          object.zone = subject.zone;
-          if (subject.zone === 'battlefield') fixture.battlefield.push(subject.id);
-          else fixture.players[subject.seat][subject.zone].push(subject.id);
+        for (let index = 0; index < 2; index++) await setupCall('addCardToZone', creatureOwner, 'Forest', 'battlefield', true);
+        const castCreature = await castAndResolveFixtureSpell(setupCall, { objectId: subjects[1].id });
+        if (cardName === 'Unearth') {
+          await setupCall('addCardToZone', 1, 'Mountain', 'battlefield', true);
+          const bolt = Number(await setupCall('addCardToZone', 1, 'Lightning Bolt', 'hand', true));
+          await castAndResolveFixtureSpell(setupCall, { objectId: bolt, target: { kind: 'object', object: castCreature.id } });
         }
-        await owner.call('importSyncCheckpoint', fixture, 1);
+        await advanceFixtureToMain(setupCall, 1);
+        await setupCall('addCardToZone', 1, cardName === 'Unearth' ? 'Swamp' : 'Plains', 'battlefield', true);
         state = await owner.call('uiState');
-        peer = createWorkerSession(); await peer.ready;
-        await peer.call('importSyncCheckpoint', await owner.call('exportRedactedSyncCheckpoint', 0), 0);
-        const peerBefore = await peer.call('exportSyncCheckpoint');
+        const fixture = await readFixture(owner);
+        subjects.forEach(subject => { subject.id = fixture.objects.find(object => object.stableId === subject.stableId).id; });
+        const peerBefore = await readFixture(peer);
         const wrap = session => new Proxy({}, { get: (_, method) => method.startsWith('ziffle')
           ? async input => api[method](input) : (...args) => session.call(method, ...args) });
         const refs = { gameRef: { current: wrap(owner) }, stateRef: { current: state },
@@ -182,7 +200,7 @@ for (const cardName of ['Ephemerate', 'Swords to Plowshares', 'Unearth']) {
         await dispatchBoth({ type: 'priority_action', action_ref: action.action_ref, object_id: spell.id });
         let after;
         for (let index = 0; index < 12; index++) {
-          after = await owner.call('exportSyncCheckpoint');
+          after = await readFixture(owner);
           const currentSpell = after.objects.find(object => object.stableId === spell.stableId);
           if (state.decision?.kind === 'priority' && currentSpell && !['hand', 'stack'].includes(currentSpell.zone)) break;
           const decision = state.decision;
@@ -196,13 +214,13 @@ for (const cardName of ['Ephemerate', 'Swords to Plowshares', 'Unearth']) {
             await dispatchBoth({ type: 'priority_action', action_ref: pass.action_ref });
           } else throw new Error(`Unexpected decision ${JSON.stringify(decision)}`);
         }
-        const firstResolution = await owner.call('exportSyncCheckpoint');
+        const firstResolution = await readFixture(owner);
         if (cardName === 'Ephemerate') {
           if (firstResolution.objects.find(object => object.stableId === spell.stableId)?.zone !== 'exile') {
             throw new Error('Ephemerate did not exile itself for rebound');
           }
           for (let index = 0; index < 80; index++) {
-            const checkpoint = await owner.call('exportSyncCheckpoint');
+            const checkpoint = await readFixture(owner);
             const currentSpell = checkpoint.objects.find(object => object.stableId === spell.stableId);
             if (state.decision?.kind === 'priority' && currentSpell?.zone === 'graveyard') break;
             const decision = state.decision;
@@ -226,8 +244,8 @@ for (const cardName of ['Ephemerate', 'Swords to Plowshares', 'Unearth']) {
             } else throw new Error(`Unexpected rebound decision ${JSON.stringify(decision)}`);
           }
         }
-        after = await owner.call('exportSyncCheckpoint');
-        const peerAfter = await peer.call('exportSyncCheckpoint');
+        after = await readFixture(owner);
+        const peerAfter = await readFixture(peer);
         return { cardName, trace, beforeSpell: spell, beforeCreature: creature,
           peerBeforeSpell: peerBefore.objects.find(object => object.stableId === spell.stableId),
           firstSpell: firstResolution.objects.find(object => object.stableId === spell.stableId),
@@ -236,7 +254,7 @@ for (const cardName of ['Ephemerate', 'Swords to Plowshares', 'Unearth']) {
           afterCreature: after.objects.find(object => object.stableId === creature.stableId),
           peerSpell: peerAfter.objects.find(object => object.stableId === spell.stableId),
           peerCreature: peerAfter.objects.find(object => object.stableId === creature.stableId),
-          life: after.players.map(player => player.life), decision: state.decision?.kind };
+          life: state.players.map(player => player.life), decision: state.decision?.kind };
       } catch (error) {
         throw new Error(`${cardName} failed at ${stage}: ${error.message}; trace=${JSON.stringify(trace)}`);
       } finally { reactRoot?.unmount(); owner.worker.terminate(); peer?.worker.terminate(); }
@@ -247,8 +265,9 @@ for (const cardName of ['Ephemerate', 'Swords to Plowshares', 'Unearth']) {
     assert.equal(result.afterSpell.zone, 'graveyard');
     assert.equal(result.afterCreature.zone, cardName === 'Swords to Plowshares' ? 'exile' : 'battlefield');
     assert.notEqual(result.beforeCreature.id, result.afterCreature.id);
-    assert.deepEqual(result.afterSpell.hiddenCard, result.beforeSpell.hiddenCard);
-    assert.deepEqual(result.afterCreature.hiddenCard, result.beforeCreature.hiddenCard);
+    const provenance = ({ objectId, zone, ...identity }) => identity;
+    assert.deepEqual(provenance(result.afterSpell.hiddenCard), provenance(result.beforeSpell.hiddenCard));
+    assert.deepEqual(provenance(result.afterCreature.hiddenCard), provenance(result.beforeCreature.hiddenCard));
     assert.deepEqual(result.peerSpell, result.afterSpell);
     assert.deepEqual(result.peerCreature, result.afterCreature);
     assert.equal(result.afterCreature.owner, cardName === 'Swords to Plowshares' ? 0 : 1);
@@ -256,7 +275,7 @@ for (const cardName of ['Ephemerate', 'Swords to Plowshares', 'Unearth']) {
       assert.equal(result.firstSpell.zone, 'exile', 'the first resolution applies rebound');
       assert.equal(result.firstCreature.zone, 'battlefield');
       assert.notEqual(result.firstCreature.id, result.afterCreature.id, 'the rebound cast blinks the creature again');
-      assert.deepEqual(result.firstSpell.hiddenCard, result.afterSpell.hiddenCard);
+      assert.deepEqual(provenance(result.firstSpell.hiddenCard), provenance(result.afterSpell.hiddenCard));
     }
     if (cardName === 'Swords to Plowshares') assert.equal(result.life[0], 22);
     assert.ok(result.trace.some(step => step.prepared.length > 0), 'real proof openings were prepared and applied');

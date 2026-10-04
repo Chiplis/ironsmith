@@ -155,7 +155,7 @@ async function runVerifiedReturnCost({ pages, row, seat, waitForFullUiPair, same
       || (command.action_ref?.kind === 'cast_spell' && command.action_ref.casting_method?.kind === 'alternative')
       || (completedAt !== null && decision.reason === 'Discard')) {
       (row.mechanicCheckpoints ||= []).push({ seq: current.multiplayer.lastAppliedSequence,
-        command, checkpoints: await Promise.all(pages.map(page => page.evaluate(() => window.__ironsmithE2E.checkpoint()))) });
+        command, checkpoints: await Promise.all(pages.map(page => page.evaluate(() => window.__ironsmithE2E.publicCheckpoint()))) });
     }
     const before = performance.now();
     const previousSequence = current.multiplayer.lastAppliedSequence;

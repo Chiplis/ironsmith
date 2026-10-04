@@ -4,12 +4,12 @@
   "roots": [
     {
       "label": "after setup",
-      "public_audit_sha256": "81ba3bd6138011000173399df71301e4fee86b28e8559c92f253e90075756a80",
+      "public_audit_sha256": "9e8c3156dcea062fae6fdcb91a70e5aa261a79767797c23791e69cbf45258f75",
       "hidden_zone_roots": [
         {
           "owner": 0,
           "zone": "library",
-          "commitmentRoot": "4318204a517895726cc7a90083a70fa09db6648ea677eceaf57b1a6c23678c2e"
+          "commitmentRoot": "b358a640ffd0d7898819db9f0cf686072f59ee49f90a5c5df7c9ab920a8d0ca7"
         },
         {
           "owner": 0,
@@ -19,7 +19,7 @@
         {
           "owner": 1,
           "zone": "library",
-          "commitmentRoot": "9107bf8799344ec3a5b4581a3b6262f104536860bac0576a079fa898c19047d6"
+          "commitmentRoot": "418d7a3a67572eb02e3ca784f77104addd2332035f7829af5c55e435f917c3b4"
         },
         {
           "owner": 1,
@@ -30,12 +30,12 @@
     },
     {
       "label": "after action 1",
-      "public_audit_sha256": "37dd5fbb92be986e3049705a87bd90587a6ff0b423ad581680df3aba9f517b3c",
+      "public_audit_sha256": "1be8553f1f6eec43437455c5e41e05a1a2c51156042a0e0493003b97eb0e2ece",
       "hidden_zone_roots": [
         {
           "owner": 0,
           "zone": "library",
-          "commitmentRoot": "1dfb1a2aa6e8b83bf451c668f70f192955944f93021168927dce4e36d84814d3"
+          "commitmentRoot": "4e06d3548b1dea618a83f5e6797f94e6441bbe1757efca313b4a3bc4c56caf72"
         },
         {
           "owner": 0,
@@ -45,7 +45,7 @@
         {
           "owner": 1,
           "zone": "library",
-          "commitmentRoot": "9107bf8799344ec3a5b4581a3b6262f104536860bac0576a079fa898c19047d6"
+          "commitmentRoot": "418d7a3a67572eb02e3ca784f77104addd2332035f7829af5c55e435f917c3b4"
         },
         {
           "owner": 1,
@@ -56,12 +56,12 @@
     },
     {
       "label": "after action 2",
-      "public_audit_sha256": "01b165efa96bf9528ba13c5da20f253bd49df3edaca584c7773a9d4bf6d414de",
+      "public_audit_sha256": "5a27e18272d08e707d81d014026f870838a542919ecf63c96478ee735348295b",
       "hidden_zone_roots": [
         {
           "owner": 0,
           "zone": "library",
-          "commitmentRoot": "fb0cec11b4a0cedc6557e2c05639dbdf99bfcf8b9b35e48bb9bb7d10bd71fe7f"
+          "commitmentRoot": "43a40fc478d59361c8b41f8aad60a8a5ce823e6f4d30ec3d4f3f0d8ec5fda587"
         },
         {
           "owner": 0,
@@ -71,7 +71,7 @@
         {
           "owner": 1,
           "zone": "library",
-          "commitmentRoot": "9107bf8799344ec3a5b4581a3b6262f104536860bac0576a079fa898c19047d6"
+          "commitmentRoot": "418d7a3a67572eb02e3ca784f77104addd2332035f7829af5c55e435f917c3b4"
         },
         {
           "owner": 1,
@@ -82,12 +82,12 @@
     },
     {
       "label": "after action 3",
-      "public_audit_sha256": "a791f01b1ecb6ce2524df30943b9118e783ac8fffd9f7762bbf9b1d907859e50",
+      "public_audit_sha256": "5e7cc22d44501bf411df18bea96dc4402d9be78b0be668e0e6b1a5f1cec2abdb",
       "hidden_zone_roots": [
         {
           "owner": 0,
           "zone": "library",
-          "commitmentRoot": "fb0cec11b4a0cedc6557e2c05639dbdf99bfcf8b9b35e48bb9bb7d10bd71fe7f"
+          "commitmentRoot": "43a40fc478d59361c8b41f8aad60a8a5ce823e6f4d30ec3d4f3f0d8ec5fda587"
         },
         {
           "owner": 0,
@@ -97,7 +97,7 @@
         {
           "owner": 1,
           "zone": "library",
-          "commitmentRoot": "74b2c6388ef1fe3f6c7f9dfa3aaeadd744485f42ca74df2c764d569bcae59fba"
+          "commitmentRoot": "2302b69d115372f14c8687374200a92ba7887c04e3400840c7031b404a6e0b0e"
         },
         {
           "owner": 1,
@@ -108,12 +108,12 @@
     },
     {
       "label": "after action 4",
-      "public_audit_sha256": "2cb2fa23e31f1b8ec45615e7b59796ed11971bc271c8adc23219297a37e4cbc5",
+      "public_audit_sha256": "3bb51d04f9476ba00d69fbe720cc60120b852556e3cf76954814965917ff4bfe",
       "hidden_zone_roots": [
         {
           "owner": 0,
           "zone": "library",
-          "commitmentRoot": "fb0cec11b4a0cedc6557e2c05639dbdf99bfcf8b9b35e48bb9bb7d10bd71fe7f"
+          "commitmentRoot": "43a40fc478d59361c8b41f8aad60a8a5ce823e6f4d30ec3d4f3f0d8ec5fda587"
         },
         {
           "owner": 0,
@@ -123,7 +123,7 @@
         {
           "owner": 1,
           "zone": "library",
-          "commitmentRoot": "f444fceb646828afda7d63aef65b12a4c36373773162a240b7f692e0e1f2b53d"
+          "commitmentRoot": "c70323da6112e910ce1b5e4c7eacc100aea66badb3fc77ad2015fb83e5b2cfe1"
         },
         {
           "owner": 1,
@@ -133,13 +133,13 @@
       ]
     },
     {
-      "label": "late joiner import",
-      "public_audit_sha256": "2cb2fa23e31f1b8ec45615e7b59796ed11971bc271c8adc23219297a37e4cbc5",
+      "label": "late joiner replay",
+      "public_audit_sha256": "3bb51d04f9476ba00d69fbe720cc60120b852556e3cf76954814965917ff4bfe",
       "hidden_zone_roots": [
         {
           "owner": 0,
           "zone": "library",
-          "commitmentRoot": "fb0cec11b4a0cedc6557e2c05639dbdf99bfcf8b9b35e48bb9bb7d10bd71fe7f"
+          "commitmentRoot": "43a40fc478d59361c8b41f8aad60a8a5ce823e6f4d30ec3d4f3f0d8ec5fda587"
         },
         {
           "owner": 0,
@@ -149,7 +149,7 @@
         {
           "owner": 1,
           "zone": "library",
-          "commitmentRoot": "f444fceb646828afda7d63aef65b12a4c36373773162a240b7f692e0e1f2b53d"
+          "commitmentRoot": "c70323da6112e910ce1b5e4c7eacc100aea66badb3fc77ad2015fb83e5b2cfe1"
         },
         {
           "owner": 1,

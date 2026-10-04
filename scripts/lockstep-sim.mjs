@@ -21,12 +21,6 @@ function normalizedPublicAuditCheckpoint(game) {
   return checkpoint;
 }
 
-function canonicalSyncCheckpoint(game) {
-  const checkpoint = game.exportSyncCheckpoint();
-  delete checkpoint.snapshotSerial;
-  return canonical(checkpoint);
-}
-
 function assertPeersEqual(a, b, label, roots) {
   const auditA = normalizedPublicAuditCheckpoint(a);
   const auditB = normalizedPublicAuditCheckpoint(b);
@@ -36,9 +30,9 @@ function assertPeersEqual(a, b, label, roots) {
     `${label}: public audit checkpoints diverged`,
   );
   assert.equal(
-    canonicalSyncCheckpoint(a),
-    canonicalSyncCheckpoint(b),
-    `${label}: sync checkpoints diverged`,
+    canonical(a.getHiddenCardState()),
+    canonical(b.getHiddenCardState()),
+    `${label}: hidden identity metadata diverged`,
   );
   roots.push({
     label,
@@ -211,13 +205,28 @@ const scenarios = [
   },
 ];
 
+function initializeScenario(game, setup) {
+  // These are normal constructed matches. Keep the small authored card slice
+  // and fill the remainder with basics rather than bypass deck validation.
+  createNewGameAndPlayers(game, { ...setup,
+    decks: setup.decks.map(deck => [...deck, ...Array(Math.max(0, 60 - deck.length)).fill("Mountain")]),
+  });
+  for (let step = 0; step < 16; step++) {
+    const action = game.uiState().decision?.actions?.find(action =>
+      ["keep_opening_hand", "continue_pregame", "begin_game"].includes(action.action_ref?.kind));
+    if (!action) return;
+    game.dispatch({ type: "priority_action", action_ref: action.action_ref });
+  }
+  throw new Error("Scenario did not complete pregame");
+}
+
 async function runScenario({ name, setup, actions }) {
   const roots = [];
-  const { game: peerA } = await initWasmGame();
-  const { game: peerB } = await initWasmGame();
+  const { game: peerA } = await initWasmGame({ pkg: "demo" });
+  const { game: peerB } = await initWasmGame({ pkg: "demo" });
 
-  createNewGameAndPlayers(peerA, setup);
-  createNewGameAndPlayers(peerB, setup);
+  initializeScenario(peerA, setup);
+  initializeScenario(peerB, setup);
   assertPeersEqual(peerA, peerB, "after setup", roots);
 
   for (const [index, mutate] of actions.entries()) {
@@ -226,10 +235,12 @@ async function runScenario({ name, setup, actions }) {
     assertPeersEqual(peerA, peerB, `after action ${index + 1}`, roots);
   }
 
-  const { game: lateJoiner } = await initWasmGame();
-  lateJoiner.importSyncCheckpoint(peerB.exportSyncCheckpoint());
-  assertPeersEqual(peerB, lateJoiner, "late joiner import", roots);
+  const { game: lateJoiner } = await initWasmGame({ pkg: "demo" });
+  initializeScenario(lateJoiner, setup);
+  for (const mutate of actions) mutate(lateJoiner);
+  assertPeersEqual(peerB, lateJoiner, "late joiner replay", roots);
   await verifyGoldenRoots(name, roots);
+  peerA.free(); peerB.free(); lateJoiner.free();
 }
 
 async function main() {

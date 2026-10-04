@@ -390,7 +390,7 @@ test("real WASM engine rejects a forged cast for a card outside the actor's hand
         throw new Error(`real engine did not expose a castable hand spell: ${JSON.stringify(decision)}`);
       }
 
-      const checkpointBefore = game.exportSyncCheckpoint();
+      const checkpointBefore = game.getHiddenCardState();
       const actor = Number(decision.player);
       const libraryCardId = forgedSpellId;
       const libraryObject = checkpointBefore.objects.find(
@@ -426,7 +426,7 @@ test("real WASM engine rejects a forged cast for a card outside the actor's hand
           zone: libraryObject?.zone,
         },
         legalHandSpellIds,
-        stateUnchanged: JSON.stringify(game.exportSyncCheckpoint()) === JSON.stringify(checkpointBefore),
+        stateUnchanged: JSON.stringify(game.getHiddenCardState()) === JSON.stringify(checkpointBefore),
       };
     }, { wasmModuleUrl: WASM_MODULE_URL, cardSources });
 
@@ -930,73 +930,6 @@ test("real WASM engine opens Tainted Pact duplicate-stop exile card", { timeout:
   }
 });
 
-test("real WASM engine redacts committed hand cards after private reveal", { timeout: 30000 }, async () => {
-  const { vite, baseUrl } = await startWasmServer();
-  let browser = null;
-
-  try {
-    browser = await chromium.launch();
-    const page = await browser.newPage();
-    const pageErrors = [];
-    page.on("pageerror", (error) => pageErrors.push(String(error?.stack || error)));
-    page.on("console", (message) => {
-      if (message.type() === "error") pageErrors.push(message.text());
-    });
-
-    await page.goto(baseUrl);
-    const cardSources = await loadCardSources(page, ["island", "mountain"]);
-    const result = await page.evaluate(async ({ wasmModuleUrl, manifests, cardSources }) => {
-      const mod = await import(wasmModuleUrl);
-      await mod.default();
-      const game = new mod.WasmGame();
-      game.registerExternalCardSourcesJson(JSON.stringify(cardSources));
-      game.startMatch({
-        playerNames: ["Alice", "Bob"],
-        startingLife: 20,
-        seed: 1,
-        format: "normal",
-        startingPlayer: 0,
-        openingHandSize: 7,
-        decks: [
-          Array(60).fill("Island"),
-          Array(60).fill("Mountain"),
-        ],
-        hiddenDeckManifests: manifests,
-      });
-
-      const before = game.exportSyncCheckpoint();
-      const bobHandObjectId = before.players[1].hand[0];
-      const opening = game.exportHiddenCardOpening(BigInt(bobHandObjectId));
-      game.revealHiddenSlot({
-        owner: opening.owner,
-        slot: opening.slot,
-        cardName: opening.card,
-        commitment: opening.commitment,
-      });
-
-      const redactedForAlice = game.exportRedactedSyncCheckpoint(0);
-      const redactedObject = redactedForAlice.objects.find((object) => object.id === bobHandObjectId);
-      return {
-        opening,
-        redactedObject,
-      };
-    }, {
-      wasmModuleUrl: WASM_MODULE_URL,
-      manifests: [hiddenManifest(0, 60), hiddenManifest(1, 60)],
-      cardSources,
-    });
-
-    assert.equal(result.opening.owner, 1);
-    assert.equal(result.opening.card, "Mountain");
-    assert.equal(result.redactedObject.name, "Hidden Card");
-    assert.equal(result.redactedObject.hiddenCard.commitment, result.opening.commitment);
-    assert.deepEqual(pageErrors, []);
-  } finally {
-    await browser?.close();
-    await vite.close();
-  }
-});
-
 test("real WASM engine emits private openings for committed scry and surveil inspections", { timeout: 30000 }, async () => {
   const { vite, baseUrl } = await startWasmServer();
   let browser = null;
@@ -1232,31 +1165,21 @@ test("real WASM engine ziffle position reveal ignores opened commitment metadata
         commitment: "original-slot-1",
       });
 
-      const checkpoint = game.exportSyncCheckpoint();
-      const redactedForBob = game.exportRedactedSyncCheckpoint(1);
+      const checkpoint = game.getHiddenCardState();
       const handObjects = checkpoint.players[0].hand.map((id) =>
         checkpoint.objects.find((object) => object.id === id)
       );
-      const redactedHandObjects = checkpoint.players[0].hand.map((id) =>
-        redactedForBob.objects.find((object) => object.id === id)
-      );
       const revealedHandObjects = handObjects.filter((object) => object?.name !== "Hidden Card");
-      const revealedIds = new Set(revealedHandObjects.map((object) => Number(object.id)));
-      const correspondingRedactedObjects = redactedHandObjects.filter((object) =>
-        revealedIds.has(Number(object?.id))
-      );
       return {
         names: revealedHandObjects.map((object) => object?.name),
-        redactedNames: correspondingRedactedObjects.map((object) => object?.name),
-        redactedCommitments: correspondingRedactedObjects.map(
+        commitments: revealedHandObjects.map(
           (object) => object?.hiddenCard?.commitment
         ),
       };
     }, { wasmModuleUrl: WASM_MODULE_URL, bobManifest, cardSources });
 
     assert.deepEqual(result.names.sort(), ["Island", "Mountain"]);
-    assert.deepEqual(result.redactedNames.sort(), ["Hidden Card", "Hidden Card"]);
-    assert.deepEqual(result.redactedCommitments.sort(), ["original-slot-0", "original-slot-1"]);
+    assert.deepEqual(result.commitments.sort(), ["original-slot-0", "original-slot-1"]);
     assert.deepEqual(pageErrors, []);
   } finally {
     await browser?.close();
@@ -1369,10 +1292,6 @@ test("real WASM trusted recovery preserves pending surveil and scry choices", { 
           state = dispatchPriority(game, action);
         }
 
-        const checkpointOnly = new mod.WasmGame();
-        checkpointOnly.registerExternalCardSourcesJson(JSON.stringify(cardSources));
-        checkpointOnly.importSyncCheckpoint(game.exportSyncCheckpoint(), 0);
-        const importedKind = checkpointOnly.uiState().decision?.kind;
         const recovered = new mod.WasmGame();
         recovered.registerExternalCardSourcesJson(JSON.stringify(cardSources));
         const replayGame = {
@@ -1392,7 +1311,7 @@ test("real WASM trusted recovery preserves pending surveil and scry choices", { 
         const choice = { type: "select_objects", object_ids: [] };
         const originalAfter = game.dispatch(choice);
         const recoveredAfter = recovered.dispatch(choice);
-        return { importedKind, originalKind: state.decision.kind, replayedKind: replayed.decision.kind,
+        return { originalKind: state.decision.kind, replayedKind: replayed.decision.kind,
           originalAfterKind: originalAfter.decision?.kind, recoveredAfterKind: recoveredAfter.decision?.kind };
 
       }
@@ -1416,7 +1335,6 @@ test("real WASM trusted recovery preserves pending surveil and scry choices", { 
 
     for (const resultCase of [result.scry, result.surveil]) {
       assert.equal(resultCase.originalKind, "select_objects");
-      assert.notEqual(resultCase.importedKind, resultCase.originalKind, "checkpoint loses the pending choice");
       assert.equal(resultCase.replayedKind, resultCase.originalKind);
       assert.equal(resultCase.recoveredAfterKind, resultCase.originalAfterKind);
     }

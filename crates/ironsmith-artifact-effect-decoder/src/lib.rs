@@ -703,17 +703,6 @@ mod card_graph {
                 result["payload"] = super::remap_effect_payload(&kind, payload, self.context)
                     .map_err(<Self::Error as ser::Error>::custom)?;
             }
-            if self.name == Some("RetainedCardPayload") {
-                match result.get("card_references").and_then(Value::as_str) {
-                    Some("Native" | "Bound") => {}
-                    _ => {
-                        return Err(<Self::Error as ser::Error>::custom(
-                            "missing retained payload card reference mode",
-                        ));
-                    }
-                }
-                result["card_references"] = Value::String("Bound".into());
-            }
             Ok(result)
         }
     }

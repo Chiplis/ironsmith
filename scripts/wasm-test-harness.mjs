@@ -186,39 +186,48 @@ export function getState(game) {
   return game.uiState();
 }
 
-export function getCheckpoint(game) {
-  return game.exportSyncCheckpoint();
+// Local assertion data only: no executable programs or recovery importer.
+export function getInspectionState(game) {
+  const metadata = game.getHiddenCardState();
+  const audit = game.exportPublicAuditCheckpoint();
+  const ui = game.uiState();
+  const publicObjects = new Map(audit.objects.map(object => [Number(object.id), object]));
+  const objects = metadata.objects.map(object => {
+    const details = game.objectDetails(BigInt(object.id));
+    const publicObject = publicObjects.get(Number(object.id));
+    const types = parseTypeLine(details.type_line || '');
+    return { ...publicObject, ...details, ...object,
+      controller: details.controller ?? object.controller ?? publicObject?.controller, owner: details.owner ?? object.owner ?? publicObject?.owner,
+      cardTypes: types.cardTypes, subtypes: types.subtypes, supertypes: types.supertypes,
+      oracleText: details.oracle_text, compiledText: details.compiled_text,
+    };
+  });
+  return { ...audit, perspective: ui.perspective, objects,
+    players: audit.players.map(player => ({ ...player, ...metadata.players.find(entry => entry.id === player.id) })),
+    battlefield: objects.filter(object => object.zone === 'battlefield').map(object => object.id),
+    exile: metadata.exile,
+    command: objects.filter(object => object.zone === 'command').map(object => object.id),
+    stack: (ui.stack_objects || []).map(object => ({ ...object, objectId: object.object_id ?? object.id })),
+  };
 }
 
 export function getGame(game) {
-  return getCheckpoint(game);
+  return getInspectionState(game);
 }
 
-export function importCheckpoint(game, checkpoint, { perspective = checkpoint?.perspective ?? 0 } = {}) {
-  return game.importSyncCheckpoint(checkpoint, normalizePlayerId(perspective));
+export function captureRuntimeState(game) {
+  return { game, handle: game.createRuntimeSavepoint() };
 }
 
-export function runCode(game, mutator, { perspective = null } = {}) {
-  const checkpoint = getCheckpoint(game);
-  const result = mutator(checkpoint);
-  try {
-    importCheckpoint(game, checkpoint, {
-      perspective: perspective ?? checkpoint.perspective ?? 0,
-    });
-  } catch (error) {
-    throw new Error(
-      `runCode checkpoint import failed. This helper can mutate ordinary sync-checkpoint fields, but custom cards created only in the live registry cannot currently be restored through export/import. ${error.message}`,
-    );
-  }
-  return result;
+export function restoreRuntimeState(game, saved) {
+  assert(saved.game === game && saved.handle != null, 'native savepoint belongs to another or expired engine');
+  return game.copyRuntimeSavepoint(saved.handle);
 }
 
-export function captureCheckpoint(game) {
-  return structuredClone(getCheckpoint(game));
-}
-
-export function restoreCheckpoint(game, checkpoint, { perspective = checkpoint?.perspective ?? 0 } = {}) {
-  return importCheckpoint(game, structuredClone(checkpoint), { perspective });
+export function releaseRuntimeState(saved) {
+  if (saved.handle == null) return;
+  saved.game.releaseRuntimeSavepoint(saved.handle);
+  saved.handle = null;
 }
 
 export function createNewGameAndPlayers(game, options = {}) {
@@ -262,7 +271,7 @@ export function setSideboard(game, player, cardNames) {
 }
 
 export function objectIndex(checkpointOrGame) {
-  const checkpoint = isGameLike(checkpointOrGame) ? getCheckpoint(checkpointOrGame) : checkpointOrGame;
+  const checkpoint = isGameLike(checkpointOrGame) ? getInspectionState(checkpointOrGame) : checkpointOrGame;
   return new Map((checkpoint.objects || []).map((object) => [Number(object.id), object]));
 }
 
@@ -283,7 +292,7 @@ export function normalizePlayerId(player) {
 }
 
 export function getPlayer(checkpointOrGame, player) {
-  const checkpoint = isGameLike(checkpointOrGame) ? getCheckpoint(checkpointOrGame) : checkpointOrGame;
+  const checkpoint = isGameLike(checkpointOrGame) ? getInspectionState(checkpointOrGame) : checkpointOrGame;
   const playerId = normalizePlayerId(player);
   const found = (checkpoint.players || []).find((candidate) => Number(candidate.id) === playerId);
   assert(found, `unknown player ${playerId}`);
@@ -291,7 +300,7 @@ export function getPlayer(checkpointOrGame, player) {
 }
 
 export function getObjectsInZone(checkpointOrGame, zone, player = null) {
-  const checkpoint = isGameLike(checkpointOrGame) ? getCheckpoint(checkpointOrGame) : checkpointOrGame;
+  const checkpoint = isGameLike(checkpointOrGame) ? getInspectionState(checkpointOrGame) : checkpointOrGame;
   const objectsById = objectIndex(checkpoint);
   const normalizedZone = normalizeZoneName(zone);
   let ids;
@@ -396,13 +405,13 @@ export function hasAbility(game, objectOrId, textOrPredicate) {
 }
 
 export function getAttachments(checkpointOrGame, objectOrId) {
-  const checkpoint = isGameLike(checkpointOrGame) ? getCheckpoint(checkpointOrGame) : checkpointOrGame;
+  const checkpoint = isGameLike(checkpointOrGame) ? getInspectionState(checkpointOrGame) : checkpointOrGame;
   const object = typeof objectOrId === "object" ? objectOrId : getObject(checkpoint, objectOrId);
   return (object.attachments || []).map((id) => getObject(checkpoint, id));
 }
 
 export function getAttachedTo(checkpointOrGame, objectOrId) {
-  const checkpoint = isGameLike(checkpointOrGame) ? getCheckpoint(checkpointOrGame) : checkpointOrGame;
+  const checkpoint = isGameLike(checkpointOrGame) ? getInspectionState(checkpointOrGame) : checkpointOrGame;
   const object = typeof objectOrId === "object" ? objectOrId : getObject(checkpoint, objectOrId);
   const target = object.attachedTo;
   if (!target) return null;
@@ -497,13 +506,7 @@ export function addCustomEffectTargetDestroy(game, options = {}) {
 export const addCustomEffect_TargetDestroy = addCustomEffectTargetDestroy;
 
 export function concede(game, player) {
-  const playerId = normalizePlayerId(player);
-  return runCode(game, (checkpoint) => {
-    const playerSnapshot = checkpoint.players.find((candidate) => Number(candidate.id) === playerId);
-    assert(playerSnapshot, `unknown player ${playerId}`);
-    playerSnapshot.hasLost = true;
-    playerSnapshot.hasLeftGame = true;
-  });
+  return game.forfeitPlayer(normalizePlayerId(player));
 }
 
 export function names(objects) {
@@ -564,5 +567,5 @@ function describeQuery(query) {
 }
 
 function isGameLike(value) {
-  return value && typeof value.exportSyncCheckpoint === "function";
+  return value && typeof value.getHiddenCardState === "function";
 }

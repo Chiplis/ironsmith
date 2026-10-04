@@ -1,3 +1,4 @@
+import { setupCombatPriorityFixture } from './fixtures/combat-priority-scenario.mjs';
 import { useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GameContext } from '../src/context/GameContext.shared';
@@ -29,7 +30,7 @@ function Fixture() {
     worker.onmessage = async ({ data }) => {
       if (data.type === 'ready') {
         await call('registerExternalCardSourcesJson', [JSON.stringify(window.__combatFixture.sources)]);
-        setState(await call('importSyncCheckpoint', [window.__combatFixture.checkpoint, window.__combatFixture.seat]));
+        setState(await setupCombatPriorityFixture((method, ...args) => call(method, args), window.__combatFixture.seat));
       } else if (data.type === 'priorityAnalysis') {
         latest.current = data; for (const listener of listeners.current) listener();
       } else if (data.type === 'priorityAnalysisError') window.__combatError = data.error;
@@ -45,7 +46,7 @@ function Fixture() {
   }, [setState]);
   useEffect(() => {
     window.__combatState = state;
-    const auto = buildMultiplayerSmartAutoPass({ autoPassEnabled: true, holdRule: 'never', decision: state?.decision, currentState: state });
+    const auto = buildMultiplayerSmartAutoPass({ autoPassEnabled: true, holdRule: 'if_actions', decision: state?.decision, currentState: state });
     if (auto.command && !passed.current) {
       passed.current = true; window.__combatAutoPassed = true;
       send.current('dispatch', [auto.command]).then(setState);

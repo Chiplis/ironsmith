@@ -9,9 +9,23 @@ import {
   assertCounterCount,
 } from "./mage-port-runner.mjs";
 
+function nativeInspectionMock(state, extra = {}) {
+  const objects = () => (state.objects || []).map((object, index) => ({ ...object, id: object.id ?? index + 1,
+    zone: object.zone ?? ((state.battlefield || []).includes(object.id) ? "battlefield" : "outside_game"),
+  }));
+  const details = extra.objectDetails;
+  return {
+    getHiddenCardState: () => ({ ...state, objects: objects(), players: (state.players || []).map((player, id) => ({ ...player, id: player.id ?? id })), exile: state.exile || [] }),
+    exportPublicAuditCheckpoint: () => ({ ...state, objects: objects(), players: (state.players || []).map((player, id) => ({ ...player, id: player.id ?? id })) }),
+    uiState: () => ({ perspective: state.perspective || 0, stack_objects: state.stack || [] }),
+    ...extra,
+    objectDetails: id => ({ ...objects().find(object => Number(object.id) === Number(id)), ...details?.(id) }),
+  };
+}
+
 test("player counter assertions inspect the requested player and reject unavailable counter state", async () => {
   const checkpoint = { players: [{ id: 0, poisonCounters: 0 }, { id: 1, poisonCounters: 3 }] };
-  const context = { game: { exportSyncCheckpoint: () => checkpoint } };
+  const context = { game: nativeInspectionMock(checkpoint) };
   const operation = { player: 0, name: 1, counter: "POISON", count: 3 };
   await assertCounterCount(context, operation);
   await assert.rejects(assertCounterCount(context, { ...operation, count: 0 }), /player 1, got 3/);
@@ -26,7 +40,7 @@ function contextWithLife(life, extra = {}) {
   const checkpoint = { players: [{ life: 20 }, { life }], objects: [] };
   return {
     checkpoint,
-    context: { game: { exportSyncCheckpoint: () => checkpoint }, ...extra },
+    context: { game: nativeInspectionMock(checkpoint), ...extra },
   };
 }
 
@@ -76,10 +90,9 @@ test("named token assertions require exact counts including zero", async () => {
     players: [{ id: 0 }], battlefield: [1, 2],
     objects: [1, 2].map(id => ({ id, name: "Grizzly Bears", controller: 0, token: true })),
   };
-  const context = { game: {
-    exportSyncCheckpoint: () => checkpoint,
+  const context = { game: nativeInspectionMock(checkpoint, {
     objectDetails: () => ({ kind: "token" }),
-  } };
+  }) };
   await assert.rejects(assertTokenCount(context, { player: 0, name: "Grizzly Bears", count: 0 }), /expected 0.*got 2/);
   await assert.rejects(assertTokenCount(context, { player: 0, name: "Grizzly Bears", count: 1 }), /expected 1.*got 2/);
   await assertTokenCount(context, { player: 0, name: "Grizzly Bears", count: 2 });
@@ -92,11 +105,10 @@ test("a missing legal cast action cannot be repaired by moving the card directly
     objects: [{ id: 1, name: "Grizzly Bears", owner: 0, zone: "hand" }],
   };
   let imports = 0;
-  const context = { game: {
-    exportSyncCheckpoint: () => checkpoint,
-    importSyncCheckpoint: () => { imports++; },
-    uiState: () => ({ priority_player: 0, decision: { kind: "priority", player: 0, actions: [] } }),
-  } };
+  const context = { game: nativeInspectionMock(checkpoint, {
+    dispatch: () => { imports++; },
+    uiState: () => ({ perspective: 0, priority_player: 0, decision: { kind: "priority", player: 0, actions: [] } }),
+  }) };
   await assert.rejects(castSpell(context, { player: 0, name: "Grizzly Bears" }), /could not find cast action/);
   assert.equal(imports, 0);
   assert.equal(checkpoint.objects[0].zone, "hand");
@@ -105,7 +117,7 @@ test("a missing legal cast action cannot be repaired by moving the card directly
 test("ordinary audit runs never synthesize additional combat from rendered text", () => {
   assert.equal(ALLOW_ENGINE_SHIMS, false, "integrity tests require engine shims disabled");
   const context = { pendingAdditionalCombats: 1, game: {
-    exportSyncCheckpoint: () => { throw new Error("must not read rendered stack text"); },
+    getHiddenCardState: () => { throw new Error("must not read rendered stack text"); },
     uiState: () => { throw new Error("must not force an additional phase"); },
   } };
   queuePendingAdditionalCombatsFromStack(context);
@@ -142,10 +154,9 @@ test("attacking assertions read combat membership rather than tapped state", asy
   const checkpoint = { players: [{ id: 0 }], battlefield: [1],
     objects: [{ id: 1, name: "Grizzly Bears", controller: 0, tapped: true }] };
   let combat = null;
-  const context = { game: {
-    exportSyncCheckpoint: () => checkpoint,
+  const context = { game: nativeInspectionMock(checkpoint, {
     uiState: () => ({ combat, phase: "Combat", step: "EndCombat" }),
-  } };
+  }) };
   await assert.rejects(assertAttacking(context, { player: 0, name: "Grizzly Bears", expected: true }),
     /attacking=true, got false/);
   combat = { attackers: [{ creature: 1 }] };
@@ -159,11 +170,10 @@ test("attacking assertions read combat membership rather than tapped state", asy
 test("prototype color assertions cannot infer calculated colors from mana cost", async () => {
   const checkpoint = { players: [{ id: 0 }], battlefield: [1],
     objects: [{ id: 1, name: "Blitz Automaton", controller: 0 }] };
-  const context = { game: {
-    exportSyncCheckpoint: () => checkpoint,
+  const context = { game: nativeInspectionMock(checkpoint, {
     objectDetails: () => ({ name: "Blitz Automaton", power: 3, toughness: 2,
       mana_cost: "{2}{R}", abilities: ["Haste"] }),
-  } };
+  }) };
   await assert.rejects(assertBlitzAutomatonPrototypeState(context, { count: 1, prototyped: true }),
     /unsupported prototype color assertion/);
 });

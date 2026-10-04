@@ -19,8 +19,8 @@ export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
 export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 17;
-const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, CURRENT_AUDIT_PROTOCOL_VERSION]);
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 18;
+const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, CURRENT_AUDIT_PROTOCOL_VERSION]);
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
 export const ZIFFLE_OPENING_PROOF_TYPE = "ziffle_position_opening_v1";
@@ -2469,13 +2469,6 @@ export async function verifySignedMatchGenesis(match, cryptoImpl = globalThis.cr
   };
 }
 
-export async function checkpointHash(checkpoint, cryptoImpl = globalThis.crypto) {
-  return sha256Hex(canonicalJson({
-    domain: "ironsmith-resync-checkpoint-v1",
-    checkpoint: stripTransientMetadata(checkpoint),
-  }), cryptoImpl);
-}
-
 export async function publicCheckpointHash(checkpoint, cryptoImpl = globalThis.crypto) {
   return sha256Hex(canonicalJson({
     domain: "ironsmith-public-audit-checkpoint-v1",
@@ -2675,8 +2668,6 @@ export async function buildSignedResyncEnvelope({
   signer,
   lastSequence,
   finalStateHash,
-  checkpoint,
-  checkpointSequence = null,
   actions = [],
 }, cryptoImpl = globalThis.crypto) {
   const actionLastSequence = transcriptLastSequence(actions);
@@ -2685,24 +2676,13 @@ export async function buildSignedResyncEnvelope({
     throw new Error("Resync last sequence does not match action log");
   }
   const payload = {
-    domain: "ironsmith-resync-envelope-v1",
+    domain: "ironsmith-resync-envelope-v2",
     matchId: String(matchId || ""),
     signer: Number(signer),
     lastSequence: actionLastSequence,
     finalStateHash: String(finalStateHash || ""),
-    checkpointHash: await checkpointHash(checkpoint, cryptoImpl),
     actionsHash: await transcriptActionsHash(actions, cryptoImpl),
   };
-  // Present only when `checkpoint` is an importable export taken at that
-  // accepted sequence (checkpoint-based Verified resync); a head export sent
-  // only for shape keeps the original signed payload.
-  if (checkpointSequence != null) {
-    const sequence = Number(checkpointSequence);
-    if (!Number.isSafeInteger(sequence) || sequence <= 0 || sequence > actionLastSequence) {
-      throw new Error("Resync checkpoint sequence is outside the action log");
-    }
-    payload.checkpointSequence = sequence;
-  }
   return {
     ...payload,
     signatureAlgorithm: "ecdsa-p256-sha256",
@@ -2713,27 +2693,22 @@ export async function buildSignedResyncEnvelope({
 export async function verifySignedResyncEnvelope({
   envelope,
   publicKey,
-  checkpoint,
   actions = [],
 }, cryptoImpl = globalThis.crypto) {
   if (!envelope || typeof envelope !== "object") {
     throw new Error("Resync payload is missing signed envelope");
   }
   const payload = {
-    domain: "ironsmith-resync-envelope-v1",
+    domain: "ironsmith-resync-envelope-v2",
     matchId: String(envelope.matchId || ""),
     signer: Number(envelope.signer),
     lastSequence: Number(envelope.lastSequence || 0),
     finalStateHash: String(envelope.finalStateHash || ""),
-    checkpointHash: String(envelope.checkpointHash || ""),
     actionsHash: String(envelope.actionsHash || ""),
   };
-  if (envelope.checkpointSequence != null) {
-    payload.checkpointSequence = Number(envelope.checkpointSequence);
-  }
-  const expectedCheckpointHash = await checkpointHash(checkpoint, cryptoImpl);
-  if (payload.checkpointHash !== expectedCheckpointHash) {
-    throw new Error("Resync checkpoint hash mismatch");
+  if (envelope.domain !== "ironsmith-resync-envelope-v2"
+    || envelope.checkpointHash != null || envelope.checkpointSequence != null) {
+    throw new Error("Unsupported resync envelope format");
   }
   const expectedLastSequence = transcriptLastSequence(actions);
   if (payload.lastSequence !== expectedLastSequence) {
@@ -2752,18 +2727,7 @@ export async function verifySignedResyncEnvelope({
   if (!valid) {
     throw new Error("Resync envelope signature is invalid");
   }
-  const checkpointSequence = payload.checkpointSequence;
-  return {
-    valid: true,
-    checkpointHash: payload.checkpointHash,
-    actionsHash: payload.actionsHash,
-    // Signed: the checkpoint is claimed to be the state after this action.
-    checkpointSequence: Number.isSafeInteger(checkpointSequence)
-      && checkpointSequence > 0
-      && checkpointSequence <= expectedLastSequence
-      ? checkpointSequence
-      : null,
-  };
+  return { valid: true, actionsHash: payload.actionsHash };
 }
 
 export function sanitizeAuditCardList(cards) {

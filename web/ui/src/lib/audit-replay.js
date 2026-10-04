@@ -215,7 +215,7 @@ async function revealOpeningWithGame(game, opening) {
   const position = opening.position ?? opening.publicPosition;
   const positionCommitment = opening.positionCommitment || opening.position_commitment;
   let positionObjectId = null;
-  const exportCheckpoint = optionalGameMethod(game, "exportSyncCheckpoint");
+  const exportCheckpoint = optionalGameMethod(game, "getHiddenCardState");
   const checkpoint = exportCheckpoint ? await exportCheckpoint() : null;
   const ownerMetadata = (checkpoint?.objects || [])
     .map(object => object.hiddenCard || object.hidden_card)
@@ -428,7 +428,7 @@ async function localReplayCommand(game, command) {
   const hasSelectionIdentity = command?.type === "select_objects"
     && (command.object_stable_ids?.some(value => value != null) || command.object_hidden_refs?.some(Boolean));
   if (!hasPriorityIdentity && !hasSelectionIdentity) return command;
-  const checkpoint = await requiredGameMethod(game, "exportSyncCheckpoint")();
+  const checkpoint = await requiredGameMethod(game, "getHiddenCardState")();
   const resolve = (originalId, stableId, hiddenRef) => {
     if (stableId != null) {
       const matches = (checkpoint?.objects || []).filter(object =>
@@ -806,9 +806,7 @@ export async function replayAuditTranscriptWithGame({
   }
   const match = transcript.match || {};
   const actions = Array.isArray(transcript.actions) ? transcript.actions : [];
-  requiredGameMethod(game, "exportSyncCheckpoint");
-  requiredGameMethod(game, "importSyncCheckpoint");
-  const restorePerspective = normalizedPerspective(perspectiveIndex, match);
+  requiredGameMethod(game, "getHiddenCardState");
   // Restore the caller's game losslessly: a sync checkpoint alone would drop
   // continuous effects, delayed triggers and the rest of the rules state.
   const restorePoint = await captureEngineRestorePoint(game);
@@ -871,7 +869,7 @@ export async function replayAuditTranscriptWithGame({
     replayError = err;
   } finally {
     try {
-      await restoreEngineRestorePoint(game, restorePoint, restorePerspective);
+      await restoreEngineRestorePoint(game, restorePoint);
     } catch (restoreErr) {
       restoreError = restoreErr;
     }
