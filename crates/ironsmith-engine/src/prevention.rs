@@ -35,9 +35,7 @@ impl PreventionShieldId {
 /// These are created by effects like "Prevent the next 3 damage that would be
 /// dealt to you this turn" or Circle of Protection effects.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
-#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
-pub struct PreventionShield<E = Effect, U = Until> {
+pub struct PreventionShield {
     /// Unique identifier for this shield
     pub id: PreventionShieldId,
 
@@ -52,17 +50,16 @@ pub struct PreventionShield<E = Effect, U = Until> {
 
     /// Amount of damage remaining to prevent.
     /// None means infinite (e.g., Fog prevents all combat damage)
-    #[cfg_attr(feature="serialization",serde(deserialize_with="deserialize_present_prevention_option"))]
     pub amount_remaining: Option<u32>,
 
     /// How long this shield lasts
-    pub duration: U,
+    pub duration: Until,
 
     /// Filter for what damage this shield applies to
     pub damage_filter: DamageFilter,
 
     /// Effects to execute using the prevented amount when this shield prevents damage.
-    pub follow_up_effects: Vec<E>,
+    pub follow_up_effects: Vec<Effect>,
 
     /// Targets chosen when the prevention shield was created, for delayed follow-ups.
     pub follow_up_targets: Vec<ResolvedTarget>,
@@ -76,7 +73,6 @@ pub struct PreventionShield<E = Effect, U = Until> {
     /// CR 800.4m: a turn-relative shield whose controller left the game ends
     /// when the turn in question would have begun. `Some(turn)` removes the
     /// shield at the start of that turn (or any later one).
-    #[cfg_attr(feature="serialization",serde(deserialize_with="deserialize_present_prevention_option"))]
     pub expires_before_turn: Option<u32>,
 }
 
@@ -258,28 +254,22 @@ pub struct PreventionEffectManager {
 /// `prevented` is zero when CR 615.12 applies the prevention effect to
 /// unpreventable damage without preventing any of it.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
-#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
-pub struct PreventionFollowUp<E = Effect> {
+pub struct PreventionFollowUp {
     pub source: ObjectId,
     pub controller: PlayerId,
     pub prevented: u32,
-    pub effects: Vec<E>,
+    pub effects: Vec<Effect>,
     pub targets: Vec<ResolvedTarget>,
     pub target_assignments: Vec<TargetAssignment>,
 }
 
 /// A prevention follow-up paired with the exact damage event it modified.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
-#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
-#[cfg_attr(feature="serialization",serde(bound(deserialize="C: serde::Deserialize<'de>, S: serde::Deserialize<'de>, F: serde::Deserialize<'de>, D: serde::Deserialize<'de>")))]
-pub struct PendingPreventionFollowUp<C = crate::effects::ReplacementExecutionContext, S = crate::snapshot::ObjectSnapshot, F = PreventionFollowUp, D = crate::events::DamageEvent> {
-    pub(crate) replacement_scope: C,
-    #[cfg_attr(feature="serialization",serde(deserialize_with="deserialize_present_prevention_option"))]
-    pub source_snapshot: Option<S>,
-    pub follow_up: F,
-    pub damage: D,
+pub struct PendingPreventionFollowUp {
+    pub(crate) replacement_scope: crate::effects::ReplacementExecutionContext,
+    pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    pub follow_up: PreventionFollowUp,
+    pub damage: crate::events::DamageEvent,
     pub provenance: crate::provenance::ProvNodeId,
 }
 
@@ -1223,49 +1213,3 @@ mod tests {
         assert_eq!(manager.shields()[0].amount_remaining, Some(1));
     }
 }
-
-/// Required conversion of both executable fields; scalar shield state is
-/// preserved verbatim, including exhausted quantities and original turn anchors.
-impl<E, U> PreventionShield<E, U> {
-    pub fn try_map_payloads<E2, U2, Error>(self, effect: impl FnMut(E) -> Result<E2, Error>, duration: impl FnOnce(U) -> Result<U2, Error>) -> Result<PreventionShield<E2, U2>, Error> {
-        let Self { id, source, controller, protected, amount_remaining, duration: original_duration, damage_filter, follow_up_effects, follow_up_targets, follow_up_target_assignments, created_turn, expires_before_turn } = self;
-        Ok(PreventionShield { id, source, controller, protected, amount_remaining, duration: duration(original_duration)?, damage_filter, follow_up_effects: follow_up_effects.into_iter().map(effect).collect::<Result<Vec<_>, _>>()?, follow_up_targets, follow_up_target_assignments, created_turn, expires_before_turn })
-    }
-}
-impl<E> PreventionFollowUp<E> {
-    pub fn try_map_effects<E2, Error>(self, effect: impl FnMut(E) -> Result<E2, Error>) -> Result<PreventionFollowUp<E2>, Error> {
-        let Self { source, controller, prevented, effects, targets, target_assignments } = self;
-        Ok(PreventionFollowUp { source, controller, prevented, effects: effects.into_iter().map(effect).collect::<Result<Vec<_>, _>>()?, targets, target_assignments })
-    }
-}
-impl<C, S, F, D> PendingPreventionFollowUp<C, S, F, D> {
-    /// No capture can be omitted by an owning codec. The owner must roll back
-    /// any external mutations made by a converter if a later conversion fails.
-    pub fn try_map_payloads<C2, S2, F2, D2, Error>(self, scope: impl FnOnce(C) -> Result<C2, Error>, snapshot: impl FnOnce(S) -> Result<S2, Error>, follow_up: impl FnOnce(F) -> Result<F2, Error>, damage: impl FnOnce(D) -> Result<D2, Error>) -> Result<PendingPreventionFollowUp<C2, S2, F2, D2>, Error> {
-        let Self { replacement_scope, source_snapshot, follow_up: original_follow_up, damage: original_damage, provenance } = self;
-        Ok(PendingPreventionFollowUp { replacement_scope: scope(replacement_scope)?, source_snapshot: source_snapshot.map(snapshot).transpose()?, follow_up: follow_up(original_follow_up)?, damage: damage(original_damage)?, provenance })
-    }
-}
-#[cfg(test)]
-mod complete_prevention_carrier_mapping_tests {
-    use super::*;
-    #[test]
-    fn shield_mapping_preserves_all_scalar_state_and_effect_order() {
-        let source=ObjectId::from_raw(101);let player=PlayerId::from_index(1);
-        let shield=PreventionShield { id:PreventionShieldId(17),source,controller:player,protected:PreventionTarget::Player(player),amount_remaining:Some(0),duration:11u32,damage_filter:DamageFilter::default(),follow_up_effects:vec![4u32,4,7],follow_up_targets:vec![],follow_up_target_assignments:vec![],created_turn:8,expires_before_turn:Some(13) };
-        let expected=shield.clone();let retained=shield.try_map_payloads(|effect|Ok::<_, &'static str>(effect+20),|duration|Ok(duration+30)).unwrap();let restored=retained.try_map_payloads(|effect|Ok::<_, &'static str>(effect-20),|duration|Ok(duration-30)).unwrap();assert_eq!(restored,expected);
-    }
-    #[test]
-    fn queued_follow_up_mapping_preserves_every_capture_and_stops_on_error() {
-        let pending=PendingPreventionFollowUp { replacement_scope:3u32,source_snapshot:Some(5u32),follow_up:7u32,damage:11u32,provenance:Default::default() };
-        let mapped=pending.clone().try_map_payloads(|v|Ok::<_, &'static str>(v+1),|v|Ok(v+2),|v|Ok(v+3),|v|Ok(v+4)).unwrap();assert_eq!((mapped.replacement_scope,mapped.source_snapshot,mapped.follow_up,mapped.damage),(4,Some(7),10,15));assert_eq!(mapped.provenance,pending.provenance);
-        let mut later=0;let result=pending.try_map_payloads(Ok::<_, &'static str>,|_|Err::<u32,_>("snapshot"),|v|{later+=1;Ok(v)},Ok);assert_eq!(result.unwrap_err(),"snapshot");assert_eq!(later,0);
-    }
-    #[test]
-    fn follow_up_mapping_preserves_prevented_amount_and_all_effects() {
-        let value=PreventionFollowUp {source:ObjectId::from_raw(102),controller:PlayerId::from_index(0),prevented:u32::MAX,effects:vec![2u32,2,9],targets:vec![],target_assignments:vec![]};let original=value.clone();let mapped=value.try_map_effects(|v|Ok::<_, &'static str>(v+1)).unwrap();assert_eq!(mapped.prevented,u32::MAX);assert_eq!(mapped.effects,vec![3,3,10]);let restored=mapped.try_map_effects(|v|Ok::<_, &'static str>(v-1)).unwrap();assert_eq!(restored,original);
-    }
-}
-
-#[cfg(feature="serialization")]
-fn deserialize_present_prevention_option<'de,T:serde::Deserialize<'de>,D:serde::Deserializer<'de>>(d:D)->Result<Option<T>,D::Error>{<Option<T> as serde::Deserialize>::deserialize(d)}

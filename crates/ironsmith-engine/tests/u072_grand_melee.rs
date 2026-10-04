@@ -297,15 +297,11 @@ fn u072_close_markers_wait_or_defer_extra_turns_on_the_correct_side() {
     assert_eq!(marker_one.status, GrandMeleeMarkerStatus::Waiting);
     assert!(marker_one.retained_extra_turn_waiting);
 
-    let checkpoint = left_game
-        .grand_melee_restore_snapshot()
-        .expect("Grand Melee restore snapshot");
-    left_game
-        .restore_grand_melee_snapshot(checkpoint)
-        .expect("restore retained-extra waiting state");
+    let saved = left_game;
+    let mut left_game = saved.clone();
     assert!(
         left_game.grand_melee_marker_views()[0].retained_extra_turn_waiting,
-        "checkpointing preserves why a marker is waiting",
+        "native savepoints preserve why a marker is waiting",
     );
     left_game.next_turn();
     assert_eq!(left_game.turn.active_player, players[0]);
@@ -313,6 +309,9 @@ fn u072_close_markers_wait_or_defer_extra_turns_on_the_correct_side() {
         left_game.grand_melee_marker_views()[0].status,
         GrandMeleeMarkerStatus::Active,
     );
+    assert_eq!(saved.grand_melee_marker_views()[0].status, GrandMeleeMarkerStatus::Waiting);
+    assert!(saved.grand_melee_marker_views()[0].retained_extra_turn_waiting,
+        "advancing the recovered clone must not mutate its native savepoint");
 
     let (mut right_game, players) = game_with_players(10);
     right_game.restore_grand_melee(players.clone()).unwrap();
