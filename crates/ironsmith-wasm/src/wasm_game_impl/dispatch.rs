@@ -29,6 +29,34 @@ impl WasmGame {
         })
     }
 
+    // A single committed-state read for hydration/authorization. No continuous
+    // effects, stack programs or other executable checkpoint payloads are encoded.
+    fn hidden_card_state(&self) -> serde_json::Value {
+        let players = self.game.players.iter().map(|player| serde_json::json!({
+            "id": player.id.0,
+            "hand": player.hand.iter().map(|id| id.0).collect::<Vec<_>>(),
+            "graveyard": player.graveyard.iter().map(|id| id.0).collect::<Vec<_>>(),
+            "commanders": player.commanders.iter().map(|id| id.0).collect::<Vec<_>>(),
+            "sideboard": player.sideboard.iter().map(|id| id.0).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>();
+        let objects = self.sync_checkpoint_object_ids().into_iter().filter_map(|id| {
+            let object = self.game.object(id)?;
+            Some(serde_json::json!({
+                "id": id.0,
+                "stableId": object.stable_id.0.0,
+                "name": object.name.to_string(),
+                "originalCardName": object.card.and_then(|card| self.registry.get_by_id(card))
+                    .map(|definition| &definition.card.name),
+                "zone": sync_zone_name(object.zone),
+                "hiddenCard": self.hidden_metadata_for_checkpoint_object(id),
+            }))
+        }).collect::<Vec<_>>();
+        serde_json::json!({
+            "players": players, "objects": objects,
+            "exile": self.game.exile.iter().map(|id| id.0).collect::<Vec<_>>(),
+        })
+    }
+
     // Match exportSyncCheckpoint's object set and committed game, including
     // proposed/resolving stack objects. Never substitute pending_decision_game.
     fn checkpoint_hidden_metadata(&self, id: ObjectId) -> Option<HiddenCardMetadata> {
@@ -2858,6 +2886,14 @@ impl WasmGame {
         })
     }
 
+    /// Local metadata for hand hydration and reveal authorization; never a
+    /// recovery checkpoint and never authority to reveal another player's card.
+    #[wasm_bindgen(js_name = getHiddenCardState)]
+    pub fn get_hidden_card_state(&self) -> Result<JsValue, JsValue> {
+        self.hidden_card_state().serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|error| JsValue::from_str(&format!("hidden card state encode failed: {error}")))
+    }
+
     /// Read only the identity fields needed by opening verification. This is
     /// not a checkpoint export or an authorization to disclose a card's name.
     #[wasm_bindgen(js_name = getHiddenCardMetadata)]
@@ -5630,6 +5666,45 @@ mod narrow_hidden_metadata_tests {
         assert_eq!(serde_json::to_value(&matches[0]).unwrap(), expected);
         assert!(wasm.checkpoint_hidden_metadata_at_position(1, 4, "uncommitted-other").is_empty());
         assert_eq!(serde_json::to_value(wasm.build_sync_checkpoint()).unwrap(), before);
+    }
+
+    #[test]
+    fn hidden_card_state_survives_earthbend_and_reads_committed_zones() {
+        use ironsmith::effects::{EffectExecutor, ResolvedTarget};
+        use ironsmith::effects::EffectContext as ExecutionContext;
+        let _guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let owner = PlayerId::from_index(0);
+        let hand = wasm.game.create_hidden_card_placeholder(owner, Zone::Hand, 7, "ziffle:root:7".into());
+        let library = wasm.game.create_hidden_card_placeholder(owner, Zone::Library, 8, "ziffle:root:8".into());
+        let exile = wasm.game.create_hidden_card_placeholder(owner, Zone::Exile, 9, "ziffle:root:9".into());
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Forest")
+            .card_types(vec![CardType::Land]).build());
+        wasm.registry.register(definition.clone());
+        let land = wasm.game.create_object_from_definition(&definition, owner, Zone::Battlefield);
+        let before = wasm.hidden_card_state();
+        let effect = ironsmith::effects::EarthbendEffect::new(
+            ironsmith::target::ChooseSpec::target(ironsmith::target::ChooseSpec::Object(
+                ironsmith::target::ObjectFilter::land())), 2);
+        let mut ctx = ExecutionContext::new_default(land, owner)
+            .with_targets(vec![ResolvedTarget::Object(land)]);
+        effect.execute(&mut wasm.game, &mut ctx).unwrap();
+        assert!(retain_scalar_registered_effects(wasm.game.effect_store.continuous_effects.registered_state()).is_err(),
+            "the regression state cannot be serialized as a scalar checkpoint");
+        assert!(wasm.game.current_has_static_ability_id(land, ironsmith::static_abilities::StaticAbilityId::Haste));
+        assert_eq!(wasm.game.calculated_power(land), Some(2));
+        assert_eq!(wasm.hidden_card_state(), before,
+            "executable effects must not affect the identity/zone query");
+        let mut pending = wasm.game.clone();
+        pending.move_object_by_game_rule(hand, Zone::Graveyard).unwrap();
+        wasm.pending_decision_game = Some(Box::new(pending));
+        let state = wasm.hidden_card_state();
+        assert_eq!(state["players"][0]["hand"], serde_json::json!([hand.0]));
+        assert_eq!(state["exile"], serde_json::json!([exile.0]));
+        let object = state["objects"].as_array().unwrap().iter().find(|entry| entry["id"] == library.0).unwrap();
+        assert_eq!(object["hiddenCard"]["commitment"], "ziffle:root:8");
+        assert!(state.get("registeredContinuous").is_none());
     }
 
     #[test]

@@ -5509,21 +5509,21 @@ mod sync_checkpoint_tests {
             ));
             host.runner_awaiting_priority = true;
             let definitions: Vec<_> = [
-                ("Cavern of Souls", "Type: Land\nAs this land enters, choose a creature type.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a creature spell of the chosen type, and that spell can't be countered.", Zone::Battlefield),
-                ("Dáin's Company", "Mana cost: {R}{W}\nType: Creature — Dwarf Warrior\nPower/Toughness: 2/2", Zone::Hand),
-                ("Plains", "Type: Basic Land — Plains\n{T}: Add {W}.", Zone::Battlefield),
-                ("Mana trigger probe", "Type: Enchantment\nWhenever you tap a creature for mana, add {G}.", Zone::Battlefield),
-            ].into_iter().filter(|(name, _, _)| with_trigger || *name != "Mana trigger probe").map(|(name, text, zone)| {
-                let definition = ironsmith_registry_test::compile_to_runtime_definition(name, text, false).unwrap();
-                let id = host.game.create_object_from_definition(&definition, owner, zone);
-                host.registry.register(definition.clone());
-                (definition, id)
-            }).collect();
+                    ("Cavern of Souls", "Type: Land\nAs this land enters, choose a creature type.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a creature spell of the chosen type, and that spell can't be countered.", Zone::Battlefield),
+                    ("Dáin's Company", "Mana cost: {R}{W}\nType: Creature — Dwarf Warrior\nPower/Toughness: 2/2", Zone::Hand),
+                    ("Plains", "Type: Basic Land — Plains\n{T}: Add {W}.", Zone::Battlefield),
+                    ("Mana trigger probe", "Type: Enchantment\nWhenever you tap a creature for mana, add {G}.", Zone::Battlefield),
+                ].into_iter().filter(|(name, _, _)| with_trigger || *name != "Mana trigger probe").map(|(name, text, zone)| {
+                    let definition = ironsmith_registry_test::compile_to_runtime_definition(name, text, false).unwrap();
+                    let id = host.game.create_object_from_definition(&definition, owner, zone);
+                    host.registry.register(definition.clone());
+                    (definition, id)
+                }).collect();
             let cavern = definitions[0].1;
             let spell = definitions[1].1;
             let can_cast = |wasm: &WasmGame| {
                 ironsmith::decision::compute_actions_for_source(&wasm.game, owner, Some(spell)).unwrap().iter()
-                    .any(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
+                        .any(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
             };
             host.game.set_chosen_creature_type(cavern, chosen);
 
@@ -5579,6 +5579,14 @@ mod sync_checkpoint_tests {
             peer.game
                 .player_mut(owner)
                 .unwrap()
+                .hand
+                .retain(|id| *id != spell);
+            peer.game
+                .stack
+                .push(ironsmith::game_state::StackEntry::new(spell, owner));
+            peer.game
+                .player_mut(owner)
+                .unwrap()
                 .mana_pool
                 .add(ManaSymbol::White, 1);
             let cost = peer.game.object(spell).unwrap().mana_cost.clone().unwrap();
@@ -5594,8 +5602,7 @@ mod sync_checkpoint_tests {
             );
             if chosen == Subtype::Dwarf {
                 assert_eq!(peer.game.player(owner).unwrap().mana_pool.total(), 0);
-                assert!(peer.game.current_abilities(spell).unwrap().iter().any(|ability|
-                        matches!(&ability.kind, ironsmith::ability::AbilityKind::Static(ability) if ability.cant_be_countered())));
+                assert!(peer.game.player(owner).unwrap().restricted_mana.is_empty());
             }
         }
     }

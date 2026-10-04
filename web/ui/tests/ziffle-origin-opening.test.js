@@ -39,7 +39,7 @@ async function harness({ workerMetadata = false } = {}) {
     hiddenCardMetadataForObjectFromCheckpoint, hiddenCardMetadataAtPositionFromCheckpoint,
     useCallback: fn => fn,
     gameRef: { current: {
-      exportSyncCheckpoint: async () => { checkpointReads++; return checkpoint; },
+      getHiddenCardState: async () => { checkpointReads++; return checkpoint; },
       ...(workerMetadata ? {
         getHiddenCardMetadata: async id => hiddenCardMetadataForObjectFromCheckpoint(checkpoint, id),
         getHiddenCardMetadataAtPosition: async (...args) => hiddenCardMetadataAtPositionFromCheckpoint(checkpoint, ...args),

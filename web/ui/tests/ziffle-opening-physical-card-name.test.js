@@ -85,7 +85,7 @@ function applicationHarness() {
     ...helpers,
     useCallback: value => value,
     gameRef: { current: {
-      exportSyncCheckpoint: async () => checkpoint,
+      getHiddenCardState: async () => checkpoint,
       revealHiddenSlot: async () => { throw new Error('Unexpected slot fallback'); },
       revealHiddenPosition: async input => {
         calls.push(input);

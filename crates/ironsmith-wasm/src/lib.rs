@@ -6831,6 +6831,10 @@ mod determinism_tests {
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests;
 
+#[cfg(test)]
+#[path = "tests/blazing_shoal.rs"]
+mod blazing_shoal_tests;
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "tests/territorial_kavu.rs"]
 mod territorial_kavu_tests;

@@ -4891,6 +4891,8 @@ html[data-hand-pointer-suspended="true"] * {
 
   .table-shell[data-focused-hud="true"] > [data-my-zone] {
     grid-row: 2;
+    /* The local graveyard/exile column rises above this panel's top edge. */
+    overflow: visible;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-zone-entry[data-zone-id="battlefield"] .battlefield-row {
@@ -6745,13 +6747,30 @@ html[data-hand-pointer-suspended="true"] * {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .battlefield-human-decision-panel:not(:has(.action-strip-decision-stack)) {
     min-height: 0 !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    max-width: none !important;
     padding: 6px !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:not(:has(.action-strip-decision-stack)) {
+    min-width: max-content;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:not(:has(.action-strip-decision-stack))
+    .pointer-events-none.absolute.inset-0 {
+    position: relative !important;
   }
 
   /* The button is the only visible surface; a bordered wrapper around it
      doubled the outline and pushed the button 1px past the panel edge. */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-command-region {
     box-sizing: border-box !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    flex: 0 0 auto !important;
     border: 0 !important;
     background: transparent !important;
     box-shadow: none !important;
@@ -6766,7 +6785,21 @@ html[data-hand-pointer-suspended="true"] * {
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-command-region > .action-strip-main-region {
-    width: 100% !important;
+    display: grid !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    max-width: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    :is(.decision-main-button, .action-strip-submit-button) {
+    min-width: max-content !important;
+    flex-shrink: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-main-region > :is(.decision-main-button, [data-slot="popover-trigger"]) {
+    grid-area: 1 / 1;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
@@ -6811,13 +6844,14 @@ html[data-hand-pointer-suspended="true"] * {
     outline-offset: -3px !important;
   }
 
-  /* The main action's label is an overlay on top of its button. Center it in
-     the button like every other action label. */
+  /* Keep the overlay label in grid flow so its full width sizes the button. */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-main-region .action-strip-main-text-stack {
-    inset: 0 !important;
+    position: relative !important;
+    inset: auto !important;
+    grid-area: 1 / 1;
     display: flex !important;
-    width: auto !important;
+    width: max-content !important;
     max-width: none !important;
     padding: 0 14px !important;
     transform: none !important;
@@ -6829,18 +6863,19 @@ html[data-hand-pointer-suspended="true"] * {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-main-region .action-strip-main-title-row {
     justify-content: center !important;
-    min-width: 0;
+    min-width: max-content;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-main-region .action-strip-main-title-text {
-    overflow: hidden;
+    width: max-content !important;
+    overflow: visible !important;
     font-size: var(--hud-action-font) !important;
     font-weight: 700 !important;
     line-height: 1 !important;
     letter-spacing: var(--hud-action-tracking) !important;
     text-align: center;
-    text-overflow: ellipsis;
+    text-overflow: clip;
     white-space: nowrap;
   }
 
@@ -7449,7 +7484,7 @@ html[data-hand-pointer-suspended="true"] * {
 
   /* Decision header uses the full width:
        [stage chip] [title ...........] [⌄]
-       [description, up to two lines ]
+       [description, up to three lines, then scrolls]
      The nested wrappers become transparent so their children join one grid. */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-decision-stack .action-strip-decision-toolbar {
@@ -7494,13 +7529,16 @@ html[data-hand-pointer-suspended="true"] * {
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
     :is(.action-strip-decision-inline-summary, .action-strip-decision-source) {
-    display: -webkit-box !important;
+    display: block !important;
     grid-area: desc;
     min-width: 0;
     max-width: none !important;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    max-height: 4.05em;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    -webkit-line-clamp: unset;
     line-height: 1.35 !important;
     text-overflow: clip;
     white-space: normal !important;
@@ -7630,9 +7668,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-/* Focused desktop HUD header row: [life name] [Lobby chat] [hold] [auto-pass].
-   Playing as hangs under the player's name with the chat tab's look; the
-   whole pill opens a player list upward, styled like the chat panel. */
+/* The local seat switcher uses the player name, with a plain label above it. */
 .player-header-name-stack {
   position: relative;
   display: inline-flex;
@@ -7642,38 +7678,19 @@ html[data-hand-pointer-suspended="true"] * {
 
 @media (min-width: 1024px) {
   .table-shell[data-focused-hud="true"] .player-header-perspective {
-    position: absolute;
-    top: calc(100% + 5px);
-    left: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
     z-index: 2;
     pointer-events: auto;
   }
 
   .table-shell[data-focused-hud="true"] .player-header-perspective-trigger {
     display: inline-flex;
-    min-width: 86px;
-    height: 24px;
     align-items: center;
-    gap: 5px;
-    padding: 0 8px;
-    border: 1px solid var(--ui-border-strong);
-    border-radius: 7px;
-    background: rgba(9, 9, 17, 0.95);
-    color: #dccff2;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
     white-space: nowrap;
     cursor: pointer;
-    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-  }
-
-  .table-shell[data-focused-hud="true"] .player-header-perspective-trigger:hover,
-  .table-shell[data-focused-hud="true"] .player-header-perspective[data-open="true"] .player-header-perspective-trigger {
-    border-color: rgba(214, 192, 250, 0.6);
-    background: rgba(32, 24, 46, 0.96);
-    color: #fff;
   }
 
   .table-shell[data-focused-hud="true"] .player-header-perspective-trigger:focus-visible {
@@ -7682,16 +7699,11 @@ html[data-hand-pointer-suspended="true"] * {
   }
 
   .table-shell[data-focused-hud="true"] .player-header-perspective-label {
-    opacity: 0.68;
-  }
-
-  .table-shell[data-focused-hud="true"] .player-header-perspective-caret {
-    margin-left: 2px;
-    transition: transform 140ms ease;
-  }
-
-  .table-shell[data-focused-hud="true"] .player-header-perspective[data-open="true"] .player-header-perspective-caret {
-    transform: rotate(180deg);
+    margin-bottom: 2px;
+    color: var(--ui-text-secondary);
+    font-size: 9px;
+    line-height: 1;
+    pointer-events: none;
   }
 
   .table-shell[data-focused-hud="true"] .player-header-perspective-menu {

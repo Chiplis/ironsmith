@@ -453,12 +453,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const normalized = Number(stableId);
     if (!Number.isSafeInteger(normalized) || normalized <= 0) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }
@@ -473,12 +473,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const normalized = Number(objectId);
     if (!Number.isSafeInteger(normalized) || normalized <= 0) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }
@@ -521,12 +521,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   async function currentObjectIdForHiddenRef(hiddenRef) {
     if (!normalizeSelectObjectHiddenRef(hiddenRef)) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }
@@ -1023,7 +1023,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	          );
 	          let candidateDebug = [];
 	          try {
-	            const checkpoint = await currentGame.exportSyncCheckpoint?.();
+	            const checkpoint = await currentGame.getHiddenCardState?.();
 	            const objectsById = new Map((checkpoint?.objects || []).map((object) => [
 	              Number(object.id),
 	              object,

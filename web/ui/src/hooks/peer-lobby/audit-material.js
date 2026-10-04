@@ -223,7 +223,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	    const normalized = Number(objectId);
 	    if (!Number.isSafeInteger(normalized) || normalized < 0) return null;
 	    const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
 	    let checkpoint = null;
@@ -231,7 +231,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         if (typeof currentGame.getHiddenCardMetadata === "function") {
           return await currentGame.getHiddenCardMetadata(normalized);
         }
-	      checkpoint = await currentGame.exportSyncCheckpoint();
+	      checkpoint = await currentGame.getHiddenCardState();
 	    } catch {
 	      return null;
 	    }
@@ -246,10 +246,10 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     const position = zifflePositionFromCommitment(commitment);
     if (!Number.isSafeInteger(owner) || owner < 0 || position == null) return null;
     const currentGame = gameRef.current;
-    if (typeof currentGame?.exportSyncCheckpoint !== "function") return null;
+    if (typeof currentGame?.getHiddenCardState !== "function") return null;
     const candidates = typeof currentGame.getHiddenCardMetadataAtPosition === "function"
       ? await currentGame.getHiddenCardMetadataAtPosition(owner, position, commitment)
-      : hiddenCardMetadataAtPositionFromCheckpoint(await currentGame.exportSyncCheckpoint(), owner, position, commitment);
+      : hiddenCardMetadataAtPositionFromCheckpoint(await currentGame.getHiddenCardState(), owner, position, commitment);
     const matches = [];
     for (const metadata of candidates) {
       if (!metadata || Number(metadata.owner) !== owner) continue;
@@ -408,9 +408,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 		    }
 
 		    const currentGame = gameRef.current;
-	    if (currentGame && typeof currentGame.exportSyncCheckpoint === "function") {
+	    if (currentGame && typeof currentGame.getHiddenCardState === "function") {
 	      try {
-	        const checkpoint = await currentGame.exportSyncCheckpoint();
+	        const checkpoint = await currentGame.getHiddenCardState();
 	        const explicitObject = checkpointObjectForId(checkpoint, normalizedObjectId);
 	        if (knownCheckpointObjectMatchesOpening(explicitObject, opening)) {
 	          return {
@@ -827,10 +827,10 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         if (metadataResolved) return metadataResolved;
       }
     }
-    if (currentGame && typeof currentGame.exportSyncCheckpoint === "function") {
+    if (currentGame && typeof currentGame.getHiddenCardState === "function") {
       let checkpoint = null;
       try {
-        checkpoint = await currentGame.exportSyncCheckpoint();
+        checkpoint = await currentGame.getHiddenCardState();
       } catch {
         checkpoint = null;
       }
@@ -2685,7 +2685,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	        );
 	        let candidateDebug = [];
 	        try {
-	          const checkpoint = await currentGame.exportSyncCheckpoint?.();
+	          const checkpoint = await currentGame.getHiddenCardState?.();
 	          const objectsById = new Map((checkpoint?.objects || []).map((object) => [
 	            Number(object.id),
 	            object,
@@ -3652,7 +3652,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     }
     if (timing === "post" && Array.isArray(openings) && openings.length > 0) {
       try {
-        const checkpoint = await currentGame.exportSyncCheckpoint?.();
+        const checkpoint = await currentGame.getHiddenCardState?.();
         const inconsistent = (checkpoint?.objects || []).filter((object) => {
           const hidden = object?.hiddenCard || object?.hidden_card || null;
           if (!hidden) return false;
@@ -3760,10 +3760,10 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 		          localHiddenMetadata
 		          && openingObjectId != null
 		          && opening.card
-		          && typeof currentGame.exportSyncCheckpoint === "function"
+		          && typeof currentGame.getHiddenCardState === "function"
 		        ) {
 		          try {
-		            checkpoint = await currentGame.exportSyncCheckpoint();
+		            checkpoint = await currentGame.getHiddenCardState();
 		          } catch {
 		            checkpoint = null;
 		          }
@@ -3792,10 +3792,10 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	        };
 		        let explicitObjectPresent = false;
 		        let explicitObjectExistsWithoutHidden = false;
-	        if (!localHiddenMetadata && typeof currentGame.exportSyncCheckpoint === "function") {
+	        if (!localHiddenMetadata && typeof currentGame.getHiddenCardState === "function") {
 	          if (!checkpoint) {
 	            try {
-	              checkpoint = await currentGame.exportSyncCheckpoint();
+	              checkpoint = await currentGame.getHiddenCardState();
 	            } catch {
 	              checkpoint = null;
 	            }
@@ -4165,12 +4165,12 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
   async function currentHiddenObjectIdForOpening(opening) {
     if (!opening || opening.owner == null) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }

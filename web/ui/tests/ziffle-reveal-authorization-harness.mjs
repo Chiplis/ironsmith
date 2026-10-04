@@ -1,5 +1,5 @@
 import { hiddenCardMetadataForObjectFromCheckpoint } from "../src/lib/hidden-card-metadata.js";
-import { acceptedZiffleEpochs, assertZiffleEpochInputs, assertZiffleEpochVerification, isPrivateZiffleEpoch, ziffleEpochMaterial, ziffleInputDeckFields } from "../src/lib/ziffle-private-epochs.js";
+import { acceptedZiffleEpochs, buildZiffleInputDeck, assertZiffleEpochInputs, assertZiffleEpochVerification, isPrivateZiffleEpoch, ziffleEpochMaterial, ziffleInputDeckFields } from "../src/lib/ziffle-private-epochs.js";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ziffleOriginAnchorFromOpening, ziffleOriginAnchorFromMetadata } from '../src/lib/multiplayer-audit.js';
@@ -21,10 +21,12 @@ const end = source.indexOf('  async function answerZiffleRevealTokenRequest(', s
 const verifyStart = source.indexOf('  async function verifyShuffleProofsForRequirements(');
 const verifyEnd = source.indexOf('\n  // Applies verified ziffle shuffles', verifyStart);
 assert.ok(start >= 0 && end > start);
-const body = `${helpers.map(declaration).join('\n')}\n${source.slice(visibleStart, visibleEnd)}\n${source.slice(start, end)}\n${source.slice(verifyStart, verifyEnd)}\nreturn {
+const buildStart = source.indexOf('  function acceptedEpochsForProof(');
+const buildEnd = source.indexOf('  const assertZiffleShuffleProofBoundToSignedMatch', buildStart);
+const body = `${source.slice(buildStart, buildEnd)}\n${helpers.map(declaration).join('\n')}\n${source.slice(visibleStart, visibleEnd)}\n${source.slice(start, end)}\n${source.slice(verifyStart, verifyEnd)}\nreturn {
  visiblePositions:authorizedZiffleRevealPositionsForOwner, direct:ziffleRequirementsAuthorizeRevealPositions, metadata:ziffleRequirementsAuthorizeRevealPositionsByMetadata,
  authorize:ziffleRevealAuthorizedByAction, outbound:ziffleRevealAuthorizedByOutboundCryptoRequest,
- preview:previewZiffleActionRequirements, verify:verifyShuffleProofsForRequirements };`;
+ preview:previewZiffleActionRequirements, verify:verifyShuffleProofsForRequirements, build:buildLocalShuffleProofsForRequirements };`;
 export const commitment = (position, hash = 'deck') => `ziffle:${hash}:${position}`;
 export const ceremony = { owner: 0, deckCount: 60, deckHash: 'deck', context: 'match:initial' };
 export const opening = (position, fields = {}) => ({ type: 'private_open', owner: 0, viewer: 0, zone: 'library',
@@ -46,10 +48,11 @@ export function authorizationHarness({ requirements = [], stored = [], checkpoin
   const materialCalls = [];
   const context = {
     hiddenCardMetadataForObjectFromCheckpoint,
-    isPrivateZiffleEpoch, ziffleInputDeckFields, assertZiffleEpochInputs, assertZiffleEpochVerification, ziffleEpochMaterial,
+    acceptedZiffleEpochs, isPrivateZiffleEpoch, buildZiffleInputDeck, ziffleInputDeckFields, assertZiffleEpochInputs, assertZiffleEpochVerification, ziffleEpochMaterial,
     acceptedEpochsForProof: (owner, _seq, preceding) => acceptedZiffleEpochs(match, history, owner, preceding),
     rememberLocalZiffleCeremonyForLookup: () => {},
     matchStartPayloadRef: { current: match },
+    actionHistoryRef: { current: history },
     ziffleOriginAnchorFromOpening, ziffleOriginAnchorFromMetadata,
     currentAuditMatchId: () => 'match',
     disclosureDueForPlayer: () => disclosureDue, stateRef: { current: {} },
@@ -61,7 +64,7 @@ export function authorizationHarness({ requirements = [], stored = [], checkpoin
     fairRandomRevealLockConflict: () => false,
     currentHiddenCardMetadataForObject: async id => metadata(id),
     wasmObjectIdArg: value => value,
-    gameRef: { current: { exportSyncCheckpoint: async () => checkpoint,
+    gameRef: { current: { getHiddenCardState: async () => checkpoint,
       hiddenObjectViewableBy: async (id, viewer) => viewable(Number(id), Number(viewer)),
       endOfMatchDisclosureRequirements: async () => disclosureRequirements,
       ziffleVerifyShuffle: async input => {

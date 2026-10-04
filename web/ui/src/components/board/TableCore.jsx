@@ -391,38 +391,27 @@ export default function TableCore({
           >
             {me.life}
           </span>
-          {/* The seat menu hangs under the name; it is a sibling of the name
-              (not inside it) so its clicks never target the player. */}
-          <span className="player-header-name-stack">
-            <span
-              className={cn(
-                "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold"
-              )}
-              data-player-target={me.id}
-              data-player-target-name={me.id}
-              onPointerDown={handlePlayerTargetPointerDown}
-              onClick={handlePlayerTargetClick}
-              style={{
-                cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
-              }}
-            >
-              <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-                {playerDisplayName(state?.players || [], me)}
+          <div className="player-header-name-stack">
+            {canChoosePerspective ? (
+              <PlayerPerspectiveMenu
+                label={t("action.playingAs")}
+                currentId={state?.perspective ?? me?.id ?? 0}
+                isActivePlayer={isActivePlayer}
+                onSelect={onChangePerspective}
+                players={players.map((player) => ({
+                  id: player.id,
+                  name: playerDisplayName(players, player),
+                  accent: getPlayerAccent(players, player.id, state?.perspective, playerAccentOverrides)?.hex,
+                }))}
+              />
+            ) : (
+              <span className="battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold" data-player-target-name={me.id}>
+                <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+                  {playerDisplayName(state?.players || [], me)}
+                </span>
               </span>
-            </span>
-                {canChoosePerspective ? (
-                  <PlayerPerspectiveMenu
-                    label={t("action.playingAs")}
-                    currentId={state?.perspective ?? me?.id ?? 0}
-                    onSelect={onChangePerspective}
-                    players={players.map((player) => ({
-                      id: player.id,
-                      name: playerDisplayName(players, player),
-                      accent: getPlayerAccent(players, player.id, state?.perspective, playerAccentOverrides)?.hex,
-                    }))}
-                  />
-                ) : null}
-          </span>
+            )}
+          </div>
         </div>
         {!focusedHudDesktop ? <PriorityHoldControl /> : null}
         <ManaPool

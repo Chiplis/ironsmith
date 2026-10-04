@@ -1,10 +1,9 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 /**
- * "Playing as" seat switcher for goldfish games. The whole pill opens a small
- * list of players above it; picking one changes the perspective.
+ * The local player's name opens the seat switcher in goldfish games.
  */
-export default function PlayerPerspectiveMenu({ label, players, currentId, onSelect }) {
+export default function PlayerPerspectiveMenu({ label, players, currentId, onSelect, isActivePlayer }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const listRef = useRef(null);
@@ -46,17 +45,17 @@ export default function PlayerPerspectiveMenu({ label, players, currentId, onSel
         }
       }}
     >
+      <span className="player-header-perspective-label">{label}</span>
       <button
         type="button"
-        className="player-header-perspective-trigger"
+        className="player-header-perspective-trigger battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold"
+        data-player-target-name={currentId}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="player-header-perspective-label">{label}</span>
-        <span className="player-header-perspective-value">{current?.name}</span>
-        <span className="player-header-perspective-caret" aria-hidden="true">▾</span>
+        <span className={isActivePlayer ? "battlefield-name-text--active" : undefined}>{current?.name}</span>
       </button>
       {open ? (
         <div ref={listRef} id={listId} className="player-header-perspective-menu" role="listbox" aria-label={label}>

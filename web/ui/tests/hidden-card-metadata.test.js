@@ -46,7 +46,10 @@ test('worker dispatch prefers native metadata, retains legacy projection and pro
   assert.deepEqual(select('getHiddenCardMetadata', legacy)(8), expected);
   assert.deepEqual(select('getHiddenCardMetadataAtPosition', legacy)(0,4,'current'), [expected]);
   assert.equal(exports, 2);
+  assert.equal(select('getHiddenCardState', legacy)(), checkpoint);
+  assert.equal(exports, 3);
   const native = {...legacy,
+    getHiddenCardState() { assert.equal(this, native); return checkpoint; },
     getHiddenCardMetadata(id) { assert.equal(this, native); assert.equal(id, 8); return expected; },
     getHiddenCardMetadataAtPosition(owner,position,commitment) {
       assert.equal(this, native); assert.deepEqual([owner,position,commitment],[0,4,'current']); return [expected,expected];
@@ -54,8 +57,9 @@ test('worker dispatch prefers native metadata, retains legacy projection and pro
   };
   assert.deepEqual(select('getHiddenCardMetadata', native).call(native,8), expected);
   assert.equal(select('getHiddenCardMetadataAtPosition', native).call(native,0,4,'current').length,2);
-  assert.equal(exports,2, 'native reads must never construct a whole checkpoint');
+  assert.equal(select('getHiddenCardState', native).call(native), checkpoint);
+  assert.equal(exports,3, 'native reads must never construct a whole checkpoint');
   native.getHiddenCardMetadata = () => {throw new Error('metadata failure');};
   assert.throws(() => select('getHiddenCardMetadata', native).call(native,8), /metadata failure/);
-  assert.equal(exports,2, 'a failing native query must not silently switch state sources');
+  assert.equal(exports,3, 'a failing native query must not silently switch state sources');
 });

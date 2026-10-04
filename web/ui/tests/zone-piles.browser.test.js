@@ -3,6 +3,73 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
+test('local graveyard and exile inspectors match the battlefield size and stay on the local field', async () => {
+  const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    for (const viewport of [{width:1440,height:900}, {width:1280,height:720}]) {
+      await page.setViewportSize(viewport);
+      let battlefieldBox;
+      for (const zone of ['battlefield', 'graveyard', 'exile']) {
+        await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html`);
+        let card;
+        if (zone === 'battlefield') {
+          card = page.locator('[data-my-zone] .battlefield-row-card').first();
+        } else {
+          await page.locator(`[data-zone-pile="${zone}"][data-zone-owner="0"]`).hover();
+          card = page.locator(`[data-local-zone-strip="true"] [data-zone-card="${zone}"][data-object-id="${zone === 'graveyard' ? 1000 : 2000}"]`);
+        }
+        await card.hover();
+        const objectId = await card.getAttribute('data-object-id');
+        const preview = page.locator(`[data-card-hover-preview][data-visible="true"][data-preview-object-id="${objectId}"]`);
+        await preview.waitFor();
+        await page.waitForTimeout(350);
+        const bounds = await preview.boundingBox();
+        const board = await page.locator('[data-my-zone] .my-zone-board-shell').boundingBox();
+        assert.ok(bounds.y >= board.y - 1, `${zone} stays below the local field's top`);
+        assert.ok(bounds.y + bounds.height <= viewport.height - 7, `${zone} fits the viewport`);
+        if (zone === 'battlefield') battlefieldBox = bounds;
+        else {
+          assert.ok(Math.abs(bounds.height - battlefieldBox.height) < 2, `${zone} matches battlefield height`);
+          assert.ok(Math.abs(bounds.width - battlefieldBox.width) < 2, `${zone} matches battlefield width`);
+        }
+      }
+    }
+  } finally { await browser.close(); await vite.close(); }
+});
+
+test('local graveyard stays fully visible above the desktop panel with and without targets', async () => {
+  const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    for (const viewport of [{width:1440,height:900}, {width:1280,height:720}]) {
+      await page.setViewportSize(viewport);
+      await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html`);
+      const pile = page.locator('[data-local-zone-piles="true"] [data-zone-pile="graveyard"]');
+      await pile.waitFor();
+      for (const targeting of [false, true]) {
+        if (targeting) await page.getByRole('button', {name:'Target graveyard cards'}).click();
+        await page.waitForTimeout(350);
+        assert.equal(await pile.getAttribute('data-has-targets'), targeting ? 'true' : null);
+        const visibility = await pile.evaluate((element) => {
+          const slot = element.parentElement;
+          const bounds = slot.getBoundingClientRect();
+          // Hit-test the label and every part of the card, including the
+          // portion lifted above the local battlefield panel.
+          return [0.05, 0.25, 0.5, 0.9].every((y) => [0.1, 0.5, 0.9].every((x) =>
+            slot.contains(document.elementFromPoint(bounds.left + bounds.width * x, bounds.top + bounds.height * y))
+          ));
+        });
+        assert.ok(visibility, `full graveyard visible at ${viewport.width}x${viewport.height}, targeting=${targeting}`);
+      }
+    }
+  } finally { await browser.close(); await vite.close(); }
+});
+
 test('zone piles align, scroll, animate and require a separate target click', async () => {
   const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
   await vite.listen();
