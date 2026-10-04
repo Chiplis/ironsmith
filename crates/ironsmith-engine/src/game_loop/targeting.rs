@@ -219,6 +219,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                 if matches!(group,
                     crate::triggers::matcher_trait::SimultaneousTriggerKey::ZoneChangeBatch
                         | crate::triggers::matcher_trait::SimultaneousTriggerKey::ObjectLeavesGameBatch
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::PhasingBatch { .. }
                         | crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { .. }
                         | crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerTapStateBatch { .. })
                 {

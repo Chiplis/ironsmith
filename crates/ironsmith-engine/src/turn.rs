@@ -628,10 +628,7 @@ fn execute_untap_step_inner(
         .flat_map(|player| game.directly_phased_out_under(*player))
         .filter(|id| game.can_phase_in(*id))
         .collect::<Vec<_>>();
-    game.phase_out_simultaneously(&phase_out);
-    for id in phase_in {
-        game.phase_in(id);
-    }
+    game.phase_simultaneously(&phase_out, &phase_in);
 
     // Delayed instructions with "as you untap your permanents" timing are
     // turn-based actions, not triggered abilities. They resolve here without

@@ -1447,7 +1447,7 @@ impl GameState {
             .insert(permanent);
     }
 
-    fn is_phase_out_held(&self, permanent: ObjectId) -> bool {
+    pub(super) fn is_phase_out_held(&self, permanent: ObjectId) -> bool {
         self.battlefield_flags
             .phase_out_holds_by_source
             .values()
@@ -1461,160 +1461,9 @@ impl GameState {
             .phase_out_holds_by_source
             .remove(&source)
             .unwrap_or_default();
-        for permanent in held {
-            self.phase_in(permanent);
-        }
-    }
-
-    /// Phase out a permanent.
-    pub fn phase_out(&mut self, id: ObjectId) {
-        let Some(controller) = self.current_controller(id) else {
-            return;
-        };
-        self.phase_out_with_attachment_tree(id, controller, false);
-    }
-
-    /// Phase out several permanents at the same time.
-    ///
-    /// CR 702.26h: an object that would simultaneously phase out directly and
-    /// indirectly (an Aura or Equipment phasing out along with the permanent
-    /// it's attached to) just phases out indirectly, so it phases in with its
-    /// host. Attachments whose host is also in the set are left to the host's
-    /// attachment-tree walk instead of being phased out directly first.
-    pub fn phase_out_simultaneously(&mut self, ids: &[ObjectId]) {
-        let set: std::collections::HashSet<ObjectId> = ids.iter().copied().collect();
-        let host_in_set = |game: &Self, id: ObjectId| {
-            let mut seen = std::collections::HashSet::new();
-            let mut current = id;
-            while seen.insert(current) {
-                let Some(crate::object::AttachmentTarget::Object(host)) =
-                    game.object(current).and_then(|object| object.attached_to)
-                else {
-                    return false;
-                };
-                if set.contains(&host) {
-                    return true;
-                }
-                current = host;
-            }
-            false
-        };
-        let direct: Vec<ObjectId> = ids
-            .iter()
-            .copied()
-            .filter(|id| !host_in_set(self, *id))
-            .collect();
-        for id in direct {
-            self.phase_out(id);
-        }
-    }
-
-    fn phase_out_with_attachment_tree(
-        &mut self,
-        id: ObjectId,
-        phased_out_under: PlayerId,
-        indirectly: bool,
-    ) {
-        if self.is_phased_out(id)
-            || self
-                .object(id)
-                .is_none_or(|object| object.zone != Zone::Battlefield)
-        {
-            return;
-        }
-        let attachments = self
-            .object(id)
-            .map(|object| object.attachments.clone())
-            .unwrap_or_default();
-        let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
-        let permanent_snapshot = self
-            .object(id)
-            .map(|object| self.cached_object_snapshot_with_calculated_characteristics(object));
-        if let Some(snapshot) = permanent_snapshot.as_ref() {
-            for entry in &mut self.stack {
-                if entry.is_ability && entry.object_id == id {
-                    entry.source_snapshot = Some(snapshot.clone());
-                }
-            }
-        }
-        self.mark_continuous_state_dirty();
-        if self.battlefield_flags_mut().phased_out.insert(id) {
-            self.battlefield_flags_mut()
-                .phased_out_under_controller
-                .insert(id, phased_out_under);
-            if indirectly {
-                self.battlefield_flags_mut()
-                    .indirectly_phased_out
-                    .insert(id);
-            } else {
-                self.battlefield_flags_mut()
-                    .indirectly_phased_out
-                    .remove(&id);
-            }
-            self.remove_object_from_combat(id);
-            self.remove_attacked_permanent_from_combat(id, None);
-            if let Some(snapshot) = permanent_snapshot {
-                self.record_ui_effect_event(
-                    "phase_out",
-                    None,
-                    None,
-                    vec![snapshot.stable_id],
-                    None,
-                    None,
-                );
-                let provenance = self
-                    .provenance_graph_mut()
-                    .alloc_root_event(crate::events::EventKind::PermanentPhasedOut);
-                let event = crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::PermanentPhasedOutEvent::new(
-                        id,
-                        snapshot.controller,
-                        Some(snapshot),
-                    ),
-                    provenance,
-                )
-                .with_lookback_source_snapshots(lookback_source_snapshots);
-                self.queue_trigger_event(provenance, event);
-            }
-        }
-
-        for attachment in attachments {
-            self.phase_out_with_attachment_tree(attachment, phased_out_under, true);
-        }
-    }
-
-    /// Phase in a permanent.
-    pub fn phase_in(&mut self, id: ObjectId) {
-        if self.is_phase_out_held(id) {
-            return;
-        }
-        let attachments = self
-            .object(id)
-            .map(|object| object.attachments.clone())
-            .unwrap_or_default();
-        self.mark_continuous_state_dirty();
-        let phased_in = self.battlefield_flags_mut().phased_out.remove(&id);
-        if phased_in {
-            let flags = self.battlefield_flags_mut();
-            flags.phased_out_under_controller.remove(&id);
-            flags.indirectly_phased_out.remove(&id);
-            for held in flags.phase_out_holds_by_source.values_mut() {
-                held.remove(&id);
-            }
-        }
-        if phased_in && let Some(stable_id) = self.object(id).map(|o| o.stable_id) {
-            self.record_ui_effect_event("phase_in", None, None, vec![stable_id], None, None);
-        }
-        for attachment in attachments {
-            if self.is_phased_out(attachment)
-                && self
-                    .battlefield_flags
-                    .indirectly_phased_out
-                    .contains(&attachment)
-            {
-                self.phase_in(attachment);
-            }
-        }
+        let mut held = held.into_iter().collect::<Vec<_>>();
+        held.sort();
+        self.phase_in_simultaneously(&held);
     }
 
     /// Commit an already-chosen "enters attacking" role. The caller owns

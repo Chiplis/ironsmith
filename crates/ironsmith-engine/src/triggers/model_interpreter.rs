@@ -299,6 +299,8 @@ pub(crate) fn interpret_trigger_model(
                 player, filter, tapped, one_or_more, during_untap_step,
             })
         }
+        TriggerKind::AttachmentChanged { attachment, recipient, attached } => crate::triggers::Trigger::new(crate::triggers::AttachmentChangedTrigger { attachment, recipient, attached }),
+        TriggerKind::PhasingChanged { filter, phased_in, one_or_more } => crate::triggers::Trigger::new(crate::triggers::PhasingChangedTrigger { filter, phased_in, one_or_more }),
         TriggerKind::BecomesTapped => crate::triggers::Trigger::becomes_tapped(),
         TriggerKind::PermanentBecomesTapped { filter, one_or_more } => {
             if one_or_more {

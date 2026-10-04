@@ -14,6 +14,7 @@ pub struct ObjectBecameUnattachedEvent {
     pub previous_target: AttachmentTarget,
     pub controller: PlayerId,
     pub snapshot: Option<ObjectSnapshot>,
+    pub previous_target_snapshot: Option<ObjectSnapshot>,
 }
 
 impl ObjectBecameUnattachedEvent {
@@ -28,7 +29,15 @@ impl ObjectBecameUnattachedEvent {
             previous_target,
             controller,
             snapshot,
+            previous_target_snapshot: None,
         }
+    }
+}
+
+impl ObjectBecameUnattachedEvent {
+    pub fn with_previous_target_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
+        self.previous_target_snapshot = snapshot;
+        self
     }
 }
 

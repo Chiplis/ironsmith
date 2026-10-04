@@ -419,3 +419,10 @@ fn tap_actor_trigger_binds_only_its_guaranteed_actor_object_and_count() {
                 || finding.path.starts_with("/abilities/3/"))
     );
 }
+
+#[test]
+fn attachment_event_does_not_claim_unrelated_event_amounts() {
+    let model = json!({"AttachmentChanged": {"attachment": {}, "recipient": {}, "attached": true}});
+    let value = json!({"card": {}, "abilities": [triggered(model, vec![loss(json!({"EventValue": "Amount"}))])]});
+    assert_eq!(errors(&audit(&value)).len(), 1);
+}

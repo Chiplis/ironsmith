@@ -501,6 +501,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
         TriggerSpec::ThisPhasesOut => Trigger::this_phases_out(),
+        TriggerSpec::PhasingChanged { filter, phased_in, one_or_more } => Trigger::phasing_changed(filter, phased_in, one_or_more),
         TriggerSpec::ThisLeavesBattlefieldWithSurface(surface) => Trigger::new(
             crate::triggers::ZoneChangeTrigger::new()
                 .from(crate::zone::Zone::Battlefield)
@@ -513,6 +514,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerChangesTapState { player, filter, tapped, one_or_more, during_untap_step } => {
             Trigger::player_changes_tap_state(player, filter, tapped, one_or_more, during_untap_step)
         }
+        TriggerSpec::AttachmentChanged { attachment, recipient, attached } => Trigger::attachment_changed(attachment, recipient, attached),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
         TriggerSpec::PermanentBecomesTapped(filter) => Trigger::permanent_becomes_tapped(filter),
         TriggerSpec::PermanentBecomesTappedOneOrMore(filter) => {
@@ -1559,7 +1561,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             | TriggerSpec::CounterRemovedFrom { .. }
             | TriggerSpec::TokensCreated { .. }
             | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,
-            TriggerSpec::PlayerChangesTapState { .. } => matches!(spec, EventValueSpec::Amount),
+            TriggerSpec::PlayerChangesTapState { .. } | TriggerSpec::PhasingChanged { .. } => matches!(spec, EventValueSpec::Amount),
             TriggerSpec::PutIntoExileFromZones { one_or_more, .. } => *one_or_more,
             TriggerSpec::PlayerDiscardsCard { one_or_more, .. } => *one_or_more,
             TriggerSpec::StateBased { .. } => false,
