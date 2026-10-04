@@ -1091,7 +1091,7 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     apply_keyword_payment_tags_for_resolution(game, &entry, &mut ctx);
 
     let (valid_targets, valid_target_assignments, all_targets_invalid) =
-        validate_stack_entry_targets(game, &entry);
+        validate_stack_entry_targets_with_context(game, &entry,Some(&ctx))?;
     if !entry.targets.is_empty() && all_targets_invalid {
         return Ok(());
     }

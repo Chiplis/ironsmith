@@ -1,5 +1,5 @@
 //! Authored source-only scenarios. Compilation and execution are deferred.
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::card::PowerToughness;
 use ironsmith::effects::{CreateTokenEffect, EffectContext, EffectExecutor};
 use ironsmith::object::CounterType;

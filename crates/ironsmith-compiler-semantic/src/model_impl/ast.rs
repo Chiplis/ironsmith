@@ -719,4 +719,7 @@ pub enum TriggerSpec {
     DamageReceived { target: ChooseSpec, combat: Option<bool>, minimum: Option<u32>, single_source: bool },
     PlayerRollsResultMatching { player: PlayerFilter, result: Comparison, natural: bool },
     PlayerRollsNthDie { player: PlayerFilter, ordinal: u32 },
+    AttacksPlayerAlone(ObjectFilter),
+    BecomesBlockedOneOrMore(ObjectFilter),
+    KeywordActionOneOrMore { action: crate::events::KeywordActionKind, player: PlayerFilter, source_filter: ObjectFilter },
 }

@@ -43,11 +43,17 @@ impl ReceivedDamageAmounts {
 }
 /// Only completed-event queue owners invoke this with all assignments from
 /// one simultaneous operation. Separate instructions never share a sum.
+/// Already completed receipts retain their own original occurrence. A broader
+/// outer simultaneous scope can publish several independently completed damage
+/// instructions together; it cannot merge their immutable source/recipient totals.
 pub(crate) fn bind_received_damage_amounts(events: &mut [TriggerEvent]) {
     let mut recipients: HashMap<DamageTarget, DamageAmounts> = HashMap::new();
     let mut source_recipients: HashMap<(ObjectId, DamageTarget), DamageAmounts> = HashMap::new();
     for event in events.iter() {
-        let Some(damage) = event.downcast::<DamageEvent>() else {
+        let Some(damage) = event
+            .downcast::<DamageEvent>()
+            .filter(|damage| damage.received_amounts.is_none())
+        else {
             continue;
         };
         recipients
@@ -60,7 +66,10 @@ pub(crate) fn bind_received_damage_amounts(events: &mut [TriggerEvent]) {
             .add(damage.amount, damage.is_combat);
     }
     for event in events {
-        let Some(damage) = event.downcast::<DamageEvent>() else {
+        let Some(damage) = event
+            .downcast::<DamageEvent>()
+            .filter(|damage| damage.received_amounts.is_none())
+        else {
             continue;
         };
         let mut damage = damage.clone();
@@ -160,6 +169,31 @@ mod tests {
                 .unwrap()
                 .received_amount(None, true),
             2
+        );
+    }
+    #[test]
+    fn a_later_publication_scope_cannot_merge_two_already_completed_occurrences() {
+        let recipient = DamageTarget::Player(crate::PlayerId(0));
+        let mut first = vec![event(1, recipient, 2, false), event(1, recipient, 3, false)];
+        let mut second = vec![event(1, recipient, 4, false)];
+        bind_received_damage_amounts(&mut first);
+        bind_received_damage_amounts(&mut second);
+        first.extend(second);
+        bind_received_damage_amounts(&mut first);
+        let totals = first
+            .iter()
+            .map(|event| {
+                event
+                    .downcast::<DamageEvent>()
+                    .unwrap()
+                    .completed_source_recipient_amount(None)
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            totals,
+            vec![5, 5, 4],
+            "one outer queue boundary is not one original damage occurrence"
         );
     }
 }

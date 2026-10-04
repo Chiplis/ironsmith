@@ -273,6 +273,9 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::ThisBecomesBlocked => crate::triggers::Trigger::this_becomes_blocked(),
         TriggerKind::BecomesBlocked { filter } => crate::triggers::Trigger::becomes_blocked(filter),
+        TriggerKind::BecomesBlockedOneOrMore { filter } => crate::triggers::Trigger::becomes_blocked_one_or_more(filter),
+        TriggerKind::AttacksPlayerAlone { filter } => crate::triggers::Trigger::attacks_player_alone(filter),
+        TriggerKind::KeywordActionMatchingObjectOneOrMore { action, player, filter } => crate::triggers::Trigger::keyword_action_matching_object_one_or_more(action, player, filter),
         TriggerKind::ThisBecomesBlockedByObject { filter } => {
             crate::triggers::Trigger::this_becomes_blocked_by_object(filter)
         }

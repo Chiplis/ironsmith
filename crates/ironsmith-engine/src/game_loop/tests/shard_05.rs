@@ -2488,7 +2488,7 @@ pub(super) fn test_exchange_control_resolution_preserves_selected_permanent_when
             },
         ]);
     let (valid_targets, valid_assignments, all_invalid) =
-        super::targeting::validate_stack_entry_targets(&game, &entry);
+        super::targeting::validate_stack_entry_targets(&game, &entry).unwrap();
     assert!(!all_invalid);
     assert_eq!(
         valid_targets,

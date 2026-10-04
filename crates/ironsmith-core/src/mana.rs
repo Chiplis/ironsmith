@@ -1,6 +1,8 @@
 use crate::tag::TagKeyWalk;
 
-use crate::color::Color;
+use crate::color::{Color, ColorSet};
+mod x_payment;
+pub use x_payment::{XPaymentScope, XManaAllocation, ActualManaAllocation};
 
 /// Atomic mana payment options.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -73,6 +75,9 @@ pub enum ManaProducerFilter {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum ManaSpendingRestriction {
     ProducedBy(ManaProducerFilter),
+    /// Only the actual mana allocated to the generic X portion is constrained.
+    /// Appended to preserve existing typed-artifact enum discriminants.
+    OnX { colors: ColorSet, maximum_per_color: Option<u32> },
 }
 
 impl ManaProducerFilter {
@@ -95,6 +100,16 @@ impl ManaSpendingRestriction {
         let scope = if alternative { "it this way" } else { "this spell" };
         match self {
             Self::ProducedBy(filter) => format!("Spend only mana produced by {} to cast {scope}", filter.description()),
+            Self::OnX { colors, maximum_per_color } => {
+                let colors = if colors.count() == 5 { "colored".to_string() } else {
+                    Color::ALL.into_iter().filter(|color| colors.contains(*color)).map(Color::name).collect::<Vec<_>>().join(" and/or ")
+                };
+                let mut text = format!("Spend only {colors} mana on X");
+                if let Some(limit) = maximum_per_color {
+                    text.push_str(&format!(". No more than {limit} mana of each color may be spent this way"));
+                }
+                text
+            },
         }
     }
 }
@@ -118,18 +133,22 @@ pub struct ManaCost {
     /// and resumed transactions cannot silently discard a spending condition.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     spending_restrictions: Vec<ManaSpendingRestriction>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    x_payment_scope: Option<XPaymentScope>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    required_actual_payment: Option<ActualManaAllocation>,
 }
 
 impl ManaCost {
     /// Creates an empty mana cost.
     pub fn new() -> Self {
-        Self { pips: Vec::new(), spending_restrictions: Vec::new() }
+        Self { pips: Vec::new(), spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
     }
 
     /// Creates a mana cost from a list of pips, where each pip is a list of
     /// alternative payment options.
     pub fn from_pips(pips: Vec<Vec<ManaSymbol>>) -> Self {
-        Self { pips, spending_restrictions: Vec::new() }
+        Self { pips, spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
     }
 
     /// Creates a mana cost from a simple list of symbols (each becomes one pip).
@@ -137,6 +156,8 @@ impl ManaCost {
         Self {
             pips: symbols.into_iter().map(|s| vec![s]).collect(),
             spending_restrictions: Vec::new(),
+            x_payment_scope: None,
+            required_actual_payment: None,
         }
     }
 
@@ -145,6 +166,14 @@ impl ManaCost {
     }
 
     pub fn with_spending_restriction(mut self, restriction: ManaSpendingRestriction) -> Self {
+        if matches!(restriction, ManaSpendingRestriction::OnX { .. }) && self.x_payment_scope.is_none() {
+            self.x_payment_scope = Some(XPaymentScope {
+                symbols: self.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count() as u32,
+                announced_x: None,
+                ordinary_generic: self.generic_mana_total(),
+                prepaid_generic: Vec::new(), required: None, incompatible: false,
+            });
+        }
         if !self.spending_restrictions.contains(&restriction) {
             self.spending_restrictions.push(restriction);
         }
@@ -153,7 +182,22 @@ impl ManaCost {
 
     /// Rewrite the price while retaining transaction-wide spending rules.
     pub fn with_pips(&self, pips: Vec<Vec<ManaSymbol>>) -> Self {
-        Self { pips, spending_restrictions: self.spending_restrictions.clone() }
+        let mut result = Self { pips, spending_restrictions: self.spending_restrictions.clone(),
+            x_payment_scope: self.x_payment_scope.clone(), required_actual_payment: self.required_actual_payment };
+        if let Some(scope) = result.x_payment_scope.as_mut() {
+            let old_x = self.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count() as u32;
+            let new_x = result.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count() as u32;
+            let added_x = new_x.saturating_sub(old_x);
+            scope.symbols = scope.symbols.saturating_add(added_x);
+            let value = scope.announced_x.unwrap_or(0);
+            let before = self.generic_mana_total().saturating_add(old_x.saturating_mul(value));
+            let after = result.pips.iter().filter_map(|pip| match pip.as_slice() {
+                [ManaSymbol::Generic(n)] => Some(u32::from(*n)), _ => None,
+            }).sum::<u32>().saturating_add(new_x.saturating_mul(value));
+            scope.ordinary_generic = scope.ordinary_generic.saturating_add(
+                after.saturating_sub(before).saturating_sub(added_x.saturating_mul(value)));
+        }
+        result
     }
 
     pub fn inherit_spending_restrictions(mut self, other: &Self) -> Self {
@@ -229,12 +273,14 @@ impl ManaCost {
 
     /// Adds a pip with a single payment option.
     pub fn push(&mut self, symbol: ManaSymbol) {
-        self.pips.push(vec![symbol]);
+        self.push_alternatives(vec![symbol]);
     }
 
     /// Adds a pip with multiple alternative payment options.
     pub fn push_alternatives(&mut self, alternatives: Vec<ManaSymbol>) {
-        self.pips.push(alternatives);
+        let mut pips = self.pips.clone();
+        pips.push(alternatives);
+        *self = self.with_pips(pips);
     }
 
     /// Returns true if this mana cost is empty (costs nothing).
@@ -371,8 +417,8 @@ impl ManaCost {
                         }
                     }
                 }
-                let cost = ManaCost::from_symbols(remaining)
-                    .inherit_spending_restrictions(self).reduce_generic(generic_reduction);
+                let cost = self.with_pips(remaining.into_iter().map(|symbol| vec![symbol]).collect())
+                    .reduce_generic(generic_reduction);
                 if !results.contains(&cost) {
                     results.push(cost);
                 }

@@ -703,6 +703,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/815"
+    },
+    {
+      "stage": 50,
+      "branch": "fix/card-failures-50-prices-mana-and-dice",
+      "base": "fix/card-failures-49-copy-and-damage-roots",
+      "source_integration_commit": "1fc0b7504e1a29f2abc309f22bfd030af29d0f38",
+      "remote_commit": "95201827317508c4575b2450e7c837f85b701ec3",
+      "tree": "48d4ea2c93f78b974795b1afab830900e81234d8",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 816,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/816"
     }
   ]
 }

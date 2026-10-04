@@ -307,6 +307,7 @@ fn restriction_references_identity(
         | Restriction::AttackAlone(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
+        | Restriction::MustAttack(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)

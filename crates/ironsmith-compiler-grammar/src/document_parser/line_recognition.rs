@@ -866,6 +866,8 @@ pub(super) fn recognize_modal_mode(
     // effect recognition, just as we do for the modal header.
     let contextual_tokens = normalize_named_source_tokens_for_builder(card, parse_tokens);
     let parse_tokens = contextual_tokens.as_deref().unwrap_or(parse_tokens);
+    let (without_spending, spending_rules) = crate::consumer_mana::split_x_spending_sentences(parse_tokens);
+    let parse_tokens = if spending_rules.is_empty() { parse_tokens } else { without_spending.as_slice() };
     let effects_ast = match parse_effect_sentences_lexed(parse_tokens) {
         Ok(effects) => effects,
         Err(original_error) if allow_bare_target => {

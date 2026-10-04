@@ -83,6 +83,14 @@ impl ManaCredit {
     /// The native event owner has already validated replacements. Both native
     /// execution and projected credits use this same provenance/context shape.
     pub fn commit(&self, game: &mut GameState) -> Result<(), crate::effects::ExecutionError> {
+        let exact: u128 = game.players.iter().map(|player| u128::from(player.mana_pool.total_wide())).sum::<u128>()
+            + self.event.mana.len() as u128;
+        if exact > i32::MAX as u128 {
+            return Err(crate::effects::ExecutionError::ResourceLimitExceeded {
+                resource: "unspent mana scalar domain", requested: exact, maximum: i32::MAX as u128,
+            });
+        }
+        let checkpoint = game.clone();
         game.with_player_mana_mut(self.event.player, |player| {
             for &symbol in &self.event.mana {
                 if self.context.restrictions.is_empty() {
@@ -101,9 +109,15 @@ impl ManaCredit {
                 }
             }
         })
-        .ok_or(crate::effects::ExecutionError::PlayerNotFound(
-            self.event.player,
-        ))
+        .ok_or(crate::effects::ExecutionError::PlayerNotFound(self.event.player))?;
+        // A representable count may still exceed P/T after its source's base
+        // stats and other layer-7 modifiers. Validate without publishing a
+        // partially recalculated board or an impossible completed production.
+        if let Err(error) = game.try_all_continuous_effects() {
+            game.restore_execution_checkpoint(checkpoint, false);
+            return Err(crate::effects::ExecutionError::ContinuousDiscovery(error));
+        }
+        Ok(())
     }
 }
 
@@ -123,6 +137,9 @@ pub(crate) fn production_satisfies_cost(
         }
     }
     cost.spending_restrictions().iter().all(|rule| match rule {
+        // This restriction belongs to the final generic-pip allocation, not
+        // to each unit offered for fixed/base/tax obligations.
+        ironsmith_core::mana::ManaSpendingRestriction::OnX { .. } => true,
         ironsmith_core::mana::ManaSpendingRestriction::ProducedBy(filter) =>
             snapshot.is_some_and(|snapshot| snapshot.zone == crate::zone::Zone::Battlefield && matches(filter, snapshot)),
     })

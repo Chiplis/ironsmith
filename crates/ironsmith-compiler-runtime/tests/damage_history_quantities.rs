@@ -92,8 +92,23 @@ struct Choices {
     kicker_payments: usize,
     decline_targets: bool,
     bounds: Vec<(usize, Option<usize>)>,
+    distribution: Vec<(Target, u32)>,
+    distribution_totals: Vec<u32>,
 }
 impl DecisionMaker for Choices {
+    fn decide_distribute(
+        &mut self,
+        game: &GameState,
+        context: &ironsmith::decisions::context::DistributeContext,
+    ) -> Vec<(Target, u32)> {
+        self.distribution_totals.push(context.total);
+        if self.distribution.is_empty() {
+            SelectFirstDecisionMaker.decide_distribute(game, context)
+        } else {
+            self.distribution.clone()
+        }
+    }
+
     fn decide_boolean(
         &mut self,
         _: &GameState,
@@ -344,10 +359,10 @@ fn activated(definition: &CardDefinition) -> usize {
         .unwrap()
 }
 #[test]
-fn thirteen_exact_damage_history_candidates_round_trip_without_accepting_impacts_occurrence_gap() {
+fn fourteen_exact_damage_history_candidates_round_trip_with_completed_occurrences() {
     let rows = fixtures();
     assert_eq!(rows.len(), 14);
-    for row in rows.iter().filter(|row| row["name"] != "Impact Resonance") {
+    for row in &rows {
         for definition in definitions(row["name"].as_str().unwrap()) {
             assert_eq!(definition.card.name, row["name"].as_str().unwrap());
         }
@@ -929,5 +944,107 @@ fn grothama_grants_each_attacker_a_fight_with_the_correct_grantor_and_draws_by_d
         assert_eq!(game.player(B).unwrap().hand.len(), 3);
         assert!(game.player(C).unwrap().hand.is_empty());
         assert!(game.object(second).is_some());
+    }
+}
+
+#[test]
+fn impact_uses_one_source_recipient_occurrence_and_keeps_announced_shares_after_responses() {
+    for definition in definitions("Impact Resonance") {
+        for illegal_first in [false, true] {
+            let mut game = game();
+            let dealer = creature(&mut game, A, "History dealer", 2, 50);
+            let first = creature(&mut game, B, "First division target", 1, 50);
+            let second = creature(&mut game, C, "Second division target", 1, 50);
+            apply(
+                &mut game,
+                dealer,
+                Effect::new(ironsmith::effects::DealDamageToRecipientsEffect {
+                    amount: ironsmith_core::Value::Fixed(5),
+                    recipients: vec![
+                        ChooseSpec::SpecificObject(first),
+                        ChooseSpec::SpecificObject(second),
+                        ChooseSpec::SpecificPlayer(B),
+                        ChooseSpec::SpecificPlayer(C),
+                    ],
+                }),
+            );
+            let mut choices = Choices {
+                targets: vec![Target::Object(first), Target::Object(second)],
+                distribution: vec![(Target::Object(first), 3), (Target::Object(second), 2)],
+                ..Default::default()
+            };
+            let spell = cast(&mut game, &definition, CastingMethod::Normal, &mut choices);
+            assert_eq!(
+                choices.distribution_totals,
+                vec![5],
+                "one occurrence's per-recipient maximum is 5, not source total20"
+            );
+            let mut returned = None;
+            if illegal_first {
+                let exile = game.move_object_by_effect(first, Zone::Exile).unwrap();
+                returned = game.move_object(exile, Zone::Battlefield);
+            }
+            apply(
+                &mut game,
+                dealer,
+                Effect::deal_damage(8, ChooseSpec::SpecificPlayer(C)),
+            );
+            resolve_all(&mut game, &mut choices);
+            assert_eq!(
+                choices.distribution_totals,
+                vec![5],
+                "no new allocation decision at resolution"
+            );
+            assert_eq!(
+                game.damage_on(second),
+                7,
+                "a removed target's share cannot move to the survivor"
+            );
+            if let Some(returned) = returned {
+                assert_eq!(game.damage_on(returned), 0);
+            } else {
+                assert_eq!(game.damage_on(first), 8);
+            }
+            let receipts = game
+                .turn_store
+                .turn_history
+                .event_records
+                .iter()
+                .chain(game.turn_store.turn_history.staged_event_records.iter())
+                .filter_map(|record| record.event.downcast::<ironsmith::events::DamageEvent>())
+                .filter(|event| event.source == spell)
+                .collect::<Vec<_>>();
+            assert_eq!(receipts.len(), if illegal_first { 1 } else { 2 });
+            assert_eq!(
+                receipts.iter().map(|event| event.amount).sum::<u32>(),
+                if illegal_first { 2 } else { 5 }
+            );
+        }
+    }
+}
+
+#[test]
+fn impact_with_no_prior_damage_can_be_cast_with_no_targets() {
+    for definition in definitions("Impact Resonance") {
+        let mut game = game();
+        let mut choices = Choices {
+            decline_targets: true,
+            ..Default::default()
+        };
+        cast(&mut game, &definition, CastingMethod::Normal, &mut choices);
+        resolve_all(&mut game, &mut choices);
+        assert!(choices.distribution_totals.is_empty());
+        assert!(
+            !game
+                .turn_store
+                .turn_history
+                .event_records
+                .iter()
+                .chain(game.turn_store.turn_history.staged_event_records.iter())
+                .any(|record| record
+                    .event
+                    .downcast::<ironsmith::events::DamageEvent>()
+                    .is_some())
+        );
     }
 }

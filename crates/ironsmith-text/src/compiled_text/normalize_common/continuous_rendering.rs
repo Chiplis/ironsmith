@@ -5284,6 +5284,10 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 attacker.description()
             )
         }
+        crate::effect::Restriction::MustAttack(filter) => format!(
+            "{} attack each combat if able",
+            crate::compiled_text::pluralize_noun_phrase(&filter.description()),
+        ),
         crate::effect::Restriction::MustBeBlocked(filter) => {
             format!("{} must be blocked if able", filter.description())
         }

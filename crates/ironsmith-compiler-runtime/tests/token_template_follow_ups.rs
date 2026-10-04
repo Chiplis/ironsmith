@@ -1,5 +1,5 @@
 //! Authored only; build, compile and execution remain deferred.
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::card::PowerToughness;
 use ironsmith::decision::DecisionMaker;
 use ironsmith::effects::{CreateTokenEffect, EffectContext, EffectExecutor, TurnFaceUpEffect};

@@ -73,7 +73,7 @@ pub use model_interpreter::{CompiledStaticAbility, StaticAbilityModelInterpreter
 pub use protection::*;
 pub use restrictions::*;
 
-pub(crate) use continuous::resolve_anthem_count_expression;
+pub(crate) use continuous::{resolve_anthem_count_expression, resolve_anthem_count_expression_checked};
 use std::sync::Arc;
 
 use crate::continuous::ContinuousEffect;
@@ -398,6 +398,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     fn may_generate_continuous_effects(&self) -> bool {
         true
     }
+
+    /// Validate mana-derived signed values before infallible effect emission.
+    /// True requests a final checked P/T pass over the complete effect set.
+    fn validate_mana_scalar_ranges(&self, _game: &GameState, _source: ObjectId, _controller: PlayerId)
+        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> { Ok(false) }
 
     /// Generate continuous effects for this ability.
     ///
@@ -1768,6 +1773,11 @@ impl StaticAbility {
 
     pub(crate) fn may_generate_continuous_effects(&self) -> bool {
         self.0.may_generate_continuous_effects()
+    }
+
+    pub(crate) fn validate_mana_scalar_ranges(&self, game: &GameState, source: ObjectId, controller: PlayerId)
+        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        self.0.validate_mana_scalar_ranges(game, source, controller)
     }
 
     /// Generate continuous effects for this ability.

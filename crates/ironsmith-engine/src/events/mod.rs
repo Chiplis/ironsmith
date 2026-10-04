@@ -98,7 +98,7 @@ pub use cards::{DiscardEvent, DrawEvent};
 pub use counters::{MoveCountersEvent, PutCountersEvent, RemoveCountersEvent};
 pub use damage::{DamageEvent, DamagePreventedEvent, PreventedDamage};
 pub use life::{LifeGainEvent, LifeLossEvent};
-pub use mana::{ManaAddedEvent, ManaUnitSpentEvent};
+pub use mana::{ManaAddedEvent, ManaLostEvent, ManaUnitSpentEvent};
 pub use permanents::{DestroyEvent, SacrificeEvent, TapEvent, UntapEvent};
 pub use tokens::CreateTokensEvent;
 pub use zones::{EnterBattlefieldEvent, ZoneChangeEvent};

@@ -3294,7 +3294,10 @@ impl WasmGame {
     /// no wire program owner. Keep their exact state in a native branch or
     /// reconstruct it by accepted-transcript replay.
     fn has_unretained_ability_programs(&self) -> bool {
-        !self.trigger_queue.is_fully_empty()
+        self.runner.as_ref().is_some_and(TurnRunner::has_pending_mana_loss_continuation)
+            || self.grand_melee_host_lanes.values().any(|lane|
+                lane.runner.as_ref().is_some_and(TurnRunner::has_pending_mana_loss_continuation))
+            || !self.trigger_queue.is_fully_empty()
             || self.grand_melee_host_lanes.values().any(|lane| !lane.trigger_queue.is_fully_empty())
             || self.game.effect_store.has_pending_trigger_work()
             || !self.game.turn_store.pending_day_night_as_transforms.is_empty()
@@ -4880,6 +4883,12 @@ impl WasmGame {
         }
         if checkpoint.mana_spend_effects_empty != Some(true) {
             return Err("checkpoint has no valid empty-mana-spend completeness carrier; replay accepted transcript".into());
+        }
+        if checkpoint.priority_runtime.runner_state.as_deref() == Some("skipped_phase_end_mana")
+            || checkpoint.grand_melee.as_ref().is_some_and(|melee| melee.markers.iter()
+                .any(|marker| marker.runner_state.as_deref() == Some("skipped_phase_end_mana")))
+        {
+            return Err("checkpoint omits skipped-phase mana continuation; replay accepted transcript".into());
         }
         if checkpoint.pending_ability_programs_empty != Some(true) {
             return Err("checkpoint has no valid empty-ability-program completeness carrier; replay accepted transcript".into());
@@ -10511,6 +10520,25 @@ mod replacement_checkpoint_safety_tests {
             assert_eq!(wasm.game.effect_store.prevention_effects.shields(), shields);
             assert!(retain_checkpoint_replacement_state(&wasm.game).is_err());
         }
+    }
+
+    #[test]
+    fn skipped_phase_mana_continuation_is_native_only_even_with_an_untracked_pool() {
+        let _ids = crate::test_id_counter_guard(); let mut wasm = host();
+        let alice = PlayerId::from_index(0);
+        wasm.game.turn.phase = Phase::Combat; wasm.game.turn.step = Some(ironsmith::Step::CombatDamage);
+        wasm.game.skip_next_step(alice, ironsmith::Step::EndCombat);
+        wasm.game.player_mut(alice).unwrap().mana_pool.red = 1;
+        wasm.runner = Some(TurnRunner::from_state_for_sync(RunnerTurnState::EndCombat));
+        let action = wasm.runner.as_mut().unwrap().advance(&mut wasm.game, &mut wasm.trigger_queue).unwrap();
+        assert!(matches!(action, ironsmith::turn_runner::TurnAction::Continue));
+        assert!(wasm.runner.as_ref().unwrap().has_pending_mana_loss_continuation());
+        assert!(wasm.has_unretained_ability_programs()); assert!(wasm.try_build_sync_checkpoint().is_err());
+        let point = RuntimeSavepoint::capture(&wasm); wasm.runner = None; point.restore(&mut wasm);
+        assert!(wasm.runner.as_ref().unwrap().has_pending_mana_loss_continuation());
+        wasm.runner.as_mut().unwrap().advance(&mut wasm.game, &mut wasm.trigger_queue).unwrap();
+        assert!(!wasm.runner.as_ref().unwrap().has_pending_mana_loss_continuation());
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.red, 0);
     }
 
     #[test]

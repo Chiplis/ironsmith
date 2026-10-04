@@ -169,8 +169,7 @@ fn activation_mana_payment_available(
                 // Combine components: the same mana must not pay two costs.
                 let mut mana = ironsmith::mana::ManaCost::new();
                 for cost in costs.iter().filter_map(|cost| cost.mana_cost_ref()) {
-                    for pip in cost.pips() { mana.push_alternatives(pip.clone()); }
-                    mana = mana.inherit_spending_restrictions(cost);
+                    mana = mana.combined_with(cost);
                 }
                 if mana.is_empty() { return Some(true); }
                 let mut request = ManaPaymentRequest::new(

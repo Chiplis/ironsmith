@@ -1428,6 +1428,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     MaximumHandSizeFromSourceCounters { player: PlayerFilter, counter_type: CounterType },
     SpellManaSpendingRestriction(crate::mana::ManaSpendingRestriction),
     ManaProductionRewrite { rule: crate::mana::ManaOutputRewrite, display: String },
+    /// Replaces a numerical roll batch with extra dice, ignoring that many low rolls.
+    ExtraDieIgnoreLowest { player: PlayerFilter, additional: u32 },
+    ConvertUnspentMana { player: PlayerFilter, symbol: crate::mana::ManaSymbol },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1952,6 +1955,9 @@ where
             }
             StaticAbilityPayload::DieRollResultAdjustment(spec) => {
                 StaticAbilityPayload::DieRollResultAdjustment(spec)
+            }
+            StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional } => {
+                StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional }
             }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
@@ -2957,6 +2963,8 @@ where
                 factor,
                 display,
             },
+            StaticAbilityPayload::ConvertUnspentMana { player, symbol } =>
+                StaticAbilityPayload::ConvertUnspentMana { player, symbol },
             StaticAbilityPayload::ManaProductionRewrite { rule, display } =>
                 StaticAbilityPayload::ManaProductionRewrite { rule, display },
             StaticAbilityPayload::ManaProductionReplacement {
@@ -3384,6 +3392,14 @@ impl<
             id: Some(StaticAbilityId::ThisSpellXMinimum),
             label: display.clone(),
             payload: StaticAbilityPayload::ThisSpellXMinimum { minimum, display },
+        }
+    }
+
+    pub fn extra_die_ignore_lowest(player: PlayerFilter, additional: u32, display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ExtraDieIgnoreLowest),
+            label: display.into(),
+            payload: StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional },
         }
     }
 
@@ -7223,6 +7239,12 @@ impl<
             },
         }
     }
+    pub fn convert_unspent_mana(player: PlayerFilter, symbol: crate::mana::ManaSymbol) -> Self {
+        Self { id: Some(StaticAbilityId::ConvertUnspentMana),
+            label: format!("If {} would lose unspent mana, that mana becomes {} instead", player.description(), format!("{symbol:?}").to_ascii_lowercase()),
+            payload: StaticAbilityPayload::ConvertUnspentMana { player, symbol } }
+    }
+
     pub fn mana_production_rewrite(rule: crate::mana::ManaOutputRewrite, display: impl Into<String>) -> Self {
         let display = display.into();
         Self { id: Some(StaticAbilityId::ManaProductionRewrite), label: display.clone(),

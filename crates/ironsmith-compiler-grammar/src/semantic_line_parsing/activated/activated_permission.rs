@@ -160,6 +160,7 @@ pub(super) fn parse_activated_line_impl(
         restrictions,
         mana_restrictions,
         x_cant_be_zero,
+        x_spending_rules,
     } = split_rewrite_activated_effect_text(original_effect_parse_tokens);
     if effect_text.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -172,6 +173,7 @@ pub(super) fn parse_activated_line_impl(
         line.compiler_cost.to_core_total_cost(),
         x_definition_value,
     );
+    let normalized_cost = crate::consumer_mana::constrain_activation_cost(normalized_cost, &x_spending_rules);
     let normalized_cost = if line.presentation_kind
         == Some(crate::ir::ActivatedPresentationKind::PowerUp)
     {

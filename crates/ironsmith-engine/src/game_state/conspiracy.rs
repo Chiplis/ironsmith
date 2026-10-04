@@ -480,6 +480,7 @@ impl GameState {
             defense: None,
             abilities: Vec::new().into(),
             static_abilities: Vec::new().into(),
+            numeric_range_error: None,
             ability_gain_prohibitions: Vec::new(),
             aura_attach_filter: None,
             controller: owner,

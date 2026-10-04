@@ -387,3 +387,49 @@ mod mana_output_rewrite_contract {
         }
     }
 }
+
+fn unspent_mana_conversion<'a>(input: &mut LexStream<'a>) -> Result<ManaSymbol, ErrMode<ContextError>> {
+    primitives::phrase(&["if", "you", "would", "lose", "unspent", "mana"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["that", "mana", "becomes"]).parse_next(input)?;
+    let symbol = alt((primitives::kw("white").value(ManaSymbol::White),
+        primitives::kw("blue").value(ManaSymbol::Blue), primitives::kw("black").value(ManaSymbol::Black),
+        primitives::kw("red").value(ManaSymbol::Red), primitives::kw("green").value(ManaSymbol::Green),
+        primitives::kw("colorless").value(ManaSymbol::Colorless))).parse_next(input)?;
+    primitives::kw("instead").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(symbol)
+}
+pub fn parse_unspent_mana_conversion(tokens: &[OwnedLexToken]) -> Option<ManaSymbol> {
+    primitives::probe_all(tokens, unspent_mana_conversion, "unspent-mana conversion")
+}
+
+fn unspent_mana_threshold<'a>(input: &mut LexStream<'a>) -> Result<u32, ErrMode<ContextError>> {
+    primitives::phrase(&["you", "have"]).parse_next(input)?;
+    let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["or", "more", "unspent", "mana"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(count)
+}
+pub fn parse_unspent_mana_threshold(tokens: &[OwnedLexToken]) -> Option<u32> {
+    primitives::probe_all(tokens, unspent_mana_threshold, "unspent-mana threshold")
+}
+
+#[cfg(test)]
+mod mana_loss_shapes {
+    use super::*;
+    #[test]
+    fn conversion_and_live_threshold_consume_complete_typed_clauses() {
+        use crate::lexer::lex_line;
+        let lex = |text| lex_line(text, 0).unwrap();
+        assert_eq!(parse_unspent_mana_conversion(&lex("If you would lose unspent mana, that mana becomes colorless instead.")), Some(ManaSymbol::Colorless));
+        assert_eq!(parse_unspent_mana_conversion(&lex("If you would lose unspent mana, that mana becomes red instead.")), Some(ManaSymbol::Red));
+        assert_eq!(parse_unspent_mana_threshold(&lex("you have six or more unspent mana")), Some(6));
+        for text in ["If you would lose unspent mana, that mana becomes snow instead.",
+            "If you would lose unspent mana, that mana becomes black instead and draw a card.",
+            "If you would lose unspent green mana, that mana becomes black instead."] {
+            assert!(parse_unspent_mana_conversion(&lex(text)).is_none(), "{text}");
+        }
+        assert!(parse_unspent_mana_threshold(&lex("you have six or more unspent mana from lands")).is_none());
+    }
+}

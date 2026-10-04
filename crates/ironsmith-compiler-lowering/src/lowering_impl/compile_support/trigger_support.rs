@@ -450,6 +450,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             comparison,
         } => Trigger::attacks_one_or_more_with_aggregate(filter, metric, comparison),
         TriggerSpec::AttacksAlone(filter) => Trigger::attacks_alone(filter),
+        TriggerSpec::AttacksPlayerAlone(filter) => Trigger::attacks_player_alone(filter),
+        TriggerSpec::BecomesBlockedOneOrMore(filter) => Trigger::becomes_blocked_one_or_more(filter),
+        TriggerSpec::KeywordActionOneOrMore { action, player, source_filter } => Trigger::keyword_action_matching_object_one_or_more(action, player, source_filter),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter) => Trigger::attacks_you(filter),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(filter) => {
             Trigger::attacks_you_one_or_more(filter)

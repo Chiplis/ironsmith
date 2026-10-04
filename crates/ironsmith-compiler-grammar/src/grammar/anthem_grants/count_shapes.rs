@@ -32,6 +32,7 @@ pub enum ForEachSpecialShape<'a> {
     BlockingSource,
     AttachedToSource { filter_tokens: &'a [OwnedLexToken] },
     UnspentGreenManaYouHave,
+    TotalUnspentManaYouHave,
 }
 
 pub fn parse_for_each_rest(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -102,6 +103,9 @@ pub fn parse_for_each_special_shape(tokens: &[OwnedLexToken]) -> Option<ForEachS
             None
         })
         .or_else(|| {
+            if parse_complete_phrase(tokens, &["unspent", "mana", "you", "have"]) {
+                return Some(ForEachSpecialShape::TotalUnspentManaYouHave);
+            }
             if parse_complete_phrase(tokens, &["unspent", "green", "mana", "you", "have"]) {
                 return Some(ForEachSpecialShape::UnspentGreenManaYouHave);
             }

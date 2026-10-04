@@ -251,6 +251,18 @@ fn parse_direct_simple_effect_ability(
 pub fn parse_activated_line_with_raw(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
+    if let Some(split) = activated_line_grammar::parse_activated_line_split_tokens(tokens) {
+        let (body, rules) = crate::consumer_mana::split_x_spending_sentences(split.after_colon);
+        if !rules.is_empty() {
+            let colon = tokens.len() - split.after_colon.len();
+            let mut rewritten = tokens[..colon].to_vec(); rewritten.extend(body);
+            let Some(mut parsed) = parse_activated_line_with_raw(&rewritten)? else { return Ok(None); };
+            if let crate::model::CompilerAbilityKindCore::Activated(ability) = parsed.kind_mut() {
+                ability.mana_cost = crate::consumer_mana::constrain_activation_cost(ability.mana_cost.clone(), &rules);
+            }
+            return Ok(Some(parsed));
+        }
+    }
     if let Some(parsed) = parse_direct_simple_effect_ability(tokens)? {
         return Ok(Some(parsed));
     }

@@ -298,6 +298,11 @@ fn eight_exact_cards_keep_metadata_and_one_typed_multi_source_owner_through_arti
                 ironsmith_core::DamageSourceSetBinding::LiveMembers
             );
             assert_eq!(
+                found[0].recipient_binding,
+                ironsmith_core::DamageRecipientSetBinding::SharedSet
+            );
+            assert!(!found[0].unpreventable);
+            assert_eq!(
                 found[0].sources.len(),
                 if matches!(name, "Friendly Rivalry" | "Graceful Takedown") {
                     2
@@ -964,5 +969,155 @@ fn alpha_brawl_captures_two_different_sets_and_keeps_both_damage_phases_complete
                 }));
             }
         }
+    }
+}
+
+#[test]
+fn fight_keeps_an_empty_original_target_slot_instead_of_reusing_the_other_friendly_target() {
+    for definition in definitions_text(
+        "Exact fight slots",
+        "Mana cost: {G}\nType: Sorcery\nTarget creature you control fights target creature.",
+    ) {
+        for blink in [false, true] {
+            let mut game = game();
+            let first = creature(&mut game, A, "First fighter", 3, 50);
+            let second = creature(&mut game, A, "Second friendly fighter", 5, 50);
+            let mut dm = Choices {
+                targets: vec![Target::Object(first), Target::Object(second)],
+                ..Default::default()
+            };
+            cast(&mut game, &definition, CastingMethod::Normal, &mut dm);
+            if blink {
+                let moved = game.move_object_by_effect(first, Zone::Exile).unwrap();
+                game.move_object(moved, Zone::Battlefield).unwrap();
+            } else {
+                let mut first_dm = SelectFirstDecisionMaker;
+                execute_effect(
+                    &mut game,
+                    &Effect::new(ironsmith::effects::GainControlEffect::permanent(
+                        ChooseSpec::SpecificObject(first),
+                    )),
+                    &mut EffectContext::new(first, B, &mut first_dm),
+                )
+                .unwrap();
+            }
+            resolve_all(&mut game, &mut dm);
+            assert_eq!(
+                game.damage_on(second),
+                0,
+                "the remaining friendly target cannot fill both fight operands"
+            );
+            assert!(
+                !game
+                    .turn_store
+                    .turn_history
+                    .event_records
+                    .iter()
+                    .chain(game.turn_store.turn_history.staged_event_records.iter())
+                    .any(|record| record
+                        .event
+                        .downcast::<ironsmith::events::DamageEvent>()
+                        .is_some())
+            );
+        }
+    }
+}
+
+#[test]
+fn fight_commits_both_original_sides_and_captures_observers_before_first_side_additions() {
+    for definition in definitions_text(
+        "Complete fight batch",
+        "Mana cost: {G}\nType: Sorcery\nTarget creature you control fights target creature.",
+    ) {
+        let mut game = game();
+        let first = game.create_object_from_definition(
+            &compile_to_runtime_definition(
+                "Lifelink fighter",
+                "Type: Creature — Human\nPower/Toughness: 3/50\nLifelink",
+                false,
+            )
+            .unwrap(),
+            A,
+            Zone::Battlefield,
+        );
+        let second = creature(&mut game, B, "Other fighter", 4, 50);
+        let observer = game.create_object_from_definition(
+            &compile_to_runtime_definition(
+                "Damage observer",
+                "Type: Enchantment\nWhenever a creature is dealt damage, you gain 1 life.",
+                false,
+            )
+            .unwrap(),
+            A,
+            Zone::Battlefield,
+        );
+        game.effect_store.replacement_effects.add_one_shot_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(
+                first,
+                A,
+                ironsmith::events::damage::matchers::DamageToObjectMatcher::new(
+                    ironsmith::target::ObjectFilter::specific(second),
+                ),
+                ironsmith::replacement::ReplacementAction::Additionally(vec![
+                    Effect::exile(ChooseSpec::SpecificObject(first)),
+                    Effect::exile(ChooseSpec::SpecificObject(observer)),
+                ]),
+            ),
+        );
+        let mut dm = Choices {
+            targets: vec![Target::Object(first), Target::Object(second)],
+            ..Default::default()
+        };
+        cast(&mut game, &definition, CastingMethod::Normal, &mut dm);
+        resolve_all(&mut game, &mut dm);
+        assert!(!game.battlefield.contains(&first));
+        assert!(!game.battlefield.contains(&observer));
+        assert_eq!(game.damage_on(second), 3);
+        assert_eq!(
+            game.player(A).unwrap().life,
+            25,
+            "one lifelink gain and both already-matched recipient triggers survive additions"
+        );
+        let damage = game
+            .turn_store
+            .turn_history
+            .event_records
+            .iter()
+            .chain(game.turn_store.turn_history.staged_event_records.iter())
+            .filter(|record| {
+                record
+                    .event
+                    .downcast::<ironsmith::events::DamageEvent>()
+                    .is_some()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(damage.len(), 2);
+        assert_eq!(
+            damage
+                .iter()
+                .map(|record| record
+                    .event
+                    .downcast::<ironsmith::events::DamageEvent>()
+                    .unwrap()
+                    .amount)
+                .sum::<u32>(),
+            7
+        );
+        assert!(damage[0].event.simultaneous_batch().is_some());
+        assert_eq!(
+            damage[0].event.simultaneous_batch(),
+            damage[1].event.simultaneous_batch()
+        );
+        assert_ne!(damage[0].event.provenance(), damage[1].event.provenance());
+        assert!(damage.iter().any(|record| {
+            record
+                .event
+                .downcast::<ironsmith::events::DamageEvent>()
+                .is_some_and(|event| {
+                    event.source == second
+                        && event.target == ironsmith::events::DamageTarget::Object(first)
+                        && event.amount == 4
+                })
+        }));
     }
 }

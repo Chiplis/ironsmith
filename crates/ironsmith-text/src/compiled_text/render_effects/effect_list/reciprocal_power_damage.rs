@@ -72,6 +72,8 @@ pub(in crate::compiled_text) fn describe_reciprocal_power_damage(
     let second = structural_unwrap_render_wrappers(second)
         .downcast_ref::<crate::effects::DealDamageBySourcesEffect>()?;
     if second.source_binding != ironsmith_core::DamageSourceSetBinding::CapturedIncarnations
+        || second.recipient_binding != ironsmith_core::DamageRecipientSetBinding::SharedSet
+        || second.unpreventable
         || second.amount.unhinted() != &Value::SourcePower
         || !matches!(second.sources.as_slice(),[source] if matches!(source.base(),ChooseSpec::Tagged(tag) if *tag==capture.tag))
     {

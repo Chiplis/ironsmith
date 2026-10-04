@@ -577,6 +577,9 @@ mod chain_entry_readings;
 fn parse_effect_chain_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = super::temporary_attack_requirement::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(effect) = matching_spell_cost_modifier_chain(tokens) {
         return Ok(vec![effect]);
     }
@@ -1329,6 +1332,9 @@ fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = super::temporary_attack_requirement::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
     // Conditional sentence readers enter here directly. A value definition
     // between coordinated actions still belongs to the complete chain; the
     // outer binding reader removes that definition before recursing here.

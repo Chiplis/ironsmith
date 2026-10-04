@@ -182,6 +182,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         | TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast { .. }
         | TriggerSpec::ThisBecomesBlocked
         | TriggerSpec::BecomesBlocked(_)
+        | TriggerSpec::AttacksPlayerAlone(_)
         | TriggerSpec::BecomesBlockedByObjectWithLesserPower { .. } => {
             Some(PlayerFilter::Defending)
         }

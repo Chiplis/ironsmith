@@ -63,6 +63,7 @@ pub enum AnthemCountExpression {
         player: PlayerFilter,
         symbol: ManaSymbol,
     },
+    TotalUnspentMana(PlayerFilter),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

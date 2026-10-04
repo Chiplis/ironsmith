@@ -266,6 +266,7 @@ impl OutcomeObjectMemory {
                 cast_order_this_turn: None,
                 mana_spent_to_cast: crate::player::ManaPool::default(),
                 caster_mana_spent_to_cast: None,
+                mana_spent_on_x: None,
                 snow_mana_spent_to_cast: crate::player::ManaPool::default(),
                 mana_sources_spent_to_cast: Vec::new(),
                 optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
@@ -303,6 +304,15 @@ impl OutcomeObjectMemory {
         snapshot.is_token = self.is_token;
         snapshot
     }
+}
+
+/// Original recipient evidence for one damage instruction, before damage's
+/// life/counter consequences and independently of any redirection destination.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub enum DamageRecipientBefore {
+    Player { player: PlayerId, life: i32 },
+    Object { object: ObjectId, was_creature: bool, loyalty: Option<u32> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -350,6 +360,8 @@ pub enum ExecutionFact {
         winner: Option<PlayerId>,
         loser: Option<PlayerId>,
     },
+    /// Captured once for each distinct original damage recipient.
+    DamageRecipientBefore(DamageRecipientBefore),
 }
 
 impl ExecutionFact {
@@ -1621,6 +1633,16 @@ impl RestrictionExt for Restriction {
                             .entry(obj_id)
                             .or_default();
                         required.extend(attacker_ids.iter().copied());
+                    }
+                }
+            }
+            Restriction::MustAttack(filter) => {
+                for &object in &game.battlefield {
+                    if !game.is_phased_out(object)
+                        && let Some(object) = game.object(object)
+                        && filter.matches(object, &ctx, game)
+                    {
+                        *tracker.must_attack.entry(object.id).or_default() += 1;
                     }
                 }
             }

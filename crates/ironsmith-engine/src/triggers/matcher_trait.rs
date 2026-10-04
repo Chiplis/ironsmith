@@ -73,6 +73,8 @@ pub enum SimultaneousTriggerKey {
     DamageSourceTarget(ObjectId, DamageTarget),
     /// A player's grouped dice remain distinct from another player's rolls.
     PlayerDieRollBatch(PlayerId),
+    BecomesBlockedBatch,
+    KeywordActionBatch(crate::events::KeywordActionKind),
 }
 
 /// Context provided to trigger matchers for determining if they match an event.

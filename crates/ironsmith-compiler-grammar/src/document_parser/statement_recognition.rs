@@ -44,7 +44,8 @@ fn parse_source_gain_ability_committing_loss_on_success(
 }
 
 fn is_die_roll_result_adjustment_statement(tokens: &[OwnedLexToken]) -> bool {
-    statement_shapes::parse_die_roll_adjustment_tokens(tokens).is_some()
+    statement_shapes::is_extra_die_ignore_lowest(tokens)
+        || statement_shapes::parse_die_roll_adjustment_tokens(tokens).is_some()
 }
 
 fn parse_any_player_no_one_does_statement(

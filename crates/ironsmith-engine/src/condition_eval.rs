@@ -5293,12 +5293,12 @@ fn evaluate_condition_in_context(
                 return Ok(false);
             }
             Ok(
-                comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
+                comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression_checked(
                     count,
                     game,
                     ctx.source,
                     ctx.controller,
-                )),
+                )?),
             )
         }
         Condition::CountParity { count, even, .. } => {
@@ -5306,12 +5306,12 @@ fn evaluate_condition_in_context(
                 return Ok(false);
             }
 
-            let value = crate::static_abilities::resolve_anthem_count_expression(
+            let value = crate::static_abilities::resolve_anthem_count_expression_checked(
                 count,
                 game,
                 ctx.source,
                 ctx.controller,
-            );
+            )?;
             Ok(value % 2 == if *even { 0 } else { 1 })
         }
         Condition::ValueComparison {

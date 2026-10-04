@@ -2665,6 +2665,7 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
         | Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
+        | Restriction::MustAttack(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)

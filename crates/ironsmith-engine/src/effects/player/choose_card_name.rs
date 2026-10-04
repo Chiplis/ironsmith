@@ -52,6 +52,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
         cast_order_this_turn: None,
         mana_spent_to_cast: crate::player::ManaPool::default(),
         caster_mana_spent_to_cast: None,
+        mana_spent_on_x: None,
         snow_mana_spent_to_cast: crate::player::ManaPool::default(),
         mana_sources_spent_to_cast: Vec::new(),
         optional_costs_paid: crate::cost::OptionalCostsPaid::default(),

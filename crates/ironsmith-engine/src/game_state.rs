@@ -1763,6 +1763,9 @@ pub struct CantEffectTracker {
     /// Example: "Target creature must be blocked this turn if able."
     pub must_be_blocked: HashSet<ObjectId>,
 
+    /// Positive attack requirements from resolving rule effects, not abilities.
+    pub must_attack: HashMap<ObjectId, usize>,
+
     /// Creatures that can't block alone.
     /// Example: "This creature can't block alone."
     pub cant_block_alone: HashSet<ObjectId>,
@@ -2447,6 +2450,9 @@ impl CantEffectTracker {
                 .extend(attackers);
         }
         self.must_be_blocked.extend(other.must_be_blocked);
+        for (object, count) in other.must_attack {
+            *self.must_attack.entry(object).or_default() += count;
+        }
         self.cant_block_alone.extend(other.cant_block_alone);
         self.cant_untap.extend(other.cant_untap);
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
@@ -2543,6 +2549,7 @@ impl CantEffectTracker {
         self.cant_block_specific_attackers.clear();
         self.must_block_specific_attackers.clear();
         self.must_be_blocked.clear();
+        self.must_attack.clear();
         self.cant_block_alone.clear();
         self.cant_untap.clear();
         self.cant_be_destroyed.clear();

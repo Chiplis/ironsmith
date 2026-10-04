@@ -1,6 +1,6 @@
 //! Source-authored only: no compilation or execution in this campaign stage.
 use ironsmith::ability::{Ability, AbilityKind};
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::card::PowerToughness;
 use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
 use ironsmith::game_state::{Phase, Step};

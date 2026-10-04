@@ -132,6 +132,25 @@ fn split_reconverged_damage_keeps_one_threshold_trigger_and_one_history_count() 
                 "captured receipts must not be committed/staged again"
             );
             assert_eq!(history.iter().map(|event| event.amount).sum::<u32>(), 4);
+            let maximum = ironsmith_core::Value::DamageHistory(Box::new(
+                ironsmith_core::DamageHistoryQuery {
+                    sources: ironsmith_core::DamageHistorySources::Any,
+                    recipients: ironsmith_core::DamageHistoryRecipients::Any,
+                    combat: None,
+                    reduction:
+                        ironsmith_core::DamageHistoryReduction::LargestSourceRecipientOccurrence,
+                },
+            ));
+            assert_eq!(
+                ironsmith::effects::helpers::resolve_value(
+                    &game,
+                    &maximum,
+                    &ExecutionContext::new_default(source, a)
+                )
+                .unwrap(),
+                if mode == 1 { 2 } else { 4 },
+                "the occurrence maximum coalesces only fragments reaching the same recipient"
+            );
         }
     }
 }

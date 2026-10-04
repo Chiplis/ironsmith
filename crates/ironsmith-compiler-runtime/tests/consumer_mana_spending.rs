@@ -101,7 +101,7 @@ fn exact_source_spending_cards_compile_and_round_trip_with_visible_rules() {
         rows.iter()
             .filter(|row| row["proposed_coverage"] == "source_complete_unvalidated")
             .count(),
-        3
+        10
     );
     for name in ["Imperiosaur", "Myr Superion", "Security Rhox"] {
         for definition in definitions(name) {

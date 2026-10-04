@@ -1227,6 +1227,7 @@ impl GameState {
         }
         if !(old_zone == Zone::Stack && new_zone == Zone::Battlefield) {
             new_object.snow_mana_spent_to_cast = crate::player::ManaPool::default();
+            new_object.mana_spent_on_x = Some(crate::mana::XManaAllocation::default());
         }
         if !preserve_cast_tags {
             new_object.cast_tagged_objects.clear();
@@ -4088,6 +4089,7 @@ impl GameState {
     pub(crate) fn try_all_continuous_effects_arc(
         &self,
     ) -> Result<Arc<Vec<ContinuousEffect>>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        crate::static_ability_processor::validate_mana_scalar_domain(self)?;
         let revision = self.effect_store.continuous_effects.revision();
         if self.continuous_state_is_clean()
             && self.runtime_cache.static_effects_cache.borrow().has_checked_snapshot(revision)
@@ -4410,11 +4412,13 @@ impl GameState {
                         )
                         .collect::<Vec<_>>()
                         .into(),
+                    numeric_range_error: None,
                     ability_gain_prohibitions: Vec::new(),
                     aura_attach_filter: object.aura_attach_filter_owned(),
                     controller: self.controller_of(object),
                 });
 
+        if chars.numeric_range_error.is_some() { return None; }
         Self::normalize_current_characteristic_subtypes(object, &mut chars);
 
         Some(chars)
@@ -4453,6 +4457,7 @@ impl GameState {
         let Some(object) = self.object(id) else { return Ok(None); };
         if object.zone == Zone::Battlefield && self.is_phased_out(id) { return Ok(None); }
         if let Some(mut chars) = crate::continuous::in_progress_characteristics(self, id) {
+            chars.validate_numeric_range()?;
             Self::normalize_current_characteristic_subtypes(object, &mut chars);
             return Ok(Some(chars));
         }
@@ -4468,6 +4473,7 @@ impl GameState {
             let mut chars = self.calculated_characteristics_arc(id)
                 .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?
                 .as_ref().clone();
+            chars.validate_numeric_range()?;
             Self::normalize_current_characteristic_subtypes(object, &mut chars);
             return Ok(Some(chars));
         }
@@ -4499,6 +4505,7 @@ impl GameState {
         for id in present {
             let chars = calculated.get_mut(&id).ok_or(
                 crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;
+            chars.validate_numeric_range()?;
             Self::normalize_current_characteristic_subtypes(self.object(id).expect("immutable existing object"), chars);
         }
         Ok(calculated)
@@ -4513,6 +4520,7 @@ impl GameState {
         if object.zone == Zone::Battlefield && self.is_phased_out(id) { return Ok(None); }
         let mut chars = self.calculated_characteristics_with_effects(id, effects)
             .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;
+        chars.validate_numeric_range()?;
         Self::normalize_current_characteristic_subtypes(object, &mut chars);
         Ok(Some(chars))
     }

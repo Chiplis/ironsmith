@@ -2037,129 +2037,34 @@ impl GameState {
             .is_some_and(|obj| obj.zone == Zone::Battlefield)
     }
 
-    /// Empties all players' mana pools.
-    /// Called at the end of each step and phase per MTG rules.
-    /// Players covered by a "don't lose unspent mana" effect (Upwelling,
-    /// Kruphix, Omnath) keep the retained portion of their pool. Individual
-    /// mana units can also carry a retention duration (for example,
-    /// Firebending); those units do not cause unrelated mana of the same color
-    /// to persist.
-    pub fn empty_mana_pools(&mut self) {
-        let ending_combat = matches!(
-            (self.turn.phase, self.turn.step),
-            (Phase::Combat, Some(Step::EndCombat))
-        );
-        let ending_turn = matches!(
-            (self.turn.phase, self.turn.step),
-            (Phase::Ending, Some(Step::Cleanup))
-        );
-        let retention: Vec<Option<HashSet<Option<crate::color::Color>>>> = self
-            .players
-            .iter()
-            .map(|player| {
-                self.effect_store
-                    .cant_effects
-                    .retained_mana_scopes(player.id)
-                    .cloned()
-            })
-            .collect();
-        for (player, scopes) in self.players.iter_mut().zip(retention) {
-            let scopes = scopes.unwrap_or_default();
+    /// Empty pools at a step/phase boundary without manufacturing a player's
+    /// choice. Interactive owners use `empty_mana_pools_with_dm` instead.
+    pub fn empty_mana_pools(&mut self) -> Result<(), crate::effects::ExecutionError> {
+        crate::turn_runner::empty_mana_pools_without_choices(self)
+    }
 
-            // Expiration belongs to the duration itself, even when a separate
-            // global retention effect is currently keeping the same mana. If
-            // we left the marker attached, an expired Firebending unit could
-            // start retaining mana again after the global effect ended.
-            if ending_combat || ending_turn {
-                for unit in &mut player.mana_source_provenance {
-                    if (ending_combat
-                        && unit.retention
-                            == Some(ironsmith_core::ManaRetentionDuration::EndOfCombat))
-                        || (ending_turn
-                            && unit.retention
-                                == Some(ironsmith_core::ManaRetentionDuration::EndOfTurn))
-                    {
-                        unit.retention = None;
-                    }
-                }
-            }
-            if scopes.contains(&None) {
-                continue;
-            }
-
-            let globally_retained = |symbol: crate::mana::ManaSymbol| match symbol {
-                crate::mana::ManaSymbol::White => {
-                    scopes.contains(&Some(crate::color::Color::White))
-                }
-                crate::mana::ManaSymbol::Blue => scopes.contains(&Some(crate::color::Color::Blue)),
-                crate::mana::ManaSymbol::Black => {
-                    scopes.contains(&Some(crate::color::Color::Black))
-                }
-                crate::mana::ManaSymbol::Red => scopes.contains(&Some(crate::color::Color::Red)),
-                crate::mana::ManaSymbol::Green => {
-                    scopes.contains(&Some(crate::color::Color::Green))
-                }
-                _ => false,
-            };
-
-            let original_pool = player.mana_pool.clone();
-            player.mana_source_provenance.retain(|unit| {
-                globally_retained(unit.symbol)
-                    || match unit.retention {
-                        Some(ironsmith_core::ManaRetentionDuration::EndOfCombat) => !ending_combat,
-                        Some(ironsmith_core::ManaRetentionDuration::EndOfTurn) => true,
-                        None => false,
-                    }
-            });
-
-            let mut retained_unit_pool = crate::player::ManaPool::default();
-            let mut retained_restricted = std::collections::HashMap::new();
-            for unit in &player.mana_source_provenance {
-                retained_unit_pool.add(unit.symbol, 1);
-                if unit.restricted {
-                    *retained_restricted
-                        .entry((unit.symbol, unit.source))
-                        .or_insert(0usize) += 1;
-                }
-            }
-
-            for symbol in [
-                crate::mana::ManaSymbol::White,
-                crate::mana::ManaSymbol::Blue,
-                crate::mana::ManaSymbol::Black,
-                crate::mana::ManaSymbol::Red,
-                crate::mana::ManaSymbol::Green,
-                crate::mana::ManaSymbol::Colorless,
-            ] {
-                let retained = if globally_retained(symbol) {
-                    original_pool.amount(symbol)
-                } else {
-                    retained_unit_pool
-                        .amount(symbol)
-                        .min(original_pool.amount(symbol))
-                };
-                let current = player.mana_pool.amount(symbol);
-                if current > retained {
-                    let _ = player.mana_pool.remove(symbol, current - retained);
-                }
-            }
-
-            player.restricted_mana.retain(|unit| {
-                if globally_retained(unit.symbol) {
-                    return true;
-                }
-                let Some(remaining) = retained_restricted.get_mut(&(unit.symbol, unit.source))
-                else {
-                    return false;
-                };
-                if *remaining == 0 {
-                    return false;
-                }
-                *remaining -= 1;
-                true
-            });
-            player.trim_mana_source_provenance_to_pool();
+    pub fn empty_mana_pools_with_dm(&mut self, dm: &mut dyn crate::decision::DecisionMaker)
+        -> Result<(), crate::effects::ExecutionError>
+    {
+        if self.players.iter().all(|player| !player.has_runtime_mana_provenance()
+            && crate::events::mana::POOL_SYMBOLS.iter().all(|symbol| player.mana_pool.amount(*symbol) == 0)) {
+            return Ok(());
         }
+        let checkpoint = self.clone();
+        let players = self.players.iter().filter(|player| player.is_in_game()).map(|player| player.id).collect();
+        let provenance = self.provenance_graph_mut().alloc_root_event(crate::events::EventKind::ManaLost);
+        let mut ctx = crate::effects::ExecutionContext::new(ObjectId::from_raw(0), self.turn.active_player, dm)
+            .with_cause(crate::events::cause::EventCause::from_game_rule()).with_provenance(provenance);
+        let result = crate::effects::mana::mana_loss::execute_mana_losses(self, &mut ctx, players, true);
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            self.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
+        }
+        if pending { return result.map(|_| ()); }
+        let mut outcome = result?;
+        crate::effects::retain_unmatched_outcome_events(self, &mut outcome.events);
+        for event in outcome.events { self.queue_trigger_event(event.provenance(), event); }
+        Ok(())
     }
 
     /// Clears turn-scoped activated ability tracking.

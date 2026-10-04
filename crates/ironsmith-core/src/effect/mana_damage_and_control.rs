@@ -5038,6 +5038,16 @@ pub enum DamageSourceSetBinding {
     CapturedIncarnations,
 }
 
+/// Whether independently bound damage sources share recipients or each hit itself.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub enum DamageRecipientSetBinding {
+    #[default]
+    SharedSet,
+    /// One assignment per source: (source, that exact same object, its amount).
+    EachSource,
+}
+
 /// All sources deal their own evaluated amount in one simultaneous occurrence.
 /// The complete source set and each source's amount are captured before damage.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -5051,6 +5061,10 @@ pub struct DealDamageBySourcesEffect {
     pub target: ChooseSpec,
     #[cfg_attr(feature = "serde", serde(default))]
     pub source_binding: DamageSourceSetBinding,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub recipient_binding: DamageRecipientSetBinding,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub unpreventable: bool,
 }
 
 impl DealDamageBySourcesEffect {
@@ -5058,10 +5072,20 @@ impl DealDamageBySourcesEffect {
         Self {
             sources,
             source_binding: DamageSourceSetBinding::LiveMembers,
+            recipient_binding: DamageRecipientSetBinding::SharedSet,
+            unpreventable: false,
             source_declarations: Vec::new(),
             amount,
             target,
         }
+    }
+    pub fn with_recipient_binding(mut self, binding: DamageRecipientSetBinding) -> Self {
+        self.recipient_binding = binding;
+        self
+    }
+    pub fn with_unpreventable(mut self, unpreventable: bool) -> Self {
+        self.unpreventable = unpreventable;
+        self
     }
     pub fn with_source_binding(mut self, binding: DamageSourceSetBinding) -> Self {
         self.source_binding = binding;

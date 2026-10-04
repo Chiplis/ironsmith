@@ -4538,6 +4538,7 @@ pub(crate) fn describe_effect_metric_value(
         crate::effect::EffectMetric::LifeLost => "the life lost this way".to_string(),
         crate::effect::EffectMetric::LifeGained => "the life gained this way".to_string(),
         crate::effect::EffectMetric::DamageDealt => "the damage dealt this way".to_string(),
+        crate::effect::EffectMetric::DamageDealtCappedByRecipient => "the damage dealt, but not more life than the player's life total before the damage was dealt, the planeswalker's loyalty before the damage was dealt, or the creature's toughness".into(),
         crate::effect::EffectMetric::ExcessDamage => {
             "the excess damage dealt to that creature this way".to_string()
         }
@@ -5752,6 +5753,18 @@ pub(crate) fn describe_value(value: &Value) -> String {
             format!("{} divided by {divisor}, rounded down", describe_value(value))
         }
         Value::Min(left, right) => {
+            let capped_damage = |value: &Value| matches!(value.unhinted(),
+                Value::EffectMetric { source: crate::effect::EffectMetricSource::Outcome,
+                    metric: crate::effect::EffectMetric::DamageDealtCappedByRecipient, .. });
+            let paid_color = match (left.unhinted(), right.unhinted()) {
+                (damage, Value::ManaSpentOnX(color)) if capped_damage(damage) => Some(*color),
+                (Value::ManaSpentOnX(color), damage) if capped_damage(damage) => Some(*color),
+                _ => None,
+            };
+            if let Some(color) = paid_color {
+                return format!("the damage dealt, but not more than {}, the player's life total before the damage was dealt, the planeswalker's loyalty before the damage was dealt, or the creature's toughness", describe_value(&Value::ManaSpentOnX(color)));
+            }
+
             format!("the lesser of {} and {}", describe_value(left), describe_value(right))
         }
         Value::HalfRoundedDown(value) => {
@@ -6564,6 +6577,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 reference.text()
             )
         }
+        Value::ManaSpentOnX(color) => format!("the amount of {{{}}} spent on X", match color {
+            crate::color::Color::White => "W", crate::color::Color::Blue => "U", crate::color::Color::Black => "B",
+            crate::color::Color::Red => "R", crate::color::Color::Green => "G",
+        }),
         Value::CasterManaSpentToCastTriggeringObject => "the amount of mana you spent to cast that spell".to_string(),
         Value::ManaSpentToCastTriggeringObject => {
             "the amount of mana spent to cast that spell".to_string()

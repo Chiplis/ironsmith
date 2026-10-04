@@ -1061,14 +1061,22 @@ impl AnthemValueRuntimeExt for AnthemValue {
                 game,
             ),
             Self::PerCount { multiplier, count } => {
-                multiplier * resolve_anthem_count_expression(count, game, source, controller)
+                let resolved = resolve_anthem_count_expression(count, game, source, controller);
+                if matches!(count, AnthemCountExpression::UnspentMana { .. } | AnthemCountExpression::TotalUnspentMana(_)) {
+                    i32::try_from(i128::from(*multiplier) * i128::from(resolved)).expect("checked mana anthem modifier domain")
+                } else { multiplier * resolved }
             }
             Self::CappedPerCount {
                 multiplier,
                 count,
                 maximum,
-            } => (multiplier * resolve_anthem_count_expression(count, game, source, controller))
-                .min(*maximum),
+            } => {
+                let resolved = resolve_anthem_count_expression(count, game, source, controller);
+                if matches!(count, AnthemCountExpression::UnspentMana { .. } | AnthemCountExpression::TotalUnspentMana(_)) {
+                    let exact = (i128::from(*multiplier) * i128::from(resolved)).min(i128::from(*maximum));
+                    i32::try_from(exact).expect("checked mana anthem modifier domain")
+                } else { (multiplier * resolved).min(*maximum) }
+            },
         }
     }
 }
@@ -1333,6 +1341,7 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             crate::target::PlayerFilter::Any => "a player's speed".to_string(),
             _ => "that player's speed".to_string(),
         },
+        AnthemCountExpression::TotalUnspentMana(player) => format!("the unspent mana {} have", player.description()),
         AnthemCountExpression::UnspentMana { player, symbol } => {
             format!(
                 "{} unspent {} mana",
@@ -1546,6 +1555,7 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
                 other.description()
             ),
         }),
+        AnthemCountExpression::TotalUnspentMana(player) => Some(format!("unspent mana {} have", player.description())),
         AnthemCountExpression::UnspentMana { player, symbol } => Some(format!(
             "unspent {} mana {} have",
             mana_symbol_word(*symbol),
@@ -2697,6 +2707,22 @@ fn entered_battlefield_this_turn_count(
         .count() as i32
 }
 
+pub(crate) fn resolve_anthem_count_expression_checked(
+    count: &AnthemCountExpression, game: &GameState, source: ObjectId, controller: PlayerId,
+) -> Result<i32, crate::effects::ExecutionError> {
+    let (player_filter, symbol) = match count {
+        AnthemCountExpression::TotalUnspentMana(player) => (player, None),
+        AnthemCountExpression::UnspentMana { player, symbol } => (player, Some(*symbol)),
+        _ => return Ok(resolve_anthem_count_expression(count, game, source, controller)),
+    };
+    let context = game.filter_context_for(controller, Some(source));
+    let exact = game.players.iter().filter(|player| player.is_in_game()
+        && crate::filter::player_filter_matches_game(player_filter, player.id, game, &context))
+        .map(|player| symbol.map_or_else(|| u128::from(player.mana_pool.total_wide()),
+            |symbol| u128::from(player.mana_pool.amount(symbol)))).sum();
+    crate::events::damage::checked_damage_count(exact, "unspent mana count")
+}
+
 pub(crate) fn resolve_anthem_count_expression(
     count: &AnthemCountExpression,
     game: &GameState,
@@ -2875,31 +2901,16 @@ pub(crate) fn resolve_anthem_count_expression(
             })
             .map(|player| game.player_speed(player.id).unwrap_or(0) as i32)
             .sum(),
-        AnthemCountExpression::UnspentMana {
-            player: player_filter,
-            symbol,
-        } => game
-            .players
-            .iter()
-            .filter(|player| {
-                player.is_in_game()
-                    && crate::filter::player_filter_matches_game(
-                        player_filter,
-                        player.id,
-                        game,
-                        &filter_ctx,
-                    )
-            })
-            .map(|player| match symbol {
-                crate::mana::ManaSymbol::White => player.mana_pool.white,
-                crate::mana::ManaSymbol::Blue => player.mana_pool.blue,
-                crate::mana::ManaSymbol::Black => player.mana_pool.black,
-                crate::mana::ManaSymbol::Red => player.mana_pool.red,
-                crate::mana::ManaSymbol::Green => player.mana_pool.green,
-                crate::mana::ManaSymbol::Colorless => player.mana_pool.colorless,
-                _ => 0,
-            } as i32)
-            .sum(),
+        AnthemCountExpression::TotalUnspentMana(player_filter) => i32::try_from(game.players.iter()
+            .filter(|player| player.is_in_game() && crate::filter::player_filter_matches_game(
+                player_filter, player.id, game, &filter_ctx))
+            .map(|player| u128::from(player.mana_pool.total_wide())).sum::<u128>())
+            .expect("checked mana scalar domain"),
+        AnthemCountExpression::UnspentMana { player: player_filter, symbol } => i32::try_from(game.players.iter()
+            .filter(|player| player.is_in_game() && crate::filter::player_filter_matches_game(
+                player_filter, player.id, game, &filter_ctx))
+            .map(|player| u128::from(player.mana_pool.amount(*symbol))).sum::<u128>())
+            .expect("checked mana scalar domain"),
     }
 }
 
@@ -3564,6 +3575,28 @@ impl StaticAbilityKind for Anthem {
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
         Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn validate_mana_scalar_ranges(&self, game: &GameState, source: ObjectId, controller: PlayerId)
+        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError>
+    {
+        let mut needs_pt = false;
+        for value in [&self.power, &self.toughness] {
+            let (multiplier, count, cap) = match value {
+                AnthemValue::PerCount { multiplier, count } => (*multiplier, count, None),
+                AnthemValue::CappedPerCount { multiplier, count, maximum } => (*multiplier, count, Some(*maximum)),
+                _ => continue,
+            };
+            if !matches!(count, AnthemCountExpression::UnspentMana { .. } | AnthemCountExpression::TotalUnspentMana(_)) { continue; }
+            needs_pt = true;
+            let count = i128::from(resolve_anthem_count_expression(count, game, source, controller));
+            let exact = count * i128::from(multiplier);
+            let exact = cap.map_or(exact, |cap| exact.min(i128::from(cap)));
+            if i32::try_from(exact).is_err() {
+                return Err(crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange { resource: "mana anthem modifier", value: exact });
+            }
+        }
+        Ok(needs_pt)
     }
 
     fn generate_effects(

@@ -1200,20 +1200,10 @@ fn apply_cleanup_discard_inner(
     Ok(madness_cards)
 }
 
-/// Executes the cleanup step (damage removal, mana emptying).
-/// This should be called after any required discard decision has been resolved.
+/// Executes CR 514.2 cleanup (damage removal and expiring turn effects).
+/// Mana empties only after the cleanup step ends, through TurnRunner's
+/// resumable boundary owner; it must remain available during 514.3 priority.
 pub fn execute_cleanup_step(game: &mut GameState) {
-    // CR 500.4 / 106.4: unspent mana empties as the turn's last step ends,
-    // except where an effect retains it (Upwelling, Electro, Fangorn...).
-    // The retention-aware emptying also expires "until end of turn" mana.
-    if game
-        .players
-        .iter()
-        .any(|player| player.mana_pool.total() > 0 || !player.mana_source_provenance.is_empty())
-    {
-        game.empty_mana_pools();
-    }
-
     game.cleanup_damage_and_regeneration_end_of_turn();
 
     // Clear one-shot replacement effects (like regeneration shields)

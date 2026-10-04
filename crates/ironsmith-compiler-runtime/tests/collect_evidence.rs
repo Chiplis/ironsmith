@@ -1,7 +1,7 @@
 //! UNVALIDATED implementation-first coverage for the Collect Evidence family.
 use ironsmith::ability::AbilityKind;
 use ironsmith::card::{CardBuilder, PowerToughness};
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::decision::{
     DecisionMaker, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
 };

@@ -7298,7 +7298,7 @@ fn resolve_effect_result_value(
                 // compile time. Once bound, this unfiltered numeric fact has
                 // the same runtime/rendering representation as legacy excess.
                 *value = if query.source == EffectMetricSource::Outcome
-                    && query.metric == EffectMetric::ExcessDamage
+                    && matches!(query.metric, EffectMetric::ExcessDamage | EffectMetric::DamageDealtCappedByRecipient)
                     && query.action == Some(PriorEffectAction::DealtDamage)
                     && query.filter.is_none()
                     && query.player.is_none()
@@ -9095,6 +9095,7 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
+        | Restriction::MustAttack(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)

@@ -124,6 +124,7 @@ fn resolve_history_amount(
         )
     };
     let mut total = 0u64;
+    let mut largest_occurrence = 0u64;
     let mut sources = std::collections::HashMap::<ObjectId, u64>::new();
     for record in game.turn_store.turn_history.projected_records() {
         let Some(damage) = record.event.downcast::<crate::events::DamageEvent>() else {
@@ -185,12 +186,29 @@ fn resolve_history_amount(
         if !matches_recipient {
             continue;
         }
+        if query.reduction == DamageHistoryReduction::LargestSourceRecipientOccurrence {
+            let amount = match damage.completed_source_recipient_amount(query.combat) {
+                Some(amount) => amount,
+                // A legacy single unbatched receipt is its one occurrence.
+                // Missing coalescing evidence for a grouped receipt is unknown.
+                None if record.event.simultaneous_batch().is_none() => u128::from(damage.amount),
+                None => {
+                    return Err(ExecutionError::UnresolvableValue(
+                        "damage history has no completed source/recipient occurrence receipt"
+                            .into(),
+                    ));
+                }
+            };
+            largest_occurrence =
+                largest_occurrence.max(u64::try_from(amount).map_err(|_| overflow())?);
+        }
         let amount = u64::from(damage.amount);
         total = total.checked_add(amount).ok_or_else(overflow)?;
         let source_total = sources.entry(damage.source).or_default();
         *source_total = source_total.checked_add(amount).ok_or_else(overflow)?;
     }
     let amount = match query.reduction {
+        DamageHistoryReduction::LargestSourceRecipientOccurrence => largest_occurrence,
         DamageHistoryReduction::Total => total,
         DamageHistoryReduction::LargestSourceTotal => sources.values().copied().max().unwrap_or(0),
         DamageHistoryReduction::DistinctSources => {
@@ -480,5 +498,42 @@ mod tests {
                 records
             );
         }
+    }
+    #[test]
+    fn independent_damage_instructions_retain_distinct_maxima_under_one_outer_action() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let a = PlayerId::from_index(0);
+        let b = PlayerId::from_index(1);
+        let dealer = object(&mut game, a, "Dealer");
+        let recipient = object(&mut game, b, "Recipient");
+        let ctx = ExecutionContext::new_default(dealer, a);
+        let mut query = total(recipient);
+        query.reduction = DamageHistoryReduction::LargestSourceRecipientOccurrence;
+        let open = game.open_simultaneous_action();
+        let mut reports = Vec::new();
+        for amount in [2, 3] {
+            let outcome = crate::effects::execute_effect(
+                &mut game,
+                &crate::effect::Effect::deal_damage(amount, ChooseSpec::SpecificObject(recipient)),
+                &mut ExecutionContext::new_default(dealer, a),
+            )
+            .unwrap();
+            reports.extend(outcome.events);
+        }
+        assert_eq!(
+            resolve_history_in_context(&game, &query, &ctx).unwrap(),
+            3,
+            "staged history needs the original completion totals even while matching is held"
+        );
+        game.close_simultaneous_action(open);
+        crate::game_loop::queue_triggers_from_reported_events(
+            &mut game,
+            &mut crate::triggers::TriggerQueue::new(),
+            reports,
+            true,
+        );
+        assert_eq!(resolve_history_in_context(&game, &query, &ctx).unwrap(), 3);
+        query.reduction = DamageHistoryReduction::LargestSourceTotal;
+        assert_eq!(resolve_history_in_context(&game, &query, &ctx).unwrap(), 5);
     }
 }

@@ -3,6 +3,7 @@ mod declared_any_target;
 mod ability_loss_templates;
 mod characteristic_assertions;
 mod timed_draw_replacement;
+mod temporary_attack_requirement;
 pub(crate) mod life_unit_programs;
 use self::sentence_helpers::*;
 use super::object_filters::parse_object_filter;

@@ -2041,6 +2041,8 @@ impl StaticAbilityModelInterpreter {
                 *destination,
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::ConvertUnspentMana { player, symbol } =>
+                StaticAbility::new(super::misc::ConvertUnspentMana { player: player.clone(), symbol: *symbol }),
             ironsmith_core::StaticAbilityPayload::ManaProductionRewrite { rule, display } =>
                 StaticAbility::mana_production_rewrite(rule.clone(), display.clone()),
             ironsmith_core::StaticAbilityPayload::ManaProductionReplacement {
@@ -2508,6 +2510,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         if self.enter_as_copy_spec.is_some() && matches!(&self.model.payload, ironsmith_core::StaticAbilityPayload::Conditional {..}) { return false; }
         self.leaf_static_ability()
             .is_some_and(StaticAbility::may_generate_continuous_effects)
+    }
+
+    fn validate_mana_scalar_ranges(&self, game: &GameState, source: ObjectId, controller: PlayerId)
+        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        self.leaf_static_ability().map(|ability| ability.validate_mana_scalar_ranges(game, source, controller))
+            .unwrap_or(Ok(false))
     }
 
     fn generate_effects(

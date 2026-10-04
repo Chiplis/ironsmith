@@ -101,6 +101,14 @@ impl DamageEvent {
             })
     }
 
+    /// Immutable completed source/recipient total, when the original owner
+    /// has supplied all actual assignments from this damage occurrence.
+    pub(crate) fn completed_source_recipient_amount(&self, combat: Option<bool>) -> Option<u128> {
+        self.received_amounts
+            .as_ref()
+            .map(|amounts| amounts.amount(combat, true))
+    }
+
     /// Return a new event with doubled damage.
     pub fn doubled(&self) -> Result<Self, crate::effects::ExecutionError> {
         Ok(Self {

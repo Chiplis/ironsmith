@@ -2339,3 +2339,18 @@ fn qualified_die_heads_retain_numeric_natural_and_ordinal_distinctions() {
         assert!(parse_roll_result_words(&words).is_none());
     }
 }
+
+#[test]
+fn combat_declaration_shapes_preserve_grouping_direction_and_direct_player_alone() {
+    let parse = |text: &str| crate::activation_and_restrictions::parse_trigger_clause_lexed(&crate::lexer::lex_line(text,0).unwrap()).unwrap();
+    let grouped = parse("one or more creatures you control become blocked");
+    assert!(matches!(grouped, crate::model::ast::TriggerSpec::BecomesBlockedOneOrMore(filter) if filter.controller == Some(crate::target::PlayerFilter::You)));
+    let fight = parse("one or more creatures you control fight or become blocked");
+    let crate::model::ast::TriggerSpec::Either(fight,blocked) = fight else {panic!("not a union")};
+    assert!(matches!(*fight,crate::model::ast::TriggerSpec::KeywordActionOneOrMore {action:crate::events::KeywordActionKind::Fight,..}));
+    assert!(matches!(*blocked,crate::model::ast::TriggerSpec::BecomesBlockedOneOrMore(_)));
+    assert!(matches!(parse("a creature you control attacks a player alone"),crate::model::ast::TriggerSpec::AttacksPlayerAlone(_)));
+    let crate::model::ast::TriggerSpec::BlocksObject {blocker, blocked} = parse("a creature blocks a black or red creature") else {panic!("lost directional pair")};
+    assert!(blocker.colors.is_none());
+    assert!(!blocked.any_of.is_empty() || blocked.colors.is_some());
+}

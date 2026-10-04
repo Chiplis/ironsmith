@@ -155,6 +155,8 @@ pub enum EventKind {
     CardMilled,
     /// A player declared one or more attackers attacking another player.
     PlayerAttackDeclaration,
+    /// A batch of existing unspent mana would leave a pool.
+    ManaLost,
 }
 
 /// A target within an event that can potentially be redirected.

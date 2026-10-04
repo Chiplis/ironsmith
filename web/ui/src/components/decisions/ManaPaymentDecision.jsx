@@ -223,8 +223,22 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
       {ui("Pip {0}: {1} life", { 0: option.pip_id + 1, 1: option.life })} · {ui(draft.required_life_pips.includes(option.pip_id) ? "Selected" : "Auto")}
     </button>)}
   </div> : null;
+  const xAllocation = draft.x_allocation || payment.planned_x_allocation || [0, 0, 0, 0, 0];
+  const xChoices = payment.x_spending_rules?.length ? <fieldset className="mana-plan-life-choices" disabled={!canAct || confirming}>
+    <legend>{ui("Actual mana spent on X")}</legend>
+    <div>{payment.x_spending_rules.map(rule => ui(rule)).join(". ")}</div>
+    {["W", "U", "B", "R", "G"].map((symbol, index) => <label key={symbol}>
+      <ManaSymbol sym={symbol} size={17} />
+      <input type="number" min="0" step="1" aria-label={ui("{0} mana allocated to X", { 0: symbol })}
+        value={xAllocation[index]} onChange={event => {
+          const count = Number(event.target.value);
+          if (!Number.isSafeInteger(count) || count < 0 || count > 4294967295) return;
+          const selected = [...xAllocation]; selected[index] = count; editor.allocateX(selected);
+        }} />
+    </label>)}
+  </fieldset> : null;
   const busyLabel = dirty ? ui("Updating payment…") : !payment.planning_complete && !editor.edited ? ui("Improving") : null;
-  const hasChoices = editor.edited || draft.required_source_ids.length || draft.required_activations.length || draft.required_alternatives.length || draft.required_life_pips.length || draft.preserved_source_ids.length || draft.excluded_source_ids.some(id => !payment.fixed_excluded_source_ids?.includes(id));
+  const hasChoices = editor.edited || draft.x_allocation != null || draft.required_source_ids.length || draft.required_activations.length || draft.required_alternatives.length || draft.required_life_pips.length || draft.preserved_source_ids.length || draft.excluded_source_ids.some(id => !payment.fixed_excluded_source_ids?.includes(id));
   const resetControl = hasChoices ? <Button type="button" variant="ghost" size="sm" disabled={!canAct || confirming} onClick={editor.reset} title={ui("Clear payment choices; actual activations stay paid")}><RotateCcw size={13} />{ui("Reset")}</Button> : null;
   const controls = <>
     {busyLabel && <span className="mana-plan-strip-planning" role="status"><LoaderCircle size={14} className="animate-spin" />{busyLabel}</span>}
@@ -234,7 +248,7 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
   if (strip) return <div className="mana-plan-strip">
     {payment.cost_context?.length > 0 && <span className="mana-plan-strip-context" title={payment.cost_context.map(context => ui(context)).join(" · ")}>{payment.cost_context.map(context => ui(context)).join(" · ")}</span>}
     <div className="mana-plan-strip-source-region">{sourceList}</div>
-    {lifeChoices}
+    {lifeChoices}{xChoices}
     {warnings.length > 0 && <div className="mana-plan-strip-warning" title={warnings.join(" ")} aria-label={warnings.join(" ")}><AlertTriangle size={15} /><span>{payment.life_to_pay > 0 ? ui("{0} life", { 0: payment.life_to_pay }) : ui("Warning")}</span></div>}
     {controls}{popover}
   </div>;
@@ -250,7 +264,7 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
       {payment.cost_context?.length > 0 && <div className="mana-plan-cost-context">{payment.cost_context.map(context => ui(context)).join(" · ")}</div>}
       <div className="mana-plan-pools"><PoolSummary label={ui("Pool now")} pool={payment.pool_before} /><span className="mana-plan-arrow">→</span><PoolSummary label={ui("After sources")} pool={payment.pool_after_activations} /><span className="mana-plan-arrow">→</span><PoolSummary label={ui("After payment")} pool={payment.pool_after_payment} /></div>
       <div className="mana-plan-section"><div className="mana-plan-section-title">{ui("Payment sources")}</div>{sourceList}</div>
-      {lifeChoices}
+      {lifeChoices}{xChoices}
       {payment.can_confirm === false && !dirty && <div className="mana-plan-warnings" role="status">{ui("These choices do not cover the cost. Add a source or remove a restriction.")}</div>}
       {warnings.length > 0 && <div className="mana-plan-warnings"><AlertTriangle size={15} /><div>{warnings.map((warning, index) => <div key={index}>{ui(warning)}</div>)}</div></div>}
       {payment.reserved_sources?.length > 0 && <div className="mana-plan-reservations">{payment.reserved_sources.map(source => <div key={source.source_id}>{source.source_name}: {ui(source.reason)}</div>)}</div>}

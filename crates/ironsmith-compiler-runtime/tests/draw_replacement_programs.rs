@@ -1,5 +1,5 @@
 //! Source-authored only. No build, compilation, test or replay has run.
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::card::PowerToughness;
 use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
 use ironsmith::effects::{DrawCardsEffect, EffectContext, EffectExecutor};

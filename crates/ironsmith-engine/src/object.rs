@@ -1542,6 +1542,9 @@ pub struct RetainedCastPaymentState<M, K, C, G, S> {
     /// never the Assist-inclusive `mana_spent_to_cast` total.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub caster_mana_spent_to_cast: Option<u32>,
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    /// None is unknown historical evidence, never an implicit zero payment.
+    pub mana_spent_on_x: Option<crate::mana::XManaAllocation>,
     pub snow_mana_spent_to_cast: ManaPool,
     #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_temporary_payload"))]
     pub x_value: Option<u32>,
@@ -1567,6 +1570,7 @@ impl From<&Object> for NativeCastPaymentState {
             cast_at_sorcery_timing: value.optional_costs_paid.cast_at_sorcery_timing,
             mana_spent_to_cast: value.mana_spent_to_cast.clone(),
             caster_mana_spent_to_cast: value.caster_mana_spent_to_cast,
+            mana_spent_on_x: value.mana_spent_on_x,
             snow_mana_spent_to_cast: value.snow_mana_spent_to_cast.clone(),
             x_value: value.x_value,
             keyword_payment_contributions_to_cast: value.keyword_payment_contributions_to_cast.clone(),
@@ -1596,6 +1600,7 @@ impl<M, K, C, G, S> RetainedCastPaymentState<M, K, C, G, S> {
             cast_at_sorcery_timing,
             mana_spent_to_cast,
             caster_mana_spent_to_cast,
+            mana_spent_on_x,
             snow_mana_spent_to_cast,
             x_value,
             keyword_payment_contributions_to_cast,
@@ -1622,6 +1627,7 @@ impl<M, K, C, G, S> RetainedCastPaymentState<M, K, C, G, S> {
             cast_at_sorcery_timing,
             mana_spent_to_cast,
             caster_mana_spent_to_cast,
+            mana_spent_on_x,
             snow_mana_spent_to_cast,
             x_value,
             keyword_payment_contributions_to_cast,
@@ -1645,6 +1651,7 @@ impl NativeCastPaymentState {
             cast_at_sorcery_timing,
             mana_spent_to_cast,
             caster_mana_spent_to_cast,
+            mana_spent_on_x,
             snow_mana_spent_to_cast,
             x_value,
             keyword_payment_contributions_to_cast,
@@ -1671,6 +1678,7 @@ impl NativeCastPaymentState {
         };
         object.mana_spent_to_cast = mana_spent_to_cast;
         object.caster_mana_spent_to_cast = caster_mana_spent_to_cast;
+        object.mana_spent_on_x = mana_spent_on_x;
         object.snow_mana_spent_to_cast = snow_mana_spent_to_cast;
         object.x_value = x_value;
         object.keyword_payment_contributions_to_cast = keyword_payment_contributions_to_cast;
@@ -1798,6 +1806,8 @@ pub struct Object {
     pub mana_spent_to_cast: ManaPool,
     /// Actual mana spent by the caster, excluding Assist payments by others.
     pub caster_mana_spent_to_cast: Option<u32>,
+    /// None is unknown historical evidence, never an implicit zero payment.
+    pub mana_spent_on_x: Option<crate::mana::XManaAllocation>,
     /// Mana spent from sources that were snow when they produced it, by actual color.
     pub snow_mana_spent_to_cast: ManaPool,
     /// Non-copiable static abilities granted until end of turn while this object is a spell or
@@ -2083,6 +2093,7 @@ impl From<Object> for NativeRetainedLiveObject {
             optional_costs_paid: _,
             mana_spent_to_cast: _,
             caster_mana_spent_to_cast: _,
+            mana_spent_on_x: _,
             snow_mana_spent_to_cast: _,
             temporary_static_ability_grants,
             x_value: _,
@@ -2318,6 +2329,7 @@ impl TryFrom<NativeRetainedLiveObject> for Object {
             cast_at_sorcery_timing,
             mana_spent_to_cast,
             caster_mana_spent_to_cast,
+            mana_spent_on_x,
             snow_mana_spent_to_cast,
             x_value,
             keyword_payment_contributions_to_cast,
@@ -2390,6 +2402,7 @@ impl TryFrom<NativeRetainedLiveObject> for Object {
             },
             mana_spent_to_cast,
             caster_mana_spent_to_cast,
+            mana_spent_on_x,
             snow_mana_spent_to_cast,
             temporary_static_ability_grants,
             x_value,
@@ -2871,6 +2884,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -2960,6 +2974,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -3253,6 +3268,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -3337,6 +3353,7 @@ impl Object {
             // Tokens are never cast.
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -3412,6 +3429,7 @@ impl Object {
             // spent to cast it (converge, adamant, "if {G} was spent" read 0).
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: source.temporary_static_ability_grants.clone(),
             x_value: source.x_value,
@@ -3488,6 +3506,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -3563,6 +3582,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -4553,6 +4573,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -5090,10 +5111,12 @@ mod tests {
         let mut source = Object::from_card(ObjectId::from_raw(1), &card, alice, Zone::Stack);
         source.snow_mana_spent_to_cast.green = 2;
         source.caster_mana_spent_to_cast = Some(2);
+        source.mana_spent_on_x = Some(crate::mana::XManaAllocation([0, 0, 1, 0, 0]));
         source.x_value = Some(3);
         let copy = Object::spell_copy_of(&source, ObjectId::from_raw(2), alice);
         assert_eq!(copy.snow_mana_spent_to_cast.total(), 0);
         assert_eq!(copy.caster_mana_spent_to_cast, None);
+        assert_eq!(copy.mana_spent_on_x, Some(crate::mana::XManaAllocation::default()));
         assert_eq!(copy.x_value, Some(3));
         assert_eq!(source.snow_mana_spent_to_cast.green, 2);
     }
@@ -5827,6 +5850,7 @@ mod retained_cast_payment_state_tests {
         object.x_value = Some(7);
         object.mana_spent_to_cast.blue = 3;
         object.caster_mana_spent_to_cast = Some(1);
+        object.mana_spent_on_x = Some(crate::mana::XManaAllocation([0, 1, 0, 0, 0]));
         object.snow_mana_spent_to_cast.blue = 2;
         object.optional_costs_paid.costs.push((crate::cost::OptionalCostRef::from("Kicker"), 2));
         object.optional_costs_paid.branch_choices.push((0, 1));
@@ -5874,9 +5898,9 @@ mod retained_cast_payment_state_tests {
         state.alternative_casts = vec![3, 4];
         state.optional_costs = vec![5];
         let value = serde_json::to_value(&state).unwrap();
-        assert_eq!(value.as_object().unwrap().len(), 15);
+        assert_eq!(value.as_object().unwrap().len(), 16);
         for field in value.as_object().unwrap().keys() {
-            if field == "caster_mana_spent_to_cast" { continue; }
+            if matches!(field.as_str(), "caster_mana_spent_to_cast" | "mana_spent_on_x") { continue; }
             let mut missing = value.clone(); missing.as_object_mut().unwrap().remove(field);
             assert!(serde_json::from_value::<RetainedCastPaymentState<u32, u32, u32, u32, u32>>(missing).is_err(), "missing {field} must reject");
         }
@@ -5887,8 +5911,10 @@ mod retained_cast_payment_state_tests {
         }
         let mut legacy = value.clone();
         legacy.as_object_mut().unwrap().remove("caster_mana_spent_to_cast");
+        legacy.as_object_mut().unwrap().remove("mana_spent_on_x");
         let restored: RetainedCastPaymentState<u32, u32, u32, u32, u32> = serde_json::from_value(legacy).unwrap();
         assert_eq!(restored.caster_mana_spent_to_cast, None, "legacy payer evidence stays unknown");
+        assert_eq!(restored.mana_spent_on_x, None);
         assert_eq!(restored.mana_spent_to_cast, state.mana_spent_to_cast, "retain the independent Assist-inclusive total");
         for field in ["permanent_id", "effect"] {
             let mut missing = value.clone(); missing["keyword_payment_contributions_to_cast"][0].as_object_mut().unwrap().remove(field);

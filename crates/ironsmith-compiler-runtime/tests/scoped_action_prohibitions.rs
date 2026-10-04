@@ -322,7 +322,7 @@ fn graveyard_activation_prohibition_also_reaches_mana_ability_sources() {
 #[test]
 fn land_restriction_checks_the_chosen_mdfc_face_name() {
     use ironsmith::card::LinkedFaceLayout;
-    use ironsmith::cards::CardDefinitionBuilder;
+    use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::{CardId, CardType};
     for definition in definitions("Cornered Market") { for front_type in [CardType::Land, CardType::Sorcery] {
         let mut game = game(); game.create_object_from_definition(&definition, A, Zone::Battlefield);

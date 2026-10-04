@@ -975,6 +975,7 @@ impl Auditor {
             | "KeywordActionDuringYourTurn"
             | "KeywordActionFromSource"
             | "KeywordActionMatchingObject"
+            | "KeywordActionMatchingObjectOneOrMore"
             | "KeywordActionMatchingObjectDuringYourTurn"
             | "KeywordActionMatchingTaggedObject"
             | "WinsClash"
@@ -1098,6 +1099,7 @@ impl Auditor {
             }
             "ThisBecomesBlocked"
             | "BecomesBlocked"
+            | "BecomesBlockedOneOrMore"
             | "ThisBecomesBlockedByObject"
             | "BecomesBlockedByObjectWithLesserPower" => {
                 scope.player = Binding::Unknown;
@@ -1125,6 +1127,7 @@ impl Auditor {
             | "AttacksOneOrMoreWithExactTotal"
             | "AttacksOneOrMoreWithAggregate"
             | "AttacksAlone"
+            | "AttacksPlayerAlone"
             | "AttacksYou"
             | "AttacksYouOneOrMore"
             | "ThisBlocks"

@@ -311,6 +311,7 @@ struct SplitRewriteActivatedEffectText {
     restrictions: ParsedRestrictions,
     mana_restrictions: Vec<ParsedManaRestriction>,
     x_cant_be_zero: bool,
+    x_spending_rules: Vec<ironsmith_core::mana::ManaSpendingRestriction>,
 }
 
 fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effect::Value> {
@@ -418,11 +419,14 @@ fn finalize_rewrite_activated_effect_sentences(
     let mut effect_sentence_tokens = Vec::new();
     let mut mana_restrictions = Vec::new();
     let mut x_cant_be_zero = false;
+    let mut x_spending_rules = Vec::new();
 
     for tokens in merge_copy_retarget_sentences(sentence_tokens) {
         let sentence = render_token_slice(&tokens).trim().to_string();
         let restriction_kind = activated_grammar::classify_activated_restriction_sentence(&tokens);
-        if restriction_kind == Some(ActivatedRestrictionSentenceKind::ManaSource) {
+        if let Some(rule) = crate::consumer_mana::x_spending_rule(&tokens) {
+            if !x_spending_rules.contains(&rule) { x_spending_rules.push(rule); }
+        } else if restriction_kind == Some(ActivatedRestrictionSentenceKind::ManaSource) {
             restrictions
                 .activation
                 .push(parse_activation_restriction_surface_tokens(&tokens));
@@ -457,6 +461,7 @@ fn finalize_rewrite_activated_effect_sentences(
         restrictions,
         mana_restrictions,
         x_cant_be_zero,
+        x_spending_rules,
     }
 }
 

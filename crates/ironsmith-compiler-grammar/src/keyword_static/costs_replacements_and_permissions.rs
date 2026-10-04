@@ -7714,6 +7714,9 @@ pub(crate) fn parse_mana_output_rewrite_definition(tokens: &[OwnedLexToken])
     }))
 }
 pub fn parse_mana_output_rewrite_static_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some(symbol) = crate::grammar::effects::parse_unspent_mana_conversion(tokens) {
+        return Ok(Some(StaticAbility::convert_unspent_mana(PlayerFilter::You, symbol)));
+    }
     let Some(parsed) = parse_mana_output_rewrite_definition(tokens)? else { return Ok(None); };
     if parsed.mode.is_some() || parsed.target.is_some() { return Ok(None); }
     if parsed.rule.output == ironsmith_core::ManaRewriteOutput::ChosenColor {

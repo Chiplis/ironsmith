@@ -88,6 +88,14 @@ fn attack_requirement_score_for_target(
         .count();
 
     score += game
+        .effect_store
+        .cant_effects
+        .must_attack
+        .get(&attacker.id)
+        .copied()
+        .unwrap_or(0);
+
+    score += game
         .required_attack_players_this_turn(attacker.id)
         .filter(|player| matches!(target, AttackTarget::Player(defender) if defender == player))
         .count();

@@ -893,6 +893,22 @@ pub(crate) fn resolve(
                 });
             Ok(spent.map_or(0, |mana| mana.total() as i32))
         }
+        Value::ManaSpentOnX(color) => {
+            // A missing legacy receipt is unknown. Do not reinterpret an
+            // imported paid spell as an unspent copy, or replace exact live
+            // evidence with an older source snapshot.
+            let allocation = if let Some(source) = game.object(context.source) {
+                source.mana_spent_on_x
+            } else {
+                context.execution().and_then(|ctx| ctx.source_snapshot.as_ref())
+                    .and_then(|snapshot| snapshot.mana_spent_on_x)
+            }.ok_or_else(|| ExecutionError::UnresolvableValue(
+                "actual mana allocated to X was not retained".into()))?;
+            let amount = allocation.of_color(*color);
+            i32::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
+                resource: "actual mana spent on X", requested: u128::from(amount), maximum: i32::MAX as u128,
+            })
+        }
         Value::ManaSymbolSpentToCastThisSpell { symbol, .. } => {
             let Some(source_obj) = game.object(context.source) else {
                 return Ok(0);
@@ -972,9 +988,9 @@ pub(crate) fn resolve(
             let total = player_ids
                 .iter()
                 .filter_map(|player_id| game.player(*player_id))
-                .map(|player| player.mana_pool.total() as i32)
-                .sum();
-            Ok(total)
+                .map(|player| u128::from(player.mana_pool.total_wide()))
+                .sum::<u128>();
+            crate::events::damage::checked_damage_count(total, "unspent mana scalar")
         }
         Value::ColorsOfManaSpentToCastThisSpell => {
             let Some(source_obj) = game.object(context.source) else {

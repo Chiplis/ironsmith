@@ -2351,6 +2351,8 @@ pub fn spell_mana_cost_for_cast(
         }
     };
 
+    let base_cost = base_cost.map(|cost| with_spell_mana_spending_rules(game, player, spell, &cost));
+
     if from_zone == Zone::Command {
         let tax = if commander_tax_life_per_previous_cast(spell).is_some() {
             0
@@ -2954,21 +2956,19 @@ pub(crate) fn mana_cost_with_locked_x_and_generic_reduction(
     x_value: u32,
     reduction: u32,
 ) -> crate::mana::ManaCost {
+    let cost = cost.clone().bind_x_payment_if_unbound(x_value);
     let mut pips = Vec::new();
-    let mut generic_from_x = 0u32;
     for pip in cost.pips() {
-        if pip
-            .iter()
-            .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::X))
-        {
-            generic_from_x = generic_from_x.saturating_add(x_value);
-        } else {
-            pips.push(pip.clone());
-        }
+        if pip.iter().any(|symbol| matches!(symbol, crate::mana::ManaSymbol::X)) {
+            let mut remaining = x_value;
+            while remaining > 0 {
+                let chunk = remaining.min(u32::from(u8::MAX)) as u8;
+                pips.push(vec![crate::mana::ManaSymbol::Generic(chunk)]);
+                remaining -= u32::from(chunk);
+            }
+        } else { pips.push(pip.clone()); }
     }
-    cost.with_pips(pips)
-        .add_generic(generic_from_x)
-        .reduce_generic(reduction)
+    cost.with_pips(pips).reduce_generic(reduction)
 }
 
 fn mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
@@ -3010,6 +3010,23 @@ fn mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
         .filter(|helper| *helper != caster && game.player(*helper).is_some())
         .any(|helper| {
             (1..=generic_total).any(|contribution| {
+                if cost.has_x_spending_restriction() {
+                    let remaining = mana_cost_with_locked_x_and_generic_reduction(cost, x_value, contribution);
+                    let completion = crate::mana_payment::ManaPaymentRequest::new(caster, spell_id,
+                        crate::costs::PaymentReason::CastSpell, remaining)
+                        .with_spend_policy(game.mana_spend_policy(caster, Some(spell_id)));
+                    let mut helper_request = crate::mana_payment::ManaPaymentRequest::new(helper, spell_id,
+                        crate::costs::PaymentReason::CastSpell,
+                        crate::mana::ManaCost::new().add_generic(contribution)
+                            .inherit_transaction_spending_restrictions(cost))
+                        .with_spend_policy(game.mana_spend_policy(helper, Some(spell_id)));
+                    helper_request.assist_completion = Some(Box::new(completion));
+                    let mut prospective = game.clone();
+                    if let Some(spell) = prospective.object_mut(spell_id) {
+                        spell.zone = Zone::Stack; spell.controller = caster;
+                    }
+                    return resumable::check_payment(&prospective, &helper_request);
+                }
                 let helper_cost = crate::mana::ManaCost::new().add_generic(contribution)
                     .inherit_spending_restrictions(cost);
                 if !mana_cost_can_be_paid_with_view_at_x(
@@ -4869,6 +4886,35 @@ pub(crate) fn calculate_effective_mana_cost_for_payment_with_chosen_targets_for_
     )
 }
 
+/// Attach intrinsic spending conditions while the selected price still has
+/// its X symbols. The same helper is idempotent after expansion/modification.
+pub(crate) fn with_spell_mana_spending_rules(
+    game: &GameState, player: PlayerId, spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+) -> crate::mana::ManaCost {
+    fn active_spending_rule<'a>(game: &GameState, player: PlayerId, source: ObjectId,
+        model: &'a crate::static_abilities::CompiledStaticAbility)
+        -> Option<&'a ironsmith_core::mana::ManaSpendingRestriction> {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::SpellManaSpendingRestriction(rule) => Some(rule),
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }
+                if crate::condition_eval::evaluate_condition_cast_time(game, condition, player, source) =>
+                    active_spending_rule(game, player, source, ability),
+            _ => None,
+        }
+    }
+    let mut base_cost = base_cost.clone();
+    for ability in &spell.abilities {
+        if let AbilityKind::Static(ability) = &ability.kind
+            && let Some(model) = ability.compiled_model()
+            && let Some(rule) = active_spending_rule(game, player, spell.id, model)
+        {
+            base_cost = base_cost.with_spending_restriction(rule.clone());
+        }
+    }
+    base_cost
+}
+
 pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
     game: &GameState,
     player: PlayerId,
@@ -4907,26 +4953,7 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
         cast_from_zone,
         view,
     ));
-    fn active_spending_rule<'a>(game: &GameState, player: PlayerId, source: ObjectId,
-        model: &'a crate::static_abilities::CompiledStaticAbility)
-        -> Option<&'a ironsmith_core::mana::ManaSpendingRestriction> {
-        match &model.payload {
-            ironsmith_core::StaticAbilityPayload::SpellManaSpendingRestriction(rule) => Some(rule),
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }
-                if crate::condition_eval::evaluate_condition_cast_time(game, condition, player, source) =>
-                    active_spending_rule(game, player, source, ability),
-            _ => None,
-        }
-    }
-    let mut base_cost = base_cost.clone();
-    for ability in &spell.abilities {
-        if let AbilityKind::Static(ability) = &ability.kind
-            && let Some(model) = ability.compiled_model()
-            && let Some(rule) = active_spending_rule(game, player, spell.id, model)
-        {
-            base_cost = base_cost.with_spending_restriction(rule.clone());
-        }
-    }
+    let base_cost = with_spell_mana_spending_rules(game, player, spell, base_cost);
     let mut current_cost = totals.apply(&base_cost);
 
     if preview_resource_reductions {
@@ -6389,12 +6416,8 @@ pub(crate) fn add_mana_cost(
     cost: &crate::mana::ManaCost,
     add: &crate::mana::ManaCost,
 ) -> crate::mana::ManaCost {
-    if add.pips().is_empty() {
-        return cost.clone();
-    }
-    let mut new_pips = cost.pips().to_vec();
-    new_pips.extend(add.pips().iter().cloned());
-    cost.with_pips(coalesce_plain_generic_pips(new_pips)).inherit_spending_restrictions(add)
+    let combined = cost.combined_with(add);
+    combined.with_pips(coalesce_plain_generic_pips(combined.pips().to_vec()))
 }
 
 fn coalesce_plain_generic_pips(

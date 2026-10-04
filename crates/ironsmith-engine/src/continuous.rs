@@ -2207,6 +2207,9 @@ impl ContinuousEffect {
 /// Calculated characteristics for an object after applying continuous effects.
 #[derive(Debug, Clone)]
 pub struct CalculatedCharacteristics {
+    /// A provisional layer computation that could not fit the native signed
+    /// P/T domain. Checked owners reject it before publishing any snapshot.
+    pub(crate) numeric_range_error: Option<(&'static str, i128)>,
     pub name: SharedStr,
     pub mana_cost: Option<ManaCost>,
     /// Noncopiable linked-face mana value of the current view. Copy and
@@ -2244,9 +2247,26 @@ pub struct CalculatedCharacteristics {
 }
 
 impl CalculatedCharacteristics {
+    pub(crate) fn validate_numeric_range(&self) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if let Some((resource, value)) = self.numeric_range_error {
+            Err(crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange { resource, value })
+        } else { Ok(()) }
+    }
+
     pub(crate) fn record_base_pt(&mut self) {
         self.base_power = self.power;
         self.base_toughness = self.toughness;
+    }
+}
+
+/// Provisional P/T is never wrapped or saturated. The error marker travels
+/// with the computed characteristics to the authoritative checked owner.
+fn add_pt_checked(value: &mut Option<i32>, delta: i128, error: &mut Option<(&'static str, i128)>, axis: &'static str) {
+    let Some(current) = value else { return; };
+    let exact = i128::from(*current) + delta;
+    match i32::try_from(exact) {
+        Ok(next) => *current = next,
+        Err(_) => { error.get_or_insert((axis, exact)); }
     }
 }
 
@@ -2503,6 +2523,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         defense: object.base_defense,
         abilities: abilities.clone().into(),
         static_abilities: extract_static_abilities(&abilities).into(),
+        numeric_range_error: None,
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.initial_controller,
@@ -3424,7 +3445,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 if effect.modification.pt_sublayer() == Some(PtSublayer::Switching)
                     && counters_applied_before_switch.insert(*id)
                 {
-                    apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+                    apply_counter_modifications(object, &mut chars.power, &mut chars.toughness, &mut chars.numeric_range_error);
                 }
                 let mut removed = abilities_removed.contains(id);
                 apply_modification_to_chars(
@@ -3474,7 +3495,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         guards[idx].update(chars);
 
         if !counters_applied_before_switch.contains(&id) {
-            apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+            apply_counter_modifications(object, &mut chars.power, &mut chars.toughness, &mut chars.numeric_range_error);
         }
         guards[idx].update(chars);
 
@@ -4244,7 +4265,7 @@ fn calculate_with_layers_direct_internal(
             if !counters_applied
                 && effect.modification.pt_sublayer() == Some(PtSublayer::Switching)
             {
-                apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+                apply_counter_modifications(object, &mut chars.power, &mut chars.toughness, &mut chars.numeric_range_error);
                 counters_applied = true;
             }
             apply_modification_to_chars(
@@ -4275,7 +4296,7 @@ fn calculate_with_layers_direct_internal(
     // Apply counter modifications for Layer 7c (after other 7c effects by
     // timestamp) unless a 7d switch already needed them.
     if !counters_applied {
-        apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+        apply_counter_modifications(object, &mut chars.power, &mut chars.toughness, &mut chars.numeric_range_error);
     }
     calc_guard.update(&chars);
 
@@ -6319,25 +6340,17 @@ fn apply_modification_to_chars(
 
         // Layer 7c: Modifying P/T
         Modification::ModifyPower(delta) => {
-            if let Some(ref mut p) = chars.power {
-                *p += delta;
-            }
+            add_pt_checked(&mut chars.power, i128::from(*delta), &mut chars.numeric_range_error, "power");
         }
         Modification::ModifyToughness(delta) => {
-            if let Some(ref mut t) = chars.toughness {
-                *t += delta;
-            }
+            add_pt_checked(&mut chars.toughness, i128::from(*delta), &mut chars.numeric_range_error, "toughness");
         }
         Modification::ModifyPowerToughness {
             power: p_delta,
             toughness: t_delta,
         } => {
-            if let Some(ref mut p) = chars.power {
-                *p += p_delta;
-            }
-            if let Some(ref mut t) = chars.toughness {
-                *t += t_delta;
-            }
+            add_pt_checked(&mut chars.power, i128::from(*p_delta), &mut chars.numeric_range_error, "power");
+            add_pt_checked(&mut chars.toughness, i128::from(*t_delta), &mut chars.numeric_range_error, "toughness");
         }
         Modification::ModifyPowerToughnessValue {
             power: power_value,
@@ -6363,24 +6376,16 @@ fn apply_modification_to_chars(
                 effect_controller,
                 game,
             );
-            if let Some(ref mut p) = chars.power {
-                *p += p_delta;
-            }
-            if let Some(ref mut t) = chars.toughness {
-                *t += t_delta;
-            }
+            add_pt_checked(&mut chars.power, i128::from(p_delta), &mut chars.numeric_range_error, "power");
+            add_pt_checked(&mut chars.toughness, i128::from(t_delta), &mut chars.numeric_range_error, "toughness");
         }
         Modification::ModifyPowerToughnessByColorCount {
             power_multiplier,
             toughness_multiplier,
         } => {
             let color_count = chars.colors.count() as i32;
-            if let Some(ref mut p) = chars.power {
-                *p += power_multiplier * color_count;
-            }
-            if let Some(ref mut t) = chars.toughness {
-                *t += toughness_multiplier * color_count;
-            }
+            add_pt_checked(&mut chars.power, i128::from(*power_multiplier) * i128::from(color_count), &mut chars.numeric_range_error, "power");
+            add_pt_checked(&mut chars.toughness, i128::from(*toughness_multiplier) * i128::from(color_count), &mut chars.numeric_range_error, "toughness");
         }
 
         // Layer 7e: Switching P/T

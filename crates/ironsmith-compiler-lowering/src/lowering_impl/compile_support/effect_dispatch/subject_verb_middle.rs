@@ -557,6 +557,9 @@ pub(super) fn compile_pump_action(
         } else {
             (resolved_power.clone(), resolved_toughness.clone())
         };
+        let historical_block_participant = !spec.is_target()
+            && matches!(spec.base(), ChooseSpec::Tagged(tag)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::Blocking.as_str());
         let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
             spec,
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
@@ -565,8 +568,10 @@ pub(super) fn compile_pump_action(
             },
             duration.clone(),
         )
-        .require_creature_target()
         .with_set_quantifier_surface(*set_quantifier_surface);
+        // A definite event participant remains that object after its type
+        // changes (CR608.2k). Targeted pumps still require a legal creature.
+        if !historical_block_participant { apply = apply.require_creature_target(); }
         if let Some(surface) = source_reference_surface {
             apply = apply.with_source_reference_surface(surface);
         }

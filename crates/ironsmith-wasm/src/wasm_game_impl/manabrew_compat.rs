@@ -511,6 +511,7 @@ fn manabrew_replan_command(
             .map(|source| source.0.to_string())
             .collect(),
         prefer_life: preferences.prefer_life,
+        x_allocation: preferences.x_allocation.map(|allocation| allocation.0),
         required_life_pips: preferences
             .required_life_pips
             .into_iter()
