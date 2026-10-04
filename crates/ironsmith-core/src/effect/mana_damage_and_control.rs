@@ -508,6 +508,11 @@ impl PhaseInEffect {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct BecomeBlockedEffect { pub target: ChooseSpec }
+impl BecomeBlockedEffect { pub fn with_spec(target: ChooseSpec)->Self { Self{target} } }
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RemoveFromCombatEffect {
     pub target: ChooseSpec,
 }

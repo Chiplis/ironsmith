@@ -70,6 +70,17 @@ fn control_quantity_restriction(words: &[&str]) -> Option<(Restriction, String)>
 }
 
 fn fixed_restriction(words: &[&str]) -> Option<(Restriction, &'static str)> {
+    use ironsmith_core::ThisSpellCastTiming as Timing;
+    let typed = match words {
+        ["during", "the", "declare", "blockers", "step"] | ["during", "declare", "blockers", "step"] =>
+            Some((Timing::DuringDeclareBlockersStep, "Cast this spell only during the declare blockers step.")),
+        ["during", "combat", "on", "your", "turn"] => Some((Timing::DuringCombatOnYourTurn, "Cast this spell only during combat on your turn.")),
+        ["during", "your", "turn"] => Some((Timing::DuringYourTurn, "Cast this spell only during your turn.")),
+        ["during", "an", "opponents", "turn"] | ["during", "an", "opponent's", "turn"] | ["during", "an", "opponent", "s", "turn"] =>
+            Some((Timing::DuringOpponentsTurn, "Cast this spell only during an opponent's turn.")),
+        _ => None,
+    };
+    if let Some((timing,display))=typed { return Some((Restriction::timing(timing),display)); }
     if exact_one_of(
         words,
         &[

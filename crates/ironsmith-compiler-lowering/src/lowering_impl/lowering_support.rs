@@ -4693,6 +4693,33 @@ fn direct_named_granting_source_spec(effect: &Effect) -> Option<ChooseSpec> {
 }
 
 fn preserve_named_granting_source_in_effect(effect: Effect) -> Effect {
+    // A fight has two independent participants. Rebinding the whole effect
+    // would also change the receiving creature's "this creature" reference.
+    if let Some(fight) = effect.downcast_ref::<crate::effects::FightEffect>() {
+        let mut fight = fight.clone();
+        for spec in [&mut fight.creature1, &mut fight.creature2] {
+            if matches!(spec.base(), ChooseSpec::Source)
+                && matches!(
+                    spec.source_reference_surface(),
+                    Some(
+                        SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_)
+                    )
+                )
+            {
+                *spec = granting_source_scope_spec(spec);
+            }
+        }
+        return Effect::new(fight);
+    }
+    if let Some(optional) = effect.downcast_ref::<crate::effects::MayEffect<Effect>>() {
+        let mut optional = optional.clone();
+        optional.effects = optional
+            .effects
+            .into_iter()
+            .map(preserve_named_granting_source_in_effect)
+            .collect();
+        return Effect::new(optional);
+    }
     // A sentence already scoped to the card's own name ("Shuriken deals 2
     // damage ...", lowered with the named source as the damage source)
     // names the granting attachment too.

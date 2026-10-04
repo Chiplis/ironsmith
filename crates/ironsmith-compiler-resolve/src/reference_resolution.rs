@@ -1428,6 +1428,10 @@ fn maybe_tag_value_object_target(
 
 fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
     match value {
+        Value::DamageHistory(query) => query
+            .reference_specs()
+            .find(|spec| spec.is_target() && choose_spec_targets_object(spec)),
+
         Value::SurfaceHinted { value, .. } => value_object_target_spec(value),
         Value::Add(left, right) => {
             value_object_target_spec(left).or_else(|| value_object_target_spec(right))
@@ -6426,6 +6430,9 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 ..
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
+                ..
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { .. })
@@ -7725,6 +7732,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
+                target,
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate {
                 target, ..
@@ -8749,6 +8759,20 @@ fn bind_unresolved_it_in_choose_spec(spec: &mut ChooseSpec, seed_tag: &TagKey) -
 #[cfg(test)]
 fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
     match value {
+        Value::DamageHistory(query) => {
+            let mut rebound = 0;
+            for spec in query.reference_specs_mut() {
+                rebound += bind_unresolved_it_in_choose_spec(spec, seed_tag);
+            }
+            for filter in query.object_filters_mut() {
+                rebound += bind_unresolved_it_in_filter(filter, seed_tag);
+            }
+            if let Some(player) = query.player_filter_mut() {
+                rebound += bind_unresolved_it_in_player_filter(player, seed_tag);
+            }
+            rebound
+        }
+
         Value::SurfaceHinted { value, .. } => bind_unresolved_it_in_value(value, seed_tag),
         Value::Add(left, right) => {
             bind_unresolved_it_in_value(left, seed_tag)

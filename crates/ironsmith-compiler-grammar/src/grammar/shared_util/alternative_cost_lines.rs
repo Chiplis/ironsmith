@@ -85,6 +85,7 @@ pub fn parse_you_may_rather_than_spell_cost(
             ))
         })?;
     let trailing_tokens = trim_edge_punctuation(&tokens[cost_clause_end + 1..]);
+    let spending_rule = crate::consumer_mana::source_spending_rule(&trailing_tokens, true);
     // "You may pay {B} rather than pay this spell's mana cost if there are
     // thirteen or more creatures on the battlefield." (Blasphemous Edict)
     let trailing_condition = if trailing_tokens
@@ -102,6 +103,8 @@ pub fn parse_you_may_rather_than_spell_cost(
                     ))
                 })?,
         )
+    } else if spending_rule.is_some() {
+        None
     } else if !TokenWordView::new(&trailing_tokens).word_refs().is_empty() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing clause after alternative cost (line: '{}', trailing: '{}')",
@@ -124,6 +127,15 @@ pub fn parse_you_may_rather_than_spell_cost(
             render_token_slice(cost_tokens).trim()
         ))
     })?;
+    let total_cost = if let Some(rule) = spending_rule {
+        total_cost.try_map(|cost| -> Result<_, CardTextError> {
+            Ok(match cost {
+                crate::model::CompilerCost::Mana(mana) =>
+                    crate::model::CompilerCost::Mana(mana.with_spending_restriction(rule.clone())),
+                _ => return Err(CardTextError::ParseError("source-restricted alternative requires a mana cost".into())),
+            })
+        })?
+    } else { total_cost };
     let method = AlternativeCastingMethod::Composed {
         name: "Parsed alternative cost".into(),
         total_cost,

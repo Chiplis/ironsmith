@@ -2749,6 +2749,7 @@ impl GameSnapshot {
         )
     }
 
+    #[cfg(test)]
     pub(super) fn from_game_with_object_view_cache(
         game: &GameState,
         perspective: PlayerId,
@@ -2763,6 +2764,29 @@ impl GameSnapshot {
         undo_land_stable_id: Option<u64>,
         snapshot_id: u64,
         object_view_cache: &SnapshotObjectViewCache,
+    ) -> Self {
+        Self::from_game_with_object_view_cache_during_action(
+            game, perspective, decision, mana_payment, game_over, pending_cast_stack_id,
+            resolving_stack_object, battlefield_transitions, viewed_cards, cancelable,
+            undo_land_stable_id, snapshot_id, object_view_cache, Default::default(),
+        )
+    }
+
+    pub(super) fn from_game_with_object_view_cache_during_action(
+        game: &GameState,
+        perspective: PlayerId,
+        decision: Option<&DecisionContext>,
+        mana_payment: Option<ManaPaymentView>,
+        game_over: Option<&GameResult>,
+        pending_cast_stack_id: Option<ObjectId>,
+        resolving_stack_object: Option<super::StackObjectSnapshot>,
+        battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
+        viewed_cards: Option<&ActiveViewedCards>,
+        cancelable: bool,
+        undo_land_stable_id: Option<u64>,
+        snapshot_id: u64,
+        object_view_cache: &SnapshotObjectViewCache,
+        top_visibility: super::StaticLibraryTopVisibilityWindow<'_>,
     ) -> Self {
         let stack_viewed_cards = super::stack_revealed_view(game);
         let viewed_cards = viewed_cards.or(stack_viewed_cards.as_ref());
@@ -2824,6 +2848,7 @@ impl GameSnapshot {
                     .groups
                     .borrow()
                     .visibility_for_player(game, perspective, p.id);
+                let can_view_library_top = can_view_library_top && top_visibility.allows(game, p.id);
                 let can_view_hand = is_perspective_player
                     || controls_player
                     || game.can_review_teammate_hand(perspective, p.id)

@@ -362,7 +362,8 @@ pub(crate) fn spell_has_intrinsic_cost_adjustments(spell: &crate::object::Object
         let AbilityKind::Static(static_ability) = &ability.kind else {
             return false;
         };
-        static_ability.has_affinity()
+        static_ability.compiled_model().is_some_and(|model| model.spell_mana_spending_rule().is_some())
+            || static_ability.has_affinity()
             || static_ability.has_delve()
             || static_ability.has_convoke()
             || static_ability.has_improvise()

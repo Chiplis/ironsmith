@@ -253,6 +253,10 @@ pub trait GameEventType: Debug + Send + Sync + GameEventTypeClone {
         None
     }
 
+    /// Captured cause of a completed action, when this event kind owns one.
+    /// A missing cause cannot prove a spell/ability or its controller.
+    fn cause(&self) -> Option<&crate::events::cause::EventCause> { None }
+
     // === Accessor methods for trigger matching ===
 
     /// Get the primary object ID involved in this event, if any.

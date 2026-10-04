@@ -647,6 +647,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/811"
+    },
+    {
+      "stage": 46,
+      "branch": "fix/card-failures-46-history-and-announcement-families",
+      "base": "fix/card-failures-45-pricing-life-and-designation-roots",
+      "source_integration_commit": "44b807aa2d33933ef4e99cdb84057e949b6f7e51",
+      "remote_commit": "054e4ff622d5a653f216623a0307adc54755580d",
+      "tree": "2c5cbaec5b6cdf51ffcc6cb1aa3b7495d977f98c",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 812,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/812"
     }
   ]
 }

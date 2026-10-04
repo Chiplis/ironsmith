@@ -14,6 +14,10 @@ use crate::filter::{ObjectRef, PlayerFilter};
 /// reads only the trigger, never the card's words.
 pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
+        TriggerSpec::ConditionQualified {
+            condition: crate::cards::builders::PredicateAst::Triggering(
+                crate::cards::builders::TriggeringPredicateAst::TriggeringEventCausedBy { .. }), ..
+        } => Some(PlayerFilter::TaggedPlayer(ironsmith_core::TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG.into())),
         TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => inferred_trigger_player_filter(trigger),
         TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
         // Private-zone possessors name the owner, even when a stolen permanent

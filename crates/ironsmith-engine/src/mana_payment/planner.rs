@@ -1044,7 +1044,7 @@ impl ManaPaymentPlanner {
                         _ => {}
                     }
                 }
-                payment_request.cost = crate::mana::ManaCost::from_pips(
+                payment_request.cost = request.cost.with_pips(
                     selection
                         .remaining
                         .iter()
@@ -1304,6 +1304,7 @@ fn fixed_outputs_cannot_pay_a_pip(game: &GameState, request: &ManaPaymentRequest
 /// Starting mana remains finite. Each producible color is supplied in enough
 /// quantity to cover the entire cost, ignoring all activation/input constraints.
 fn fixed_outputs_cannot_cover_quantities(game: &GameState, request: &ManaPaymentRequest) -> bool {
+    if !request.cost.spending_restrictions().is_empty() { return false; }
     let pips = mana_payment_expanded_pips(game, request);
     // Snow depends on source provenance. Leave it to the existing conservative
     // type proof and authoritative search until the bound models that provenance.
@@ -1783,7 +1784,7 @@ pub(super) fn prepare_owned_activation(
     let mut fallback_decision_maker = SelectFirstDecisionMaker;
     let mut decision_maker = super::witness::WitnessDecisionMaker::record_production(request.payer, &mut fallback_decision_maker)
         .with_stored_colors(choice.stored_color_choices.clone());
-    if activate_with_mana_witnesses(
+    if let Err(error) = activate_with_mana_witnesses(
         &mut staged,
         request.payer,
         choice.source,
@@ -1793,13 +1794,18 @@ pub(super) fn prepare_owned_activation(
         retainable,
         choice.replacement_witnesses.as_deref(),
     )
-    .is_err()
     {
+        if let ManaPaymentFailure::EffectExecutionFailed(error) = ManaPaymentFailure::from_execution(error) {
+            staged.record_token_resource_failure(&error);
+        }
         return None;
     }
     if !decision_maker.stored_colors_consumed() { return None; }
     if !retainable || !staged.retain_continuous_state_after_mana_activation() {
-        staged.refresh_continuous_state().ok()?;
+        if let Err(error) = staged.refresh_continuous_state() {
+            staged.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
+            return None;
+        }
     }
     let after = staged
         .player(request.payer)
@@ -2594,6 +2600,7 @@ fn collapse_interchangeable_choices(
         color_restriction: Option<Vec<Color>>,
         flexibility: usize,
         snow: bool,
+        qualified_units: Vec<super::resources::PaymentManaUnit>,
         restrictions: Vec<crate::ability::ManaUsageRestriction>,
         exact_required: bool,
         required_source: bool,
@@ -2637,6 +2644,7 @@ fn collapse_interchangeable_choices(
             color_restriction: choice.color_restriction.clone(),
             flexibility: choice.flexibility,
             snow: game.current_has_supertype(choice.source, crate::types::Supertype::Snow),
+            qualified_units: projected.credits.iter().flat_map(|credit| credit.spendable_units(game, request)).collect(),
             restrictions: mana_ability.mana_usage_restrictions.clone(),
             exact_required: request
                 .preferences
@@ -3232,6 +3240,10 @@ fn request_hash(request: &ManaPaymentRequest) -> u64 {
     request.source.hash(&mut hasher);
     format!("{:?}", request.reason).hash(&mut hasher);
     request.cost.pips().hash(&mut hasher);
+    if !request.cost.spending_restrictions().is_empty() {
+        "consumer mana spending constraints".hash(&mut hasher);
+        request.cost.spending_restrictions().hash(&mut hasher);
+    }
     request.x_value.hash(&mut hasher);
     request.allow_mana_abilities.hash(&mut hasher);
     request.reserved_tap_sources.hash(&mut hasher);
@@ -3271,6 +3283,10 @@ fn plan_hash(
         format!("{:?}", allocation.payment).hash(&mut hasher);
     }
     payment_cost.pips().hash(&mut hasher);
+    if !payment_cost.spending_restrictions().is_empty() {
+        "consumer mana spending constraints".hash(&mut hasher);
+        payment_cost.spending_restrictions().hash(&mut hasher);
+    }
     pool.white.hash(&mut hasher);
     pool.blue.hash(&mut hasher);
     pool.black.hash(&mut hasher);
@@ -3340,10 +3356,8 @@ fn safe_search_state_key(game: &GameState, payer: crate::ids::PlayerId) -> u64 {
         // Hashed structurally rather than through `format!("{:?}")`: this key is
         // taken once per prepared candidate and once per queued node, and a
         // provenance entry carries a full `ObjectSnapshot` whose Debug output is
-        // large. The snapshot itself is not hashed because within one search
-        // every entry for a given (symbol, source) was produced by the same
-        // activation of the same object, so the identity fields already
-        // distinguish the states this dedup can encounter.
+        // large. Hash the production characteristics used by consumer-side
+        // spending requirements explicitly, along with the identity metadata.
         unordered_digest(&player.restricted_mana, |unit, hasher| {
             unit.symbol.hash(hasher);
             unit.source.hash(hasher);
@@ -3360,6 +3374,12 @@ fn safe_search_state_key(game: &GameState, payer: crate::ids::PlayerId) -> u64 {
             unit.restricted.hash(hasher);
             unit.retention.hash(hasher);
             unit.snapshot.is_some().hash(hasher);
+            if let Some(snapshot) = &unit.snapshot {
+                snapshot.zone.hash(hasher);
+                snapshot.card_types.hash(hasher);
+                snapshot.supertypes.hash(hasher);
+                snapshot.subtypes.hash(hasher);
+            }
         })
         .hash(&mut hasher);
     }
@@ -5551,5 +5571,107 @@ mod token_resource_failure_tests {
         let effect = crate::effects::PayManaEffect::new(request.cost, crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You));
         assert!(matches!(effect.execute(&mut game, &mut ctx), Err(ExecutionError::ResourceLimitExceeded { .. })));
         assert!(!game.is_tapped(source)); assert_eq!(game.battlefield.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod producer_characteristic_failure_tests {
+    use super::*;
+    use crate::effects::ExecutionError;
+    use crate::ids::{CardId, PlayerId};
+    use crate::zone::Zone;
+
+    fn fixture() -> (GameState, PlayerId, ObjectId, ManaPaymentRequest) {
+        fixture_with_condition(crate::ConditionExpr::SourceIsTapped)
+    }
+    fn fixture_with_condition(condition: crate::ConditionExpr) -> (GameState, PlayerId, ObjectId, ManaPaymentRequest) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let player = PlayerId(0);
+        game.turn.active_player = player; game.turn.priority_player = Some(player);
+        game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
+        let card = crate::card::CardBuilder::new(CardId::new(), "Tap-sensitive producer")
+            .card_types(vec![crate::types::CardType::Land]).build();
+        let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+        game.object_mut(source).unwrap().abilities_mut().push(crate::ability::Ability::mana(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()), vec![ManaSymbol::Green]));
+        let mut model: crate::static_abilities::CompiledStaticAbility = ironsmith_core::StaticAbility::haste();
+        for _ in 0..140 {
+            model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
+                crate::target::ObjectFilter::source(), ironsmith_core::Ability::static_ability(model), "Source gains a finite child");
+        }
+        model = model.with_condition(condition);
+        game.object_mut(source).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::from_model(model)));
+        game.refresh_continuous_state().unwrap();
+        assert!(game.continuous_effects_are_tap_sensitive());
+        let rule = ironsmith_core::mana::ManaSpendingRestriction::ProducedBy(
+            ironsmith_core::mana::ManaProducerFilter::CardType(crate::types::CardType::Land));
+        let request = ManaPaymentRequest::new(player, source, crate::costs::PaymentReason::Effect,
+            crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Green]).with_spending_restriction(rule));
+        (game, player, source, request)
+    }
+    #[test]
+    fn source_discovery_failure_is_typed_for_native_sliced_and_checked_queries() {
+        std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+            for mode in 0..3 {
+                let (game, player, source, request) = fixture();
+                let before = game.next_object_id_counter();
+                let result = match mode {
+                    0 => check_mana_payment(&game, &request),
+                    1 => plan_first_mana_payment(&game, &request).map(|_| ()),
+                    _ => {
+                        let mut analysis = ManaPaymentAnalysis::new(game.clone(), request.clone());
+                        let mut result = None;
+                        for _ in 0..256 { if let Some(done) = analysis.step(1) { result = Some(done.map(|_| ())); break; } }
+                        result.expect("one tap-sensitive producer must complete its bounded calculation")
+                    }
+                };
+                assert!(matches!(result, Err(ManaPaymentFailure::EffectExecutionFailed(ExecutionError::ContinuousDiscovery(_)))), "{result:?}");
+                let checked = crate::decision::with_complete_legality_query(&game, |checked| {
+                    let view = crate::derived_view::DerivedGameView::new(checked);
+                    Ok(view.can_potentially_pay_with_reason(player, Some(source), &request.cost, 0, request.reason))
+                });
+                assert!(matches!(checked, Err(ExecutionError::ContinuousDiscovery(_))), "{checked:?}");
+                assert!(!game.is_tapped(source));
+                assert_eq!(game.player(player).unwrap().mana_pool.total(), 0);
+                assert_eq!(game.next_object_id_counter(), before);
+                assert!(game.effect_store.pending_trigger_events.is_empty());
+            }
+        }).unwrap().join().unwrap();
+    }
+    #[test]
+    fn post_credit_discovery_failure_is_not_an_unpayable_candidate() {
+        std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+            let (game, player, source, request) = fixture_with_condition(crate::ConditionExpr::ValueComparison {
+                left: crate::effect::Value::UnspentMana(crate::target::PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::GreaterThan,
+                right: crate::effect::Value::Fixed(0),
+            });
+            // The producer snapshot is valid before credit. Only the newly
+            // added mana activates the finite graph exceeding discovery work.
+            let result = check_mana_payment(&game, &request);
+            assert!(matches!(result, Err(ManaPaymentFailure::EffectExecutionFailed(ExecutionError::ContinuousDiscovery(_)))), "{result:?}");
+            assert!(!game.is_tapped(source));
+            assert_eq!(game.player(player).unwrap().mana_pool.total(), 0);
+            assert!(game.effect_store.pending_trigger_events.is_empty());
+        }).unwrap().join().unwrap();
+    }
+
+    #[test]
+    fn actual_production_discovery_failure_restores_tap_pool_and_history() {
+        std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+            let (mut game, player, source, _) = fixture();
+            let before = game.next_object_id_counter();
+            let history = game.turn_store.turn_history.event_records.len();
+            let error = crate::special_actions::perform_activate_mana_ability_restricted_colors(
+                &mut game, player, source, 0, None, &mut SelectFirstDecisionMaker).unwrap_err();
+            assert!(matches!(error, crate::special_actions::ActionError::ExecutionFailure {
+                error: ExecutionError::ContinuousDiscovery(_), .. }), "{error:?}");
+            assert!(!game.is_tapped(source));
+            assert_eq!(game.player(player).unwrap().mana_pool.total(), 0);
+            assert_eq!(game.next_object_id_counter(), before);
+            assert_eq!(game.turn_store.turn_history.event_records.len(), history);
+            assert!(game.effect_store.pending_trigger_events.is_empty());
+        }).unwrap().join().unwrap();
     }
 }

@@ -4420,3 +4420,16 @@ pub(super) fn target_event_source_qualification_is_a_physical_source_filter() ->
     }
     Ok(())
 }
+
+#[test]
+pub(super) fn targeting_only_it_is_not_a_literal_single_target_count() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Only target observer").card_types(vec![CardType::Creature]);
+    let (doc, _) = parse_text_to_semantic_document(builder.split_face().0,
+        "Whenever this creature becomes the target of an ability that targets only it, draw a card.".into(), false)?;
+    let [item] = doc.items.as_slice() else { panic!("one trigger"); };
+    let (trigger, _, _) = rewrite_direct_triggered_chunk(item).unwrap();
+    let debug = format!("{trigger:?}");
+    assert!(debug.contains("ThisBecomesTargetedByStackObject") && debug.contains("target_count: None")
+        && debug.contains("targets_only_object: Some"), "{debug}");
+    Ok(())
+}

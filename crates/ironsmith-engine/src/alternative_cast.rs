@@ -134,19 +134,25 @@ pub enum CastingMethod {
     SplitOtherHalfPlayFrom {
         source: crate::ids::ObjectId,
         zone: Zone,
-        use_alternative: usize,
+        use_alternative: Option<usize>,
+    },
+    /// A printed morph/disguise (or separately granted face-down) cast using
+    /// this exact zone permission. Appended for serialized ordinal stability.
+    FaceDownPlayFrom {
+        source: crate::ids::ObjectId,
+        zone: Zone,
     },
 }
 
 impl CastingMethod {
     pub fn is_alternative(&self) -> bool {
-        matches!(self, Self::Alternative(_) | Self::FaceDown)
+        matches!(self, Self::Alternative(_) | Self::FaceDown | Self::FaceDownPlayFrom { .. })
     }
 
     pub fn exiles_after_resolution(&self) -> bool {
         matches!(
             self,
-            Self::GrantedFlashback | Self::SplitOtherHalfPlayFrom { .. }
+            Self::GrantedFlashback | Self::SplitOtherHalfPlayFrom { use_alternative: Some(_), .. }
         )
     }
 }

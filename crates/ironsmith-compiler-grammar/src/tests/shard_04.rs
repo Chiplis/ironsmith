@@ -5095,3 +5095,12 @@ fn chosen_permanent_followup_iterates_objects_instead_of_repeating_shared_tag() 
     assert!(debug.contains("Conditional"), "{debug}");
     assert!(!debug.contains("RepeatEffects"), "{debug}");
 }
+
+#[test]
+pub(super) fn delayed_causal_discard_keeps_batch_antecedent_and_recurring_turn_scope() {
+    let tokens=lex_line("Whenever a spell or ability an opponent controls causes you to discard cards this turn, return those cards from your graveyard to your hand.",0).unwrap();
+    let parsed=parse_effect_sentence_lexed(&tokens).unwrap();let debug=format!("{parsed:?}");
+    assert!(debug.contains("DelayedTriggerThisTurn")&&debug.contains("PlayerDiscardsCard")
+        &&debug.contains("cause_controller: Some(Opponent)")&&debug.contains("one_or_more: true")
+        &&debug.contains("one_shot: false"),"{debug}");
+}

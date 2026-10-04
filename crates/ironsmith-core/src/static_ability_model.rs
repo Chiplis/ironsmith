@@ -376,13 +376,22 @@ impl CompanionDeckCondition {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ThisSpellCastRestrictionKind {
     pub label: String,
+    /// New cast-time facts are typed; old label-only artifacts retain their
+    /// legacy conversion without changing their serialized representation.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub timing: Option<crate::ThisSpellCastTiming>,
 }
 
 impl ThisSpellCastRestrictionKind {
     fn named(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
+            timing: None,
         }
+    }
+
+    pub fn timing(timing: crate::ThisSpellCastTiming) -> Self {
+        Self { label: "typed cast timing".into(), timing: Some(timing) }
     }
 
     pub fn during_declare_attackers_step() -> Self {
@@ -1417,6 +1426,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     RedirectMatchingDamage(StaticDamageRedirectionSpec),
     NoMaximumHandSizeFor(PlayerFilter),
     MaximumHandSizeFromSourceCounters { player: PlayerFilter, counter_type: CounterType },
+    SpellManaSpendingRestriction(crate::mana::ManaSpendingRestriction),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1721,6 +1731,9 @@ where
                 max_plays: spec.max_plays,
                 cast_this_way_filter: spec.cast_this_way_filter,
                 source_exiled_surface: spec.source_exiled_surface,
+                filtered_zone_surface: spec.filtered_zone_surface,
+                top_card_only: spec.top_card_only,
+                instant_timing: spec.instant_timing,
                 cast_this_way_grants: spec
                     .cast_this_way_grants
                     .into_iter()
@@ -2685,6 +2698,8 @@ where
                 noncombat_only,
                 display,
             },
+            StaticAbilityPayload::SpellManaSpendingRestriction(rule) =>
+                StaticAbilityPayload::SpellManaSpendingRestriction(rule),
             StaticAbilityPayload::RedirectMatchingDamage(spec) =>
                 StaticAbilityPayload::RedirectMatchingDamage(spec),
             StaticAbilityPayload::PreventMatchingDamage(spec) =>
@@ -4428,6 +4443,22 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn spell_mana_spending_rule(&self) -> Option<&crate::mana::ManaSpendingRestriction> {
+        match &self.payload {
+            StaticAbilityPayload::SpellManaSpendingRestriction(rule) => Some(rule),
+            StaticAbilityPayload::Conditional { ability, .. } => ability.spell_mana_spending_rule(),
+            _ => None,
+        }
+    }
+
+    pub fn spell_mana_spending_restriction(rule: crate::mana::ManaSpendingRestriction, display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SpellManaSpendingRestriction),
+            label: display.into(),
+            payload: StaticAbilityPayload::SpellManaSpendingRestriction(rule),
+        }
+    }
+
     pub fn minimum_spell_total_mana(amount: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::MinimumSpellTotalMana),
@@ -7467,3 +7498,14 @@ impl<
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test,feature="serde"))]
+mod cast_timing_payload_tests {
+    #[test]
+    fn old_label_only_payload_stays_stable_and_new_timing_is_typed() {
+        let old=super::ThisSpellCastRestrictionKind::during_combat();let value=serde_json::to_value(&old).unwrap();assert!(value.get("timing").is_none());
+        let restored:super::ThisSpellCastRestrictionKind=serde_json::from_value(value).unwrap();assert_eq!(restored,old);
+        let new=super::ThisSpellCastRestrictionKind::timing(crate::ThisSpellCastTiming::DuringDeclareBlockersStep);
+        let restored:super::ThisSpellCastRestrictionKind=serde_json::from_str(&serde_json::to_string(&new).unwrap()).unwrap();assert_eq!(restored.timing,Some(crate::ThisSpellCastTiming::DuringDeclareBlockersStep));
+    }
+}

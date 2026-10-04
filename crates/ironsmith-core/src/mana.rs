@@ -57,6 +57,48 @@ impl ManaSymbol {
     }
 }
 
+/// Characteristics of the object that produced a mana unit, frozen at production.
+/// This is independent of what the unit may be spent as.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaProducerFilter {
+    CardType(crate::types::CardType),
+    Supertype(crate::types::Supertype),
+    Subtype(crate::types::Subtype),
+    All(Vec<ManaProducerFilter>),
+}
+
+/// A consumer-side condition on actual mana spent on this cost.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaSpendingRestriction {
+    ProducedBy(ManaProducerFilter),
+}
+
+impl ManaProducerFilter {
+    pub fn description(&self) -> String {
+        match self {
+            Self::CardType(kind) => format!("{}s", kind.to_string().to_ascii_lowercase()),
+            Self::Supertype(kind) => format!("{} permanents", kind.to_string().to_ascii_lowercase()),
+            Self::Subtype(kind) => format!("{kind}s"),
+            Self::All(parts) => {
+                if let [Self::CardType(kind), Self::Supertype(supertype)] = parts.as_slice() {
+                    return format!("{} {}s", supertype.to_string().to_ascii_lowercase(), kind.to_string().to_ascii_lowercase());
+                }
+                parts.iter().map(Self::description).collect::<Vec<_>>().join(" and ")
+            }
+        }
+    }
+}
+impl ManaSpendingRestriction {
+    pub fn cast_description(&self, alternative: bool) -> String {
+        let scope = if alternative { "it this way" } else { "this spell" };
+        match self {
+            Self::ProducedBy(filter) => format!("Spend only mana produced by {} to cast {scope}", filter.description()),
+        }
+    }
+}
+
 /// Represents a mana cost as a sequence of pips, where each pip is a list of
 /// alternative payment options (disjunction).
 ///
@@ -72,25 +114,53 @@ impl ManaSymbol {
 #[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
 pub struct ManaCost {
     pips: Vec<Vec<ManaSymbol>>,
+    /// Kept on the priced cost, so taxes, alternative payments, planner roots,
+    /// and resumed transactions cannot silently discard a spending condition.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    spending_restrictions: Vec<ManaSpendingRestriction>,
 }
 
 impl ManaCost {
     /// Creates an empty mana cost.
     pub fn new() -> Self {
-        Self { pips: Vec::new() }
+        Self { pips: Vec::new(), spending_restrictions: Vec::new() }
     }
 
     /// Creates a mana cost from a list of pips, where each pip is a list of
     /// alternative payment options.
     pub fn from_pips(pips: Vec<Vec<ManaSymbol>>) -> Self {
-        Self { pips }
+        Self { pips, spending_restrictions: Vec::new() }
     }
 
     /// Creates a mana cost from a simple list of symbols (each becomes one pip).
     pub fn from_symbols(symbols: Vec<ManaSymbol>) -> Self {
         Self {
             pips: symbols.into_iter().map(|s| vec![s]).collect(),
+            spending_restrictions: Vec::new(),
         }
+    }
+
+    pub fn spending_restrictions(&self) -> &[ManaSpendingRestriction] {
+        &self.spending_restrictions
+    }
+
+    pub fn with_spending_restriction(mut self, restriction: ManaSpendingRestriction) -> Self {
+        if !self.spending_restrictions.contains(&restriction) {
+            self.spending_restrictions.push(restriction);
+        }
+        self
+    }
+
+    /// Rewrite the price while retaining transaction-wide spending rules.
+    pub fn with_pips(&self, pips: Vec<Vec<ManaSymbol>>) -> Self {
+        Self { pips, spending_restrictions: self.spending_restrictions.clone() }
+    }
+
+    pub fn inherit_spending_restrictions(mut self, other: &Self) -> Self {
+        for restriction in other.spending_restrictions() {
+            self = self.with_spending_restriction(restriction.clone());
+        }
+        self
     }
 
     /// Returns the mana value (formerly converted mana cost) of this cost.
@@ -232,7 +302,7 @@ impl ManaCost {
             new_pips.push(pip.clone());
         }
 
-        ManaCost::from_pips(new_pips)
+        self.with_pips(new_pips)
     }
 
     /// Enumerate the payer's cost/reduction choices under CR 118.7.
@@ -301,7 +371,8 @@ impl ManaCost {
                         }
                     }
                 }
-                let cost = ManaCost::from_symbols(remaining).reduce_generic(generic_reduction);
+                let cost = ManaCost::from_symbols(remaining)
+                    .inherit_spending_restrictions(self).reduce_generic(generic_reduction);
                 if !results.contains(&cost) {
                     results.push(cost);
                 }
@@ -324,13 +395,26 @@ impl ManaCost {
             remaining -= chunk as u32;
         }
 
-        ManaCost::from_pips(new_pips)
+        self.with_pips(new_pips)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_spending_rules_survive_price_transformations() {
+        let rule = ManaSpendingRestriction::ProducedBy(ManaProducerFilter::CardType(crate::types::CardType::Creature));
+        let original = ManaCost::from_symbols(vec![ManaSymbol::Generic(2), ManaSymbol::Green])
+            .with_spending_restriction(rule.clone());
+        for cost in [original.add_generic(3), original.reduce_generic(9), original.with_pips(vec![vec![ManaSymbol::Red]])] {
+            assert_eq!(cost.spending_restrictions(), &[rule.clone()]);
+        }
+        for cost in original.reduced_by_mana_cost_options(&ManaCost::from_symbols(vec![ManaSymbol::Green])) {
+            assert_eq!(cost.spending_restrictions(), &[rule.clone()]);
+        }
+    }
 
     #[test]
     fn test_mana_symbol_value() {

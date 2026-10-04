@@ -399,7 +399,7 @@ fn this_spell_was_cast_from_zone(
         } => *from_zone == zone,
         crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom {
             zone: from_zone, ..
-        } => *from_zone == zone,
+        } | crate::alternative_cast::CastingMethod::FaceDownPlayFrom { zone: from_zone, .. } => *from_zone == zone,
         // A native alternative (dash, evoke, blitz...) reports the hand, but a
         // commander can use it from the command zone (CR 903.8): the recorded
         // cast origin is authoritative.
@@ -434,7 +434,8 @@ fn this_spell_was_cast_from_non_hand(
         crate::alternative_cast::CastingMethod::GrantedFlashback
         | crate::alternative_cast::CastingMethod::GrantedEscape { .. } => true,
         crate::alternative_cast::CastingMethod::PlayFrom { zone, .. }
-        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => {
+        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. }
+        | crate::alternative_cast::CastingMethod::FaceDownPlayFrom { zone, .. } => {
             *zone != Zone::Hand
         }
         crate::alternative_cast::CastingMethod::Alternative(idx) => recorded_cast_zone(game, source)
@@ -1868,6 +1869,10 @@ fn resolve_comparison_operand(
         )
     };
     match value.unhinted() {
+        Value::DamageHistory(query) => {
+            crate::effects::helpers::resolve_damage_history_for_comparison(game, query, ctx)
+        }
+
         Value::Add(left, right) => resolve_comparison_operand(game, left, ctx)?
             .checked_add(resolve_comparison_operand(game, right, ctx)?)
             .ok_or_else(overflow),
@@ -4505,9 +4510,8 @@ fn evaluate_condition_in_context(
         }
         Condition::AttachedToSourceMatches(filter) => {
             let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
-            Ok(game
-                .object(shared.source)
-                .and_then(|source| source.attached_to)
+            let retained=ctx.execution().and_then(|execution| execution.source_snapshot.as_ref());
+            Ok(crate::effects::helpers::source_attachment_target_with_lki(game,shared.source,retained)
                 .and_then(|target| target.object_id())
                 .and_then(|id| game.object(id))
                 .is_some_and(|object| filter.matches(object, &filter_ctx, game)))
@@ -4901,6 +4905,11 @@ fn evaluate_condition_in_context(
                 .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) < *limit)
                 .unwrap_or(true))
         }
+        Condition::TriggeringEventCausedBy { controller, effect_like_only } => Ok(shared.triggering_event
+            .and_then(|event| event.cause()).is_some_and(|cause|
+                (!*effect_like_only || (cause.cause_type.is_effect_like() && cause.source.is_some()))
+                    && cause.source_controller.is_some_and(|actor|
+                        crate::filter::player_filter_matches_game(controller, actor, game, &ctx.filter_context(game))))),
         Condition::TriggeringObjectWasEnchanted => Ok(shared
             .triggering_event
             .and_then(|event| event.snapshot())

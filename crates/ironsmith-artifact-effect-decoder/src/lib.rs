@@ -251,6 +251,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "RegisterZoneReplacementEffect" => Some(EffectFamily::StackEvent),
         "RemoveAnyCountersAmongEffect" => Some(EffectFamily::Resources),
         "RemoveCountersEffect" => Some(EffectFamily::Resources),
+        "BecomeBlockedEffect" => Some(EffectFamily::Combat),
         "RemoveFromCombatEffect" => Some(EffectFamily::Combat),
         "RemoveUpToAnyCountersEffect" => Some(EffectFamily::Resources),
         "RemoveUpToCountersEffect" => Some(EffectFamily::Resources),

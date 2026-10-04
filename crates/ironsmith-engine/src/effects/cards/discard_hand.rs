@@ -211,7 +211,7 @@ fn discard_hand_cards_inner(
             if event.player != player || event.cause != ctx.cause {
                 return Err(ExecutionError::InternalError("discard-hand receipt changed its batch player or cause".into()));
             }
-            successful_discards.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone));
+            successful_discards.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone, receipt.result.new_id));
         }
         receipts.push(receipt);
     }

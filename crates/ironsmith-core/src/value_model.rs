@@ -495,8 +495,8 @@ pub enum TurnHistoryCount {
     /// evaluated from zone-change LKI because the permanent card may no longer
     /// be in the graveyard when this value resolves.
     Descended(PlayerFilter),
-    /// The total damage dealt to the source object this turn. Stable object
-    /// identity keeps the count valid after the source changes zones.
+    /// Total damage dealt to this exact source incarnation this turn. A
+    /// pending source snapshot supplies its old object ID after departure.
     DamageDealtToSource,
     /// Total combat and noncombat damage actually dealt by the resolving source this turn.
     DamageDealtBySource,
@@ -844,6 +844,9 @@ pub enum Value {
     /// Count players whose life is strictly below half their own starting
     /// life. Compare the rational threshold before rounding either operand.
     CountPlayersBelowHalfStartingLifeTotal(PlayerFilter),
+    /// Actual, completed damage receipts from the current turn. This is not
+    /// marked damage and never follows a card into a new object incarnation.
+    DamageHistory(Box<crate::DamageHistoryQuery>),
 }
 
 impl Value {
@@ -2101,6 +2104,9 @@ pub enum Condition {
     /// designation. Counters and current solve requirements do not decide it.
     /// Appended to preserve existing serialized condition discriminants.
     SourceCaseSolved,
+    /// Captured causation of the triggering completed action. The causing
+    /// controller is independent of the affected object's controller.
+    TriggeringEventCausedBy { controller: PlayerFilter, effect_like_only: bool },
 }
 
 #[cfg(test)]

@@ -349,3 +349,26 @@ impl PendingManaPayment {
         }
     }
 }
+
+#[cfg(all(test, feature = "serialization"))]
+mod consumer_constraint_wire_tests {
+    use super::*;
+    #[test]
+    fn serialized_requests_retain_cost_owned_spending_constraints_and_root_identity() {
+        use ironsmith_core::mana::{ManaProducerFilter, ManaSpendingRestriction};
+        let request = ManaPaymentRequest::new(PlayerId(0), ObjectId::from_raw(19), PaymentReason::CastSpell,
+            ManaCost::new().add_generic(2).with_spending_restriction(ManaSpendingRestriction::ProducedBy(
+                ManaProducerFilter::Subtype(crate::types::Subtype::Treasure))));
+        let json = serde_json::to_value(&request).unwrap();
+        let restored: ManaPaymentRequest = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(restored, request);
+        assert_eq!(crate::mana_payment::mana_payment_transaction_id(&restored),
+            crate::mana_payment::mana_payment_transaction_id(&request));
+        let mut legacy = json;
+        legacy["cost"].as_object_mut().unwrap().remove("spending_restrictions");
+        let plain: ManaPaymentRequest = serde_json::from_value(legacy).unwrap();
+        assert!(plain.cost.spending_restrictions().is_empty());
+        assert_ne!(crate::mana_payment::mana_payment_transaction_id(&plain),
+            crate::mana_payment::mana_payment_transaction_id(&request));
+    }
+}

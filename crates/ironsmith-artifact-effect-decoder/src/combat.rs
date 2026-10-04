@@ -61,6 +61,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RedirectNextTimeDamageToSourceEffect" => {
             decode_as::<ironsmith_core::RedirectNextTimeDamageToSourceEffect>(payload).map(Some)
         }
+        "BecomeBlockedEffect" => decode_as::<ironsmith_core::BecomeBlockedEffect>(payload).map(Some),
         "RemoveFromCombatEffect" => {
             decode_as::<ironsmith_core::RemoveFromCombatEffect>(payload).map(Some)
         }

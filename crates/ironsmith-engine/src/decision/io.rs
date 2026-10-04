@@ -2553,7 +2553,7 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
                     crate::alternative_cast::CastingMethod::Normal => {
                         format!("{} ({})", obj.name, format_mana_cost(obj))
                     }
-                    crate::alternative_cast::CastingMethod::FaceDown => {
+                    crate::alternative_cast::CastingMethod::FaceDown | crate::alternative_cast::CastingMethod::FaceDownPlayFrom { .. } => {
                         format!("{} [Face down] ({})", obj.name, "{3}")
                     }
                     crate::alternative_cast::CastingMethod::SplitOtherHalf => {
@@ -2578,17 +2578,13 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
                         ..
                     } => {
                         let acting_player = game.turn.priority_player.unwrap_or(obj.owner);
-                        let alt_method = resolve_play_from_alternative_method(
-                            game,
-                            acting_player,
-                            obj,
-                            *zone,
-                            *use_alternative,
-                        );
+                        let alt_method = use_alternative.and_then(|index| resolve_play_from_alternative_method(
+                            game, acting_player, obj, *zone, index,
+                        ));
                         let method_name = alt_method
                             .as_ref()
                             .map(|method| method.name())
-                            .unwrap_or("Alternative");
+                            .unwrap_or("Granted cast");
                         let cost_desc = if let Some(method) = alt_method.as_ref() {
                             let costs = method.non_mana_costs();
                             if !costs.is_empty() {
@@ -2608,7 +2604,8 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
                                 format_mana_cost(obj)
                             }
                         } else {
-                            format_mana_cost(obj)
+                            spell_mana_cost_for_cast(game, acting_player, obj, casting_method, *zone)
+                                .as_ref().map(format_mana_cost_from_cost).unwrap_or_default()
                         };
                         let name = game
                             .linked_face_definition_by_name_or_id(

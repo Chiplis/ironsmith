@@ -1680,6 +1680,9 @@ impl GameState {
                 continue;
             }
 
+            if !crate::mana_payment::resources::production_satisfies_cost(cost, provenance.snapshot.as_ref()) {
+                continue;
+            }
             units.push(PayableManaUnit {
                 symbol: provenance.symbol,
                 source: Some(provenance.source),
@@ -1690,6 +1693,7 @@ impl GameState {
         }
 
         for symbol in SYMBOLS {
+            if !crate::mana_payment::resources::production_satisfies_cost(cost, None) { continue; }
             if required_pool_symbol.is_some_and(|required| required != symbol) {
                 continue;
             }

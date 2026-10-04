@@ -22,6 +22,13 @@ pub fn parse_life_total_quantity_words(words: &[&str]) -> Option<(Value, usize)>
         }
     }
 
+    // All qualifying players have the same minimum, so the existing scalar
+    // life-total reference does not imply a chooser or collapse tied effects.
+    if words.get(offset..offset + 6)
+        == Some(&["lowest", "life", "total", "among", "all", "players"][..])
+    {
+        return Some((Value::LifeTotal(PlayerFilter::LowestLifeTied), offset + 6));
+    }
     if matches!(
         words.get(offset..offset + 4),
         Some(["highest" | "greatest", "life", "total", "among"])
@@ -98,4 +105,31 @@ pub fn parse_life_total_quantity_words(words: &[&str]) -> Option<(Value, usize)>
         ));
     }
     None
+}
+
+#[cfg(test)]
+mod minimum_life_total_tests {
+    use super::*;
+    #[test]
+    fn all_player_minimum_does_not_guess_an_opponent_scope_or_rounding() {
+        let words = "the lowest life total among all players"
+            .split_whitespace()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            parse_life_total_quantity_words(&words),
+            Some((Value::LifeTotal(PlayerFilter::LowestLifeTied), words.len()))
+        );
+        assert!(
+            parse_life_total_quantity_words(&[
+                "the",
+                "lowest",
+                "life",
+                "total",
+                "among",
+                "your",
+                "opponents"
+            ])
+            .is_none()
+        );
+    }
 }

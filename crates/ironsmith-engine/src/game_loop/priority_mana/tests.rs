@@ -1810,3 +1810,85 @@ fn indexed_grant_cost_keeps_announcement_method_after_provider_leaves() {
         game.object(stack).unwrap(), Zone::Graveyard, 0);
     assert_eq!(resolved, Some(first), "pending cost lookup must use the frozen method, not the replacement occupant of index0");
 }
+
+
+#[test]
+fn canceling_root_mana_announcement_restores_a_pre_visibility_checkpoint() {
+    // Authored only; no execution before the deferred campaign gate.
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice; game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain; game.turn.step = None;
+    let source = game.create_object_from_definition(&blood_celebrant(), alice, Zone::Battlefield);
+    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 1);
+    let index = game.object(source).unwrap().abilities.iter().position(|ability|
+        matches!(&ability.kind, AbilityKind::Activated(activated) if activated.is_runtime_mana_ability(&game, source, alice))).unwrap();
+    let mut state = PriorityLoopState::new(2); let mut queue = TriggerQueue::new();
+    let _ = super::super::priority_apply::begin_mana_ability_activation(&mut game, &mut queue, &mut state,
+        &source, &index, alice, &mut SelectFirstDecisionMaker).unwrap();
+    assert!(state.pending_mana_ability.is_some());
+    assert!(game.has_library_top_announcement());
+    assert!(!state.checkpoint.as_ref().unwrap().has_library_top_announcement());
+    apply_mana_payment_plan_response_inner(&mut game, &mut queue, &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Cancel, &mut SelectFirstDecisionMaker).unwrap();
+    assert!(!game.has_library_top_announcement()); assert!(state.pending_mana_ability.is_none());
+}
+
+#[test]
+fn canceling_nested_mana_removes_only_the_child_visibility_boundary() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice; game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain; game.turn.step = None;
+    let source = game.create_object_from_definition(&blood_celebrant(), alice, Zone::Battlefield);
+    let parent_provenance = game.provenance_graph_mut().alloc_root(crate::provenance::ProvenanceNodeKind::EffectExecution {source, controller: alice});
+    let child_provenance = game.provenance_graph_mut().alloc_root(crate::provenance::ProvenanceNodeKind::EffectExecution {source, controller: alice});
+    let pending = |provenance| PendingManaAbility {
+        source, ability_index: 0, activator: alice, provenance, mana_cost: ManaCost::new(),
+        other_costs: Vec::new(), mana_to_add: Vec::new(), effects: Default::default(),
+        mana_usage_restrictions: Vec::new(), mana_source_chosen_creature_type: None,
+        mana_production_provenance: crate::events::mana::ManaProductionProvenance::Unknown,
+        undo_locked_by_mana: false, pending_mana_payment: None, exhaust_announcement: None, x_value: None,
+    };
+    let mut state = PriorityLoopState::new(2); state.save_checkpoint(&game);
+    state.pending_mana_parents.push(pending(parent_provenance));
+    state.pending_mana_ability = Some(pending(child_provenance));
+    game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(parent_provenance));
+    game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(child_provenance));
+    apply_mana_payment_plan_response_inner(&mut game, &mut TriggerQueue::new(), &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Cancel, &mut SelectFirstDecisionMaker).unwrap();
+    assert_eq!(state.pending_mana_ability.as_ref().unwrap().provenance, parent_provenance);
+    assert!(game.has_library_top_announcement(), "the enclosing payment still owns its boundary");
+    game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(parent_provenance));
+    assert!(!game.has_library_top_announcement(), "the canceled child cannot leave an orphan frame");
+}
+
+
+#[test]
+fn completed_deferred_mana_root_is_not_rewound_by_canceling_the_next_root() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice; game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain; game.turn.step = None;
+    let source = game.create_object_from_definition(&blood_celebrant(), alice, Zone::Battlefield);
+    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 2);
+    let index = game.object(source).unwrap().abilities.iter().position(|ability|
+        matches!(&ability.kind, AbilityKind::Activated(activated) if activated.is_runtime_mana_ability(&game, source, alice))).unwrap();
+    let mut state = PriorityLoopState::new(2); let mut queue = TriggerQueue::new();
+    let _ = super::super::priority_apply::begin_mana_ability_activation(&mut game, &mut queue, &mut state,
+        &source, &index, alice, &mut SelectFirstDecisionMaker).unwrap();
+    let payment = state.pending_mana_ability.as_ref().unwrap().pending_mana_payment.as_ref().unwrap().clone();
+    apply_mana_payment_plan_response_inner(&mut game, &mut queue, &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Confirm { plan_id: payment.plan.id, request_hash: payment.plan.request_hash },
+        &mut SelectFirstDecisionMaker).unwrap();
+    assert!(state.pending_mana_ability.is_none()); assert!(state.checkpoint.is_none());
+    assert!(!game.has_library_top_announcement()); assert_eq!(game.player(alice).unwrap().life, 19);
+    let mana_after_first = game.player(alice).unwrap().mana_pool.clone();
+    let _ = super::super::priority_apply::begin_mana_ability_activation(&mut game, &mut queue, &mut state,
+        &source, &index, alice, &mut SelectFirstDecisionMaker).unwrap();
+    apply_mana_payment_plan_response_inner(&mut game, &mut queue, &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Cancel, &mut SelectFirstDecisionMaker).unwrap();
+    assert_eq!(game.player(alice).unwrap().life, 19);
+    assert_eq!(game.player(alice).unwrap().mana_pool, mana_after_first);
+    assert!(!game.has_library_top_announcement());
+}

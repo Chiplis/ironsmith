@@ -355,7 +355,7 @@ pub(super) fn targets_commit_crime(
         .any(|target| is_crime_target(game, committer, target))
 }
 
-pub(super) fn queue_becomes_targeted_events(
+fn queue_target_selection_events(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     targets: &[Target],
@@ -370,7 +370,7 @@ pub(super) fn queue_becomes_targeted_events(
             .iter()
             .rev()
             .find(|entry| entry.is_ability && entry.object_id == source)
-            .and_then(|entry| entry.ability_id)
+            .map(|entry| entry.target_id())
     } else {
         None
     };
@@ -405,6 +405,12 @@ pub(super) fn queue_becomes_targeted_events(
         }
     }
 
+}
+
+pub(super) fn queue_targeting_crime(
+    game: &mut GameState, trigger_queue: &mut TriggerQueue, targets: &[Target],
+    source: ObjectId, source_controller: PlayerId, provenance: ProvNodeId,
+) {
     if !targets.is_empty() && targets_commit_crime(game, source_controller, targets) {
         let crime_event_provenance =
             game.alloc_child_event_provenance(provenance, crate::events::EventKind::KeywordAction);
@@ -423,6 +429,40 @@ pub(super) fn queue_becomes_targeted_events(
             true,
         );
     }
+}
+
+pub(super) fn queue_becomes_targeted_events(
+    game: &mut GameState, trigger_queue: &mut TriggerQueue, targets: &[Target],
+    source: ObjectId, source_controller: PlayerId, by_ability: bool, provenance: ProvNodeId,
+) {
+    queue_target_selection_events(game, trigger_queue, targets, source, source_controller, by_ability, provenance);
+    queue_targeting_crime(game, trigger_queue, targets, source, source_controller, provenance);
+}
+
+/// CR 601.2c/602.2b: target transitions occur before costs. Match now against
+/// the complete announced stack object, but retain the queue inside the action
+/// transaction until payment succeeds. No choices/stacking are performed here.
+/// The temporary entry exposes exactly the metadata already announced; costs
+/// still follow the existing pending-action representation.
+pub(super) fn capture_announced_targeting(
+    game: &mut GameState, entry: StackEntry,
+) -> Result<TriggerQueue, GameLoopError> {
+    if entry.targets.is_empty() { return Ok(TriggerQueue::new()); }
+    let checkpoint = game.clone();
+    let slot = game.stack.len();
+    game.stack.push(entry.clone());
+    game.bump_mutation_revision(); game.mark_continuous_state_dirty();
+    if let Err(error) = game.refresh_continuous_state() {
+        *game = checkpoint;
+        return Err(crate::effects::ExecutionError::ContinuousDiscovery(error).into());
+    }
+    let mut captured = TriggerQueue::new();
+    queue_target_selection_events(game, &mut captured, &entry.targets, entry.object_id,
+        entry.controller, entry.is_ability, entry.provenance);
+    let removed = game.stack.remove(slot);
+    debug_assert_eq!(removed.target_id(), entry.target_id());
+    game.bump_mutation_revision(); game.mark_continuous_state_dirty();
+    Ok(captured)
 }
 
 pub(super) fn queue_ability_activated_event(
@@ -4430,5 +4470,100 @@ mod captured_incarnation_target_contract_tests {
     #[test]
     fn relational_reference_still_requires_a_candidate() {
         assert!(requires_target_selection(&reference(crate::filter::TaggedOpbjectRelation::SameNameAsTagged)));
+    }
+}
+
+#[cfg(test)]
+mod announcement_target_tests {
+    use super::*;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::ids::CardId;
+    use crate::ability::Ability;
+    use crate::types::CardType;
+    fn observer(game: &mut GameState, a: PlayerId) -> ObjectId {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Target observer")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::triggered(crate::triggers::Trigger::new(
+                crate::triggers::PlayerBecomesTargetedTrigger {
+                    player_filter: PlayerFilter::You,
+                    source_controller: PlayerFilter::Any,
+                    source_kind: crate::filter::StackObjectKind::SpellOrAbility,
+                }), vec![Effect::draw(1)]))
+            .build();
+        game.create_object_from_definition(&definition, a, Zone::Battlefield)
+    }
+    #[test]
+    fn announced_targets_keep_original_observer_and_clone_or_cancel_with_action() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = PlayerId::from_index(0); let b = PlayerId::from_index(1);
+        let observer = observer(&mut game, a);
+        let source = crate::card::CardBuilder::new(CardId::new(), "Ability source").card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&source, b, Zone::Battlefield);
+        let mut state = PriorityLoopState::new(2); state.save_checkpoint(&game);
+        let ability_id = game.allocate_stack_ability_id();
+        let mut entry = StackEntry::ability(source, b, crate::resolution::ResolutionProgram::from_effects(vec![]))
+            .with_targets(vec![Target::Player(a), Target::Player(a)]);
+        entry.ability_id = Some(ability_id);
+        let captured = capture_announced_targeting(&mut game, entry.clone()).unwrap();
+        assert_eq!(captured.entries.len(), 1, "a repeated slot is one target transition");
+        assert!(game.stack.is_empty(), "announcement inspection does not finalize the action");
+        let targeted = captured.entries[0].triggering_event.downcast::<BecomesTargetedEvent>().unwrap();
+        assert_eq!(targeted.stack_ability, Some(ability_id));
+        assert_eq!(targeted.source, source);
+        let history_count = game.turn_store.turn_history.event_records.len();
+        let saved_game = game.clone(); let saved_state = state.clone(); let saved_queue = captured.clone();
+        game.move_object_by_effect(observer, Zone::Graveyard).unwrap();
+        game.move_object_by_effect(source, Zone::Graveyard).unwrap();
+        game.push_to_stack(entry);
+        let mut queue = TriggerQueue::new(); queue.append_captured(captured);
+        assert_eq!(queue.entries.len(), 1); assert_eq!(queue.entries[0].source, observer);
+        assert_eq!(queue.entries[0].controller, a);
+        game = saved_game; state = saved_state;
+        assert_eq!(game.turn_store.turn_history.event_records.len(), history_count);
+        assert_eq!(saved_queue.entries[0].triggering_event.downcast::<BecomesTargetedEvent>().unwrap().stack_ability, Some(ability_id));
+        assert!(state.rollback_action(&mut game));
+        assert!(game.object(observer).is_some()); assert!(game.object(source).is_some());
+        assert!(!game.turn_store.turn_history.event_records.iter().any(|record| record.event.kind() == crate::events::EventKind::BecomesTargeted));
+    }
+}
+
+#[cfg(test)]
+mod completed_target_history_tests {
+    use super::*;
+    use crate::ability::{Ability, AbilityKind};
+    use crate::card::PowerToughness;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::ids::CardId;
+    use crate::types::CardType;
+    #[test]
+    fn restored_first_target_fact_does_not_reset_for_new_grants_but_new_incarnations_do() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = PlayerId::from_index(0);
+        let mut ability = Ability::triggered(crate::triggers::Trigger::becomes_targeted(), vec![Effect::draw(1)]);
+        let AbilityKind::Triggered(triggered) = &mut ability.kind else { panic!("trigger"); };
+        triggered.intervening_if = Some(crate::ConditionExpr::FirstTimeThisTurn);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "First target observer")
+            .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2,2))
+            .with_ability(ability).build();
+        let observer = game.create_object_from_definition(&definition, a, Zone::Battlefield);
+        let spell = crate::card::CardBuilder::new(CardId::new(), "Targeting spell").card_types(vec![CardType::Instant]).build();
+        let spell = game.create_object_from_card(&spell, a, Zone::Stack);
+        let event = TriggerEvent::new_with_provenance(BecomesTargetedEvent::new(observer, spell, a, false), Default::default());
+        game.record_turn_history_event(&event);
+        assert_eq!(crate::triggers::check_triggers(&game, &event).len(), 1);
+        let ids = game.turn_store.turn_history.targeted_object_history_for_checkpoint();
+        assert_eq!(ids, vec![observer]);
+        game.turn_store.turn_history = Default::default();
+        game.turn_store.turn_history.restore_targeted_object_history(ids).unwrap();
+        assert!(game.turn_store.turn_history.event_records.is_empty(), "the checkpoint does not invent a prior source/event");
+        let next = TriggerEvent::new_with_provenance(BecomesTargetedEvent::new(observer, spell, a, false), Default::default());
+        assert!(crate::triggers::check_triggers(&game, &next).is_empty());
+        let exiled = game.move_object_by_effect(observer, Zone::Exile).unwrap();
+        let returned = game.move_object_by_effect(exiled, Zone::Battlefield).unwrap();
+        assert_ne!(observer, returned);
+        let new_incarnation = TriggerEvent::new_with_provenance(BecomesTargetedEvent::new(returned, spell, a, false), Default::default());
+        assert_eq!(crate::triggers::check_triggers(&game, &new_incarnation).len(), 1);
+        game.turn_store.turn_history.clear_for_new_turn();
+        assert!(game.turn_store.turn_history.targeted_object_history_for_checkpoint().is_empty());
     }
 }

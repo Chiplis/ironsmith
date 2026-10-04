@@ -34,6 +34,7 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 pub(crate) mod value_eval;
+pub(crate) use value_eval::resolve_damage_history_for_comparison;
 
 // ============================================================================
 // Tagged Object Resolution
@@ -205,6 +206,14 @@ pub(crate) fn tagged_object_follow_permitted(
     snapshot: &ObjectSnapshot,
     current_id: ObjectId,
 ) -> bool {
+    if let Some(discard) = ctx.triggering_event.as_ref()
+        .and_then(|event| event.downcast::<crate::events::other::CardDiscardedEvent>())
+    {
+        if ctx.resolution_object_id_floor.is_some_and(|floor| current_id.0 >= floor.0) { return true; }
+        return discard.destinations.iter().any(|receipt|
+            receipt.object == Some(current_id)
+                && (receipt.card == snapshot.object_id || receipt.object == Some(snapshot.object_id)));
+    }
     let Some(floor) = ctx.resolution_object_id_floor else {
         return true;
     };
@@ -246,8 +255,8 @@ pub(crate) fn tagged_object_follow_permitted(
     if matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped | crate::events::EventKind::ObjectBecameAttached | crate::events::EventKind::ObjectBecameUnattached | crate::events::EventKind::PermanentPhasedIn | crate::events::EventKind::PermanentPhasedOut) {
         return false;
     }
-    // Other events that move their object (a sacrifice, a discard) don't
-    // record the object it became, so the object they name is still found.
+    // Other legacy movement events (for example sacrifice) may lack an
+    // explicit destination receipt. Discard uses its exact receipt above.
     event.object_id() == Some(snapshot.object_id)
         || event
             .inner()
@@ -351,6 +360,17 @@ pub(crate) fn resolve_source_object_id(
 ) -> Option<ObjectId> {
     if game.object(ctx.source).is_some() {
         return Some(ctx.source);
+    }
+    // Self-discard triggers can find exactly the public arrival made by
+    // that discard, including when scheduling a later return. Never follow a
+    // card that left that arrival before the registration resolved.
+    if let Some(discard) = ctx.triggering_event.as_ref()
+        .and_then(|event| event.downcast::<crate::events::other::CardDiscardedEvent>())
+        && discard.card == ctx.source
+    {
+        return discard.destination(ctx.source).filter(|receipt| receipt.zone.is_public())
+            .and_then(|receipt| receipt.object.filter(|id| game.object(*id).is_some_and(|object|
+                object.zone == receipt.zone && discard.snapshot.as_ref().is_none_or(|origin| origin.stable_id == object.stable_id))));
     }
     // A zone-change trigger may refer to the new object created by that
     // transition. Its recorded destination identity is authoritative: after
@@ -1012,6 +1032,23 @@ fn prior_effect_damaged_player(ctx: &ExecutionContext) -> Option<PlayerId> {
             ctx.get_tagged_players("__it__")
                 .and_then(|players| players.last().copied())
         })
+}
+
+/// Current attachment of a live source, or its exact departure receipt.
+/// A live but unattached source never revives an earlier attachment.
+pub(crate) fn source_attachment_target_with_lki(
+    game: &GameState,
+    source: ObjectId,
+    retained: Option<&ObjectSnapshot>,
+) -> Option<crate::object::AttachmentTarget> {
+    if let Some(source) = game.object(source) {
+        return source.attached_to;
+    }
+    game.turn_store
+        .turn_history
+        .source_departure_snapshot(source)
+        .or_else(|| retained.filter(|snapshot| snapshot.object_id == source))
+        .and_then(|snapshot| snapshot.attached_to)
 }
 
 fn object_lki_snapshot<'a>(
@@ -5939,5 +5976,40 @@ mod shared_player_list_team_tests {
             resolve_player_filter_to_list(&game, &PlayerFilter::Teammate, &range, &ctx).unwrap(),
             vec![teammate]
         );
+    }
+}
+
+#[cfg(test)]
+mod discarded_incarnation_receipt_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    use crate::effects::EffectExecutor;
+    #[test]
+    fn self_and_group_discard_references_find_only_the_recorded_arrival() {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let a=PlayerId::from_index(0);
+        let card=CardBuilder::new(CardId::new(),"Discarded source").build();
+        let origin=game.create_object_from_card(&card,a,Zone::Hand);
+        let before=ObjectSnapshot::from_object_with_calculated_characteristics(game.object(origin).unwrap(),&game);
+        let grave=game.move_object_by_effect(origin,Zone::Graveyard).unwrap();
+        let event=crate::events::other::CardDiscardedEvent::new(a,origin).with_snapshot(before.clone())
+            .with_batch(vec![origin],vec![before.clone()],0)
+            .with_destinations(vec![crate::events::other::DiscardedCardDestination {card:origin,object:Some(grave),zone:Zone::Graveyard}]);
+        let mut ctx=ExecutionContext::new_default(origin,a).with_source_snapshot(before.clone());
+        ctx.triggering_event=Some(crate::triggers::TriggerEvent::new_with_provenance(event,Default::default()));
+        ctx.set_tagged_objects(ironsmith_core::ZONE_CHANGE_GROUP_TAG,vec![before]);
+        assert_eq!(resolve_source_object_id(&game,&ctx),Some(grave));
+        crate::effects::TagTriggeringObjectEffect::new("discarded").execute(&mut game,&mut ctx).unwrap();
+        let snapshot=ctx.get_tagged_all("discarded").unwrap()[0].clone();assert_eq!(snapshot.object_id,grave);
+        assert_eq!(resolve_tagged_object_id(&game,&ctx,&snapshot),Some(grave));
+        let exile=game.move_object_by_effect(grave,Zone::Exile).unwrap();let later=game.move_object_by_effect(exile,Zone::Graveyard).unwrap();
+        assert_ne!(grave,later);
+        assert_eq!(resolve_source_object_id(&game,&ctx),None,"registration cannot pin a later graveyard incarnation");
+        assert_eq!(resolve_tagged_object_id(&game,&ctx,&snapshot),None,"group return cannot chase the physical card");
+        // Re-running the prelude preserves historical data rather than naming
+        // the later card; source/body movement still finds no eligible arrival.
+        crate::effects::TagTriggeringObjectEffect::new("discarded").execute(&mut game,&mut ctx).unwrap();
+        let retained=&ctx.get_tagged_all("discarded").unwrap()[0];assert_eq!(retained.object_id,origin);
+        assert_eq!(resolve_tagged_object_id(&game,&ctx,retained),None);
     }
 }

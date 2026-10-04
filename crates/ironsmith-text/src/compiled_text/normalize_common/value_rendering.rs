@@ -6219,6 +6219,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 .unwrap_or_else(|| "this permanent".to_string());
             format!("the number of {character}'s in name stickers on {source}")
         }
+        Value::DamageHistory(query) => query.describe_with_reference(describe_choose_spec),
         Value::MaximumLifeTotal(players) => {
             let scope = match players {
                 PlayerFilter::Any => "all players".to_string(),

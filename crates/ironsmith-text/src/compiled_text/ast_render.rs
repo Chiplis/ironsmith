@@ -31128,6 +31128,12 @@ pub(super) fn describe_alternative_cast_line(
             {
                 line = format!("If {condition_text}, {}", lowercase_first(&line));
             }
+            if let Some(cost) = mana_cost {
+                for rule in cost.spending_restrictions() {
+                    line.push_str(". ");
+                    line.push_str(&rule.cast_description(true));
+                }
+            }
             line
         }
         AlternativeCastingMethod::Madness { total_cost } => {

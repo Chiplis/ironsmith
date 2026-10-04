@@ -570,15 +570,14 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
         _ => None,
     };
     if let Some(merge_index) = merge_index {
-        let mut pips = Vec::new();
+        let mut mana = crate::mana::ManaCost::new();
         for (index, component) in components.iter().enumerate() {
-            if let Some(mana) = component.mana_cost_ref() {
-                pips.extend_from_slice(mana.pips());
+            if component.mana_cost_ref().is_some() {
+                mana = add_mana_cost(&mana, component.mana_cost_ref().unwrap());
             } else if index == merge_index {
-                pips.extend_from_slice(component.dynamic_mana_cost_ref().unwrap().base.pips());
+                mana = add_mana_cost(&mana, &component.dynamic_mana_cost_ref().unwrap().base);
             }
         }
-        let mana = crate::mana::ManaCost::from_pips(pips);
         let merged = if let Some(dynamic) = components[merge_index].dynamic_mana_cost_ref() {
             let mut dynamic = dynamic.clone();
             dynamic.base = mana;
@@ -920,7 +919,7 @@ pub(crate) fn casting_method_matches_alternative_kind(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
@@ -932,12 +931,14 @@ pub(crate) fn casting_method_matches_alternative_kind(
             .as_ref()
             .is_some_and(|method| alternative_cast_method_matches_kind(method, kind)),
         CastingMethod::FaceDown
+        | CastingMethod::FaceDownPlayFrom { .. }
         | CastingMethod::SplitOtherHalf
         | CastingMethod::Fuse
         | CastingMethod::PlayFrom {
             use_alternative: None,
             ..
-        } => false,
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => false,
     }
 }
 
@@ -958,7 +959,7 @@ fn casting_method_is_bestow(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
@@ -986,7 +987,7 @@ fn casting_method_is_mutate(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
@@ -1027,7 +1028,8 @@ fn inferred_cast_origin_zone_for_cost_filter(
             }),
         CastingMethod::GrantedEscape { .. } | CastingMethod::GrantedFlashback => Zone::Graveyard,
         CastingMethod::PlayFrom { zone, .. }
-        | CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => *zone,
+        | CastingMethod::SplitOtherHalfPlayFrom { zone, .. }
+        | CastingMethod::FaceDownPlayFrom { zone, .. } => *zone,
     }
 }
 
@@ -1057,7 +1059,7 @@ fn spell_view_for_cost_filter_match(
                 ..
             }
             | CastingMethod::SplitOtherHalfPlayFrom {
-                use_alternative: idx,
+                use_alternative: Some(idx),
                 zone,
                 ..
             } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
@@ -1424,16 +1426,14 @@ where
             proposal.optional_costs_paid.pay_times(index, 1);
         }
 
-        let mut combined_pips = base_mana_cost
-            .map(|cost| cost.pips().to_vec())
-            .unwrap_or_default();
+        let mut combined = base_mana_cost.cloned().unwrap_or_default();
         for &index in &selected {
             if let Some(optional_mana_cost) = spell.optional_costs[index].cost.mana_cost() {
-                combined_pips.extend(optional_mana_cost.pips().iter().cloned());
+                combined = add_mana_cost(&combined, optional_mana_cost);
             }
         }
         let combined_cost =
-            (!combined_pips.is_empty()).then(|| crate::mana::ManaCost::from_pips(combined_pips));
+            (!combined.is_empty()).then_some(combined);
         let hypothetical_view = DerivedGameView::new(hypothetical);
         let effective_cost = combined_cost.as_ref().map(|cost| {
             calculate_effective_mana_cost_with_view_for_casting_method(
@@ -1666,7 +1666,15 @@ pub(crate) fn this_spell_cast_timing_allows(
     use crate::game_state::{Phase, Step};
     use crate::static_abilities::ThisSpellCastTiming;
 
+    let opponents_turn = game.turn_players().into_iter().any(|active| game.are_opponents(player, active));
     match timing {
+        ThisSpellCastTiming::DuringDeclareBlockersStep => {
+            matches!(game.turn.phase, Phase::Combat) && game.turn.step == Some(Step::DeclareBlockers)
+                && game.combat.as_ref().is_some_and(|combat| combat.block_declaration_complete)
+        }
+        ThisSpellCastTiming::DuringCombatOnYourTurn => game.is_active_player(player) && matches!(game.turn.phase,Phase::Combat),
+        ThisSpellCastTiming::DuringYourTurn => game.is_active_player(player),
+        ThisSpellCastTiming::DuringOpponentsTurn => opponents_turn,
         ThisSpellCastTiming::DuringDeclareAttackersStep => {
             matches!(game.turn.phase, Phase::Combat)
                 && game.turn.step == Some(Step::DeclareAttackers)
@@ -1680,7 +1688,8 @@ pub(crate) fn this_spell_cast_timing_allows(
                 )
         }
         ThisSpellCastTiming::DuringCombatAfterBlockersAreDeclared => {
-            matches!(game.turn.phase, Phase::Combat)
+            game.combat.as_ref().is_some_and(|combat| combat.block_declaration_complete)
+                && matches!(game.turn.phase, Phase::Combat)
                 && matches!(
                     game.turn.step,
                     Some(Step::DeclareBlockers | Step::CombatDamage | Step::EndCombat)
@@ -1695,7 +1704,7 @@ pub(crate) fn this_spell_cast_timing_allows(
                 )
         }
         ThisSpellCastTiming::DuringCombatOnOpponentsTurn => {
-            !game.is_active_player(player) && matches!(game.turn.phase, Phase::Combat)
+            opponents_turn && matches!(game.turn.phase, Phase::Combat)
         }
         ThisSpellCastTiming::BeforeAttackersAreDeclared => {
             matches!(game.turn.phase, Phase::Combat) && game.turn.step == Some(Step::BeginCombat)
@@ -1711,12 +1720,12 @@ pub(crate) fn this_spell_cast_timing_allows(
             Phase::NextMain | Phase::Ending => false,
         },
         ThisSpellCastTiming::DuringOpponentsUpkeep => {
-            !game.is_active_player(player)
+            opponents_turn
                 && matches!(game.turn.phase, Phase::Beginning)
                 && game.turn.step == Some(Step::Upkeep)
         }
         ThisSpellCastTiming::DuringOpponentsTurnAfterUpkeep => {
-            if game.is_active_player(player) {
+            if !opponents_turn {
                 return false;
             }
             !matches!(
@@ -2007,6 +2016,21 @@ fn casting_method_grants_flash_timing(
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
 ) -> bool {
+    if let CastingMethod::PlayFrom { source, zone, use_alternative: None }
+        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, use_alternative: None }
+        | CastingMethod::FaceDownPlayFrom { source, zone } = casting_method
+    {
+        let constraints = if spell.zone == Zone::Stack {
+            spell.cast_play_from_constraints.as_deref()
+                .filter(|(captured_source, captured_zone, _)| captured_source == source && captured_zone == zone)
+                .map(|(_, _, constraints)| constraints.clone())
+        } else {
+            game.effect_store.grant_registry.selected_play_from_grant_for_card_view(
+                game, spell.id, Some(spell), *zone, player, *source,
+            ).map(|grant| grant.play_from_constraints)
+        };
+        if constraints.is_some_and(|constraints| constraints.instant_timing) { return true; }
+    }
     let method = match casting_method {
         CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
@@ -2016,7 +2040,7 @@ fn casting_method_grants_flash_timing(
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
             zone,
-            use_alternative: idx,
+            use_alternative: Some(idx),
             ..
         } => {
             crate::decision::resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
@@ -2230,8 +2254,8 @@ pub fn spell_mana_cost_for_cast(
 ) -> Option<crate::mana::ManaCost> {
     let base_cost = match casting_method {
         CastingMethod::Normal => spell.mana_cost_owned(),
-        CastingMethod::FaceDown => Some(face_down_cast_mana_cost()),
-        CastingMethod::SplitOtherHalf => {
+        CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => Some(face_down_cast_mana_cost()),
+        CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => {
             if spell.zone == Zone::Stack {
                 spell.mana_cost_owned()
             } else {
@@ -2280,7 +2304,7 @@ pub fn spell_mana_cost_for_cast(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => {
@@ -2337,13 +2361,14 @@ pub(crate) fn alternative_method_for_casting_method(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
             .or_else(|| spell.cast_alternative_method_owned()),
         CastingMethod::Normal => spell.cast_alternative_method_owned(),
         CastingMethod::FaceDown
+        | CastingMethod::FaceDownPlayFrom { .. }
         | CastingMethod::SplitOtherHalf
         | CastingMethod::Fuse
         | CastingMethod::GrantedEscape { .. }
@@ -2351,7 +2376,8 @@ pub(crate) fn alternative_method_for_casting_method(
         | CastingMethod::PlayFrom {
             use_alternative: None,
             ..
-        } => None,
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => None,
     }
 }
 
@@ -2429,7 +2455,8 @@ pub(crate) fn casting_method_requires_printed_mana_cost(
         | CastingMethod::PlayFrom {
             use_alternative: None,
             ..
-        } => true,
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => true,
         CastingMethod::Alternative(idx) => spell
             .alternative_casts
             .get(*idx)
@@ -2440,7 +2467,7 @@ pub(crate) fn casting_method_requires_printed_mana_cost(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
@@ -2716,9 +2743,7 @@ fn has_payable_legal_spree_selection_with_view(
             continue;
         }
 
-        let mut pips = base_mana_cost
-            .map(|cost| cost.pips().to_vec())
-            .unwrap_or_default();
+        let mut combined = base_mana_cost.cloned().unwrap_or_default();
         for (index, optional) in spell.optional_costs.iter().enumerate() {
             for _ in 0..spell.optional_costs_paid.times_paid(index) {
                 if let Some(cost) = crate::cost::optional_cost_payment_branch(
@@ -2727,16 +2752,15 @@ fn has_payable_legal_spree_selection_with_view(
                 )
                 .mana_cost()
                 {
-                    pips.extend(cost.pips().iter().cloned());
+                    combined = add_mana_cost(&combined, cost);
                 }
             }
         }
         for mode in &modes {
             if let Some(cost) = modal.mode_additional_mana_costs.get(*mode) {
-                pips.extend(cost.pips().iter().cloned());
+                combined = add_mana_cost(&combined, cost);
             }
         }
-        let combined = crate::mana::ManaCost::from_pips(pips);
         let effective = calculate_effective_mana_cost_with_view_for_casting_method(
             game,
             player,
@@ -2842,7 +2866,8 @@ fn mana_cost_can_be_paid_with_view_at_x(
                         if !activated.mana_usage_restrictions.is_empty())
             }))
         });
-    if has_restricted_mana
+    if !cost.spending_restrictions().is_empty()
+        || has_restricted_mana
         || crate::mana_payment::has_potential_mana_triggers(game, view)
         || crate::mana_payment::has_mana_modifying_replacements(game)
         || game.object(spell_id).is_some_and(|spell| {
@@ -2917,7 +2942,7 @@ pub(crate) fn mana_cost_with_locked_x_and_generic_reduction(
             pips.push(pip.clone());
         }
     }
-    crate::mana::ManaCost::from_pips(pips)
+    cost.with_pips(pips)
         .add_generic(generic_from_x)
         .reduce_generic(reduction)
 }
@@ -2961,7 +2986,8 @@ fn mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
         .filter(|helper| *helper != caster && game.player(*helper).is_some())
         .any(|helper| {
             (1..=generic_total).any(|contribution| {
-                let helper_cost = crate::mana::ManaCost::new().add_generic(contribution);
+                let helper_cost = crate::mana::ManaCost::new().add_generic(contribution)
+                    .inherit_spending_restrictions(cost);
                 if !mana_cost_can_be_paid_with_view_at_x(
                     game,
                     helper,
@@ -3110,7 +3136,7 @@ pub(crate) fn can_cast_spell_with_context(
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
             zone,
-            use_alternative: idx,
+            use_alternative: Some(idx),
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx),
         _ => None,
@@ -3124,7 +3150,7 @@ pub(crate) fn can_cast_spell_with_context(
         return false;
     }
     let cast_view = match casting_method {
-        CastingMethod::FaceDown => {
+        CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => {
             if !spell_can_be_cast_face_down(game, spell) {
                 return false;
             }
@@ -3158,7 +3184,7 @@ pub(crate) fn can_cast_spell_with_context(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
@@ -3295,7 +3321,7 @@ pub(crate) fn can_cast_spell_with_context(
             || !spell_granted_cost_static_abilities(game, spell_for_checks).is_empty()
             || matches!(
                 casting_method,
-                CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { .. }
+                CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { .. } | CastingMethod::FaceDownPlayFrom { .. }
             );
         let effective_cost = if ctx.can_use_printed_cost_directly(has_cost_adjustments) {
             base_cost.clone()
@@ -3404,11 +3430,10 @@ fn modal_additional_costs_are_payable(
         }
         let non_mana = selected.iter().filter(|cost| cost.mana_cost_ref().is_none()).cloned().collect();
         if !can_pay_non_mana_cost_sequence_for_cast(game, player, spell.id, non_mana) { return false; }
-        let mut pips = base.pips().to_vec();
+        let mut combined = base.clone();
         for cost in selected.iter().filter_map(|cost| cost.mana_cost_ref()) {
-            pips.extend_from_slice(cost.pips());
+            combined = add_mana_cost(&combined, cost);
         }
-        let combined = crate::mana::ManaCost::from_pips(pips);
         let effective = calculate_effective_mana_cost_with_view_for_casting_method(
             game, player, spell, &combined, casting_method, view);
         if mana_cost_can_be_paid_by_caster_or_assist_with_view(game, player, spell.id, &effective, view) {
@@ -3539,7 +3564,7 @@ pub(crate) fn can_cast_with_cost_with_context(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
@@ -3672,7 +3697,7 @@ pub(crate) fn can_cast_with_cost_with_context(
             || !spell_granted_cost_static_abilities(game, spell_for_checks).is_empty()
             || matches!(
                 casting_method,
-                CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { .. }
+                CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { .. } | CastingMethod::FaceDownPlayFrom { .. }
             );
         let adjusted = if ctx.can_use_printed_cost_directly(has_cost_adjustments) {
             cost.clone()
@@ -4838,7 +4863,27 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
         cast_from_zone,
         view,
     ));
-    let mut current_cost = totals.apply(base_cost);
+    fn active_spending_rule<'a>(game: &GameState, player: PlayerId, source: ObjectId,
+        model: &'a crate::static_abilities::CompiledStaticAbility)
+        -> Option<&'a ironsmith_core::mana::ManaSpendingRestriction> {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::SpellManaSpendingRestriction(rule) => Some(rule),
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }
+                if crate::condition_eval::evaluate_condition_cast_time(game, condition, player, source) =>
+                    active_spending_rule(game, player, source, ability),
+            _ => None,
+        }
+    }
+    let mut base_cost = base_cost.clone();
+    for ability in &spell.abilities {
+        if let AbilityKind::Static(ability) = &ability.kind
+            && let Some(model) = ability.compiled_model()
+            && let Some(rule) = active_spending_rule(game, player, spell.id, model)
+        {
+            base_cost = base_cost.with_spending_restriction(rule.clone());
+        }
+    }
+    let mut current_cost = totals.apply(&base_cost);
 
     if preview_resource_reductions {
         if spell.zone != Zone::Stack {
@@ -5214,7 +5259,8 @@ pub(crate) fn collect_spell_cost_modifiers(
     let mut reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let mut spilling_reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     if let CastingMethod::PlayFrom { source, zone, .. }
-    | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } = casting_method
+    | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
+    | CastingMethod::FaceDownPlayFrom { source, zone } = casting_method
     {
         let constraints = spell
             .cast_play_from_constraints
@@ -6285,7 +6331,7 @@ pub(crate) fn add_generic_mana_cost(
         remaining -= chunk as u32;
     }
 
-    crate::mana::ManaCost::from_pips(coalesce_plain_generic_pips(new_pips))
+    cost.with_pips(coalesce_plain_generic_pips(new_pips))
 }
 
 pub(crate) fn add_mana_cost(
@@ -6297,7 +6343,7 @@ pub(crate) fn add_mana_cost(
     }
     let mut new_pips = cost.pips().to_vec();
     new_pips.extend(add.pips().iter().cloned());
-    crate::mana::ManaCost::from_pips(coalesce_plain_generic_pips(new_pips))
+    cost.with_pips(coalesce_plain_generic_pips(new_pips)).inherit_spending_restrictions(add)
 }
 
 fn coalesce_plain_generic_pips(
@@ -6396,7 +6442,7 @@ pub(crate) fn reduce_offering_mana_cost(
         {
             let mut remaining = result.pips().to_vec();
             remaining.remove(index);
-            result = crate::mana::ManaCost::from_pips(remaining);
+            result = result.with_pips(remaining);
         } else if pip.iter().any(|symbol| !matches!(symbol, ManaSymbol::X)) {
             generic += 1;
         }
@@ -6473,7 +6519,7 @@ fn reduce_mana_cost_with_spill(
             generic_reduction = generic_reduction.saturating_add(1);
         }
     }
-    let reduced = crate::mana::ManaCost::from_pips(pips);
+    let reduced = cost.with_pips(pips);
     if generic_reduction > 0 {
         reduced.reduce_generic(generic_reduction)
     } else {
@@ -6794,6 +6840,24 @@ pub(crate) fn can_pay_mana_cost_with_available_sources(
     allow_black_life: bool,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    // The legacy color-only solver cannot retain production evidence. Route
+    // constrained costs through the same full request used at payment, before
+    // projecting to pips or entering that solver's symbol-only memo cache.
+    if !cost.spending_restrictions().is_empty() {
+        let Some(source) = source else { return false; };
+        let mut request = crate::mana_payment::ManaPaymentRequest::new(player, source, reason, cost.clone())
+            .with_x(x_value).with_spend_policy(mana_spend_policy.clone());
+        request.allow_black_life = allow_black_life;
+        let mut prospective;
+        let payment_game = if reason == crate::costs::PaymentReason::CastSpell
+            && game.object(source).is_some_and(|object| object.zone != Zone::Stack) {
+            prospective = game.clone();
+            prospective.object_mut(source).expect("proposal source exists").zone = Zone::Stack;
+            &prospective
+        } else { game };
+        return resumable::check_payment(payment_game, &request);
+    }
+
     let Some(player_obj) = game.player(player) else {
         return false;
     };
@@ -7950,3 +8014,22 @@ pub(crate) fn check_mana_ability_condition_for_potential(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod typed_cast_timing_tests {
+    use super::*;
+    #[test]
+    fn exact_blocker_step_and_player_turn_scope_are_independent() {
+        use crate::game_state::{Phase,Step};use crate::static_abilities::ThisSpellCastTiming as Timing;
+        let mut game=GameState::new(vec!["Alice".into(),"Teammate".into(),"Bob".into()],20);
+        let [a,mate,b]=std::array::from_fn(|i|game.players[i].id);game.set_teams(vec![vec![a,mate],vec![b]]).unwrap();
+        game.turn.active_player=mate;assert!(!this_spell_cast_timing_allows(&game,a,Timing::DuringOpponentsTurn));
+        game.turn.active_player=b;assert!(this_spell_cast_timing_allows(&game,a,Timing::DuringOpponentsTurn));
+        game.turn.phase=Phase::Combat;game.turn.step=Some(Step::DeclareBlockers);game.combat=Some(crate::combat_state::CombatState::default());
+        assert!(!this_spell_cast_timing_allows(&game,a,Timing::DuringDeclareBlockersStep));assert!(!this_spell_cast_timing_allows(&game,a,Timing::DuringCombatAfterBlockersAreDeclared));
+        game.combat.as_mut().unwrap().block_declaration_complete=true;
+        assert!(this_spell_cast_timing_allows(&game,a,Timing::DuringDeclareBlockersStep));assert!(this_spell_cast_timing_allows(&game,a,Timing::DuringCombatAfterBlockersAreDeclared));
+        game.turn.step=Some(Step::CombatDamage);assert!(!this_spell_cast_timing_allows(&game,a,Timing::DuringDeclareBlockersStep));assert!(this_spell_cast_timing_allows(&game,a,Timing::DuringCombatAfterBlockersAreDeclared));
+        assert!(!this_spell_cast_timing_allows(&game,a,Timing::DuringCombatOnYourTurn));assert!(this_spell_cast_timing_allows(&game,b,Timing::DuringCombatOnYourTurn));
+    }
+}

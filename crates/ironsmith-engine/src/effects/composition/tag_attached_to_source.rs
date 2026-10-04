@@ -26,15 +26,11 @@ impl EffectExecutor for TagAttachedToSourceEffect {
         // a new object in another zone.  In that case the source ID no longer
         // exists, so use the trigger's battlefield LKI to remember what the
         // Aura or Equipment was attached to as it left.
-        let attached_target = game
-            .object(ctx.source)
-            .and_then(|source| source.attached_to)
-            .or_else(|| {
-                game.object(ctx.source)
-                    .is_none()
-                    .then(|| ctx.source_snapshot.as_ref()?.attached_to)
-                    .flatten()
-            });
+        let attached_target = crate::effects::helpers::source_attachment_target_with_lki(
+            game,
+            ctx.source,
+            ctx.source_snapshot.as_ref(),
+        );
         let Some(attached_target) = attached_target else {
             return Ok(EffectOutcome::count(0));
         };

@@ -21,6 +21,8 @@ pub struct DestroyEvent {
     pub final_zone: Option<Zone>,
     /// The action's cause at execution, independent of a source's later zone/control.
     pub cause: Option<crate::events::cause::EventCause>,
+    /// The producer supplied the complete pre-operation observer frame.
+    pub complete_source_lookback: bool,
 }
 
 impl DestroyEvent {
@@ -32,6 +34,7 @@ impl DestroyEvent {
             snapshot: None,
             final_zone: None,
             cause: None,
+            complete_source_lookback: false,
         }
     }
 
@@ -53,7 +56,12 @@ impl DestroyEvent {
             snapshot: self.snapshot.clone(),
             final_zone: self.final_zone,
             cause: self.cause.clone(),
+            complete_source_lookback: self.complete_source_lookback,
         }
+    }
+
+    pub fn with_complete_source_lookback(mut self) -> Self {
+        self.complete_source_lookback = true; self
     }
 
     pub fn with_cause(mut self, cause: crate::events::cause::EventCause) -> Self {
@@ -69,6 +77,8 @@ impl DestroyEvent {
 }
 
 impl GameEventType for DestroyEvent {
+    fn cause(&self) -> Option<&crate::events::cause::EventCause> { self.cause.as_ref() }
+
     fn event_kind(&self) -> EventKind {
         EventKind::Destroy
     }

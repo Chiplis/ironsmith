@@ -1641,6 +1641,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::LifeTotal(_)
         | Value::MaximumLifeTotal(_)
         | Value::CountPlayersBelowHalfStartingLifeTotal(_)
+        | Value::DamageHistory(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
         | Value::LastNotedLifeTotal
@@ -2194,6 +2195,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::MaxTimesEachTurn(_)
         | C::DoThisMaxTimesEachTurn(_)
         | C::TriggeringObjectWasEnchanted
+        | C::TriggeringEventCausedBy { .. }
         | C::TriggeringObjectBecameTappedFirstTimeThisTurn
         | C::TriggeringObjectHadCountersPutFirstTimeThisTurn
         | C::TriggeringObjectHadToAttackThisCombat
@@ -2287,6 +2289,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::LifeTotal(_)
         | Value::MaximumLifeTotal(_)
         | Value::CountPlayersBelowHalfStartingLifeTotal(_)
+        | Value::DamageHistory(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
         | Value::LastNotedLifeTotal

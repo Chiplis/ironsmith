@@ -361,4 +361,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn targets_only_source_allows_repeated_slots_but_a_single_target_counts_instances() {
+        let mut game = setup_game(); let a = PlayerId::from_index(0);
+        let target = create_creature(&mut game, "Repeated target", a);
+        let source = create_creature(&mut game, "Ability source", a);
+        game.push_to_stack(StackEntry::ability(source, a, crate::resolution::ResolutionProgram::from_effects(vec![]))
+            .with_targets(vec![crate::game_state::Target::Object(target); 2]));
+        let entry = game.stack.last().unwrap().clone();
+        let event = TriggerEvent::new_with_provenance(BecomesTargetedEvent::from_stack_entry(crate::game_state::Target::Object(target), &entry), Default::default());
+        let mut only_source = ObjectFilter::ability(); only_source.targets_only_object = Some(Box::new(ObjectFilter::source()));
+        assert!(BecomesTargetedByStackObjectTrigger::new(only_source.clone()).matches(&event, &TriggerContext::for_source(target, a, &game)));
+        only_source.target_count = Some(crate::effect::ChoiceCount::exactly(1));
+        assert!(!BecomesTargetedByStackObjectTrigger::new(only_source).matches(&event, &TriggerContext::for_source(target, a, &game)));
+    }
+
 }

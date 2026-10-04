@@ -110,6 +110,10 @@ impl RawEvent {
         self.inner().source_object()
     }
 
+    pub fn cause(&self) -> Option<&crate::events::cause::EventCause> {
+        self.inner().cause()
+    }
+
     /// Get snapshot/LKI payload if present.
     pub fn snapshot(&self) -> Option<&ObjectSnapshot> {
         self.inner().snapshot()

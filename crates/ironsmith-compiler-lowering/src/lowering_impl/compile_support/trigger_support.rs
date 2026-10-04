@@ -779,15 +779,14 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             effect_like_only,
             one_or_more,
         } => {
-            if one_or_more {
+            if let Some(cause_controller) = cause_controller {
+                if one_or_more {
+                    Trigger::player_discards_cards_caused_by_controller(player, filter, cause_controller, effect_like_only)
+                } else {
+                    Trigger::player_discards_card_caused_by_controller(player, filter, cause_controller, effect_like_only)
+                }
+            } else if one_or_more {
                 Trigger::player_discards_cards(player, filter)
-            } else if let Some(cause_controller) = cause_controller {
-                Trigger::player_discards_card_caused_by_controller(
-                    player,
-                    filter,
-                    cause_controller,
-                    effect_like_only,
-                )
             } else {
                 Trigger::player_discards_card(player, filter)
             }

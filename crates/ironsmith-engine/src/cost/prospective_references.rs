@@ -372,10 +372,10 @@ pub(crate) fn activation_reference_preflight(
                 .with_target_reference_bindings(context.clone());
             let reason = crate::costs::PaymentReason::ActivateAbility;
             let mut nonmana = Vec::new();
-            let mut mana_pips = Vec::new();
+            let mut combined_mana = crate::mana::ManaCost::new();
             for component in components {
                 if let Some(mana) = component.mana_cost_ref() {
-                    mana_pips.extend_from_slice(mana.pips());
+                    combined_mana = crate::decision::add_mana_cost(&combined_mana, mana);
                 } else {
                     nonmana.push(component.clone());
                 }
@@ -383,7 +383,7 @@ pub(crate) fn activation_reference_preflight(
             // The ordinary price builder currently coalesces plain mana, but
             // preflight must not depend on that representation invariant:
             // two individually affordable components may share one resource.
-            let mana = crate::mana::ManaCost::from_pips(mana_pips);
+            let mana = combined_mana;
             if !view.can_potentially_pay_with_reason(payer, Some(source), &mana, 0, reason) {
                 return false;
             }

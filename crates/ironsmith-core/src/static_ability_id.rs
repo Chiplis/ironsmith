@@ -384,6 +384,7 @@ pub enum StaticAbilityId {
     /// A spell-only copy prohibition; appended for wire compatibility.
     CantBeCopied,
     RedirectMatchingDamage,
+    SpellManaSpendingRestriction,
 }
 
 impl StaticAbilityId {
@@ -687,6 +688,7 @@ impl StaticAbilityId {
             | ModifyDamageAmountReplacement
             | PreventHalfDamageReplacement
             | PreventMatchingDamage
+            | SpellManaSpendingRestriction
             | RedirectMatchingDamage
             | AddLifeGainReplacement
             | TokenCreationTemplates

@@ -1,3 +1,6 @@
+#[path = "permission_helpers/filtered_zone_permissions.rs"]
+mod filtered_zone_permissions;
+pub(crate) use filtered_zone_permissions::parse_top_look_and_permission;
 use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
 use super::grammar::permission_facts::{
     graveyard_source as permission_graveyard_facts,
@@ -1058,7 +1061,7 @@ fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
             crate::model::CompilerGrantableCore::play_from(),
             filter,
             Zone::Library,
-        )
+        ).with_top_card_only()
         .with_usage_limit(crate::grant::GrantUsageLimit::OnceEachTurn),
         lifetime: PermissionLifetime::Static,
     })
@@ -1079,6 +1082,10 @@ pub fn parse_permission_clause_spec_lexed(
     let clause_refs = token_word_refs(tokens);
     if clause_refs.is_empty() {
         return Ok(None);
+    }
+
+    if let Some(spec) = filtered_zone_permissions::parse_filtered_zone_permission(tokens)? {
+        return Ok(Some(spec));
     }
 
     if let Some(spec) = parse_once_each_turn_graveyard_cast_permission(tokens)? {

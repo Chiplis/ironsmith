@@ -64,7 +64,9 @@ impl TriggerMatcher for PermanentDestroyedTrigger {
         let Some(destroy) = event.downcast::<DestroyEvent>() else {
             return false;
         };
-        if destroy.final_zone != Some(Zone::Graveyard) {
+        // Replacing the graveyard destination does not undo destruction.
+        // A prospective/prevented event has no successful nonbattlefield result.
+        if destroy.final_zone.is_none_or(|zone| zone == Zone::Battlefield) {
             return false;
         }
         destroy.snapshot.as_ref().is_some_and(|snapshot| {
@@ -81,7 +83,31 @@ impl TriggerMatcher for PermanentDestroyedTrigger {
         true
     }
 
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        event.kind() == EventKind::Destroy
+    }
+
     fn display(&self) -> String {
         format!("Whenever {} is destroyed", passive_subject(&self.filter))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::ids::{CardId, PlayerId};
+    #[test]
+    fn successful_destruction_accepts_replaced_destination_but_not_prospective_or_prevented() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game(); let a = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Destroyed artifact").card_types(vec![crate::types::CardType::Artifact]).build();
+        let id = game.create_object_from_card(&card, a, Zone::Battlefield);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(id).unwrap(), &game);
+        let trigger = PermanentDestroyedTrigger { filter: ObjectFilter::default().in_zone(Zone::Battlefield).with_type(crate::types::CardType::Artifact) };
+        for (zone, expected) in [(None,false),(Some(Zone::Battlefield),false),(Some(Zone::Graveyard),true),(Some(Zone::Exile),true)] {
+            let mut destroyed = DestroyEvent::new(id, None); destroyed.snapshot = Some(snapshot.clone()); destroyed.final_zone = zone;
+            let event = TriggerEvent::new_with_provenance(destroyed, Default::default());
+            assert_eq!(trigger.matches(&event, &TriggerContext::for_source(id,a,&game)),expected);
+        }
     }
 }

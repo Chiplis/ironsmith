@@ -4388,6 +4388,9 @@ pub fn parse_source_exiled_play_life_cost_line(
 pub fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if let Some(bundle) = crate::permission_helpers::parse_top_look_and_permission(tokens)? {
+        return Ok(Some(bundle));
+    }
     if late_static_facts::is_source_linked_exile_cast_with_any_mana(tokens) {
         let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
         filter.owner = Some(PlayerFilter::NotYou);

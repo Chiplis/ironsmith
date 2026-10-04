@@ -1282,7 +1282,7 @@ fn handle_discard_or_redirect(
                         if event.player != controller || event.card != card_id || event.cause != cause {
                             return Err(crate::effects::ExecutionError::InternalError("entry discard payment changed an unsupported identity".into()));
                         }
-                        successful.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone));
+                        successful.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone, receipt.result.new_id));
                     }
                     let count = successful.len() as i32; // This action selects exactly one card.
                     let events = crate::effects::cards::completed_discard_events(game, controller, cause.clone(), provenance, successful);
@@ -1549,7 +1549,7 @@ pub fn execute_discard(
             if event.player != player || event.card != card_id || event.cause != cause {
                 return Err(crate::effects::ExecutionError::InternalError("root discard changed an unsupported identity".into()));
             }
-            successful.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone));
+            successful.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone, receipt.result.new_id));
         }
         let count = successful.len() as i32; // One original card is proposed.
         let events = crate::effects::cards::completed_discard_events(game, player, cause.clone(), provenance, successful);
@@ -2493,6 +2493,7 @@ fn process_destroy_scoped_inner(
 ) -> Result<Option<DestroyExecutionReceipt>, crate::effects::ExecutionError> {
     use crate::effects::ExecutionError;
     game.update_replacement_effects().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let observer_lookback = game.trigger_source_lookback_snapshots();
     let snapshot = snapshot.or_else(|| game.object(permanent).map(|object|
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)));
     if !game.object(permanent).is_some_and(|object| object.zone == Zone::Battlefield) {
@@ -2563,7 +2564,9 @@ fn process_destroy_scoped_inner(
                                 let mut trigger = crate::triggers::TriggerEvent::new_with_provenance(
                                     crate::events::DestroyEvent::new(destroyed.permanent, destroyed.source)
                                         .with_cause(zone_ctx.cause.clone())
-                                        .with_successful_result(snapshot, applied.final_zone), final_event.provenance());
+                                        .with_successful_result(snapshot, applied.final_zone)
+                                        .with_complete_source_lookback(), final_event.provenance())
+                                    .with_lookback_source_snapshots(observer_lookback.clone());
                                 if destroyed.source == Some(zone_ctx.source)
                                     && game.object(zone_ctx.source).is_none()
                                     && let Some(snapshot) = zone_ctx.source_snapshot.clone() {

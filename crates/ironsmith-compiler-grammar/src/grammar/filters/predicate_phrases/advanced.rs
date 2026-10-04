@@ -12,6 +12,9 @@ mod phase_step_gates;
 #[path = "advanced/attack_power.rs"]
 mod attack_power;
 
+#[path = "advanced/damage_history.rs"]
+mod damage_history;
+
 fn turn_history_player_subject(clause: LexedClause<'_>) -> Option<PlayerAst> {
     if surface::exact_any(clause, &[&["you've"], &["youve"]]) {
         return Some(PlayerAst::You);
@@ -1861,7 +1864,8 @@ fn is_life_total_comparison_value(value: &Value) -> bool {
 pub(super) fn is_predicate_reference_value(value: &Value) -> bool {
     matches!(
         value,
-        Value::X
+        Value::DamageHistory(_)
+            | Value::X
             | Value::Count(_)
             | Value::CountScaled(_, _)
             | Value::CountersOnSource(_)

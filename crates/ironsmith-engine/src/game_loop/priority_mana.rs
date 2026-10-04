@@ -853,16 +853,24 @@ fn apply_mana_payment_plan_response_inner(
     }
 
     if matches!(response, ManaPaymentResponse::Cancel) {
-        if state.pending_mana_ability.is_some()
-            && (!state.pending_mana_parents.is_empty() || state.pending_cast.is_some() || state.pending_activation.is_some())
-        {
-            if let Some(announcement) = state.pending_mana_ability.as_mut().and_then(|pending| pending.exhaust_announcement.take()) {
+        let canceled = state.pending_mana_ability.take();
+        let canceled_provenance = canceled.as_ref().map(|pending| pending.provenance);
+        if let Some(mut child) = canceled {
+            game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(child.provenance));
+            if let Some(announcement) = child.exhaust_announcement.take() {
                 game.cancel_exhaust_announcement(announcement);
             }
-            state.pending_mana_ability = state.pending_mana_parents.pop();
-            return resume_enclosing_mana_payment(game, trigger_queue, state, decision_maker);
+            if !state.pending_mana_parents.is_empty() || state.pending_cast.is_some() || state.pending_activation.is_some() {
+                state.pending_mana_ability = state.pending_mana_parents.pop();
+                return resume_enclosing_mana_payment(game, trigger_queue, state, decision_maker);
+            }
         }
         state.rollback_action(game);
+        // Also cover an older/incomplete root checkpoint that already held
+        // this frame. Never remove an enclosing cast or a different mana owner.
+        if let Some(provenance) = canceled_provenance {
+            game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(provenance));
+        }
         state.pending_mana_ability = None;
         state.pending_mana_parents.clear();
         return advance_priority_with_dm(game, trigger_queue, decision_maker);
@@ -966,6 +974,9 @@ fn apply_mana_payment_plan_response_inner(
             source: pending.source, ability_index: pending.ability_index, color_restriction: None,
         })).collect::<Vec<_>>();
         discharge_enclosing_mana_selections(state, pending.activator, &completed);
+        // A completed deferred root must not lend its old pre-payment
+        // checkpoint to the next, unrelated mana announcement.
+        if !state.has_pending_action() { state.clear_checkpoint(); }
         return resume_enclosing_mana_payment(game, trigger_queue, state, decision_maker);
     }
 
@@ -1654,7 +1665,8 @@ pub(super) fn apply_assist_choice_response(
             }
             pending.assist_player_choice_made = true;
             if choice == 0 {
-                if !spell_mana_payment_is_legal(game, &pending) {
+                if !crate::decision::with_complete_legality_query(game, |checked| Ok(spell_mana_payment_is_legal(checked, &pending)))
+                    .map_err(|error| { state.pending_cast = Some(pending.clone()); GameLoopError::ExecutionFailed(error) })? {
                     state.pending_cast = Some(pending);
                     return Err(GameLoopError::ActionCancelled(
                         "the caster cannot complete this payment without Assist".to_string(),
@@ -1671,7 +1683,8 @@ pub(super) fn apply_assist_choice_response(
                 );
             }
             pending.assist_player = Some(eligible[choice - 1]);
-            if max_assist_generic_contribution(game, &pending) == 0 {
+            if crate::decision::with_complete_legality_query(game, |checked| Ok(max_assist_generic_contribution(checked, &pending)))
+                    .map_err(|error| { state.pending_cast = Some(pending.clone()); GameLoopError::ExecutionFailed(error) })? == 0 {
                 state.pending_cast = Some(pending);
                 return Err(GameLoopError::ActionCancelled(
                     "the selected player cannot complete an Assist payment".to_string(),
@@ -1686,7 +1699,8 @@ pub(super) fn apply_assist_choice_response(
             let assistant = pending.assist_player.ok_or_else(|| {
                 GameLoopError::InvalidState("Assist contribution has no chosen player".to_string())
             })?;
-            if !assist_generic_contribution_is_legal(game, &pending, assistant, contribution) {
+            if !crate::decision::with_complete_legality_query(game, |checked| Ok(assist_generic_contribution_is_legal(checked, &pending, assistant, contribution)))
+                    .map_err(|error| { state.pending_cast = Some(pending.clone()); GameLoopError::ExecutionFailed(error) })? {
                 state.pending_cast = Some(pending);
                 return Err(GameLoopError::ActionCancelled(format!(
                     "Assist contribution {contribution} cannot complete the spell's mana payment"
@@ -1729,6 +1743,7 @@ pub(super) fn execute_pending_mana_ability(
     use crate::costs::CostContext;
     use crate::effects::ExecutionContext;
 
+    game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(pending.provenance));
     // Snapshot with continuous effects applied so tap-for-mana triggers see the
     // source's real characteristics (an animated land is a creature only there).
     let source_snapshot = game
@@ -1763,6 +1778,7 @@ pub(super) fn execute_pending_mana_ability(
     let x_value_from_costs = cost_ctx.x_value;
     let cost_tagged_objects = cost_ctx.tagged_objects.clone();
     drop(cost_ctx);
+    game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(pending.provenance));
     drain_pending_trigger_events(game, trigger_queue);
 
     let mut mana_ctx = ExecutionContext::new(pending.source, pending.activator, &mut *decision_maker)
@@ -2820,12 +2836,26 @@ pub(super) fn apply_casting_method_choice_response(
 ///
 /// Returns the new ObjectId on the stack.
 pub(crate) fn propose_spell_cast(
-    game: &mut GameState,
-    spell_id: ObjectId,
-    _from_zone: Zone,
-    caster: PlayerId,
-    casting_method: &CastingMethod,
+    game: &mut GameState, spell_id: ObjectId, from_zone: Zone,
+    caster: PlayerId, casting_method: &CastingMethod,
 ) -> Result<ObjectId, GameLoopError> {
+    propose_spell_cast_with_origin(game, spell_id, from_zone, caster, casting_method, false)
+}
+
+/// Only the resolving-instruction owner supplies this authority. A UI action
+/// cannot obtain a free-standing permission merely by naming a source.
+pub(super) fn propose_spell_cast_from_effect(
+    game: &mut GameState, spell_id: ObjectId, from_zone: Zone,
+    caster: PlayerId, casting_method: &CastingMethod,
+) -> Result<ObjectId, GameLoopError> {
+    propose_spell_cast_with_origin(game, spell_id, from_zone, caster, casting_method, true)
+}
+
+fn propose_spell_cast_with_origin(
+    game: &mut GameState, spell_id: ObjectId, _from_zone: Zone,
+    caster: PlayerId, casting_method: &CastingMethod, effect_authorized: bool,
+) -> Result<ObjectId, GameLoopError> {
+    let visibility_boundary = game.capture_library_top_visibility_boundary();
     let cast_during_main_phase = game.is_active_player(caster)
         && matches!(
             game.turn.phase,
@@ -2844,7 +2874,7 @@ pub(crate) fn propose_spell_cast(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx),
@@ -2857,7 +2887,7 @@ pub(crate) fn propose_spell_cast(
     });
     let selected_grant = game.object(spell_id).and_then(|obj| match casting_method {
         CastingMethod::PlayFrom {use_alternative: Some(idx), zone, ..}
-        | CastingMethod::SplitOtherHalfPlayFrom {use_alternative: idx, zone, ..} =>
+        | CastingMethod::SplitOtherHalfPlayFrom {use_alternative: Some(idx), zone, ..} =>
             crate::decision::resolve_play_from_alternative_grant(game, caster, obj, *zone, *idx),
         _ => None,
     });
@@ -2875,7 +2905,7 @@ pub(crate) fn propose_spell_cast(
     // matches it comes from the cast command, so peers holding only a
     // placeholder derive the same ward (see `decision::face_down_cast_kind`).
     let face_down_kind = match casting_method {
-        CastingMethod::FaceDown => game
+        CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => game
             .object(spell_id)
             .and_then(|obj| crate::decision::face_down_cast_kind(game, obj)),
         _ => None,
@@ -2892,24 +2922,53 @@ pub(crate) fn propose_spell_cast(
     let cast_origin_snapshot = game.object(spell_id).map(|obj| {
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
+    let proposed_face = match (casting_method, game.object(spell_id)) {
+        (CastingMethod::SplitOtherHalfPlayFrom { .. }, Some(object)) =>
+            crate::decision::spell_view_for_split_other_half_cast(game, object),
+        (CastingMethod::FaceDownPlayFrom { .. }, Some(object)) => {
+            if !crate::decision::spell_can_be_cast_face_down(game, object) {
+                return Err(GameLoopError::InvalidState("The card has no face-down casting rule".into()));
+            }
+            Some(crate::decision::spell_view_for_face_down_cast(game, object))
+        }
+        _ => None,
+    };
+    let proposed_query = proposed_face.as_ref()
+        .map(|face| crate::grant_registry::proposed_card_face_query(game, face)).transpose()?;
+    let permission_game = proposed_query.as_ref().unwrap_or(game);
     let selected_plain_grant = if selected_grant.is_none() {
         match casting_method {
-            CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..} =>
-                game.effect_store.grant_registry.selected_play_from_grant_for_card(game, spell_id, *zone, caster, *source),
+            CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..}
+            | CastingMethod::FaceDownPlayFrom {source, zone} =>
+                permission_game.effect_store.grant_registry.selected_play_from_grant_for_card(
+                    permission_game, spell_id, *zone, caster, *source),
             _ => None,
         }
     } else { None };
-    let once_limit = |limit| matches!(limit,
-        Some(crate::grant::GrantUsageLimit::OnceEachTurn | crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns));
-    let usage_identity = if let Some(grant) = &selected_grant {
-        once_limit(grant.usage_limit).then(|| grant.permission_identity.clone()).flatten()
-    } else {
-        selected_plain_grant.as_ref().filter(|grant| once_limit(grant.usage_limit))
-            .and_then(|grant| grant.permission_identity.clone())
-    };
+    if matches!(casting_method,
+        CastingMethod::PlayFrom { use_alternative: None, .. }
+            | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. }
+            | CastingMethod::FaceDownPlayFrom { .. })
+        && selected_plain_grant.is_none() && !effect_authorized
+    {
+        let native_search_permission = matches!(casting_method,
+            CastingMethod::PlayFrom { source, zone: Zone::Library, use_alternative: None }
+            if *source == spell_id)
+            && game.current_has_static_ability_id(spell_id,
+                crate::static_abilities::StaticAbilityId::CastThisCardFromLibraryWhileSearching);
+        if !native_search_permission {
+            return Err(GameLoopError::InvalidState("The selected play-from permission does not authorize this card face".into()));
+        }
+    }
+    // Retain the selected permission for every granted cast, not just limited
+    // ones. The receipt also pins top-only and timing scope during CR 601.2e.
+    let usage_identity = selected_grant.as_ref().and_then(|grant| grant.permission_identity.clone())
+        .or_else(|| selected_plain_grant.as_ref().and_then(|grant| grant.permission_identity.clone()));
     let play_from_constraints = match casting_method {
-        CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..} => {
-            let constraints = selected_plain_grant.as_ref().map(|grant| grant.play_from_constraints.clone()).unwrap_or_default();
+        CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..}
+            | CastingMethod::FaceDownPlayFrom {source, zone} => {
+            let constraints = selected_plain_grant.as_ref().map(|grant| grant.play_from_constraints.clone())
+                .or_else(|| selected_grant.as_ref().map(|grant| grant.constraints.clone())).unwrap_or_default();
             Some(Box::new((*source, *zone, constraints)))
         }
         _ => None,
@@ -2921,7 +2980,8 @@ pub(crate) fn propose_spell_cast(
     let shared_usage_to_consume = match &selected_plain_grant {
         Some(grant) => grant.shared_usage_id,
         None if selected_grant.is_some() => match casting_method {
-            CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..} =>
+            CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..}
+            | CastingMethod::FaceDownPlayFrom {source, zone} =>
                 game.effect_store.grant_registry
                     .selected_play_from_grant_for_card(game, spell_id, *zone, caster, *source)
                     .and_then(|grant| grant.shared_usage_id),
@@ -2935,6 +2995,8 @@ pub(crate) fn propose_spell_cast(
         .ok_or_else(|| {
             GameLoopError::InvalidState("Failed to move spell to stack during proposal".to_string())
         })?;
+    game.register_library_top_announcement(
+        crate::game_state::LibraryTopAnnouncement::Cast(new_id), visibility_boundary);
     if let Some(spell) = game.object_mut(new_id) {
         spell.cast_play_from_constraints = play_from_constraints;
         spell.cast_grant_usage_identity = usage_identity.map(Box::new);
@@ -2943,7 +3005,9 @@ pub(crate) fn propose_spell_cast(
         // A peer that holds only a placeholder must later check that the
         // opened card really has this keyword (or is covered by the
         // permission it was cast through).
-        game.record_hidden_face_down_cast_obligation(new_id, kind, face_down_permission.as_ref());
+        game.record_hidden_face_down_cast_obligation(new_id, kind,
+            cast_origin_snapshot.as_ref().map_or(_from_zone, |snapshot| snapshot.zone),
+            face_down_permission.as_ref());
     }
     if let Some(permission) = &face_down_permission {
         game.consume_face_down_cast_permission(
@@ -3100,7 +3164,7 @@ pub(crate) fn propose_spell_cast(
         }
 
         match casting_method {
-            CastingMethod::FaceDown => {
+            CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => {
                 let disguise_ward =
                     face_down_kind == Some(crate::game_state::FaceDownCastKind::Disguise);
                 obj.apply_face_down_cast_overlay_with_disguise_ward(disguise_ward);
@@ -3178,7 +3242,8 @@ fn apply_play_from_cast_this_way_grants(
 ) {
     let (source_id, zone) = match casting_method {
         CastingMethod::PlayFrom { source, zone, .. }
-        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => (*source, *zone),
+        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
+        | CastingMethod::FaceDownPlayFrom { source, zone } => (*source, *zone),
         _ => return,
     };
     let source = game.object(source_id).or_else(|| game.object(stack_id));
@@ -3266,7 +3331,7 @@ fn alternative_cast_label(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx)
@@ -3292,7 +3357,7 @@ fn selected_alternative_cost_reference(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx)
@@ -3568,6 +3633,7 @@ pub(super) fn finalize_spell_cast(
             .insert(new_id, std::sync::Arc::new((spell_obj, entry.clone())));
     }
     game.push_to_stack(entry);
+    game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Cast(new_id));
 
     if let Some(spell_obj) = game.object(new_id).cloned() {
         let ctx = crate::filter::FilterContext::new(caster)
@@ -3619,15 +3685,7 @@ pub(super) fn finalize_spell_cast(
             game, new_id, caster,
         );
     }
-    queue_becomes_targeted_events(
-        game,
-        trigger_queue,
-        &targets,
-        new_id,
-        caster,
-        false,
-        provenance,
-    );
+    queue_targeting_crime(game, trigger_queue, &targets, new_id, caster, provenance);
 
     if from_zone == Zone::Command {
         game.record_commander_cast_from_command_zone(new_id);

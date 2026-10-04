@@ -99,6 +99,9 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
+                target,
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate {
                 target, ..

@@ -110,7 +110,7 @@ pub use combat::{
     FightEffect, GoadEffect, GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect, MeleeEffect,
     ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
     PreventAllCombatDamageEffect, PreventAllCombatDamageFromEffect, PreventAllDamageEffect,
-    PreventAllDamageToTargetEffect, PreventDamageEffect, RemoveFromCombatEffect,
+    PreventAllDamageToTargetEffect, PreventDamageEffect, BecomeBlockedEffect, RemoveFromCombatEffect,
     SetBasePowerToughnessEffect,
 };
 pub use composition::{

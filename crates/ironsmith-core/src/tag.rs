@@ -114,6 +114,7 @@ pub const LINKED_TRIGGER_PLAYER_TAG: &str = "__linked_trigger_player__";
 /// that player ..."). Populated from the event when a triggered ability
 /// resolves.
 pub const TRIGGERING_EVENT_CONTROLLER_TAG: &str = "__triggering_event_controller__";
+pub const TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG: &str = "__triggering_event_cause_controller__";
 
 /// The object selected by an authored "the chosen object" choice.
 ///

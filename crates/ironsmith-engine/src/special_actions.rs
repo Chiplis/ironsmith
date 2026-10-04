@@ -1292,9 +1292,10 @@ fn can_play_land(
     let permission_view = crate::derived_view::DerivedGameView::new(game);
     let can_play_from_zone = object.zone == Zone::Hand
         || (object.zone == Zone::Exile && game.adventure_exiled_player(card_id) == Some(player))
-        || !permission_view
-            .granted_play_from_for_card_view(card_id, proposed_land, object.zone, player)
-            .is_empty();
+        || permission_view
+            .granted_play_from_for_card(card_id, object.zone, player)
+            .iter().any(|grant| crate::grant_registry::grant_usage_limit_allows(
+                game, player, grant.permission_identity.as_ref(), grant.usage_limit));
     if !can_play_from_zone {
         return Err(ActionError::WrongZone {
             expected: Zone::Hand,
@@ -1355,6 +1356,7 @@ fn perform_play_land(
     if decision_maker.awaiting_choice() { return Ok(()); }
     let checkpoint = game.clone();
     let instruction = (|| -> Result<(), ActionError> {
+    game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Land(card_id));
     let shared_usage_to_consume = shared_usage_to_consume_for_land_play(game, player, card_id);
     let old_zone = game
         .object(card_id)
@@ -1462,6 +1464,7 @@ pub(crate) fn finish_land_play_receipt(
     if execution.decision_maker.awaiting_choice() { return Ok(()); }
     crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
     for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+    game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Land(card_id));
     Ok(())
 }
 
@@ -2742,6 +2745,9 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
         }
         game.begin_exhaust_activation(permanent_id, ability_index);
 
+        let visibility_provenance = game.provenance_graph_mut().alloc_root(
+            crate::provenance::ProvenanceNodeKind::EffectExecution { source: permanent_id, controller: player });
+        game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(visibility_provenance));
         // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
         let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
             .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
@@ -2755,6 +2761,7 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             return Ok(Vec::new());
         }
 
+        game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(visibility_provenance));
         // Use the same resolved-event owner as mana-producing effects.
         let mut mana_ctx = ExecutionContext::new(permanent_id, player, &mut *decision_maker)
             .with_mana_color_restriction(mana_color_restriction.clone())
@@ -4111,7 +4118,7 @@ fn expand_dynamic_mana_base(base: &ManaCost, x_value: u32, multiplier: u32) -> M
             );
         }
     }
-    ManaCost::from_pips(pips).add_generic(generic_to_add)
+    base.with_pips(pips).add_generic(generic_to_add)
 }
 
 fn resolve_cost_choice(
@@ -4266,7 +4273,7 @@ fn resolve_cost_choice(
                         return Err(CostPaymentError::ExecutionFailed(crate::effects::ExecutionError::InternalError(
                             "discard cost changed an unsupported batch identity".into())));
                     }
-                    successful_discards.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone));
+                    successful_discards.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone, receipt.result.new_id));
                 }
                 // CR 118.11: a legal started payment remains paid when its
                 // action is changed/prevented. Count actual original discards

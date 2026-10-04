@@ -35,6 +35,24 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             return Ok(EffectOutcome::count(count));
         }
 
+        if let Some(discard) = event.downcast::<crate::events::other::CardDiscardedEvent>() {
+            let origins = ctx.get_tagged_all(ironsmith_core::ZONE_CHANGE_GROUP_TAG)
+                .filter(|group| !group.is_empty()).cloned()
+                .unwrap_or_else(|| discard.snapshot.iter().cloned().collect());
+            let tagged = origins.into_iter().map(|origin| {
+                discard.destination(origin.object_id)
+                    .and_then(|receipt| receipt.object.and_then(|id| game.object(id))
+                        .filter(|object| object.zone == receipt.zone && object.stable_id == origin.stable_id))
+                    .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+                    // Keep historical characteristics if the arrival has gone;
+                    // movement helpers cannot substitute a later incarnation.
+                    .unwrap_or(origin)
+            }).collect::<Vec<_>>();
+            let count = tagged.len() as i32;
+            set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
+            return Ok(EffectOutcome::count(count));
+        }
+
         if let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>() {
             // CR 603.2c: a "one or more" trigger's "them" / "those cards" is
             // every object of the simultaneous event that matched it, not the

@@ -9,6 +9,10 @@ pub fn parse_become_clause(
     let subject_tokens = LexedClause::new(subject_tokens).trim();
     let rest_clause = LexedClause::new(rest_tokens).trimmed();
     let rest_words = rest_clause.word_refs();
+    if rest_words == ["blocked"] {
+        return Ok(EffectAst::subject_verb_become_blocked(parse_target_phrase(&subject_tokens)?));
+    }
+
     const TRIGGERING_SPELL_COLOR_PROTECTION_SUFFIX: &[&str] = &[
         "with",
         "protection",

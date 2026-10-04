@@ -5966,6 +5966,18 @@ pub(super) fn choose_spec_references_target_player(spec: &ChooseSpec) -> bool {
 
 pub(super) fn value_references_target_player(value: &Value) -> bool {
     match value {
+        Value::DamageHistory(query) => {
+            query
+                .reference_specs()
+                .any(choose_spec_references_target_player)
+                || query
+                    .object_filters()
+                    .any(object_filter_references_target_player)
+                || query
+                    .player_filter()
+                    .is_some_and(player_filter_references_target_player)
+        }
+
         Value::SurfaceHinted { value, .. }
         | Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)

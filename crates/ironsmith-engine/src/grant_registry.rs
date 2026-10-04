@@ -497,6 +497,36 @@ pub(crate) fn grant_usage_limit_allows(
     }
 }
 
+/// A top-only permission is checked before the physical card leaves its
+/// library. A completed announcement retains the exact selected permission;
+/// revealing a different top card during payment cannot invalidate that receipt.
+pub(crate) fn grant_top_card_matches(game: &crate::game_state::GameState, grant: &Grant, card_id: ObjectId) -> bool {
+    if !grant.play_from_constraints.top_card_only { return true; }
+    if grant.zone != Zone::Library { return false; }
+    let Some(card) = game.object(card_id) else { return false; };
+    if card.zone == Zone::Stack {
+        return card.cast_play_from_constraints.as_ref().is_some_and(|captured| {
+            captured.0 == grant.source.source_id() && captured.1 == Zone::Library
+                && captured.2.top_card_only
+                && card.cast_grant_usage_identity.as_deref() == grant.permission_identity.as_ref()
+        }) && game.cast_origin_snapshot(card_id).is_some_and(|snapshot| snapshot.zone == Zone::Library);
+    }
+    card.zone == Zone::Library && card.owner == grant.player
+        && game.player(grant.player).is_some_and(|player| player.library.last() == Some(&card_id))
+}
+
+/// Query a chosen spell face with that face installed under its real object
+/// identity. Filter characteristic lookups must not silently read the front
+/// face through ObjectId while testing a separately cloned Object.
+pub(crate) fn proposed_card_face_query(
+    game: &crate::GameState, card: &crate::object::Object,
+) -> Result<crate::GameState, crate::effects::ExecutionError> {
+    let mut query = game.clone();
+    *query.object_mut(card.id).ok_or(crate::effects::ExecutionError::ObjectNotFound(card.id))? = card.clone();
+    if card.face_down_cast_state.is_some() { query.set_face_down(card.id); }
+    query.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)
+}
+
 /// Identity of a permission independent of its position among available methods.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GrantPermissionIdentity {
@@ -513,6 +543,7 @@ pub enum GrantPermissionIdentity {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantedAlternativeCast {
     pub permission_identity: Option<GrantPermissionIdentity>,
+    pub constraints: PlayFromConstraints,
     pub method: AlternativeCastingMethod,
     pub source_id: ObjectId,
     pub zone: Zone,
@@ -545,6 +576,9 @@ pub struct PlayFromConstraints {
     #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_permission_reference"))]
     pub spell_cost_reduction: Option<crate::mana::ManaCost>,
     pub lands_enter_tapped: bool,
+    /// Required in retained native permission carriers; omission cannot widen a library permission.
+    pub top_card_only: bool,
+    pub instant_timing: bool,
 }
 
 /// Identity of one shared deferred-use budget across multiple card grants.
@@ -1353,11 +1387,17 @@ impl GrantRegistry {
         card_zone: Zone,
         player: PlayerId,
     ) -> Vec<Grant> {
+        self.get_grants_for_card_view(game, card_id, game.object(card_id), card_zone, player)
+    }
+
+    pub(crate) fn get_grants_for_card_view(
+        &self, game: &crate::game_state::GameState, card_id: ObjectId,
+        card: Option<&crate::object::Object>, card_zone: Zone, player: PlayerId,
+    ) -> Vec<Grant> {
         let mut result = Vec::new();
 
         // Build filter context once
         let ctx = game.filter_context_for(player, None);
-        let card = game.object(card_id);
         let card_stable_id = card.map(|card| card.stable_id);
 
         // 1. Collect stored grants
@@ -1388,7 +1428,7 @@ impl GrantRegistry {
             }
 
             // Check zone matches
-            if grant.zone != card_zone {
+            if grant.zone != card_zone || !grant_top_card_matches(game, grant, card_id) {
                 continue;
             }
 
@@ -1444,7 +1484,7 @@ impl GrantRegistry {
             {
                 continue;
             }
-            if grant.player != player || grant.zone != card_zone {
+            if grant.player != player || grant.zone != card_zone || !grant_top_card_matches(game, &grant, card_id) {
                 continue;
             }
 
@@ -1544,7 +1584,14 @@ impl GrantRegistry {
         &self, game: &crate::game_state::GameState, card_id: ObjectId,
         zone: Zone, player: PlayerId, source_id: ObjectId,
     ) -> Option<Grant> {
-        let grants = self.get_grants_for_card(game, card_id, zone, player).into_iter()
+        self.selected_play_from_grant_for_card_view(game, card_id, game.object(card_id), zone, player, source_id)
+    }
+
+    pub(crate) fn selected_play_from_grant_for_card_view(
+        &self, game: &crate::game_state::GameState, card_id: ObjectId,
+        card: Option<&crate::object::Object>, zone: Zone, player: PlayerId, source_id: ObjectId,
+    ) -> Option<Grant> {
+        let grants = self.get_grants_for_card_view(game, card_id, card, zone, player).into_iter()
             .filter(|grant| grant.source.source_id() == source_id && matches!(grant.grantable, Grantable::PlayFrom))
             .filter(|grant| grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit))
             .collect::<Vec<_>>();
@@ -1795,7 +1842,7 @@ impl GrantRegistry {
             } else {
                 false
             };
-            if !applies
+            if !applies || !grant_top_card_matches(game, grant, card_id)
                 || grant.filter.as_ref().is_some_and(|filter| {
                     card.is_none_or(|card| {
                         !filter.matches(card, &grant_filter_context(&ctx, grant, game), game)
@@ -1907,7 +1954,10 @@ impl GrantRegistry {
                         required_face_name: (is_source_self_grant
                             && source.linked_face_layout == crate::card::LinkedFaceLayout::Split)
                             .then(|| half_name.clone().unwrap_or_else(|| source.name.to_string())),
-                        play_from_constraints: PlayFromConstraints::default(),
+                        play_from_constraints: PlayFromConstraints {
+                            top_card_only: spec.top_card_only, instant_timing: spec.instant_timing,
+                            ..Default::default()
+                        },
                         cast_this_way_grants: spec.cast_this_way_grants.clone(),
                         cast_this_way_filter: spec.cast_this_way_filter.clone(),
                         shared_usage_id: None,
@@ -1961,7 +2011,8 @@ fn materialize_granted_alternative_cast(
         method,
         source_id: grant.source.source_id(),
         zone: grant.zone,
-        usage_limit,
+        usage_limit: usage_limit.or(grant.usage_limit),
+        constraints: grant.play_from_constraints,
         cast_this_way_grants: grant.cast_this_way_grants,
         cast_this_way_filter: grant.cast_this_way_filter,
     })
@@ -2781,6 +2832,8 @@ mod retained_grant_permission_tests {
             "spell_cost_increase",
             "spell_cost_reduction",
             "lands_enter_tapped",
+            "top_card_only",
+            "instant_timing",
         ] {
             let mut bad = json.clone();
             bad.as_object_mut().unwrap().remove(field);

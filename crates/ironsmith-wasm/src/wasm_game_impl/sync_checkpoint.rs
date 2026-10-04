@@ -850,6 +850,36 @@ fn restore_scalar_registered_effects(
         unsupported_checkpoint_effect_payload, unsupported_checkpoint_effect_payload))
 }
 
+// Generic current-turn event queries require exact participants, causes and
+// historical characteristics (damage, searches, entries, blocks, countering).
+// The wire format has no lossless, privacy-preserving carrier for these records.
+// An absent history is unknown, never an empty history. Recovery replays the
+// accepted transcript; native savepoints already clone the real TurnHistory.
+fn generic_turn_history_is_empty(history: &ironsmith::turn_history::TurnHistory) -> bool {
+    history.event_records.is_empty() && history.staged_event_records.is_empty()
+}
+
+fn require_empty_turn_history_carrier(carrier: Option<bool>) -> Result<(), String> {
+    if carrier != Some(true) {
+        return Err("checkpoint has no valid empty-turn-history completeness carrier; replay accepted transcript".into());
+    }
+    Ok(())
+}
+
+fn validate_checkpoint_turn_history(game: &GameState) -> Result<(), String> {
+    let main_empty = generic_turn_history_is_empty(&game.turn_store.turn_history);
+    let lanes_empty = game.grand_melee_restore_snapshot().is_none_or(|snapshot| {
+        snapshot
+            .markers
+            .iter()
+            .all(|marker| generic_turn_history_is_empty(&marker.turn_store.turn_history))
+    });
+    if !main_empty || !lanes_empty {
+        return Err("generic current-turn event history requires accepted-transcript replay or a runtime savepoint".into());
+    }
+    Ok(())
+}
+
 // Until executable replacement matchers/actions have a complete wire model,
 // a checkpoint may carry only their empty registration state. Keep allocator
 // gaps and prevention metrics: zero active shields is not a fresh manager.
@@ -863,6 +893,9 @@ fn unsupported_checkpoint_replacement_payload<T, U>(_: T) -> Result<U, String> {
 fn retain_checkpoint_replacement_state(game: &GameState)
     -> Result<(SyncRegisteredReplacementState, SyncPreventionState), String>
 {
+    if game.has_library_top_announcement() {
+        return Err("pending native announcement visibility requires accepted-transcript replay or a runtime savepoint".into());
+    }
     if !game.effect_store.restriction_effects.is_empty() {
         return Err("registered runtime restrictions require accepted-transcript replay or a runtime savepoint".into());
     }
@@ -904,6 +937,9 @@ fn restore_checkpoint_replacement_state(
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SyncCheckpoint {
     version: u32,
+    /// No unrepresented queued or stacked ability programs in any owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pending_ability_programs_empty: Option<bool>,
     /// Absent only in legacy checkpoints that did not preserve chronology.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     continuous_timestamps: Option<SyncContinuousTimestamps>,
@@ -920,6 +956,10 @@ pub(crate) struct SyncCheckpoint {
     /// Require an explicit empty-state certificate from the local exporter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     runtime_restrictions_empty: Option<bool>,
+    /// No in-flight native announcement boundary is silently omitted.
+    /// This local format check is not authority to accept a peer checkpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    announcement_visibility_empty: Option<bool>,
     format: MatchFormatInput,
     perspective: u8,
     snapshot_serial: u64,
@@ -1007,6 +1047,14 @@ struct SyncRestartBattlefieldEntry {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncRulesState {
+    /// A required completeness carrier on authoritative restore. Missing old
+    /// history is unknown, not an empty set; recover it by transcript replay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    targeted_objects_this_turn: Option<Vec<u64>>,
+    /// Required authoritative completeness proof. Nonempty generic event
+    /// history needs full accepted-transcript replay until receipts have a wire schema.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    generic_turn_history_empty: Option<bool>,
     /// Plain public counts, keyed by exact incarnation (never stable card id).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     regeneration_shields: Vec<(u64, u32)>,
@@ -1109,6 +1157,11 @@ struct SyncRulesState {
     /// Draw ordinals are lane-local public rules state, including draw-step priority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     draw_step_counts: Option<Vec<(u8, u32)>>,
+}
+
+fn restore_completed_target_history(history: &mut ironsmith::turn_history::TurnHistory, ids: Option<&[u64]>) -> Result<(), String> {
+    let ids = ids.ok_or_else(|| "legacy checkpoint has no completed target-history carrier; replay accepted transcript".to_string())?;
+    history.restore_targeted_object_history(ids.iter().copied().map(ObjectId::from_raw).collect())
 }
 
 fn sync_draw_step_counts(store: &ironsmith::game_state::TurnStore) -> Vec<(u8, u32)> {
@@ -1780,6 +1833,11 @@ struct SyncGrandMelee {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncGrandMeleeMarker {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    targeted_objects_this_turn: Option<Vec<u64>>,
+    /// Independently required for this turn lane, including inactive lanes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    generic_turn_history_empty: Option<bool>,
     number: u32,
     holder: u8,
     status: String,
@@ -2516,6 +2574,10 @@ fn sync_grand_melee_state(host: &WasmGame) -> Option<SyncGrandMelee> {
                         .unwrap_or_default()
                 };
                 SyncGrandMeleeMarker {
+                    targeted_objects_this_turn: Some(marker.turn_store.turn_history.targeted_object_history_for_checkpoint().into_iter().map(|id| id.0).collect()),
+                    generic_turn_history_empty: Some(generic_turn_history_is_empty(
+                        &marker.turn_store.turn_history,
+                    )),
                     number: marker.number,
                     holder: marker.holder.0,
                     status: match marker.status {
@@ -2593,6 +2655,10 @@ fn grand_melee_restore_from_sync(
             .markers
             .iter()
             .map(|marker| {
+                require_empty_turn_history_carrier(marker.generic_turn_history_empty)?;
+                if marker.stack.iter().any(|entry| entry.is_ability) {
+                    return Err("Grand Melee checkpoint contains unrepresented ability programs; replay accepted transcript".into());
+                }
                 let status = match marker.status.as_str() {
                     "active" => ironsmith::GrandMeleeMarkerStatus::Active,
                     "waiting" => ironsmith::GrandMeleeMarkerStatus::Waiting,
@@ -2627,6 +2693,7 @@ fn grand_melee_restore_from_sync(
                     sync_phase_from_name(&marker.turn.phase)?,
                     marker.turn.step.as_deref().map(sync_step_from_name).transpose()?,
                 )?;
+                restore_completed_target_history(&mut turn_store.turn_history, marker.targeted_objects_this_turn.as_deref())?;
                 Ok(ironsmith::GrandMeleeMarkerRestore {
                     number: marker.number,
                     holder: PlayerId::from_index(marker.holder),
@@ -3188,10 +3255,62 @@ impl WasmGame {
             .expect("sync checkpoint should encode")
     }
 
+    /// All current owners of captured targeting work must have a lossless
+    /// carrier. This wire format has none for queued or stacked programs.
+    fn has_unretained_targeting_continuation(&self) -> bool {
+        let is_target_event = |event: &ironsmith::triggers::TriggerEvent|
+            event.kind() == ironsmith::events::EventKind::BecomesTargeted;
+        let queued = |queue: &TriggerQueue| queue.entries.iter().any(|entry| is_target_event(&entry.triggering_event));
+        let stacked = |entries: &[StackEntry]| entries.iter().any(|entry|
+            entry.triggering_event.as_ref().is_some_and(&is_target_event));
+        self.priority_state.has_announced_targeting_receipt()
+            || queued(&self.trigger_queue)
+            || self.grand_melee_host_lanes.values().any(|lane|
+                lane.priority_state.has_announced_targeting_receipt() || queued(&lane.trigger_queue))
+            || self.game.effect_store.pending_trigger_events.iter().any(&is_target_event)
+            || self.game.effect_store.pending_trigger_entries.iter().any(|entry| is_target_event(&entry.triggering_event))
+            || stacked(&self.game.stack)
+            || self.game.grand_melee_restore_snapshot().is_some_and(|snapshot|
+                snapshot.markers.iter().any(|marker| stacked(&marker.stack)))
+    }
+
+    /// The wire stack carries identity/targets but no executable ability
+    /// body, captured event, source LKI or tags. Trigger queues likewise have
+    /// no wire program owner. Keep their exact state in a native branch or
+    /// reconstruct it by accepted-transcript replay.
+    fn has_unretained_ability_programs(&self) -> bool {
+        !self.trigger_queue.is_fully_empty()
+            || self.grand_melee_host_lanes.values().any(|lane| !lane.trigger_queue.is_fully_empty())
+            || self.game.effect_store.has_pending_trigger_work()
+            || self.game.stack.iter().any(|entry| entry.is_ability)
+            || self.game.grand_melee_restore_snapshot().is_some_and(|snapshot|
+                snapshot.markers.iter().any(|marker| marker.stack.iter().any(|entry| entry.is_ability)))
+            // Suspended parent frames/host queues have no authoritative wire
+            // carrier; do not assert those unseen programs are empty either.
+            || self.game.is_subgame()
+            || !self.suspended_subgame_hosts.is_empty()
+    }
+
     /// Build this engine's full checkpoint. Fails when the shared hidden-claim
     /// ledger holds an entry without a lossless encoding (it is never
     /// silently dropped).
     pub(crate) fn try_build_sync_checkpoint(&self) -> Result<SyncCheckpoint, JsValue> {
+        // This wire format intentionally omits live continuation programs.
+        // Preserve captured pre-payment target triggers via native savepoint
+        // or accepted transcript replay, never by silently dropping the queue.
+        if self.has_unretained_targeting_continuation()
+        {
+            return Err(JsValue::from_str("announced targeting receipt requires accepted-transcript replay or a runtime savepoint"));
+        }
+        if self.pending_decision_game.as_deref().is_some_and(GameState::has_library_top_announcement) {
+            return Err(JsValue::from_str("pending decision announcement requires accepted-transcript replay or a runtime savepoint"));
+        }
+        if self.has_unretained_ability_programs() {
+            return Err(JsValue::from_str(
+                "queued or stacked ability programs require accepted-transcript replay or a runtime savepoint",
+            ));
+        }
+        validate_checkpoint_turn_history(&self.game).map_err(|error| JsValue::from_str(&error))?;
         let (registered_replacements, prevention) = retain_checkpoint_replacement_state(&self.game)
             .map_err(|error| JsValue::from_str(&error))?;
         let players = self
@@ -3327,6 +3446,7 @@ impl WasmGame {
 
         Ok(SyncCheckpoint {
             version: SYNC_CHECKPOINT_VERSION,
+            pending_ability_programs_empty: Some(true),
             continuous_timestamps: Some(SyncContinuousTimestamps::from_game(&self.game)),
             registered_continuous: Some(retain_scalar_registered_effects(
                 self.game.effect_store.continuous_effects.registered_state())
@@ -3334,6 +3454,7 @@ impl WasmGame {
             registered_replacements: Some(registered_replacements),
             prevention: Some(prevention),
             runtime_restrictions_empty: Some(true),
+            announcement_visibility_empty: Some(true),
             format: self.match_format,
             perspective: self.perspective.0,
             snapshot_serial: self.snapshot_serial,
@@ -3595,10 +3716,20 @@ impl WasmGame {
             .collect::<Result<Vec<_>, String>>()?;
         let (regeneration_shields, regenerated_this_turn) = self.game.regeneration_state();
         Ok(SyncRulesState {
+            targeted_objects_this_turn: Some(self.game.turn_store.turn_history.targeted_object_history_for_checkpoint().into_iter().map(|id| id.0).collect()),
+            generic_turn_history_empty: Some(generic_turn_history_is_empty(
+                &self.game.turn_store.turn_history,
+            )),
             scheduled_skips: Some(SyncScheduledSkips::from_game(&self.game)),
             draw_step_counts: Some(sync_draw_step_counts(&self.game.turn_store)),
-            regeneration_shields: regeneration_shields.into_iter().map(|(id, count)| (id.0, count)).collect(),
-            regenerated_this_turn: regenerated_this_turn.into_iter().map(|(id, count)| (id.0, count)).collect(),
+            regeneration_shields: regeneration_shields
+                .into_iter()
+                .map(|(id, count)| (id.0, count))
+                .collect(),
+            regenerated_this_turn: regenerated_this_turn
+                .into_iter()
+                .map(|(id, count)| (id.0, count))
+                .collect(),
             combat: if grand_melee {
                 None
             } else {
@@ -3913,10 +4044,15 @@ impl WasmGame {
     }
 
     fn restore_sync_rules_state(&mut self, rules: &SyncRulesState, grand_melee: bool) -> Result<(), String> {
+        restore_completed_target_history(&mut self.game.turn_store.turn_history, rules.targeted_objects_this_turn.as_deref())?;
+        require_empty_turn_history_carrier(rules.generic_turn_history_empty)?;
         let seats: Vec<_> = self.game.players.iter().map(|p| p.id).collect();
         restore_draw_step_counts(
-            &mut self.game.turn_store, rules.draw_step_counts.as_deref(), &seats,
-            self.game.turn.phase, self.game.turn.step,
+            &mut self.game.turn_store,
+            rules.draw_step_counts.as_deref(),
+            &seats,
+            self.game.turn.phase,
+            self.game.turn.step,
         )?;
         if let Some(schedule) = &rules.scheduled_skips { schedule.restore(&mut self.game)?; }
         else {
@@ -4416,7 +4552,14 @@ impl WasmGame {
                     range_of_influence: state.range_of_influence(),
                     deploy_creatures: state.deploy_creatures(),
                 }),
-            grand_melee: sync_grand_melee_state(self),
+            grand_melee: sync_grand_melee_state(self).map(|mut melee| {
+                // Completeness is an authoritative wire-import contract, not
+                // a new historical claim in the stable public audit digest.
+                for marker in &mut melee.markers {
+                    marker.generic_turn_history_empty = None;
+                }
+                melee
+            }),
             stack: self
                 .game
                 .stack
@@ -4705,8 +4848,34 @@ impl WasmGame {
         self.with_runtime_transaction(|candidate| candidate.apply_sync_checkpoint_in_branch(checkpoint))
     }
 
-    fn apply_sync_checkpoint_in_branch(&mut self, checkpoint: SyncCheckpoint) -> Result<(), String> {
+    fn apply_sync_checkpoint_in_branch(
+        &mut self,
+        checkpoint: SyncCheckpoint,
+    ) -> Result<(), String> {
+        if checkpoint.pending_ability_programs_empty != Some(true) {
+            return Err("checkpoint has no valid empty-ability-program completeness carrier; replay accepted transcript".into());
+        }
+        if checkpoint.stack.iter().any(|entry| entry.is_ability)
+            || checkpoint.grand_melee.as_ref().is_some_and(|melee| {
+                melee.markers.iter().any(|marker| {
+                    marker.stack.iter().any(|entry| entry.is_ability)
+                })
+            })
+        {
+            return Err("checkpoint contains unrepresented ability programs; replay accepted transcript".into());
+        }
+        // Validate every lane before reset/construction; a failed import leaves
+        // the authoritative host unchanged through its existing transaction.
+        require_empty_turn_history_carrier(checkpoint.rules.generic_turn_history_empty)?;
         if let Some(melee) = &checkpoint.grand_melee {
+            for marker in &melee.markers {
+                require_empty_turn_history_carrier(marker.generic_turn_history_empty)?;
+            }
+            let focused = melee.markers.iter().find(|marker| marker.number == melee.focused_marker)
+                .ok_or_else(|| "checkpoint has no focused Grand Melee target-history lane".to_string())?;
+            if focused.targeted_objects_this_turn != checkpoint.rules.targeted_objects_this_turn {
+                return Err("inconsistent focused target history across Grand Melee carriers".into());
+            }
             let mut schedules = melee.markers.iter().filter_map(|marker| marker.scheduled_skips.as_ref());
             if let Some(first) = schedules.next() {
                 if schedules.any(|other| !first.same_global_replacements(other))
@@ -4726,6 +4895,9 @@ impl WasmGame {
         }
         if checkpoint.players.is_empty() {
             return Err("checkpoint has no players".to_string());
+        }
+        if checkpoint.announcement_visibility_empty != Some(true) {
+            return Err("checkpoint omits announcement visibility; replay accepted transcript".into());
         }
         if checkpoint.runtime_restrictions_empty != Some(true) {
             return Err("checkpoint has no valid runtime-restriction completeness carrier; replay accepted transcript".into());
@@ -10364,8 +10536,492 @@ mod replacement_checkpoint_safety_tests {
         prevention.follow_up_deferral_depth = 1;
         assert!(restore_checkpoint_replacement_state(replacement.clone(), prevention).is_err());
         let (_, prevention) = retain_checkpoint_replacement_state(&source.game).unwrap();
-        let mut forged = replacement; forged.effects.push(());
-        assert!(restore_checkpoint_replacement_state(forged, prevention).is_err(), "unit payload is not an executable replacement");
+        let mut forged = replacement;
+        forged.effects.push(());
+        assert!(
+            restore_checkpoint_replacement_state(forged, prevention).is_err(),
+            "unit payload is not an executable replacement"
+        );
+    }
+}
 
+#[cfg(test)]
+mod generic_turn_history_checkpoint_safety_tests {
+    use super::*;
+    fn host(players: usize) -> WasmGame {
+        let mut host = WasmGame::new();
+        host.initialize_empty_match((0..players).map(|n| format!("Player {n}")).collect(), 20, 1);
+        host
+    }
+    fn deal_actual_damage(host: &mut WasmGame) -> ObjectId {
+        let a = PlayerId::from_index(0);
+        let definition = CardDefinition::new(
+            ironsmith::CardBuilder::new(CardId::new(), "History recipient")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(ironsmith::PowerToughness::fixed(2, 40))
+                .build(),
+        );
+        let source = host
+            .game
+            .create_object_from_definition(&definition, a, Zone::Battlefield);
+        let target = host.game.create_object_from_definition(
+            &definition,
+            PlayerId::from_index(1),
+            Zone::Battlefield,
+        );
+        let effect = ironsmith::effect::Effect::deal_damage(
+            5,
+            ironsmith::target::ChooseSpec::SpecificObject(target),
+        );
+        let mut ctx = ironsmith::effects::EffectContext::new_default(source, a);
+        ironsmith::effects::execute_effect(&mut host.game, &effect, &mut ctx).unwrap();
+        target
+    }
+    fn received(host: &WasmGame, target: ObjectId) -> i32 {
+        let value = ironsmith::effect::Value::TurnHistoryCount(
+            ironsmith::effect::TurnHistoryCount::DamageDealtToSource,
+        );
+        ironsmith::effects::helpers::resolve_value(
+            &host.game,
+            &value,
+            &ironsmith::effects::EffectContext::new_default(target, PlayerId::from_index(1)),
+        )
+        .unwrap()
+    }
+    #[test]
+    fn positive_actual_history_requires_replay_and_native_savepoints_preserve_the_exact_receipts() {
+        let _ids = crate::test_id_counter_guard();
+        let mut host = host(2);
+        assert!(validate_checkpoint_turn_history(&host.game).is_ok());
+        let target = deal_actual_damage(&mut host);
+        assert_eq!(received(&host, target), 5);
+        assert!(
+            validate_checkpoint_turn_history(&host.game)
+                .unwrap_err()
+                .contains("accepted-transcript replay")
+        );
+        assert!(!host.is_replay_checkpoint_boundary());
+        let savepoint = RuntimeSavepoint::capture(&host);
+        host.game.turn_store.turn_history.clear_for_new_turn();
+        assert_eq!(received(&host, target), 0);
+        assert!(validate_checkpoint_turn_history(&host.game).is_ok());
+        savepoint.restore(&mut host);
+        assert_eq!(received(&host, target), 5);
+        assert!(validate_checkpoint_turn_history(&host.game).is_err());
+        let receipt = host
+            .game
+            .turn_store
+            .turn_history
+            .event_records
+            .iter()
+            .chain(
+                host.game
+                    .turn_store
+                    .turn_history
+                    .staged_event_records
+                    .iter(),
+            )
+            .find(|record| {
+                record
+                    .event
+                    .downcast::<ironsmith::events::DamageEvent>()
+                    .is_some()
+            })
+            .unwrap();
+        let damage = receipt
+            .event
+            .downcast::<ironsmith::events::DamageEvent>()
+            .unwrap();
+        assert_eq!(damage.target_snapshot.as_ref().unwrap().object_id, target);
+        assert!(
+            receipt
+                .event
+                .source_snapshot()
+                .or(receipt.source_snapshot.as_ref())
+                .is_some()
+        );
+    }
+    #[test]
+    fn unknown_or_nonempty_wire_history_is_rejected_atomically_instead_of_restoring_zero() {
+        let _ids = crate::test_id_counter_guard();
+        let original = host(2).build_sync_checkpoint();
+        for carrier in [None, Some(false)] {
+            let mut encoded = serde_json::to_value(&original).unwrap();
+            if let Some(value) = carrier {
+                encoded["rules"]["genericTurnHistoryEmpty"] = serde_json::json!(value);
+            } else {
+                encoded["rules"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("genericTurnHistoryEmpty");
+            }
+            let mut peer = host(2);
+            peer.game.player_mut(PlayerId::from_index(0)).unwrap().life = 31;
+            assert!(
+                peer.apply_sync_checkpoint(serde_json::from_value(encoded).unwrap())
+                    .unwrap_err()
+                    .contains("replay accepted transcript")
+            );
+            assert_eq!(peer.game.player(PlayerId::from_index(0)).unwrap().life, 31);
+        }
+        let mut peer = host(2);
+        peer.apply_sync_checkpoint(original).unwrap();
+        assert!(validate_checkpoint_turn_history(&peer.game).is_ok());
+    }
+    #[test]
+    fn nonfocused_grand_melee_damage_and_unknown_lane_carriers_cannot_be_dropped() {
+        let _ids = crate::test_id_counter_guard();
+        let mut host = host(10);
+        host.match_format = MatchFormatInput::GrandMelee;
+        host.game
+            .restore_grand_melee((0..10).map(PlayerId::from_index).collect())
+            .unwrap();
+        let clean = host.build_sync_checkpoint();
+        let focused = host.game.grand_melee().unwrap().focused_marker();
+        let other = host
+            .game
+            .grand_melee_restore_snapshot()
+            .unwrap()
+            .markers
+            .into_iter()
+            .find(|m| m.number != focused)
+            .unwrap()
+            .number;
+        deal_actual_damage(&mut host);
+        host.game.select_grand_melee_turn_marker(other).unwrap();
+        assert!(generic_turn_history_is_empty(
+            &host.game.turn_store.turn_history
+        ));
+        assert!(validate_checkpoint_turn_history(&host.game).is_err());
+        for carrier in [None, Some(false)] {
+            let mut encoded = clean.clone();
+            encoded
+                .grand_melee
+                .as_mut()
+                .unwrap()
+                .markers
+                .iter_mut()
+                .find(|m| m.number == other)
+                .unwrap()
+                .generic_turn_history_empty = carrier;
+            assert!(
+                grand_melee_restore_from_sync(encoded.grand_melee.as_ref().unwrap())
+                    .unwrap_err()
+                    .contains("replay accepted transcript")
+            );
+            let prior = host.game.grand_melee().unwrap().focused_marker();
+            assert!(host.apply_sync_checkpoint(encoded).is_err());
+            assert_eq!(host.game.grand_melee().unwrap().focused_marker(), prior);
+            assert!(validate_checkpoint_turn_history(&host.game).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod generic_history_genesis_metadata_tests {
+    use super::*;
+    #[test]
+    fn opening_draws_and_pregame_entries_keep_public_genesis_and_metadata_available() {
+        let _ids = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let alice = PlayerId::from_index(0);
+        let definition = CardDefinition::new(
+            ironsmith::CardBuilder::new(CardId::new(), "Opening creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(ironsmith::PowerToughness::fixed(2, 2))
+                .build(),
+        );
+        host.game
+            .create_object_from_definition(&definition, alice, Zone::Library);
+        host.game.draw_cards(alice, 1);
+        let hand = host.game.player(alice).unwrap().hand[0];
+        host.game
+            .move_object_by_game_rule(hand, Zone::Battlefield)
+            .unwrap();
+        assert!(!generic_turn_history_is_empty(
+            &host.game.turn_store.turn_history
+        ));
+        assert!(validate_checkpoint_turn_history(&host.game).is_err());
+        // Signed genesis commits a public audit checkpoint after startMatch;
+        // it never requires an importable executable sync checkpoint. Opening
+        // hydration likewise uses the dedicated committed metadata getter.
+        assert!(host.try_build_public_audit_checkpoint().is_ok());
+        assert!(host.hidden_card_state().is_object());
+        assert_eq!(
+            host.sync_rules_state().unwrap().generic_turn_history_empty,
+            Some(false)
+        );
+    }
+}
+
+#[cfg(test)]
+mod pending_ability_program_checkpoint_tests {
+    use super::*;
+    fn host(count: usize) -> WasmGame {
+        let mut host = WasmGame::new();
+        host.initialize_empty_match((0..count).map(|n| format!("Player {n}")).collect(), 20, 1);
+        host
+    }
+    fn matched_trigger(host: &mut WasmGame) -> ironsmith::triggers::TriggeredAbilityEntry {
+        let a = PlayerId::from_index(0);
+        let definition =
+            ironsmith::cards::CardDefinitionBuilder::new(CardId::new(), "Cast observer")
+                .card_types(vec![CardType::Artifact])
+                .with_ability(ironsmith::Ability::triggered(
+                    ironsmith::triggers::Trigger::spell_cast(
+                        None,
+                        ironsmith::target::PlayerFilter::You,
+                    ),
+                    vec![ironsmith::Effect::gain_life(2)],
+                ))
+                .build();
+        host.game
+            .create_object_from_definition(&definition, a, Zone::Battlefield);
+        let spell = host
+            .game
+            .create_object_from_definition(&definition, a, Zone::Stack);
+        let event = ironsmith::triggers::TriggerEvent::new_with_provenance(
+            ironsmith::events::SpellCastEvent::new(spell, a, Zone::Hand),
+            Default::default(),
+        );
+        ironsmith::triggers::check_triggers(&host.game, &event)
+            .into_iter()
+            .next()
+            .unwrap()
+    }
+    #[test]
+    fn generic_matched_queues_deferred_events_and_notifications_all_refuse_lossy_export() {
+        let _ids = crate::test_id_counter_guard();
+        let mut host = host(2);
+        let entry = matched_trigger(&mut host);
+        assert!(!host.has_unretained_ability_programs());
+        host.trigger_queue.add(entry.clone());
+        assert!(host.has_unretained_ability_programs());
+        host.trigger_queue.take_all();
+        assert!(host.trigger_queue.is_empty());
+        assert!(!host.trigger_queue.is_fully_empty());
+        assert!(
+            host.has_unretained_ability_programs(),
+            "notifications still require delivery"
+        );
+        let point = RuntimeSavepoint::capture(&host);
+        host.trigger_queue.clear();
+        assert!(!host.has_unretained_ability_programs());
+        point.restore(&mut host);
+        assert!(host.has_unretained_ability_programs());
+        host.trigger_queue.clear();
+        host.game
+            .effect_store
+            .pending_trigger_entries
+            .push(entry.clone());
+        assert!(host.has_unretained_ability_programs());
+        host.game.effect_store.pending_trigger_entries.clear();
+        host.game
+            .effect_store
+            .pending_trigger_events
+            .push(entry.triggering_event.clone());
+        assert!(host.has_unretained_ability_programs());
+        host.game.effect_store.pending_trigger_events.clear();
+        let mut queue = TriggerQueue::new();
+        queue.add(entry.clone());
+        queue.take_all();
+        host.grand_melee_host_lanes.insert(
+            7,
+            crate::GrandMeleeHostLane {
+                runner: None,
+                runner_awaiting_priority: false,
+                trigger_queue: queue,
+                priority_state: ironsmith::game_loop::PriorityLoopState::new(2),
+            },
+        );
+        assert!(host.has_unretained_ability_programs());
+        host.grand_melee_host_lanes.clear();
+        host.game.push_to_stack(StackEntry::ability(
+            entry.source,
+            entry.controller,
+            entry.ability.effects,
+        ));
+        assert!(
+            host.has_unretained_ability_programs(),
+            "all stacked abilities, regardless of event kind"
+        );
+    }
+    #[test]
+    fn reflexive_programs_remain_owned_even_when_the_parallel_matched_entry_is_removed() {
+        use ironsmith::effects::EffectExecutor;
+        let _ids = crate::test_id_counter_guard();
+        let mut host = host(2);
+        let entry = matched_trigger(&mut host);
+        let condition = ironsmith::effect::EffectId(77);
+        let mut ctx =
+            ironsmith::effects::EffectContext::new_default(entry.source, entry.controller);
+        ctx.store_outcome(condition, ironsmith::effect::EffectOutcome::count(1));
+        ironsmith::effects::ReflexiveTriggerEffect::new(
+            condition,
+            ironsmith::effect::EffectPredicate::Happened,
+            vec![ironsmith::Effect::gain_life(2)],
+            vec![],
+        )
+        .execute(&mut host.game, &mut ctx)
+        .unwrap();
+        host.game.effect_store.pending_trigger_entries.clear();
+        host.game.effect_store.pending_trigger_events.clear();
+        assert!(host.game.effect_store.has_pending_trigger_work());
+        assert!(host.has_unretained_ability_programs());
+        let point = RuntimeSavepoint::capture(&host);
+        host.game.effect_store = Default::default();
+        assert!(!host.has_unretained_ability_programs());
+        point.restore(&mut host);
+        assert!(host.has_unretained_ability_programs());
+    }
+    #[test]
+    fn missing_empty_program_claim_or_populated_main_and_lane_ability_stacks_reject_before_reset() {
+        let _ids = crate::test_id_counter_guard();
+        let initial = host(2).build_sync_checkpoint();
+        for carrier in [None, Some(false)] {
+            let mut checkpoint = initial.clone();
+            checkpoint.pending_ability_programs_empty = carrier;
+            let mut peer = host(2);
+            peer.game.player_mut(PlayerId::from_index(0)).unwrap().life = 31;
+            assert!(
+                peer.apply_sync_checkpoint(checkpoint)
+                    .unwrap_err()
+                    .contains("replay accepted transcript")
+            );
+            assert_eq!(peer.game.player(PlayerId::from_index(0)).unwrap().life, 31);
+        }
+        let ability = sync_stack_entry(&StackEntry::ability(
+            ObjectId::from_raw(77),
+            PlayerId::from_index(0),
+            vec![ironsmith::Effect::gain_life(2)],
+        ));
+        let mut forged = initial;
+        forged.stack.push(ability.clone());
+        assert!(
+            host(2)
+                .apply_sync_checkpoint(forged)
+                .unwrap_err()
+                .contains("ability programs")
+        );
+        let mut melee = host(10);
+        melee.match_format = MatchFormatInput::GrandMelee;
+        melee
+            .game
+            .restore_grand_melee((0..10).map(PlayerId::from_index).collect())
+            .unwrap();
+        let mut checkpoint = melee.build_sync_checkpoint();
+        checkpoint.grand_melee.as_mut().unwrap().markers[1]
+            .stack
+            .push(ability);
+        assert!(
+            grand_melee_restore_from_sync(checkpoint.grand_melee.as_ref().unwrap())
+                .unwrap_err()
+                .contains("ability programs")
+        );
+        assert!(
+            melee
+                .apply_sync_checkpoint(checkpoint)
+                .unwrap_err()
+                .contains("ability programs")
+        );
+    }
+}
+
+#[cfg(test)]
+mod targeting_announcement_savepoint_tests {
+    use super::*;
+    #[test]
+    fn native_savepoint_retains_pre_payment_target_queue_and_wire_requires_replay() {
+        let _ids = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let a = PlayerId::from_index(0); let b = PlayerId::from_index(1);
+        let definition = ironsmith::cards::CardDefinitionBuilder::new(CardId::new(), "Target observer")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(ironsmith::ability::Ability::triggered(ironsmith::triggers::Trigger::new(
+                ironsmith::triggers::PlayerBecomesTargetedTrigger {
+                    player_filter: ironsmith::target::PlayerFilter::You,
+                    source_controller: ironsmith::target::PlayerFilter::Any,
+                    source_kind: ironsmith::filter::StackObjectKind::SpellOrAbility,
+                }), vec![ironsmith::Effect::draw(1)]))
+            .build();
+        let observer = wasm.game.create_object_from_definition(&definition, a, Zone::Battlefield);
+        let spell = ironsmith::CardBuilder::new(CardId::new(), "Announced spell").card_types(vec![CardType::Instant]).build();
+        let spell = wasm.game.create_object_from_card(&spell, b, Zone::Stack);
+        let event = ironsmith::triggers::TriggerEvent::new_with_provenance(
+            ironsmith::events::BecomesTargetedEvent::new_player(a, spell, b, false).with_participant_snapshots(&wasm.game), Default::default());
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        for entry in ironsmith::triggers::check_triggers(&wasm.game, &event) { queue.add(entry); }
+        assert_eq!(queue.entries.len(), 1);
+        let mut pending = ironsmith::game_loop::PendingCast::new(spell, Zone::Hand, b, Default::default(),
+            ironsmith::game_loop::CastStage::PayingMana, None, vec![], ironsmith::alternative_cast::CastingMethod::Normal,
+            ironsmith::cost::OptionalCostsPaid::default(), None, spell);
+        pending.chosen_targets = vec![ironsmith::Target::Player(a)]; pending.targeting_announcement = Some(queue);
+        wasm.priority_state.pending_cast = Some(pending);
+        assert!(wasm.priority_state.has_announced_targeting_receipt(), "wire export must require replay for this live continuation");
+        let savepoint = RuntimeSavepoint::capture(&wasm);
+        wasm.priority_state.pending_cast = None;
+        wasm.game.move_object_by_effect(observer, Zone::Graveyard).unwrap();
+        savepoint.restore(&mut wasm);
+        let restored = wasm.priority_state.pending_cast.as_ref().unwrap().targeting_announcement.as_ref().unwrap();
+        assert_eq!(restored.entries.len(), 1); assert_eq!(restored.entries[0].source, observer);
+        assert_eq!(restored.entries[0].triggering_event.downcast::<ironsmith::events::BecomesTargetedEvent>().unwrap().target_player(), Some(a));
+        assert!(wasm.game.object(observer).is_some());
+        let entry = restored.entries[0].clone();
+        wasm.priority_state.pending_cast = None;
+        assert!(!wasm.has_unretained_targeting_continuation());
+        wasm.trigger_queue.add(entry.clone());
+        assert!(wasm.has_unretained_targeting_continuation(), "trigger-ordering pause owns the receipt");
+        wasm.trigger_queue.clear();
+        wasm.game.effect_store.pending_trigger_entries.push(entry.clone());
+        assert!(wasm.has_unretained_targeting_continuation(), "effect-driven cast deferred queue owns it");
+        wasm.game.effect_store.pending_trigger_entries.clear();
+        let mut lane_queue = TriggerQueue::new(); lane_queue.add(entry.clone());
+        wasm.grand_melee_host_lanes.insert(2, crate::GrandMeleeHostLane {
+            runner: None, runner_awaiting_priority: false,
+            trigger_queue: lane_queue, priority_state: ironsmith::game_loop::PriorityLoopState::new(2),
+        });
+        assert!(wasm.has_unretained_targeting_continuation(), "another lane's queue cannot be omitted");
+        wasm.grand_melee_host_lanes.clear();
+        let mut stacked = StackEntry::ability(observer, a, entry.ability.effects.clone());
+        stacked.triggering_event = Some(entry.triggering_event);
+        wasm.game.push_to_stack(stacked);
+        assert!(wasm.has_unretained_targeting_continuation(), "a stacked targeting trigger still needs its event and executable body");
+        wasm.game.stack.clear(); assert!(!wasm.has_unretained_targeting_continuation());
+    }
+}
+
+#[cfg(test)]
+mod completed_target_history_wire_tests {
+    use super::*;
+    #[test]
+    fn completed_exact_target_facts_round_trip_and_legacy_unknown_or_duplicates_fail() {
+        let id = ObjectId::from_raw(44);
+        let mut history = ironsmith::turn_history::TurnHistory::default();
+        history.restore_targeted_object_history(vec![id]).unwrap();
+        let rules = SyncRulesState {
+            targeted_objects_this_turn: Some(history.targeted_object_history_for_checkpoint().into_iter().map(|id| id.0).collect()),
+            ..Default::default()
+        };
+        let restored: SyncRulesState = serde_json::from_str(&serde_json::to_string(&rules).unwrap()).unwrap();
+        let mut peer = ironsmith::turn_history::TurnHistory::default();
+        restore_completed_target_history(&mut peer, restored.targeted_objects_this_turn.as_deref()).unwrap();
+        assert_eq!(peer.targeted_object_history_for_checkpoint(), vec![id]);
+        assert!(restore_completed_target_history(&mut peer, None).unwrap_err().contains("replay"));
+        assert!(restore_completed_target_history(&mut peer, Some(&[44, 44])).is_err());
+        assert_eq!(peer.targeted_object_history_for_checkpoint(), vec![id], "failed restore does not mutate history");
+        peer.clear_for_new_turn(); assert!(peer.targeted_object_history_for_checkpoint().is_empty());
+    }
+    #[test]
+    fn parallel_turn_lanes_keep_independent_target_history() {
+        let mut first = ironsmith::game_state::TurnStore::default();
+        let mut second = ironsmith::game_state::TurnStore::default();
+        restore_completed_target_history(&mut first.turn_history, Some(&[11])).unwrap();
+        restore_completed_target_history(&mut second.turn_history, Some(&[22])).unwrap();
+        assert_eq!(first.turn_history.targeted_object_history_for_checkpoint(), vec![ObjectId::from_raw(11)]);
+        assert_eq!(second.turn_history.targeted_object_history_for_checkpoint(), vec![ObjectId::from_raw(22)]);
+        first.turn_history.clear_for_new_turn();
+        assert_eq!(second.turn_history.targeted_object_history_for_checkpoint(), vec![ObjectId::from_raw(22)]);
     }
 }

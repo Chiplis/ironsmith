@@ -50,6 +50,8 @@ mod hidden_hand_choices;
 mod mana_and_permissions;
 mod object_state_and_events;
 mod opaque_library_epochs;
+mod announcement_visibility;
+pub(crate) use announcement_visibility::{LibraryTopAnnouncement, LibraryTopVisibilityBoundary};
 mod planechase;
 mod range_of_influence;
 mod restart;
@@ -1073,6 +1075,16 @@ pub struct EffectStore {
     pub goad_cleared_at: HashMap<ObjectId, u64>,
 }
 
+impl EffectStore {
+    /// Deferred events, matched abilities and reflexive programs all carry
+    /// future trigger work that an empty wire queue cannot replace.
+    pub fn has_pending_trigger_work(&self) -> bool {
+        !self.pending_trigger_events.is_empty()
+            || !self.pending_trigger_entries.is_empty()
+            || !self.pending_reflexive_triggers.is_empty()
+    }
+}
+
 impl Default for EffectStore {
     fn default() -> Self {
         Self {
@@ -1182,6 +1194,7 @@ struct EnterAsCopySourceCache {
 
 #[derive(Debug)]
 struct RuntimeCacheState {
+    library_top_announcements: HashMap<LibraryTopAnnouncement, LibraryTopVisibilityBoundary>,
     token_creation_limits: crate::effects::tokens::TokenCreationLimits,
     token_creation_meter: Option<crate::effects::tokens::resources::SharedTokenCreationMeter>,
     observed_players: RefCell<Option<crate::incremental::ChangeCursor>>,
@@ -1228,6 +1241,7 @@ struct RuntimeCacheState {
 impl Clone for RuntimeCacheState {
     fn clone(&self) -> Self {
         Self {
+            library_top_announcements: self.library_top_announcements.clone(),
             token_creation_limits: self.token_creation_limits,
             // All speculative/nested work belongs to one host computation.
             token_creation_meter: self.token_creation_meter.clone(),
@@ -1274,6 +1288,7 @@ impl Clone for RuntimeCacheState {
 impl RuntimeCacheState {
     fn new(active_player: PlayerId) -> Self {
         Self {
+            library_top_announcements: HashMap::new(),
             token_creation_limits: Default::default(),
             token_creation_meter: None,
             observed_players: RefCell::new(None),
@@ -5492,7 +5507,8 @@ impl GameState {
                 Self::player_filter_is_turn_context_sensitive(players)
                     || Self::object_filter_is_turn_context_sensitive(filter)
             }
-            crate::effect::Value::TurnHistoryCount(_)
+            crate::effect::Value::DamageHistory(_)
+            | crate::effect::Value::TurnHistoryCount(_)
             | crate::effect::Value::CreaturesDiedThisTurn
             | crate::effect::Value::CreaturesDiedThisTurnControlledBy(_)
             | crate::effect::Value::PlayersBeingAttacked

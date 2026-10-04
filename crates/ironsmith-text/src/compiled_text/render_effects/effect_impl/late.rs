@@ -5820,6 +5820,11 @@
     {
         return "Put this card onto the battlefield tapped and attacking".to_string();
     }
+    if let Some(blocked)=effect.downcast_ref::<crate::effects::BecomeBlockedEffect>() {
+        let subject=describe_choose_spec(&blocked.target);
+        let verb=if blocked.target.is_single() {"becomes"}else{"become"};
+        return format!("{} {verb} blocked",capitalize_first(&subject));
+    }
     if let Some(remove_from_combat) =
         effect.downcast_ref::<crate::effects::RemoveFromCombatEffect>()
     {

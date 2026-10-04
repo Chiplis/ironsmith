@@ -502,6 +502,8 @@ pub enum TriggerKind {
         filter: Option<ObjectFilter>,
         controller: PlayerFilter,
         effect_like_only: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        one_or_more: bool,
     },
     PlayerDiscardsCard {
         player: PlayerFilter,
@@ -1896,8 +1898,16 @@ impl Trigger {
                 filter,
                 controller,
                 effect_like_only,
+                one_or_more: false,
             },
         )
+    }
+    pub fn player_discards_cards_caused_by_controller(
+        player: PlayerFilter, filter: Option<ObjectFilter>, controller: PlayerFilter, effect_like_only: bool,
+    ) -> Self {
+        Self::typed("player_discards_cards_caused_by_controller", TriggerKind::PlayerDiscardsCardCausedByController {
+            player, filter, controller, effect_like_only, one_or_more: true,
+        })
     }
     pub fn player_discards_card(player: PlayerFilter, filter: Option<ObjectFilter>) -> Self {
         Self::typed(

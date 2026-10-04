@@ -28,3 +28,9 @@ test('casting the foretold card later still requires a public opening', () => {
 test('face-down casts retain their private command behavior', () => {
   assert.deepEqual([...collect(command({ kind: 'cast_spell', spell_id: 13, casting_method: { kind: 'face_down', face_down_kind: 'morph' } }))], []);
 });
+
+
+test('sourced face-down library casts never request a public identity opening', () => {
+  assert.deepEqual([...collect(command({ kind: 'cast_spell', spell_id: 13, from_zone: 'library',
+    casting_method: { kind: 'face_down_play_from', source: 24, zone: 'library', face_down_kind: 'disguise' } }))], []);
+});

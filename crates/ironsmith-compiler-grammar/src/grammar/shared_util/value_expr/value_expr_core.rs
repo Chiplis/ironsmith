@@ -4,6 +4,9 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.is_empty() {
         return None;
     }
+    if let Some(quantity) = extrema_quantities::parse(words) {
+        return Some(quantity);
+    }
     if let Some(quantity) = referenced_object_quantities::parse(words) {
         return Some(quantity);
     }
@@ -11,6 +14,9 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return Some(quantity);
     }
     if let Some(quantity) = opponent_history_quantities::parse(words) {
+        return Some(quantity);
+    }
+    if let Some(quantity) = damage_history_quantities::parse(words) {
         return Some(quantity);
     }
     let offset = usize::from(words.first() == Some(&"the"));
