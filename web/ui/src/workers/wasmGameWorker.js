@@ -1,3 +1,4 @@
+import { createLocalAnalysisJournal } from "../lib/local-analysis-replay.js";
 import { createPaymentOptionsAnalysis } from "../lib/payment-options-analysis.js";
 import { hiddenCardMetadataForObjectFromCheckpoint, hiddenCardMetadataAtPositionFromCheckpoint } from "../lib/hidden-card-metadata.js";
 import { createAsyncLimiter } from "../lib/bounded-async.js";
@@ -36,6 +37,8 @@ const DEMO_CARD_NAMES = [
 
 const snapshotEncoder = createSnapshotEncoder();
 let game = null;
+let localAnalysisJournal = null;
+let localAnalysisEpoch = 0;
 let callQueue = Promise.resolve();
 let pendingCallCount = 0;
 let backgroundCompileDone = false;
@@ -48,12 +51,6 @@ let cardIndexPromise = null;
 let embeddedCardIndex = null;
 const registeredCardRoutes = new Set();
 const previewCardSources = new Map();
-// Explicit registrations and custom drafts are session definitions too.
-const analysisRegistrations = [];
-const ANALYSIS_REGISTRATION_METHODS = new Set([
-  'registerCompiledCardArtifact', 'registerCompiledCardSourceArtifacts',
-  'registerExternalCardSources', 'registerExternalCardSourcesJson', 'createCustomCard',
-]);
 let latestTargetPreview;
 let previewWorker = null;
 const targetPreviews = new Map();
@@ -139,11 +136,8 @@ const priorityAnalysis = createIsolatedPriorityAnalysis({
   pending: () => game?.priorityAnalysisPending?.() === true,
   eligible: () => game?.hasPriorityDecision?.() === true,
   capture: () => enqueueCall(() => ({
-    checkpoint: game.exportSyncCheckpoint(),
+    localReplay: localAnalysisJournal.capture(),
     module: engineModule,
-    registrations: analysisRegistrations.slice(),
-    sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route]))]
-      .map(([source, route]) => [route, source]),
   }), { kind: 'priority_analysis_capture' }),
   createWorker: () => new Worker(new URL('./priorityAnalysisWorker.js', import.meta.url), { type: 'module' }),
   // Check results only after any temporary verification branch has exited.
@@ -158,11 +152,8 @@ const paymentOptionsAnalysis = createPaymentOptionsAnalysis({
     if (request === 'null') return null;
     return {
       request,
-      checkpoint: game.exportSyncCheckpoint(),
+      localReplay: localAnalysisJournal.capture(),
       module: engineModule,
-      registrations: analysisRegistrations.slice(),
-      sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route]))]
-        .map(([source, route]) => [route, source]),
     };
   }, { kind: 'payment_options_capture' }),
   createWorker: () => new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
@@ -801,7 +792,6 @@ async function handleInit(msg = {}) {
     registeredCardRoutes.clear();
     priorityAnalysis.dispose();
     previewCardSources.clear();
-    analysisRegistrations.length = 0;
     missingCardRoutes.clear();
     transientMissingCardRoutes.clear();
     const assetBaseUrl = String(msg.assetBaseUrl || "").trim();
@@ -818,7 +808,8 @@ async function handleInit(msg = {}) {
     // the one signal that separates "this call is expensive" from "this session
     // has grown expensive", which a single slow call cannot tell apart.
     engineExports = await initWasm({ engine: engineModule, compiler: false, verifier: false });
-    game = new WasmGame();
+    localAnalysisJournal = createLocalAnalysisJournal(new WasmGame(), ++localAnalysisEpoch);
+    game = localAnalysisJournal.game;
     workerTasks.phase(task, 'catalog_load');
     if (typeof game.getEmbeddedCardCatalogIndexJson === "function") {
       const raw = game.getEmbeddedCardCatalogIndexJson();
@@ -881,7 +872,7 @@ function handleTargetPreview(id, args) {
   enqueueCall(() => {
     workerTasks.phase(task, 'target_checkpoint');
     if (!game) throw new Error("Game is not initialized yet");
-    return { checkpoint: game.exportSyncCheckpoint(), identity: game.priorityAnalysisIdentity(), sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route])).entries()].map(([source, route]) => [route, source]) };
+    return { localReplay: localAnalysisJournal.capture(), identity: game.priorityAnalysisIdentity() };
   }, {}, task).then(input => {
     if (id !== latestTargetPreview) { respond(task, { type: "result", id, ok: true, result: null }); return; }
     if (!previewWorker) {
@@ -903,7 +894,7 @@ function handleTargetPreview(id, args) {
     targetPreviews.set(id, { identity: input.identity, task });
     workerTasks.phase(task, 'target_worker_wait');
     previewWorker.postMessage({ type: "preview", id, module: engineModule,
-      checkpoint: input.checkpoint, sources: input.sources, actions: args[0], perspective: args[1] });
+      localReplay: input.localReplay, actions: args[0], perspective: args[1] });
   }).catch(error => respond(task, { type: "result", id, ok: false, error: serializeError(error) }))
     .finally(() => { pendingCallCount--; priorityAnalysis.start(priorityViewRevision); });
 }
@@ -1038,9 +1029,6 @@ function handleCall(msg) {
       && msg.runtimeBranch == null ? game.priorityAnalysisIdentity() : null;
     const wasmStartedAt = nowMs();
     const result = await fn.apply(game, args);
-    if (ANALYSIS_REGISTRATION_METHODS.has(method)) {
-      analysisRegistrations.push({ method, args: structuredClone(args) });
-    }
     if (previousViewIdentity !== null && previousViewIdentity !== game.priorityAnalysisIdentity()) {
       priorityAnalysis.invalidate();
       paymentOptionsAnalysis.cancel();

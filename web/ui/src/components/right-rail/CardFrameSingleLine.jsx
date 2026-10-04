@@ -47,7 +47,7 @@ export default function CardFrameSingleLine({ as = "span", className, children }
       text.style.removeProperty("font-size");
       // Stats have an intrinsic width. Font ink can exceed a line-height of
       // one by a pixel; scrolling that ink paints a scrollbar beside the P/T.
-      text.style.overflow = text.classList.contains('interactive-card-frame__stats-text') ? 'visible' : 'auto';
+      text.style.overflow = text.classList.contains('interactive-card-frame__stats-text') ? 'visible' : 'hidden';
       text.style.textOverflow = "clip";
       const stage = text.closest('.interactive-card-frame-stage');
       const fallback = ['custom', 'placeholder'].includes(stage?.dataset.frameMode);

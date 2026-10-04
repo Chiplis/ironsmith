@@ -1,6 +1,7 @@
 import { acceptedZiffleEpochs, isPrivateZiffleEpoch, PRIVATE_SHUFFLE_PROTOCOL_VERSION, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { VERIFIED_RESYNC_CHECKPOINT_REPLAY_MARGIN } from "./crypto-resync.js";
 import { RUNTIME_VERSION, assertRuntimeVersion } from "../../lib/runtime-version.js";
+import { assertResyncCheckpointCarrier } from "../../lib/resync-checkpoint-carrier.js";
 import { withActionPrefixes, EMPTY_ACTION_PREFIX, actionPrefixHash } from '../../lib/accepted-actions.js';
 import { needsFullStateResync, matchingActionPrefix } from '../../lib/relay/resync.js';
 import { replayTrustedMatch, replayTrustedActions } from '../../lib/relay/replay-trusted-match.js';
@@ -446,10 +447,10 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         && relayMatchId(matchPayload) === relayMatchId(matchStartPayloadRef.current)
         ? servicesRef.current.captureMatchClockObservation?.() || null
         : null;
-      if ((!message?.checkpoint || typeof message.checkpoint !== "object")
-          && !(message?.replayOnly === true && isTrustedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload)))) {
-        throw new Error("Resync payload is missing WASM checkpoint");
-      }
+      assertResyncCheckpointCarrier(message, {
+        trusted: isTrustedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload)),
+        verified: isVerifiedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload)),
+      });
 
       if (isRelayId(matchPayload.lobbyId)) assertFormatMatch(matchPayload);
       const currentGame = gameRef.current;

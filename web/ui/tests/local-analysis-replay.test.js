@@ -1,0 +1,131 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createLocalAnalysisJournal, createLocalAnalysisReplica } from '../src/lib/local-analysis-replay.js';
+
+// The fake wire format deliberately omits the same classes of information as
+// multiplayer checkpoints. Native branches retain every field without a DTO.
+class Game {
+  state = { objects: [], choices: {}, history: [], manaProvenance: [], temporaryPermissions: [] };
+  handles = new Map();
+  nextHandle = 0;
+  exportSyncCheckpoint() { return { perspective: 0, objects: structuredClone(this.state.objects) }; }
+  importSyncCheckpoint(checkpoint) { this.state.objects = structuredClone(checkpoint.objects); }
+  edit(field, value) { this.state[field] = structuredClone(value); }
+  createRuntimeSavepoint() { const h = ++this.nextHandle; this.handles.set(h, structuredClone(this.state)); return h; }
+  exchangeRuntimeSavepoint(h) { const s = this.handles.get(h); if (!s) throw Error('expired'); this.handles.set(h, this.state); this.state = s; }
+  copyRuntimeSavepoint(h) { this.state = structuredClone(this.handles.get(h)); }
+  restoreRuntimeSavepoint(h) { this.copyRuntimeSavepoint(h); this.releaseRuntimeSavepoint(h); }
+  releaseRuntimeSavepoint(h) { return this.handles.delete(h); }
+  failureWithSideEffects() { this.state.history.push('failed action'); throw Error('rejected'); }
+  readWithSideEffects() { this.state.choices.readCount = (this.state.choices.readCount || 0) + 1; return 0; }
+  free() {}
+}
+
+test('local analysis retains all engine state omitted by the public checkpoint', async () => {
+  const original = new Game(), journal = createLocalAnalysisJournal(original, 1);
+  for (const [field, value] of Object.entries({
+    objects: [{ id: 1, copiedAbilities: ['mana'], grantedAbilities: ['flash'] }],
+    choices: { creature: 'Dwarf', color: 'red', namedCard: 'Opt' },
+    history: ['cast spell', 'exhaust used', 'land played'],
+    manaProvenance: [{ snow: true, creatureOnly: 'Dwarf', onSpend: ['uncounterable'] }],
+    temporaryPermissions: ['cast from exile', 'cost reduction'],
+  })) journal.game.edit(field, value);
+  const frozen = journal.capture();
+  journal.game.edit('choices', { creature: 'Elf' });
+  const replica = createLocalAnalysisReplica(() => new Game());
+  const restored = await replica.hydrate(frozen);
+  assert.equal(restored.state.choices.creature, 'Dwarf');
+  assert.deepEqual(restored.state.history, original.state.history);
+  assert.deepEqual(restored.state.manaProvenance, original.state.manaProvenance);
+  assert.deepEqual(restored.state.temporaryPermissions, original.state.temporaryPermissions);
+  assert.deepEqual(restored.state.objects, original.state.objects);
+  assert.equal((await replica.hydrate(journal.capture())).state.choices.creature, 'Elf');
+});
+
+test('incremental replay discards speculative writes and translates native branch handles', async () => {
+  const original = new Game(), journal = createLocalAnalysisJournal(original, 2);
+  journal.game.edit('history', ['original']);
+  const replica = createLocalAnalysisReplica(() => new Game());
+  const restored = await replica.hydrate(journal.capture());
+  restored.edit('history', ['speculation']);
+  // The analysis savepoint has consumed a handle unknown to the original.
+  const branch = journal.game.createRuntimeSavepoint();
+  journal.game.edit('history', ['verified']);
+  journal.game.exchangeRuntimeSavepoint(branch);
+  journal.game.edit('choices', { verification: true });
+  journal.game.exchangeRuntimeSavepoint(branch);
+  journal.game.copyRuntimeSavepoint(branch);
+  journal.game.releaseRuntimeSavepoint(branch);
+  const next = await replica.hydrate(journal.capture());
+  assert.deepEqual(next.state, original.state);
+  next.edit('choices', { preview: true });
+  await replica.resetWorkingState();
+  assert.deepEqual(next.state, original.state);
+});
+
+test('reads and rejected actions retain side effects; divergent replay fails closed', async () => {
+  const original = new Game(), journal = createLocalAnalysisJournal(original, 3);
+  journal.game.readWithSideEffects();
+  assert.throws(() => journal.game.failureWithSideEffects(), /rejected/);
+  const replica = createLocalAnalysisReplica(() => new Game());
+  assert.deepEqual((await replica.hydrate(journal.capture())).state, original.state);
+  const divergent = createLocalAnalysisReplica(() => {
+    const game = new Game(); game.failureWithSideEffects = () => {};
+    return game;
+  });
+  await assert.rejects(divergent.hydrate(journal.capture()), /replay diverged/);
+});
+
+test('a new session and a shorter prefix rebuild rather than alias old state', async () => {
+  const replica = createLocalAnalysisReplica(() => new Game());
+  const a = createLocalAnalysisJournal(new Game(), 4);
+  const short = a.capture();
+  a.game.edit('choices', { old: true });
+  await replica.hydrate(a.capture());
+  assert.deepEqual((await replica.hydrate(short)).state.choices, {});
+  const b = createLocalAnalysisJournal(new Game(), 5);
+  b.game.edit('choices', { current: true });
+  assert.deepEqual((await replica.hydrate(b.capture())).state.choices, { current: true });
+});
+
+test('exhausted native branch capacity rebuilds complete snapshots without dropping session branches', async () => {
+  class LimitedGame extends Game {
+    createRuntimeSavepoint() {
+      if (this.handles.size === 2) throw Error('too many live runtime savepoints');
+      return super.createRuntimeSavepoint();
+    }
+  }
+  const journal = createLocalAnalysisJournal(new LimitedGame(), 6);
+  journal.game.createRuntimeSavepoint();
+  journal.game.createRuntimeSavepoint();
+  journal.game.edit('history', ['used ability']);
+  const replica = createLocalAnalysisReplica(() => new LimitedGame());
+  const first = await replica.hydrate(journal.capture());
+  first.edit('history', ['preview']);
+  const restored = await replica.resetWorkingState();
+  assert.deepEqual(restored.state.history, ['used ability']);
+  assert.equal(restored.handles.size, 2);
+});
+
+test('expired session handles cannot accidentally address an analysis savepoint', async () => {
+  const journal = createLocalAnalysisJournal(new Game(), 7);
+  const branch = journal.game.createRuntimeSavepoint();
+  journal.game.releaseRuntimeSavepoint(branch);
+  journal.game.releaseRuntimeSavepoint(branch);
+  assert.throws(() => journal.game.exchangeRuntimeSavepoint(branch), /expired/);
+  const replica = createLocalAnalysisReplica(() => new Game());
+  assert.deepEqual((await replica.hydrate(journal.capture())).state, journal.game.state);
+});
+
+test('different failures cannot silently drop side effects and a failed replica is rebuilt', async () => {
+  const journal = createLocalAnalysisJournal(new Game(), 8);
+  assert.throws(() => journal.game.failureWithSideEffects(), /rejected/);
+  let attempt = 0;
+  const replica = createLocalAnalysisReplica(() => {
+    const game = new Game();
+    if (++attempt === 1) game.failureWithSideEffects = () => { throw Error('different failure'); };
+    return game;
+  });
+  await assert.rejects(replica.hydrate(journal.capture()), /replay diverged.*different failure/);
+  assert.deepEqual((await replica.hydrate(journal.capture())).state, journal.game.state);
+});

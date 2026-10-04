@@ -1745,10 +1745,11 @@ export function usePeerLobby({
           openings: Array.isArray(localRequirementOpenings) ? localRequirementOpenings.length : 0,
           bytes: payloadSizeBytes(localRequirementOpenings),
         });
-        const selectedPostOpenings = filterOpeningsForCommandHiddenRefs(postOpenings, command);
+        const selectedPostOpenings = filterOpeningsForCommandHiddenRefs(postOpenings, command, openingRequirements);
         const selectedLocalRequirementOpenings = filterOpeningsForCommandHiddenRefs(
           localRequirementOpenings,
           command,
+          openingRequirements,
         );
         const localPostOpeningState = await runSubmissionPhase(
           "submit_action:reveal_local_openings_post",
@@ -1880,8 +1881,14 @@ export function usePeerLobby({
             ),
           },
           () => verifyAuditSatisfiesCryptoRequirements({
-            requirements: appliedRequirements.length > 0 ? appliedRequirements : cryptoRequirements,
+            // Keep preview-only public moves in the outbound coverage check.
+            // Other requirements use the finalized state (e.g. shuffle orders).
+            requirements: [
+              ...cryptoRequirements.filter(requirement => String(requirement?.type || "") === "public_open"),
+              ...(appliedRequirements.length > 0 ? appliedRequirements : cryptoRequirements),
+            ],
             audit,
+            allowCachedPublicOpenings: false,
           })
         );
         if (String(audit.publicCheckpointHash || "") !== localPublicCheckpointHash) {

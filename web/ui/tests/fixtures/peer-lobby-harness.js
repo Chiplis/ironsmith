@@ -32,6 +32,7 @@ function createFakeGame() {
   let latePublicOpenDispatched = false;
   let omitOwnerOpenedLandPosition = false;
   let failOpenedLandExport = false;
+  let failCheckpointExport = false;
   let includeOpenedLandInCheckpointHand = false;
   const syncEvents = [];
   const instrumentation = {
@@ -476,6 +477,9 @@ function createFakeGame() {
     cancelDecision: async () => buildState(),
     exportSyncCheckpoint: async () => {
       instrumentation.exportSyncCheckpoint += 1;
+      if (failCheckpointExport) {
+        throw new Error("registered continuous effect requires an approved executable identity graph");
+      }
       const openedLandVisibleToLocal = Number(perspective) === 0 || ziffleOpenedLandRevealed;
       const openedLandHiddenCard = openedLandVisibleToLocal
         ? {
@@ -574,6 +578,9 @@ function createFakeGame() {
     },
     setOmitOwnerOpenedLandPosition: (enabled) => {
       omitOwnerOpenedLandPosition = Boolean(enabled);
+    },
+    setFailCheckpointExport: (enabled) => {
+      failCheckpointExport = Boolean(enabled);
     },
     setFailOpenedLandExport: (enabled) => {
       failOpenedLandExport = Boolean(enabled);
@@ -738,6 +745,9 @@ function Harness() {
       rejectNextVerifiedDispatch: () => { rejectNextVerifiedDispatchRef.current = true; },
       setOmitOwnerOpenedLandPosition: (enabled) => {
         game.setOmitOwnerOpenedLandPosition(enabled);
+      },
+      setFailCheckpointExport: (enabled) => {
+        game.setFailCheckpointExport(enabled);
       },
       setFailOpenedLandExport: (enabled) => {
         game.setFailOpenedLandExport(enabled);

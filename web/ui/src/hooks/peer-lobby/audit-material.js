@@ -3333,7 +3333,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     }
   }, []);
 
-  const verifyAuditSatisfiesCryptoRequirements = useCallback(async ({ requirements = [], audit = {} }) => {
+  const verifyAuditSatisfiesCryptoRequirements = useCallback(async ({
+    requirements = [], audit = {}, allowCachedPublicOpenings = true,
+  }) => {
     for (const requirement of requirements || []) {
       const type = String(requirement?.type || "");
       if (!type || type === "hidden_move" || type === "hidden_order_update") continue;
@@ -3342,7 +3344,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
           (audit.openings || []).find((opening) =>
             openingMatchesRequirement(opening, requirement)
           )
-          || localRevealedOpeningForRequirement(requirement);
+          // Receiver replay may already know a prior opening. Outbound coverage
+          // must be checked against the payload: this cache also holds private views.
+          || (allowCachedPublicOpenings && localRevealedOpeningForRequirement(requirement));
         if (!match) {
           throw new Error(
             `Missing ${type} audit opening for player ${Number(requirement.owner) + 1}: `

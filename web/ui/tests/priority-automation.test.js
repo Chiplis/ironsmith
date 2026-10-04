@@ -258,11 +258,24 @@ test('off-turn combat priority waits for hand analysis before passing', () => {
   assert.equal(result.holdReason, 'checking playable actions');
 });
 
-test('off-turn combat priority holds for an instant or flash spell', () => {
+test('off-turn priority respects never-hold even with playable actions', () => {
+  for (const phase of ['FirstMain', 'combat', 'SecondMain', 'ending']) {
+    for (const kind of ['cast_spell', 'activate_ability', 'special_action']) {
+      const decision = { kind: 'priority', player: 1, analysis_complete: true,
+        actions: [{ index: 0, kind: 'pass_priority', label: 'Pass priority' }, { index: 1, kind }] };
+      const result = buildMultiplayerSmartAutoPass({ autoPassEnabled: true, holdRule: 'never', decision,
+        currentState: { perspective: 1, active_player: 0, phase, stack_size: 0 } });
+      assert.deepEqual(result.command, { type: 'priority_action', action_index: 0 }, `${phase}: ${kind}`);
+      assert.equal(result.holdReason, null);
+    }
+  }
+});
+
+test('off-turn combat priority holds for playable actions when requested', () => {
   for (const kind of ['cast_spell', 'activate_ability', 'special_action']) {
     const decision = { kind: 'priority', player: 1, analysis_complete: true,
       actions: [{ index: 0, kind: 'pass_priority', label: 'Pass priority' }, { index: 1, kind }] };
-    const result = buildMultiplayerSmartAutoPass({ autoPassEnabled: true, holdRule: 'never', decision,
+    const result = buildMultiplayerSmartAutoPass({ autoPassEnabled: true, holdRule: 'if_actions', decision,
       currentState: { perspective: 1, active_player: 0, phase: 'combat', stack_size: 0 } });
     assert.equal(result.command, null, kind);
     assert.equal(result.holdReason, 'playable actions available');

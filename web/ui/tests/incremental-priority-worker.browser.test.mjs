@@ -66,18 +66,8 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
     body = body.replace(marker, `if (!complete && decision.actions.length > 0 && !self.__stalledToken?.has(token)) { (self.__stalledToken ||= new Set()).add(token); const end = performance.now() + 1500; while (performance.now() < end) {} }\n${marker}`);
     await route.fulfill({ response, body });
   });
-  // Reproduce the cache populated by deck/load diagnostics, even when this
-  // WASM build uses the embedded catalog instead of HTTP card assets.
-  await page.route('**/src/workers/wasmGameWorker.js*', async route => {
-    const response = await route.fetch();
-    const marker = '.map(([source, route]) => [route, source]),';
-    const body = await response.text();
-    assert.ok(body.includes(marker));
-    await route.fulfill({ response, body: body.replace(marker,
-      `.map(([source, route]) => [route, source]).concat([['rejected-analysis-source', ${JSON.stringify(rejectedSource)}]]),`) });
-  });
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/analysis-test`);
-  const result = await page.evaluate(async ({ checkpoint, sources, land, secondLand, secondSpell }) => {
+  const result = await page.evaluate(async ({ checkpoint, sources, rejectedSource, land, secondLand, secondSpell }) => {
     const { createSnapshotDecoder } = await import('/src/lib/snapshot-channel.js');
     const { serializePriorityCommand } = await import('/src/lib/sync-commands.js');
     const decoder = createSnapshotDecoder(), requests = new Map(), messages = [], waiters = [];
@@ -113,7 +103,7 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
     worker.postMessage({ type: 'init', assetBaseUrl: location.origin + '/' });
     try {
       await ready;
-      await call('registerExternalCardSourcesJson', [JSON.stringify(sources)]);
+      await call('registerExternalCardSourcesJson', [JSON.stringify([rejectedSource, ...sources])]);
       const coldStarted = performance.now();
       const state = await call('importSyncCheckpoint', [checkpoint, 0]);
       const revision = state.__priority_revision;
@@ -179,7 +169,7 @@ test('lands publish before Warp checks finish, full menus agree, and a blocked a
       return { secondPlayable, guestPlayedLand, guestCastSpell, first: first.decision, final: final.decision, commandMs, playMs, coldHighlightMs, warmHighlightMs, staleRejected,
         played: after.objects.some(o => o.name === 'Sunbillow Verge' && o.zone === 'battlefield'), newRevision: played.__priority_revision !== reset.__priority_revision };
     } finally { worker.terminate(); }
-  }, { checkpoint, sources, land, secondLand, secondSpell });
+  }, { checkpoint, sources, rejectedSource, land, secondLand, secondSpell });
   assert.equal(result.secondPlayable, true);
   assert.equal(result.guestPlayedLand, true);
   assert.equal(result.guestCastSpell, true);

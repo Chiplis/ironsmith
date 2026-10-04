@@ -50,6 +50,7 @@ import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { readFixedStartingBoard, storeFixedStartingBoard } from "@/lib/starting-board";
 import { hexToRgbString } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
+import { forcedObjectSelectionCommand, localForcedObjectSelectionCommand } from "@/lib/forced-object-selection";
 
 import { GameContext } from "./GameContext.shared";
 const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
@@ -842,7 +843,7 @@ export function GameProvider({ children }) {
   const auditReplaySessionRef = useRef(null);
   const auditReplayPreparedRef = useRef(null);
   const multiplayerActiveRef = useRef(false);
-  const multiplayerAutoPassAttemptRef = useRef("");
+  const multiplayerAutomationAttemptRef = useRef("");
   const multiplayerSubmitInFlightRef = useRef(false);
   const stickyViewedCardsRef = useRef(null);
   const stickyGameOverRef = useRef(null);
@@ -1373,7 +1374,14 @@ export function GameProvider({ children }) {
       let st = currentState;
       const trace = [];
       while (resolved < 50 && st && st.decision) {
-        const auto = tryBuildAutoResolveCommand(st.decision);
+        // Peer answers must go through submitMultiplayerCommand after the
+        // snapshot is published, so the actor can provide verified openings.
+        const forcedObjects = !multiplayerActiveRef.current
+          ? forcedObjectSelectionCommand(st.decision)
+          : null;
+        const auto = forcedObjects
+          ? { cmd: forcedObjects, label: "Auto: only required card selected" }
+          : tryBuildAutoResolveCommand(st.decision);
         if (!auto) break;
         try {
           const dispatchStartedAt = performance.now();
@@ -1806,13 +1814,15 @@ export function GameProvider({ children }) {
 
   useEffect(() => {
     if (!multiplayer.matchStarted) {
-      multiplayerAutoPassAttemptRef.current = "";
+      multiplayerAutomationAttemptRef.current = "";
       return;
     }
     if (multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) return;
+    if (stateRef.current !== state) return;
 
     const currentState = state;
-    const result = buildMultiplayerSmartAutoPass({
+    const forcedObjects = localForcedObjectSelectionCommand(currentState);
+    const result = forcedObjects ? { command: forcedObjects } : buildMultiplayerSmartAutoPass({
       autoPassEnabled,
       holdRule,
       decision: currentState?.decision || null,
@@ -1820,12 +1830,12 @@ export function GameProvider({ children }) {
     });
 
     if (!result.command) {
-      multiplayerAutoPassAttemptRef.current = "";
+      multiplayerAutomationAttemptRef.current = "";
       return;
     }
 
     const decision = currentState?.decision || null;
-    const passKey = [
+    const attemptKey = [
       currentState?.snapshot_id ?? "",
       currentState?.turn_number ?? "",
       currentState?.phase ?? "",
@@ -1833,28 +1843,32 @@ export function GameProvider({ children }) {
       currentState?.priority_player ?? "",
       currentState?.stack_size ?? "",
       decision?.player ?? "",
+      result.command.type,
       result.command.action_index,
+      result.command.object_ids?.join(",") ?? "",
     ].join("|");
 
-    if (multiplayerAutoPassAttemptRef.current === passKey) return;
-    multiplayerAutoPassAttemptRef.current = passKey;
+    if (multiplayerAutomationAttemptRef.current === attemptKey) return;
+    multiplayerAutomationAttemptRef.current = attemptKey;
 
     let syncedCommand;
     try {
       syncedCommand = serializeMultiplayerCommand(result.command, currentState);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      queueMicrotask(() => setStatus(`Auto-pass failed: ${message}`, true));
+      queueMicrotask(() => setStatus(`Automatic action failed: ${message}`, true));
       console.error(err);
       return;
     }
 
     multiplayerSubmitInFlightRef.current = true;
-    submitMultiplayerCommand(syncedCommand, "Auto-passed priority")
+    submitMultiplayerCommand(syncedCommand, forcedObjects
+      ? "Auto: only required card selected"
+      : "Auto-passed priority")
       .catch((err) => {
         const message = err instanceof Error ? err.message : String(err);
-        emitSyncFailureNotice("Auto-pass failed", message);
-        setStatus(`Auto-pass failed: ${message}`, true);
+        emitSyncFailureNotice("Automatic action failed", message);
+        setStatus(`Automatic action failed: ${message}`, true);
         console.error(err);
       })
       .finally(() => {
@@ -1867,6 +1881,7 @@ export function GameProvider({ children }) {
     multiplayer.submittingAction,
     setStatus,
     state,
+    stateRef,
     submitMultiplayerCommand,
   ]);
 

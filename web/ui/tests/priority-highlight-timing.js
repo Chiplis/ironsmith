@@ -16,17 +16,14 @@ export function priorityHighlightTimingPlugin() {
           ['worker ||= createWorker();', `__pt('workerSelect', {token, reused: !!worker}); worker ||= createWorker();`],
           ['worker.onmessage = ({ data }) => {', `worker.onmessage = ({ data }) => { const receivedAt = performance.timeOrigin + performance.now();`],
           ['return deliver(() => {', `return deliver(() => { __pt('delivery', {token, type: data.type, sequence: data.sequence, receivedAt, current: current()});`],
-          ["worker.postMessage({ type: 'analyze', token, ...input });", `__pt('sendAnalyze', {token, viewRevision, sources: input.sources.length}); worker.postMessage({ type: 'analyze', token, ...input });`],
+          ["worker.postMessage({ type: 'analyze', token, ...input });", `__pt('sendAnalyze', {token, viewRevision, operations: input.localReplay.operations.length}); worker.postMessage({ type: 'analyze', token, ...input });`],
         );
       } else if (file.endsWith('/workers/priorityAnalysisWorker.js')) {
         replacements.push(
           ["  token = data.token;", `  token = data.token; __pt('childReceive', {token});`],
-          ['  const nextRegistryKey', `  __pt('wasmReady', {token}); const nextRegistryKey`],
-          ['  if (!game || registryKey !== nextRegistryKey) {', `  let compileMs = 0, yieldMs = 0; __pt('registryStart', {token, rebuild: !game || registryKey !== nextRegistryKey}); if (!game || registryKey !== nextRegistryKey) {`],
-          ['      const result = compileAndRegisterCardSources(game, [source]);', `      const compileStart = performance.now(); const result = compileAndRegisterCardSources(game, [source]); compileMs += performance.now() - compileStart;`],
-          ['      if (result.failed?.length) throw new Error(result.failed[0].error);\n      await yieldTask();', `      if (result.failed?.length) throw new Error(result.failed[0].error); const yieldStart = performance.now(); await yieldTask(); yieldMs += performance.now() - yieldStart;`],
-          ['  if (job.cancelled) return;\n  phase', `  __pt('registryDone', {token, compileMs, yieldMs}); if (job.cancelled) return;\n  phase`],
-          ['  initialized = true;', `  __pt('checkpointDone', {token}); initialized = true;`],
+          ['  game = await replica.hydrate(data.localReplay, yieldTask);', `  __pt('replayStart', {token}); game = await replica.hydrate(data.localReplay, yieldTask); __pt('replayDone', {token});`],
+          ['  if (job.cancelled) return;\n  phase', `  __pt('replayReady', {token}); if (job.cancelled) return;\n  phase`],
+          ['  initialized = true;', `  __pt('analysisReady', {token}); initialized = true;`],
           ['    do {\n      const decision', `    __pt('beginDone', {token}); do {\n      const decision`],
           ["        self.postMessage({ type: 'priority'", `        __pt('computed', {token, complete: decision.analysis_complete, actions: decision.actions?.length}); self.postMessage({ type: 'priority'`],
         );
@@ -34,7 +31,7 @@ export function priorityHighlightTimingPlugin() {
         replacements.push(
           ['      if (method !== "copyRuntimeSavepoint") priorityAnalysis.invalidate();', `      if (method !== "copyRuntimeSavepoint") { __pt('invalidateCommand', {method, runtimeBranch: msg.runtimeBranch}); priorityAnalysis.invalidate(); }`],
           ['          priorityAnalysis.invalidate();', `          __pt('invalidateIdentity', {method, runtimeBranch: msg.runtimeBranch}); priorityAnalysis.invalidate();`],
-          ['checkpoint: game.exportSyncCheckpoint(),', `checkpoint: (() => { __pt('exportStart'); const checkpoint = game.exportSyncCheckpoint(); __pt('exportDone'); return checkpoint; })(),`],
+          ['localReplay: localAnalysisJournal.capture(),', `localReplay: (() => { __pt('captureStart'); const journal = localAnalysisJournal.capture(); __pt('captureDone'); return journal; })(),`],
         );
       } else if (file.endsWith('/context/GameContext.jsx')) {
         replacements.push(

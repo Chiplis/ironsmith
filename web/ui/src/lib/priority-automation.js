@@ -126,12 +126,8 @@ export function buildMultiplayerSmartAutoPass({
     if (decision.analysis_complete === false) {
       return { command: null, holdReason: "checking playable actions", passAction };
     }
-    const hasPlayableAction = (decision.actions || []).some(action =>
-      !["pass_priority", "activate_mana_ability", "untap_land"].includes(action.kind)
-    );
-    if (hasPlayableAction) {
-      return { command: null, holdReason: "playable actions available", passAction };
-    }
+    // Playable-action holds are handled by priorityHoldReason above according
+    // to holdRule; they must not override an explicit "never" hold setting.
     return {
       command: priorityCommandForAction(passAction),
       holdReason: null,

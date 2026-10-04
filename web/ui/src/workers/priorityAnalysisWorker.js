@@ -1,4 +1,5 @@
-import initWasm, { WasmGame, compileAndRegisterCardSources } from '../../../wasm_demo/pkg/ironsmith.js';
+import { createLocalAnalysisReplica } from '../lib/local-analysis-replay.js';
+import initWasm, { WasmGame } from '../../../wasm_demo/pkg/ironsmith.js';
 
 // One pump owns WASM. New snapshots supersede searches at yield boundaries;
 // registry initialization finishes once and survives cancellation.
@@ -6,7 +7,7 @@ let sequence = 0, cancelSerial = 0;
 let game, token, complete = false, initialized = false, running = false;
 let job = null, pendingAnalysis = null;
 const inspectors = [];
-let registryKey = null;
+const replica = createLocalAnalysisReplica(() => new WasmGame());
 const yieldTask = () => new Promise(resolve => setTimeout(resolve, 0));
 const reportError = error => self.postMessage({ type: 'error', token, error: error.stack || error.message || String(error) });
 const phase = value => self.postMessage({ type: 'phase', token, phase: value });
@@ -35,32 +36,9 @@ async function analyze(data) {
   complete = false;
   phase('initializing');
   await initWasm({ engine: data.module, compiler: false, verifier: false });
-  const nextRegistryKey = JSON.stringify([data.sources, data.registrations || []]);
-  if (!game || registryKey !== nextRegistryKey) {
-    game?.free();
-    game = new WasmGame();
-    game.setDeferredPriorityAnalysis(true);
-    for (const [, source] of data.sources) {
-      // Fetched sources include rejected cards retained for load diagnostics.
-      // Mirror the command worker: keep successful definitions and let the
-      // checkpoint/operation validate the cards this analysis actually needs.
-      compileAndRegisterCardSources(game, [source]);
-      await yieldTask();
-    }
-    for (const registration of data.registrations || []) {
-      if (registration.method === 'createCustomCard') {
-        // Keep its definitions; the temporary object is replaced on import.
-        game.createCustomCard({ ...registration.args[0], playerIndex: 0, zoneName: 'hand', skipTriggers: true, counterSeed: null });
-      } else {
-        game[registration.method](...registration.args);
-      }
-      await yieldTask();
-    }
-    registryKey = nextRegistryKey;
-  }
+  game = await replica.hydrate(data.localReplay, yieldTask);
   if (job.cancelled) return;
   phase('search');
-  game.importSyncCheckpoint(data.checkpoint, data.checkpoint.perspective);
   initialized = true;
   if (game.beginPriorityAnalysis(String(token))) {
     do {

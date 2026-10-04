@@ -125,12 +125,12 @@ function commandTimingPlugin() {
     previous = now;
   };
   try {`],
-        ['    const nextRegistryKey', "    mark('initializePaymentRuntime');\n    const nextRegistryKey"],
-        ['    game.importSyncCheckpoint', "    mark('registerPaymentSources');\n    game.importSyncCheckpoint"],
+        ['    const game = await replica.hydrate', "    mark('initializePaymentRuntime');\n    const game = await replica.hydrate"],
+        ['    const replayMs =', "    mark('replayPaymentRuntime');\n    const replayMs ="],
         ['    const result = game.getPaymentActivationOptions(data.request);',
-          "    mark('importPaymentCheckpoint');\n    const result = game.getPaymentActivationOptions(data.request);\n    mark('getPaymentActivationOptions');"],
-        ['result: { ...result, __payment_options_perf: timings }',
-          'result: { ...result, __payment_options_perf: timings }, timings: measuredCalls'],
+          "    mark('paymentReplayComplete');\n    const result = game.getPaymentActivationOptions(data.request);\n    mark('getPaymentActivationOptions');"],
+        ['self.postMessage({ token: data.token, result:',
+          'self.postMessage({ token: data.token, timings: measuredCalls, result:'],
       ];
       let code = source;
       for (const [before, after] of replacements) {
@@ -163,7 +163,6 @@ function commandTimingPlugin() {
             durationMs: performance.now() - started, at: performance.timeOrigin + performance.now()}); }
         };`);
       for (const [before, after] of [
-        ['game.importSyncCheckpoint(data.checkpoint, data.checkpoint.perspective)', "measuredAnalysisCall('importSyncCheckpoint', data.checkpoint, data.checkpoint.perspective)"],
         ['game.beginPriorityAnalysis(String(token))', "measuredAnalysisCall('beginPriorityAnalysis', String(token))"],
         ['game.stepPriorityAnalysis(String(token), 8)', "measuredAnalysisCall('stepPriorityAnalysis', String(token), 8)"],
         ['game.beginInspectorAnalysis(searchToken, ...request.args)', "measuredAnalysisCall('beginInspectorAnalysis', searchToken, ...request.args)"],

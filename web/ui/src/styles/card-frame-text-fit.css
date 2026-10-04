@@ -57,6 +57,7 @@
   font-size: var(--card-fitted-flavor-font-size, var(--printed-flavor-font-size, var(--printed-rules-font-size, inherit)));
 }
 .interactive-card-frame__rules[data-fit-text="true"][data-text-overflow="true"] {
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -80,16 +81,14 @@
 .interactive-card-frame__rules[data-fit-text="true"] :is(.rules-reminder-text, .inspector-flavor-text) {
   font-size: inherit !important;
 }
-.interactive-card-frame__rules[data-fit-text="true"][data-text-overflow="true"] {
-  overflow: auto;
-}
 .interactive-card-frame__stats-text {
   max-width: 100%;
   font-size: inherit;
   flex-shrink: 0;
 }
 .registered-card-frame__field .interactive-card-frame__rules[data-text-overflow="true"] {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Fallback frames have no printed metrics: use the card's width without a

@@ -2,24 +2,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { createLocalAnalysisReplica } from '../src/lib/local-analysis-replay.js';
 
 const source = readFileSync(new URL('../src/workers/priorityAnalysisWorker.js', import.meta.url), 'utf8')
-  .replace(/^import .*;\n/, '');
+  .replace(/^import .*;\n/gm, '');
 function harness({ rejectedSource = null, checkpointError = null } = {}) {
   const timers = [], messages = [], imports = [], compiled = [];
   let constructors = 0;
   class WasmGame {
     constructor() { constructors++; }
     free() {}
+    points = new Map(); nextHandle = 0;
+    createRuntimeSavepoint() { const h = ++this.nextHandle; this.points.set(h, this.steps); return h; }
+    exchangeRuntimeSavepoint(h) { const before = this.steps; this.steps = this.points.get(h); this.points.set(h, before); }
+    releaseRuntimeSavepoint(h) { return this.points.delete(h); }
+    registerSource(source) { compiled.push(source); return { failed: source === rejectedSource ? ['unsupported'] : [] }; }
+    loadSnapshot(id) { if (checkpointError) throw new Error(checkpointError); imports.push(id); this.steps = 0; }
+
     setDeferredPriorityAnalysis() {}
-    importSyncCheckpoint(checkpoint) { if (checkpointError) throw new Error(checkpointError); imports.push(checkpoint.id); this.steps = 0; }
+    importSyncCheckpoint() { this.steps = 0; }
     beginPriorityAnalysis() { return true; }
     stepPriorityAnalysis() { return { analysis_complete: ++this.steps === 2, actions: [] }; }
     beginInspectorAnalysis() { this.inspectorSteps = 0; }
     stepInspectorAnalysis() { return ++this.inspectorSteps === 2 ? ['result'] : null; }
   }
   const self = { postMessage: message => messages.push(message) };
-  vm.runInNewContext(source, { self, WasmGame, initWasm: async () => {},
+  vm.runInNewContext(source, { self, WasmGame, createLocalAnalysisReplica, initWasm: async () => {},
     compileAndRegisterCardSources: (_, sources) => { compiled.push(...sources); return { failed: sources.includes(rejectedSource) ? [{ error: "unsupported mechanics" }] : [] }; },
     setTimeout: fn => timers.push(fn) });
   const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
@@ -29,9 +37,14 @@ function harness({ rejectedSource = null, checkpointError = null } = {}) {
     async drain() { for (let i = 0; timers.length && i < 100; i++) { timers.shift()(); await flush(); } assert.equal(timers.length, 0); },
   };
 }
-const analysis = (token, sources = []) => ({ type: 'analyze', token, sources, checkpoint: { id: token } });
+const analysis = (token, sources = []) => ({ type: 'analyze', token, localReplay: {
+  epoch: 1, genesis: { perspective: 0 }, operations: [
+    ...sources.map(([, source]) => ({ method: 'registerSource', args: [source], failed: false })),
+    ...Array.from({ length: token }, (_, i) => ({ method: 'loadSnapshot', args: [i + 1], failed: false })),
+  ],
+} });
 
-test('cancelled registry setup finishes once and only the newest queued snapshot is analyzed', async () => {
+test('cancelled searches retain replay progress and only the newest queued snapshot completes', async () => {
   const h = harness(), sources = [['a', 'A'], ['b', 'B']];
   await h.send(analysis(1, sources));
   await h.send({ type: 'cancel', token: 1, serial: 1 });
@@ -41,9 +54,9 @@ test('cancelled registry setup finishes once and only the newest queued snapshot
   await h.drain();
   assert.equal(h.constructors(), 1);
   assert.deepEqual(h.compiled, ['A', 'B']);
-  assert.deepEqual(h.imports, [3]);
+  assert.deepEqual(h.imports, [1, 2, 3]);
   assert.ok(h.messages.some(m => m.type === 'available' && m.cancelSerial === 2));
-  assert.ok(h.messages.filter(m => m.type === 'priority').every(m => m.token === 3));
+  assert.ok(h.messages.filter(m => m.type === 'priority' && m.decision.analysis_complete).every(m => m.token === 3));
   assert.ok(h.messages.some(m => m.type === 'priority' && m.decision.analysis_complete));
 });
 
@@ -90,7 +103,7 @@ test('a rejected fetched source does not strand the guest priority menu', async 
 });
 
 
-test('priority analysis still reports a checkpoint that cannot be restored', async () => {
+test('priority analysis reports replay divergence instead of publishing a partial reconstructed state', async () => {
   const h = harness({ checkpointError: 'missing required definition' });
   await h.send(analysis(1));
   await h.drain();

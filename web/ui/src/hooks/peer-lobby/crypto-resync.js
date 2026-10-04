@@ -80,6 +80,7 @@ import {
   normalizePlayerIndex,
   normalizeSelectObjectHiddenRef,
   normalizeShuffleOrder,
+  openingMatchesRequirement,
   nowMonotonicMs,
   payloadSizeBytes,
   playerNameForIndex,
@@ -435,12 +436,16 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     return false;
   }
 
-  function filterOpeningsForCommandHiddenRefs(openings = [], command = null) {
+  function filterOpeningsForCommandHiddenRefs(openings = [], command = null, requirements = []) {
     if (command?.type !== "select_objects") return openings;
     const hiddenRefs = commandObjectHiddenRefs(command).filter(Boolean);
     if (hiddenRefs.length === 0) return openings;
     return (openings || []).filter((opening) =>
       hiddenRefs.some((hiddenRef) => openingMatchesCommandHiddenRef(opening, hiddenRef))
+      // A required public disclosure must survive selection filtering even
+      // when the command's reference predates private identity hydration.
+      || requirements.some(requirement => String(requirement?.type || "") === "public_open"
+        && openingMatchesRequirement(opening, requirement))
     );
   }
 
@@ -2250,26 +2255,28 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       }
       const peerIndex = normalizePlayerIndex(peerPlayer?.index);
       const currentGame = gameRef.current;
-	      if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
-	        throw new Error("Game engine cannot export a resync checkpoint");
-	      }
-	      const securityMode = sessionSecurityMode(
-	        session,
-	        matchPayloadSecurityMode(payload.match, MULTIPLAYER_SECURITY_VERIFIED)
-	      );
-	      const trusted = isTrustedMultiplayerSecurityMode(securityMode);
+      if (!currentGame) {
+        throw new Error("Game engine is not available for resync");
+      }
+      const securityMode = sessionSecurityMode(
+        session,
+        matchPayloadSecurityMode(payload.match, MULTIPLAYER_SECURITY_VERIFIED)
+      );
+      const trusted = isTrustedMultiplayerSecurityMode(securityMode);
+      const verified = isVerifiedMultiplayerSecurityMode(securityMode);
       const baseSequence = Number(payload.requesterSequence);
       const suffix = trusted && !payload.forceCheckpoint
         && payload.requestMatchId === relayMatchId(payload.match)
         && matchingActionPrefix(actionHistoryRef.current, baseSequence, payload.requestPrefixHash);
-      // Verified: prefer a stored per-seat checkpoint the requester can import
-      // (its sequence is signed below); otherwise the head export keeps the
-      // message shape and the requester replays from genesis.
+      // A checkpoint is useful only when its accepted sequence is signed.
+      // Otherwise replay the complete signed transcript from genesis without
+      // requiring a head export that the receiver would never import.
       const replayCheckpoint = !trusted && peerIndex != null
         && isVerifiedMultiplayerSecurityMode(securityMode)
         ? selectResyncReplayCheckpoint(peerIndex)
         : null;
-      const checkpoint = trusted ? null
+      const replayOnly = trusted || (verified && !replayCheckpoint);
+      const checkpoint = replayOnly ? null
         : replayCheckpoint ? replayCheckpoint.checkpoint
         : peerIndex != null && typeof currentGame.exportRedactedSyncCheckpoint === "function"
           ? await currentGame.exportRedactedSyncCheckpoint(peerIndex)
@@ -2307,7 +2314,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           conn.peer,
           peerIndex
         ),
-        ...(trusted ? { replayOnly: true, ...(suffix ? { suffix: true, baseSequence, basePrefix: payload.requestPrefixHash } : {}) }
+        ...(replayOnly
+          ? {
+              replayOnly: true,
+              ...(verified ? { checkpoint: serializedCheckpoint } : {}),
+              ...(suffix ? { suffix: true, baseSequence, basePrefix: payload.requestPrefixHash } : {}),
+            }
           : { checkpoint: serializedCheckpoint }),
         actions,
         ...(resyncEnvelope ? { resyncEnvelope } : {}),
