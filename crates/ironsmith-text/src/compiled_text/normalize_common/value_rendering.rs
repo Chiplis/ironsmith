@@ -4590,6 +4590,7 @@ pub(crate) fn describe_prior_effect_action(
     match action {
         crate::effect::PriorEffectAction::Cast => "cast",
         crate::effect::PriorEffectAction::Chosen => "chosen",
+        crate::effect::PriorEffectAction::ChosenNumber => "chosen",
         crate::effect::PriorEffectAction::Connived => "connived",
         crate::effect::PriorEffectAction::Countered => "countered",
         crate::effect::PriorEffectAction::CountersPut => "had counters put on them",
@@ -4817,6 +4818,7 @@ pub(crate) fn describe_prior_effect_count_basis_for_action(
 pub(crate) fn describe_prior_effect_metric_value(
     query: &crate::effect::PriorEffectMetricQuery,
 ) -> String {
+    if query.action == Some(crate::effect::PriorEffectAction::ChosenNumber) && query.metric == crate::effect::EffectMetric::Count { return "the chosen number".into(); }
     let plural_basis = describe_prior_effect_metric_basis(query, true);
     let singular_basis = describe_prior_effect_metric_basis(query, false);
     match query.metric {

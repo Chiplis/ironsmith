@@ -3,7 +3,9 @@
 //! This module implements the `DealDamage` effect, which deals damage to a target
 //! creature, planeswalker, or player.
 
-use crate::effect::{EffectOutcome, ExecutionFact};
+use crate::effect::EffectOutcome;
+#[cfg(test)]
+use crate::effect::ExecutionFact;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_player_from_spec, resolve_players_from_spec, resolve_value,
@@ -12,14 +14,11 @@ use crate::effects::helpers::{
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
 use crate::events::DamageTarget;
+#[cfg(test)]
 use crate::events::LifeGainEvent;
 use crate::events::LifeLossEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
-use crate::events::processing::{
-    ProcessedDamageResult, SimultaneousDamageEvent,
-    process_damage_assignments_with_event_with_source_snapshot_opts_with_scope,
-    process_simultaneous_damage_assignments_with_event_with_scope,
-};
+use crate::events::processing::SimultaneousDamageEvent;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
 use crate::triggers::AttackEventTarget;
@@ -87,51 +86,43 @@ pub(crate) fn apply_processed_damage_outcome_opts(
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<EffectOutcome, ExecutionError> {
     let checkpoint = game.clone();
-    let result = crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
-        let processed = process_damage_assignments_with_event_with_source_snapshot_opts_with_scope(
-            game,
-            source,
-            initial_target,
-            amount,
-            source_is_combat,
-            unpreventable,
-            cause.clone(),
-            source_snapshot,
-            dm,
-            replacement_scope,
-        )?;
-        if dm.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        // A single recipient can still be one assignment in a surrounding
-        // simultaneous object/player action. Outcome events leave this scope
-        // before they are queued, so retain its batch identity at production.
-        let simultaneous_batch = game.simultaneous_action_batch();
-        apply_processed_damage_results(
-            game,
-            source,
-            source_snapshot,
-            std::iter::once(processed),
-            simultaneous_batch,
-            source_is_combat,
-            provenance,
-            cause,
-            replacement_scope,
-            dm,
-        )
-    });
-    if dm.awaiting_choice() {
-        *game = checkpoint;
-        return Ok(EffectOutcome::count(0));
+    let result =
+        crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
+            let controller = game
+                .current_controller(source)
+                .or_else(|| source_snapshot.map(|snapshot| snapshot.controller))
+                .unwrap_or(game.turn.active_player);
+            let mut parent = ExecutionContext::new(source, controller, dm)
+                .with_cause(cause.clone())
+                .with_provenance(provenance);
+            parent.source_snapshot = source_snapshot.cloned();
+            parent.replacement = replacement_scope.clone();
+            let batch = game.simultaneous_action_batch();
+            super::multi_source_damage::commit_damage_batch(
+                game,
+                &mut parent,
+                vec![SimultaneousDamageEvent {
+                    source,
+                    target: initial_target,
+                    amount,
+                    is_combat: source_is_combat,
+                    unpreventable,
+                    cause,
+                    source_snapshot: source_snapshot.cloned(),
+                }],
+                batch,
+            )
+        });
+    let pending = dm.awaiting_choice();
+    if pending || result.is_err() {
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && pending);
     }
-    if result.is_err() {
-        *game = checkpoint;
+    if pending && result.is_ok() {
+        return Ok(EffectOutcome::count(0));
     }
     result
 }
 
-#[allow(clippy::too_many_arguments)]
 fn apply_simultaneous_damage_outcome_opts(
     game: &mut GameState,
     source: crate::ids::ObjectId,
@@ -178,207 +169,42 @@ fn apply_simultaneous_damage_assignments_opts(
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<EffectOutcome, ExecutionError> {
     let checkpoint = game.clone();
-    let result = crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
-        let events = assignments
-            .into_iter()
-            .map(|(target, amount)| SimultaneousDamageEvent {
-                source,
-                target,
-                amount,
-                is_combat: source_is_combat,
-                unpreventable,
-                cause: cause.clone(),
-                source_snapshot: source_snapshot.cloned(),
-            })
-            .collect::<Vec<_>>();
-        let processed =
-            process_simultaneous_damage_assignments_with_event_with_scope(game, &events, dm, replacement_scope)?;
-        if dm.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        // Several sources dealing damage at once ("each creature you control
-        // deals damage ...") share the enclosing simultaneous action.
-        let simultaneous_batch = game.simultaneous_action_batch().unwrap_or_else(|| {
-            game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage)
+    let result =
+        crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
+            let controller = game
+                .current_controller(source)
+                .or_else(|| source_snapshot.map(|snapshot| snapshot.controller))
+                .unwrap_or(game.turn.active_player);
+            let mut parent = ExecutionContext::new(source, controller, dm)
+                .with_cause(cause.clone())
+                .with_provenance(provenance);
+            parent.source_snapshot = source_snapshot.cloned();
+            parent.replacement = replacement_scope.clone();
+            let events = assignments
+                .into_iter()
+                .map(|(target, amount)| SimultaneousDamageEvent {
+                    source,
+                    target,
+                    amount,
+                    is_combat: source_is_combat,
+                    unpreventable,
+                    cause: cause.clone(),
+                    source_snapshot: source_snapshot.cloned(),
+                })
+                .collect();
+            let batch = game.simultaneous_action_batch().unwrap_or_else(|| {
+                game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage)
+            });
+            super::multi_source_damage::commit_damage_batch(game, &mut parent, events, Some(batch))
         });
-
-        apply_processed_damage_results(
-            game,
-            source,
-            source_snapshot,
-            processed,
-            Some(simultaneous_batch),
-            source_is_combat,
-            provenance,
-            cause,
-            replacement_scope,
-            dm,
-        )
-    });
-    if dm.awaiting_choice() {
-        *game = checkpoint;
+    let pending = dm.awaiting_choice();
+    if pending || result.is_err() {
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && pending);
+    }
+    if pending && result.is_ok() {
         return Ok(EffectOutcome::count(0));
     }
-    if result.is_err() {
-        *game = checkpoint;
-    }
     result
-}
-
-#[allow(clippy::too_many_arguments)]
-fn apply_processed_damage_results(
-    game: &mut GameState,
-    source: crate::ids::ObjectId,
-    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
-    processed_results: impl IntoIterator<Item = ProcessedDamageResult>,
-    simultaneous_batch: Option<crate::provenance::ProvNodeId>,
-    source_is_combat: bool,
-    provenance: crate::provenance::ProvNodeId,
-    cause: crate::events::cause::EventCause,
-    replacement_scope: &crate::effects::ReplacementExecutionContext,
-    dm: &mut dyn crate::decision::DecisionMaker,
-) -> Result<EffectOutcome, ExecutionError> {
-    let source_controller = game
-        .object(source)
-        .filter(|_| !game.is_phased_out(source))
-        .map(|obj| game.controller_of(obj))
-        .or_else(|| source_snapshot.map(|snapshot| snapshot.controller));
-
-    let keywords = crate::rules::damage::source_damage_keywords(game, source, source_snapshot);
-    let mut outcomes = Vec::new();
-    let mut programs = Vec::new();
-    let damage_source_snapshot = game.object(source)
-        .filter(|_| !game.is_phased_out(source))
-        .map(|object|
-        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
-        .or_else(|| source_snapshot.cloned());
-    let mut total_damage_dealt = 0u32;
-    let mut affected_objects = Vec::new();
-    let mut any_replacement_prevented = false;
-    let mut lifelink_outcome = None;
-    for processed in processed_results {
-        programs.extend(processed.programs);
-        any_replacement_prevented |= processed.replacement_prevented;
-        if let Some(mut payload) = processed.payload_outcome {
-            if let Some(batch) = simultaneous_batch {
-                for event in &mut payload.events {
-                    *event = event.clone().with_simultaneous_batch(batch);
-                }
-            }
-            outcomes.push(payload);
-        }
-        for assignment in processed.assignments {
-            let target_snapshot = match assignment.target {
-                DamageTarget::Object(object_id) => game.object(object_id).map(|obj| {
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        obj, game,
-                    )
-                }),
-                DamageTarget::Player(_) => None,
-            };
-            let excess_damage = match assignment.target {
-                DamageTarget::Object(object_id) => {
-                    excess_damage_to_object(game, object_id, assignment.amount, keywords)
-                }
-                DamageTarget::Player(_) => 0,
-            };
-            let applied = crate::rules::damage::apply_processed_damage_assignment_with_scope(
-                game, source, assignment.target, assignment.amount, keywords,
-                cause.clone(), dm, replacement_scope, source_snapshot, provenance,
-            )?;
-            if dm.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if !applied.applied {
-                continue;
-            }
-
-            total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
-            if let DamageTarget::Object(object_id) = assignment.target {
-                affected_objects.push(object_id);
-            }
-            let mut outcome = EffectOutcome::count(assignment.amount as i32);
-            if excess_damage > 0 {
-                outcome = outcome
-                    .with_execution_fact(ExecutionFact::ExcessDamageDealt)
-                    .with_execution_fact(ExecutionFact::ExcessDamage(excess_damage));
-            }
-            if assignment.amount > 0 {
-                let mut damage_event = DamageEvent::with_cause(
-                    source,
-                    assignment.target,
-                    assignment.amount,
-                    source_is_combat,
-                    cause.clone(),
-                )
-                .with_excess_damage(excess_damage);
-                if let Some(snapshot) = target_snapshot {
-                    damage_event = damage_event.with_target_snapshot(snapshot);
-                }
-                let mut event = TriggerEvent::new_with_provenance(damage_event, provenance);
-                if let Some(batch) = simultaneous_batch {
-                    event = event.with_simultaneous_batch(batch);
-                }
-                if let Some(snapshot) = damage_source_snapshot.as_ref() {
-                    event = event.with_source_snapshot(snapshot.clone());
-                }
-                outcome = outcome.with_event(event);
-            }
-
-            if let Some(mut consequence_outcome) = applied.consequence_outcome {
-                if let Some(batch) = simultaneous_batch {
-                    for event in &mut consequence_outcome.events {
-                        *event = event.clone().with_simultaneous_batch(batch);
-                    }
-                }
-                outcome = EffectOutcome::aggregate_replacement_outcomes(outcome, [consequence_outcome]);
-            }
-
-            outcomes.push(outcome);
-        }
-    }
-
-    if keywords.has_lifelink
-        && total_damage_dealt > 0
-        && let Some(controller) = source_controller
-    {
-        let mut life_ctx = ExecutionContext::new(source, controller, &mut *dm);
-        life_ctx.provenance = provenance;
-        life_ctx.cause = cause.clone();
-        life_ctx.source_snapshot = source_snapshot.cloned();
-        life_ctx.replacement = replacement_scope.clone();
-        let gain = crate::effects::life::life_change::execute_life_change(
-            game,
-            &mut life_ctx,
-            crate::events::Event::new_with_provenance(
-                LifeGainEvent::new(controller, total_damage_dealt).with_source(source),
-                provenance,
-            ),
-        )?;
-        if life_ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        lifelink_outcome = Some(gain);
-    }
-
-    let mut outcome = if outcomes.is_empty() && any_replacement_prevented {
-        EffectOutcome::prevented()
-    } else if outcomes.is_empty() {
-        EffectOutcome::count(0)
-    } else {
-        EffectOutcome::aggregate_summing_counts(outcomes)
-    };
-    if !affected_objects.is_empty() {
-        outcome = outcome.with_affected_objects_from_game(game, affected_objects);
-    }
-    if let Some(gain) = lifelink_outcome {
-        outcome = EffectOutcome::aggregate_replacement_outcomes(outcome, [gain]);
-    }
-    let mut parent = ExecutionContext::new(source, source_controller.unwrap_or(game.turn.active_player), dm)
-        .with_cause(cause).with_provenance(provenance);
-    parent.source_snapshot = damage_source_snapshot;
-    parent.replacement = replacement_scope.clone();
-    finish_damage_replacement_programs(game, &mut parent, outcome, programs)
 }
 
 /// Execute captured additions after their owning damage operation. Targets

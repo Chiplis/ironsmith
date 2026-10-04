@@ -1999,11 +1999,6 @@ fn parse_kicked_additional_targets_prelude(
 pub fn parse_choose_target_prelude_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    // A comma-then continuation belongs to the sequence parser, not the
-    // target declaration. Preserve its subsequent executable instruction.
-    if crate::grammar::effects::chain_splitting::has_authored_comma_then_surface_tokens(tokens) {
-        return Ok(None);
-    }
     if crate::lexer::split_lexed_sentences(tokens).len() != 1 {
         return Ok(None);
     }
@@ -2014,6 +2009,12 @@ pub fn parse_choose_target_prelude_sentence(
 
     if let Some(effects) = parse_kicked_additional_targets_prelude(target_tokens)? {
         return Ok(Some(effects));
+    }
+
+    // A comma-then continuation belongs to the sequence parser, not the
+    // target declaration. Preserve its subsequent executable instruction.
+    if crate::grammar::effects::chain_splitting::has_authored_comma_then_surface_tokens(tokens) {
+        return Ok(None);
     }
 
     if let Some(targets) = parse_choose_target_prelude_targets(target_tokens)? {

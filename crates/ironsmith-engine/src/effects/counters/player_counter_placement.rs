@@ -70,7 +70,7 @@ pub(crate) fn execute_player_counter_placement(
     result
 }
 
-fn commit_player_counter_placement(
+pub(super) fn commit_player_counter_placement(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     processed: TraitEventResult,
@@ -116,16 +116,8 @@ fn commit_player_counter_placement(
                 .player(player)
                 .ok_or(ExecutionError::PlayerNotFound(player))?
                 .counter_count(resolved.counter_type);
-            let proposed_after = before.checked_add(resolved.count).ok_or_else(|| {
-                ExecutionError::InternalError(
-                    "player counter placement exceeds the supported counter range".into(),
-                )
-            })?;
-            i32::try_from(resolved.count).map_err(|_| {
-                ExecutionError::InternalError(
-                    "player counter outcome exceeds the supported count range".into(),
-                )
-            })?;
+            let proposed_after = crate::events::damage::checked_damage_amount(u128::from(before) + u128::from(resolved.count), "player counter total")?;
+            crate::events::damage::checked_damage_count(u128::from(resolved.count), "counter placement outcome")?;
             if resolved.counter_type == CounterType::Poison {
                 game.write_shared_poison(player, proposed_after);
             } else {
@@ -141,11 +133,7 @@ fn commit_player_counter_placement(
             if actual == 0 {
                 return Ok(prevented());
             }
-            let count = i32::try_from(actual).map_err(|_| {
-                ExecutionError::InternalError(
-                    "player counter outcome exceeds the supported count range".into(),
-                )
-            })?;
+            let count = crate::events::damage::checked_damage_count(u128::from(actual), "counter placement outcome")?;
             let mut notification = TriggerEvent::new_with_provenance(
                 MarkersChangedEvent::added(
                     resolved.counter_type,

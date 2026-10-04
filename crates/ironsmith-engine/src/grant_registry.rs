@@ -1924,6 +1924,7 @@ impl GrantRegistry {
         let mut grants = Vec::new();
 
         let mut collect_from_source = |source_id: ObjectId, source_is_battlefield: bool| {
+            if source_is_battlefield && game.is_phased_out(source_id) { return; }
             let Some(source) = game.object(source_id) else {
                 return;
             };

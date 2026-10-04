@@ -104,6 +104,8 @@ pub enum PriorEffectAction {
     Searched,
     Shuffled,
     Tapped,
+    /// A numeric decision, distinct from selecting objects or colors.
+    ChosenNumber,
 }
 
 /// A metric over the last-known-information memory emitted by one exact

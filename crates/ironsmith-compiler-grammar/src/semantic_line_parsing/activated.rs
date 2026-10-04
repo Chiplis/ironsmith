@@ -209,6 +209,9 @@ fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
                 amount,
                 ..
             })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
+            })
             | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count: amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })

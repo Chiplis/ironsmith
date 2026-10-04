@@ -29,3 +29,6 @@ pub use redirect_next_time_damage_to_source::{
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
 };
 pub use replace_next_damage_to_target::ReplaceNextDamageToTargetEffect;
+
+mod multi_source_damage;
+pub use multi_source_damage::DealDamageBySourcesEffect;

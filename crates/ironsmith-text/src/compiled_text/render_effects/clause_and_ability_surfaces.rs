@@ -9397,6 +9397,12 @@ pub(crate) fn describe_static_ability_with_subject(
                 return describe_loyalty_timing_permission(filter, subject);
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+                let inner = crate::static_abilities::StaticAbility::from_model((**ability).clone());
+                if inner.enter_as_copy_as_enters().is_some() {
+                    return format!("If {}, {}", lowercase_first(&describe_condition(condition)),
+                        lowercase_first(&describe_static_ability_with_subject(&inner, subject)));
+                }
+
                 if let (
                     ironsmith_core::StaticAbilityPayload::RuleRestriction {
                         restriction,

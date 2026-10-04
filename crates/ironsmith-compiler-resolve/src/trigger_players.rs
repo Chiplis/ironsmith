@@ -19,6 +19,11 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 crate::cards::builders::TriggeringPredicateAst::TriggeringEventCausedBy { .. }), ..
         } => Some(PlayerFilter::TaggedPlayer(ironsmith_core::TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG.into())),
         TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => inferred_trigger_player_filter(trigger),
+        TriggerSpec::DamageReceived { target, .. } => match target.base() {
+            crate::target::ChooseSpec::Player(_) | crate::target::ChooseSpec::SpecificPlayer(_)
+                | crate::target::ChooseSpec::SourceController => Some(PlayerFilter::IteratedPlayer),
+            _ => None,
+        },
         TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
         // Private-zone possessors name the owner, even when a stolen permanent
         // was controlled by somebody else immediately before the move.

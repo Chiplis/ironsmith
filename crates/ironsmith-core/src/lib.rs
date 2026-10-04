@@ -90,7 +90,7 @@ pub use effect::{
     CastTaggedEffect, ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount,
     ChooseCardNameEffect, ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect,
     ChooseLandTypeEffect, ChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
-    ChooseNumberAtRandomEffect, ChooseObjectsEffect, ChoosePlayerEffect,
+    ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClashOpponentMode, ClearGoadEffect,
     ClearSuspectedEffect, CoinFace, CoinFlipKind, CombatDamagePreventionTarget, ConditionalEffect,
     ConditionalModeRange, ConditionalSurface, ConniveEffect, ConspireCostEffect,
@@ -270,3 +270,5 @@ mod damage_history_model;
 pub use damage_history_model::{
     DamageHistoryQuery, DamageHistoryRecipients, DamageHistoryReduction, DamageHistorySources,
 };
+
+pub use effect::DealDamageBySourcesEffect;

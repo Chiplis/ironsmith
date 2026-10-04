@@ -87,6 +87,7 @@ pub(crate) fn queue_triggers_from_event(
     event: TriggerEvent,
     include_delayed: bool,
 ) {
+    if event.triggers_captured() { return; }
     let event = if let Some(targeted) = event.downcast::<BecomesTargetedEvent>() {
         event.with_inner_event(targeted.clone().with_participant_snapshots(game))
     } else { event };
@@ -129,7 +130,7 @@ pub(crate) fn queue_triggers_from_reported_events(
             )
         })
     };
-    let mut events = events.into_iter().map(Some).collect::<Vec<_>>();
+    let mut events = events.into_iter().filter(|event| !event.triggers_captured()).map(Some).collect::<Vec<_>>();
     for index in 0..events.len() {
         let Some(event) = events[index].take() else {
             continue;
@@ -151,6 +152,7 @@ pub(crate) fn queue_triggers_from_reported_events(
                     simultaneous.extend(later.take());
                 }
             }
+            crate::events::damage::bind_received_damage_amounts(&mut simultaneous);
             queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
             if include_delayed {
                 for trigger in crate::triggers::check_delayed_triggers_for_simultaneous_events(
@@ -186,10 +188,12 @@ pub(super) fn queue_triggers_for_simultaneous_events(
     trigger_queue: &mut TriggerQueue,
     events: Vec<TriggerEvent>,
 ) {
-    let events = events
+    let mut events = events
         .into_iter()
+        .filter(|event| !event.triggers_captured())
         .map(|event| game.ensure_trigger_event_provenance(event))
         .collect::<Vec<_>>();
+    crate::events::damage::bind_received_damage_amounts(&mut events);
     let previous_batch_start = game.turn_store.turn_history.begin_simultaneous_batch();
     for event in &events {
         game.record_turn_history_event(event);
@@ -252,6 +256,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                         group,
                         crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
                             | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
+                            | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceTarget(_, _)
                     ) && let Some(indices) = damage_groups.get(&key)
                     {
                         for &index in indices {
@@ -272,6 +277,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                     group,
                     crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
                         | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
+                            | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceTarget(_, _)
                 ) {
                     damage_groups_from_this_event.push((key, trigger_queue.entries.len()));
                 }
@@ -849,6 +855,7 @@ fn drain_pending_trigger_events_inner<E>(
                         simultaneous.extend(later.take());
                     }
                 }
+                crate::events::damage::bind_received_damage_amounts(&mut simultaneous);
                 queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
                 // CR 603.7b: a one-shot delayed trigger sees the whole group.
                 for trigger in crate::triggers::check_delayed_triggers_for_simultaneous_events(
@@ -2095,23 +2102,18 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             return;
         }
         declare_target(&extracted, declared_targets);
-        let relaxed_spec = if matches!(extracted.spec.base(), ChooseSpec::Object(_))
-            && prior_relative_target_requirement(extracted.spec, requirements).is_some()
-        {
-            Some(relax_relative_object_target_source_exclusion(
-                extracted.spec,
-            ))
-        } else if prior_shared_player_requirement(extracted.spec, requirements).is_some() {
-            // "target artifact card in that player's graveyard": which player
-            // is fixed by the earlier target; the shared-player group below
-            // enforces the link, so candidates are computed without it.
-            Some(relax_target_player_relation(extracted.spec))
-        } else {
-            None
-        };
+        let mut relaxed_spec = extracted.spec.clone();
+        if prior_relative_target_requirement(extracted.spec, requirements).is_some() {
+            relaxed_spec = relax_relative_object_target_source_exclusion(&relaxed_spec);
+        }
+        if prior_shared_player_requirement(extracted.spec, requirements).is_some() {
+            // The shared-player group and distinct-object group are separate
+            // constraints; a dependent target can require both at once.
+            relaxed_spec = relax_target_player_relation(&relaxed_spec);
+        }
         let mut legal_targets = compute_legal_targets_with_tagged_objects(
             game,
-            relaxed_spec.as_ref().unwrap_or(extracted.spec),
+            &relaxed_spec,
             caster,
             source_id,
             references,
@@ -2185,23 +2187,10 @@ fn prior_shared_player_requirement(
     if filter.controller != relation && filter.owner != relation {
         return None;
     }
-    requirements
-        .iter()
-        .rposition(|r| {
-            matches!(
-                r.spec.base(),
-                ChooseSpec::Player(_) | ChooseSpec::PlayerOrPlaneswalker(_)
-            )
-        })
-        .or_else(|| {
-            (filter.owner == relation)
-                .then(|| {
-                    requirements
-                        .iter()
-                        .rposition(|r| matches!(r.spec.base(), ChooseSpec::Object(_)))
-                })
-                .flatten()
-        })
+    requirements.iter().rposition(|requirement| matches!(
+        requirement.spec.base(),
+        ChooseSpec::Player(_) | ChooseSpec::PlayerOrPlaneswalker(_) | ChooseSpec::Object(_)
+    ))
 }
 
 pub(super) fn relax_target_player_relation(spec: &ChooseSpec) -> ChooseSpec {
@@ -3416,7 +3405,29 @@ pub(crate) fn spell_has_legal_targets_with_modes_and_view(
             return false;
         }
     }
-    true
+    declared_targets.windows(2).all(|pair| {
+        let [source, recipient] = pair else { unreachable!() };
+        let ChooseSpec::Object(_) = source.spec.base() else { return true; };
+        let ChooseSpec::Object(recipient_filter) = recipient.spec.base() else { return true; };
+        if source.spec.count() != crate::effect::ChoiceCount::exactly(1)
+            || recipient.spec.count() != crate::effect::ChoiceCount::exactly(1)
+            || recipient_filter.controller != Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        { return true; }
+        let sources = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+            game, &source.spec, caster, source_id, None, view);
+        let recipients = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+            game, &relax_target_player_relation(&relax_relative_object_target_source_exclusion(&recipient.spec)),
+            caster, source_id, None, view);
+        sources.iter().any(|source| {
+            let Target::Object(source_id) = source else { return false; };
+            let controller = view.current_controller(*source_id);
+            recipients.iter().any(|recipient| match recipient {
+                Target::Object(id) => (!recipient_filter.other || id != source_id)
+                    && controller.is_some() && view.current_controller(*id) == controller,
+                _ => false,
+            })
+        })
+    })
 }
 
 /// Check if a spell has all required legal targets.
@@ -4140,38 +4151,6 @@ fn specialize_target_player_relation_in_choose_spec(
     }
 }
 
-fn prior_player_or_planeswalker_target(
-    game: &GameState,
-    entry: &StackEntry,
-    before_assignment: usize,
-    view: &crate::derived_view::DerivedGameView<'_>,
-) -> Option<PlayerId> {
-    entry
-        .target_assignments
-        .iter()
-        .take(before_assignment)
-        .rev()
-        .filter(|assignment| {
-            matches!(
-                assignment.spec.base(),
-                crate::target::ChooseSpec::PlayerOrPlaneswalker(_)
-            )
-        })
-        .find_map(|assignment| {
-            entry
-                .targets
-                .get(assignment.range.clone())?
-                .iter()
-                .find_map(|target| match target {
-                    Target::Player(player) => Some(*player),
-                    Target::Object(object) => game
-                        .object(*object)
-                        .filter(|_| game.current_has_card_type(*object, CardType::Planeswalker))
-                        .and_then(|_| view.current_controller(*object)),
-                })
-        })
-}
-
 /// Legal targets for one announced target assignment of a stack entry, with
 /// the entry's controller, source LKI, tagged objects and reflexive results.
 /// Shared by the CR 608.2b recheck and by effects that change or choose new
@@ -4217,20 +4196,23 @@ pub(crate) fn stack_entry_assignment_legal_targets(
     if relative_object_target {
         resolved_spec = relax_relative_object_target_source_exclusion(&resolved_spec);
     }
-    if let Some(player) =
-        prior_player_or_planeswalker_target(game, entry, assignment_index, view)
-    {
-        specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
-    } else if let Some(player) =
-        prior_object_targets
-            .first()
-            .and_then(|target| match target {
-                // "a card in that player's graveyard" after an object target:
-                // that player is the earlier target's current controller.
-                Target::Object(id) => view.current_controller(*id),
-                Target::Player(_) => None,
-            })
-    {
+    let related_player = entry.target_assignments[..assignment_index].iter().rev()
+        .find(|prior| matches!(prior.spec.base(), ChooseSpec::Player(_)
+            | ChooseSpec::PlayerOrPlaneswalker(_) | ChooseSpec::Object(_)))
+        .and_then(|prior| entry.targets.get(prior.range.clone()))
+        .and_then(|targets| targets.first())
+        .and_then(|target| match target {
+            Target::Player(player) => Some(*player),
+            Target::Object(id) => view.current_controller(*id).or_else(|| {
+                game.turn_store.turn_history.source_last_known_snapshot(*id)
+                    .map(|snapshot| snapshot.controller)
+            }),
+        });
+    if let Some(player) = related_player {
+        // The exact prior slot is the participant reference. If it departed,
+        // use only that incarnation's LKI, never a same-card successor or a
+        // different still-legal target. This does not make it a legal damage
+        // source: its own assignment remains empty after the CR608.2b check.
         specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
     }
     // Reflexive entries retain the resolving parent's results. Use

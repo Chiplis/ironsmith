@@ -516,6 +516,9 @@ fn replace_modal_header_x_in_effect_ast(
                 amount,
                 ..
             })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
+            })
             | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
                 amount,
                 ..
@@ -693,6 +696,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })

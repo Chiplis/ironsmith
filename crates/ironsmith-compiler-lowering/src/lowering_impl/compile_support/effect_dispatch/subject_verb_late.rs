@@ -59,6 +59,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
@@ -602,6 +603,65 @@ pub(super) fn compile_subject_verb_late(
             }
             Ok((effects, choices))
         }
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+            sources,
+            amount,
+            target,
+        }) => {
+            let refs = current_reference_env(ctx);
+            let amount = resolve_value_it_tag(amount, &refs)?;
+            let mut specs = Vec::new();
+            let mut groups = Vec::new();
+            let mut declarations = Vec::new();
+            let mut effects = Vec::new();
+            let mut choices = Vec::new();
+            for source in sources {
+                let (mut spec, mut source_choices) =
+                    resolve_target_spec_with_choices(source, &refs)?;
+                for group in &groups {
+                    bind_other_damage_target_to_tagged_source(&mut spec, group);
+                    for choice in &mut source_choices {
+                        bind_other_damage_target_to_tagged_source(choice, group);
+                    }
+                }
+                if spec.is_target() {
+                    let tag = reserved_or_next_object_tag(ctx, "damage_source");
+                    effects.push(
+                        Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone()))
+                            .tag(tag.clone()),
+                    );
+                    groups.push(ChooseSpec::Tagged(tag));
+                } else if matches!(spec.base(), ChooseSpec::Tagged(_)) {
+                    groups.push(spec.clone());
+                } else {
+                    return Err(CardTextError::ParseError("multi-source damage needs target declarations or a previously bound object set".into()));
+                }
+                for choice in source_choices {
+                    push_choice(&mut choices, choice);
+                }
+                specs.push(groups.last().expect("source group was bound").clone());
+                declarations.push(spec);
+            }
+            let (mut recipient, mut recipient_choices) =
+                resolve_target_spec_with_choices(target, &refs)?;
+            for group in &groups {
+                bind_other_damage_target_to_tagged_source(&mut recipient, group);
+                for choice in &mut recipient_choices {
+                    bind_other_damage_target_to_tagged_source(choice, group);
+                }
+            }
+            for choice in recipient_choices {
+                push_choice(&mut choices, choice);
+            }
+            let damage = Effect::new(crate::effects::DealDamageBySourcesEffect {
+                sources: specs,
+                source_declarations: declarations,
+                amount,
+                target: recipient.clone(),
+            });
+            effects.push(tag_object_target_effect(damage, &recipient, ctx, "damaged"));
+            Ok((effects, choices))
+        }
         SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
             amount,
             recipients,
@@ -761,8 +821,14 @@ pub(super) fn compile_subject_verb_late(
                 && (filter.controller.is_some() || filter.owner.is_some())
             {
                 let reference = ObjectRef::tagged(tag.clone());
+                let explicit_recipient = matches!(target, TargetAst::Object(_, Some(_), _));
                 recipient_refs.last_player_filter = crate::model::reference_state::RefState::Known(
-                    if filter.owner.is_some() {
+                    if explicit_recipient && filter.owner.is_none() {
+                        // The two target slots are announced together. Their
+                        // shared-player requirement owns this relationship;
+                        // the source's runtime tag does not exist yet.
+                        PlayerFilter::TargetPlayerOrControllerOfTarget
+                    } else if filter.owner.is_some() {
                         PlayerFilter::AliasedOwnerOf(reference)
                     } else {
                         PlayerFilter::AliasedControllerOf(reference)
@@ -779,10 +845,15 @@ pub(super) fn compile_subject_verb_late(
             } else {
                 let (mut target_spec, mut target_choices) =
                     resolve_target_spec_with_choices(target, &recipient_refs)?;
-                bind_other_damage_target_to_tagged_source(&mut target_spec, &relation_source);
-                for choice in &mut target_choices {
-                    bind_other_damage_target_to_tagged_source(choice, &relation_source);
+                if !target_spec.is_target() || !source_spec.is_target() {
+                    bind_other_damage_target_to_tagged_source(&mut target_spec, &relation_source);
+                    for choice in &mut target_choices {
+                        bind_other_damage_target_to_tagged_source(choice, &relation_source);
+                    }
                 }
+                // For two announced object slots, `other` is represented by
+                // the ordinary distinct-target group. Adding a runtime-only
+                // tag constraint here would make the announcement unbound.
                 for choice in target_choices {
                     push_choice(&mut choices, choice);
                 }
@@ -866,7 +937,26 @@ pub(super) fn compile_subject_verb_late(
                     _ => None,
                 }
             };
-            if let Some(filter) = mass_damage_filter {
+            if let Some(filter) = mass_damage_filter
+                && source != target
+            {
+                // One source dealing to a quantified recipient set is one
+                // damage occurrence, including one lifelink gain. Resolve the
+                // set under the actual damage source before any consequences.
+                let recipients = ChooseSpec::All(filter.clone());
+                let damage = if *unpreventable {
+                    Effect::deal_unpreventable_damage(damage_amount.clone(), recipients.clone())
+                } else {
+                    Effect::deal_damage(damage_amount.clone(), recipients.clone())
+                };
+                // Keep capture inside the source binding: source-relative
+                // recipient filters must use that creature, not its grantor.
+                let damage = tag_object_target_effect(damage, &recipients, ctx, "damaged");
+                effects.push(Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                    damage_source_spec.clone(),
+                    damage,
+                )));
+            } else if let Some(filter) = mass_damage_filter {
                 // In "it deals damage to each creature blocking it", the
                 // filter's source-relative relation names the grammatical
                 // damage source, not necessarily the source of the resolving

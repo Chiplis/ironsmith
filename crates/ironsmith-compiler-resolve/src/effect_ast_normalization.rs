@@ -48,6 +48,9 @@ fn bind_damage_amount_to_removed_counter_count(
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
                 amount,
                 ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
             }) => Some(amount),
             _ => None,
         };
@@ -87,6 +90,7 @@ fn is_removed_counter_damage_fanout_member(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { .. })
         ),
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }

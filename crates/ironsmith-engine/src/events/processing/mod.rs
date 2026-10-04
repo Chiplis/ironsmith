@@ -344,10 +344,42 @@ fn push_enter_as_copy_effects_for_spec(
     reserved_objects: &std::collections::HashSet<ObjectId>,
     copy_choice_effects: &mut Vec<ReplacementEffect>,
     origin: &crate::continuous::AbilityOrigin,
-    instance: crate::static_abilities::StaticAbilityInstanceId,
-) {
+    ability: &crate::static_abilities::StaticAbility,
+) -> Result<(), crate::effects::ExecutionError> {
+    if source != entering_object && game.is_phased_out(source) { return Ok(()); }
+    let instance = ability.instance_id();
+    let mut model = ability.compiled_model();
+    if model.is_some_and(|model| matches!(&model.payload, ironsmith_core::StaticAbilityPayload::Conditional {..})) {
+        let prospective;
+        let evaluation_game = if source == entering_object {
+            let from = game.object(source).map_or(Zone::Stack, |object| object.zone);
+            prospective = crate::events::EnterBattlefieldEvent::new(source, from).with_controller_override(controller)
+                .try_prospective_game_state(game).map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            prospective.as_ref().unwrap_or(game)
+        } else {game};
+        while let Some(ironsmith_core::StaticAbility {payload: ironsmith_core::StaticAbilityPayload::Conditional {ability: inner, condition}, ..}) = model {
+            let context = crate::condition_eval::ExternalEvaluationContext {
+                controller, source, defending_player: None, attacking_player: None, filter_source: Some(source),
+                iterated_player: None, triggering_event: None, trigger_identity: None, ability_index: None,
+                options: Default::default(),
+            };
+            if !crate::condition_eval::evaluate_condition_external(evaluation_game, condition, &context) { return Ok(()); }
+            model = Some(inner);
+        }
+    }
     let start = copy_choice_effects.len();
-    build_enter_as_copy_effects_for_spec(game, entering_object, source, controller, spec,
+    let mut spec = spec.clone();
+    if spec.keep_other_source_abilities {
+        // Copy exceptions retain copiable abilities, never abilities granted in
+        // layer 6. Exclude only the occurrence currently applying (CR 707.9).
+        let effects = game.all_continuous_effects();
+        if let Some(values) = crate::continuous::copiable_values_with_effects(source,
+            game.objects_map(), &effects, &game.battlefield, game.commander_objects(), game) {
+            spec.added_abilities.extend(values.abilities.into_iter().filter(|ability|
+                !matches!(&ability.kind, crate::ability::AbilityKind::Static(ability) if ability.instance_id() == instance)));
+        }
+    }
+    build_enter_as_copy_effects_for_spec(game, entering_object, source, controller, &spec,
         reserved_objects, copy_choice_effects);
     let face = matches!(origin, crate::continuous::AbilityOrigin::Printed(_))
         .then(|| game.object(source).and_then(|object| object.card)).flatten();
@@ -364,6 +396,7 @@ fn push_enter_as_copy_effects_for_spec(
         effect.static_ability_instance = Some(instance);
         *effect = effect.clone().with_ability_origin(origin.clone(), face, 1);
     }
+    Ok(())
 }
 
 fn build_enter_as_copy_effects_for_spec(
@@ -537,7 +570,10 @@ fn build_enter_as_copy_effects_for_spec(
                             candidate,
                             &spec.additional_counters_source_filter,
                         ) {
-                            spec.additional_counters.clone()
+                            let mut counters = spec.additional_counters.clone();
+                            let x = game.object(entering_object).and_then(|object| object.own_entry_x_value()).unwrap_or(0);
+                            counters.extend(spec.additional_x_counters.iter().map(|counter| (*counter, x)));
+                            counters
                         } else {
                             Vec::new()
                         };
@@ -4538,7 +4574,7 @@ fn prepared_object_etb_replacement_effects(
             }
             let mut copies = Vec::new();
             push_enter_as_copy_effects_for_spec(
-                game,
+                &prospective,
                 etb.object,
                 etb.object,
                 controller,
@@ -4546,8 +4582,8 @@ fn prepared_object_etb_replacement_effects(
                 reserved_objects,
                 &mut copies,
                 &origin,
-                ability.instance_id(),
-            );
+                ability,
+            )?;
             for (index, mut effect) in copies.into_iter().enumerate() {
                 let next_id = ReplacementEffectId(u64::MAX - 250_000 + ids.len() as u64);
                 effect.id = *ids
@@ -5079,9 +5115,9 @@ fn collect_simultaneous_prevention_allocations(
             .collect::<std::collections::HashSet<_>>();
         let total_damage = eligible
             .iter()
-            .map(|index| events[*index].amount)
-            .sum::<u32>();
-        if distinct_sources.len() < 2 || total_damage <= capacity {
+            .map(|index| u128::from(events[*index].amount))
+            .sum::<u128>();
+        if distinct_sources.len() < 2 || total_damage <= u128::from(capacity) {
             continue;
         }
 
@@ -5094,13 +5130,13 @@ fn collect_simultaneous_prevention_allocations(
             allocations[*index].allocated_shields.insert(shield.id);
         }
 
-        let mut remaining = capacity.min(total_damage);
+        let mut remaining = u128::from(capacity).min(total_damage) as u32;
         for (position, index) in eligible.iter().copied().enumerate() {
             let later_damage = eligible[position + 1..]
                 .iter()
-                .map(|later| events[*later].amount)
-                .sum::<u32>();
-            let minimum = remaining.saturating_sub(later_damage);
+                .map(|later| u128::from(events[*later].amount))
+                .sum::<u128>();
+            let minimum = u128::from(remaining).saturating_sub(later_damage) as u32;
             let maximum = events[index].amount.min(remaining);
             let chosen = if minimum == maximum {
                 minimum
@@ -5211,7 +5247,8 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
             }
         }
         game.effect_store.trigger_matching_holds -= 1;
-        coalesce_simultaneous_shield_prevention_events(game, pending_event_start);
+        coalesce_simultaneous_shield_prevention_events(game, pending_event_start)
+            .map_err(|error|DamageProcessingError { source: events[0].source, error })?;
         let mut follow_ups = game
             .effect_store
             .prevention_effects
@@ -5268,7 +5305,7 @@ fn dedupe_shield_counter_follow_ups(follow_ups: &mut Vec<crate::prevention::Pend
     });
 }
 
-fn coalesce_simultaneous_shield_prevention_events(game: &mut GameState, start_index: usize) {
+fn coalesce_simultaneous_shield_prevention_events(game: &mut GameState, start_index: usize) -> Result<(), crate::effects::ExecutionError> {
     let removed = game.remove_pending_trigger_events_matching_from(start_index, |event| {
         event
             .downcast::<crate::events::DamagePreventedEvent>()
@@ -5286,12 +5323,11 @@ fn coalesce_simultaneous_shield_prevention_events(game: &mut GameState, start_in
         else {
             continue;
         };
-        if grouped
-            .iter_mut()
-            .any(|(_, existing)| existing.merge_simultaneous(prevented.clone()))
-        {
-            continue;
+        let mut merged = false;
+        for (_, existing) in &mut grouped {
+            if existing.merge_simultaneous(prevented.clone())? { merged = true; break; }
         }
+        if merged { continue; }
         grouped.push((provenance, prevented));
     }
     for (provenance, prevented) in grouped {
@@ -5303,6 +5339,7 @@ fn coalesce_simultaneous_shield_prevention_events(game: &mut GameState, start_in
             ),
         );
     }
+    Ok(())
 }
 
 /// Deterministic convenience wrapper for a simultaneous damage batch.
@@ -6354,8 +6391,8 @@ fn prepare_etb_replacements_inner(
                     &reserved_objects,
                     &mut copy_choice_effects,
                     origin,
-                    s.instance_id(),
-                );
+                    s,
+                )?;
             }
         }
     }
@@ -6384,8 +6421,8 @@ fn prepare_etb_replacements_inner(
                 &reserved_objects,
                 &mut copy_choice_effects,
                 origin,
-                static_ability.instance_id(),
-            );
+                static_ability,
+            )?;
         }
     } else {
         // Ability-copying, text-changing, or relevant ability add/remove
@@ -6421,8 +6458,8 @@ fn prepare_etb_replacements_inner(
                     &reserved_objects,
                     &mut copy_choice_effects,
                     origin,
-                    static_ability.instance_id(),
-                );
+                    static_ability,
+                )?;
             }
         }
     }
@@ -7459,6 +7496,8 @@ mod tests {
                 added_abilities: Vec::new(),
                 set_base_power_toughness: None,
                 additional_counters: Vec::new(),
+                additional_x_counters: Vec::new(),
+                keep_other_source_abilities: false,
                 additional_counters_source_filter: None,
                 added_abilities_source_filter: None,
                 set_base_power_toughness_from_self: false,
@@ -7606,6 +7645,8 @@ mod tests {
                         added_abilities: Vec::new(),
                         set_base_power_toughness: None,
                         additional_counters: Vec::new(),
+                        additional_x_counters: Vec::new(),
+                        keep_other_source_abilities: false,
                         additional_counters_source_filter: None,
                         added_abilities_source_filter: None,
                         set_base_power_toughness_from_self: false,

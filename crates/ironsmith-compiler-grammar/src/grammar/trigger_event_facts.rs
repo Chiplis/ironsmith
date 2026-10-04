@@ -243,6 +243,11 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             TriggerSubjectAst::Object(filter.clone())
         }
+        TriggerSpec::DamageReceived { target, .. } => match target.base() {
+            crate::target::ChooseSpec::Object(filter) => TriggerSubjectAst::Object(filter.clone()),
+            crate::target::ChooseSpec::Player(player) => TriggerSubjectAst::Player(player.clone()),
+            _ => TriggerSubjectAst::Source,
+        },
         TriggerSpec::BecomesTargetedByAbilitySource { target, .. } => TriggerSubjectAst::Object(target.clone()),
         TriggerSpec::ControlChanged(trigger) => TriggerSubjectAst::Object(trigger.filter.clone()),
         TriggerSpec::SpellCast {
@@ -363,6 +368,7 @@ fn trigger_zone_transition(trigger: &TriggerSpec) -> Option<TriggerZoneTransitio
 
 fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
     match core_semantics(trigger) {
+        TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Player(_), .. } => None,
         TriggerSpec::ZoneChange(event) => {
             Some(if event.count == ironsmith_core::CountMode::OneOrMore {
                 Cardinality::OneOrMore

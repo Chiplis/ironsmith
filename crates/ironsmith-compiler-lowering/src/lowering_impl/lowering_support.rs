@@ -257,6 +257,10 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
                     amount: count,
                     ..
                 })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                    amount: count,
+                    ..
+                })
                 | SubjectVerbActionAst::DamagePrevention(
                     DamagePreventionActionAst::PreventDamage { amount: count, .. },
                 )
@@ -813,6 +817,9 @@ fn preserve_counter_removed_this_way_damage_amount(effect: &mut EffectAst) {
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
                 amount,
                 ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
             }) => Some(amount),
             _ => None,
         };
@@ -3147,6 +3154,7 @@ fn statement_terminal_needs_participant_result_export(effect: &EffectAst) -> boo
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. })
                     | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
                     | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
+                    | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { .. })
                     | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
                     | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
             ),
@@ -5561,6 +5569,8 @@ pub(crate) fn lower_compiler_static_ability_core(
                         added_abilities,
                         set_base_power_toughness: spec.set_base_power_toughness,
                         additional_counters: spec.additional_counters.clone(),
+                        additional_x_counters: spec.additional_x_counters.clone(),
+                        keep_other_source_abilities: spec.keep_other_source_abilities,
                         additional_counters_source_filter: spec
                             .additional_counters_source_filter
                             .clone(),

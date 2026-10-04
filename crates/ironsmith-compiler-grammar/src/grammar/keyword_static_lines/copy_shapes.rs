@@ -72,6 +72,8 @@ pub struct ConditionalCopyCounterEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CopyExceptionShape<'a> {
+    OwnOtherAbilities {subject: &'a [OwnedLexToken]},
+    EntryCounters {counter_type: CounterType, count: Option<u32>, controlled_copy: bool},
     /// Spark Double: conditional extra counters keyed on the copied source's
     /// card type, optionally with "and it isn't legendary".
     ConditionalCounters {
@@ -217,6 +219,8 @@ pub fn parse_copy_exception_tokens(tokens: &[OwnedLexToken]) -> Option<CopyExcep
     crate::grammar::primitives::probe_all(
         tokens,
         alt((
+            parse_copy_entry_counters_exception_lexed,
+            parse_copy_own_other_abilities_lexed,
             parse_copy_conditional_counters_exception_lexed,
             parse_copy_name_exception_lexed,
             parse_copy_ability_exception_lexed,
@@ -224,6 +228,31 @@ pub fn parse_copy_exception_tokens(tokens: &[OwnedLexToken]) -> Option<CopyExcep
         )),
         "enter-as-copy exception",
     )
+}
+
+fn parse_copy_entry_counters_exception_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CopyExceptionShape<'a>> {
+    primitives::phrase(&["it", "enters", "with"]).parse_next(input)?;
+    let count = alt((
+        primitives::kw("x").value(None),
+        alt((alt((primitives::kw("a"), primitives::kw("an"))).value(1u32), leaf::parse_leaf_number_prefix_lexed)).map(Some),
+    )).parse_next(input)?;
+    opt(primitives::kw("additional")).parse_next(input)?;
+    let counter_type = any.verify_map(|token: &OwnedLexToken| crate::util::parse_counter_type_word(token.parser_text())).parse_next(input)?;
+    alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;
+    primitives::phrase(&["on", "it"]).parse_next(input)?;
+    let controlled_copy = opt(primitives::phrase(&["if", "you", "control", "that", "creature"])).parse_next(input)?.is_some();
+    primitives::sentence_end().parse_next(input)?;
+    Ok(CopyExceptionShape::EntryCounters {counter_type, count, controlled_copy})
+}
+fn parse_copy_own_other_abilities_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CopyExceptionShape<'a>> {
+    primitives::phrase(&["it", "has"]).parse_next(input)?;
+    // The lexer/doc normalizer supplies the named source or possessive source
+    // noun; require the explicit "other abilities" tail, not a generic grant.
+    let subject = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::phrase(&["other", "abilities"])))
+        .map(|((), ())| ()).take().parse_next(input)?;
+    primitives::phrase(&["other", "abilities"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(CopyExceptionShape::OwnOtherAbilities {subject})
 }
 
 fn conditional_copy_counter_entry<'a>(

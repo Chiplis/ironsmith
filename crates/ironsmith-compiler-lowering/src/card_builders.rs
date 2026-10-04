@@ -2028,7 +2028,7 @@ impl CardDefinitionBuilder {
             crate::triggers::Trigger::this_attacks(),
             vec![crate::effect::Effect::for_players(
                 opponent_other_than_defending,
-                vec![crate::effect::Effect::may(vec![
+                vec![crate::effect::Effect::may_player(crate::target::PlayerFilter::You, vec![
                     crate::effect::Effect::new(
                         crate::effects::CreateTokenCopyEffect::new(
                             crate::target::ChooseSpec::Source,

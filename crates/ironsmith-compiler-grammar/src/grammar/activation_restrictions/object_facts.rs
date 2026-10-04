@@ -162,6 +162,11 @@ pub fn parse_target_indicator_tokens(tokens: &[OwnedLexToken]) -> Option<TargetI
 }
 
 fn parse_target_indicator_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    let mut any = input.clone();
+    if primitives::phrase(&["any", "target"]).parse_next(&mut any).is_ok() {
+        *input = any;
+        return Ok(());
+    }
     opt(primitives::phrase(&["any", "number", "of"])).parse_next(input)?;
     let mut counted = input.clone();
     if alt((

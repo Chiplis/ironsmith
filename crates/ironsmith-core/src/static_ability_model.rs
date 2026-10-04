@@ -2547,6 +2547,8 @@ where
                         added_abilities,
                         set_base_power_toughness: spec.set_base_power_toughness,
                         additional_counters: spec.additional_counters.clone(),
+                        additional_x_counters: spec.additional_x_counters.clone(),
+                        keep_other_source_abilities: spec.keep_other_source_abilities,
                         additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec

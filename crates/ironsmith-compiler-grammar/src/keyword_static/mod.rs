@@ -5273,6 +5273,8 @@ pub fn parse_enter_as_copy_as_enters_line(
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     additional_counters: Vec::new(),
+                    additional_x_counters: Vec::new(),
+                    keep_other_source_abilities: false,
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
@@ -5321,6 +5323,8 @@ pub fn parse_enter_as_copy_as_enters_line(
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
                     additional_counters: Vec::new(),
+                    additional_x_counters: Vec::new(),
+                    keep_other_source_abilities: false,
                     additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
@@ -5376,6 +5380,8 @@ pub fn parse_enter_as_copy_as_enters_line(
             let mut added_abilities = Vec::new();
             let mut additional_counters = Vec::new();
             let mut additional_counters_source_filter = None;
+            let mut additional_x_counters = Vec::new();
+            let mut keep_other_source_abilities = false;
             let mut conditional_additional_counters: Vec<
                 ironsmith_core::ConditionalAdditionalCounters,
             > = Vec::new();
@@ -5411,6 +5417,30 @@ pub fn parse_enter_as_copy_as_enters_line(
                 }
                 for exception in exceptions {
                 match exception {
+                    keyword_static_lines::CopyExceptionShape::OwnOtherAbilities {subject} => {
+                        let words = parser_token_word_refs(subject);
+                        let normalized = crate::util::possessive_normalized_word_refs(&words);
+                        let same_named_source = named_subject_tokens.is_some_and(|name| {
+                            let name = parser_token_word_refs(name);
+                            if normalized == name { return true; }
+                            // The canonical lexer spelling can remove the
+                            // apostrophe while retaining its possessive s.
+                            let mut possessive = name.iter().map(|word| (*word).to_string()).collect::<Vec<_>>();
+                            if let Some(last) = possessive.last_mut() { last.push('s'); }
+                            words == possessive.iter().map(String::as_str).collect::<Vec<_>>()
+                        });
+                        if !same_named_source && crate::util::source_reference_surface_for_possessive_words(&words).is_none() {
+                            return Err(CardTextError::ParseError("copy exception names abilities of an unbound source".into()));
+                        }
+                        keep_other_source_abilities = true;
+                    }
+                    keyword_static_lines::CopyExceptionShape::EntryCounters {counter_type, count, controlled_copy} => {
+                        match count {
+                            Some(count) => additional_counters.push((counter_type, count)),
+                            None => additional_x_counters.push(counter_type),
+                        }
+                        if controlled_copy { additional_counters_source_filter = Some(ObjectFilter::default().you_control()); }
+                    }
                     keyword_static_lines::CopyExceptionShape::ConditionalCounters {
                         entries,
                         remove_legendary,
@@ -5636,6 +5666,8 @@ pub fn parse_enter_as_copy_as_enters_line(
                     set_base_power_toughness,
                     additional_counters,
                     additional_counters_source_filter,
+                    additional_x_counters,
+                    keep_other_source_abilities,
                     added_abilities_source_filter,
                     set_base_power_toughness_from_self,
                     copy_followups: copy_followups.clone(),
@@ -6848,3 +6880,40 @@ mod damage_multiplier_scope_tests;
 #[path = "toughness_assignment.rs"]
 mod toughness_assignment;
 use toughness_assignment::parse_filtered_toughness_assignment_line;
+
+
+#[cfg(test)]
+mod entry_copy_exception_root_tests {
+    use super::*;
+    #[test]
+    fn entry_copy_counter_shapes_keep_x_and_chosen_controller_filters() {
+        for (line, dynamic, controlled) in [
+            ("You may have this creature enter as a copy of any creature on the battlefield, except it enters with X additional +1/+1 counters on it.", true, false),
+            ("You may have this creature enter as a copy of any creature on the battlefield, except it enters with a shield counter on it if you control that creature.", false, true),
+        ] {
+            let ability = parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(line, 0).unwrap()).unwrap().unwrap();
+            let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {spec, ..} = ability.payload else { panic!("missing copy model"); };
+            assert_eq!(!spec.additional_x_counters.is_empty(), dynamic);
+            assert_eq!(spec.additional_counters_source_filter.is_some(), controlled);
+        }
+    }
+    #[test]
+    fn own_other_abilities_reference_is_bound_to_the_named_copy_subject() {
+        let yes = "You may have Prism enter as a copy of another creature you control, except it has Prism's other abilities.";
+        let ability = parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(yes, 0).unwrap()).unwrap().unwrap();
+        let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {spec, ..} = ability.payload else { panic!("missing copy model"); };
+        assert!(spec.keep_other_source_abilities);
+        let no = "You may have Prism enter as a copy of another creature you control, except it has Someone Else's other abilities.";
+        assert!(parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(no, 0).unwrap()).is_err());
+    }
+    #[test]
+    fn copy_exceptions_store_executable_attack_keywords_instead_of_markers() {
+        for keyword in ["myriad", "dethrone"] {
+            let line = format!("You may have this creature enter as a copy of any creature on the battlefield, except it has {keyword}.");
+            let ability = parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(&line, 0).unwrap()).unwrap().unwrap();
+            let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {spec, ..} = ability.payload else { panic!("missing copy model"); };
+            assert_eq!(spec.added_abilities.len(), 1);
+            assert!(matches!(spec.added_abilities[0].kind, crate::model::CompilerAbilityKindCore::Triggered(_)));
+        }
+    }
+}

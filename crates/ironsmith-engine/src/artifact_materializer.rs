@@ -182,7 +182,12 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "CumulativeUpkeepEffect" => {
             decode_as::<T, ironsmith_core::CumulativeUpkeepEffect<wire::WireEffect>>(effect)
         }
-        "DealDamageToRecipientsEffect" => decode_as::<T, ironsmith_core::DealDamageToRecipientsEffect>(effect),
+        "DealDamageBySourcesEffect" => {
+            decode_as::<T, ironsmith_core::DealDamageBySourcesEffect>(effect)
+        }
+        "DealDamageToRecipientsEffect" => {
+            decode_as::<T, ironsmith_core::DealDamageToRecipientsEffect>(effect)
+        }
         "DealDamageEffect" => decode_as::<T, ironsmith_core::DealDamageEffect>(effect),
         "DealDistributedDamageEffect" => {
             decode_as::<T, ironsmith_core::DealDistributedDamageEffect>(effect)
@@ -192,6 +197,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
             decode_as::<T, ironsmith_core::DestroyNoRegenerationEffect>(effect)
         }
         "DetainEffect" => decode_as::<T, ironsmith_core::DetainEffect>(effect),
+        "ChooseNumberEffect" => decode_as::<T, ironsmith_core::ChooseNumberEffect>(effect),
         "ChooseNumberAtRandomEffect" => {
             decode_as::<T, ironsmith_core::ChooseNumberAtRandomEffect>(effect)
         }
@@ -1370,6 +1376,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::CastTaggedEffect,
             crate::effects::ChooseCardNameEffect,
             crate::effects::ChooseCardTypeEffect,
+            crate::effects::ChooseNumberEffect,
             crate::effects::ChooseNewTargetsEffect,
             crate::effects::ChooseObjectsEffect,
             crate::effects::ChooseSpellCastHistoryEffect,
@@ -1384,6 +1391,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::CrewCostEffect,
             crate::effects::DealDamageEffect,
             crate::effects::DealDamageToRecipientsEffect,
+            crate::effects::DealDamageBySourcesEffect,
             crate::effects::DevourEffect,
             crate::effects::DirectionalAdjacentPlayerControlEffect,
             crate::effects::DiscardHandEffect,
@@ -4308,6 +4316,10 @@ mod native_direct_payload_codec_tests {
         let actual = restored.downcast_ref::<E>().unwrap().clone();
         assert_eq!(encode_runtime_effect(crate::effect::Effect::new(actual)).unwrap(), encoded,
             "actual executor encoding must agree, not just retained metadata");
+    }
+    #[test]
+    fn native_direct_payload_codec_bounded_number_preserves_bounds_and_chooser() {
+        check(ironsmith_core::ChooseNumberEffect::new(crate::target::PlayerFilter::Specific(crate::ids::PlayerId::from_index(1)), 0, 13));
     }
     #[test]
     fn native_direct_payload_codec_note_activation_mana() {

@@ -521,21 +521,10 @@ pub(crate) fn interpret_trigger_model(
                 crate::triggers::Trigger::ability_triggers()
             }
         }
-        TriggerKind::IsDealtDamage {
-            target,
-            combat_only,
-            noncombat_only,
-            excess_only,
-        } => {
-            if excess_only && noncombat_only {
-                crate::triggers::Trigger::is_dealt_excess_noncombat_damage(target)
-            } else if excess_only {
-                crate::triggers::Trigger::is_dealt_excess_damage(target, combat_only)
-            } else if combat_only {
-                crate::triggers::Trigger::is_dealt_combat_damage(target)
-            } else {
-                crate::triggers::Trigger::is_dealt_damage(target)
-            }
+        TriggerKind::IsDealtDamage { target, combat_only, noncombat_only, excess_only, minimum, single_source } => {
+            crate::triggers::Trigger::new(crate::triggers::IsDealtDamageTrigger {
+                target, combat_only, noncombat_only, excess_only, minimum, single_source,
+            })
         }
         TriggerKind::PlayerGainsLife { player, during_turn } => crate::triggers::Trigger::new(
             crate::triggers::PlayerGainsLifeTrigger { player, during_turn }),

@@ -465,6 +465,11 @@ pub fn parse_can_attack_no_defender_subject_tokens(
 }
 
 fn target_indicator<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    let mut any = input.clone();
+    if primitives::phrase(&["any", "target"]).parse_next(&mut any).is_ok() {
+        *input = any;
+        return Ok(());
+    }
     opt(primitives::phrase(&["any", "number", "of"])).parse_next(input)?;
     let mut count_probe = input.clone();
     if crate::grammar::leaf::parse_leaf_target_count_range_prefix_lexed

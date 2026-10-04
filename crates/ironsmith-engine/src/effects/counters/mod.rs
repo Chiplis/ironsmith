@@ -87,3 +87,6 @@ pub(crate) fn remove_moved_counters(
         .with_provenance(ctx.provenance);
     remove_counters::execute_counter_removal_event(game, ctx, event)
 }
+
+mod prepared_placement;
+pub(crate) use prepared_placement::{PreparedCounterPlacement, prepare_counter_placement, commit_prepared_counter_original};

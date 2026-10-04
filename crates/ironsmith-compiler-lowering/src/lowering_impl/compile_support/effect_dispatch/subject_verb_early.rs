@@ -49,6 +49,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
@@ -1186,6 +1187,11 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { options }) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::choose_card_type(subject.into_player_filter(), options.clone())
+            })
+        }
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min, max }) => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::new(crate::effects::ChooseNumberEffect::new(subject.into_player_filter(), *min, *max))
             })
         }
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { options }) => {

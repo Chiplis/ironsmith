@@ -446,6 +446,10 @@ pub enum TriggerKind {
         combat_only: bool,
         noncombat_only: bool,
         excess_only: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        minimum: Option<u32>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        single_source: bool,
     },
     YouGainLife,
     YouGainLifeCausedBy {
@@ -1723,6 +1727,12 @@ impl Trigger {
             },
         )
     }
+    pub fn damage_received(target: ChooseSpec, combat: Option<bool>, minimum: Option<u32>, single_source: bool) -> Self {
+        Self::typed("is_dealt_damage", TriggerKind::IsDealtDamage {
+            target, combat_only: combat == Some(true), noncombat_only: combat == Some(false),
+            excess_only: false, minimum, single_source,
+        })
+    }
     pub fn is_dealt_damage(target: ChooseSpec) -> Self {
         Self::typed(
             "is_dealt_damage",
@@ -1731,6 +1741,7 @@ impl Trigger {
                 combat_only: false,
                 noncombat_only: false,
                 excess_only: false,
+                minimum: None, single_source: false,
             },
         )
     }
@@ -1742,6 +1753,7 @@ impl Trigger {
                 combat_only: true,
                 noncombat_only: false,
                 excess_only: false,
+                minimum: None, single_source: false,
             },
         )
     }
@@ -1753,6 +1765,7 @@ impl Trigger {
                 combat_only: false,
                 noncombat_only: true,
                 excess_only: true,
+                minimum: None, single_source: false,
             },
         )
     }

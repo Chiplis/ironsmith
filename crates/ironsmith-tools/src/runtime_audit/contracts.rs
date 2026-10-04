@@ -930,12 +930,20 @@ impl Auditor {
             | "DealsDamageTo"
             | "DealsCombatDamage"
             | "DealsCombatDamageTo"
-            | "IsDealtDamage"
             | "DealsExactDamageToObjectOrPlayer" => {
                 scope.player = Binding::Unknown;
                 scope.amount = Binding::Present;
                 scope.damaged_player = Binding::Unknown;
                 scope.event_object = Binding::Present;
+            }
+            "IsDealtDamage" => {
+                scope.amount = Binding::Present;
+                scope.event_object = Binding::Present; // DamageEvent names its source.
+                scope.player = if payload.get("target").is_some_and(|target|
+                    target.get("Player").is_some() || target.get("SpecificPlayer").is_some()
+                        || target == "SourceController" || target == "SourceOwner") {
+                    Binding::Present
+                } else { Binding::Unknown };
             }
             "PlayerRollsResult"
             | "PlayerRollsHighestNaturalResult"
@@ -1383,6 +1391,7 @@ fn same_scope_effect(kind: &str) -> bool {
             | "SurveilEffect"
             | "FatesealEffect"
             | "DealDamageEffect"
+            | "DealDamageBySourcesEffect"
             | "DealDistributedDamageEffect"
             | "HealDamageEffect"
             | "PreventDamageEffect"

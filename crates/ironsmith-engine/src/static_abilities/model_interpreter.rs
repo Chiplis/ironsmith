@@ -473,6 +473,8 @@ impl StaticAbilityModelInterpreter {
                         .collect(),
                     set_base_power_toughness: spec.set_base_power_toughness,
                     additional_counters: spec.additional_counters.clone(),
+                    additional_x_counters: spec.additional_x_counters.clone(),
+                    keep_other_source_abilities: spec.keep_other_source_abilities,
                     additional_counters_source_filter: spec
                         .additional_counters_source_filter
                         .clone(),
@@ -1671,6 +1673,8 @@ impl StaticAbilityModelInterpreter {
                             .collect(),
                         set_base_power_toughness: spec.set_base_power_toughness,
                         additional_counters: spec.additional_counters.clone(),
+                        additional_x_counters: spec.additional_x_counters.clone(),
+                        keep_other_source_abilities: spec.keep_other_source_abilities,
                         additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
                         conditional_additional_counters: spec.conditional_additional_counters.clone(),
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
@@ -2496,6 +2500,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn may_generate_continuous_effects(&self) -> bool {
+        if self.enter_as_copy_spec.is_some() && matches!(&self.model.payload, ironsmith_core::StaticAbilityPayload::Conditional {..}) { return false; }
         self.leaf_static_ability()
             .is_some_and(StaticAbility::may_generate_continuous_effects)
     }
@@ -2506,6 +2511,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        // Entry-copy conditions belong to the replacement occurrence. Turning
+        // them into a layer-6 self-grant would duplicate that occurrence when
+        // true, while the cached outer copy specification also remains visible.
+        if self.enter_as_copy_spec.is_some() && matches!(&self.model.payload, ironsmith_core::StaticAbilityPayload::Conditional {..}) { return Vec::new(); }
         self.leaf_static_ability()
             .map(|ability| ability.generate_effects(source, controller, game))
             .unwrap_or_default()

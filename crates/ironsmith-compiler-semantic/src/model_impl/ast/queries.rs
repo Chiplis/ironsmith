@@ -46,6 +46,9 @@ pub fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                target, ..
+            })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 target, ..
             })
@@ -71,6 +74,9 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                target, ..
+            })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 target, ..
             })

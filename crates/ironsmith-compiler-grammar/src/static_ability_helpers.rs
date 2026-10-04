@@ -188,6 +188,9 @@ pub fn compiler_granted_ability_ast_to_object_ability(
     let static_ability = |ability| Ok(CompilerAbilityCore::static_ability(ability));
     match ability {
         GrantedAbilityAst::KeywordAction(action) => {
+            if let Some(ability) = ironsmith_compiler_semantic::keyword_abilities::attack_keyword_granted_ability(action) {
+                return Ok(ability);
+            }
             if let Some(ability) = static_ability_for_keyword_action((**action).clone()) {
                 return static_ability(ability);
             }

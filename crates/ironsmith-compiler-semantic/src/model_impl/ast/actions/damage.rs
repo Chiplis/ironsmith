@@ -43,4 +43,11 @@ pub enum DamageActionAst {
         object_groups: Vec<ObjectFilter>,
         player_groups: Vec<PlayerFilter>,
     },
+    /// A source set deals each member's independently evaluated amount to one
+    /// recipient in one simultaneous damage occurrence.
+    DealDamageBySources {
+        sources: Vec<TargetAst>,
+        amount: Value,
+        target: TargetAst,
+    },
 }

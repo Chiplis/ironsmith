@@ -361,6 +361,7 @@ pub fn parse_stack_retarget_filter(
 
 pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     const PRIMITIVES: &[ClausePrimitive] = &[
+        specific_primitive!("bounded-number-choice", &["choose"], super::bounded_number_choice::parse),
         specific_primitive!(
             "choose-card-name-clause",
             &["choose"],

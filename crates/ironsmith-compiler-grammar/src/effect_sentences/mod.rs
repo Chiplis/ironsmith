@@ -1,3 +1,5 @@
+mod bounded_number_choice;
+mod declared_any_target;
 mod ability_loss_templates;
 mod characteristic_assertions;
 mod timed_draw_replacement;

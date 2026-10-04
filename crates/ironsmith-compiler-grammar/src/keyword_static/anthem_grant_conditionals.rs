@@ -623,11 +623,11 @@ pub fn parse_matching_are_goaded_line(
     let subject = &tokens[..are];
     let mut filter = if let Some(with) = subject.iter().position(|token| token.is_word("with")) {
         let words = crate::lexer::token_word_refs(&subject[with + 1..]);
-        if words.len() < 5 || words[..3] != ["power", "less", "than"]
-            || words.last().copied() != Some("power")
-            || crate::util::source_reference_surface_for_possessive_words(&words[3..words.len()-1]).is_none()
-        { return Ok(None) }
-        parse_object_filter(&subject[..with], false)?.with_power_less_than_source()
+        if words.len() >= 5 && words[..3] == ["power", "less", "than"]
+            && words.last().copied() == Some("power")
+            && crate::util::source_reference_surface_for_possessive_words(&words[3..words.len()-1]).is_some()
+        { parse_object_filter(&subject[..with], false)?.with_power_less_than_source() }
+        else { parse_object_filter(subject, false)? }
     } else {
         parse_object_filter(subject, false)?
     };
@@ -5197,6 +5197,25 @@ mod complete_anthem_tail_tests {
         for amount in ["zero", "2147483648"] {
             let tokens = crate::lexer::lex_line(&format!("This creature gets +2/+0 for every {amount} cards in your graveyard."), 0).unwrap();
             assert!(!matches!(parse_anthem_line(&tokens), Ok(Some(_))));
+        }
+    }
+}
+
+#[cfg(test)]
+mod live_same_name_goad_tests {
+    use super::*;
+    #[test]
+    fn matching_goad_retains_exact_source_name_relation_and_rejects_unknown_qualifiers() {
+        let tokens = crate::lexer::lex_line("Other creatures with the same name as this creature are goaded.", 0).unwrap();
+        let ability = parse_matching_are_goaded_line(&tokens).unwrap().unwrap();
+        let debug = format!("{ability:#?}");
+        assert!(debug.contains("GoadMatching"), "{debug}");
+        assert!(debug.contains("SameNameAsTagged"), "{debug}");
+        assert!(debug.contains("Battlefield"), "{debug}");
+        for line in ["Other creatures with the same name as this creature are goaded beyond time.",
+            "Other creatures with the same impossible quality are goaded."] {
+            let tokens = crate::lexer::lex_line(line, 0).unwrap();
+            assert!(!matches!(parse_matching_are_goaded_line(&tokens), Ok(Some(_))), "{line}");
         }
     }
 }

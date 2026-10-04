@@ -4033,7 +4033,7 @@ impl CardDefinitionBuilder {
             Trigger::this_attacks(),
             vec![Effect::for_players(
                 opponent_other_than_defending,
-                vec![Effect::may(vec![Effect::new(
+                vec![Effect::may_player(PlayerFilter::You, vec![Effect::new(
                     crate::effects::CreateTokenCopyEffect::new(
                         ChooseSpec::Source,
                         1,

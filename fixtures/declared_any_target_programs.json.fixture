@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Blast of Genius",
+    "oracle_id": "cfe82e0f-7ac0-4de3-b1b3-a2d519b00bbd",
+    "mana_cost": "{4}{U}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose any target. Draw three cards, then discard a card. Blast of Genius deals damage equal to the discarded card's mana value to that permanent or player.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Erratic Explosion",
+    "oracle_id": "8e560a3a-c81b-43b3-b622-5c66ef655647",
+    "mana_cost": "{2}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose any target. Reveal cards from the top of your library until you reveal a nonland card. Erratic Explosion deals damage equal to that card's mana value to that permanent or player. Put the revealed cards on the bottom of your library in any order.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Explosive Revelation",
+    "oracle_id": "49f01296-7b30-4d84-bfa3-6ed58cd23a33",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose any target. Reveal cards from the top of your library until you reveal a nonland card. Explosive Revelation deals damage equal to that card's mana value to that permanent or player. Put the nonland card into your hand and the rest on the bottom of your library in any order.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Heretic's Punishment",
+    "oracle_id": "a484120f-1027-4fc0-b4ea-cba94c262203",
+    "mana_cost": "{4}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "{3}{R}: Choose any target, then mill three cards. This enchantment deals damage to that permanent or player equal to the greatest mana value among the milled cards.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Riddle of Lightning",
+    "oracle_id": "ea480035-9f1b-40c9-a3a5-ce7cd093dfcf",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Choose any target. Scry 3, then reveal the top card of your library. Riddle of Lightning deals damage equal to that card's mana value to that permanent or player.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Comet Storm",
+    "oracle_id": "9c2b262b-53c0-41a1-8f1a-0c336453d4bf",
+    "mana_cost": "{X}{R}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Multikicker {1} (You may pay an additional {1} any number of times as you cast this spell.)\nChoose any target, then choose another target for each time this spell was kicked. Comet Storm deals X damage to each of them.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  }
+]

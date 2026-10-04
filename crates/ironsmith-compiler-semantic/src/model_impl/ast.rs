@@ -714,4 +714,7 @@ pub enum TriggerSpec {
     PermanentTransformsInto { filter: ObjectFilter, destination: ObjectFilter },
     PermanentMutates(ObjectFilter),
     PlayerTurnsFaceUp { player: PlayerFilter, filter: ObjectFilter },
+    /// Dethrone: qualify the attacked player at declaration, not resolution.
+    ThisAttacksPlayerWithMostLife,
+    DamageReceived { target: ChooseSpec, combat: Option<bool>, minimum: Option<u32>, single_source: bool },
 }

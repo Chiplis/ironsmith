@@ -14,6 +14,8 @@ pub struct IsDealtDamageTrigger {
     pub combat_only: bool,
     pub noncombat_only: bool,
     pub excess_only: bool,
+    pub minimum: Option<u32>,
+    pub single_source: bool,
 }
 
 impl IsDealtDamageTrigger {
@@ -23,6 +25,8 @@ impl IsDealtDamageTrigger {
             combat_only: false,
             noncombat_only: false,
             excess_only: false,
+            minimum: None,
+            single_source: false,
         }
     }
 
@@ -32,6 +36,8 @@ impl IsDealtDamageTrigger {
             combat_only: true,
             noncombat_only: false,
             excess_only: false,
+            minimum: None,
+            single_source: false,
         }
     }
 
@@ -43,6 +49,8 @@ impl IsDealtDamageTrigger {
             combat_only,
             noncombat_only: false,
             excess_only: true,
+            minimum: None,
+            single_source: false,
         }
     }
 
@@ -52,6 +60,8 @@ impl IsDealtDamageTrigger {
             combat_only: false,
             noncombat_only: true,
             excess_only: true,
+            minimum: None,
+            single_source: false,
         }
     }
 }
@@ -70,6 +80,23 @@ impl TriggerMatcher for IsDealtDamageTrigger {
         let Some(e) = event.downcast::<DamageEvent>() else {
             return false;
         };
+        if e.amount == 0 {
+            return false;
+        }
+        if self.minimum.is_some_and(|minimum| {
+            e.received_amount(
+                if self.combat_only {
+                    Some(true)
+                } else if self.noncombat_only {
+                    Some(false)
+                } else {
+                    None
+                },
+                self.single_source,
+            ) < u128::from(minimum)
+        }) {
+            return false;
+        }
         if self.combat_only && !e.is_combat {
             return false;
         }
@@ -81,7 +108,9 @@ impl TriggerMatcher for IsDealtDamageTrigger {
         }
 
         match e.target {
-            DamageTarget::Object(object_id) => target_matches_object(&self.target, object_id, ctx),
+            DamageTarget::Object(object_id) => {
+                target_matches_object(&self.target, object_id, e.target_snapshot.as_ref(), ctx)
+            }
             DamageTarget::Player(player_id) => target_matches_player(&self.target, player_id, ctx),
         }
     }
@@ -92,6 +121,12 @@ impl TriggerMatcher for IsDealtDamageTrigger {
 
     fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<SimultaneousTriggerKey> {
         let damage = event.downcast::<DamageEvent>()?;
+        if self.single_source {
+            return Some(SimultaneousTriggerKey::DamageSourceTarget(
+                damage.source,
+                damage.target,
+            ));
+        }
         if self.is_one_or_more() {
             return Some(SimultaneousTriggerKey::DamageBatch);
         }
@@ -116,6 +151,18 @@ impl TriggerMatcher for IsDealtDamageTrigger {
         } else {
             "damage"
         };
+        let damage_text = format!(
+            "{}{}{}",
+            self.minimum
+                .map(|minimum| format!("{minimum} or more "))
+                .unwrap_or_default(),
+            damage_text,
+            if self.single_source {
+                " by a single source"
+            } else {
+                ""
+            }
+        );
         match base_spec(&self.target) {
             ChooseSpec::Source => {
                 format!("Whenever this creature is dealt {damage_text}")
@@ -200,18 +247,23 @@ fn pluralize_damage_subject(description: &str) -> String {
 fn target_matches_object(
     spec: &ChooseSpec,
     object_id: crate::ids::ObjectId,
+    snapshot: Option<&crate::snapshot::ObjectSnapshot>,
     ctx: &TriggerContext,
 ) -> bool {
     match spec {
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
-            target_matches_object(inner, object_id, ctx)
+            target_matches_object(inner, object_id, snapshot, ctx)
         }
         ChooseSpec::Source => object_id == ctx.source_id,
         ChooseSpec::SpecificObject(id) => object_id == *id,
-        ChooseSpec::Object(filter) => ctx
-            .game
-            .object(object_id)
-            .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game)),
+        ChooseSpec::Object(filter) => snapshot
+            .filter(|snapshot| snapshot.object_id == object_id)
+            .map(|snapshot| filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game))
+            .unwrap_or_else(|| {
+                ctx.game
+                    .object(object_id)
+                    .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game))
+            }),
         ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => true,
         _ => false,
     }
@@ -232,7 +284,9 @@ fn target_matches_player(
             .object(ctx.source_id)
             .is_some_and(|obj| obj.owner == player_id),
         ChooseSpec::SpecificPlayer(id) => player_id == *id,
-        ChooseSpec::Player(filter) => filter.matches_player(player_id, &ctx.filter_ctx),
+        ChooseSpec::Player(filter) => {
+            crate::filter::player_filter_matches_game(filter, player_id, ctx.game, &ctx.filter_ctx)
+        }
         ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => true,
         _ => false,
     }

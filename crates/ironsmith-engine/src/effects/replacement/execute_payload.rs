@@ -37,7 +37,7 @@ pub(crate) fn execute_replacement_payload_with_object_tags(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn execute_replacement_payload_with_snapshot(
+pub(crate) fn execute_replacement_payload_with_snapshot(
     game: &mut GameState,
     parent: &mut ExecutionContext,
     effects: &[Effect],

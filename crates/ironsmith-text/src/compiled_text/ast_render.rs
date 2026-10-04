@@ -1722,6 +1722,11 @@ fn describe_labeled_static_bundle(abilities: &[Ability], subject: &str) -> Optio
         return None;
     };
     let (label, first_inner, condition) = first.labeled_static_condition()?;
+    if first_inner.enter_as_copy_as_enters().is_some() {
+        let label = label.strip_prefix(ironsmith_core::static_ability_model::EXPLICIT_STATIC_PRESENTATION_LABEL_PREFIX).unwrap_or(&label);
+        return Some((format!("{label} — If {}, {}", lowercase_first(&describe_condition(&condition)),
+            lowercase_first(&render_labeled_static_body(&first_inner, subject))), 1));
+    }
     let normalized_label = label.trim().trim_end_matches('.').to_ascii_lowercase();
     if first_inner.id() == crate::static_abilities::StaticAbilityId::Flash
         && normalized_label.contains("you may cast this spell as though it had flash")

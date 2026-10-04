@@ -374,6 +374,7 @@ mod win_game_tests {
 }
 
 fn canonical_target_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    if parser_token_word_refs(tokens) == ["any", "target"] { return Vec::new(); }
     parser_token_word_refs(tokens)
         .into_iter()
         .filter(|word| !matches!(*word, "another" | "other" | "target" | "a" | "an" | "the"))

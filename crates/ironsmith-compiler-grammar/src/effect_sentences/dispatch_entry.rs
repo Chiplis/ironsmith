@@ -11693,6 +11693,9 @@ pub fn replace_unbound_x_in_damage_effect(
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
                 amount,
                 ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
             }) => {
                 if value_contains_unbound_x(amount) {
                     *amount = replace_unbound_x_with_value(amount.clone(), replacement, clause)?;
@@ -12101,6 +12104,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 amount,
                 ..
             })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
+            })
             | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
                 amount,
                 ..
@@ -12380,6 +12386,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
