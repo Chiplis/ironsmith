@@ -101,6 +101,16 @@ type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<()>;
 fn sync_restricted_mana(
     units: &[ironsmith::ability::RestrictedManaUnit],
 ) -> Result<Vec<SyncRestrictedManaUnit>, String> {
+    sync_restricted_mana_metadata(units, false)
+}
+
+// Executable checkpoints keep complete units in their shared graph. The flat
+// player record is only a redundant summary, checked against that graph before
+// import. A metadata-only publication must still reject executable payloads.
+fn sync_restricted_mana_metadata(
+    units: &[ironsmith::ability::RestrictedManaUnit],
+    executable_graph: bool,
+) -> Result<Vec<SyncRestrictedManaUnit>, String> {
     units
         .iter()
         .map(|unit| {
@@ -114,6 +124,7 @@ fn sync_restricted_mana(
                     .cloned()
                     .map(|restriction| {
                         restriction.try_map_effects(&mut |_| {
+                            if executable_graph { return Ok(()); }
                             Err(
                                 "mana spend payload requires an approved executable identity graph"
                                     .to_string(),
@@ -125,6 +136,20 @@ fn sync_restricted_mana(
         })
         .collect()
 }
+fn map_sync_mana_units<E, F: Clone, Error>(
+    units: Vec<ironsmith_core::RestrictedManaUnit<E>>,
+    mut effect: impl FnMut(E) -> Result<F, Error>,
+) -> Result<Vec<ironsmith_core::RestrictedManaUnit<F>>, Error> {
+    units.into_iter().map(|unit| {
+        let ironsmith_core::RestrictedManaUnit { symbol, source, source_chosen_creature_type, restrictions } = unit;
+        Ok(ironsmith_core::RestrictedManaUnit {
+            symbol, source, source_chosen_creature_type,
+            restrictions: restrictions.into_iter().map(|restriction|
+                restriction.try_map_effects(&mut effect)).collect::<Result<_, _>>()?,
+        })
+    }).collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncPlayer {
@@ -1481,6 +1506,7 @@ struct SyncExecutableState {
     delayed_triggers: Vec<ironsmith_runtime_catalog::artifact_materializer::RetainedDelayedTrigger<u32>>,
     stack: Vec<SyncRetainedStack>,
     event_bodies: Vec<SyncEventBody>,
+    restricted_mana: Vec<(PlayerId, Vec<ironsmith_core::RestrictedManaUnit<ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceEffect>>)>,
 }
 
 struct RestoredSyncExecutableState {
@@ -1494,6 +1520,7 @@ struct RestoredSyncExecutableState {
     used_grant_permissions: Vec<(PlayerId, ironsmith::grant_registry::GrantPermissionIdentity)>,
     delayed_triggers: Vec<ironsmith::triggers::DelayedTrigger>,
     stack: Vec<StackEntry>,
+    restricted_mana: Vec<(PlayerId, Vec<ironsmith::ability::RestrictedManaUnit>)>,
 }
 
 /// Executable payloads require authorization even when they carry no card ID
@@ -1808,6 +1835,11 @@ impl SyncPerspectiveExecutionPolicy {
         Ok(())
     }
     fn roots(&self, roots: SyncExecutableRootView<'_>) -> Result<(), String> {
+        for player in roots.players {
+            // Executable spend programs need a separate content-disclosure
+            // policy. Never publish them merely because their source is visible.
+            sync_restricted_mana(&player.restricted_mana)?;
+        }
         for object in roots.objects {
             if self.opaque.contains(&object.id) { validate_opaque_sync_executable_object(object)?; }
             else { self.source(object.id)?; }
@@ -1922,6 +1954,7 @@ struct SyncExecutableRootView<'a> {
     player_count: usize,
     delayed_triggers: &'a [ironsmith::triggers::DelayedTrigger],
     stack: &'a [StackEntry],
+    players: &'a [ironsmith::player::Player],
 }
 
 impl SyncExecutableState {
@@ -2079,7 +2112,7 @@ impl SyncExecutableState {
         approve_face: impl FnMut(CardId) -> Result<(), String>,
     ) -> Result<Self, String> {
         let roots = SyncExecutableRootView { objects: &objects, continuous: &continuous,
-            replacement: &replacement, prevention: &prevention, provenance: game.provenance_graph(), grant_registry: &game.effect_store.grant_registry, used_grant_permissions: &game.turn_store.grant_cast_uses_this_turn, player_count: game.players.len(), delayed_triggers: &game.effect_store.delayed_triggers, stack: &game.stack };
+            replacement: &replacement, prevention: &prevention, provenance: game.provenance_graph(), grant_registry: &game.effect_store.grant_registry, used_grant_permissions: &game.turn_store.grant_cast_uses_this_turn, player_count: game.players.len(), delayed_triggers: &game.effect_store.delayed_triggers, stack: &game.stack, players: &game.players };
         Self::validate_native_roots(&roots)?;
         approve(roots).map_err(|error| format!("executable root authorization failed: {error}"))?;
         Self::retain_with_history_selection(game, registry, objects,
@@ -2122,7 +2155,7 @@ impl SyncExecutableState {
     )->Result<Self,String>{
         use ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceEncoder;
         Self::validate_native_roots(&SyncExecutableRootView { objects: &objects, continuous: &continuous,
-            replacement: &replacement, prevention: &prevention, provenance: game.provenance_graph(), grant_registry: &game.effect_store.grant_registry, used_grant_permissions: &game.turn_store.grant_cast_uses_this_turn, player_count: game.players.len(), delayed_triggers: &game.effect_store.delayed_triggers, stack: &game.stack })?;
+            replacement: &replacement, prevention: &prevention, provenance: game.provenance_graph(), grant_registry: &game.effect_store.grant_registry, used_grant_permissions: &game.turn_store.grant_cast_uses_this_turn, player_count: game.players.len(), delayed_triggers: &game.effect_store.delayed_triggers, stack: &game.stack, players: &game.players })?;
         let objects=objects.into_iter().map(|mut object|{
             let capture=StaticAbilityOccurrenceEncoder::project_cast_history(ironsmith::object::NativeCastPaymentState::from(&object),&mut project).map_err(|error|error.to_string())?;
             capture.apply_to(&mut object)?;Ok::<_,String>(object)
@@ -2190,7 +2223,7 @@ impl SyncExecutableState {
             OccurrenceBindingError, StaticAbilityOccurrenceEncoder,
         };
         Self::validate_native_roots(&SyncExecutableRootView { objects: &objects, continuous: &continuous,
-            replacement: &replacement, prevention: &prevention, provenance: game.provenance_graph(), grant_registry: &game.effect_store.grant_registry, used_grant_permissions: &game.turn_store.grant_cast_uses_this_turn, player_count: game.players.len(), delayed_triggers: &delayed_triggers, stack: &stack })?;
+            replacement: &replacement, prevention: &prevention, provenance: game.provenance_graph(), grant_registry: &game.effect_store.grant_registry, used_grant_permissions: &game.turn_store.grant_cast_uses_this_turn, player_count: game.players.len(), delayed_triggers: &delayed_triggers, stack: &stack, players: &game.players })?;
         let grants = game.effect_store.grant_registry.registered_state();
         let mut approved = std::collections::BTreeSet::new();
         let mut approve_once = |face: CardId| -> Result<(), String> {
@@ -2261,6 +2294,10 @@ impl SyncExecutableState {
         for (_, permission) in &game.turn_store.grant_cast_uses_this_turn {
             probe.encode_permission_identity(permission.clone(), &mut discover).map_err(|e| e.to_string())?;
         }
+        for player in game.players.iter() {
+            map_sync_mana_units(player.restricted_mana.clone(), |effect|
+                probe.encode_effect_with_card_graph(effect, &mut discover)).map_err(|e| e.to_string())?;
+        }
         drop(discover);
         let graph: Vec<_> = graph.into_iter().collect();
         let graph_card_count =
@@ -2307,6 +2344,11 @@ impl SyncExecutableState {
         let stack = stack.into_iter().map(|entry|
             retain_sync_stack(&mut encoder, entry, &mut stack_bind, &mut events).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
         let event_bodies = events.bodies;
+        let restricted_mana = game.players.iter().map(|player| {
+            let units = map_sync_mana_units(player.restricted_mana.clone(), |effect|
+                encoder.encode_effect_with_card_graph(effect, bind)).map_err(|e| e.to_string())?;
+            Ok::<_, String>((player.id, units))
+        }).collect::<Result<Vec<_>, _>>()?;
         // References use the shared occurrence table; rows are sorted after
         // rebinding so HashSet iteration cannot change checkpoint bytes.
         let mut used_grant_permissions = game.turn_store.grant_cast_uses_this_turn.iter().map(|(player, permission)| {
@@ -2330,6 +2372,7 @@ impl SyncExecutableState {
             delayed_triggers,
             stack,
             event_bodies,
+            restricted_mana,
         })
     }
 
@@ -2424,6 +2467,13 @@ impl SyncExecutableState {
             restore_sync_event_body(&decoder, body, &mut stack_bind).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
         let stack = self.stack.iter().cloned().map(|entry|
             restore_sync_stack(&decoder, entry, &mut stack_bind, &bodies).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
+        let mut mana_players = std::collections::BTreeSet::new();
+        let restricted_mana = self.restricted_mana.iter().map(|(player, units)| {
+            if !mana_players.insert(*player) { return Err("duplicate executable mana player".into()); }
+            let units = map_sync_mana_units(units.clone(), |effect|
+                decoder.restore_effect(effect)).map_err(|e| e.to_string())?;
+            Ok::<_, String>((*player, units))
+        }).collect::<Result<Vec<_>, _>>()?;
         Ok(RestoredSyncExecutableState {
             provenance_graph,
             definitions,
@@ -2435,6 +2485,7 @@ impl SyncExecutableState {
             used_grant_permissions,
             delayed_triggers,
             stack,
+            restricted_mana,
         })
     }
 }
@@ -4570,7 +4621,7 @@ impl WasmGame {
     }
 
     fn try_build_full_sync_checkpoint(&self) -> Result<SyncCheckpoint, String> {
-        let mut checkpoint = self.try_build_sync_checkpoint_metadata()
+        let mut checkpoint = self.try_build_sync_checkpoint_metadata_with_graph(true)
             .map_err(|error| format!("checkpoint metadata failed: {error:?}"))?;
         let objects = self.sync_checkpoint_object_ids().into_iter()
             .map(|id| self.game.object(id).cloned()
@@ -4592,6 +4643,9 @@ impl WasmGame {
     /// perspective exporter must authorize roots before asking a codec to visit
     /// hidden histories, costs, actions or embedded card definitions.
     fn try_build_sync_checkpoint_metadata(&self) -> Result<SyncCheckpoint, JsValue> {
+        self.try_build_sync_checkpoint_metadata_with_graph(false)
+    }
+    fn try_build_sync_checkpoint_metadata_with_graph(&self, executable_graph: bool) -> Result<SyncCheckpoint, JsValue> {
         let players = self
             .game
             .players
@@ -4602,7 +4656,7 @@ impl WasmGame {
                 starting_life: player.starting_life,
                 life: player.life,
                 mana_pool: SyncManaPool::from(&player.mana_pool),
-                restricted_mana: sync_restricted_mana(&player.restricted_mana)
+                restricted_mana: sync_restricted_mana_metadata(&player.restricted_mana, executable_graph)
                     .map_err(|error| JsValue::from_str(&error))?,
                 poison_counters: player.poison_counters,
                 energy_counters: player.energy_counters,
@@ -6134,7 +6188,7 @@ impl WasmGame {
                     policy.roots(SyncExecutableRootView { objects: &objects, continuous: &continuous, replacement: &replacement,
                         prevention: &prevention, provenance: self.game.provenance_graph(), grant_registry: &self.game.effect_store.grant_registry,
                         used_grant_permissions: &self.game.turn_store.grant_cast_uses_this_turn, player_count: self.game.players.len(),
-                        delayed_triggers: &self.game.effect_store.delayed_triggers, stack: &self.game.stack })?;
+                        delayed_triggers: &self.game.effect_store.delayed_triggers, stack: &self.game.stack, players: &self.game.players })?;
                     // Visit every supplied history, including unused matcher captures.
                     // Incoming redaction cannot be inferred from a label or by silently
                     // pruning private/unreachable definitions and occurrence cells.
@@ -6259,6 +6313,18 @@ impl WasmGame {
             let restored = state.restore(&validation_graph)?;
             SyncExecutableState::validate_delayed_actors(&restored.delayed_triggers, checkpoint.players.len())?;
             SyncExecutableState::validate_stack_roots(&restored.provenance_graph, &restored.stack, checkpoint.players.len())?;
+            if restored.restricted_mana.len() != checkpoint.players.len() {
+                return Err("executable mana player roots disagree with metadata".into());
+            }
+            for (id, units) in &restored.restricted_mana {
+                let player = checkpoint.players.iter().find(|player| player.id == id.0)
+                    .ok_or_else(|| "executable mana has invalid player".to_string())?;
+                let metadata = sync_restricted_mana_metadata(units, true)?;
+                if serde_json::to_value(metadata).map_err(|e| e.to_string())?
+                    != serde_json::to_value(&player.restricted_mana).map_err(|e| e.to_string())? {
+                    return Err("executable mana contradicts player metadata".into());
+                }
+            }
             if restored.stack.len() != checkpoint.stack.len() {
                 return Err("executable stack length contradicts checkpoint metadata".into());
             }
@@ -6366,7 +6432,11 @@ impl WasmGame {
             let player_id = PlayerId::from_index(player_checkpoint.id);
             if let Some(player) = self.game.player_mut(player_id) {
                 player.life = player_checkpoint.life;
-                let restricted_mana = player_checkpoint.restricted_mana.iter().map(|unit| {
+                let restricted_mana = if let Some(restored) = &restored_executable {
+                    restored.restricted_mana.iter().find(|(id, _)| *id == player_id)
+                        .ok_or_else(|| "missing executable mana player".to_string())?.1.clone()
+                } else {
+                    let restricted_mana = player_checkpoint.restricted_mana.iter().map(|unit| {
                     Ok(ironsmith::ability::RestrictedManaUnit {
                         symbol: unit.symbol,
                         source: unit.source,
@@ -6376,6 +6446,8 @@ impl WasmGame {
                         ).collect::<Result<_, String>>()?,
                     })
                 }).collect::<Result<Vec<_>, String>>()?;
+                    restricted_mana
+                };
                 // The planner matches restricted units through production
                 // provenance. Restoring only the side ledger would free this
                 // mana in compact payment assignment.
@@ -11674,6 +11746,7 @@ mod owning_sync_executable_tests {
             "continuous",
             "replacement",
             "prevention",
+            "restrictedMana",
         ] {
             let mut missing = serde_json::to_value(&state).unwrap();
             missing.as_object_mut().unwrap().remove(field);
@@ -12015,6 +12088,112 @@ mod public_replacement_hidden_history_checkpoint_contract_tests {
 #[cfg(test)]
 mod public_full_executable_checkpoint_validation_tests {
     use super::*;
+    #[test]
+    fn full_checkpoint_rejects_malformed_mana_roots_atomically() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        host.game.player_mut(alice).unwrap().add_restricted_mana(ironsmith::ability::RestrictedManaUnit {
+            symbol: ManaSymbol::Green, source, source_chosen_creature_type: Some(Subtype::Elf),
+            restrictions: vec![ironsmith::ability::ManaUsageRestriction::PaymentTransaction {
+                restriction: None,
+                on_spend: vec![ironsmith::ability::ManaSpendPayload {
+                    predicate: ironsmith::ability::ManaPaymentPredicate::Any,
+                    effects: ironsmith::ResolutionProgram::from_effects(vec![ironsmith::Effect::gain_life(7777)]),
+                    choices: vec![],
+                }],
+            }],
+        });
+        let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+        for case in 0..6 {
+            let mut incoming: SyncCheckpoint = serde_json::from_value(before.clone()).unwrap();
+            let state = incoming.executable_state.as_mut().unwrap();
+            match case {
+                0 => { state.restricted_mana.pop(); }
+                1 => { state.restricted_mana[1] = state.restricted_mana[0].clone(); }
+                2 => { state.restricted_mana[0].0 = PlayerId::from_index(99); }
+                3 => { state.restricted_mana[0].1[0].symbol = ManaSymbol::Red; }
+                4 => { incoming.players[0].restricted_mana[0].source_chosen_creature_type = None; }
+                _ => { incoming.execution_kind = SyncCheckpointExecutionKind::PerspectiveExecutable; }
+            }
+            incoming.players[0].life = 1;
+            let error = host.apply_sync_checkpoint(incoming).unwrap_err();
+            if case == 5 {
+                assert!(error.contains("mana spend payload"), "visible source does not approve spend content: {error}");
+            }
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before,
+                "case {case} must preserve live runtime and exported identity counters");
+        }
+        let roots = vec![host.game.object(source).unwrap().clone()];
+        let policy = SyncPerspectiveExecutionPolicy {
+            visible: [source].into_iter().collect(), opaque: Default::default(), perspective: alice,
+        };
+        let mut histories = 0;
+        let mut faces = 0;
+        let error = SyncExecutableState::retain_with_root_history_and_reference_policy(
+            &host.game, &host.registry, roots,
+            host.game.effect_store.continuous_effects.registered_state(),
+            host.game.effect_store.replacement_effects.registered_state().unwrap(),
+            host.game.effect_store.prevention_effects.retained_state().unwrap(),
+            |roots| policy.roots(roots),
+            |snapshot| { histories += 1; Ok::<_, String>(snapshot) },
+            |_| { faces += 1; Ok(()) },
+        ).unwrap_err();
+        assert!(error.contains("mana spend payload"));
+        assert_eq!((histories, faces), (0, 0), "publication rejection precedes history projection and graph discovery");
+    }
+
+    #[test]
+    fn full_checkpoint_preserves_executable_mana_spend_programs() {
+        let _guard = crate::test_id_counter_guard();
+        for compiled in [false, true] {
+            let (mut host, source, alice) = full_fixture();
+            let program = if compiled {
+                ironsmith_registry_test::compile_to_runtime_definition("Mana spend program", "Type: Sorcery\nYou gain 3 life.", false).unwrap().spell_effect.unwrap()
+            } else {
+                ironsmith::resolution::ResolutionProgram::from_effects(vec![ironsmith::Effect::gain_life(3)])
+            };
+            for _ in 0..2 {
+                host.game.player_mut(alice).unwrap().add_restricted_mana(ironsmith::ability::RestrictedManaUnit {
+                    symbol: ManaSymbol::Green, source, source_chosen_creature_type: Some(Subtype::Elf),
+                    restrictions: vec![ironsmith::ability::ManaUsageRestriction::PaymentTransaction {
+                        restriction: None,
+                        on_spend: vec![ironsmith::ability::ManaSpendPayload {
+                            predicate: ironsmith::ability::ManaPaymentPredicate::Any, effects: program.clone(), choices: vec![],
+                        }],
+                    }],
+                });
+            }
+            let state = SyncExecutableState::retain(&host.game, &host.registry,
+                vec![host.game.object(source).unwrap().clone()],
+                host.game.effect_store.continuous_effects.registered_state(),
+                host.game.effect_store.replacement_effects.registered_state().unwrap(),
+                host.game.effect_store.prevention_effects.retained_state().unwrap()).unwrap();
+            assert!(serde_json::to_value(&state).unwrap().get("restrictedMana").is_some(),
+                "player mana spend programs are executable roots, not just scalar player metadata");
+            let json = serde_json::to_string(&host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            let checkpoint: SyncCheckpoint = serde_json::from_str(&json).unwrap();
+            let mut peer = WasmGame::new();
+            peer.apply_sync_checkpoint(checkpoint).unwrap();
+            for game in [&mut host.game, &mut peer.game] {
+                assert!(game.try_pay_mana_cost_with_reason(alice, Some(source),
+                    &ironsmith::mana::ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]), 0,
+                    ironsmith::costs::PaymentReason::CastSpell));
+                let entries = std::mem::take(&mut game.effect_store.pending_trigger_entries);
+                assert_eq!(entries.len(), 2, "each original mana unit retains one spend program");
+                for entry in entries {
+                    let mut context = ironsmith::effects::EffectContext::new_default(source, alice);
+                    for effect in entry.ability.effects.all_effects() {
+                        ironsmith::effects::execute_effect(game, effect, &mut context).unwrap();
+                    }
+                }
+                assert_eq!(game.player(alice).unwrap().life, 29,
+                    "first payload is doubled by retained replacement; second is applied once");
+                assert!(game.player(alice).unwrap().restricted_mana.is_empty());
+                assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+            }
+        }
+    }
+
     fn full_fixture() -> (WasmGame, ObjectId, PlayerId) {
         let alice = PlayerId::from_index(0);
         let mut host = WasmGame::new();
