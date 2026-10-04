@@ -1312,23 +1312,66 @@ fn can_play_land(
     Ok(())
 }
 
-/// Shared tagged-play budget used by this land play, if the land needs an
-/// external limited permission. Normal hand and Adventure-exile permissions
-/// take precedence and do not spend a tagged collection's budget.
-pub(crate) fn shared_usage_to_consume_for_land_play(
-    game: &GameState,
-    player: PlayerId,
-    card_id: ObjectId,
-) -> Option<crate::grant_registry::SharedGrantUsageId> {
-    let object = game.object(card_id)?;
-    if object.zone == Zone::Hand
-        || (object.zone == Zone::Exile && game.adventure_exiled_player(card_id) == Some(player))
-    {
-        return None;
+/// A selected land permission, captured before entry replacements can remove
+/// its provider. Both the direct special-action and priority owners use this.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct LandPlayPermissionReceipt {
+    shared: Option<crate::grant_registry::SharedGrantUsageId>,
+    identity: Option<crate::grant_registry::GrantPermissionIdentity>,
+    completion: Option<crate::grant_registry::GrantUseCompletion>,
+    pub enters_tapped: bool,
+}
+impl LandPlayPermissionReceipt {
+    pub(crate) fn reserve(&self, game: &mut GameState, player: PlayerId) -> Result<(), crate::effects::ExecutionError> {
+        if let Some(shared) = self.shared {
+            if !game.effect_store.grant_registry.consume_shared_usage(shared) {
+                return Err(crate::effects::ExecutionError::InternalError("selected land permission budget disappeared".into()));
+            }
+        }
+        if let Some(identity) = &self.identity { game.turn_store.grant_cast_uses_this_turn.insert((player, identity.clone())); }
+        Ok(())
     }
-    game.effect_store
-        .grant_registry
-        .shared_usage_to_consume_for_play_from(game, card_id, object.zone, player, None)
+    pub(crate) fn complete(self, game: &mut GameState) {
+        if let Some(completion) = self.completion { completion.complete(game); }
+    }
+}
+pub(crate) fn choose_land_play_permission(
+    game: &GameState, player: PlayerId, card: ObjectId, decision_maker: &mut impl DecisionMaker,
+) -> Result<LandPlayPermissionReceipt, crate::effects::ExecutionError> {
+    let checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let object = checked.object(card).ok_or(crate::effects::ExecutionError::ObjectNotFound(card))?;
+    let intrinsic = object.zone == Zone::Hand || (object.zone == Zone::Exile && checked.adventure_exiled_player(card) == Some(player));
+    let mut choices = if intrinsic {vec![None]} else {Vec::new()};
+    choices.extend(checked.effect_store.grant_registry.get_grants_for_card(&checked, card, object.zone, player)
+        .into_iter().filter(|grant| matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+            && crate::grant_registry::grant_usage_limit_allows(&checked, player, grant.permission_identity.as_ref(), grant.usage_limit))
+        .map(Some));
+    if choices.is_empty() { return Err(crate::effects::ExecutionError::Impossible("no land-play permission for the chosen face".into())); }
+    let chosen = if choices.len() == 1 {0} else {
+        let options = choices.iter().enumerate().map(|(index, grant)| {
+            let description = match grant {
+                None => "Use the ordinary land-play permission".to_string(),
+                Some(grant) => {
+                    let source = checked.object(grant.source.source_id()).map_or("resolved permission", |object| object.name.as_ref());
+                    format!("Use {source} permission{}{}", if grant.usage_limit.is_some() {" (uses its turn allowance)"} else {""},
+                        if grant.on_use_effects.is_empty() {""} else {" (triggers its follow-up)"})
+                }
+            };
+            crate::decisions::context::SelectableOption::new(index, description)
+        }).collect();
+        let selection = decision_maker.decide_options(game, &crate::decisions::context::SelectOptionsContext::new(
+            player, Some(card), "Choose the permission used to play this land", options, 1, 1));
+        if decision_maker.awaiting_choice() { return Ok(LandPlayPermissionReceipt::default()); }
+        if selection.len() != 1 || selection[0] >= choices.len() { return Err(crate::effects::ExecutionError::InvalidTarget); }
+        selection[0]
+    };
+    let Some(grant) = choices.swap_remove(chosen) else { return Ok(LandPlayPermissionReceipt::default()); };
+    Ok(LandPlayPermissionReceipt {
+        shared: grant.shared_usage_id,
+        identity: grant.permission_identity,
+        completion: crate::grant_registry::GrantUseCompletion::capture(&checked, grant.source.source_id(), player, grant.on_use_effects),
+        enters_tapped: grant.play_from_constraints.lands_enter_tapped,
+    })
 }
 
 /// Turn a card about to be played as a land to the face chosen for the land
@@ -1357,18 +1400,17 @@ fn perform_play_land(
     let checkpoint = game.clone();
     let instruction = (|| -> Result<(), ActionError> {
     game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Land(card_id));
-    let shared_usage_to_consume = shared_usage_to_consume_for_land_play(game, player, card_id);
     let old_zone = game
         .object(card_id)
         .ok_or(ActionError::ObjectNotFound)?
         .zone;
-    let initial_tapped = old_zone != Zone::Hand
-        && game
-            .effect_store
-            .grant_registry
-            .land_play_from_permissions_enters_tapped(game, card_id, old_zone, player);
     let cause = crate::events::cause::EventCause::from_special_action(Some(card_id), player);
     apply_land_play_face(game, card_id, back_face);
+    let permission = choose_land_play_permission(game, player, card_id, decision_maker)
+        .map_err(|error| ActionError::ExecutionFailure { source: card_id, error })?;
+    if decision_maker.awaiting_choice() { return Ok(()); }
+    permission.reserve(game, player).map_err(|error| ActionError::ExecutionFailure { source: card_id, error })?;
+    let initial_tapped = permission.enters_tapped;
 
     // Move the land to the battlefield with ETB replacement processing.
     let result = game
@@ -1392,17 +1434,6 @@ fn perform_play_land(
         crate::events::processing::EventOutcome::Prevented | crate::events::processing::EventOutcome::Replaced => None,
         crate::events::processing::EventOutcome::NotApplicable => return Err(ActionError::ObjectNotFound),
     };
-    if let Some(shared_usage_id) = shared_usage_to_consume {
-        let consumed = game
-            .effect_store
-            .grant_registry
-            .consume_shared_usage(shared_usage_id);
-        debug_assert!(
-            consumed,
-            "selected shared land-play permission should be available"
-        );
-    }
-
     // Mark that the player has played a land this turn
     if let Some(player_data) = game.player_mut(player) {
         player_data.record_land_play();
@@ -1431,6 +1462,7 @@ fn perform_play_land(
     }
     finish_land_play_receipt(game, card_id, player, result, decision_maker)
         .map_err(|error| ActionError::ExecutionFailure { source: card_id, error })?;
+    if !decision_maker.awaiting_choice() { permission.complete(game); }
     Ok(())
     })();
     if instruction.is_err() || decision_maker.awaiting_choice() { *game = checkpoint; }
@@ -1665,13 +1697,12 @@ fn finish_turn_face_up(
 
     let event_provenance = game
         .alloc_child_event_provenance(action_provenance, crate::events::EventKind::TurnedFaceUp);
-    game.queue_trigger_event(
-        action_provenance,
-        TriggerEvent::new_with_provenance(
-            crate::events::TurnedFaceUpEvent::new(permanent_id, player),
-            event_provenance,
-        ),
-    );
+    let mut completed = vec![TriggerEvent::new_with_provenance(
+        crate::events::TurnedFaceUpEvent::new(permanent_id, player), event_provenance,
+    )];
+    crate::events::other::freeze_completed_lifecycle_events(game, &mut completed)
+        .map_err(|error| ActionError::ExecutionFailure { source: permanent_id, error })?;
+    for event in completed { game.queue_trigger_event(action_provenance, event); }
 
     Ok(())
 }

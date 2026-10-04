@@ -338,7 +338,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
             push_target_player_filter_choices(player, choices);
             append_object_filter_target_player_choices(filter, choices);
         }
-        PlayerFilter::ControlsMost { filter } => {
+        PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } => {
             append_object_filter_target_player_choices(filter, choices);
         }
         PlayerFilter::Excluding { base, excluded } => {
@@ -2126,6 +2126,24 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             })
         }
 
+        Value::CardsInHand(player) => Ok(Value::CardsInHand(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
+        Value::CardsInLibrary(player) => Ok(Value::CardsInLibrary(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
+        Value::CardsInGraveyard(player) => Ok(Value::CardsInGraveyard(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
+        Value::LifeTotal(player) => Ok(Value::LifeTotal(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
+        Value::StartingLifeTotal(player) => Ok(Value::StartingLifeTotal(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
+        Value::MaxCardsInHand(player) => Ok(Value::MaxCardsInHand(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
         Value::LifeLostThisTurn(player) => Ok(Value::LifeLostThisTurn(
             resolve_contextual_player_filter(player, refs)?,
         )),
@@ -3318,5 +3336,28 @@ mod spell_quantity_after_object_actions_tests {
             resolve_choose_spec_it_tag(&value, &refs).unwrap().base(),
             &ChooseSpec::Tagged("targeted_1".into())
         );
+    }
+}
+
+#[cfg(test)]
+mod target_participant_scalar_tests {
+    use super::*;
+    use crate::model::reference_state::RefState;
+
+    #[test]
+    fn scalar_player_binding_preserves_loops_and_requires_a_real_antecedent() {
+        let value = Value::CardsInHand(PlayerFilter::IteratedPlayer);
+        assert_eq!(resolve_value_it_tag(&value, &ReferenceEnv::default()).unwrap(), value);
+        let target = PlayerFilter::target_opponent();
+        let mut env = ReferenceEnv {
+            last_player_filter: RefState::Known(target.clone()),
+            ..ReferenceEnv::default()
+        };
+        assert_eq!(resolve_value_it_tag(&value, &env).unwrap(), Value::CardsInHand(target));
+        env.iterated_player = true;
+        assert_eq!(resolve_value_it_tag(&value, &env).unwrap(), value,
+            "a loop's participant remains local unless the typed caller opens a nearer explicit subject scope");
+        assert_eq!(resolve_value_it_tag(&Value::CardsInHand(PlayerFilter::You), &env).unwrap(),
+            Value::CardsInHand(PlayerFilter::You));
     }
 }

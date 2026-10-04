@@ -367,14 +367,17 @@ impl StaticAbilityModelInterpreter {
             grantable,
             filter: spec.filter.clone(),
             zone: spec.zone,
+            additional_zones: spec.additional_zones.clone(),
             beneficiary: spec.beneficiary.clone(),
             usage_limit: spec.usage_limit,
             max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter.clone(),
+            on_use_effects: spec.on_use_effects.clone(),
             source_exiled_surface: spec.source_exiled_surface.clone(),
             filtered_zone_surface: spec.filtered_zone_surface.clone(),
             top_card_only: spec.top_card_only,
             instant_timing: spec.instant_timing,
+            may_look_at_top: spec.may_look_at_top,
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .iter()

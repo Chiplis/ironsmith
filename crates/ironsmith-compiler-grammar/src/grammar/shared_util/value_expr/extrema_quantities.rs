@@ -74,3 +74,49 @@ mod tests {
         assert!(parse(&["the", "greatest", "number", "of", "creatures"]).is_none());
     }
 }
+
+#[cfg(test)]
+mod target_player_extremum_composition_tests {
+    use super::*;
+    #[test]
+    fn plural_target_players_keep_the_authored_count_and_caster_controlled_amount() {
+        let tokens=crate::lexer::lex_line("Any number of target players each discard a number of cards equal to the greatest mana value among permanents you control.",0).unwrap();
+        let (parsed, loss) = ironsmith_compiler::parse_loss::capture(|| {
+            crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+        });
+        let parsed = parsed.unwrap();
+        assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+        let [
+            crate::cards::builders::EffectAst::ForEach(
+                crate::cards::builders::ForEachEffectAst::ForEachTargetPlayers {
+                    count,
+                    effects,
+                    ..
+                },
+            ),
+        ] = parsed.as_slice()
+        else {
+            panic!("{parsed:?}")
+        };
+        assert_eq!(count.min, 0);
+        assert_eq!(count.max, None);
+        let [
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    subject,
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                            crate::cards::builders::ZoneMoveActionAst::Discard { count, .. },
+                        ),
+                },
+            ),
+        ] = effects.as_slice()
+        else {
+            panic!("{effects:#?}")
+        };
+        assert_eq!(subject.player, crate::cards::builders::PlayerAst::That);
+        assert!(
+            matches!(count.unhinted(),Value::GreatestManaValue(filter) if filter.controller==Some(PlayerFilter::You))
+        );
+    }
+}

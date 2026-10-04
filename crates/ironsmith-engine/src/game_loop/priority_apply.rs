@@ -606,17 +606,12 @@ fn apply_priority_response_with_dm_inner(
                 .map_err(|e| GameLoopError::InvalidState(format!("Cannot play land: {e}")))?;
 
             let old_zone = game.object(*land_id).map(|o| o.zone).unwrap_or(Zone::Hand);
-            let shared_usage_to_consume =
-                crate::special_actions::shared_usage_to_consume_for_land_play(
-                    game, player, *land_id,
-                );
             game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Land(*land_id));
-            let permission_forces_tapped = old_zone != Zone::Hand
-                && game
-                    .effect_store
-                    .grant_registry
-                    .land_play_from_permissions_enters_tapped(game, *land_id, old_zone, player);
             crate::special_actions::apply_land_play_face(game, *land_id, back_face);
+            let permission = crate::special_actions::choose_land_play_permission(game, player, *land_id, decision_maker)?;
+            if decision_maker.awaiting_choice() { return Ok(()); }
+            permission.reserve(game, player)?;
+            let permission_forces_tapped = permission.enters_tapped;
             let result = game.move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
                 *land_id,
                 Zone::Battlefield,
@@ -635,18 +630,6 @@ fn apply_priority_response_with_dm_inner(
                 crate::events::processing::EventOutcome::Prevented | crate::events::processing::EventOutcome::Replaced => None,
                 crate::events::processing::EventOutcome::NotApplicable => return Err(GameLoopError::InvalidState("Failed to move land".into())),
             };
-            if let Some(shared_usage_id) = shared_usage_to_consume {
-                let consumed = game
-                    .effect_store
-                    .grant_registry
-                    .consume_shared_usage(shared_usage_id);
-                debug_assert!(
-                    consumed,
-                    "selected shared land-play permission should be available"
-                );
-            }
-
-
             // Check for ETB triggers only if the land entered the battlefield.
             if let Some(entry) = original_entry
                 && game.object(entry.new_id).is_some_and(|object| object.zone == Zone::Battlefield)
@@ -701,6 +684,7 @@ fn apply_priority_response_with_dm_inner(
             crate::special_actions::finish_land_play_receipt(game, *land_id, player, result, decision_maker)
                 .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
             if decision_maker.awaiting_choice() { return Ok(()); }
+            permission.complete(game);
             drain_pending_trigger_events(game, trigger_queue);
             Ok(())
             })();

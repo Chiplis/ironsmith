@@ -91,3 +91,9 @@ Additional authored Wasm cases cover generic cast-trigger matches, entries
 removed while their notifications remain, main and inactive host queues,
 deferred entries/events, reflexive context after its parallel entry is removed,
 native restore, missing program claims and forged populated root/lane stacks.
+
+The day/night lifecycle producer also owns pending `as transforms` work in
+TurnStore, deferring its completed transformation event until those programs
+finish. A nonempty `pending_day_night_as_transforms` list in the main turn or
+any Grand Melee lane is now an explicit unrepresented program owner. An authored
+native-savepoint/inactive-lane case pins this boundary; it is unrun.

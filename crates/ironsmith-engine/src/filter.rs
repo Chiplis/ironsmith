@@ -2704,7 +2704,7 @@ impl PlayerFilterExt for PlayerFilter {
             }
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
-            PlayerFilter::ControlsMost { .. } => false,
+            PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => false,
             PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
@@ -2928,6 +2928,39 @@ pub(crate) fn player_filter_matches_game(
                         candidate_count > reference_count
                     }
                 })
+        }
+        PlayerFilter::ControlsFewestTied {
+            filter: object_filter,
+        } => {
+            if ctx
+                .players_in_range
+                .as_ref()
+                .is_some_and(|players| !players.contains(&player))
+            {
+                return false;
+            }
+            let counts = game
+                .players
+                .iter()
+                .filter(|candidate| candidate.is_in_game())
+                .filter(|candidate| {
+                    ctx.players_in_range
+                        .as_ref()
+                        .is_none_or(|players| players.contains(&candidate.id))
+                })
+                .map(|candidate| {
+                    (
+                        candidate.id,
+                        controlled_matching_object_count(game, candidate.id, object_filter, ctx),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let Some(minimum) = counts.iter().map(|(_, count)| *count).min() else {
+                return false;
+            };
+            counts
+                .iter()
+                .any(|(candidate, count)| *candidate == player && *count == minimum)
         }
         PlayerFilter::ControlsMost {
             filter: object_filter,
@@ -3971,7 +4004,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::ControlsMost { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 // "target creature one of their opponents controls": the
@@ -4135,7 +4168,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::ControlsMost { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
@@ -5772,5 +5805,72 @@ mod permanent_spell_description_tests {
         };
 
         assert_eq!(filter.description(), "permanent spell");
+    }
+}
+
+#[cfg(test)]
+mod fewest_controller_set_tests {
+    use super::*;
+    #[test]
+    fn fewest_set_includes_zero_and_all_ties_and_tracks_effective_control_and_departed_players() {
+        let mut game =
+            crate::GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let [a, b, c] = [
+            crate::PlayerId::from_index(0),
+            crate::PlayerId::from_index(1),
+            crate::PlayerId::from_index(2),
+        ];
+        let card =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Counted creature")
+                .card_types(vec![crate::types::CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(1, 4))
+                .build();
+        let source = game.create_object_from_definition(&card, a, crate::Zone::Battlefield);
+        let bob = game.create_object_from_definition(&card, b, crate::Zone::Battlefield);
+        for _ in 0..2 {
+            game.create_object_from_definition(&card, c, crate::Zone::Battlefield);
+        }
+        let filter = PlayerFilter::ControlsFewestTied {
+            filter: Box::new(ObjectFilter::creature()),
+        };
+        let selected = |game: &crate::GameState| {
+            let ctx = game.filter_context_for(a, Some(source));
+            game.players
+                .iter()
+                .filter(|player| player_filter_matches_game(&filter, player.id, game, &ctx))
+                .map(|player| player.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(selected(&game), vec![a, b]);
+        let mut ctx = crate::effects::ExecutionContext::new_default(source, a);
+        let effect = crate::effect::Effect::new(crate::effects::GainControlEffect::new(
+            crate::target::ChooseSpec::SpecificObject(bob),
+            crate::effect::Until::EndOfTurn,
+        ));
+        crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(selected(&game), vec![b]);
+        let mut restricted = game.filter_context_for(a, Some(source));
+        restricted.players_in_range = Some(vec![a, c]);
+        // The out-of-range zero must not suppress both in-range tied players.
+        assert!(player_filter_matches_game(&filter, a, &game, &restricted));
+        assert!(player_filter_matches_game(&filter, c, &game, &restricted));
+        assert!(!player_filter_matches_game(&filter, b, &game, &restricted));
+        let filter_ctx = ctx.filter_context(&game);
+        assert_eq!(
+            crate::effects::helpers::resolve_player_filter_to_list(
+                &game,
+                &filter,
+                &filter_ctx,
+                &ctx
+            )
+            .unwrap(),
+            vec![b]
+        );
+        assert!(game.leave_game(b));
+        assert_eq!(selected(&game), vec![a]);
+        assert!(game.leave_game(c));
+        assert_eq!(selected(&game), vec![a]);
+        assert!(game.leave_game(a));
+        assert!(selected(&game).is_empty());
     }
 }

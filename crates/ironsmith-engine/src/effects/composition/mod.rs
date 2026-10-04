@@ -101,7 +101,7 @@ pub use mechanic_actions::{
 };
 pub use reflexive_trigger::ReflexiveTriggerEffect;
 pub(crate) use reflexive_trigger::{
-    PendingReflexiveTrigger, queue_reflexive_trigger, reflexive_trigger_stack_entry,
+    PendingReflexiveTrigger, queue_reflexive_trigger, queue_reflexive_trigger_with_source_snapshot, reflexive_trigger_stack_entry,
 };
 pub use repeat_effects::RepeatEffectsEffect;
 pub use repeat_process::RepeatProcessEffect;

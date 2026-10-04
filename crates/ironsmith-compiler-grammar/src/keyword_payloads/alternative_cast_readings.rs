@@ -68,6 +68,15 @@ pub(super) const REGISTRY: RuleId = RuleId::new("alternative-cast-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("intrinsic-zone-alternative-cost"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(
+            crate::grammar::shared_util::alternative_cost_lines::parse_self_zone_alternative_cost(input.tokens)
+                .map(|method| method.and_then(|method| ast(LineAst::AlternativeCastingMethod(method))))
+        ),
+    },
+    Reading {
         id: RuleId::new("emerge-from"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

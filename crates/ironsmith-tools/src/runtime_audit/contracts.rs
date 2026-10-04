@@ -968,6 +968,15 @@ impl Auditor {
                 scope.player = Binding::Present;
                 scope.amount = Binding::Present;
             }
+            "PermanentTransforms" | "PermanentTransformsInto" => {
+                scope.event_object = Binding::Present;
+            }
+            "PermanentMutates" | "PlayerTurnsFaceUp" => {
+                // A completed mutation names the permanent and its controller;
+                // active face-up names the exact permanent and acting player.
+                scope.event_object = Binding::Present;
+                scope.player = Binding::Present;
+            }
             "PlayerAttackDeclaration" | "RingBearerChosen" => { scope.player = Binding::Present; }
             "BecomesTargetedByAbilitySource" => {
                 scope.player = Binding::Present;

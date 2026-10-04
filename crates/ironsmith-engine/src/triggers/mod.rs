@@ -138,6 +138,7 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
@@ -188,6 +189,7 @@ pub fn describe_player_filter_possessive(filter: &PlayerFilter) -> String {
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
@@ -1668,6 +1670,15 @@ impl Trigger {
     }
 
     /// "Whenever a permanent you control transforms": any matching permanent.
+    pub fn permanent_mutates(filter: ObjectFilter) -> Self {
+        Self::new(PermanentMutatesTrigger { filter })
+    }
+    pub fn player_turns_face_up(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::new(PermanentTurnedFaceUpTrigger { filter, player: Some(player) })
+    }
+    pub fn permanent_transforms_into(filter: ObjectFilter, destination: ObjectFilter) -> Self {
+        Self::new(TransformsTrigger::new().permanent_filter(filter).destination_filter(destination))
+    }
     pub fn permanent_transforms(filter: crate::target::ObjectFilter) -> Self {
         Self::new(TransformsTrigger::new().permanent_filter(filter))
     }

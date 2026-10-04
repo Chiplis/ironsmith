@@ -342,11 +342,20 @@ fn attack(game: &mut GameState, source: ObjectId, dm: &mut Choices) {
     put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
 }
 #[test]
-fn first_three_quantity_candidates_keep_full_metadata_and_artifact_semantics() {
+fn twelve_quantity_candidates_keep_full_metadata_and_artifact_semantics() {
     for name in [
         "Freelance Muscle",
         "Investigator's Journal",
         "Repay in Kind",
+        "Wretched Banquet",
+        "Dispersal Shield",
+        "Strength-Testing Hammer",
+        "Desecrator Hag",
+        "Drop of Honey",
+        "Porphyry Nodes",
+        "Purging Scythe",
+        "Cabal Conditioning",
+        "Gor Muldrak, Amphinologist",
     ] {
         for definition in definitions(name) {
             assert_eq!(definition.card.name, name);
@@ -467,5 +476,556 @@ fn repay_in_kind_freezes_the_original_minimum_before_any_life_change_replacement
         assert_eq!(game.player(A).unwrap().life, -4);
         assert_eq!(game.player(B).unwrap().life, 8);
         assert_eq!(game.player(C).unwrap().life, 8);
+    }
+}
+
+#[test]
+fn wretched_banquet_announces_any_creature_then_checks_the_current_minimum_including_ties() {
+    for definition in definitions("Wretched Banquet") {
+        for mode in 0..3 {
+            let mut game = game();
+            let target = creature(
+                &mut game,
+                B,
+                "Conditional victim",
+                if mode == 0 { 4 } else { 1 },
+                4,
+            );
+            let other = creature(&mut game, C, "Other minimum", 1, 4);
+            cast(
+                &mut game,
+                &definition,
+                CastingMethod::Normal,
+                &mut Choices {
+                    targets: vec![Target::Object(target)],
+                    ..Default::default()
+                },
+            );
+            if mode == 0 {
+                apply(
+                    &mut game,
+                    other,
+                    Effect::pump(-4, 0, ChooseSpec::SpecificObject(target), Until::EndOfTurn),
+                );
+            }
+            if mode == 1 {
+                apply(
+                    &mut game,
+                    other,
+                    Effect::pump(3, 0, ChooseSpec::SpecificObject(target), Until::EndOfTurn),
+                );
+            }
+            resolve_all(&mut game, &mut Choices::default());
+            assert_eq!(game.object(target).is_some(), mode == 1);
+            assert!(
+                game.object(other).is_some(),
+                "equality tests membership, it does not destroy all tied creatures"
+            );
+        }
+    }
+}
+#[test]
+fn dispersal_shield_keeps_unconditional_spell_targeting_and_rechecks_the_controlled_maximum() {
+    for definition in definitions("Dispersal Shield") {
+        for mode in 0..3 {
+            let mut game = game();
+            library(&mut game, 3);
+            let permanent = compile_to_runtime_definition(
+                "Mana value reference",
+                format!(
+                    "Mana cost: {{{}}}\nType: Artifact",
+                    if mode == 2 { 1 } else { 5 }
+                ),
+                false,
+            )
+            .unwrap();
+            let reference = game.create_object_from_definition(&permanent, A, Zone::Battlefield);
+            let spell = compile_to_runtime_definition(
+                "Conditional counter target",
+                "Mana cost: {4}\nType: Instant\nDraw a card.",
+                false,
+            )
+            .unwrap();
+            let target = cast(
+                &mut game,
+                &spell,
+                CastingMethod::Normal,
+                &mut Choices::default(),
+            );
+            cast(
+                &mut game,
+                &definition,
+                CastingMethod::Normal,
+                &mut Choices {
+                    targets: vec![Target::Object(target)],
+                    ..Default::default()
+                },
+            );
+            if mode == 1 {
+                apply(
+                    &mut game,
+                    reference,
+                    Effect::destroy(ChooseSpec::SpecificObject(reference)),
+                );
+            }
+            resolve(&mut game, &mut Choices::default());
+            assert_eq!(
+                game.stack.iter().any(|entry| entry.object_id == target),
+                mode != 0
+            );
+            resolve_all(&mut game, &mut Choices::default());
+            assert_eq!(game.player(A).unwrap().hand.len(), usize::from(mode != 0));
+        }
+    }
+}
+#[test]
+fn strength_testing_hammer_rolls_for_the_actual_equipped_attacker_then_tests_its_modified_power() {
+    for definition in definitions("Strength-Testing Hammer") {
+        for opposing_power in [0, 8, 20] {
+            let mut game = game();
+            game.set_random_seed(41);
+            library(&mut game, 3);
+            let hammer = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            let attacker = creature(&mut game, A, "Hammer attacker", 4, 4);
+            let enemy = creature(&mut game, B, "Extremum competitor", opposing_power, 30);
+            activate(
+                &mut game,
+                hammer,
+                activated(&definition),
+                &mut Choices {
+                    targets: vec![Target::Object(attacker)],
+                    ..Default::default()
+                },
+            );
+            resolve_all(&mut game, &mut Choices::default());
+            attack(&mut game, attacker, &mut Choices::default());
+            resolve_all(&mut game, &mut Choices::default());
+            let (power, toughness) = pt(&game, attacker);
+            assert!((5..=10).contains(&power));
+            assert_eq!(toughness, 4);
+            assert_eq!(pt(&game, enemy), (opposing_power, 30));
+            assert_eq!(
+                game.player(A).unwrap().hand.len(),
+                usize::from(power >= opposing_power)
+            );
+            ironsmith::turn::execute_cleanup_step(&mut game);
+            assert_eq!(pt(&game, attacker), (4, 4));
+        }
+    }
+}
+
+#[test]
+fn hammer_does_not_pump_a_blinked_attacker_and_its_condition_uses_exact_departure_power() {
+    for definition in definitions("Strength-Testing Hammer") {
+        let mut game = game();
+        library(&mut game, 3);
+        let hammer = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let attacker = creature(&mut game, A, "Blinking attacker", 4, 4);
+        let enemy = creature(&mut game, B, "Equal to departure power", 14, 30);
+        activate(
+            &mut game,
+            hammer,
+            activated(&definition),
+            &mut Choices {
+                targets: vec![Target::Object(attacker)],
+                ..Default::default()
+            },
+        );
+        resolve_all(&mut game, &mut Choices::default());
+        attack(&mut game, attacker, &mut Choices::default());
+        let stable = game.object(attacker).unwrap().stable_id;
+        apply(
+            &mut game,
+            enemy,
+            Effect::pump(
+                10,
+                0,
+                ChooseSpec::SpecificObject(attacker),
+                Until::EndOfTurn,
+            ),
+        );
+        let exiled = game
+            .move_object_by_game_rule(attacker, Zone::Exile)
+            .unwrap();
+        let returned = game
+            .move_object_by_game_rule(exiled, Zone::Battlefield)
+            .unwrap();
+        assert_eq!(game.object(returned).unwrap().stable_id, stable);
+        assert_ne!(returned, attacker);
+        resolve_all(&mut game, &mut Choices::default());
+        assert_eq!(
+            pt(&game, returned),
+            (4, 4),
+            "the independent pending attack trigger cannot modify the new incarnation"
+        );
+        assert_eq!(
+            game.player(A).unwrap().hand.len(),
+            1,
+            "actual departure power 14 ties the remaining maximum; the earlier attack snapshot had only 4"
+        );
+    }
+}
+#[test]
+fn an_explicit_move_in_the_same_resolution_still_follows_the_object_it_moved() {
+    for definition in definitions_text(
+        "Linked move variant",
+        "Mana cost: {1}\nType: Instant\nExile target creature. Return that card to the battlefield under its owner's control.",
+    ) {
+        let mut game = game();
+        let original = creature(&mut game, B, "Moved by this spell", 2, 4);
+        let stable = game.object(original).unwrap().stable_id;
+        cast(
+            &mut game,
+            &definition,
+            CastingMethod::Normal,
+            &mut Choices {
+                targets: vec![Target::Object(original)],
+                ..Default::default()
+            },
+        );
+        resolve_all(&mut game, &mut Choices::default());
+        let returned = game.find_object_by_stable_id(stable).unwrap();
+        assert_ne!(returned, original);
+        assert_eq!(game.object(returned).unwrap().zone, Zone::Battlefield);
+        assert_eq!(game.current_controller(returned), Some(B));
+    }
+}
+
+fn upkeep(game: &mut GameState, dm: &mut Choices) {
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(ironsmith::game_state::Step::Upkeep);
+    let event = ironsmith::triggers::TriggerEvent::new_with_provenance(
+        ironsmith::events::BeginningOfUpkeepEvent::new(A),
+        Default::default(),
+    );
+    let mut queue = TriggerQueue::new();
+    for entry in check_triggers(game, &event) {
+        queue.add(entry);
+    }
+    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
+}
+#[test]
+fn desecrator_hag_chooses_one_tied_graveyard_maximum_in_its_own_scope_including_negative_power() {
+    for definition in definitions("Desecrator Hag") {
+        for maximum in [5, -1] {
+            let mut game = game();
+            let tied = game.create_object_from_definition(
+                &vanilla("First graveyard maximum", "{1}", "Human", maximum, 4),
+                A,
+                Zone::Graveyard,
+            );
+            let selected = game.create_object_from_definition(
+                &vanilla("Chosen graveyard maximum", "{1}", "Human", maximum, 4),
+                A,
+                Zone::Graveyard,
+            );
+            let lesser = game.create_object_from_definition(
+                &vanilla("Lesser graveyard power", "{1}", "Human", maximum - 2, 4),
+                A,
+                Zone::Graveyard,
+            );
+            let opposing = game.create_object_from_definition(
+                &vanilla("Opponent graveyard maximum", "{1}", "Human", 20, 4),
+                B,
+                Zone::Graveyard,
+            );
+            let stable = game.object(selected).unwrap().stable_id;
+            let mut dm = Choices {
+                objects: vec![selected],
+                ..Default::default()
+            };
+            enter(&mut game, &definition, &mut dm);
+            let moved = game.find_object_by_stable_id(stable).unwrap();
+            assert_eq!(game.object(moved).unwrap().zone, Zone::Hand);
+            for unchanged in [tied, lesser, opposing] {
+                assert_eq!(game.object(unchanged).unwrap().zone, Zone::Graveyard);
+            }
+            assert!(
+                dm.bounds.is_empty(),
+                "the resolution choice is not a target declaration"
+            );
+        }
+    }
+}
+#[test]
+fn purging_scythe_damages_only_the_chosen_tied_minimum_and_an_empty_set_does_nothing() {
+    for definition in definitions("Purging Scythe") {
+        for empty in [false, true] {
+            let mut game = game();
+            let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            let mut creatures = Vec::new();
+            if !empty {
+                creatures.push(creature(&mut game, B, "First toughness minimum", 2, 3));
+                creatures.push(creature(&mut game, C, "Chosen toughness minimum", 4, 3));
+                creatures.push(creature(&mut game, B, "Greater toughness", 1, 8));
+            }
+            let mut dm = Choices {
+                objects: creatures.get(1).copied().into_iter().collect(),
+                ..Default::default()
+            };
+            upkeep(&mut game, &mut dm);
+            resolve_all(&mut game, &mut dm);
+            assert!(game.object(source).is_some());
+            if !empty {
+                assert_eq!(game.damage_on(creatures[0]), 0);
+                assert_eq!(game.damage_on(creatures[1]), 2);
+                assert_eq!(game.damage_on(creatures[2]), 0);
+            }
+            assert!(dm.bounds.is_empty());
+        }
+    }
+}
+#[test]
+fn drop_and_nodes_choose_one_without_targeting_prevent_regeneration_and_keep_true_state_trigger_lifecycle()
+ {
+    for name in ["Drop of Honey", "Porphyry Nodes"] {
+        for definition in definitions(name) {
+            let mut game = game();
+            let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            let hexproof = compile_to_runtime_definition(
+                "Untargetable minimum",
+                "Mana cost: {1}\nType: Creature — Human\nPower/Toughness: 1/4\nHexproof",
+                false,
+            )
+            .unwrap();
+            let victim = game.create_object_from_definition(&hexproof, B, Zone::Battlefield);
+            let tied = creature(&mut game, C, "Other power minimum", 1, 4);
+            apply(
+                &mut game,
+                source,
+                Effect::regenerate(ChooseSpec::SpecificObject(victim), Until::EndOfTurn),
+            );
+            let mut dm = Choices {
+                objects: vec![victim],
+                ..Default::default()
+            };
+            upkeep(&mut game, &mut dm);
+            resolve_all(&mut game, &mut dm);
+            assert!(
+                game.object(victim).is_none(),
+                "a regeneration shield cannot replace this destruction"
+            );
+            assert!(game.object(tied).is_some());
+            assert!(
+                dm.bounds.is_empty(),
+                "hexproof does not prohibit a nontargeted tie choice"
+            );
+            let outcome = apply(
+                &mut game,
+                source,
+                Effect::destroy(ChooseSpec::SpecificObject(tied)),
+            );
+            queue_outcome(&mut game, outcome, &mut Choices::default());
+            assert_eq!(
+                game.stack.len(),
+                1,
+                "empty-battlefield state trigger becomes pending"
+            );
+            let mut queue = TriggerQueue::new();
+            put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut Choices::default()).unwrap();
+            assert_eq!(
+                game.stack.len(),
+                1,
+                "state scans cannot duplicate an already pending instance"
+            );
+            let entering = game.create_object_from_definition(
+                &vanilla("Response creature", "{1}", "Human", 2, 4),
+                B,
+                Zone::Hand,
+            );
+            let entered = game
+                .move_object_by_game_rule(entering, Zone::Battlefield)
+                .unwrap();
+            resolve_all(&mut game, &mut Choices::default());
+            assert!(
+                game.object(source).is_none(),
+                "the state-triggering event is not an intervening-if recheck"
+            );
+            assert!(game.object(entered).is_some());
+        }
+    }
+}
+
+#[test]
+fn cabal_conditioning_keeps_zero_or_many_player_targets_and_the_casters_current_permanent_scope() {
+    for definition in definitions("Cabal Conditioning") {
+        for no_targets in [false, true] {
+            let mut game = game();
+            let greatest = compile_to_runtime_definition(
+                "Caster's maximum",
+                "Mana cost: {5}\nType: Artifact",
+                false,
+            )
+            .unwrap();
+            let maximum = game.create_object_from_definition(&greatest, A, Zone::Battlefield);
+            let small = compile_to_runtime_definition(
+                "Caster's remaining maximum",
+                "Mana cost: {2}\nType: Artifact",
+                false,
+            )
+            .unwrap();
+            let source = game.create_object_from_definition(&small, A, Zone::Battlefield);
+            let opposing = compile_to_runtime_definition(
+                "Target player's larger permanent",
+                "Mana cost: {9}\nType: Artifact",
+                false,
+            )
+            .unwrap();
+            game.create_object_from_definition(&opposing, B, Zone::Battlefield);
+            for (player, count) in [(A, 3), (B, 3), (C, 1)] {
+                for n in 0..count {
+                    game.create_object_from_definition(
+                        &vanilla(&format!("Hand {player:?} {n}"), "{1}", "Human", 1, 1),
+                        player,
+                        Zone::Hand,
+                    );
+                }
+            }
+            let mut dm = Choices {
+                targets: if no_targets {
+                    vec![]
+                } else {
+                    vec![Target::Player(B), Target::Player(C)]
+                },
+                decline_targets: no_targets,
+                ..Default::default()
+            };
+            cast(&mut game, &definition, CastingMethod::Normal, &mut dm);
+            assert!(
+                dm.bounds
+                    .iter()
+                    .any(|(min, max)| *min == 0 && max.is_none())
+            );
+            apply(
+                &mut game,
+                source,
+                Effect::destroy(ChooseSpec::SpecificObject(maximum)),
+            );
+            resolve_all(&mut game, &mut Choices::default());
+            assert_eq!(game.player(A).unwrap().hand.len(), 3);
+            assert_eq!(
+                game.player(B).unwrap().hand.len(),
+                if no_targets { 3 } else { 1 }
+            );
+            assert_eq!(game.player(C).unwrap().hand.len(), usize::from(no_targets));
+        }
+    }
+}
+
+#[test]
+fn gor_muldrak_freezes_all_tied_minimum_players_before_creating_tokens_and_preserves_protection() {
+    for definition in definitions("Gor Muldrak, Amphinologist") {
+        for mode in 0..3 {
+            let mut game = game();
+            let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            let mut bob = None;
+            if mode != 1 {
+                bob = Some(creature(&mut game, B, "Bob's one creature", 1, 4));
+                creature(&mut game, C, "Charlie's first creature", 1, 4);
+                creature(&mut game, C, "Charlie's second creature", 1, 4);
+            }
+            game.turn.phase = Phase::Ending;
+            game.turn.step = Some(ironsmith::game_state::Step::End);
+            let event = ironsmith::triggers::TriggerEvent::new_with_provenance(
+                ironsmith::events::BeginningOfEndStepEvent::new(A),
+                Default::default(),
+            );
+            let mut queue = TriggerQueue::new();
+            for entry in check_triggers(&game, &event) {
+                queue.add(entry);
+            }
+            put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut Choices::default()).unwrap();
+            if mode == 2 {
+                apply(
+                    &mut game,
+                    source,
+                    Effect::new(ironsmith::effects::GainControlEffect::new(
+                        ChooseSpec::SpecificObject(bob.unwrap()),
+                        Until::EndOfTurn,
+                    )),
+                );
+            }
+            resolve_all(&mut game, &mut Choices::default());
+            let salamanders = game
+                .battlefield
+                .iter()
+                .copied()
+                .filter(|id| game.current_has_subtype(*id, ironsmith::Subtype::Salamander))
+                .collect::<Vec<_>>();
+            for player in [A, B, C] {
+                let count = salamanders
+                    .iter()
+                    .filter(|id| game.current_controller(**id) == Some(player))
+                    .count();
+                let expected = match mode {
+                    0 => usize::from(player == A || player == B),
+                    1 => usize::from(player == B || player == C),
+                    _ => usize::from(player == B),
+                };
+                assert_eq!(
+                    count, expected,
+                    "mode {mode}, player {player:?}: set membership is fixed before earlier recipients change the minimum"
+                );
+            }
+            for id in &salamanders {
+                assert_eq!(pt(&game, *id), (4, 3));
+                assert!(game.current_has_subtype(*id, ironsmith::Subtype::Warrior));
+            }
+            let salamander = *salamanders
+                .iter()
+                .find(|id| game.current_controller(**id) == Some(B))
+                .unwrap();
+            apply(
+                &mut game,
+                salamander,
+                Effect::deal_damage(5, ChooseSpec::SpecificPlayer(A)),
+            );
+            apply(
+                &mut game,
+                salamander,
+                Effect::deal_damage(5, ChooseSpec::SpecificObject(source)),
+            );
+            assert_eq!(
+                game.player(A).unwrap().life,
+                20,
+                "the player retains protection from Salamanders"
+            );
+            assert_eq!(
+                game.damage_on(source),
+                0,
+                "the controller's permanents retain the same protection"
+            );
+            apply(
+                &mut game,
+                salamander,
+                Effect::new(ironsmith::effects::GainControlEffect::new(
+                    ChooseSpec::SpecificObject(source),
+                    Until::EndOfTurn,
+                )),
+            );
+            assert_eq!(game.current_controller(source), Some(B));
+            apply(
+                &mut game,
+                salamander,
+                Effect::deal_damage(5, ChooseSpec::SpecificPlayer(A)),
+            );
+            apply(
+                &mut game,
+                salamander,
+                Effect::deal_damage(5, ChooseSpec::SpecificPlayer(B)),
+            );
+            apply(
+                &mut game,
+                salamander,
+                Effect::deal_damage(5, ChooseSpec::SpecificObject(source)),
+            );
+            assert_eq!(
+                game.player(A).unwrap().life,
+                15,
+                "protection follows the current source controller"
+            );
+            assert_eq!(game.player(B).unwrap().life, 20);
+            assert_eq!(game.damage_on(source), 0);
+        }
     }
 }

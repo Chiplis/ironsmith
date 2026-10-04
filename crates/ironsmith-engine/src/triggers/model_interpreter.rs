@@ -287,6 +287,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisLeavesBattlefield => crate::triggers::Trigger::this_leaves_battlefield(),
         TriggerKind::ThisPhasesOut => crate::triggers::Trigger::this_phases_out(),
         TriggerKind::ThisMutates => crate::triggers::Trigger::this_mutates(),
+        TriggerKind::PermanentMutates { filter } => crate::triggers::Trigger::permanent_mutates(filter),
+        TriggerKind::PlayerTurnsFaceUp { player, filter } => crate::triggers::Trigger::player_turns_face_up(player, filter),
+        TriggerKind::PermanentTransformsInto { filter, destination } => crate::triggers::Trigger::permanent_transforms_into(filter, destination),
         TriggerKind::LeavesBattlefield { filter } => {
             crate::triggers::Trigger::leaves_battlefield(filter)
         }

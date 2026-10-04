@@ -1558,6 +1558,12 @@ pub enum PlayerFilter {
     OwnerOf(ObjectRef),
     AliasedOwnerOf(ObjectRef),
     AliasedControllerOf(ObjectRef),
+    /// Every in-game player tied for the minimum current number of matching
+    /// permanents. Iteration snapshots this set before applying any actions.
+    /// Appended to preserve existing serialized variant ordinals.
+    ControlsFewestTied {
+        filter: Box<ObjectFilter>,
+    },
 }
 
 impl PlayerFilter {
@@ -1686,7 +1692,9 @@ impl PlayerFilter {
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => {
                 player.mentions_iterated_player() || filter.mentions_iterated_player()
             }
-            Self::ControlsMost { filter } => filter.mentions_iterated_player(),
+            Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } => {
+                filter.mentions_iterated_player()
+            }
             Self::OpponentOf(base) | Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
@@ -1823,6 +1831,10 @@ impl PlayerFilter {
             ),
             Self::ControlsMost { filter } => format!(
                 "the player who controls the most {}",
+                pluralize_count_terminal_word(&filter.description())
+            ),
+            Self::ControlsFewestTied { filter } => format!(
+                "a player who controls the fewest {}",
                 pluralize_count_terminal_word(&filter.description())
             ),
             Self::OpponentOf(base) => format!("an opponent of {}", base.description()),
@@ -4155,7 +4167,7 @@ impl ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::ControlsMost { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
@@ -4347,7 +4359,7 @@ impl ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::ControlsMost { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
@@ -7029,7 +7041,9 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             describe_player_filter(player),
             pluralize_count_terminal_word(&filter.description())
         ),
-        PlayerFilter::ControlsMost { .. } => format!("{}'s", filter.description()),
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+            format!("{}'s", filter.description())
+        }
         PlayerFilter::OpponentOf(_) => format!("{}'s", describe_player_filter(filter)),
         PlayerFilter::MaxSpeed {
             base,
@@ -7148,6 +7162,10 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         ),
         PlayerFilter::ControlsMost { filter } => format!(
             "the player who controls the most {}",
+            pluralize_count_terminal_word(&filter.description())
+        ),
+        PlayerFilter::ControlsFewestTied { filter } => format!(
+            "player who controls the fewest {}",
             pluralize_count_terminal_word(&filter.description())
         ),
         PlayerFilter::OpponentOf(base) => {

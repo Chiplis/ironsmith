@@ -194,3 +194,84 @@ fn both_land_play_owners_keep_the_boundary_through_entry_program_choices() {
         assert!(!has_top_opening(&wasm, next)); assert!(!top_flag(&mut wasm, A));
     }
 }
+
+#[test]
+fn resolved_top_view_permission_opens_each_new_top_privately_survives_source_and_expires() {
+    use ironsmith::effects::{EffectContext, EffectExecutor};
+    let _ids = crate::test_id_counter_guard();
+    let (mut wasm, host, old, next) = setup(false);
+    // Remove the static viewer: the resolving registration is the only source.
+    let source = wasm.game.move_object_by_effect(host, Zone::Exile).unwrap();
+    let mut spec = ironsmith::grant::GrantSpec::new(ironsmith::grant::Grantable::play_from(),
+        ironsmith::target::ObjectFilter::default().owned_by(ironsmith::target::PlayerFilter::You), Zone::Library).with_top_card_only();
+    spec.may_look_at_top = true;
+    let effect = ironsmith::effects::GrantBySpecEffect::new(spec, ironsmith::target::PlayerFilter::You,
+        ironsmith::grant::GrantDuration::UntilEndOfTurn);
+    let before = wasm.capture_crypto_audit_state();
+    let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+    effect.execute(&mut wasm.game, &mut EffectContext::new(source, A, &mut dm)).unwrap();
+    wasm.update_crypto_requirements_from(before);
+    assert!(top_flag(&mut wasm, A));
+    assert!(wasm.last_crypto_requirements.iter().any(|r| r.object_id == Some(old.0) && r.requirement_type == "private_open"));
+    assert!(!wasm.last_crypto_requirements.iter().any(|r| r.requirement_type == "public_open"));
+    // This registration already uses the lossless grant carrier, including its
+    // view/top scope. Omitting either field cannot silently broaden/reduce it.
+    let retained = SyncExecutableState::retain(&wasm.game, &wasm.registry, Vec::new(),
+        wasm.game.effect_store.continuous_effects.registered_state(),
+        wasm.game.effect_store.grant_registry.registered_state(), Vec::new(), Vec::new()).unwrap();
+    let encoded = serde_json::to_value(&retained).unwrap();
+    let restored: SyncExecutableState = serde_json::from_value(encoded.clone()).unwrap();
+    wasm.game.effect_store.grant_registry.restore_registered_state(restored.restore(&[]).unwrap().grants).unwrap();
+    for field in ["may_look_at_top", "top_card_only"] {
+        let mut bad = encoded.clone();
+        bad["grants"]["grants"][0]["play_from_constraints"].as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<SyncExecutableState>(bad).is_err());
+    }
+    let checkpoint = wasm.capture_replay_checkpoint();
+    let stack = wasm.game.move_object_by_effect(old, Zone::Stack).unwrap();
+    pending_cast(&mut wasm, source, stack, checkpoint);
+    let before = wasm.capture_crypto_audit_state(); wasm.update_crypto_requirements_from(before);
+    assert!(!has_top_opening(&wasm, next)); assert!(!top_flag(&mut wasm, A));
+    wasm.priority_state.pending_cast = None; wasm.priority_state.clear_checkpoint(); wasm.pending_action_checkpoint = None;
+    let before = wasm.capture_crypto_audit_state(); wasm.update_crypto_requirements_from(before);
+    assert!(has_top_opening(&wasm, next)); assert!(top_flag(&mut wasm, A));
+    wasm.game.next_turn();
+    let before = wasm.capture_crypto_audit_state(); wasm.update_crypto_requirements_from(before);
+    assert!(!has_top_opening(&wasm, next)); assert!(!top_flag(&mut wasm, A));
+}
+
+#[test]
+fn retained_permission_reflexive_token_program_keeps_its_explicit_embedded_definition_graph() {
+    use ironsmith::effects::{EffectContext, EffectExecutor};
+    let _ids = crate::test_id_counter_guard();
+    let (mut wasm, host, _, _) = setup(false);
+    wasm.game.turn.active_player = A; wasm.game.turn.priority_player = Some(A);
+    wasm.game.turn.phase = ironsmith::game_state::Phase::FirstMain; wasm.game.turn.step = None;
+    let mut spec = ironsmith::grant::GrantSpec::new(ironsmith::grant::Grantable::play_from(),
+        ironsmith::target::ObjectFilter::default().owned_by(ironsmith::target::PlayerFilter::You), Zone::Library).with_top_card_only();
+    spec.on_use_effects = vec![ironsmith::Effect::new(ironsmith::effects::CreateTokenEffect::one(
+        ironsmith::cards::tokens::food_token_definition()))];
+    let effect = ironsmith::effects::GrantBySpecEffect::new(spec, ironsmith::target::PlayerFilter::You,
+        ironsmith::grant::GrantDuration::UntilEndOfTurn);
+    let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+    effect.execute(&mut wasm.game, &mut EffectContext::new(host, A, &mut dm)).unwrap();
+    let retained = SyncExecutableState::retain(&wasm.game, &wasm.registry, Vec::new(),
+        wasm.game.effect_store.continuous_effects.registered_state(),
+        wasm.game.effect_store.grant_registry.registered_state(), Vec::new(), Vec::new()).unwrap();
+    let encoded = serde_json::to_value(&retained).unwrap();
+    let restored: SyncExecutableState = serde_json::from_value(encoded.clone()).unwrap();
+    let peers = (0..restored.graph_card_count).map(|_| CardId::new()).collect::<Vec<_>>();
+    wasm.game.effect_store.grant_registry.restore_registered_state(restored.restore(&peers).unwrap().grants).unwrap();
+    let mut missing = encoded.clone(); missing["grants"]["grants"][0].as_object_mut().unwrap().remove("on_use_effects");
+    assert!(serde_json::from_value::<SyncExecutableState>(missing).is_err());
+    let mut missing = encoded; missing["grants"]["grants"][0]["on_use_effects"][0]["embedded_definitions"] = serde_json::json!([]);
+    let missing: SyncExecutableState = serde_json::from_value(missing).unwrap();
+    assert!(missing.restore(&peers).is_err(), "embedded templates cannot be guessed from names or ids");
+    let definition = ironsmith::cards::CardDefinitionBuilder::new(CardId::new(), "Permission land").card_types(vec![CardType::Land]).build();
+    let land = wasm.game.create_object_from_definition(&definition, A, Zone::Library);
+    ironsmith::special_actions::perform(ironsmith::special_actions::SpecialAction::PlayLand {card_id: land}, &mut wasm.game, A, &mut dm).unwrap();
+    assert!(!wasm.game.battlefield.iter().any(|id| wasm.game.current_has_subtype(*id, ironsmith::types::Subtype::Food)));
+    let mut queue = TriggerQueue::new(); ironsmith::game_loop::put_triggers_on_stack(&mut wasm.game, &mut queue).unwrap();
+    ironsmith::game_loop::resolve_stack_entry(&mut wasm.game).unwrap();
+    assert!(wasm.game.battlefield.iter().any(|id| wasm.game.current_has_subtype(*id, ironsmith::types::Subtype::Food)));
+}

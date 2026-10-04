@@ -73,6 +73,45 @@ fn card_filter(tokens: &[OwnedLexToken]) -> Result<Option<ObjectFilter>, CardTex
     Ok(Some(filter))
 }
 
+/// Both origins are one static permission. Expanding into two abilities would
+/// incorrectly give each zone its own once-turn budget.
+pub(super) fn parse_shared_hand_top_free_cast(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    let Some(()) = primitives::probe_all(tokens, (
+        primitives::phrase(&["once", "during", "each", "of", "your", "turns"]), primitives::comma(),
+        primitives::phrase(&["you", "may", "cast", "a", "spell", "from", "your", "hand", "or", "the", "top", "of", "your", "library", "without", "paying", "its", "mana", "cost"]),
+        primitives::sentence_end(),
+    ).void(), "shared-hand-top-free-cast") else { return Ok(None); };
+    let mut filter = ObjectFilter::nonland(); filter.owner = Some(PlayerFilter::You);
+    let method = crate::alternative_cast::AlternativeCastingMethod::cast_from_zone_with_total_cost(
+        "Cast without paying mana cost", Zone::Hand, crate::cost::TotalCost::free(), None, false);
+    let mut spec = crate::model::CompilerGrantSpecCore::new(crate::model::CompilerGrantableCore::AlternativeCast(method), filter, Zone::Hand);
+    spec.additional_zones = vec![Zone::Library]; spec.top_card_only = true;
+    spec.usage_limit = Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns);
+    spec.filtered_zone_surface = Some("Once during each of your turns, you may cast a spell from your hand or the top of your library without paying its mana cost".into());
+    Ok(Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, spec, lifetime: PermissionLifetime::Static}))
+}
+
+/// Bounded, target-free reflexive follow-up to using one static permission.
+/// The trigger is retained on that permission; it is never an immediate effect
+/// or a trigger for every otherwise matching play.
+pub(super) fn parse_permission_with_token_follow_up(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    let Some((separator, _, follow_up)) = primitives::find_prefix(tokens, || (
+        primitives::period(), primitives::phrase(&["when", "you", "do"]), primitives::comma(),
+    )) else { return Ok(None); };
+    if primitives::probe_all(follow_up, (
+        primitives::phrase(&["create", "a"]),
+        alt((primitives::kw("food"), primitives::kw("treasure"), primitives::kw("clue"))),
+        primitives::kw("token"), primitives::sentence_end(),
+    ).void(), "permission-reflexive-named-token").is_none() { return Ok(None); }
+    let Some(PermissionClauseSpec::GrantBySpec {player, mut spec, lifetime: PermissionLifetime::Static}) = parse_filtered_zone_permission(&tokens[..separator])?
+        else { return Ok(None); };
+    spec.on_use_effects = crate::clause_support::parse_effect_sentences_lexed(follow_up)?;
+    let surface = crate::lexer::render_token_slice(tokens);
+    let surface = surface.trim().trim_end_matches('.'); let mut chars = surface.chars();
+    spec.filtered_zone_surface = chars.next().map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
+    Ok(Some(PermissionClauseSpec::GrantBySpec {player, spec, lifetime: PermissionLifetime::Static}))
+}
+
 pub(super) fn parse_filtered_zone_permission(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
     let Some(shape) = primitives::probe_all(tokens, shape, "filtered-zone-play-cast-permission") else { return Ok(None); };
     let mut filter = if let Some(subject) = shape.subject {
@@ -106,6 +145,26 @@ pub(super) fn parse_filtered_zone_permission(tokens: &[OwnedLexToken]) -> Result
     let mut chars = surface.chars();
     spec.filtered_zone_surface = chars.next().map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
     Ok(Some(PermissionClauseSpec::GrantBySpec { player: PlayerAst::You, spec, lifetime: PermissionLifetime::Static }))
+}
+
+/// A complete resolving compound permission. Its private view follows each
+/// changing library top for the duration; it is not a one-time look instruction.
+pub(super) fn parse_timed_top_look_and_permission(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    let Some((_, body)) = primitives::parse_prefix(tokens, (
+        primitives::phrase(&["until", "end", "of", "turn"]), primitives::comma(),
+    )) else { return Ok(None); };
+    let Some((_, permission)) = primitives::parse_prefix(body, (
+        primitives::phrase(&["you", "may", "look", "at", "the", "top", "card", "of", "your", "library", "any", "time"]),
+        primitives::comma(), primitives::kw("and"),
+    )) else { return Ok(None); };
+    let Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, mut spec, lifetime: PermissionLifetime::Static}) = parse_filtered_zone_permission(permission)?
+        else { return Ok(None); };
+    if spec.zone != Zone::Library || !spec.top_card_only || spec.usage_limit.is_some() { return Ok(None); }
+    spec.may_look_at_top = true;
+    let surface = crate::lexer::render_token_slice(body);
+    let surface = surface.trim().trim_end_matches('.'); let mut chars = surface.chars();
+    spec.filtered_zone_surface = chars.next().map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
+    Ok(Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, spec, lifetime: PermissionLifetime::UntilEndOfTurn}))
 }
 
 pub(crate) fn parse_top_look_and_permission(tokens: &[OwnedLexToken]) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -153,6 +212,36 @@ mod tests {
         let look = crate::lexer::lex_line("You may look at the top card of your library any time, and you may play lands and cast creature and enchantment spells from the top of your library.", 0).unwrap();
         let members = parse_top_look_and_permission(&look).unwrap().unwrap();
         assert_eq!(members.len(), 2);
+    }
+    #[test]
+    fn temporary_compound_top_view_and_play_are_one_complete_duration_permission() {
+        let tokens = crate::lexer::lex_line("Until end of turn, you may look at the top card of your library any time, and you may play lands and cast spells from the top of your library.", 0).unwrap();
+        let Some(PermissionClauseSpec::GrantBySpec {spec, lifetime: PermissionLifetime::UntilEndOfTurn, ..}) = parse_timed_top_look_and_permission(&tokens).unwrap() else { panic!("missing compound permission"); };
+        assert!(spec.top_card_only && spec.may_look_at_top); assert!(!spec.instant_timing);
+        let bad = crate::lexer::lex_line("Until end of turn, you may look at the top card of your library any time, and you may play lands and cast spells from the top of your library unless you pay 2 life.", 0).unwrap();
+        assert!(parse_timed_top_look_and_permission(&bad).unwrap().is_none());
+    }
+    #[test]
+    fn two_free_cast_origins_remain_one_permission_with_concrete_origin_scopes() {
+        let tokens = crate::lexer::lex_line("Once during each of your turns, you may cast a spell from your hand or the top of your library without paying its mana cost.", 0).unwrap();
+        let Some(PermissionClauseSpec::GrantBySpec {spec, ..}) = parse_shared_hand_top_free_cast(&tokens).unwrap() else { panic!("missing shared permission"); };
+        assert_eq!(spec.usage_limit, Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns));
+        let scopes = spec.zone_specs(); assert_eq!(scopes.len(), 2);
+        for scope in scopes {
+            assert_eq!(scope.filter.zone, Some(scope.zone));
+            assert_eq!(scope.top_card_only, scope.zone == Zone::Library);
+            let crate::model::CompilerGrantableCore::AlternativeCast(method) = scope.grantable else { panic!("missing free cost"); };
+            assert_eq!(method.cast_from_zone(), scope.zone);
+        }
+    }
+    #[test]
+    fn permission_reflexive_token_tail_is_retained_and_targeted_tails_are_not_accepted() {
+        let tokens = crate::lexer::lex_line("Once each turn, you may play a historic land or cast a historic spell from the top of your library. When you do, create a Food token.", 0).unwrap();
+        let Some(PermissionClauseSpec::GrantBySpec {spec, ..}) = parse_permission_with_token_follow_up(&tokens).unwrap() else { panic!("missing permission follow-up"); };
+        assert_eq!(spec.usage_limit, Some(crate::grant::GrantUsageLimit::OnceEachTurn));
+        assert_eq!(spec.on_use_effects.len(), 1); assert_eq!(spec.filter.any_of.len(), 2);
+        let targeted = crate::lexer::lex_line("You may cast spells from the top of your library. When you do, destroy target creature.", 0).unwrap();
+        assert!(parse_permission_with_token_follow_up(&targeted).unwrap().is_none());
     }
     #[test]
     fn unknown_riders_and_other_owners_are_not_partially_claimed() {

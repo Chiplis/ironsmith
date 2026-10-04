@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "31af3c4b2d10e30766dcb59ad2daeb1db3b4b0d2",
+  "source_implementation_commit": "6f2901cba12cf9803280c8b4292d18a83f0a6c8d",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 739,
-    "additional_proposed_compile_entries": 740,
+    "additional_proposed_unique_cards": 791,
+    "additional_proposed_compile_entries": 792,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 8,
-    "source_proposals_excluding_identified_runtime_gaps": 731,
+    "source_proposals_excluding_identified_runtime_gaps": 783,
     "runtime_gap_inventory_is_not_exhaustive": true
   },
   "workflow": {
@@ -770,7 +770,7 @@
         },
         {
           "card_name": "Kylox's Voltstrider",
-          "remaining_blocker": "Its attack permission additionally replaces the cast spell’s graveyard move with owner-library-bottom; that linked cast-destination rider is outside the typed evidence action."
+          "remaining_blocker": "Its attack permission additionally replaces the cast spell\u2019s graveyard move with owner-library-bottom; that linked cast-destination rider is outside the typed evidence action."
         }
       ],
       "implementation_commit": "0a205e390e05ab76f124378518f2278698dc2dcf",
@@ -1592,7 +1592,7 @@
         "Cradle of Vitality",
         "Lich's Tomb",
         "Lich's Mastery",
-        "Oath of Lim-Dûl",
+        "Oath of Lim-D\u00fbl",
         "Transcendence"
       ],
       "implementation_commit": "3b31b3231dd4575b52d24bdc272c728dcbaaf1bf",
@@ -2423,13 +2423,13 @@
       "fixture": "fixtures/ring_bearer_references.json.fixture",
       "baseline_entries": [
         "Call of the Ring",
-        "Dúnedain Rangers",
+        "D\u00fanedain Rangers",
         "Faramir, Field Commander",
-        "Galadriel of Lothlórien",
+        "Galadriel of Lothl\u00f3rien",
         "Gandalf, Friend of the Shire",
         "Galadriel, Elven-Queen",
         "One Ring to Rule Them All",
-        "Lord of the Nazgûl",
+        "Lord of the Nazg\u00fbl",
         "Frodo Baggins",
         "Sauron, the Necromancer"
       ],
@@ -2746,6 +2746,218 @@
         "Checked calculated snapshots and unique child event identities preserve per-attacker receipts; ordinary/trample damage distinctions remain intact.",
         "Typed cast timing preserves declaration/turn scope and old label-only payload compatibility.",
         "Independent bounded source review clear; no executed recovery/gameplay credit."
+      ]
+    },
+    {
+      "id": "causal-event-participants",
+      "stage": 48,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/causal_event_participants.json.fixture",
+      "baseline_entries": [
+        "Baral, Chief of Compliance",
+        "Lullmage Mentor",
+        "Karmic Justice",
+        "Spiritual Focus",
+        "Pure Intentions"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "983dc6c47",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed cause/controller relations use captured old observer frames, exact successful destruction and counter events.",
+        "Pure Intentions retains grouped and repeated discard destination identities, delayed self-return and expiration.",
+        "Independent bounded source review clear through 306ced8e3; all authored scenarios unrun."
+      ]
+    },
+    {
+      "id": "extrema-quantities",
+      "stage": 48,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/extrema_quantities.json.fixture",
+      "baseline_entries": [
+        "Desecrator Hag",
+        "Drop of Honey",
+        "Porphyry Nodes",
+        "Purging Scythe",
+        "Wretched Banquet",
+        "Strength-Testing Hammer",
+        "Freelance Muscle",
+        "Investigator's Journal",
+        "Repay in Kind",
+        "Dispersal Shield",
+        "Cabal Conditioning",
+        "Gor Muldrak, Amphinologist"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "9a69bfcc0",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed extrema retain ties, controller scopes and simultaneous original minima; conditional target declarations remain distinct.",
+        "Combat references do not chase a pre-resolution blink; live checks and exact departure LKI cannot fall back to stale matching evidence.",
+        "Independent bounded source review clear through 2c529c702; all authored scenarios unrun.",
+        "Tie-resolution choices and state-trigger ownership independently source-reviewed through 1f31f22cf + 5f1e67352.",
+        "Gor Muldrak ties selected before participant mutations, independently source-reviewed at57609f6cf."
+      ]
+    },
+    {
+      "id": "target-player-reference-bindings",
+      "stage": 48,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/target_player_reference_bindings.json.fixture",
+      "baseline_entries": [
+        "Barroom Brawl",
+        "Cellar Door",
+        "Early Harvest",
+        "Ember Gale",
+        "Head Games",
+        "Inquisition",
+        "Isildur's Fateful Strike",
+        "Jester's Mask",
+        "Meletis Charlatan",
+        "Roiling Terrain",
+        "Volrath's Dungeon"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Alpha Brawl",
+          "remaining_blocker": "Dependent target announcement binding or additional whole-body semantic gap remains open."
+        },
+        {
+          "card_name": "Breaking of the Fellowship",
+          "remaining_blocker": "Dependent target announcement binding or additional whole-body semantic gap remains open."
+        },
+        {
+          "card_name": "Keeper of the Dead",
+          "remaining_blocker": "Dependent target announcement binding or additional whole-body semantic gap remains open."
+        },
+        {
+          "card_name": "Mutiny",
+          "remaining_blocker": "Dependent target announcement binding or additional whole-body semantic gap remains open."
+        }
+      ],
+      "implementation_commit": "afc092a55",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Local instruction subject binding preserves announced players through effects, hand/library owners, scalar quantities and copied spells.",
+        "Independent bounded review clear for eleven bodies; Mutiny and Breaking held on announcement-time source binding."
+      ]
+    },
+    {
+      "id": "permanent-lifecycle-triggers",
+      "stage": 48,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/permanent_lifecycle_triggers.json.fixture",
+      "baseline_entries": [
+        "Cult of the Waxing Moon",
+        "Norn's Inquisitor",
+        "Neglected Heirloom // Ashmouth Blade",
+        "Essence Symbiote",
+        "Growing Dread",
+        "Valeron Wardens"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "f3344a489",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Completed transforms/mutate/face-up/renown snapshots retain controller, exact incarnation and event-time attachment.",
+        "Actual producer notifications and day/night completed originals precede publication; pending main/lane programs refuse lossy wire capture.",
+        "Independent bounded source review clear through a74cc1ca5+c0f5120d8+e6e978f54."
+      ]
+    },
+    {
+      "id": "filtered-zone-permissions",
+      "stage": 48,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/filtered_zone_permissions.json.fixture",
+      "baseline_entries": [
+        "Assemble the Players",
+        "Case of the Locked Hothouse",
+        "Crystal Skull, Isu Spyglass",
+        "Elsha of the Infinite",
+        "The Lunar Whale",
+        "Titania, Nature's Force",
+        "Zask, Skittering Swarmlord",
+        "The Belligerent",
+        "One with the Multiverse",
+        "The Fourth Doctor"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "e26ffbb9d",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Exact source/origin/face permission choices retain private views, face-down obligations and independent paid/free abilities.",
+        "Multi-origin one-use budgets and Fourth Doctor land/spell on-use reflexive programs commit only after completed actions.",
+        "Independent bounded review through afda8bb29; explicit Titania/Zask secondary-body scenarios retained in b3e34595b."
+      ]
+    },
+    {
+      "id": "live-static-condition-scopes",
+      "stage": 48,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/live_static_condition_scopes.json.fixture",
+      "baseline_entries": [
+        "Goblin Caves",
+        "Goblin Shrine",
+        "Orochi Merge-Keeper",
+        "Viridian Betrayers"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Essence Leak",
+          "remaining_blocker": "Full additional body or typed condition/entry rider remains outside this reviewed proposal."
+        },
+        {
+          "card_name": "Mul Daya Channelers",
+          "remaining_blocker": "Full additional body or typed condition/entry rider remains outside this reviewed proposal."
+        },
+        {
+          "card_name": "Vampire Nocturnus",
+          "remaining_blocker": "Full additional body or typed condition/entry rider remains outside this reviewed proposal."
+        },
+        {
+          "card_name": "Crown of Convergence",
+          "remaining_blocker": "Full additional body or typed condition/entry rider remains outside this reviewed proposal."
+        },
+        {
+          "card_name": "Isleback Spawn",
+          "remaining_blocker": "Full additional body or typed condition/entry rider remains outside this reviewed proposal."
+        },
+        {
+          "card_name": "Kianne, Corrupted Memory",
+          "remaining_blocker": "Full additional body or typed condition/entry rider remains outside this reviewed proposal."
+        }
+      ],
+      "implementation_commit": "eadc64cf2",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete compound attachment descriptors remain bound to the live source host, not an affected recipient or old choice.",
+        "Modified source and existential poisoned-opponent status retain current counters/attachments/controller and actual multiplayer scope.",
+        "Independent bounded source review through 7e8485570."
+      ]
+    },
+    {
+      "id": "intrinsic-zone-alternative-costs",
+      "stage": 48,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/intrinsic_zone_alternative_costs.json.fixture",
+      "baseline_entries": [
+        "Raffine's Guidance",
+        "Scourge of Nel Toth",
+        "Squee, Dubious Monarch",
+        "Glimpse the Cosmos"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Worldheart Phoenix",
+          "remaining_blocker": "Full additional body or typed condition/entry rider remains outside this reviewed proposal."
+        }
+      ],
+      "implementation_commit": "78d5942fa",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Whole graveyard alternatives preserve full TotalCost, caster gates, ordinary pricing and exact origin.",
+        "Method-specific graveyard exile rider is distinct from bounce and ordinary hand casting; Worldheart Phoenix entry counters remain partial.",
+        "Independent bounded source review through b61d812a1."
       ]
     }
   ],
@@ -3277,8 +3489,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Alpine Moon",
@@ -3311,7 +3525,7 @@
       "source_families": []
     },
     {
-      "card_name": "Altaïr Ibn-La'Ahad",
+      "card_name": "Alta\u00efr Ibn-La'Ahad",
       "oracle_ids": [
         "43dc4b0c-e437-4abc-a3fb-48bd3098de88"
       ],
@@ -3521,7 +3735,7 @@
       "source_families": []
     },
     {
-      "card_name": "Andúril, Flame of the West",
+      "card_name": "And\u00faril, Flame of the West",
       "oracle_ids": [
         "e6521404-8474-4727-b2d0-537d15d8a63f"
       ],
@@ -4064,7 +4278,7 @@
       "source_families": []
     },
     {
-      "card_name": "Arna Kennerüd, Skycaptain",
+      "card_name": "Arna Kenner\u00fcd, Skycaptain",
       "oracle_ids": [
         "436e7548-f8d5-43af-947d-b382da0d19b3"
       ],
@@ -4264,8 +4478,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-zone-permissions"
+      ]
     },
     {
       "card_name": "Assimilation Aegis",
@@ -4895,8 +5111,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "causal-event-participants"
+      ]
     },
     {
       "card_name": "Barbarian Bully",
@@ -5011,8 +5229,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Barrowin of Clan Undurr",
@@ -6019,8 +6239,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Breakthrough",
@@ -6343,7 +6565,7 @@
       "source_families": []
     },
     {
-      "card_name": "Bösium Strip",
+      "card_name": "B\u00f6sium Strip",
       "oracle_ids": [
         "2fa6f1b1-00af-433f-b8e1-36db99cd9bba"
       ],
@@ -6369,8 +6591,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Cacophony Unleashed",
@@ -6729,8 +6953,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-zone-permissions"
+      ]
     },
     {
       "card_name": "Case of the Pilfered Proof",
@@ -6865,8 +7091,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Cemetery Gatekeeper",
@@ -8461,8 +8689,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "live-static-condition-scopes"
+      ]
     },
     {
       "card_name": "Crown of Gondor",
@@ -8538,8 +8768,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-zone-permissions"
+      ]
     },
     {
       "card_name": "Crystal Spray",
@@ -8580,8 +8812,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-lifecycle-triggers"
+      ]
     },
     {
       "card_name": "Cultivator Drone",
@@ -8909,7 +9143,7 @@
       "source_families": []
     },
     {
-      "card_name": "Círdan the Shipwright",
+      "card_name": "C\u00edrdan the Shipwright",
       "oracle_ids": [
         "063e05b0-554f-4b55-9feb-e11f3927f3a6"
       ],
@@ -9539,8 +9773,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Desert Nomads",
@@ -9789,8 +10025,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Displaced Dinosaurs",
@@ -10489,8 +10727,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Drought",
@@ -10661,7 +10901,7 @@
       "source_families": []
     },
     {
-      "card_name": "Dúnedain Rangers",
+      "card_name": "D\u00fanedain Rangers",
       "oracle_ids": [
         "7de2a364-4383-437a-b6d6-55e4721a0141"
       ],
@@ -10679,8 +10919,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Earnest Fellowship",
@@ -10985,8 +11227,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-zone-permissions"
+      ]
     },
     {
       "card_name": "Elspeth Conquers Death",
@@ -11025,8 +11269,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Emberwilde Captain",
@@ -11542,8 +11788,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "live-static-condition-scopes"
+      ]
     },
     {
       "card_name": "Essence Symbiote",
@@ -11552,8 +11800,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-lifecycle-triggers"
+      ]
     },
     {
       "card_name": "Etched Host Doombringer",
@@ -13214,8 +13464,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Frenzied Saddlebrute",
@@ -13421,7 +13673,7 @@
       "source_families": []
     },
     {
-      "card_name": "Galadriel of Lothlórien",
+      "card_name": "Galadriel of Lothl\u00f3rien",
       "oracle_ids": [
         "8d3c9646-2b6b-4315-939d-5a920efc0a60"
       ],
@@ -14131,8 +14383,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "intrinsic-zone-alternative-costs"
+      ]
     },
     {
       "card_name": "Glittering Frost",
@@ -14257,8 +14511,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-static-condition-scopes"
+      ]
     },
     {
       "card_name": "Goblin Charbelcher",
@@ -14377,8 +14633,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-static-condition-scopes"
+      ]
     },
     {
       "card_name": "Goblin Test Pilot",
@@ -14538,8 +14796,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Gorm the Great",
@@ -14906,8 +15166,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-lifecycle-triggers"
+      ]
     },
     {
       "card_name": "Guardian Archon",
@@ -15366,8 +15628,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Heart of Light",
@@ -16732,8 +16996,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Inquisitive Glimmer",
@@ -17014,8 +17280,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Invincible Hymn",
@@ -17152,8 +17420,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Island Sanctuary",
@@ -17172,8 +17442,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "live-static-condition-scopes"
+      ]
     },
     {
       "card_name": "Isu the Abominable",
@@ -17499,8 +17771,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Jester's Scepter",
@@ -17673,7 +17947,7 @@
       "source_families": []
     },
     {
-      "card_name": "Jötun Grunt",
+      "card_name": "J\u00f6tun Grunt",
       "oracle_ids": [
         "43fbfeec-bcaf-48b8-befe-b7346fec5a3a"
       ],
@@ -17845,8 +18119,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "causal-event-participants"
+      ]
     },
     {
       "card_name": "Karn's Sylex",
@@ -18053,8 +18329,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Keeper of the Quiet Hour",
@@ -18207,7 +18485,7 @@
       "source_families": []
     },
     {
-      "card_name": "Khârn the Betrayer",
+      "card_name": "Kh\u00e2rn the Betrayer",
       "oracle_ids": [
         "3246eff5-8739-469f-a401-e5de927dd6bb"
       ],
@@ -18223,8 +18501,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "live-static-condition-scopes"
+      ]
     },
     {
       "card_name": "Kick in the Door",
@@ -19419,7 +19699,7 @@
       "source_families": []
     },
     {
-      "card_name": "Lim-Dûl's Vault",
+      "card_name": "Lim-D\u00fbl's Vault",
       "oracle_ids": [
         "3f8e7a45-4c6e-4ee6-93d0-b7de9715ec97"
       ],
@@ -19673,7 +19953,7 @@
       "source_families": []
     },
     {
-      "card_name": "Lord of the Nazgûl",
+      "card_name": "Lord of the Nazg\u00fbl",
       "oracle_ids": [
         "2e94bfb2-9f7d-43af-8995-6cd5ffb15b21"
       ],
@@ -19813,8 +20093,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "causal-event-participants"
+      ]
     },
     {
       "card_name": "Lumbering Laundry",
@@ -20581,8 +20863,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Melting",
@@ -21520,8 +21804,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "live-static-condition-scopes"
+      ]
     },
     {
       "card_name": "Muldrotha, the Gravetide",
@@ -21602,8 +21888,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Muzzle",
@@ -21932,7 +22220,7 @@
       ]
     },
     {
-      "card_name": "Nazgûl",
+      "card_name": "Nazg\u00fbl",
       "oracle_ids": [
         "48a62778-7c11-486f-a0e1-020c283a7ef9"
       ],
@@ -22040,8 +22328,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-lifecycle-triggers"
+      ]
     },
     {
       "card_name": "Nemesis Trap",
@@ -22513,8 +22803,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-lifecycle-triggers"
+      ]
     },
     {
       "card_name": "Norritt",
@@ -22639,7 +22931,7 @@
       "source_families": []
     },
     {
-      "card_name": "Oath of Lim-Dûl",
+      "card_name": "Oath of Lim-D\u00fbl",
       "oracle_ids": [
         "64e163c2-2378-4e4c-aefe-5e0d2fd19988"
       ],
@@ -22945,8 +23237,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-zone-permissions"
+      ]
     },
     {
       "card_name": "Oni-Cult Anvil",
@@ -23084,8 +23378,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-static-condition-scopes"
+      ]
     },
     {
       "card_name": "Oskar, Rubbish Reclaimer",
@@ -24200,8 +24496,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Port Inspector",
@@ -24854,8 +25152,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "causal-event-participants"
+      ]
     },
     {
       "card_name": "Pure Reflection",
@@ -24876,8 +25176,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Purity",
@@ -25182,8 +25484,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "intrinsic-zone-alternative-costs"
+      ]
     },
     {
       "card_name": "Ragavan, Nimble Pilferer",
@@ -25438,7 +25742,7 @@
       "source_families": []
     },
     {
-      "card_name": "Ratonhnhaké꞉ton",
+      "card_name": "Ratonhnhak\u00e9\ua789ton",
       "oracle_ids": [
         "a37f8381-83a4-4b6b-8176-c90f6a61da74"
       ],
@@ -25826,8 +26130,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Repel the Abominable",
@@ -26200,7 +26506,7 @@
       "source_families": []
     },
     {
-      "card_name": "Ring of Ma'rûf",
+      "card_name": "Ring of Ma'r\u00fbf",
       "oracle_ids": [
         "c79b9187-cbfe-43a0-bdc8-4f7e0d215607"
       ],
@@ -26463,8 +26769,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Rona, Sheoldred's Faithful",
@@ -27252,8 +27560,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "intrinsic-zone-alternative-costs"
+      ]
     },
     {
       "card_name": "Scourge of the Skyclaves",
@@ -29502,8 +29812,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "causal-event-participants"
+      ]
     },
     {
       "card_name": "Spiritualize",
@@ -29622,8 +29934,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "intrinsic-zone-alternative-costs"
+      ]
     },
     {
       "card_name": "Staff of the Ages",
@@ -30012,8 +30326,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Strict Proctor",
@@ -31421,8 +31737,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-zone-permissions"
+      ]
     },
     {
       "card_name": "The Blackstaff of Waterdeep",
@@ -31683,8 +32001,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-zone-permissions"
+      ]
     },
     {
       "card_name": "The Fugitive Doctor",
@@ -31862,8 +32182,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-zone-permissions"
+      ]
     },
     {
       "card_name": "The Masamune",
@@ -32782,8 +33104,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-zone-permissions"
+      ]
     },
     {
       "card_name": "Titania, Proud Pummeler",
@@ -33989,8 +34313,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "permanent-lifecycle-triggers"
+      ]
     },
     {
       "card_name": "Valkyrie's Call",
@@ -34021,8 +34347,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "live-static-condition-scopes"
+      ]
     },
     {
       "card_name": "Vanguard's Shield",
@@ -34498,8 +34826,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-static-condition-scopes"
+      ]
     },
     {
       "card_name": "Virtual Assistant",
@@ -34745,8 +35075,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "target-player-reference-bindings"
+      ]
     },
     {
       "card_name": "Volrath's Shapeshifter",
@@ -36255,8 +36587,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "intrinsic-zone-alternative-costs"
+      ]
     },
     {
       "card_name": "Worldwalker Helm",
@@ -36342,8 +36676,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extrema-quantities"
+      ]
     },
     {
       "card_name": "Write into Being",
@@ -36706,8 +37042,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-zone-permissions"
+      ]
     },
     {
       "card_name": "Zellix, Sanity Flayer",
@@ -36916,7 +37254,7 @@
       "source_families": []
     },
     {
-      "card_name": "Éowyn, Lady of Rohan",
+      "card_name": "\u00c9owyn, Lady of Rohan",
       "oracle_ids": [
         "1ee3753c-3b6e-4182-9305-2ab757f485f0"
       ],

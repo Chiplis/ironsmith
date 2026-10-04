@@ -1228,14 +1228,9 @@ impl GameState {
                 // "transforms into" triggers see it and "As this transforms"
                 // programs (CR 712.20) run; those need a decision maker and are
                 // applied before the next priority (see check_and_apply_sbas_with).
-                let provenance = self
-                    .provenance_graph_mut()
-                    .alloc_root_event(crate::events::EventKind::Transformed);
-                let event = crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::other::TransformedEvent::new(id),
-                    provenance,
-                );
-                self.queue_trigger_event(provenance, event);
+                // Publication waits for all "as transforms" programs. An
+                // early pending event can be drained before those choices by
+                // the next state-based-action owner.
                 self.turn_store.pending_day_night_as_transforms.push(id);
             }
         }
@@ -1248,25 +1243,32 @@ impl GameState {
         &mut self,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<(), crate::game_loop::GameLoopError> {
-        while let Some(id) = self
-            .turn_store
-            .pending_day_night_as_transforms
-            .first()
-            .copied()
-        {
-            if let Some(controller) = self
-                .object(id)
-                .filter(|object| object.zone == Zone::Battlefield)
-                .and_then(|_| self.current_controller(id))
-            {
-                self.execute_as_transforms_effect_programs(id, controller, decision_maker)?;
-                if decision_maker.awaiting_choice() {
-                    return Ok(());
+        if self.turn_store.pending_day_night_as_transforms.is_empty() { return Ok(()); }
+        let checkpoint = self.clone();
+        let result = (|| {
+            let mut completed = Vec::new();
+            while let Some(id) = self.turn_store.pending_day_night_as_transforms.first().copied() {
+                if let Some(controller) = self.object(id)
+                    .filter(|object| object.zone == Zone::Battlefield)
+                    .and_then(|_| self.current_controller(id)) {
+                    self.execute_as_transforms_effect_programs(id, controller, decision_maker)?;
+                    if decision_maker.awaiting_choice() { return Ok(()); }
                 }
+                self.turn_store.pending_day_night_as_transforms.remove(0);
+                let provenance = self.provenance_graph_mut().alloc_root_event(crate::events::EventKind::Transformed);
+                completed.push(crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::other::TransformedEvent::new(id), provenance));
             }
-            self.turn_store.pending_day_night_as_transforms.remove(0);
+            // All day/night changes and "as transforms" choices belong to
+            // one completed operation. Never freeze intermediate faces.
+            crate::events::other::freeze_completed_lifecycle_events(self, &mut completed)?;
+            for event in completed { self.queue_trigger_event(event.provenance(), event); }
+            Ok(())
+        })();
+        if result.is_err() || decision_maker.awaiting_choice() {
+            self.restore_execution_checkpoint(checkpoint, result.is_ok() && decision_maker.awaiting_choice());
         }
-        Ok(())
+        result
     }
 
     /// Apply day/night setup rules for a permanent that just entered the battlefield.
@@ -1792,6 +1794,7 @@ impl GameState {
             zone,
             usage_limit: None,
             cast_this_way_grants: Vec::new(),
+            on_use_effects: Vec::new(),
             cast_this_way_filter: None,
         })
     }

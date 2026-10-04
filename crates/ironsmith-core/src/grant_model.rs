@@ -434,6 +434,9 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub filter: ObjectFilter,
     /// The zone where this grant applies.
     pub zone: Zone,
+    /// Additional origins belonging to the same permission and use identity.
+    /// Each origin receives the same filter; explicit zone constraints are rebound.
+    pub additional_zones: Vec<Zone>,
     /// Which player may use the grant when rendered or applied statically.
     pub beneficiary: PlayerFilter,
     /// How often this permission may be used from the same source.
@@ -448,6 +451,8 @@ pub struct GrantSpec<SA, E, C, Cond> {
     /// `filter`, which matters for permissions that include lands or
     /// noncreature spells but only modify creature spells cast this way.
     pub cast_this_way_filter: Option<ObjectFilter>,
+    /// Reflexive instruction triggered only when this exact permission completes a play/cast.
+    pub on_use_effects: Vec<E>,
     /// Presentation metadata for a persistent source-linked exile grant.
     pub source_exiled_surface: Option<SourceExiledGrantSurface>,
     /// Only the current top card of the beneficiary's library is permitted.
@@ -455,6 +460,8 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub top_card_only: bool,
     /// This exact play-from permission supplies instant-speed timing.
     pub instant_timing: bool,
+    /// A resolving permission also lets its fixed beneficiary privately inspect each current top.
+    pub may_look_at_top: bool,
     /// Complete surface retained only by the strict filtered-zone production.
     /// Execution uses the typed filter, origin, timing and use-limit fields.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -484,14 +491,17 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             grantable,
             filter,
             zone,
+            additional_zones: Vec::new(),
             beneficiary: PlayerFilter::You,
             usage_limit: None,
             max_plays: None,
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
+            on_use_effects: Vec::new(),
             source_exiled_surface: None,
             top_card_only: false,
             instant_timing: false,
+            may_look_at_top: false,
             filtered_zone_surface: None,
         }
     }
@@ -513,6 +523,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
                 .try_map(&mut map_static, &mut map_effect, &mut map_cost)?,
             filter: self.filter,
             zone: self.zone,
+            additional_zones: self.additional_zones,
             beneficiary: self.beneficiary,
             usage_limit: self.usage_limit,
             max_plays: self.max_plays,
@@ -522,11 +533,35 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
                 .map(&mut map_static)
                 .collect::<Result<Vec<_>, _>>()?,
             cast_this_way_filter: self.cast_this_way_filter,
+            on_use_effects: self.on_use_effects.into_iter().map(&mut map_effect).collect::<Result<_, _>>()?,
             source_exiled_surface: self.source_exiled_surface,
             top_card_only: self.top_card_only,
             instant_timing: self.instant_timing,
+            may_look_at_top: self.may_look_at_top,
             filtered_zone_surface: self.filtered_zone_surface,
         })
+    }
+
+    /// Concrete origin scopes share their owning permission identity at runtime.
+    /// FromZone alternative costs keep the same payment but use the concrete
+    /// origin; a library-top restriction never constrains a hand alternative.
+    pub fn zone_specs(&self) -> Vec<Self>
+    where SA: Clone, E: Clone, C: Clone, Cond: Clone {
+        let mut zones = vec![self.zone];
+        for zone in &self.additional_zones { if !zones.contains(zone) { zones.push(*zone); } }
+        let multiple = zones.len() > 1;
+        zones.into_iter().map(|zone| {
+            let mut spec = self.clone(); spec.additional_zones.clear(); spec.zone = zone;
+            if multiple {
+                spec.filter.zone = Some(zone);
+                spec.top_card_only &= zone == Zone::Library;
+                spec.may_look_at_top &= zone == Zone::Library;
+                if let Grantable::AlternativeCast(AlternativeCastingMethod::FromZone {zone: method_zone, ..}) = &mut spec.grantable {
+                    *method_zone = zone;
+                }
+            }
+            spec
+        }).collect()
     }
 
     pub fn with_top_card_only(mut self) -> Self { self.top_card_only = true; self }
@@ -597,14 +632,17 @@ where
             grantable: Grantable::Ability(SA::grant_flash()),
             filter,
             zone: Zone::Hand,
+            additional_zones: Vec::new(),
             beneficiary: PlayerFilter::You,
             usage_limit: None,
             max_plays: None,
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
+            on_use_effects: Vec::new(),
             source_exiled_surface: None,
             top_card_only: false,
             instant_timing: false,
+            may_look_at_top: false,
             filtered_zone_surface: None,
         }
     }
@@ -661,14 +699,17 @@ where
             grantable: Grantable::escape(exile_count),
             filter: ObjectFilter::nonland(),
             zone: Zone::Graveyard,
+            additional_zones: Vec::new(),
             beneficiary: PlayerFilter::You,
             usage_limit: None,
             max_plays: None,
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
+            on_use_effects: Vec::new(),
             source_exiled_surface: None,
             top_card_only: false,
             instant_timing: false,
+            may_look_at_top: false,
             filtered_zone_surface: None,
         }
     }
@@ -1089,7 +1130,9 @@ where
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     "That player may".to_string()
                 }
-                PlayerFilter::ControlsMost { .. } => "That player may".to_string(),
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+                    "That player may".to_string()
+                }
                 PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
                     "That player may".to_string()
                 }

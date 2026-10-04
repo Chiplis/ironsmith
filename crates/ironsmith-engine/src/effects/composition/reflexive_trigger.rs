@@ -457,6 +457,14 @@ pub(crate) fn queue_reflexive_trigger(
     effects: Vec<Effect>,
     tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
 ) {
+    queue_reflexive_trigger_with_source_snapshot(game, source, controller, effects, tagged_objects, None);
+}
+
+pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
+    game: &mut GameState, source: crate::ids::ObjectId, controller: crate::ids::PlayerId,
+    effects: Vec<Effect>, tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    fallback_snapshot: Option<ObjectSnapshot>,
+) {
     let id = game.effect_store.next_reflexive_trigger_id;
     game.effect_store.next_reflexive_trigger_id += 1;
     let trigger_identity = {
@@ -466,7 +474,8 @@ pub(crate) fn queue_reflexive_trigger(
         id.hash(&mut hasher);
         crate::triggers::TriggerIdentity(hasher.finish())
     };
-    let (source_stable_id, source_name, source_snapshot) = match game.object(source) {
+    let fallback_snapshot = fallback_snapshot.or_else(|| game.turn_store.turn_history.source_last_known_snapshot(source).cloned());
+    let (source_stable_id, source_name, source_snapshot) = match game.object(source).filter(|_| !game.is_phased_out(source)) {
         Some(object) => (
             object.stable_id,
             object.name.to_string(),
@@ -474,11 +483,10 @@ pub(crate) fn queue_reflexive_trigger(
                 object, game,
             )),
         ),
-        None => (
-            crate::ids::StableId::from(source),
-            "Reflexive trigger".to_string(),
-            None,
-        ),
+        None => match fallback_snapshot {
+            Some(snapshot) => (snapshot.stable_id, snapshot.name.to_string(), Some(snapshot)),
+            None => (crate::ids::StableId::from(source), "Reflexive trigger".to_string(), None),
+        },
     };
     game.effect_store
         .pending_reflexive_triggers

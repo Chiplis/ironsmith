@@ -1173,6 +1173,7 @@ impl<'a> DerivedGameView<'a> {
                     usage_limit: grant.usage_limit,
                     constraints: grant.play_from_constraints.clone(),
                     cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                    on_use_effects: grant.on_use_effects.clone(),
                     cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 }),
                 Grantable::DerivedAlternativeCast(spec) => {
@@ -1185,6 +1186,7 @@ impl<'a> DerivedGameView<'a> {
                             usage_limit: spec.usage_limit().or(grant.usage_limit),
                             constraints: grant.play_from_constraints.clone(),
                             cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                            on_use_effects: grant.on_use_effects.clone(),
                             cast_this_way_filter: grant.cast_this_way_filter.clone(),
                         }
                     })
@@ -1279,6 +1281,7 @@ impl<'a> DerivedGameView<'a> {
                     usage_limit: grant.usage_limit,
                     constraints: grant.play_from_constraints.clone(),
                     cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                    on_use_effects: grant.on_use_effects.clone(),
                     cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 }),
                 Grantable::DerivedAlternativeCast(spec) => {
@@ -1291,6 +1294,7 @@ impl<'a> DerivedGameView<'a> {
                             usage_limit: spec.usage_limit().or(grant.usage_limit),
                             constraints: grant.play_from_constraints.clone(),
                             cast_this_way_grants: grant.cast_this_way_grants.clone(),
+                            on_use_effects: grant.on_use_effects.clone(),
                             cast_this_way_filter: grant.cast_this_way_filter.clone(),
                         }
                     })

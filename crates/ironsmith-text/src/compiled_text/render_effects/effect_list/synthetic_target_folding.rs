@@ -46,7 +46,7 @@ fn player_filter_references_identity(
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
         }
-        PlayerFilter::ControlsMost { filter } => {
+        PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } => {
             object_filter_references_identity(filter, identity)
         }
         PlayerFilter::Excluding { base, excluded } => {

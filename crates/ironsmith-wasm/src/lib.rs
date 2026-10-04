@@ -1563,7 +1563,7 @@ fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId)
 }
 
 fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
-    game.object_store.battlefield.iter().any(|id| {
+    game.effect_store.grant_registry.grants_private_library_top_view(game, player) || game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
             game.current_controller(*id).unwrap_or(object.owner) == player
                 && game.object_has_static_ability_id(*id, StaticAbilityId::LookAtTopCardOfLibrary)

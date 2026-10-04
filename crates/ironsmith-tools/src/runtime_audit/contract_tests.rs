@@ -435,3 +435,15 @@ fn caster_specific_mana_value_requires_a_cast_event_scope() {
     ]});
     assert_eq!(errors(&audit(&value)).len(),1);
 }
+
+#[test]
+fn permanent_lifecycle_contracts_separate_event_object_from_actor() {
+    for (kind, has_player) in [("PermanentTransforms", false), ("PermanentTransformsInto", false), ("PermanentMutates", true), ("PlayerTurnsFaceUp", true)] {
+        let findings = audit(&json!({"card": {}, "abilities": [triggered(json!({kind: {}}), vec![
+            effect("TagTriggeringObjectEffect", json!({"tag": "triggering"})),
+            loss(json!({"LifeTotal": "IteratedPlayer"})),
+        ])]}));
+        assert_eq!(errors(&findings).len(), usize::from(!has_player), "{kind}: {findings:?}");
+        assert!(!findings.iter().any(|finding| finding.code == "unknown_trigger_contract"), "{findings:?}");
+    }
+}

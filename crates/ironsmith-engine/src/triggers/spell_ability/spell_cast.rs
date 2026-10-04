@@ -819,6 +819,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 | PlayerFilter::HasMoreLifeThanYou { .. }
                 | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
                 | PlayerFilter::ControlsMost { .. }
+                | PlayerFilter::ControlsFewestTied { .. }
                 | PlayerFilter::OpponentOf(_)
                 | PlayerFilter::MaxSpeed { .. } => player_filter.description(),
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(

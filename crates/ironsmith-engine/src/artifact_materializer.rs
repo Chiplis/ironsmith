@@ -924,14 +924,18 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             grantable: self.runtime_grantable_hook(spec.grantable)?,
             filter: spec.filter,
             zone: spec.zone,
+            additional_zones: spec.additional_zones,
             beneficiary: spec.beneficiary,
             usage_limit: spec.usage_limit,
             max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter,
+            on_use_effects: spec.on_use_effects.into_iter().map(|effect|
+                runtime_effect_from_core_model_with_card_definitions(effect, self.card_definition)).collect::<Result<_, _>>()?,
             source_exiled_surface: spec.source_exiled_surface,
             filtered_zone_surface: spec.filtered_zone_surface,
             top_card_only: spec.top_card_only,
             instant_timing: spec.instant_timing,
+            may_look_at_top: spec.may_look_at_top,
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .into_iter()
@@ -1750,6 +1754,7 @@ pub struct RetainedEmbeddedCardDefinition {
     pub snapshot: RetainedOccurrenceCardDefinition<crate::ids::CardId>,
 }
 pub type RetainedOccurrenceAbility = RetainedCardPayload<RetainedOccurrenceAbilityModel>;
+pub type RetainedOccurrenceEffect = RetainedCardPayload<wire::WireEffect>;
 pub type RetainedOccurrenceProgram =
     RetainedCardPayload<ironsmith_core::ResolutionProgram<wire::WireEffect>>;
 
@@ -2281,6 +2286,19 @@ impl StaticAbilityOccurrenceEncoder {
     ) -> Result<RetainedOccurrenceAbility, OccurrenceBindingError> {
         self.transaction(|table| {
             let encoded = table.encode_ability(ability)?;
+            let bound = table.bind_payload(encoded, &mut card)?;
+            table.bind_shared_models(&mut card)?;
+            Ok(bound)
+        })
+    }
+    pub fn encode_effect_with_card_graph<I: serde::Serialize>(
+        &mut self, effect: crate::effect::Effect,
+        mut card: impl FnMut(crate::ids::CardId) -> Result<I, OccurrenceBindingError>,
+    ) -> Result<RetainedOccurrenceEffect, OccurrenceBindingError> {
+        self.transaction(|table| {
+            let mut embedded_definitions = Vec::new();
+            let model = table.encode_effect_with_occurrences(effect, &mut embedded_definitions)?;
+            let encoded = RetainedCardPayload {card_references: RetainedModelCardReferences::Native, model, embedded_definitions};
             let bound = table.bind_payload(encoded, &mut card)?;
             table.bind_shared_models(&mut card)?;
             Ok(bound)
@@ -2899,6 +2917,14 @@ impl StaticAbilityOccurrenceDecoder {
         Ok(result)
     }
 
+    pub fn restore_effect(&self, effect: RetainedOccurrenceEffect) -> Result<crate::effect::Effect, OccurrenceBindingError> {
+        let value = self.bind_retained_payload_with_definitions(effect)?;
+        let mut embedded = value.embedded_definitions.into();
+        let effect = self.restore_effect_with_embedded_definitions(value.model, &mut embedded)?;
+        Self::finish_embedded_definitions(&embedded)?;
+        Ok(effect)
+    }
+
     pub fn restore_ability(
         &self,
         ability: RetainedOccurrenceAbility,
@@ -3448,6 +3474,7 @@ pub type RetainedOccurrenceGrant<I> = crate::grant_registry::RetainedGrant<
     RetainedOccurrenceGrantable,
     RetainedOccurrenceGrantPermission<I>,
     StaticAbilityOccurrenceRef,
+    RetainedOccurrenceEffect,
 >;
 pub type RetainedOccurrenceGrantRegistry<I> =
     crate::grant_registry::RegisteredGrantState<RetainedOccurrenceGrant<I>>;
@@ -3469,12 +3496,14 @@ impl StaticAbilityOccurrenceEncoder {
                         grantable, |id| (*card.borrow_mut())(id)),
                     Ok::<_, OccurrenceBindingError>,
                     |ability| table.borrow_mut().retain(ability),
+                    |effect| table.borrow_mut().encode_effect_with_card_graph(effect, |id| (*card.borrow_mut())(id)),
                 )
             })?;
             let result = retained.try_map_grants(|grant| grant.try_map_payloads(
                 Ok::<_, OccurrenceBindingError>,
                 |permission| table.borrow_mut().encode_permission_identity(
                     permission, |id| (*card.borrow_mut())(id)),
+                Ok::<_, OccurrenceBindingError>,
                 Ok::<_, OccurrenceBindingError>,
             ))?;
             table.borrow_mut().bind_shared_models(&mut *card.borrow_mut())?;
@@ -3495,6 +3524,7 @@ impl StaticAbilityOccurrenceDecoder {
                 |permission| self.restore_permission_identity(
                     permission, |id| (*card.borrow_mut())(id)),
                 |reference| self.ability(reference),
+                |effect| self.restore_effect(effect),
             ).map(crate::grant_registry::Grant::from)
         })?;
         let mut registry = crate::grant_registry::GrantRegistry::new();

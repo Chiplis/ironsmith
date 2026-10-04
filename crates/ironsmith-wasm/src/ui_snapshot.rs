@@ -569,7 +569,7 @@ impl IncrementalBattlefieldGroups {
         player: PlayerId,
     ) -> (bool, bool) {
         let own = perspective == player || game.controlling_player_for(player) == perspective;
-        let top = self.visibility.values().any(|(controller, flags)| {
+        let top = (own && game.effect_store.grant_registry.grants_private_library_top_view(game, player)) || self.visibility.values().any(|(controller, flags)| {
             flags & 4 != 0 || (*controller == player && (flags & 2 != 0 || (own && flags & 1 != 0)))
         });
         let hand = self
@@ -2055,7 +2055,7 @@ fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId)
 
 #[cfg(test)]
 fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
-    game.object_store.battlefield.iter().any(|id| {
+    game.effect_store.grant_registry.grants_private_library_top_view(game, player) || game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
             game.current_controller(*id).unwrap_or(object.owner) == player
                 && game.object_has_static_ability_id(*id, StaticAbilityId::LookAtTopCardOfLibrary)

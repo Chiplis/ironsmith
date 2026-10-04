@@ -661,6 +661,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/812"
+    },
+    {
+      "stage": 47,
+      "branch": "fix/card-failures-47-action-history-and-payment-roots",
+      "base": "fix/card-failures-46-history-and-announcement-families",
+      "source_integration_commit": "a35822ee9fb59cfd799fcbdf036c61e63c09816d",
+      "remote_commit": "0a1cd3e699fdd43f1926d12926f0da8b0521daf1",
+      "tree": "8c3ad683df7bf0b40ec7dcd74cd68965ddadf14d",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 813,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/813"
     }
   ]
 }

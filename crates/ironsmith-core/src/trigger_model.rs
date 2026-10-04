@@ -745,6 +745,11 @@ pub enum TriggerKind {
     /// Targets of an ability whose physical source has these characteristics.
     /// The source's controller is not necessarily the ability's controller.
     BecomesTargetedByAbilitySource { target: ObjectFilter, source: ObjectFilter },
+    /// Completed post-transformation characteristics, distinct from the subject surface.
+    PermanentTransformsInto { filter: ObjectFilter, destination: ObjectFilter },
+    PermanentMutates { filter: ObjectFilter },
+    /// The actor need not control the permanent they turn face up.
+    PlayerTurnsFaceUp { player: PlayerFilter, filter: ObjectFilter },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -2300,6 +2305,15 @@ impl Trigger {
                 destination_name,
             },
         )
+    }
+    pub fn permanent_transforms_into(filter: ObjectFilter, destination: ObjectFilter) -> Self {
+        Self::typed("permanent_transforms_into", TriggerKind::PermanentTransformsInto { filter, destination })
+    }
+    pub fn permanent_mutates(filter: ObjectFilter) -> Self {
+        Self::typed("permanent_mutates", TriggerKind::PermanentMutates { filter })
+    }
+    pub fn player_turns_face_up(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::typed("player_turns_face_up", TriggerKind::PlayerTurnsFaceUp { player, filter })
     }
     pub fn permanent_transforms(filter: ObjectFilter) -> Self {
         Self::typed("permanent_transforms", TriggerKind::PermanentTransforms { filter })

@@ -38,6 +38,8 @@ mod player_sacrifices;
 mod player_searches_library;
 mod player_shuffles_library;
 mod transforms;
+mod permanent_lifecycle;
+pub use permanent_lifecycle::PermanentMutatesTrigger;
 mod wins_clash;
 
 pub use any_of::AnyOfTrigger;

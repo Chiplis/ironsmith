@@ -2230,6 +2230,38 @@ fn compile_subject_verb_effect(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
+    // An explicitly targeted grammatical subject owns the local possessive
+    // references in its instruction: "Target player untaps lands they
+    // control" and "Target opponent puts their hand ...". Establish that
+    // declaration before the action reads its filters, rather than waiting
+    // for the next sentence's reference frame. This is a lexical scope, not
+    // a fallback for unrelated unbound player references.
+    if matches!(subject_verb.subject.player, PlayerAst::Target | PlayerAst::TargetOpponent) {
+        let subject = resolve_subject_verb_subject(
+            subject_verb_role(subject_verb.subject.role),
+            subject_verb.subject.player,
+            ctx,
+            true,
+            true,
+            true,
+        )?;
+        let outer_iteration = ctx.iterated_player;
+        ctx.iterated_player = false;
+        let result = compile_subject_verb_action(subject_verb, ctx);
+        ctx.iterated_player = outer_iteration;
+        let (effects, mut choices) = result?;
+        for choice in subject.into_choices() {
+            push_choice(&mut choices, choice);
+        }
+        return Ok((effects, choices));
+    }
+    compile_subject_verb_action(subject_verb, ctx)
+}
+
+fn compile_subject_verb_action(
+    subject_verb: &SubjectVerbEffectAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<EffectCompileOutcome, CardTextError> {
     if matches!(
         subject_verb.action,
         SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
@@ -2443,10 +2475,7 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
     };
     let mut move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top)
         .with_verb_surface(*verb_surface);
-    if !matches!(
-        subject_verb.subject.player,
-        PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
-    ) {
+    if !matches!(subject_verb.subject.player, PlayerAst::Implicit) {
         move_effect = move_effect.with_actor_surface(resolve_non_target_player_filter(
             subject_verb.subject.player,
             &current_reference_env(ctx),

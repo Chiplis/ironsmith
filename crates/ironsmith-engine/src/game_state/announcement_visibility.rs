@@ -34,8 +34,14 @@ impl GameState {
     pub(crate) fn finish_library_top_announcement(&mut self, owner: LibraryTopAnnouncement) {
         self.runtime_cache.library_top_announcements.remove(&owner);
     }
+    pub(crate) fn capture_cast_grant_completion(&mut self, spell: ObjectId, completion: crate::grant_registry::GrantUseCompletion) {
+        self.runtime_cache.pending_grant_use_completions.insert(spell, completion);
+    }
+    pub(crate) fn complete_cast_grant(&mut self, spell: ObjectId) {
+        if let Some(completion) = self.runtime_cache.pending_grant_use_completions.remove(&spell) { completion.complete(self); }
+    }
     pub fn has_library_top_announcement(&self) -> bool {
-        !self.runtime_cache.library_top_announcements.is_empty()
+        !self.runtime_cache.library_top_announcements.is_empty() || !self.runtime_cache.pending_grant_use_completions.is_empty()
     }
     pub fn static_library_top_visible_during_announcements(&self, player: PlayerId) -> bool {
         let current = self.player(player).and_then(|player| player.library.last().copied());

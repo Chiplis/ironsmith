@@ -80,8 +80,9 @@ fn synthetic_sentence_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
 
 fn is_direct_alternative_cost_keyword_line(line: &PreprocessedLine) -> Result<bool, CardTextError> {
     Ok(super::super::grammar::shared_util::alternative_cost_lines::
-        parse_you_may_rather_than_spell_cost(&line.tokens, &line.info.raw_line)?
-        .is_some())
+        parse_self_zone_alternative_cost(&line.tokens)?.is_some()
+        || super::super::grammar::shared_util::alternative_cost_lines::
+            parse_you_may_rather_than_spell_cost(&line.tokens, &line.info.raw_line)?.is_some())
 }
 
 fn parse_static_line_from_tokens(

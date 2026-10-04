@@ -9,6 +9,7 @@ mod permanent_tap_state;
 mod attachment_transitions;
 #[path = "phasing_transitions.rs"]
 mod phasing_transitions;
+mod permanent_lifecycle;
 #[path = "milling_transitions.rs"]
 mod milling_transitions;
 #[path = "player_attack_declarations.rs"]
@@ -3427,6 +3428,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         && source_reference_surface_for_words(&words[..words.len() - 2]).is_some()
     {
         return Ok(TriggerSpec::ThisBecomesMonstrous);
+    }
+
+    if let Some(trigger) = permanent_lifecycle::parse_permanent_lifecycle_trigger(tokens)? {
+        return Ok(trigger);
     }
 
     if trigger_pattern_accepts(&words, THIS_MUTATES_TRIGGER_PATTERN) {

@@ -539,6 +539,28 @@ pub enum GrantPermissionIdentity {
     Stored(u64),
 }
 
+/// Announcement-owned reflexive program. It contains no live permission lookup:
+/// paying a cost may remove its provider before the play/cast completes.
+#[derive(Debug, Clone)]
+pub(crate) struct GrantUseCompletion {
+    source: ObjectId,
+    controller: PlayerId,
+    effects: Vec<crate::effect::Effect>,
+    source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+}
+impl GrantUseCompletion {
+    pub(crate) fn capture(game: &crate::GameState, source: ObjectId, controller: PlayerId, effects: Vec<crate::effect::Effect>) -> Option<Self> {
+        if effects.is_empty() { return None; }
+        Some(Self {source, controller, effects, source_snapshot: game.object(source).map(|object|
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))})
+    }
+    pub(crate) fn complete(self, game: &mut crate::GameState) {
+        let snapshot = game.turn_store.turn_history.source_last_known_snapshot(self.source).cloned().or(self.source_snapshot);
+        crate::effects::composition::queue_reflexive_trigger_with_source_snapshot(
+            game, self.source, self.controller, self.effects, Default::default(), snapshot);
+    }
+}
+
 /// A granted alternative casting method for a specific card.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantedAlternativeCast {
@@ -551,6 +573,7 @@ pub struct GrantedAlternativeCast {
     /// Riders belonging to this exact indexed permission, not every equal-cost method.
     pub cast_this_way_grants: Vec<crate::static_abilities::StaticAbility>,
     pub cast_this_way_filter: Option<ObjectFilter>,
+    pub on_use_effects: Vec<crate::effect::Effect>,
 }
 
 /// A grant that allows playing cards from a zone as though from hand.
@@ -579,6 +602,8 @@ pub struct PlayFromConstraints {
     /// Required in retained native permission carriers; omission cannot widen a library permission.
     pub top_card_only: bool,
     pub instant_timing: bool,
+    /// Retained private current-top view permission, independent of the source remaining in play.
+    pub may_look_at_top: bool,
 }
 
 /// Identity of one shared deferred-use budget across multiple card grants.
@@ -612,6 +637,7 @@ pub struct Grant {
     pub grantable: Grantable,
     pub cast_this_way_grants: Vec<crate::static_abilities::StaticAbility>,
     pub cast_this_way_filter: Option<ObjectFilter>,
+    pub on_use_effects: Vec<crate::effect::Effect>,
     /// How often this grant may be used from the same source.
     pub usage_limit: Option<GrantUsageLimit>,
     /// First turn number on which this grant may be used.
@@ -639,10 +665,10 @@ pub struct Grant {
 #[cfg_attr(
     feature = "serialization",
     serde(bound(
-        deserialize = "G: serde::Deserialize<'de>, P: serde::Deserialize<'de>, S: serde::Deserialize<'de>"
+        deserialize = "G: serde::Deserialize<'de>, P: serde::Deserialize<'de>, S: serde::Deserialize<'de>, F: serde::Deserialize<'de>"
     ))
 )]
-pub struct RetainedGrant<G, P, S> {
+pub struct RetainedGrant<G, P, S, F> {
     #[cfg_attr(
         feature = "serialization",
         serde(deserialize_with = "deserialize_present_permission_reference")
@@ -677,6 +703,7 @@ pub struct RetainedGrant<G, P, S> {
         serde(deserialize_with = "deserialize_present_permission_reference")
     )]
     pub cast_this_way_filter: Option<ObjectFilter>,
+    pub on_use_effects: Vec<F>,
     #[cfg_attr(
         feature = "serialization",
         serde(deserialize_with = "deserialize_present_permission_reference")
@@ -697,7 +724,7 @@ pub struct RetainedGrant<G, P, S> {
     pub source: GrantSource,
 }
 
-pub type NativeRetainedGrant = RetainedGrant<Grantable, GrantPermissionIdentity, StaticAbility>;
+pub type NativeRetainedGrant = RetainedGrant<Grantable, GrantPermissionIdentity, StaticAbility, crate::effect::Effect>;
 
 impl From<Grant> for NativeRetainedGrant {
     fn from(value: Grant) -> Self {
@@ -712,6 +739,7 @@ impl From<Grant> for NativeRetainedGrant {
             grantable,
             cast_this_way_grants,
             cast_this_way_filter,
+            on_use_effects,
             usage_limit,
             available_starting_turn,
             play_from_constraints,
@@ -730,6 +758,7 @@ impl From<Grant> for NativeRetainedGrant {
             grantable,
             cast_this_way_grants,
             cast_this_way_filter,
+            on_use_effects,
             usage_limit,
             available_starting_turn,
             play_from_constraints,
@@ -753,6 +782,7 @@ impl From<NativeRetainedGrant> for Grant {
             grantable,
             cast_this_way_grants,
             cast_this_way_filter,
+            on_use_effects,
             usage_limit,
             available_starting_turn,
             play_from_constraints,
@@ -771,6 +801,7 @@ impl From<NativeRetainedGrant> for Grant {
             grantable,
             cast_this_way_grants,
             cast_this_way_filter,
+            on_use_effects,
             usage_limit,
             available_starting_turn,
             play_from_constraints,
@@ -781,13 +812,14 @@ impl From<NativeRetainedGrant> for Grant {
     }
 }
 
-impl<G, P, S> RetainedGrant<G, P, S> {
-    pub fn try_map_payloads<H, Q, T, E>(
+impl<G, P, S, F> RetainedGrant<G, P, S, F> {
+    pub fn try_map_payloads<H, Q, T, F2, E>(
         self,
         mut map_grantable: impl FnMut(G) -> Result<H, E>,
         mut permission: impl FnMut(P) -> Result<Q, E>,
         mut ability: impl FnMut(S) -> Result<T, E>,
-    ) -> Result<RetainedGrant<H, Q, T>, E> {
+        mut effect: impl FnMut(F) -> Result<F2, E>,
+    ) -> Result<RetainedGrant<H, Q, T, F2>, E> {
         let Self {
             permission_identity,
             target_id,
@@ -799,6 +831,7 @@ impl<G, P, S> RetainedGrant<G, P, S> {
             grantable,
             cast_this_way_grants,
             cast_this_way_filter,
+            on_use_effects,
             usage_limit,
             available_starting_turn,
             play_from_constraints,
@@ -819,6 +852,7 @@ impl<G, P, S> RetainedGrant<G, P, S> {
                 .into_iter()
                 .map(&mut ability)
                 .collect::<Result<_, _>>()?,
+            on_use_effects: on_use_effects.into_iter().map(&mut effect).collect::<Result<_, _>>()?,
             cast_this_way_filter: cast_this_way_filter,
             usage_limit: usage_limit,
             available_starting_turn: available_starting_turn,
@@ -968,6 +1002,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: constraints,
             cast_this_way_grants: Vec::new(),
+            on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: Some(shared_usage_id),
             ends_on_next_matching_cast: false,
@@ -1095,6 +1130,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
             cast_this_way_grants: Vec::new(),
+            on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
             ends_on_next_matching_cast: false,
@@ -1125,6 +1161,7 @@ impl GrantRegistry {
             available_starting_turn: Some(available_starting_turn),
             play_from_constraints: PlayFromConstraints::default(),
             cast_this_way_grants: Vec::new(),
+            on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
             ends_on_next_matching_cast: false,
@@ -1155,6 +1192,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
             cast_this_way_grants: Vec::new(),
+            on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
             ends_on_next_matching_cast: false,
@@ -1186,6 +1224,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: constraints,
             cast_this_way_grants: Vec::new(),
+            on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
             ends_on_next_matching_cast: false,
@@ -1219,6 +1258,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: constraints,
             cast_this_way_grants: Vec::new(),
+            on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
             ends_on_next_matching_cast: false,
@@ -1249,6 +1289,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
             cast_this_way_grants: Vec::new(),
+            on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
             ends_on_next_matching_cast: false,
@@ -1794,6 +1835,17 @@ impl GrantRegistry {
             .retain(|shared_usage_id, _| live.contains(shared_usage_id));
     }
 
+    /// Continuous private inspection attached to a resolving top permission.
+    /// This is independent of whether a particular top currently matches the
+    /// play filter. The beneficiary and duration were fixed at resolution.
+    pub fn grants_private_library_top_view(&self, game: &crate::game_state::GameState, player: PlayerId) -> bool {
+        game.player(player).is_some_and(|player| player.is_in_game()) && self.grants.iter().any(|grant|
+            grant.player == player && grant.zone == Zone::Library
+                && grant.play_from_constraints.may_look_at_top
+                && grant.source.is_valid(game)
+                && grant.available_starting_turn.is_none_or(|turn| game.turn.turn_number >= turn))
+    }
+
     /// Snapshot currently active grants, including static grants computed on demand.
     pub fn active_grants(&self, game: &crate::game_state::GameState) -> Vec<Grant> {
         let mut active: Vec<Grant> = self
@@ -1929,41 +1981,45 @@ impl GrantRegistry {
                     continue;
                 }
 
-                let combat = game.combat.as_ref();
-                for player in game.players.iter().filter(|player| {
-                    player.is_in_game()
-                        && player_matches_filter_with_combat(
-                            player.id,
-                            &spec.beneficiary,
-                            game,
-                            controller,
-                            combat,
-                        )
-                }) {
-                    grants.push(Grant {
-                        permission_identity: Some(permission_identity.clone()),
-                        target_id: is_source_self_grant.then_some(source_id),
-                        target_stable_id: None,
-                        filter: (spec.filter != ObjectFilter::source())
-                            .then(|| normalize_grant_filter(spec.filter.clone())),
-                        zone: spec.zone,
-                        player: player.id,
-                        grantable: spec.grantable.clone(),
-                        usage_limit: spec.usage_limit,
-                        available_starting_turn: None,
-                        required_face_name: (is_source_self_grant
-                            && source.linked_face_layout == crate::card::LinkedFaceLayout::Split)
-                            .then(|| half_name.clone().unwrap_or_else(|| source.name.to_string())),
-                        play_from_constraints: PlayFromConstraints {
-                            top_card_only: spec.top_card_only, instant_timing: spec.instant_timing,
-                            ..Default::default()
-                        },
-                        cast_this_way_grants: spec.cast_this_way_grants.clone(),
-                        cast_this_way_filter: spec.cast_this_way_filter.clone(),
-                        shared_usage_id: None,
-                        ends_on_next_matching_cast: false,
-                        source: GrantSource::StaticAbility { source_id },
-                    });
+                for spec in spec.zone_specs() {
+                    let combat = game.combat.as_ref();
+                    for player in game.players.iter().filter(|player| {
+                        player.is_in_game()
+                            && player_matches_filter_with_combat(
+                                player.id,
+                                &spec.beneficiary,
+                                game,
+                                controller,
+                                combat,
+                            )
+                    }) {
+                        grants.push(Grant {
+                            permission_identity: Some(permission_identity.clone()),
+                            target_id: is_source_self_grant.then_some(source_id),
+                            target_stable_id: None,
+                            filter: (spec.filter != ObjectFilter::source())
+                                .then(|| normalize_grant_filter(spec.filter.clone())),
+                            zone: spec.zone,
+                            player: player.id,
+                            grantable: spec.grantable.clone(),
+                            usage_limit: spec.usage_limit,
+                            available_starting_turn: None,
+                            required_face_name: (is_source_self_grant
+                                && source.linked_face_layout == crate::card::LinkedFaceLayout::Split)
+                                .then(|| half_name.clone().unwrap_or_else(|| source.name.to_string())),
+                            play_from_constraints: PlayFromConstraints {
+                                top_card_only: spec.top_card_only, instant_timing: spec.instant_timing,
+                                may_look_at_top: spec.may_look_at_top,
+                                ..Default::default()
+                            },
+                            cast_this_way_grants: spec.cast_this_way_grants.clone(),
+                            on_use_effects: spec.on_use_effects.clone(),
+                            cast_this_way_filter: spec.cast_this_way_filter.clone(),
+                            shared_usage_id: None,
+                            ends_on_next_matching_cast: false,
+                            source: GrantSource::StaticAbility { source_id },
+                        });
+                    }
                 }
             }
         };
@@ -2014,6 +2070,7 @@ fn materialize_granted_alternative_cast(
         usage_limit: usage_limit.or(grant.usage_limit),
         constraints: grant.play_from_constraints,
         cast_this_way_grants: grant.cast_this_way_grants,
+        on_use_effects: grant.on_use_effects,
         cast_this_way_filter: grant.cast_this_way_filter,
     })
 }
@@ -2834,6 +2891,7 @@ mod retained_grant_permission_tests {
             "lands_enter_tapped",
             "top_card_only",
             "instant_timing",
+            "may_look_at_top",
         ] {
             let mut bad = json.clone();
             bad.as_object_mut().unwrap().remove(field);

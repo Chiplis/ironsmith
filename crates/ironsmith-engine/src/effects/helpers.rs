@@ -214,6 +214,14 @@ pub(crate) fn tagged_object_follow_permitted(
             receipt.object == Some(current_id)
                 && (receipt.card == snapshot.object_id || receipt.object == Some(snapshot.object_id)));
     }
+    if ctx.triggering_event.as_ref().is_some_and(|event|
+        matches!(event.kind(), crate::events::EventKind::Transformed | crate::events::EventKind::Mutated | crate::events::EventKind::TurnedFaceUp)
+            || event.downcast::<crate::events::KeywordActionEvent>().is_some_and(|action| action.action == crate::events::KeywordActionKind::Renown)) {
+        // A status/characteristic change did not move its participant. Only
+        // an explicit move made by this resolution can introduce a successor.
+        return current_id == snapshot.object_id
+            || ctx.resolution_object_id_floor.is_some_and(|floor| current_id.0 >= floor.0);
+    }
     let Some(floor) = ctx.resolution_object_id_floor else {
         return true;
     };
@@ -249,10 +257,23 @@ pub(crate) fn tagged_object_follow_permitted(
             zone_change.result_objects.contains(&current_id)
         };
     }
-    // Tap-state and attachment transitions don't create new incarnations
-    // of their participants. A later blink isn't the event's permanent,
-    // including additional members of a grouped tap-state event.
-    if matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped | crate::events::EventKind::ObjectBecameAttached | crate::events::EventKind::ObjectBecameUnattached | crate::events::EventKind::PermanentPhasedIn | crate::events::EventKind::PermanentPhasedOut) {
+    // Combat, tap-state, attachment and phasing observations do not move
+    // their participants to new zones. Merely naming an attacker/blocker is
+    // no permission to follow a blink that happened before resolution.
+    // Genuine in-resolution moves still use the floor permission above.
+    if matches!(
+        event.kind(),
+        crate::events::EventKind::CreatureAttacked
+            | crate::events::EventKind::CreatureAttackedAndUnblocked
+            | crate::events::EventKind::CreatureBlocked
+            | crate::events::EventKind::CreatureBecameBlocked
+            | crate::events::EventKind::PermanentTapped
+            | crate::events::EventKind::PermanentUntapped
+            | crate::events::EventKind::ObjectBecameAttached
+            | crate::events::EventKind::ObjectBecameUnattached
+            | crate::events::EventKind::PermanentPhasedIn
+            | crate::events::EventKind::PermanentPhasedOut
+    ) {
         return false;
     }
     // Other legacy movement events (for example sacrifice) may lack an
@@ -1729,6 +1750,7 @@ pub fn resolve_player_filter(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::MostCardsInHand => {
@@ -3791,7 +3813,8 @@ pub(crate) fn resolve_player_filter_to_list(
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
-        | PlayerFilter::ControlsMost { .. } => Ok(game
+        | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())

@@ -102,7 +102,13 @@ fn append_granted_play_from_actions_for_card(
             view.granted_alternative_casts_for_card(card_id, from_zone, player);
         let has_same_source_granted_alternative = granted_alternatives
             .iter()
-            .any(|granted_alt| granted_alt.source_id == grant.source_id);
+            .any(|granted_alt| granted_alt.source_id == grant.source_id
+                // Separate static abilities on the same permanent do not
+                // make an ordinary permission require its other free cost.
+                && !matches!((&grant.permission_identity, &granted_alt.permission_identity),
+                    (Some(crate::grant_registry::GrantPermissionIdentity::Static {..}),
+                     Some(crate::grant_registry::GrantPermissionIdentity::Static {..}))
+                    if grant.permission_identity != granted_alt.permission_identity));
 
         if !has_same_source_granted_alternative
             && !card.is_land()
@@ -228,7 +234,11 @@ fn append_granted_play_from_actions_for_card(
         }
         let has_same_source_alternative = face_alternatives
             .iter()
-            .any(|alternative| alternative.source_id == grant.source_id);
+            .any(|alternative| alternative.source_id == grant.source_id
+                && !matches!((&grant.permission_identity, &alternative.permission_identity),
+                    (Some(crate::grant_registry::GrantPermissionIdentity::Static {..}),
+                     Some(crate::grant_registry::GrantPermissionIdentity::Static {..}))
+                    if grant.permission_identity != alternative.permission_identity));
         let normal_face_permission = CastingMethod::SplitOtherHalfPlayFrom {
             source: grant.source_id, zone: grant.zone, use_alternative: None,
         };

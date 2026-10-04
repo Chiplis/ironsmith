@@ -58,23 +58,21 @@ pub fn parse_commander_cast_count_player(words: &[&str]) -> Option<PlayerFilter>
 }
 
 pub fn parse_cards_in_hand_player(words: &[&str]) -> Option<PlayerFilter> {
-    if !has_word(words, "cards") || !has_word(words, "in") || !has_any(words, &["hand", "hands"]) {
-        return None;
+    // A whole-hand scalar must consume its entire noun phrase. Qualified
+    // cards are counted by the object-filter reader, preserving color/type.
+    match words {
+        ["cards", "in", "your", "hand"] => Some(PlayerFilter::You),
+        ["cards", "in", "their", "hand" | "hands"]
+        | ["cards", "in", "that", "players", "hand"]
+        | ["cards", "in", "the", "chosen", "players", "hand"] =>
+            Some(PlayerFilter::IteratedPlayer),
+        ["cards", "in", "target", "players", "hand"] => Some(PlayerFilter::target_player()),
+        ["cards", "in", "target", "opponents", "hand"] => Some(PlayerFilter::target_opponent()),
+        ["cards", "in", "your", "opponents", "hands"]
+        | ["cards", "in", "opponents", "hands"]
+        | ["cards", "in", "an", "opponents", "hand"] => Some(PlayerFilter::Opponent),
+        _ => None,
     }
-    if has_word(words, "your") {
-        return Some(PlayerFilter::You);
-    }
-    if has_word(words, "their")
-        || permission_shapes::find_words(words, &["that", "player"]).is_some()
-        || permission_shapes::find_words(words, &["that", "players"]).is_some()
-        || permission_shapes::find_words(words, &["the", "chosen"]).is_some()
-    {
-        return Some(PlayerFilter::IteratedPlayer);
-    }
-    if has_any(words, &["opponent", "opponents"]) {
-        return Some(PlayerFilter::Opponent);
-    }
-    None
 }
 
 pub fn has_that_player_possessive(words: &[&str]) -> bool {

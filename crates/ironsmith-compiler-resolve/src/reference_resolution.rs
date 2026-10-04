@@ -427,8 +427,17 @@ fn predicate_bound_player_filter(predicate: &PredicateAst) -> Option<PlayerFilte
         PredicateAst::Player(PlayerPredicateAst::PlayerWouldBeginExtraTurn {
             player: PlayerAst::Opponent,
         }) => Some(PlayerFilter::Opponent),
+        PredicateAst::ValueComparison { left, .. } => match left.unhinted() {
+            Value::CardsInHand(player) | Value::LifeTotal(player)
+                if matches!(player, PlayerFilter::ControllerOf(_) | PlayerFilter::OwnerOf(_)
+                    | PlayerFilter::AliasedControllerOf(_) | PlayerFilter::AliasedOwnerOf(_)
+                    | PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)
+                    | PlayerFilter::TaggedPlayer(_) | PlayerFilter::ChosenPlayer) =>
+                Some(as_followup_player_alias(player.clone())),
+            _ => None,
+        },
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
-            predicate_bound_player_filter(left).or_else(|| predicate_bound_player_filter(right))
+            predicate_bound_player_filter(right).or_else(|| predicate_bound_player_filter(left))
         }
         PredicateAst::Not(inner) => predicate_bound_player_filter(inner),
         _ => None,
@@ -515,6 +524,16 @@ fn resolved_explicit_target_player_filter(spec: &ChooseSpec) -> Option<PlayerFil
 }
 
 fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceFrame) {
+    if player_filter_from_object_filter(filter).as_ref()
+        .is_some_and(PlayerFilter::mentions_iterated_player)
+        && frame.last_player_filter.as_ref()
+            .is_some_and(|player| !player.mentions_iterated_player())
+    {
+        // "their hand" rementions the established participant. A movement
+        // or a reveal may export an empty object set; it must not replace
+        // that participant with the owner of that possibly-empty result.
+        return;
+    }
     let preserves_existing_non_you = player_filter_from_object_filter(filter)
         .as_ref()
         .is_some_and(is_you_player_filter)
@@ -1834,6 +1853,33 @@ fn advance_reference_frame_for_effect(
                         }
                     }
                 }
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { creature2, .. }) => {
+                    if let Some(filter) = explicit_object_target_filter(creature2)
+                        && let Some(player @ (PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight)) = &filter.controller
+                    {
+                        // A named seat is a player antecedent in its own
+                        // right, not the later controller of the creature it
+                        // originally controlled. Retain the role if that
+                        // creature becomes an illegal target before the fight.
+                        frame.last_player_filter = Some(player.clone());
+                    }
+                }
+                SubjectVerbActionAst::Cant { restriction, .. } => {
+                    let filter = match restriction {
+                        crate::effect::Restriction::Block(filter)
+                        | crate::effect::Restriction::Attack(filter)
+                        | crate::effect::Restriction::AttackOrBlock(filter)
+                        | crate::effect::Restriction::Untap(filter) => Some(filter),
+                        _ => None,
+                    };
+                    if let Some(player @ PlayerFilter::Target(_)) =
+                        filter.and_then(|filter| filter.controller.as_ref().or(filter.owner.as_ref()))
+                    {
+                        // A target scoped prohibition declares this player
+                        // even if its affected permanent set is empty.
+                        frame.last_player_filter = Some(as_followup_player_alias(player.clone()));
+                    }
+                }
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. }) => {
                     // A union is not a new singular object/player antecedent.
                 }
@@ -2414,6 +2460,18 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::Stack(StackActionAst::CopySpell { target, player, .. })
                 | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { target, player, .. }) => {
+                    if *player == PlayerAst::ItsController
+                        && matches!(subject_verb.action, SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. }))
+                        && (matches!(target, TargetAst::Spell(Some(_)))
+                            || explicit_object_target_filter(target).is_some())
+                    {
+                        let saved = frame.auto_tag_object_targets;
+                        frame.auto_tag_object_targets = true;
+                        maybe_tag_target(target, frame, id_gen, "copy_target")?;
+                        frame.auto_tag_object_targets = saved;
+                        track_effect_player(*player, frame, true, true)?;
+                        return Ok(());
+                    }
                     track_effect_player(*player, frame, true, true)?;
                     // Copying does not change the ordinary pronoun
                     // antecedent: in “copy target spell, then return it,”
@@ -3778,6 +3836,15 @@ fn annotate_effect_sequence_with_env_internal(
         // The consequent sees this condition's operands immediately, not a
         // stale comparison from an earlier instruction. The values themselves
         // are still evaluated at resolution by the consuming effect.
+        if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })
+            | EffectAst::SelfReplacement { predicate, .. } = &effect
+            && let Some(player) = predicate_bound_player_filter(predicate)
+        {
+            // The tested participant introduces "they/their" in the
+            // consequent. Keep its exact target/object reference; unrelated
+            // bare pronouns and existential player predicates do not bind.
+            resolution_env.last_player_filter = RefState::Known(player);
+        }
         if let Some(values) = effect_comparison_operands(&effect, &resolution_env) {
             resolution_env.last_value_comparison = RefState::Known(values);
         }
