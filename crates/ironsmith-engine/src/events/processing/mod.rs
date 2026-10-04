@@ -5034,7 +5034,7 @@ fn collect_simultaneous_prevention_allocations(
         let mut eligible = Vec::new();
         for (index, item) in events.iter().enumerate() {
             if item.amount == 0 || item.unpreventable
-                || !game.can_prevent_damage_of_kind(item.is_combat) { continue; }
+                || !game.can_prevent_damage_from(item.source, item.is_combat, item.source_snapshot.as_ref()) { continue; }
             let damage = crate::events::DamageEvent::with_cause(
                 item.source, item.target, item.amount, item.is_combat, item.cause.clone());
             let matcher = PreventionShieldReplacementMatcher {
@@ -5380,7 +5380,7 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
     game.update_replacement_effects().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
 
     // Check if damage can be prevented
-    let can_prevent = !unpreventable && game.can_prevent_damage_of_kind(is_combat);
+    let can_prevent = !unpreventable && game.can_prevent_damage_from(source, is_combat, source_snapshot);
 
     // Create the event using the new Event type
     let event = if can_prevent {

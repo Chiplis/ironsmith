@@ -1,0 +1,51 @@
+[
+  {
+    "name": "Barret Wallace",
+    "mana_cost": "{3}{R}",
+    "type_line": "Legendary Creature — Human Rebel",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Reach\nWhenever Barret Wallace attacks, it deals damage equal to the number of equipped creatures you control to defending player."
+  },
+  {
+    "name": "Beacon Bolt",
+    "mana_cost": "{1}{U}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Beacon Bolt deals damage to target creature equal to the total number of instant and sorcery cards you own in exile and in your graveyard.\nJump-start (You may cast this card from your graveyard by discarding a card in addition to paying its other costs. Then exile this card.)"
+  },
+  {
+    "name": "Ral, Izzet Viceroy",
+    "mana_cost": "{3}{U}{R}",
+    "type_line": "Legendary Planeswalker — Ral",
+    "loyalty": "5",
+    "oracle_text": "+1: Look at the top two cards of your library. Put one of them into your hand and the other into your graveyard.\n−3: Ral deals damage to target creature equal to the total number of instant and sorcery cards you own in exile and in your graveyard.\n−8: You get an emblem with \"Whenever you cast an instant or sorcery spell, this emblem deals 4 damage to any target and you draw two cards.\""
+  },
+  {
+    "name": "Runebound Wolf",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Wolf",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "{3}{R}, {T}: This creature deals damage equal to the number of Wolves and Werewolves you control to target opponent."
+  },
+  {
+    "name": "Summon: Esper Ramuh",
+    "mana_cost": "{2}{R}{R}",
+    "type_line": "Enchantment Creature — Saga Wizard",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — Judgment Bolt — This creature deals damage equal to the number of noncreature, nonland cards in your graveyard to target creature an opponent controls.\nII, III — Wizards you control get +1/+0 until end of turn."
+  },
+  {
+    "name": "Triumphant Chomp",
+    "mana_cost": "{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Triumphant Chomp deals damage to target creature equal to 2 or the greatest power among Dinosaurs you control, whichever is greater."
+  },
+  {
+    "name": "Burn at the Stake",
+    "mana_cost": "{2}{R}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "As an additional cost to cast this spell, tap any number of untapped creatures you control.\nBurn at the Stake deals damage to any target equal to three times the number of creatures tapped this way."
+  }
+]

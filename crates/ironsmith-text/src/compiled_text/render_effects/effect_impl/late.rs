@@ -1958,6 +1958,18 @@
     if let Some(subgame) = effect.downcast_ref::<crate::effects::PlaySubgameEffect>() {
         return describe_play_subgame(subgame);
     }
+    if let Some(skip) = effect.downcast_ref::<crate::effects::SkipScheduledEffect>() {
+        let player = describe_player_filter(&skip.player);
+        let unit = match skip.kind {
+            ironsmith_core::ScheduledSkipKind::UntapStep => "untap step",
+            ironsmith_core::ScheduledSkipKind::CombatPhase => "combat phase",
+            ironsmith_core::ScheduledSkipKind::Turn => "turn",
+            ironsmith_core::ScheduledSkipKind::DrawStep => "draw step",
+        };
+        let quantity = if skip.count == 1 { String::new() } else { format!("{} ", small_number_word(skip.count).unwrap_or_else(|| skip.count.to_string())) };
+        let plural = if skip.count == 1 { "" } else { "s" };
+        return format!("{} {} {} next {}{}{}", player, player_verb(&player, "skip", "skips"), describe_possessive_player_filter(&skip.player), quantity, unit, plural);
+    }
     if let Some(skip_draw) = effect.downcast_ref::<crate::effects::SkipDrawStepEffect>() {
         let player = describe_player_filter(&skip_draw.player);
         return format!(

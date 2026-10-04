@@ -1045,6 +1045,11 @@ pub enum Restriction {
     /// and libraries" only stops entries from those zones. A prohibited entry
     /// leaves the card where it is (CR 614.17 style "can't" effect).
     EnterBattlefield(ObjectFilter),
+    /// Damage from matching sources cannot be prevented. The source's live
+    /// characteristics or damage LKI are evaluated in the restriction host's
+    /// context; the active host is not replaced by the damage source's LKI.
+    /// Appended to preserve existing serialized variant ordinals.
+    PreventDamageFrom { sources: ObjectFilter, combat_only: bool },
 }
 
 /// How mana may be spent relative to its produced type.

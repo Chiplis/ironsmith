@@ -704,3 +704,105 @@ fn excess_damage_phrases_preserve_explicit_producer_binding() {
         ));
     }
 }
+
+#[test]
+fn greatest_power_is_a_composable_maximum_operand_without_inner_equal_to_hint() {
+    let tokens = lex_line(
+        "2 or the greatest power among Dinosaurs you control, whichever is greater",
+        0,
+    )
+    .unwrap();
+    let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+    assert_eq!(used, tokens.len());
+    assert!(value.has_surface_hint(ValueSurfaceHint::WhicheverIsGreater));
+    let Value::Add(sum, subtract) = value.unhinted() else {
+        panic!("{value:?}");
+    };
+    let Value::Add(left, right) = sum.as_ref() else {
+        panic!("{sum:?}");
+    };
+    assert_eq!(left.as_ref(), &Value::Fixed(2));
+    assert!(!right.has_surface_hint(ValueSurfaceHint::EqualTo));
+    let Value::GreatestPower(filter) = right.unhinted() else {
+        panic!("{right:?}");
+    };
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+    assert_eq!(filter.subtypes, vec![crate::types::Subtype::Dinosaur]);
+    assert!(matches!(subtract.as_ref(), Value::Scaled(minimum, -1)
+        if matches!(minimum.as_ref(), Value::Min(a, b) if a == left && b == right)));
+}
+
+#[test]
+fn total_number_prefix_is_cardinality_and_preserves_owned_zone_union() {
+    let tokens = lex_line(
+        "equal to the total number of instant and sorcery cards you own in exile and in your graveyard",
+        0,
+    ).unwrap();
+    let value =
+        crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
+            &tokens,
+        )
+        .unwrap();
+    let Value::Count(filter) = value.unhinted() else {
+        panic!("{value:?}");
+    };
+    assert_eq!(filter.owner, Some(PlayerFilter::You));
+    assert_eq!(
+        filter.card_types,
+        vec![
+            crate::types::CardType::Instant,
+            crate::types::CardType::Sorcery
+        ]
+    );
+    assert!(filter.all_card_types.is_empty());
+    assert_eq!(filter.any_of.len(), 2);
+    let zones: Vec<_> = filter
+        .any_of
+        .iter()
+        .filter_map(|branch| branch.zone)
+        .collect();
+    assert!(
+        zones.contains(&crate::zone::Zone::Exile) && zones.contains(&crate::zone::Zone::Graveyard)
+    );
+}
+
+#[test]
+fn plural_subtype_union_and_negative_card_types_remain_complete_count_operands() {
+    for (text, wolf) in [
+        ("the number of Wolves and Werewolves you control", true),
+        (
+            "the number of noncreature, nonland cards in your graveyard",
+            false,
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let value =
+            crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
+                &tokens,
+            )
+            .unwrap();
+        let Value::Count(filter) = value.unhinted() else {
+            panic!("{value:?}");
+        };
+        if wolf {
+            assert_eq!(filter.controller, Some(PlayerFilter::You));
+            assert_eq!(
+                filter.subtypes,
+                vec![crate::types::Subtype::Wolf, crate::types::Subtype::Werewolf]
+            );
+            assert!(filter.all_subtypes.is_empty());
+        } else {
+            assert_eq!(filter.zone, Some(crate::zone::Zone::Graveyard));
+            assert!(
+                filter
+                    .excluded_card_types
+                    .contains(&crate::types::CardType::Creature)
+            );
+            assert!(
+                filter
+                    .excluded_card_types
+                    .contains(&crate::types::CardType::Land)
+            );
+        }
+    }
+}

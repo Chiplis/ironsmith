@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Excruciator",
+    "oracle_id": "9911c2f8-fafb-4979-898e-e86b726e3538",
+    "mana_cost": "{6}{R}{R}",
+    "type_line": "Creature — Avatar",
+    "oracle_text": "Damage that would be dealt by this creature can't be prevented.",
+    "power": "7",
+    "toughness": "7",
+    "scryfall_uri": "https://scryfall.com/card/rav/121/excruciator?utm_source=api"
+  },
+  {
+    "name": "Questing Beast",
+    "oracle_id": "b685757b-521e-4353-a233-97052359723d",
+    "mana_cost": "{2}{G}{G}",
+    "type_line": "Legendary Creature — Beast",
+    "oracle_text": "Vigilance, deathtouch, haste\nQuesting Beast can't be blocked by creatures with power 2 or less.\nCombat damage that would be dealt by creatures you control can't be prevented.\nWhenever Questing Beast deals combat damage to an opponent, it deals that much damage to target planeswalker that player controls.",
+    "power": "4",
+    "toughness": "4",
+    "scryfall_uri": "https://scryfall.com/card/slc/44/questing-beast?utm_source=api"
+  }
+]

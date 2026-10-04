@@ -1489,6 +1489,9 @@ pub fn resolve_restriction_it_tag(
     refs: &ReferenceEnv,
 ) -> Result<Restriction, CardTextError> {
     let resolved = match restriction {
+        Restriction::PreventDamageFrom { sources, combat_only } => Restriction::PreventDamageFrom {
+            sources: resolve_it_tag(sources, refs)?, combat_only: *combat_only,
+        },
         Restriction::AdditionalLandPlays(player, count) => Restriction::additional_land_plays(
             resolve_contextual_player_filter(player, refs)?,
             *count,

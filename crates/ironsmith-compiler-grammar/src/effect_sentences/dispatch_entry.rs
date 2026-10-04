@@ -12392,6 +12392,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 TurnStructureActionAst::SkipCombatPhasesThisTurn,
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })

@@ -93,6 +93,9 @@ struct EffectReferenceResolutionState<'a> {
     /// program and therefore expose their affected set through a stable tag
     /// rather than a resolution-program EffectId.
     last_exile_cost_tag_index: Option<u32>,
+    /// Exact exported tap-payment set; preserve its actual namespace because
+    /// spell additional costs and activated costs use different tag stems.
+    last_tap_cost_tag: Option<&'a TagKey>,
     allow_life_event_value: bool,
     allow_excess_damage_event_value: bool,
     milling_event_filter: Option<&'a ObjectFilter>,
@@ -3439,12 +3442,31 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
         last_library_search_effect_id: env.last_library_search_effect_id.clone().into_option(),
         last_sacrifice_cost_tag_index: cost_tag_index_from_env(env, "sacrifice_cost_"),
         last_exile_cost_tag_index: cost_tag_index_from_env(env, "exile_cost_"),
+        last_tap_cost_tag: tap_cost_tag_from_env(env),
         allow_life_event_value: env.allow_life_event_value,
         allow_excess_damage_event_value: env.allow_excess_damage_event_value,
         milling_event_filter: env.milling_event_filter.as_deref(),
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
         delayed_registration_effect_id: None,
     }
+}
+
+fn tap_cost_tag_from_env(env: &ReferenceEnv) -> Option<&TagKey> {
+    let is_tap_tag = |tag: &TagKey| {
+        ["tap_cost_", "tapped_"].iter().any(|prefix| {
+            tag.as_str()
+                .strip_prefix(*prefix)
+                .is_some_and(|index| index.parse::<u32>().is_ok())
+        })
+    };
+    env.known_last_object_tag()
+        .filter(|tag| is_tap_tag(tag))
+        .or_else(|| {
+            env.snapshot_tag_aliases
+                .iter()
+                .rev()
+                .find_map(|(_, tag)| is_tap_tag(tag).then_some(tag))
+        })
 }
 
 fn cost_tag_index_from_env(env: &ReferenceEnv, prefix: &str) -> Option<u32> {
@@ -3550,6 +3572,7 @@ fn annotate_effect_sequence_with_env_internal(
     let imported_sacrifice_cost_tag_index =
         cost_tag_index_from_env(&current_env, "sacrifice_cost_");
     let imported_exile_cost_tag_index = cost_tag_index_from_env(&current_env, "exile_cost_");
+    let imported_tap_cost_tag = tap_cost_tag_from_env(&current_env).cloned();
 
     while let Some(mut effect) = effects.next() {
         bind_additional_cost_object_placeholder(&mut effect, &current_env);
@@ -3711,6 +3734,9 @@ fn annotate_effect_sequence_with_env_internal(
         resolution_state.last_exile_cost_tag_index = resolution_state
             .last_exile_cost_tag_index
             .or(imported_exile_cost_tag_index);
+        resolution_state.last_tap_cost_tag = imported_tap_cost_tag
+            .as_ref()
+            .or(resolution_state.last_tap_cost_tag);
         resolve_effect_references_in_effect(&mut effect, id_gen, resolution_state)?;
         resolve_spell_demonstrative_to_stack_target(
             &mut effect,
@@ -5352,6 +5378,7 @@ fn resolve_effect_references_in_effect(
                 last_value_comparison: comparison.as_ref().or(state.last_value_comparison),
                 last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
                 last_exile_cost_tag_index: state.last_exile_cost_tag_index,
+                last_tap_cost_tag: state.last_tap_cost_tag,
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter,
@@ -5386,6 +5413,7 @@ fn resolve_effect_references_in_effect(
                 last_value_comparison: state.last_value_comparison,
                 last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
                 last_exile_cost_tag_index: state.last_exile_cost_tag_index,
+                last_tap_cost_tag: state.last_tap_cost_tag,
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter,
@@ -5446,6 +5474,7 @@ fn resolve_effect_references_in_effect(
             last_value_comparison: state.last_value_comparison,
             last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
             last_exile_cost_tag_index: state.last_exile_cost_tag_index,
+            last_tap_cost_tag: state.last_tap_cost_tag,
             allow_life_event_value: true,
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
@@ -5473,6 +5502,7 @@ fn resolve_effect_references_in_effect(
             last_value_comparison: state.last_value_comparison,
             last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
             last_exile_cost_tag_index: state.last_exile_cost_tag_index,
+            last_tap_cost_tag: state.last_tap_cost_tag,
             allow_life_event_value: trigger_supports_event_amount(trigger),
             allow_excess_damage_event_value:
                 ironsmith_compiler_semantic::trigger_references::trigger_binds_excess_damage_amount(
@@ -6260,6 +6290,7 @@ fn resolve_effect_result_values_in_fields(
                 TurnStructureActionAst::SkipCombatPhasesThisTurn,
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
@@ -7017,6 +7048,27 @@ fn resolve_effect_result_value(
                 // Never replace a creature-only or differently scoped query
                 // with an unfiltered count of everything that was milled.
                 *value = Value::EventValue(EventValueSpec::Amount);
+            } else if let Some(tag) = state.last_tap_cost_tag
+                && query.action == Some(PriorEffectAction::Tapped)
+                && query.player.is_none()
+                && query.counter_type.is_none()
+                && matches!(
+                    query.source,
+                    EffectMetricSource::AffectedObjects | EffectMetricSource::ChosenObjects
+                )
+                && matches!(
+                    query.metric,
+                    EffectMetric::Count | EffectMetric::ChosenCount | EffectMetric::AffectedCount
+                )
+            {
+                // The paid group is historical: retain the authored object
+                // predicate, and count its exact stored snapshots even after
+                // control, type or zone changes. No printed-card ID lookup.
+                let mut filter = query.filter.clone().unwrap_or_default();
+                filter.zone = None;
+                *value = Value::Count(
+                    filter.match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject),
+                );
             } else {
                 return Err(CardTextError::ParseError(
                     "pending filtered effect metric requires a prior memory-producing effect"
@@ -7333,6 +7385,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 TurnStructureActionAst::SkipCombatPhasesThisTurn,
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon {
@@ -8668,7 +8721,8 @@ fn bind_unresolved_it_in_restriction(
                     .map_or(0, |source| bind_unresolved_it_in_filter(source, seed_tag))
         }
 
-        Restriction::Attack(filter)
+        Restriction::PreventDamageFrom { sources: filter, .. }
+        | Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
         | Restriction::Untap(filter)
@@ -9352,6 +9406,7 @@ mod tests {
                 last_library_search_effect_id: None,
                 last_sacrifice_cost_tag_index: None,
                 last_exile_cost_tag_index: None,
+                last_tap_cost_tag: None,
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
@@ -9379,6 +9434,7 @@ mod tests {
                 last_library_search_effect_id: None,
                 last_sacrifice_cost_tag_index: None,
                 last_exile_cost_tag_index: None,
+                last_tap_cost_tag: None,
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
@@ -9407,6 +9463,7 @@ mod tests {
                 last_library_search_effect_id: None,
                 last_sacrifice_cost_tag_index: None,
                 last_exile_cost_tag_index: None,
+                last_tap_cost_tag: None,
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
@@ -11261,6 +11318,7 @@ mod excess_damage_binding_tests {
             last_library_search_effect_id: None,
             last_sacrifice_cost_tag_index: None,
             last_exile_cost_tag_index: None,
+        last_tap_cost_tag: None,
             allow_life_event_value: true,
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
@@ -11344,3 +11402,7 @@ mod relative_quantity_tests;
 #[cfg(test)]
 #[path = "milling_count_tests.rs"]
 mod milling_count_tests;
+
+#[cfg(test)]
+#[path = "tap_cost_quantity_tests.rs"]
+mod tap_cost_quantity_tests;

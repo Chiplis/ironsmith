@@ -997,6 +997,8 @@ impl TurnRunner {
                     game.activate_pending_player_control(player);
                 }
 
+                game.establish_turn_start_continuous_control();
+
                 // Untap step — no priority
                 game.turn.phase = Phase::Beginning;
                 game.turn.step = Some(Step::Untap);
@@ -1206,6 +1208,7 @@ impl TurnRunner {
                         .turn_store
                         .skip_next_combat_phases
                         .remove(&game.turn.active_player)
+                    || game.turn_store.pending_combat_phase_skips.remove(&game.turn.active_player)
                 {
                     game.turn.phase = Phase::Combat;
                     self.state = if game

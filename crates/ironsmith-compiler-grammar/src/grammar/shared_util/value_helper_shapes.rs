@@ -335,7 +335,10 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
 }
 
 pub fn parse_number_of_prefix(words: &[&str]) -> Option<NumberOfPrefix> {
-    let number_of_start = usize::from(permission_shapes::prefix_words(words, &["the"]));
+    let mut number_of_start = usize::from(permission_shapes::prefix_words(words, &["the"]));
+    if words.get(number_of_start) == Some(&"total") {
+        number_of_start += 1;
+    }
     permission_shapes::starts_at_words(words, number_of_start, &["number", "of"]).then_some(
         NumberOfPrefix {
             number_of_start,

@@ -1070,6 +1070,7 @@ impl GameState {
             .skipped_steps
             .retain(|(candidate, _), _| *candidate != player);
         self.turn_store.skip_next_combat_phases.remove(&player);
+        self.turn_store.pending_combat_phase_skips.remove_all(player);
         self.turn_store
             .skip_all_combat_phases_next_turn
             .remove(&player);
@@ -1446,6 +1447,7 @@ impl GameState {
         self.turn_store.phase_schedule_continuation = None;
         self.turn_store.additional_phase_continuation = None;
         self.turn_store.skip_current_turn_combat_phases.clear();
+        self.turn_store.skip_next_combat_phases.clear();
         // "Skips all combat phases of their next turn" covers every combat
         // phase of that turn, including additional ones (CR 500.11).
         if self
@@ -1551,6 +1553,7 @@ impl GameState {
         // Reconcile them before the untap step establishes which permanents
         // have been continuously controlled since this turn began (CR 302.6).
         self.refresh_continuous_state();
+        self.establish_turn_start_continuous_control();
         self.activate_restrictions_starting_this_turn();
 
         // Printed static restrictions can switch on or off solely because the
@@ -1560,6 +1563,21 @@ impl GameState {
         // the cant tracker for them. Keep direct legality queries made at the
         // new-turn boundary in sync with the newly selected turn.
         self.update_cant_effects();
+    }
+
+    /// CR 302.6 is tied to the beginning of an actual turn, not to untapping.
+    /// The guard prevents added untap steps and resumed choice prompts from
+    /// clearing sickness on permanents acquired later in the same turn.
+    pub fn establish_turn_start_continuous_control(&mut self) {
+        if self.turn_store.continuous_control_turn_started == Some(self.turn.turn_number) {
+            return;
+        }
+        self.turn_store.continuous_control_turn_started = Some(self.turn.turn_number);
+        let active = self.turn_players();
+        let ids: Vec<_> = self.battlefield.iter().copied().filter(|id| {
+            self.current_controller(*id).is_some_and(|player| active.contains(&player))
+        }).collect();
+        for id in ids { self.remove_summoning_sickness(id); }
     }
 
     pub fn record_turn_start_hand_sizes(&mut self) {

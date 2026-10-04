@@ -131,6 +131,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::SkipCombatPhasesThisTurnEffect>(payload).map(Some)
         }
         "SkipDrawStepEffect" => decode_as::<ironsmith_core::SkipDrawStepEffect>(payload).map(Some),
+        "SkipScheduledEffect" => decode_as::<ironsmith_core::SkipScheduledEffect>(payload).map(Some),
         "SkipMainPhasesThisTurnEffect" => {
             decode_as::<ironsmith_core::SkipMainPhasesThisTurnEffect>(payload).map(Some)
         }
@@ -363,6 +364,7 @@ pub(super) fn map_card_ids(
             ironsmith_core::SkipCombatPhasesThisTurnEffect,
         >(payload, context)
         .map(Some),
+        "SkipScheduledEffect" => super::card_graph::map_payload_as::<ironsmith_core::SkipScheduledEffect>(payload, context).map(Some),
         "SkipDrawStepEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::SkipDrawStepEffect,
         >(payload, context)
