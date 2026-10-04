@@ -1300,10 +1300,9 @@ impl GameState {
             return false;
         }
 
-        let Some(mana_source) = self.object(unit.source) else {
+        let Some(controller) = unit.source_controller.or_else(|| self.current_controller(unit.source)) else {
             return false;
         };
-        let controller = self.controller_of(mana_source);
         let filter_ctx = self
             .filter_context_for(controller, Some(unit.source))
             .with_caster(Some(controller));
@@ -1334,11 +1333,10 @@ impl GameState {
             return false;
         }
 
-        let Some(mana_source) = self.object(unit.source) else {
+        let Some(controller) = unit.source_controller.or_else(|| self.current_controller(unit.source)) else {
             return false;
         };
-        let filter_ctx =
-            self.filter_context_for(self.controller_of(mana_source), Some(unit.source));
+        let filter_ctx = self.filter_context_for(controller, Some(unit.source));
         filter.matches(source_obj, &filter_ctx, self)
     }
 
@@ -1385,9 +1383,8 @@ impl GameState {
                 let Some(source_obj) = self.object(source_id) else {
                     return false;
                 };
-                let controller = self
-                    .object(unit.source)
-                    .map(|mana_source| self.controller_of(mana_source))
+                let controller = unit.source_controller
+                    .or_else(|| self.current_controller(unit.source))
                     .unwrap_or_else(|| self.controller_of(source_obj));
                 let filter_ctx = self.filter_context_for(controller, Some(unit.source));
                 filter.matches(source_obj, &filter_ctx, self)

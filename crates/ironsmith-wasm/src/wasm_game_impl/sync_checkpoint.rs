@@ -102,6 +102,7 @@ fn sync_restricted_mana(
         .iter()
         .map(|unit| {
             Ok(SyncRestrictedManaUnit {
+                source_controller: unit.source_controller,
                 symbol: unit.symbol,
                 source: unit.source,
                 source_chosen_creature_type: unit.source_chosen_creature_type,
@@ -4509,6 +4510,7 @@ impl WasmGame {
                 player.life = player_checkpoint.life;
                 let restricted_mana = player_checkpoint.restricted_mana.iter().map(|unit| {
                     Ok(ironsmith::ability::RestrictedManaUnit {
+                        source_controller: unit.source_controller,
                         symbol: unit.symbol,
                         source: unit.source,
                         source_chosen_creature_type: unit.source_chosen_creature_type,
@@ -5545,6 +5547,7 @@ mod sync_checkpoint_tests {
                 .player_mut(owner)
                 .unwrap()
                 .add_restricted_mana(RestrictedManaUnit {
+                    source_controller: None,
                     symbol: ManaSymbol::Red,
                     source: cavern,
                     source_chosen_creature_type: Some(chosen),
@@ -9825,5 +9828,28 @@ fn inspect_payment_projection_checkpoint() {
         let result = ironsmith::mana_payment::plan_first_mana_payment(&wasm.game, &request);
         eprintln!("PAYMENT {:?} {:?} {:?}", start.elapsed(), result.as_ref().map(|plan| (plan.payable, plan.mana_ability_steps.len())), ironsmith::mana_payment::last_mana_payment_perf());
         assert!(result.unwrap().payable);
+    }
+}
+
+#[cfg(test)]
+mod restricted_mana_controller_wire_tests {
+    use super::*;
+    #[test]
+    fn production_controller_round_trips_and_old_units_keep_legacy_default() {
+        let unit = SyncRestrictedManaUnit {
+            symbol: ManaSymbol::Blue,
+            source: ironsmith::ObjectId::from_raw(72),
+            source_chosen_creature_type: None,
+            restrictions: vec![],
+            source_controller: Some(PlayerId::from_index(1)),
+        };
+        let mut wire = serde_json::to_value(&unit).unwrap();
+        let restored: SyncRestrictedManaUnit = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(restored, unit);
+        wire.as_object_mut().unwrap().remove("source_controller");
+        let legacy: SyncRestrictedManaUnit = serde_json::from_value(wire).unwrap();
+        assert_eq!(legacy.source_controller, None);
+        assert_eq!(legacy.source, unit.source);
+        assert_eq!(legacy.symbol, unit.symbol);
     }
 }

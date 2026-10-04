@@ -2486,6 +2486,7 @@ fn ability_mana_is_unusable_for_request(
     // `source_chosen_creature_type: None` makes a subtype requirement match
     // anything, which keeps an undecidable restriction on the usable side.
     let unit = crate::ability::RestrictedManaUnit {
+        source_controller: Some(request.payer),
         symbol: ManaSymbol::Colorless,
         source,
         source_chosen_creature_type: None,

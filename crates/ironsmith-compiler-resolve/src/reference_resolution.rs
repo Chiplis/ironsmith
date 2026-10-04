@@ -3353,6 +3353,68 @@ fn remember_exiled_library_card_kind(effect: &EffectAst, tag: &TagKey, frame: &m
     }
 }
 
+/// The exact operands a consequent may call "the difference". Boolean-only
+/// hand predicates remain usable, but a strict fixed threshold is represented
+/// by ValueComparison so its authored boundary is not changed by +/- one.
+pub fn predicate_comparison_operands(
+    predicate: &PredicateAst,
+    env: &ReferenceEnv,
+) -> Option<(Value, Value)> {
+    let mut values = match predicate {
+        PredicateAst::ValueComparison { left, right, .. } => (left.clone(), right.clone()),
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { player }) => {
+            let player = match player {
+                PlayerAst::Target => PlayerFilter::target_player(),
+                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                player => resolve_non_target_player_filter(*player, env).ok()?,
+            };
+            (
+                Value::CardsInHand(player),
+                Value::CardsInHand(PlayerFilter::You),
+            )
+        }
+        _ => return None,
+    };
+    if [&values.0, &values.1].iter().any(|value| {
+        matches!(
+            value.unhinted(),
+            Value::PendingComparisonLeft
+                | Value::PendingComparisonRight
+                | Value::PendingComparisonDifference
+        )
+    }) {
+        return None;
+    }
+    use ironsmith_core::tag::TagKeyWalk;
+    for value in [&mut values.0, &mut values.1] {
+        value.map_tag_keys(&mut |tag| {
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && let Some(bound) = env.known_last_object_tag()
+            {
+                *tag = bound.clone();
+            }
+            if let Some((_, bound)) = env
+                .snapshot_tag_aliases
+                .iter()
+                .find(|(alias, _)| alias == tag)
+            {
+                *tag = bound.clone();
+            }
+        });
+    }
+    Some(values)
+}
+
+fn effect_comparison_operands(effect: &EffectAst, env: &ReferenceEnv) -> Option<(Value, Value)> {
+    match effect {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })
+        | EffectAst::SelfReplacement { predicate, .. } => {
+            predicate_comparison_operands(predicate, env)
+        }
+        _ => None,
+    }
+}
+
 fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResolutionState<'_> {
     EffectReferenceResolutionState {
         last_value_comparison: match &env.last_value_comparison {
@@ -3622,6 +3684,12 @@ fn annotate_effect_sequence_with_env_internal(
                 );
             }
         }
+        // The consequent sees this condition's operands immediately, not a
+        // stale comparison from an earlier instruction. The values themselves
+        // are still evaluated at resolution by the consuming effect.
+        if let Some(values) = effect_comparison_operands(&effect, &resolution_env) {
+            resolution_env.last_value_comparison = RefState::Known(values);
+        }
         let mut resolution_state = effect_reference_resolution_state(&resolution_env);
         resolution_state.last_sacrifice_cost_tag_index = resolution_state
             .last_sacrifice_cost_tag_index
@@ -3702,44 +3770,7 @@ fn annotate_effect_sequence_with_env_internal(
             || (effect_exports_damage_each_object_set(&effect) && !auto_tag_object_targets_for_env);
         let assigned_effect_id = maybe_assign_effect_result_id(&effect, remaining, id_gen, config);
 
-        let comparison_antecedent = match &effect {
-            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                predicate: PredicateAst::ValueComparison { left, right, .. },
-                ..
-            }) if !matches!(
-                left.unhinted(),
-                Value::PendingComparisonLeft
-                    | Value::PendingComparisonRight
-                    | Value::PendingComparisonDifference
-            ) && !matches!(
-                right.unhinted(),
-                Value::PendingComparisonLeft
-                    | Value::PendingComparisonRight
-                    | Value::PendingComparisonDifference
-            ) =>
-            {
-                use ironsmith_core::tag::TagKeyWalk;
-                let mut values = (left.clone(), right.clone());
-                for value in [&mut values.0, &mut values.1] {
-                    value.map_tag_keys(&mut |tag| {
-                        if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-                            && let Some(bound) = resolution_env.known_last_object_tag()
-                        {
-                            *tag = bound.clone();
-                        }
-                        if let Some((_, bound)) = resolution_env
-                            .snapshot_tag_aliases
-                            .iter()
-                            .find(|(alias, _)| alias == tag)
-                        {
-                            *tag = bound.clone();
-                        }
-                    });
-                }
-                Some(values)
-            }
-            _ => None,
-        };
+        let comparison_antecedent = effect_comparison_operands(&effect, &resolution_env);
         let mut out_env = advance_reference_env_for_effect(
             &effect,
             &resolution_env,
@@ -5266,6 +5297,31 @@ fn resolve_effect_references_in_effect(
         .ok_or_else(|| {
             CardTextError::ParseError("missing prior effect for if clause".to_string())
         })?;
+        let comparison = match &predicate {
+            IfResultPredicate::PriorEffectResult(surface)
+                if surface.shared_characteristic.is_none()
+                    && surface.actor == ironsmith_core::PriorEffectResultActor::Passive =>
+            {
+                surface
+                    .required_count
+                    .and_then(|count| i32::try_from(count).ok())
+                    .map(|count| {
+                        (
+                            Value::PriorEffectMetric {
+                                effect_id: condition,
+                                query: ironsmith_core::PriorEffectMetricQuery::new(
+                                    EffectMetricSource::AffectedObjects,
+                                    EffectMetric::Count,
+                                )
+                                .with_filter(surface.filter.clone())
+                                .with_action(surface.action),
+                            },
+                            Value::Fixed(count),
+                        )
+                    })
+            }
+            _ => None,
+        };
         let effects = resolve_effect_sequence_references_with_state(
             &effects,
             id_gen,
@@ -5275,7 +5331,7 @@ fn resolve_effect_references_in_effect(
                     &predicate, &effects, condition,
                 ),
                 last_library_search_effect_id: state.last_library_search_effect_id,
-                last_value_comparison: state.last_value_comparison,
+                last_value_comparison: comparison.as_ref().or(state.last_value_comparison),
                 last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
                 last_exile_cost_tag_index: state.last_exile_cost_tag_index,
                 allow_life_event_value: state.allow_life_event_value,
@@ -5409,6 +5465,23 @@ fn resolve_effect_references_in_effect(
 
     resolve_effect_result_values_in_fields(effect, state)?;
     let mut nested_state = state;
+    if matches!(
+        effect,
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ValueComparison { .. }
+                | PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { .. }),
+            ..
+        }) | EffectAst::SelfReplacement {
+            predicate: PredicateAst::ValueComparison { .. }
+                | PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { .. }),
+            ..
+        }
+    ) {
+        // A transparent early pass lacks this branch's lexical player/object
+        // bindings. Leave contextual operands pending until its own annotation;
+        // never substitute an enclosing or earlier condition's operands.
+        nested_state.last_value_comparison = None;
+    }
     if let EffectAst::Sequence { effects } = effect
         && let [_, EffectAst::SubjectVerb(counter)] = effects.as_slice()
         && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }) =
@@ -5596,6 +5669,9 @@ fn advance_reference_env_for_effect(
         } => {
             let mut branch_env = env.clone();
             branch_env.source_object_antecedent |= predicate.establishes_source_object_antecedent();
+            if let Some(values) = predicate_comparison_operands(predicate, env) {
+                branch_env.last_value_comparison = RefState::Known(values);
+            }
             if let Some(player_filter) = predicate_bound_player_filter(predicate) {
                 branch_env.last_player_filter = RefState::Known(player_filter);
             }
@@ -11217,3 +11293,7 @@ mod excess_damage_binding_tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "relative_quantity_tests.rs"]
+mod relative_quantity_tests;

@@ -203,6 +203,28 @@ fn is_full_hand_discard(words: &[&str]) -> bool {
     common::exact_any(rest, HAND_REFERENCES)
 }
 
+/// A half-hand discard carries its own card noun. Keep its recipient-relative
+/// hand distinct from an explicitly authored "your hand".
+pub fn parse_half_hand_discard(tokens: &[OwnedLexToken]) -> Option<(bool, bool)> {
+    let words = parser_token_word_refs(tokens);
+    let rest = words.strip_prefix(&["half", "the", "cards", "in"])?;
+    let (rest, up) = if let Some(rest) = rest.strip_suffix(&["rounded", "up"]) {
+        (rest, true)
+    } else {
+        (
+            rest.strip_suffix(&["rounded", "down"]).unwrap_or(rest),
+            false,
+        )
+    };
+    match rest {
+        ["your", "hand"] => Some((true, up)),
+        ["their", "hand"] | ["that", "players", "hand"] | ["that", "player's", "hand"] => {
+            Some((false, up))
+        }
+        _ => None,
+    }
+}
+
 pub fn parse_discard_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<DiscardClauseShape<'_>, DiscardShapeError> {
@@ -365,3 +387,27 @@ pub fn parse_discard_unless_shape(tokens: &[OwnedLexToken]) -> DiscardUnlessShap
 #[cfg(test)]
 #[path = "discard_inline_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod relative_hand_tests {
+    use super::*;
+    #[test]
+    fn half_hand_preserves_owner_rounding_and_complete_shape() {
+        for (text, expected) in [
+            ("half the cards in their hand", Some((false, false))),
+            (
+                "half the cards in their hand, rounded up",
+                Some((false, true)),
+            ),
+            (
+                "half the cards in your hand, rounded down",
+                Some((true, false)),
+            ),
+            ("half the cards in their graveyard", None),
+            ("half the cards in their hand with flying", None),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert_eq!(parse_half_hand_discard(&tokens), expected, "{text}");
+        }
+    }
+}

@@ -14,6 +14,10 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return Some(quantity);
     }
     let offset = usize::from(words.first() == Some(&"the"));
+    if words.get(offset) == Some(&"difference") {
+        return Some((Value::PendingComparisonDifference, offset + 1));
+    }
+
     if permission_shapes::starts_at_words(
         words,
         offset,
