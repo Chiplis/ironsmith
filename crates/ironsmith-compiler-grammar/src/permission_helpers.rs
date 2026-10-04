@@ -1,3 +1,6 @@
+pub(crate) mod effect_cast_prices;
+#[path = "permission_helpers/graveyard_turn_permissions.rs"]
+mod graveyard_turn_permissions;
 #[path = "permission_helpers/filtered_zone_permissions.rs"]
 mod filtered_zone_permissions;
 pub(crate) use filtered_zone_permissions::parse_top_look_and_permission;
@@ -1084,6 +1087,9 @@ pub fn parse_permission_clause_spec_lexed(
         return Ok(None);
     }
 
+    if let Some(spec) = graveyard_turn_permissions::parse_permanent_permission_rider(tokens)? {
+        return Ok(Some(spec));
+    }
     if let Some(spec) = filtered_zone_permissions::parse_permission_with_token_follow_up(tokens)? {
         return Ok(Some(spec));
     }
@@ -1091,6 +1097,9 @@ pub fn parse_permission_clause_spec_lexed(
         return Ok(Some(spec));
     }
     if let Some(spec) = filtered_zone_permissions::parse_timed_top_look_and_permission(tokens)? {
+        return Ok(Some(spec));
+    }
+    if let Some(spec) = filtered_zone_permissions::parse_recent_graveyard_permission(tokens)? {
         return Ok(Some(spec));
     }
     if let Some(spec) = filtered_zone_permissions::parse_filtered_zone_permission(tokens)? {
@@ -2229,6 +2238,7 @@ mod tagged_permission_readings;
 pub fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effect) = effect_cast_prices::parse(tokens)? { return Ok(Some(effect)); }
     let trimmed_tokens = trim_commas(tokens);
     let mut trimmed = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
     if let Some(((), rest)) = crate::grammar::primitives::parse_prefix(

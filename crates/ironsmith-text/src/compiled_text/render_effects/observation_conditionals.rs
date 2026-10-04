@@ -170,7 +170,7 @@ fn branch_casts_observed_card(effects: &[Effect], observed_tag: &TagKey) -> bool
             return branch_casts_observed_card(&may.effects, observed_tag);
         }
         effect
-            .downcast_ref::<crate::effects::CastTaggedEffect>()
+            .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             .is_some_and(|cast| &cast.tag == observed_tag)
     })
 }
@@ -612,7 +612,7 @@ fn describe_shared_decline_fallback(
         (may.effects.len() == 1)
             .then(|| {
                 structural_unwrap_render_wrappers(effect)
-                    .downcast_ref::<crate::effects::CastTaggedEffect>()
+                    .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             })
             .flatten()
             .filter(|cast| !cast.as_copy && cast.player == PlayerFilter::You)

@@ -124,7 +124,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "BolsterEffect" => decode_as::<T, ironsmith_core::BolsterEffect>(effect),
         "CantEffect" => decode_as::<T, ironsmith_core::CantEffect>(effect),
         "CastSourceEffect" => decode_as::<T, ironsmith_core::CastSourceEffect>(effect),
-        "CastTaggedEffect" => decode_as::<T, ironsmith_core::CastTaggedEffect>(effect),
+        "CastTaggedEffect" => decode_as::<T, ironsmith_core::CastTaggedEffect<wire::WireCost>>(effect),
         "ChooseCardNameEffect" => decode_as::<T, ironsmith_core::ChooseCardNameEffect>(effect),
         "ChooseCardTypeEffect" => decode_as::<T, ironsmith_core::ChooseCardTypeEffect>(effect),
         "ChooseColorEffect" => decode_as::<T, ironsmith_core::ChooseColorEffect>(effect),
@@ -317,7 +317,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "GrantNextSpellCostReductionEffect" => {
             decode_as::<T, ironsmith_core::GrantNextSpellCostReductionEffect>(effect)
         }
-        "GrantPlayTaggedEffect" => decode_as::<T, ironsmith_core::GrantPlayTaggedEffect>(effect),
+        "GrantPlayTaggedEffect" => decode_as::<T, ironsmith_core::GrantPlayTaggedEffect<wire::WireCost>>(effect),
         "GrantEndThisEffectPaymentEffect" => {
             decode_as::<T, ironsmith_core::GrantEndThisEffectPaymentEffect>(effect)
         }
@@ -956,6 +956,11 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
                 .into_iter()
                 .map(|ability| self.runtime_static_ability_hook(ability))
                 .collect::<Result<Vec<_>, _>>()?,
+            permanent_this_way_grants: spec
+                .permanent_this_way_grants
+                .into_iter()
+                .map(|ability| self.runtime_static_ability_hook(ability))
+                .collect::<Result<Vec<_>, _>>()?,
         })
     }
 
@@ -1382,7 +1387,6 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::BolsterEffect,
             crate::effects::CantEffect,
             crate::effects::CastSourceEffect,
-            crate::effects::CastTaggedEffect,
             crate::effects::ChooseCardNameEffect,
             crate::effects::ChooseCardTypeEffect,
             crate::effects::RippleEffect,
@@ -1559,6 +1563,13 @@ pub fn encode_runtime_effect(
                 detail: error.to_string(),
             });
     }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {
+        let converted = payload.clone().try_map_cost(encode_runtime_cost)?;
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("CastTaggedEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+
     if let Some(payload) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         let ironsmith_core::CreateTokenEffect {
             token, count, controller, controller_target, use_source_chosen_color,

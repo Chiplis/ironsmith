@@ -1212,8 +1212,8 @@ fn hallow_invalid_target_and_failed_deferred_gain_do_not_commit_a_partial_result
             ironsmith::effect::Value::EventValue(ironsmith::effect::EventValueSpec::Amount),
         )]);
     let wire =
-        ironsmith::artifact_materializer::encode_runtime_effect(Effect::new(shield)).unwrap();
-    let restored = ironsmith::artifact_materializer::materialize_effect(wire).unwrap();
+        ironsmith_runtime_catalog::artifact_materializer::encode_runtime_effect(Effect::new(shield)).unwrap();
+    let restored = ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire).unwrap();
     assert_eq!(
         restored
             .downcast_ref::<ironsmith::effects::PreventAllDamageEffect>()

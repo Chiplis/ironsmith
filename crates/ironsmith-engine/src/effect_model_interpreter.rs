@@ -884,8 +884,8 @@ where
     {
         return Ok(converted);
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::CastTaggedEffect>(&effect) {
-        return Ok(converted);
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::CastTaggedEffect<ironsmith_core::Cost<M::Effect>>>(&effect) {
+        return Ok(Effect::new(payload.clone().try_map_cost(|cost| interpret_core_cost_model::<M, H>(cost, hooks))?));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(&effect)
@@ -1476,7 +1476,7 @@ where
             ),
         ));
     }
-    if let Some(payload) = M::downcast_ref::<ironsmith_core::GrantPlayTaggedEffect>(&effect) {
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::GrantPlayTaggedEffect<ironsmith_core::Cost<M::Effect>>>(&effect) {
         let mut grant = crate::effects::GrantPlayTaggedEffect::new(
             payload.tag.clone(),
             payload.player.clone(),
@@ -1494,6 +1494,7 @@ where
             grant = grant.with_filter(filter);
         }
         grant.spell_filter = payload.spell_filter.clone();
+        grant.alternative_cost = payload.alternative_cost.clone().map(|cost| interpret_core_total_cost_model::<M, H>(cost, hooks)).transpose()?;
         if let Some(counter_type) = payload.during_turns_counter_put_on_source {
             grant = grant.during_turns_counter_put_on_source(counter_type);
         }

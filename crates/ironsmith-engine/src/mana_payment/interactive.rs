@@ -107,6 +107,14 @@ pub(crate) fn pay_mana_interactively(
     exclusions: Vec<ObjectId>,
     dm: &mut dyn DecisionMaker,
 ) -> Result<(), CostPaymentError> {
+    pay_mana_interactively_in_context(game, payer, source, cost, reason, exclusions, dm, None)
+}
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn pay_mana_interactively_in_context(
+    game: &mut GameState, payer: PlayerId, source: ObjectId, cost: crate::mana::ManaCost,
+    reason: crate::costs::PaymentReason, exclusions: Vec<ObjectId>, dm: &mut dyn DecisionMaker,
+    execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+) -> Result<(), CostPaymentError> {
     if cost.is_empty() {
         return Ok(());
     }
@@ -164,7 +172,7 @@ pub(crate) fn pay_mana_interactively(
                 plan_id,
                 request_hash,
             } if plan.payable && plan_id == plan.id && request_hash == plan.request_hash => {
-                return match execute_mana_payment_plan(game, &request, &plan, dm) {
+                return match super::execute_mana_payment_plan_in_context(game, &request, &plan, dm, execution) {
                     Ok(ManaPaymentExecution::Paid) => Ok(()),
                     Err(ManaPaymentFailure::EffectExecutionFailed(error)) => Err(CostPaymentError::ExecutionFailed(error)),
                     _ => Err(CostPaymentError::InsufficientMana),

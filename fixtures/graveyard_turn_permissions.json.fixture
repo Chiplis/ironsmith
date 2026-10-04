@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Kagha, Shadow Archdruid",
+    "oracle_id": "f78db9ad-d4a3-4e49-a76e-bd31124b7837",
+    "mana_cost": "{2}{B}{G}",
+    "type_line": "Legendary Creature — Elf Druid",
+    "oracle_text": "Whenever Kagha attacks, it gains deathtouch until end of turn. Mill two cards. (Put the top two cards of your library into your graveyard.)\nOnce during each of your turns, you may play a land or cast a permanent spell from among cards in your graveyard that were put there from your library this turn.",
+    "power": "1",
+    "toughness": "4"
+  },
+  {
+    "name": "Raul, Trouble Shooter",
+    "oracle_id": "d247a86d-917d-4833-82c4-876943d54e2c",
+    "mana_cost": "{1}{U}{B}",
+    "type_line": "Legendary Creature — Zombie Mutant Rogue",
+    "oracle_text": "Once during each of your turns, you may cast a spell from among cards in your graveyard that were milled this turn.\n{T}: Each player mills a card. (They each put the top card of their library into their graveyard.)",
+    "power": "1",
+    "toughness": "4"
+  },
+  {
+    "name": "Serra Paragon",
+    "oracle_id": "ecd8d7f4-7b11-4097-afc0-ef3c81edd90c",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flying\nOnce during each of your turns, you may play a land from your graveyard or cast a permanent spell with mana value 3 or less from your graveyard. If you do, it gains \"When this permanent is put into a graveyard from the battlefield, exile it and you gain 2 life.\"",
+    "power": "3",
+    "toughness": "4"
+  },
+  {
+    "name": "The Eighth Doctor",
+    "oracle_id": "0956bc16-ff04-4e96-8059-ef62afa2405f",
+    "mana_cost": "{4}{W}{U}",
+    "type_line": "Legendary Creature — Time Lord Doctor",
+    "oracle_text": "When The Eighth Doctor enters, mill three cards.\nOnce during each of your turns, you may play a historic land or cast a historic permanent spell from your graveyard. If you do, it gains \"If this permanent would leave the battlefield, exile it instead of putting it anywhere else.\"",
+    "power": "4",
+    "toughness": "4"
+  }
+]

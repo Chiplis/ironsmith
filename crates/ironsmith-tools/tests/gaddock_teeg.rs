@@ -188,7 +188,7 @@ fn teeg_checks_flashback_escape_and_exile_against_printed_cost() {
                         zone: origin,
                         total_cost: ironsmith::cost::TotalCost::mana(alt_cost),
                         condition: None,
-                        exiles_after_resolution: false,
+                        exiles_after_resolution: false, entry_counters: Vec::new(),
                     }),
                 };
                 let fodder =

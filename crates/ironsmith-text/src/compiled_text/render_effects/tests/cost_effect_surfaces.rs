@@ -392,7 +392,7 @@ fn graveyard_permission_survives_sacrificing_its_provider_during_payment() {
         let expensive = crate::alternative_cast::AlternativeCastingMethod::FromZone {
             name: "Other graveyard permission".into(), zone: Zone::Graveyard,
             total_cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(3)])),
-            condition: None, exiles_after_resolution: false,
+            condition: None, exiles_after_resolution: false, entry_counters: Vec::new(),
         };
         game.object_mut(other).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::grants(crate::grant::GrantSpec::new(

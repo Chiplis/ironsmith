@@ -67,7 +67,7 @@
             && let Some(look_permission) =
                 filtered[idx + 4].downcast_ref::<crate::effects::LookAtObjectsEffect>()
             && let Some(grant) =
-                filtered[idx + 5].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 5].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) =
                 describe_look_at_top_choose_exile_face_down_rest_bottom_then_play_while_exiled(
                     look_at_top,
@@ -1116,7 +1116,7 @@
             && let Some(reflexive) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ReflexiveTriggerEffect>()
             && let Some(grant) =
-                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) =
                 describe_exile_play_then_reflexive_trigger(with_id, reflexive, grant)
         {
@@ -1766,7 +1766,7 @@
             && let Some(look) =
                 filtered[idx + 1].downcast_ref::<crate::effects::LookAtObjectsEffect>()
             && let Some(grant) =
-                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) =
                 describe_for_players_bottom_library_exile_then_look_cast(for_players, look, grant)
         {
@@ -1832,7 +1832,7 @@
             && let Some(exile_top) = unwrap_tag_wrappers(filtered[idx])
                 .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
             && let Some(grant_play) = unwrap_tag_wrappers(filtered[idx + 1])
-                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(grant_free_cast) =
                 unwrap_tag_wrappers(filtered[idx + 2])
                     .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
@@ -1866,7 +1866,7 @@
                 .downcast_ref::<crate::effects::ApplyContinuousEffect>(
             )
             && let Some(grant_play) =
-                filtered[idx + 3].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 3].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(grant_free_cast) =
                 filtered[idx + 4]
                     .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
@@ -1890,7 +1890,7 @@
                 .downcast_ref::<crate::effects::ApplyContinuousEffect>(
             )
             && let Some(grant_play) =
-                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(grant_free_cast) =
                 filtered[idx + 3]
                     .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
@@ -1911,7 +1911,7 @@
             && let Some(choose) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(grant_play) =
-                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) =
                 describe_exile_top_choose_one_then_play(exile_top, choose, grant_play)
         {
@@ -1925,7 +1925,7 @@
             && let Some(exile_top) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
             && let Some(grant_play) =
-                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) = describe_triggering_counter_count_exile_top_then_play(
                 tag_triggering,
                 exile_top,
@@ -1940,7 +1940,7 @@
             && let Some(exile_top) =
                 filtered[idx].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
             && let Some(grant_play) =
-                filtered[idx + 1].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 1].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) = describe_exile_top_then_play(
                 exile_top,
                 grant_play,
@@ -1962,7 +1962,7 @@
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
             && let Some(exile) = filtered[idx + 1].downcast_ref::<crate::effects::ExileEffect>()
             && let Some(grant) =
-                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) = describe_look_at_top_exile_face_down_then_play_while_exiled(
                 look_at_top,
                 exile,
@@ -1984,9 +1984,9 @@
                 .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
             )
             && let Some(play_grant) =
-                filtered[idx + 4].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 4].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(any_mana_grant) =
-                filtered[idx + 5].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 5].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) =
                 describe_look_at_top_choose_exile_rest_bottom_play_grants_and_any_mana_while_exiled(
                     look_at_top,
@@ -2012,7 +2012,7 @@
                 .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
             )
             && let Some(grant) =
-                filtered[idx + 4].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 4].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) =
                 describe_look_at_top_choose_exile_face_down_rest_bottom_then_play_while_exiled(
                     look_at_top,
@@ -2039,7 +2039,7 @@
             )
             && let Some(may_play) = filtered[idx + 4].downcast_ref::<crate::effects::MayEffect>()
             && let Some(any_mana_grant) =
-                filtered[idx + 5].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 5].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) =
                 describe_look_at_top_choose_exile_rest_bottom_play_and_any_mana_while_exiled(
                     look_at_top,
@@ -2070,7 +2070,7 @@
             && let Some(exile_move) = unwrap_tag_wrappers(filtered[idx + 6])
                 .downcast_ref::<crate::effects::MoveToZoneEffect>()
             && let Some(grant) =
-                filtered[idx + 7].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                filtered[idx + 7].downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(compact) = describe_look_at_top_split_hand_bottom_exile_then_play_exiled(
                 look_at_top,
                 hand_choose,
@@ -2662,7 +2662,7 @@
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
             && let Some(choose) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && let Some(cast) = filtered[idx + 2].downcast_ref::<crate::effects::CastTaggedEffect>()
+            && let Some(cast) = filtered[idx + 2].downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && let Some(rest) = filtered[idx + 3]
                 .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
             )

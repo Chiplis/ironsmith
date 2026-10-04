@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "3b542754c95ec5fb2ad7c12a1b1b566a0cd34343",
+  "source_implementation_commit": "50b3221327f7a15c018e9072c3522507ee5cdaba",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 910,
-    "additional_proposed_compile_entries": 912,
+    "additional_proposed_unique_cards": 924,
+    "additional_proposed_compile_entries": 926,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 910,
+    "source_proposals_excluding_identified_runtime_gaps": 924,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -2935,21 +2935,23 @@
         "Raffine's Guidance",
         "Scourge of Nel Toth",
         "Squee, Dubious Monarch",
-        "Glimpse the Cosmos"
+        "Glimpse the Cosmos",
+        "Worldheart Phoenix"
       ],
-      "partial_entries": [
-        {
-          "card_name": "Worldheart Phoenix",
-          "remaining_blocker": "Full additional body or typed condition/entry rider remains outside this reviewed proposal."
-        }
-      ],
+      "partial_entries": [],
       "implementation_commit": "78d5942fa",
       "tests": "authored_not_run",
       "semantic_scope": [
         "Whole graveyard alternatives preserve full TotalCost, caster gates, ordinary pricing and exact origin.",
         "Method-specific graveyard exile rider is distinct from bounce and ordinary hand casting; Worldheart Phoenix entry counters remain partial.",
         "Independent bounded source review through b61d812a1."
-      ]
+      ],
+      "stage53_extension": {
+        "card": "Worldheart Phoenix",
+        "implementation_commit": "50b322132",
+        "source_review_commit": "19edf4ab4",
+        "scope": "Selected FromZone method entry counters use real initial-entry replacement; spell-copy alternative decisions inherit, ordinary permanent copy/blink do not."
+      }
     },
     {
       "id": "enter-copy-exceptions",
@@ -3445,6 +3447,79 @@
         "Complete unquoted stat/keyword/attack-rule conjunction stays granter-owned with exact attachment and raw quotation boundaries.",
         "Actual target kinds distinguish player/planeswalker prohibitions from Battle protection in preview, declaration and cost diagnostics, preserving ordinary defender restrictions.",
         "Six paid full-card/artifact scenarios cover controller change, reattachment, removal, ability loss and phasing; all authored and unrun."
+      ]
+    },
+    {
+      "id": "effect-granted-casting-prices",
+      "stage": 53,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/effect_granted_casting_prices.json.fixture",
+      "baseline_entries": [
+        "Bismuth Mindrender",
+        "Blue Mage's Cane",
+        "Dream Halls",
+        "Gwenom, Remorseless",
+        "Inside Information",
+        "Jadzi, Oracle of Arcavios // Journey to the Oracle",
+        "Nashi, Moon Sage's Scion",
+        "The Infamous Cruelclaw",
+        "Xander's Pact"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Anrakyr the Traveller",
+          "remaining_blocker": "Immediate choice across hand and graveyard needs priced prospective face/choice integration."
+        },
+        {
+          "card_name": "Wizard's Spellbook",
+          "remaining_blocker": "Roll-20 creates a collection of card copies and allows any number in chosen order; singular tagged cast does not establish this complete body."
+        }
+      ],
+      "implementation_commit": "f320a5e3e",
+      "source_review_commit": "5ab90387e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed TotalCost owns immediate and temporary prices, actual mana/life/energy/discard payments, exact selected face/prototype and shared use budgets.",
+        "Nine full bodies, including Blue Mage and both Jadzi faces, use single-cast payment transactions with checked resource/context ownership. Anrakyr and Wizard copy-pool contracts remain partial."
+      ]
+    },
+    {
+      "id": "graveyard-turn-permissions",
+      "stage": 53,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/graveyard_turn_permissions.json.fixture",
+      "baseline_entries": [
+        "Kagha, Shadow Archdruid",
+        "Raul, Trouble Shooter",
+        "Serra Paragon",
+        "The Eighth Doctor"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "3815e083f",
+      "source_review_commit": "df6e7cbe6",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Exact library-to-graveyard and mill destination-incarnation histories qualify current cards; one turn budget covers both land and spell use.",
+        "Permanent recipient riders survive normal/composite-price casts and pre-original land entry, with noncopiable occurrence lifetime and required retained completeness; four full bodies authored/unrun."
+      ]
+    },
+    {
+      "id": "life-payment-notices",
+      "stage": 53,
+      "status": "partial_source_prerequisite_no_card_count",
+      "fixture": "fixtures/life_payment_trigger.json.fixture",
+      "baseline_entries": [],
+      "partial_entries": [
+        {
+          "card_name": "Font of Agonies",
+          "remaining_blocker": "Generic compound/other simultaneous Instead payment programs still need complete native continuation; explicit preparation rejection is not completed semantics."
+        }
+      ],
+      "implementation_commit": "eb2190501",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Single-payment and prepared single-life replacement paths are source-reviewed, including whole-operation resource scope, inherited context and APNAP ordering.",
+        "Nominal fulfilled payment receipts remain separate from actual loss; the unresolved generic simultaneous composition is explicit and uncounted."
       ]
     }
   ],
@@ -4361,8 +4436,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "effect-granted-casting-prices"
+      ]
     },
     {
       "card_name": "Antagonism",
@@ -6184,8 +6262,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "effect-granted-casting-prices"
+      ],
+      "source_review_commit": "5ab90387e"
     },
     {
       "card_name": "Bitter Feud",
@@ -6513,8 +6594,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "effect-granted-casting-prices"
+      ],
+      "source_review_commit": "5ab90387e"
     },
     {
       "card_name": "Blue, Loyal Raptor",
@@ -11253,8 +11337,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "effect-granted-casting-prices"
+      ],
+      "source_review_commit": "5ab90387e"
     },
     {
       "card_name": "Dream Harvest",
@@ -13796,8 +13883,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "life-payment-notices"
+      ]
     },
     {
       "card_name": "Foraging Wickermaw",
@@ -15903,8 +15993,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "effect-granted-casting-prices"
+      ],
+      "source_review_commit": "5ab90387e"
     },
     {
       "card_name": "HELIOS One",
@@ -17727,8 +17820,11 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "effect-granted-casting-prices"
+      ],
+      "source_review_commit": "5ab90387e"
     },
     {
       "card_name": "Inspire Awe",
@@ -18279,8 +18375,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "effect-granted-casting-prices"
+      ],
+      "source_review_commit": "5ab90387e"
     },
     {
       "card_name": "Jagged Poppet",
@@ -18661,8 +18760,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "graveyard-turn-permissions"
+      ],
+      "source_review_commit": "df6e7cbe6"
     },
     {
       "card_name": "Kaho, Minamo Historian",
@@ -22833,8 +22935,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "effect-granted-casting-prices"
+      ],
+      "source_review_commit": "5ab90387e"
     },
     {
       "card_name": "Nashi, Searcher in the Dark",
@@ -26502,8 +26607,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "graveyard-turn-permissions"
+      ],
+      "source_review_commit": "df6e7cbe6"
     },
     {
       "card_name": "Ravener",
@@ -28753,8 +28861,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "graveyard-turn-permissions"
+      ],
+      "source_review_commit": "df6e7cbe6"
     },
     {
       "card_name": "Serra's Hymn",
@@ -32707,8 +32818,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "graveyard-turn-permissions"
+      ],
+      "source_review_commit": "df6e7cbe6"
     },
     {
       "card_name": "The Eleventh Doctor",
@@ -32926,8 +33040,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "effect-granted-casting-prices"
+      ],
+      "source_review_commit": "5ab90387e"
     },
     {
       "card_name": "The Irencrag",
@@ -37287,8 +37404,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "effect-granted-casting-prices"
+      ]
     },
     {
       "card_name": "Wojek Investigator",
@@ -37451,10 +37571,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "intrinsic-zone-alternative-costs"
-      ]
+      ],
+      "source_review_commit": "19edf4ab4"
     },
     {
       "card_name": "Worldwalker Helm",
@@ -37615,8 +37736,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "effect-granted-casting-prices"
+      ],
+      "source_review_commit": "5ab90387e"
     },
     {
       "card_name": "Xantcha, Sleeper Agent",
@@ -38386,6 +38510,18 @@
       "evidence": "crates/ironsmith-engine/src/effects/damage/deal_distributed_damage.rs",
       "source_correction_commit": "3ee5d4054",
       "source_review_commit": "bee294952"
+    },
+    {
+      "id": "life-payment-simultaneous-instead-programs",
+      "status": "partial_supported_single_action_only",
+      "affected_previously_proposed_complete": [],
+      "held_new_cards": [
+        "Font of Agonies"
+      ],
+      "remaining_boundary": "Generic compound/other simultaneous Instead payment programs still need complete native continuation; explicit preparation rejection is not completed semantics.",
+      "evidence": "architecture/card-failure-life-payment-trigger.md",
+      "source_review_commit": "3787e4527",
+      "individual_price_casts_use_supported_single_payer_paths": true
     }
   ]
 }

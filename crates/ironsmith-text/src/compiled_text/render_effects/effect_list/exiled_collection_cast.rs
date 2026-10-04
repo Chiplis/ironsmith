@@ -182,7 +182,7 @@ pub(super) fn describe_exiled_collection_cast_choice(effects: &[Effect]) -> Opti
         return None;
     };
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if for_each.tag != choose.tag
         || cast.tag.as_str() != "__it__"
         || cast.player != PlayerFilter::You

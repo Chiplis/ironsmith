@@ -322,6 +322,24 @@ pub fn can_potentially_pay_with_check_context(
 ///     }
 /// }
 /// ```
+impl CostContext<'_> {
+    pub(crate) fn capture_execution_context(&mut self) -> crate::effects::ExecutionContextCheckpoint {
+        let cause = self.event_cause();
+        let mut execution = crate::effects::ExecutionContext::new(self.source, self.payer, &mut *self.decision_maker)
+            .with_provenance(self.provenance).with_cause(cause).with_tagged_objects(self.tagged_objects.clone());
+        execution.source_snapshot = self.source_snapshot.clone();
+        execution.replacement = self.replacement.clone();
+        execution.effect_outcomes = self.effect_outcomes.clone();
+        execution.x_value = self.x_value;
+        execution.mana.payment_reason = Some(self.reason);
+        execution.announced_targets = Some(self.announced_targets.iter().map(|target| match target {
+            crate::Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
+            crate::Target::Player(player) => crate::effects::ResolvedTarget::Player(*player),
+        }).collect());
+        crate::effects::ExecutionContextCheckpoint::capture(&execution)
+    }
+}
+
 pub trait CostPayerClone {
     /// Clone this cost into a boxed trait object.
     fn clone_boxed(&self) -> Box<dyn CostPayer>;

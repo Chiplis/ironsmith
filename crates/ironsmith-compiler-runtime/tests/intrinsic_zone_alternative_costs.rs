@@ -156,14 +156,14 @@ fn named(game: &GameState, zone: Zone, name: &str) -> ObjectId {
         .id
 }
 #[test]
-fn four_complete_payloads_round_trip_and_one_entry_rider_remains_partial() {
+fn five_complete_payloads_round_trip_including_reviewed_entry_rider() {
     let rows = rows();
     assert_eq!(rows.len(), 5);
     assert_eq!(
         rows.iter()
             .filter(|row| row["proposed_coverage"] == "partial_not_counted")
             .count(),
-        1
+        0
     );
     for row in rows
         .iter()
@@ -477,4 +477,128 @@ fn alternative_price_taxes_apply_without_reintroducing_the_printed_price_or_unlo
         resolve(&mut game, &mut dm);
         assert_eq!(game.current_power(host), Some(3));
     }
+}
+
+// Worldheart's entry rider is a source proposal, not an executed recovery.
+fn phoenix_mana(game: &mut GameState) {
+    for symbol in [ManaSymbol::White, ManaSymbol::Blue, ManaSymbol::Black, ManaSymbol::Red, ManaSymbol::Green] {
+        game.player_mut(A).unwrap().mana_pool.add(symbol, 1);
+    }
+}
+#[test]
+fn worldheart_full_payload_keeps_its_method_specific_entry_counters_through_the_artifact() {
+    for definition in definitions("Worldheart Phoenix") {
+        assert_eq!(definition.alternative_casts.len(), 1);
+        assert_eq!(definition.alternative_casts[0].entry_counters(), &[(ironsmith::CounterType::PlusOnePlusOne, 2)]);
+        let text = ironsmith_text::compiled_text_lines(&definition).join("\n");
+        assert!(text.contains("it enters with two +1/+1 counters on it"), "{text}");
+        assert!(text.contains("Flying"), "{text}");
+    }
+}
+#[test]
+fn worldheart_requires_the_five_colored_price_and_only_that_method_changes_entry() {
+    for definition in definitions("Worldheart Phoenix") { for alternative in [false, true] {
+        let mut game = new_game();
+        let card = game.create_object_from_definition(&definition, A, if alternative {Zone::Graveyard} else {Zone::Hand});
+        let stable = game.object(card).unwrap().stable_id;
+        if alternative {
+            game.player_mut(A).unwrap().mana_pool.colorless = 5;
+            assert!(action(&game, A, card, true).is_none());
+            game.player_mut(A).unwrap().mana_pool.colorless = 0; phoenix_mana(&mut game);
+            let foreign = game.create_object_from_definition(&definition, B, Zone::Graveyard);
+            let exile = game.create_object_from_definition(&definition, A, Zone::Exile);
+            assert!(action(&game, A, foreign, true).is_none()); assert!(action(&game, A, exile, true).is_none());
+        } else {
+            game.player_mut(A).unwrap().mana_pool.colorless = 3; game.player_mut(A).unwrap().mana_pool.red = 1;
+        }
+        let mut dm = Choices::default(); announce(&mut game, A, card, alternative, &mut dm);
+        assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
+        resolve(&mut game, &mut dm);
+        let permanent = game.find_object_by_stable_id(stable).unwrap();
+        let counters = game.object(permanent).unwrap().counters.get(&ironsmith::CounterType::PlusOnePlusOne).copied().unwrap_or(0);
+        assert_eq!(counters, if alternative {2} else {0});
+        assert_eq!(game.current_power(permanent), Some(if alternative {4} else {2}));
+    } }
+}
+#[test]
+fn worldheart_entry_counters_use_real_doublers_before_entry_observers() {
+    for definition in definitions("Worldheart Phoenix") {
+        let mut game = new_game();
+        printed(&mut game, A, Zone::Battlefield, "Entry counter doubler", "Type: Enchantment\nIf one or more counters would be put on a permanent you control, twice that many of those counters are put on it instead.");
+        printed(&mut game, A, Zone::Battlefield, "Entry power observer", "Type: Enchantment\nWhenever a creature with power 4 or greater enters under your control, you gain 1 life.");
+        let card = game.create_object_from_definition(&definition, A, Zone::Graveyard); let stable = game.object(card).unwrap().stable_id;
+        phoenix_mana(&mut game); let mut dm = Choices::default(); announce(&mut game, A, card, true, &mut dm); resolve(&mut game, &mut dm);
+        let permanent = game.find_object_by_stable_id(stable).unwrap();
+        assert_eq!(game.object(permanent).unwrap().counters.get(&ironsmith::CounterType::PlusOnePlusOne), Some(&4));
+        assert_eq!(game.current_toughness(permanent), Some(6));
+        let mut queue = TriggerQueue::new(); put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+        assert_eq!(game.stack.len(), 1); resolve(&mut game, &mut dm); assert_eq!(game.player(A).unwrap().life, 21);
+    }
+}
+#[test]
+fn worldheart_spell_copy_inherits_cost_choice_but_permanent_copy_and_blink_do_not() {
+    use ironsmith::effects::EffectExecutor;
+    for definition in definitions("Worldheart Phoenix") {
+        let mut game = new_game(); let card = game.create_object_from_definition(&definition, A, Zone::Graveyard);
+        let stable = game.object(card).unwrap().stable_id; phoenix_mana(&mut game); let mut dm = Choices::default();
+        let stack = announce(&mut game, A, card, true, &mut dm);
+        let mut context = EffectContext::new_default(stack, A);
+        let copied = ironsmith::effects::CopySpellEffect::single(ChooseSpec::SpecificObject(stack)).execute(&mut game, &mut context).unwrap();
+        let ironsmith::effect::OutcomeValue::Objects(copies) = copied.value else {panic!("spell copy")};
+        assert_eq!(copies.len(), 1); let copy_stable = game.object(copies[0]).unwrap().stable_id;
+        resolve(&mut game, &mut dm); resolve(&mut game, &mut dm);
+        for id in [game.find_object_by_stable_id(stable).unwrap(), game.find_object_by_stable_id(copy_stable).unwrap()] {
+            assert_eq!(game.object(id).unwrap().counters.get(&ironsmith::CounterType::PlusOnePlusOne), Some(&2));
+        }
+        let permanent = game.find_object_by_stable_id(stable).unwrap();
+        let mut context = EffectContext::new_default(permanent, A);
+        let copied = ironsmith::effects::CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(permanent)).execute(&mut game, &mut context).unwrap();
+        let ironsmith::effect::OutcomeValue::Objects(copies) = copied.value else {panic!("permanent copy")};
+        assert!(game.object(copies[0]).unwrap().counters.is_empty());
+        let exiled = game.move_object_by_effect(permanent, Zone::Exile).unwrap();
+        let mut context = EffectContext::new_default(exiled, A);
+        execute_effect(&mut game, &Effect::move_to_zone(ChooseSpec::SpecificObject(exiled), Zone::Battlefield, false), &mut context).unwrap();
+        let returned = game.find_object_by_stable_id(stable).unwrap();
+        assert!(game.object(returned).unwrap().counters.is_empty()); assert_eq!(game.current_toughness(returned), Some(2));
+    }
+}
+
+#[test]
+fn an_independent_graveyard_permission_does_not_select_worldhearts_rider() {
+    for definition in definitions("Worldheart Phoenix") {
+        let mut game = new_game(); let card = game.create_object_from_definition(&definition, A, Zone::Graveyard);
+        let stable = game.object(card).unwrap().stable_id;
+        let provider = printed(&mut game, A, Zone::Battlefield, "Independent graveyard origin", "Type: Artifact");
+        game.effect_store.grant_registry.grant_to_card(card, Zone::Graveyard, A, ironsmith::grant::Grantable::PlayFrom,
+            ironsmith::grant_registry::GrantSource::Effect {source_id: provider, expires_end_of_turn: game.turn.turn_number});
+        game.player_mut(A).unwrap().mana_pool.colorless = 3; game.player_mut(A).unwrap().mana_pool.red = 1;
+        let selected = compute_legal_actions(&game, A).unwrap().into_iter().find(|action| matches!(action,
+            LegalAction::CastSpell {spell_id, casting_method: CastingMethod::PlayFrom {source, use_alternative: None, ..}, ..}
+                if *spell_id == card && *source == provider)).unwrap();
+        let mut state = PriorityLoopState::new(2); let mut queue = TriggerQueue::new(); let mut dm = Choices::default();
+        let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+            &PriorityResponse::PriorityAction(selected), &mut dm).unwrap();
+        for _ in 0..64 {
+            if !state.has_pending_action() { break; }
+            let GameProgress::NeedsDecisionCtx(ctx) = progress else {panic!("{progress:?}")};
+            progress = apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm).unwrap();
+        }
+        assert!(!state.has_pending_action()); assert_eq!(game.stack.len(), 1);
+        resolve(&mut game, &mut dm); let permanent = game.find_object_by_stable_id(stable).unwrap();
+        assert!(game.object(permanent).unwrap().counters.is_empty());
+    }
+}
+#[test]
+fn old_from_zone_wire_shape_omits_the_new_empty_rider_and_new_riders_round_trip() {
+    let definition = definitions("Worldheart Phoenix")[0].clone();
+    let method = ironsmith_runtime_catalog::artifact_materializer::encode_runtime_alternative_cast(definition.alternative_casts[0].clone()).unwrap();
+    let with_rider = serde_json::to_value(&method).unwrap();
+    assert!(with_rider["FromZone"].get("entry_counters").is_some());
+    let restored: ironsmith_compiled_artifact::WireAlternativeCastingMethod = serde_json::from_value(with_rider).unwrap();
+    assert_eq!(restored.entry_counters(), &[(ironsmith::CounterType::PlusOnePlusOne, 2)]);
+    let legacy = serde_json::to_value(method.with_entry_counters(Vec::new())).unwrap();
+    assert!(legacy["FromZone"].get("entry_counters").is_none());
+    let restored: ironsmith_compiled_artifact::WireAlternativeCastingMethod = serde_json::from_value(legacy.clone()).unwrap();
+    assert!(restored.entry_counters().is_empty());
+    assert_eq!(serde_json::to_value(restored).unwrap(), legacy);
 }

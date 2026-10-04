@@ -1618,6 +1618,10 @@ impl ForPlayersActionState {
                     &mut optional_limits,
                 );
                 let game_checkpoint = game.clone();
+                let declared_payments = prepared.iter().filter_map(|(_, _, proposal, _, _)| proposal.declared_life_payment()).collect::<Vec<_>>();
+                if !game.can_pay_life_simultaneously(&declared_payments) {
+                    return Err(ExecutionError::Impossible("simultaneous life payments exceed the available shared life total".into()));
+                }
                 // Replacement eligibility observes one pre-mutation world.
                 // One-shot consumption and APNAP choices remain ordered, but
                 // no player's original life change has committed yet.
@@ -1712,7 +1716,15 @@ impl ForPlayersActionState {
                 // Every original participant has committed. Match the whole
                 // original batch before the first appended program mutates
                 // event-time qualifications for another participant.
-                if batch_outcomes.iter().any(|(_, _, completion)| completion.is_some()) {
+                let contains_life_payment = batch_outcomes.iter().any(|(_, outcome, _)|
+                    outcome.events.iter().any(|event| event.downcast::<crate::events::LifePaidEvent>().is_some()));
+                if contains_life_payment {
+                    let events = batch_outcomes.iter().flat_map(|(_, outcome, _)| outcome.events.iter()).collect::<Vec<_>>();
+                    crate::events::damage::validate_damage_history_amounts(game, events.iter().copied())?;
+                    for event in events { game.stage_turn_history_event(event); }
+                    game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+                }
+                if contains_life_payment || batch_outcomes.iter().any(|(_, _, completion)| completion.is_some()) {
                     crate::effects::runtime::capture_triggers_before_added_program(
                         game, ctx, None,
                         batch_outcomes.iter_mut().flat_map(|(_, outcome, _)| outcome.events.iter_mut()),

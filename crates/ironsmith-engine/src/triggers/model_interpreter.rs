@@ -542,6 +542,7 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::YouGainLifeDuringTurn { during_turn } => {
             crate::triggers::Trigger::you_gain_life_during_turn(during_turn)
         }
+        TriggerKind::PlayerPaysLife { player } => crate::triggers::Trigger::player_pays_life(player),
         TriggerKind::PlayerLosesLife { player } => {
             crate::triggers::Trigger::player_loses_life(player)
         }

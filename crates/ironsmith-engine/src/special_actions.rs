@@ -1324,6 +1324,8 @@ pub(crate) struct LandPlayPermissionReceipt {
     shared: Option<crate::grant_registry::SharedGrantUsageId>,
     identity: Option<crate::grant_registry::GrantPermissionIdentity>,
     completion: Option<crate::grant_registry::GrantUseCompletion>,
+    permanent_grants: Vec<crate::static_abilities::StaticAbility>,
+    original_land: Option<ObjectId>,
     pub enters_tapped: bool,
 }
 impl LandPlayPermissionReceipt {
@@ -1334,6 +1336,7 @@ impl LandPlayPermissionReceipt {
             }
         }
         if let Some(identity) = &self.identity { game.turn_store.grant_cast_uses_this_turn.insert((player, identity.clone())); }
+        if let Some(card) = self.original_land { game.stage_land_permission_grants(card, self.permanent_grants.clone()); }
         Ok(())
     }
     pub(crate) fn complete(self, game: &mut GameState) {
@@ -1375,6 +1378,8 @@ pub(crate) fn choose_land_play_permission(
         shared: grant.shared_usage_id,
         identity: grant.permission_identity,
         completion: crate::grant_registry::GrantUseCompletion::capture(&checked, grant.source.source_id(), player, grant.on_use_effects),
+        permanent_grants: grant.permanent_this_way_grants,
+        original_land: Some(card),
         enters_tapped: grant.play_from_constraints.lands_enter_tapped,
     })
 }
@@ -3891,8 +3896,9 @@ fn pay_component_without_execution_context(
             mana_cost,
             cost_ctx.reason,
         );
+        let execution = cost_ctx.capture_execution_context();
         if let Some(exclusions) = cost_ctx.interactive_mana_exclusions.clone() {
-            return crate::mana_payment::pay_mana_interactively(
+            return crate::mana_payment::pay_mana_interactively_in_context(
                 game,
                 cost_ctx.payer,
                 cost_ctx.source,
@@ -3900,9 +3906,10 @@ fn pay_component_without_execution_context(
                 cost_ctx.reason,
                 exclusions,
                 cost_ctx.decision_maker,
+                Some(&execution),
             );
         }
-        return crate::costs::pay_mana_cost_with_choices(
+        return crate::costs::pay_mana_cost_with_choices_in_context(
             game,
             cost_ctx.payer,
             Some(cost_ctx.source),
@@ -3910,6 +3917,7 @@ fn pay_component_without_execution_context(
             0,
             cost_ctx.reason,
             cost_ctx.decision_maker,
+            Some(&execution),
         );
     }
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
@@ -3941,7 +3949,8 @@ fn pay_component_in_context(
         let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, execution_ctx)?;
         let adjusted_cost =
             game.adjust_mana_cost_for_payment_reason(payer, Some(source), &resolved, reason);
-        return crate::costs::pay_mana_cost_with_choices(
+        let execution = crate::effects::ExecutionContextCheckpoint::capture(execution_ctx);
+        return crate::costs::pay_mana_cost_with_choices_in_context(
             game,
             payer,
             Some(source),
@@ -3949,6 +3958,7 @@ fn pay_component_in_context(
             0,
             reason,
             execution_ctx.decision_maker,
+            Some(&execution),
         );
     }
     let mut cost_ctx = CostContext::new(source, payer, execution_ctx.decision_maker)

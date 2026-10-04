@@ -2603,7 +2603,7 @@ pub(super) fn describe_look_exile_face_down_rest_graveyard_then_cast(
     let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let exile = exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if look.reveal
         || !exact_looked_library_choice(choose, &look.tag)
         || exact_nonrandom_choice_count(&choose.count) != Some(1)

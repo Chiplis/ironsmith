@@ -779,6 +779,15 @@ impl TurnHistory {
         })
     }
 
+    /// Mill is a keyword action, not every library-to-graveyard movement.
+    /// Destination IDs reject a later incarnation that returned to the graveyard.
+    pub fn graveyard_incarnation_was_milled_this_turn(&self, object_id: ObjectId) -> bool {
+        self.projected_records().any(|record| record.event
+            .downcast::<crate::events::other::CardMilledEvent>()
+            .is_some_and(|event| event.card == object_id
+                && event.snapshot.as_ref().is_some_and(|snapshot| snapshot.zone == Zone::Graveyard)))
+    }
+
     /// Counts the number of times a player descended this turn.
     ///
     /// Descend looks at the card's last known characteristics and owner when it

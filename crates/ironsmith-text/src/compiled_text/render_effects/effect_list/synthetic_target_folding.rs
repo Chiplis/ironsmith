@@ -390,7 +390,7 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
         return choose_spec_references_identity(&execute.source, identity)
             || effect_references_identity(&execute.effect, identity);
     }
-    if let Some(cast) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {
+    if let Some(cast) = effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none()) {
         return identity.tag.is_some_and(|tag| cast.tag == *tag)
             || player_filter_references_identity(&cast.player, identity);
     }
@@ -402,7 +402,7 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
         return value_references_identity(&create.count, identity)
             || player_filter_references_identity(&create.controller, identity);
     }
-    if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>() {
+    if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none()) {
         return identity.tag.is_some_and(|tag| grant.tag == *tag)
             || player_filter_references_identity(&grant.player, identity);
     }
@@ -784,7 +784,7 @@ fn effect_tree_has_same_name_reference(effect: &Effect, tag: &TagKey) -> bool {
 fn effect_tree_casts_tag(effect: &Effect, tag: &TagKey) -> bool {
     let effect = structural_unwrap_render_wrappers(effect);
     if effect
-        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
         .is_some_and(|cast| cast.tag == *tag)
     {
         return true;

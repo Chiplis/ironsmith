@@ -65,6 +65,7 @@ pub enum StackActionAst {
         cost_reduction: Option<ManaCost>,
         mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
         alternative_payment: Option<ironsmith_core::CastTaggedAlternativePayment>,
+        alternative_cost: Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
     },
     RetargetStackObject {
         target: TargetAst,

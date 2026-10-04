@@ -4534,7 +4534,7 @@ pub(super) fn describe_exile_top_then_may_cast(
         return None;
     };
     let cast = unwrap_basic_tag_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.player != PlayerFilter::You || cast.as_copy || cast.cost_reduction.is_some() {
         return None;
     }
@@ -4763,7 +4763,7 @@ pub(super) fn describe_looked_card_split_destinations_structural(
     let bottom_move = unwrap_basic_tag_wrappers(bottom_move_effect)
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let exile_move = move_to_zone_surface_view(unwrap_basic_tag_wrappers(exile_move_effect))?;
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
 
     describe_look_at_top_split_hand_bottom_exile_then_play_exiled(
         look_at_top,
@@ -4963,7 +4963,7 @@ pub(super) fn describe_look_at_top_choose_exile_rest_bottom_play_and_any_mana_wh
     let [play_effect] = may_play.effects.as_slice() else {
         return None;
     };
-    let play_grant = play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let play_grant = play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     describe_look_at_top_choose_exile_rest_bottom_play_grants_and_any_mana_while_exiled(
         look_at_top,
         choose,

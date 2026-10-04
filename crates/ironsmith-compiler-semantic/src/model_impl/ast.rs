@@ -722,4 +722,5 @@ pub enum TriggerSpec {
     AttacksPlayerAlone(ObjectFilter),
     BecomesBlockedOneOrMore(ObjectFilter),
     KeywordActionOneOrMore { action: crate::events::KeywordActionKind, player: PlayerFilter, source_filter: ObjectFilter },
+    PlayerPaysLife(PlayerFilter),
 }

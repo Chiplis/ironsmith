@@ -1394,6 +1394,7 @@ pub(super) fn compile_subject_verb_middle(
             ))
         }
         SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+            alternative_cost,
             tag,
             player,
             allow_land,
@@ -1418,6 +1419,7 @@ pub(super) fn compile_subject_verb_middle(
                 && additional_mana_cost.is_none()
                 && cost_reduction.is_none()
                 && alternative_payment.is_none()
+                && alternative_cost.is_none()
             {
                 let mut cast = crate::effects::CastSourceEffect::new();
                 if *without_paying_mana_cost {
@@ -1466,11 +1468,16 @@ pub(super) fn compile_subject_verb_middle(
                     cost_reduction.clone(),
                     *mana_spend_mode,
                     *alternative_payment,
+                    alternative_cost.as_ref().map(|cost| {
+                        let lowered = crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
+                        resolve_total_cost_it_tags(&lowered, &current_reference_env(ctx))
+                    }).transpose()?,
                 )],
                 Vec::new(),
             ))
         }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+            alternative_cost,
             tag,
             player,
             allow_land,
@@ -1516,6 +1523,13 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_any_color_for_cast,
             )
             .with_max_plays(*max_plays);
+            grant_play.alternative_cost = alternative_cost.as_ref().map(|cost| {
+                let lowered = crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
+                resolve_total_cost_it_tags(&lowered, &current_reference_env(ctx))
+            }).transpose()?;
+            if *without_paying_mana_cost && alternative_cost.is_some() {
+                return Err(CardTextError::ParseError("two alternative casting prices on one permission".into()));
+            }
             if let Some(cost) = spell_cost_reduction.clone() {
                 grant_play = grant_play.with_spell_cost_reduction(cost);
             }

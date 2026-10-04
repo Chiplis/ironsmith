@@ -33,6 +33,10 @@ impl GameState {
     }
     pub(crate) fn finish_library_top_announcement(&mut self, owner: LibraryTopAnnouncement) {
         self.runtime_cache.library_top_announcements.remove(&owner);
+        if let LibraryTopAnnouncement::Land(card) = owner { self.runtime_cache.pending_land_permission_grants.remove(&card); }
+    }
+    pub(crate) fn stage_land_permission_grants(&mut self, card: ObjectId, abilities: Vec<StaticAbility>) {
+        if !abilities.is_empty() { self.runtime_cache.pending_land_permission_grants.insert(card, abilities); }
     }
     pub(crate) fn capture_cast_grant_completion(&mut self, spell: ObjectId, completion: crate::grant_registry::GrantUseCompletion) {
         self.runtime_cache.pending_grant_use_completions.entry(spell).or_default().push(completion);
@@ -43,7 +47,7 @@ impl GameState {
         }
     }
     pub fn has_library_top_announcement(&self) -> bool {
-        !self.runtime_cache.library_top_announcements.is_empty() || !self.runtime_cache.pending_grant_use_completions.is_empty()
+        !self.runtime_cache.library_top_announcements.is_empty() || !self.runtime_cache.pending_grant_use_completions.is_empty() || !self.runtime_cache.pending_land_permission_grants.is_empty()
     }
     pub fn static_library_top_visible_during_announcements(&self, player: PlayerId) -> bool {
         let current = self.player(player).and_then(|player| player.library.last().copied());

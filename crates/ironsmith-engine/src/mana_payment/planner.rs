@@ -484,6 +484,13 @@ pub fn execute_mana_payment_plan(
     expected_plan: &ManaPaymentPlan,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<super::ManaPaymentExecution, ManaPaymentFailure> {
+    execute_mana_payment_plan_in_context(game, request, expected_plan, decision_maker, None)
+}
+pub(crate) fn execute_mana_payment_plan_in_context(
+    game: &mut GameState, request: &ManaPaymentRequest, expected_plan: &ManaPaymentPlan,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+    execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+) -> Result<super::ManaPaymentExecution, ManaPaymentFailure> {
     let matches = |plan: &ManaPaymentPlan| {
         plan.id == expected_plan.id && plan.request_hash == expected_plan.request_hash
     };
@@ -561,7 +568,7 @@ pub fn execute_mana_payment_plan(
     }
     crate::events::other::bind_before_tap_state_snapshots(&mut tapped_events, &before);
     crate::events::other::group_tap_state_events(game, &mut tapped_events, Default::default());
-    if !game.try_pay_mana_cost_with_payment_options(
+    let paid = game.try_pay_mana_cost_with_payment_options_in_context(
         request.payer,
         Some(request.source),
         &current.mana_cost_after_alternatives,
@@ -571,7 +578,11 @@ pub fn execute_mana_payment_plan(
         request.allow_life_payment,
         request.allow_black_life,
         request.preferences.prefer_life,
-    ) {
+        decision_maker,
+        execution,
+    ).map_err(|error| { *game = checkpoint.clone(); ManaPaymentFailure::EffectExecutionFailed(error) })?;
+    if decision_maker.awaiting_choice() { game.restore_execution_checkpoint(checkpoint, true); return Ok(super::ManaPaymentExecution::PendingDecision); }
+    if !paid {
         *game = checkpoint;
         return Err(ManaPaymentFailure::ExecutionFailed);
     }
@@ -3027,9 +3038,16 @@ fn payable_assignment_cost(game: &GameState, request: &ManaPaymentRequest, cost:
             |after, paid| {
                 let mut completion = completion.clone();
                 completion.cost = completion.cost.with_prepaid_generic(paid.symbols());
-                check_mana_payment(after, &completion).is_ok()
+                match check_mana_payment(after, &completion) {
+                    Ok(_) => true,
+                    Err(ManaPaymentFailure::EffectExecutionFailed(error)) => {
+                        after.record_token_resource_failure(&error);
+                        false
+                    }
+                    Err(_) => false,
+                }
             },
-        );
+        ).unwrap_or_else(|error| { game.record_token_resource_failure(&error); None });
     }
     game.can_pay_mana_cost_with_payment_options(
         request.payer, Some(request.source), cost, request.x_value, request.reason,
@@ -3070,7 +3088,7 @@ fn search_candidate_score(
         request.allow_life_payment,
         request.allow_black_life,
         request.preferences.prefer_life,
-    );
+    ).unwrap_or_else(|error| { game.record_token_resource_failure(&error); false });
     let excess_mana = if paid {
         after_payment
             .player(request.payer)
@@ -3149,7 +3167,7 @@ fn build_plan(
         payment_request.allow_life_payment,
         payment_request.allow_black_life,
         payment_request.preferences.prefer_life,
-    );
+    ).unwrap_or_else(|error| { game.record_token_resource_failure(&error); false });
     if !paid { return None; }
     let pool_after_payment = if paid {
         staged

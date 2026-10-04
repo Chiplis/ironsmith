@@ -235,6 +235,8 @@ pub enum CombatError {
         blocker: ObjectId,
         attacker: ObjectId,
     },
+    /// Checked cost evaluation failed; this is not an illegal declaration.
+    ExecutionFailed(crate::effects::ExecutionError),
 }
 
 impl std::fmt::Display for CombatError {
@@ -248,6 +250,7 @@ impl std::fmt::Display for CombatError {
         }
 
         match self {
+            CombatError::ExecutionFailed(error) => write!(f, "Combat cost execution failed: {error}"),
             CombatError::CreatureCannotAttack(id) => {
                 write!(f, "Creature {} cannot attack", object_label(id))
             }
@@ -713,6 +716,7 @@ pub fn declare_attackers(
         let mana_cost = generic_mana_cost(additional_attack_mana_cost);
         if !game.can_pay_mana_cost(active_player, None, &mana_cost, 0)
             || !game.try_pay_mana_cost(active_player, None, &mana_cost, 0)
+                .map_err(CombatError::ExecutionFailed)?
         {
             return Err(CombatError::CreatureCannotAttack(*first_attacker));
         }

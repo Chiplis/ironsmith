@@ -1794,6 +1794,7 @@ impl GameState {
             zone,
             usage_limit: None,
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             on_use_effects: Vec::new(),
             cast_this_way_filter: None,
         })

@@ -1095,6 +1095,18 @@ impl EffectAst {
         self
     }
 
+    /// Attach one required price to this exact cast/permission action.
+    pub fn with_casting_alternative_cost(mut self, cost: ironsmith_core::TotalCost<crate::model::CompilerCost>) -> Self {
+        if let Self::SubjectVerb(subject) = &mut self {
+            match &mut subject.action {
+                SubjectVerbActionAst::Stack(StackActionAst::CastTagged { alternative_cost, .. })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { alternative_cost, .. }) => *alternative_cost = Some(cost),
+                _ => {},
+            }
+        }
+        self
+    }
+
     pub fn subject_verb_cast_tagged(
         tag: TagRef,
         player: PlayerAst,
@@ -1149,6 +1161,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+                alternative_cost: None,
                 tag,
                 player,
                 allow_land,
@@ -1262,6 +1275,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost: None,
                 tag,
                 player,
                 allow_land,
@@ -1290,6 +1304,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost: None,
                 tag,
                 player,
                 allow_land,
@@ -1317,6 +1332,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost: None,
                 tag,
                 player,
                 allow_land,
@@ -1346,6 +1362,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost: None,
                 tag,
                 player,
                 allow_land,

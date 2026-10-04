@@ -140,6 +140,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
                     | TriggerSpec::YouGainLifeCausedBy(_)
                     | TriggerSpec::YouGainLifeDuringTurn(_)
                     | TriggerSpec::PlayerLosesLife(_)
+                    | TriggerSpec::PlayerPaysLife(_)
                     | TriggerSpec::PlayersLoseLifeOneOrMore(_)
                     | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
                     | TriggerSpec::ThisIsDealtDamage

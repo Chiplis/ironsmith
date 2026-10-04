@@ -6100,7 +6100,7 @@ mod sync_checkpoint_tests {
                     &cost,
                     0,
                     ironsmith::costs::PaymentReason::CastSpell
-                ),
+                ).expect("checked fixture mana payment"),
                 chosen == Subtype::Dwarf
             );
             if chosen == Subtype::Dwarf {

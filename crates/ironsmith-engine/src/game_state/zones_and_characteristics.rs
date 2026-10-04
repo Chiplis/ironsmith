@@ -1235,6 +1235,22 @@ impl GameState {
         if !preserve_temporary_static_ability_grants {
             new_object.temporary_static_ability_grants.clear();
         }
+        // A selected land permission attaches its rider to the original
+        // entering object before entry counters or any added programs run.
+        // Redirected / independent replacement moves cannot lend this grant
+        // to another permanent or a later incarnation.
+        if let Some(abilities) = self.runtime_cache.pending_land_permission_grants.remove(&old_id) {
+            if new_zone == Zone::Battlefield
+                && cause.cause_type == crate::events::cause::CauseType::SpecialAction
+                && cause.source == Some(old_id)
+            {
+                for ability in abilities {
+                    new_object.temporary_static_ability_grants.push(crate::object::TemporaryStaticAbilityGrant {
+                        ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: None,
+                    });
+                }
+            }
+        }
         if !preserve_optional_costs_paid {
             new_object.optional_costs_paid = crate::cost::OptionalCostsPaid::default();
         }

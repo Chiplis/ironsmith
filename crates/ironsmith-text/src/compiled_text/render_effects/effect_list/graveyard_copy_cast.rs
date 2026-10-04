@@ -198,7 +198,7 @@ fn exact_optional_cast_copy<'a>(
         return None;
     };
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if &cast.tag != exiled_tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -366,7 +366,7 @@ mod tests {
             .downcast_ref::<crate::effects::MayEffect>()
             .expect("fixture has an optional cast");
         let mut cast = may.effects[0]
-            .downcast_ref::<crate::effects::CastTaggedEffect>()
+            .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             .expect("fixture has a typed tagged cast")
             .clone();
         cast.copy_cast_reminder_surface = true;
@@ -403,7 +403,7 @@ mod tests {
                 .downcast_ref::<crate::effects::MayEffect>()
                 .expect("fixture has an optional cast");
             let mut cast = may.effects[0]
-                .downcast_ref::<crate::effects::CastTaggedEffect>()
+                .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
                 .expect("fixture has a typed tagged cast")
                 .clone();
             cast.copy_instruction_surface = Some(surface);

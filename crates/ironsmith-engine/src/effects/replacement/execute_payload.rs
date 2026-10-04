@@ -53,7 +53,7 @@ pub(crate) fn execute_replacement_payload_with_snapshot(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn with_replacement_child<R>(
+pub(crate) fn with_replacement_child<R>(
     game: &mut GameState, parent: &mut ExecutionContext, source: ObjectId, controller: PlayerId,
     context: &ReplacementEventContext, targets: Option<Vec<crate::effects::ResolvedTarget>>,
     captured_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,

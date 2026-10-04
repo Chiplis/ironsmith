@@ -288,6 +288,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PlayerBecomesTargeted { player, .. }
         | TriggerSpec::PlayerGainsLife { player, .. }
         | TriggerSpec::PlayerLosesLife(player)
+        | TriggerSpec::PlayerPaysLife(player)
         | TriggerSpec::PlayersLoseLifeOneOrMore(player)
         | TriggerSpec::PlayerLosesGame(player)
         | TriggerSpec::PlayerDrawsCardDuringTurn { player, .. }
@@ -404,6 +405,7 @@ fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
         | TriggerSpec::BeginningOfPrecombatMain(_)
         | TriggerSpec::BeginningOfPostcombatMain { .. }
         | TriggerSpec::YouGainLife
+        | TriggerSpec::PlayerPaysLife(_)
         | TriggerSpec::YouDrawCard
         | TriggerSpec::DayNightChanged
         | TriggerSpec::StateBased { .. } => None,

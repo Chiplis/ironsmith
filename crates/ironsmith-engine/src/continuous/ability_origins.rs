@@ -558,7 +558,7 @@ mod complete_origin_schema_tests {
         grants.push(TemporaryStaticAbilityGrant {
             ability: StaticAbilityId::Flying,
             ability_payload: None,
-            expires_end_of_turn: 4,
+            expires_end_of_turn: Some(4),
         });
         let families = vec![
             AbilityOrigin::Printed(5),

@@ -111,7 +111,7 @@ pub use self::combat_damage::*;
 pub use self::combat_decisions::*;
 pub use self::priority_apply::apply_priority_response_with_dm;
 pub use self::priority_apply::{PriorityActionPerfMetrics, last_priority_action_perf};
-pub(crate) use self::priority_cast::cast_spell_from_resolving_effect_with_context;
+pub(crate) use self::priority_cast::{cast_spell_from_resolving_effect_with_context, cast_spell_from_resolving_effect_with_price};
 pub use self::priority_core::*;
 pub use self::priority_core::{PriorityAdvancePerfMetrics, last_priority_advance_perf};
 pub use self::priority_mana::run_priority_loop_with;

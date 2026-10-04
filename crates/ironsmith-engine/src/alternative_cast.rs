@@ -87,7 +87,7 @@ pub(crate) fn ensure_alternative_battlefield_abilities(
     grant.additional_abilities = missing;
     let ability = crate::static_abilities::StaticAbility::new(grant);
     object.temporary_static_ability_grants.push(crate::object::TemporaryStaticAbilityGrant {
-        ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: u32::MAX,
+        ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: Some(u32::MAX),
     });
 }
 

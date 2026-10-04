@@ -473,6 +473,9 @@ pub(super) fn prompt_pending_mana_ability_payment(
     });
     let plan = plan_result.map_err(|failure| {
         state.rollback_action(game);
+        if let crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) = failure {
+            return GameLoopError::ExecutionFailed(error);
+        }
         GameLoopError::ActionCancelled(format!(
             "the mana ability's activation cost has no legal payment plan: {failure:?}"
         ))
@@ -525,6 +528,9 @@ fn refresh_prepared_spell_payment(
     request.preferences.normalize();
     let plan = crate::mana_payment::plan_mana_payment(game, &request)
         .map_err(|failure| {
+            if let crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) = failure {
+                return GameLoopError::ExecutionFailed(error);
+            }
             GameLoopError::ActionCancelled(format!(
                 "the prepared spell payment can no longer pay the selected costs: {failure:?}"
             ))
@@ -548,6 +554,11 @@ pub(super) fn commit_prepared_spell_mana_payment(
     mut payment: crate::mana_payment::PendingManaPayment,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
+    let mut pending_checkpoint = pending.clone();
+    pending_checkpoint.pending_mana_payment = Some(payment.clone());
+    let result = (|| -> Result<GameProgress, GameLoopError> {
+
     if let Err(error) = refresh_prepared_spell_payment(game, &pending, &mut payment) {
         state.rollback_action(game);
         return Err(error);
@@ -571,7 +582,7 @@ pub(super) fn commit_prepared_spell_mana_payment(
             "spell payer is missing".to_string(),
         ));
     };
-    if !game.try_pay_mana_cost_with_payment_options(
+    if !game.try_pay_mana_cost_with_payment_options_and_dm(
         payment.request.payer,
         Some(payment.request.source),
         &payment.plan.mana_cost_after_alternatives,
@@ -581,7 +592,9 @@ pub(super) fn commit_prepared_spell_mana_payment(
         payment.request.allow_life_payment,
         payment.request.allow_black_life,
         payment.request.preferences.prefer_life,
-    ) {
+        decision_maker,
+    ).map_err(|error| { state.rollback_action(game); GameLoopError::ExecutionFailed(error) })? {
+        if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
         state.rollback_action(game);
         return Err(GameLoopError::ActionCancelled(
             "spell payment failed validation and was rolled back".to_string(),
@@ -596,6 +609,14 @@ pub(super) fn commit_prepared_spell_mana_payment(
     pending.pending_mana_payment = None;
     pending.stage = spell_stage_after_targets(&pending);
     continue_spell_next_cost_or_finalize(game, trigger_queue, state, pending, decision_maker)
+    })();
+    if decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint.0, result.is_ok());
+        *trigger_queue = checkpoint.1; *state = checkpoint.2;
+        state.pending_cast = Some(pending_checkpoint);
+        return Ok(GameProgress::Continue);
+    }
+    result
 }
 
 pub(super) fn commit_prepared_activation_mana_payment(
@@ -606,6 +627,11 @@ pub(super) fn commit_prepared_activation_mana_payment(
     mut payment: crate::mana_payment::PendingManaPayment,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
+    let mut pending_checkpoint = pending.clone();
+    pending_checkpoint.pending_mana_payment = Some(payment.clone());
+    let result = (|| -> Result<GameProgress, GameLoopError> {
+
     let mut request = match activation_mana_payment_request(game, &pending) {
         Ok(request) => request,
         Err(error) => {
@@ -640,6 +666,9 @@ pub(super) fn commit_prepared_activation_mana_payment(
         })?,
         Err(failure) => {
             state.rollback_action(game);
+            if let crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) = failure {
+                return Err(GameLoopError::ExecutionFailed(error));
+            }
             return Err(GameLoopError::ActionCancelled(format!(
                 "the prepared activation payment can no longer pay the selected costs: {failure:?}"
             )));
@@ -656,7 +685,7 @@ pub(super) fn commit_prepared_activation_mana_payment(
             "activation payer is missing".to_string(),
         ));
     };
-    if !game.try_pay_mana_cost_with_payment_options(
+    if !game.try_pay_mana_cost_with_payment_options_and_dm(
         payment.request.payer,
         Some(payment.request.source),
         &payment.plan.mana_cost_after_alternatives,
@@ -666,7 +695,9 @@ pub(super) fn commit_prepared_activation_mana_payment(
         payment.request.allow_life_payment,
         payment.request.allow_black_life,
         payment.request.preferences.prefer_life,
-    ) {
+        decision_maker,
+    ).map_err(|error| { state.rollback_action(game); GameLoopError::ExecutionFailed(error) })? {
+        if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
         state.rollback_action(game);
         return Err(GameLoopError::ActionCancelled(
             "activation payment failed validation and was rolled back".to_string(),
@@ -685,6 +716,14 @@ pub(super) fn commit_prepared_activation_mana_payment(
     pending.pending_mana_payment = None;
     pending.stage = activation_stage_after_targets(&pending);
     continue_activation(game, trigger_queue, state, pending, decision_maker)
+    })();
+    if decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint.0, result.is_ok());
+        *trigger_queue = checkpoint.1; *state = checkpoint.2;
+        state.pending_activation = Some(pending_checkpoint);
+        return Ok(GameProgress::Continue);
+    }
+    result
 }
 
 fn revalidate_authoritative_payment_plan(
@@ -694,14 +733,16 @@ fn revalidate_authoritative_payment_plan(
 ) -> Result<crate::mana_payment::ManaPaymentPlan, GameLoopError> {
     // A displayed first plan is already authoritative. Validate that same
     // proposal without running the optional ranking pass on confirmation.
-    if let Ok(plan) = crate::mana_payment::plan_first_mana_payment(game, &payment.request)
-        && plan.id == payment.plan.id
-        && plan.request_hash == payment.plan.request_hash
-    {
-        return Ok(plan);
+    match crate::mana_payment::plan_first_mana_payment(game, &payment.request) {
+        Ok(plan) if plan.id == payment.plan.id && plan.request_hash == payment.plan.request_hash => return Ok(plan),
+        Err(crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)) => return Err(GameLoopError::ExecutionFailed(error)),
+        _ => {}
     }
     crate::mana_payment::plan_mana_payment(game, &payment.request)
         .map_err(|failure| {
+            if let crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) = failure {
+                return GameLoopError::ExecutionFailed(error);
+            }
             GameLoopError::ActionCancelled(format!(
                 "{label} payment became illegal before confirmation: {failure:?}"
             ))
@@ -727,13 +768,13 @@ pub(super) fn apply_mana_payment_plan_response(
     // A captured nested decision replays this response against the same
     // authoritative payment. Cancellation retains its existing action rollback.
     let checkpoint = (!matches!(response, crate::mana_payment::ManaPaymentResponse::Cancel)
-        && (state.pending_mana_ability.is_some()
+        && (state.pending_mana_ability.is_some() || state.pending_cast.is_some() || state.pending_activation.is_some()
             || matches!(response, crate::mana_payment::ManaPaymentResponse::Activate { .. })))
         .then(|| (game.clone(), trigger_queue.clone(), state.clone()));
     let result = apply_mana_payment_plan_response_inner(game, trigger_queue, state, response, decision_maker);
     if let Some((before_game, before_queue, before_state)) = checkpoint {
         if decision_maker.awaiting_choice() || matches!(&result, Err(GameLoopError::ExecutionFailed(_))) {
-            *game = before_game; *trigger_queue = before_queue; *state = before_state;
+            game.restore_execution_checkpoint(before_game, result.is_ok() && decision_maker.awaiting_choice()); *trigger_queue = before_queue; *state = before_state;
         }
         if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
     }
@@ -938,7 +979,7 @@ fn apply_mana_payment_plan_response_inner(
                 return Err(error);
             }
         }
-        if !game.try_pay_mana_cost_with_payment_options(
+        if !game.try_pay_mana_cost_with_payment_options_and_dm(
             payment.request.payer,
             Some(payment.request.source),
             &payment.plan.mana_cost_after_alternatives,
@@ -948,7 +989,9 @@ fn apply_mana_payment_plan_response_inner(
             payment.request.allow_life_payment,
             payment.request.allow_black_life,
             payment.request.preferences.prefer_life,
-        ) {
+            decision_maker,
+    ).map_err(|error| { state.rollback_action(game); GameLoopError::ExecutionFailed(error) })? {
+            if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
             state.rollback_action(game);
             return Err(GameLoopError::ActionCancelled(
                 "mana-ability payment failed validation and was rolled back".to_string(),
@@ -1124,7 +1167,7 @@ fn apply_mana_payment_plan_response_inner(
                 "Assist payer is missing".to_string(),
             ));
         };
-        if !game.try_pay_mana_cost_with_payment_options(
+        if !game.try_pay_mana_cost_with_payment_options_and_dm(
             payment.request.payer,
             Some(payment.request.source),
             &payment.plan.mana_cost_after_alternatives,
@@ -1134,7 +1177,9 @@ fn apply_mana_payment_plan_response_inner(
             payment.request.allow_life_payment,
             payment.request.allow_black_life,
             payment.request.preferences.prefer_life,
-        ) {
+            decision_maker,
+    ).map_err(|error| { state.rollback_action(game); GameLoopError::ExecutionFailed(error) })? {
+            if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
             state.rollback_action(game);
             return Err(GameLoopError::ActionCancelled(
                 "Assist payment failed validation and was rolled back".to_string(),
@@ -1751,13 +1796,15 @@ pub(super) fn execute_pending_mana_ability(
         .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
 
     // Pay the mana cost
-    if !game.try_pay_mana_cost_with_reason(
+    if !game.try_pay_mana_cost_with_reason_and_dm(
         pending.activator,
         Some(pending.source),
         &pending.mana_cost,
         0,
         crate::costs::PaymentReason::ActivateManaAbility,
-    ) {
+        decision_maker,
+    ).map_err(GameLoopError::ExecutionFailed)? {
+        if decision_maker.awaiting_choice() { return Ok(()); }
         return Err(GameLoopError::InvalidState(
             "Failed to pay mana cost".to_string(),
         ));
@@ -2899,6 +2946,7 @@ fn propose_spell_cast_with_origin(
             method: selected_method.clone().expect("validated priced origin has its additional-cost method"),
             source_id: grant.source.source_id(), zone: grant.zone, usage_limit: grant.usage_limit,
             cast_this_way_grants: grant.cast_this_way_grants.clone(), cast_this_way_filter: grant.cast_this_way_filter.clone(),
+            permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
             on_use_effects: grant.on_use_effects.clone(),
         }).or_else(|| game.object(spell_id).and_then(|obj| match casting_method {
         CastingMethod::PlayFrom {use_alternative: Some(idx), zone, ..}
@@ -3001,16 +3049,30 @@ fn propose_spell_cast_with_origin(
     // among them", Idol of Endurance) spends it either way.
     let shared_usage_to_consume = price_route.as_ref().and_then(|route| route.origin.as_ref()).and_then(|grant| grant.shared_usage_id).or_else(|| match &selected_plain_grant {
         Some(grant) => grant.shared_usage_id,
-        None if selected_grant.is_some() => match casting_method {
+        None if selected_grant.is_some() => selected_grant.as_ref()
+            .and_then(|selected| selected.permission_identity.as_ref())
+            .and_then(|identity| game.effect_store.grant_registry.grants.iter()
+                .find(|grant| grant.permission_identity.as_ref() == Some(identity)))
+            .and_then(|grant| grant.shared_usage_id)
+            .or_else(|| match casting_method {
             CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..}
             | CastingMethod::FaceDownPlayFrom {source, zone} =>
                 game.effect_store.grant_registry
                     .selected_play_from_grant_for_card(game, spell_id, *zone, caster, *source)
                     .and_then(|grant| grant.shared_usage_id),
             _ => None,
-        },
+        }),
         None => None,
     });
+
+    // Capture the exact origin and price occurrences before costs can remove
+    // their providers. Recipient riders do not create a reflexive trigger.
+    let permanent_riders = if let Some(route) = &price_route {
+        route.origin.iter().flat_map(|grant| grant.permanent_this_way_grants.iter())
+            .chain(route.price.permanent_this_way_grants.iter()).cloned().collect::<Vec<_>>()
+    } else if let Some(grant) = &selected_grant {
+        grant.permanent_this_way_grants.clone()
+    } else { selected_plain_grant.as_ref().map(|grant| grant.permanent_this_way_grants.clone()).unwrap_or_default() };
 
     let use_completion = if let Some(route) = &price_route {
         route.origin.as_ref().and_then(|grant| crate::grant_registry::GrantUseCompletion::capture_with_snapshot(
@@ -3266,6 +3328,7 @@ fn propose_spell_cast_with_origin(
     }
 
     apply_play_from_cast_this_way_grants(game, new_id, caster, casting_method, selected_grant, selected_plain_grant);
+    for ability in permanent_riders { game.grant_incarnation_static_ability(new_id, ability); }
 
     if let Some(route) = price_route {
         for ability in route.price_riders {
@@ -3510,13 +3573,14 @@ pub(super) fn finalize_spell_cast(
     if !mana_already_paid && let Some(cost) = effective_cost {
         let x = x_value.unwrap_or(0);
         let before_pool = game.player(caster).map(|player| player.mana_pool.clone());
-        if !game.try_pay_mana_cost_with_reason(
+        if !game.try_pay_mana_cost_with_reason_and_dm(
             caster,
             Some(spell_id),
             &cost,
             x,
             crate::costs::PaymentReason::CastSpell,
-        ) {
+            _decision_maker,
+    ).map_err(GameLoopError::ExecutionFailed)? {
             return Err(GameLoopError::InvalidState(
                 "Cannot pay mana cost".to_string(),
             ));

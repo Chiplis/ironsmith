@@ -1,0 +1,13 @@
+[
+  {
+    "name": "Font of Agonies",
+    "oracle_id": "ab44c6fe-6a66-42f0-9e75-8b25641e1f13",
+    "text": "Mana cost: {B}\nType: Enchantment\nWhenever you pay life, put that many blood counters on this enchantment.\n{1}{B}, Remove four blood counters from this enchantment: Destroy target creature.",
+    "oracle_text": "Whenever you pay life, put that many blood counters on this enchantment.\n{1}{B}, Remove four blood counters from this enchantment: Destroy target creature.",
+    "baseline_content_hash": "d6f6d29e2f633372012a001f9c7fb6d793089d31e0b00205dc5122347d90fd86",
+    "baseline_error": "unsupported triggered line: 'Whenever you pay life, put that many blood counters on this enchantment.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you pay life, put that many blood counters on this enchantment.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": false,
+    "status": "UNVALIDATED partial: reviewed direct and single-life replacement paths; generic simultaneous compound-Instead continuation remains incomplete",
+    "remaining_blocker": "Generic compound/other simultaneous Instead programs need complete continuation; preparation rejection does not count as completed semantics."
+  }
+]

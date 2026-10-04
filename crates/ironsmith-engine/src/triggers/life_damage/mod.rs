@@ -13,3 +13,6 @@ pub use player_loses_life::PlayerLosesLifeTrigger;
 pub use player_gains_life::PlayerGainsLifeTrigger;
 pub use you_gain_life::YouGainLifeTrigger;
 pub use you_lose_life::YouLoseLifeTrigger;
+
+mod player_pays_life;
+pub use player_pays_life::PlayerPaysLifeTrigger;

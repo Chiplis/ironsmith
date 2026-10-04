@@ -34,13 +34,7 @@ pub(super) fn x_defined_mode_count_range(
     {
         return None;
     }
-    let mana_cost = get_spell_mana_cost(
-        game,
-        pending.spell_id,
-        pending.caster,
-        &pending.casting_method,
-        pending.from_zone,
-    );
+    let mana_cost = pending_cast_base_mana_cost(game, pending);
     let (needs_x, min_x, max_x) = compute_spell_cast_x_bounds_with_reduction(
         game,
         pending.caster,
@@ -1610,11 +1604,61 @@ pub(crate) fn cast_spell_from_resolving_effect_with_context(
     provenance: ProvNodeId,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<Option<ObjectId>, GameLoopError> {
+    cast_spell_from_resolving_effect_with_price(game, spell_id, from_zone, caster, casting_method,
+        base_mana_cost_waived, None, mana_cost_reduction, additional_mana_cost, mana_spend_mode,
+        tagged_objects, provenance, decision_maker)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn cast_spell_from_resolving_effect_with_price(
+    game: &mut GameState,
+    spell_id: ObjectId,
+    from_zone: Zone,
+    caster: PlayerId,
+    casting_method: &CastingMethod,
+    base_mana_cost_waived: bool,
+    alternative_cost: Option<&crate::cost::TotalCost>,
+    mana_cost_reduction: Option<&crate::mana::ManaCost>,
+    additional_mana_cost: Option<&crate::mana::ManaCost>,
+    mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    provenance: ProvNodeId,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<Option<ObjectId>, GameLoopError> {
+    // The referenced card may have more than one castable face. Choose its
+    // spell before deriving a source-relative price; neither a front-face MV
+    // nor the off-stack combined split value is an announced spell price.
+    let selected_face = if alternative_cost.is_some() {
+        let spell = game.object(spell_id).ok_or_else(|| GameLoopError::InvalidState("priced card disappeared".into()))?;
+        let other = crate::decision::spell_view_for_split_other_half_cast(game, spell);
+        let method = match casting_method {
+            CastingMethod::Normal => Some(CastingMethod::SplitOtherHalf),
+            CastingMethod::PlayFrom { source, zone, use_alternative: None } => Some(CastingMethod::SplitOtherHalfPlayFrom {
+                source: *source, zone: *zone, use_alternative: None,
+            }),
+            _ => None,
+        };
+        if let Some((other, method)) = other.zip(method) {
+            let options = vec![
+                crate::decisions::context::SelectableOption::new(0, spell.name.to_string()),
+                crate::decisions::context::SelectableOption::new(1, other.name.to_string()),
+            ];
+            let context = crate::decisions::context::SelectOptionsContext::new(caster, Some(spell_id),
+                "Choose which spell to cast", options, 1, 1);
+            let chosen = decision_maker.decide_options(game, &context);
+            if decision_maker.awaiting_choice() { return Ok(None); }
+            match chosen.as_slice() {
+                [0] => None, [1] => Some(method),
+                _ => return Err(GameLoopError::InvalidState("Expected one castable face".into())),
+            }
+        } else { None }
+    } else { None };
+    let casting_method = selected_face.as_ref().unwrap_or(casting_method);
     // A resolving instruction grants the origin/timing, not necessarily a
     // replacement price. Offer independent prices only when it leaves the
     // ordinary mana cost payable; an already-waived/alternative cost cannot
     // be combined with a second alternative (CR 118.9a).
-    let selected_price_method = if !base_mana_cost_waived {
+    let selected_price_method = if !base_mana_cost_waived && alternative_cost.is_none() {
         let spell = game.object(spell_id).ok_or_else(|| GameLoopError::InvalidState("Effect-authorized spell disappeared".into()))?;
         let prices = crate::alternative_cast::price_routes::effect_candidates(game, caster, spell, casting_method)?;
         if prices.is_empty() { None } else {
@@ -1634,6 +1678,24 @@ pub(crate) fn cast_spell_from_resolving_effect_with_context(
         }
     } else { None };
     let casting_method = selected_price_method.as_ref().unwrap_or(casting_method);
+    let mut selected_cost = alternative_cost.cloned();
+    while let Some(branches) = selected_cost.as_ref().and_then(|cost| cost.as_one_of()) {
+        if branches.is_empty() { return Err(GameLoopError::InvalidState("empty effect casting price".into())); }
+        let options = branches.iter().enumerate().map(|(index, branch)|
+            crate::decisions::context::SelectableOption::new(index, branch.display())).collect();
+        let context = crate::decisions::context::SelectOptionsContext::new(caster, Some(spell_id),
+            "Choose the alternative casting cost", options, 1, 1);
+        let choice = decision_maker.decide_options(game, &context);
+        if decision_maker.awaiting_choice() { return Ok(None); }
+        let [index] = choice.as_slice() else { return Err(GameLoopError::InvalidState("Expected one alternative cost".into())); };
+        selected_cost = Some(branches.get(*index).cloned().ok_or_else(|| GameLoopError::InvalidState("Unknown alternative cost".into()))?);
+    }
+    // Dynamic mana requires its own prospective-cost announcement. Refuse an
+    // unsupported model rather than silently omit that payment component.
+    if selected_cost.as_ref().is_some_and(|cost| cost.costs().iter().any(|component| component.dynamic_mana_cost_ref().is_some())) {
+        return Err(GameLoopError::InvalidState("unannounced dynamic effect casting price".into()));
+    }
+
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut trigger_queue = TriggerQueue::new();
     state.save_checkpoint(game);
@@ -1682,7 +1744,8 @@ pub(crate) fn cast_spell_from_resolving_effect_with_context(
         None,
         stack_id,
     );
-    pending.base_mana_cost_waived = base_mana_cost_waived;
+    pending.base_mana_cost_waived = base_mana_cost_waived || selected_cost.is_some();
+    pending.effect_alternative_cost = selected_cost;
     pending.effect_mana_cost_reduction = mana_cost_reduction.cloned();
     pending.effect_additional_mana_cost = additional_mana_cost.cloned();
     pending.effect_mana_spend_mode = mana_spend_mode;
@@ -2043,17 +2106,7 @@ fn optional_mana_cost_is_affordable_with_spell_modifiers(
     branch: Option<usize>,
 ) -> Option<bool> {
     let spell = game.object(pending.spell_id)?;
-    let base_cost = if pending.base_mana_cost_waived {
-        crate::mana::ManaCost::new()
-    } else {
-        crate::decision::spell_mana_cost_for_cast(
-            game,
-            pending.caster,
-            spell,
-            &pending.casting_method,
-            pending.from_zone,
-        )?
-    };
+    let base_cost = pending_cast_base_mana_cost(game, pending)?;
 
     let mut optional_costs_paid = pending.optional_costs_paid.clone();
     optional_costs_paid.pay_times(optional_cost_index, 1);
@@ -2476,6 +2529,54 @@ pub(super) fn get_spell_mana_cost(
     crate::decision::spell_mana_cost_for_cast(game, caster, obj, casting_method, from_zone)
 }
 
+/// The announced resolving-effect price replaces the mana cost, before all
+/// ordinary additional costs, modifiers and final floors (CR 118.9d).
+fn pending_cast_base_mana_cost(game: &GameState, pending: &PendingCast) -> Option<crate::mana::ManaCost> {
+    if let Some(cost) = &pending.effect_alternative_cost {
+        let mana = cost.costs().iter().filter_map(|cost| cost.mana_cost_ref())
+            .fold(crate::mana::ManaCost::new(), |sum, part| crate::decision::add_mana_cost(&sum, part));
+        let mut priced_spell = game.object(pending.spell_id)?.clone();
+        priced_spell.mana_cost = Some(mana.into());
+        return crate::decision::spell_mana_cost_for_cast(game, pending.caster, &priced_spell,
+            &CastingMethod::Normal, pending.from_zone);
+    }
+    if pending.base_mana_cost_waived { return Some(crate::mana::ManaCost::new()); }
+    get_spell_mana_cost(game, pending.spell_id, pending.caster, &pending.casting_method, pending.from_zone)
+}
+
+fn lock_effect_cast_price(game: &GameState, pending: &mut PendingCast) -> Result<(), GameLoopError> {
+    let Some(cost) = pending.effect_alternative_cost.take() else { return Ok(()); };
+    let mut context = crate::effects::ExecutionContext::new_default(pending.spell_id, pending.caster)
+        .with_tagged_objects(pending.tagged_objects.clone());
+    context.x_value = pending.x_value;
+    context.announced_targets = Some(pending.chosen_targets.iter().map(|target| match target {
+        Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
+        Target::Player(player) => crate::effects::ResolvedTarget::Player(*player),
+    }).collect());
+    pending.effect_alternative_cost = Some(cost.try_map(|cost| {
+        let Some(effect) = cost.effect_ref() else { return Ok(cost); };
+        let fixed = if let Some(life) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
+            Some(crate::effect::Effect::new(crate::effects::LoseLifeEffect::new(
+                crate::effect::Value::Fixed(crate::effects::helpers::resolve_value(game, &life.amount, &context)?), life.player.clone())))
+        } else if let Some(life) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
+            Some(crate::effect::Effect::new(crate::effects::PayLifeEffect::new(
+                crate::effects::helpers::resolve_value(game, &life.amount, &context)?, life.player.clone())))
+        } else if let Some(energy) = effect.downcast_ref::<crate::effects::PayEnergyEffect>() {
+            Some(crate::effect::Effect::new(crate::effects::PayEnergyEffect::new(
+                crate::effects::helpers::resolve_value(game, &energy.amount, &context)?, energy.player.clone())))
+        } else { None };
+        Ok::<_, crate::effects::ExecutionError>(fixed.map(crate::costs::Cost::validated_effect).unwrap_or(cost))
+    })?);
+    Ok(())
+}
+
+fn append_effect_price_cost_steps(pending: &PendingCast, out: &mut Vec<ActivationCostStep>) {
+    if let Some(cost) = &pending.effect_alternative_cost {
+        let components = cost.costs().iter().filter(|cost| cost.mana_cost_ref().is_none()).cloned().collect::<Vec<_>>();
+        append_activation_cost_steps_from_components(&components, out);
+    }
+}
+
 /// Get pips that require announcement (hybrid/Phyrexian pips with multiple options).
 ///
 /// Returns a list of (pip_index, alternatives) for each pip that has multiple payment options.
@@ -2725,6 +2826,7 @@ pub(super) fn check_x_or_continue(
     // X is in that mana cost. An X that appears only in an additional cost
     // ("pay X life", "sacrifice X creatures") is still chosen (CR 107.3a).
     if pending.base_mana_cost_waived
+        && pending.effect_alternative_cost.as_ref().is_none_or(|cost| !cost.costs().iter().any(|component| (component.mana_cost_ref().is_some_and(|mana| mana.has_x()) || cost_references_x(component))))
         && game
             .object(pending.spell_id)
             .and_then(|spell| spell.mana_cost.as_ref())
@@ -2745,13 +2847,7 @@ pub(super) fn check_x_or_continue(
 
     // CR 601.2b: an announced optional cost with {X} (Kicker {X}) is part of
     // the X the player now announces.
-    let mana_cost = get_spell_mana_cost(
-        game,
-        pending.spell_id,
-        pending.caster,
-        &pending.casting_method,
-        pending.from_zone,
-    )
+    let mana_cost = pending_cast_base_mana_cost(game, &pending)
     .zip(game.object(pending.spell_id))
     .map(|(base, spell)| {
         mana_cost_with_paid_optional_costs(&base, spell, &pending.optional_costs_paid)
@@ -2781,7 +2877,7 @@ pub(super) fn check_x_or_continue(
             );
             locked.mana_value().saturating_sub(effective.mana_value())
         });
-    let (needs_x, min_x, mut max_x) = compute_spell_cast_x_bounds_with_reduction(
+    let (mut needs_x, min_x, mut max_x) = compute_spell_cast_x_bounds_with_reduction(
         game,
         pending.caster,
         pending.spell_id,
@@ -2789,6 +2885,16 @@ pub(super) fn check_x_or_continue(
         mana_cost.as_ref(),
         mana_reduction_headroom,
     );
+
+    if let Some(cost) = &pending.effect_alternative_cost {
+        let non_mana = cost.costs().iter().filter(|component| component.mana_cost_ref().is_none()).cloned().collect::<Vec<_>>();
+        if non_mana.iter().any(cost_references_x) {
+            if let Some(bound) = max_x_from_non_mana_costs(game, pending.caster, pending.spell_id, &non_mana) {
+                max_x = if needs_x { max_x.min(bound) } else { bound };
+            }
+            needs_x = true;
+        }
+    }
 
     if needs_x && pending.cost_resource_reduction > 0 {
         let x_pips = mana_cost.as_ref().map_or(1, |cost| {
@@ -2823,9 +2929,10 @@ fn announce_modal_mana_costs(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
     if pending.announced_cost_replacements.is_some() { return Ok(()); }
-    let steps = collect_spell_cost_steps(game, pending.spell_id, pending.caster,
+    let mut steps = collect_spell_cost_steps(game, pending.spell_id, pending.caster,
         &pending.casting_method, &pending.optional_costs_paid, &pending.splice_costs,
         pending.chosen_modes.as_deref(), 0, pending.from_zone);
+    append_effect_price_cost_steps(pending, &mut steps);
     let mut replacements = Vec::new();
     let mut additional = pending.effect_additional_mana_cost.clone().unwrap_or_default();
     for step in steps {
@@ -4507,17 +4614,7 @@ fn announced_spell_mana_cost(
     pending: &PendingCast,
 ) -> Option<crate::mana::ManaCost> {
     let spell = game.object(pending.spell_id)?;
-    let base = if pending.base_mana_cost_waived {
-        crate::mana::ManaCost::new()
-    } else {
-        get_spell_mana_cost(
-            game,
-            pending.spell_id,
-            pending.caster,
-            &pending.casting_method,
-            pending.from_zone,
-        )?
-    };
+    let base = pending_cast_base_mana_cost(game, pending)?;
     let combined = mana_cost_with_paid_optional_and_splice_costs(
         &base,
         spell,
@@ -4587,19 +4684,11 @@ pub(super) fn continue_to_mana_payment(
         pending.targeting_announcement = Some(capture_announced_targeting(game, entry)?);
     }
 
+    lock_effect_cast_price(game, &mut pending)?;
+
     // Compute the effective mana cost for this spell
     let effective_cost = if let Some(obj) = game.object(pending.spell_id) {
-        let base_cost = if pending.base_mana_cost_waived {
-            Some(crate::mana::ManaCost::new())
-        } else {
-            crate::decision::spell_mana_cost_for_cast(
-                game,
-                pending.caster,
-                obj,
-                &pending.casting_method,
-                pending.from_zone,
-            )
-        };
+        let base_cost = pending_cast_base_mana_cost(game, &pending);
 
         // Calculate total costs; keyword payment substitutions happen in the planner.
         base_cost.map(|bc| {
@@ -4677,6 +4766,9 @@ pub(super) fn continue_to_mana_payment(
             pending.chosen_targets.len(),
             pending.from_zone,
         );
+        let mut price_steps = Vec::new();
+        append_effect_price_cost_steps(&pending, &mut price_steps);
+        pending.remaining_cost_steps.extend(price_steps);
         if let Some(replacements) = pending.announced_cost_replacements.as_ref() {
             let mut replacements = replacements.clone();
             let mut expanded = Vec::new();

@@ -73,7 +73,10 @@ impl From<ResponseError> for GameLoopError {
 
 impl From<CombatError> for GameLoopError {
     fn from(err: CombatError) -> Self {
-        GameLoopError::CombatError(err)
+        match err {
+            CombatError::ExecutionFailed(error) => GameLoopError::ExecutionFailed(error),
+            err => GameLoopError::CombatError(err),
+        }
     }
 }
 

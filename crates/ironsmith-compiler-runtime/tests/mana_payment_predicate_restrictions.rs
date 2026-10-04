@@ -157,7 +157,7 @@ fn actual_colorless_credit_respects_each_transaction_arm_after_source_departure(
             &ManaCost::from_symbols(vec![ManaSymbol::Colorless]),
             0,
             PaymentReason::Effect
-        ));
+        ).expect("checked fixture mana payment"));
         assert_eq!(g.player(alice).unwrap().mana_pool.total(), 0);
     }
 }

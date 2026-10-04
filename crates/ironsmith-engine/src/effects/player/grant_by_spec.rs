@@ -94,6 +94,7 @@ impl EffectExecutor for GrantBySpecEffect {
                 grant.permission_identity = identity.clone();
                 grant.shared_usage_id = shared_budget;
                 grant.cast_this_way_grants = spec.cast_this_way_grants;
+                grant.permanent_this_way_grants = spec.permanent_this_way_grants;
                 grant.cast_this_way_filter = spec.cast_this_way_filter;
                 grant.on_use_effects = spec.on_use_effects;
                 grant.usage_limit = spec.usage_limit;

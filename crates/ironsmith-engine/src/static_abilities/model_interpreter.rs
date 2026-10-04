@@ -387,6 +387,12 @@ impl StaticAbilityModelInterpreter {
                 .cloned()
                 .map(StaticAbility::from_model)
                 .collect(),
+            permanent_this_way_grants: spec
+                .permanent_this_way_grants
+                .iter()
+                .cloned()
+                .map(StaticAbility::from_model)
+                .collect(),
         }
     }
 

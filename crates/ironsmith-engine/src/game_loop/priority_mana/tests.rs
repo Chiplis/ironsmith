@@ -376,7 +376,7 @@ fn i006_bulk_snow_payment_rejects_nonsnow_mana_and_accepts_snow_mana() {
         &cost,
         0,
         crate::costs::PaymentReason::Other,
-    ));
+    ).expect("checked fixture mana payment"));
     assert_eq!(game.player(alice).expect("player").mana_pool.colorless, 1);
 
     add_test_mana_from_source(&mut game, alice, "Snow Blue Source", true, ManaSymbol::Blue);
@@ -393,7 +393,7 @@ fn i006_bulk_snow_payment_rejects_nonsnow_mana_and_accepts_snow_mana() {
         &cost,
         0,
         crate::costs::PaymentReason::Other,
-    ));
+    ).expect("checked fixture mana payment"));
     assert_eq!(game.player(alice).expect("player").mana_pool.blue, 0);
     assert_eq!(game.player(alice).expect("player").mana_pool.colorless, 1);
 }
@@ -453,7 +453,7 @@ fn i006_mana_remembers_a_continuously_snow_source_after_the_effect_ends() {
         &snow_cost,
         0,
         crate::costs::PaymentReason::Other,
-    ));
+    ).expect("checked fixture mana payment"));
 }
 
 #[test]
@@ -1702,7 +1702,7 @@ fn u078_pool_doubling_publishes_each_spend_without_copying_the_old_payload() {
         &ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]),
         0,
         crate::costs::PaymentReason::CastSpell,
-    ));
+    ).expect("checked fixture mana payment"));
 
     let spent_events = game
         .take_pending_trigger_events()
@@ -1771,7 +1771,7 @@ fn u078_on_spend_predicate_does_not_restrict_ordinary_use_or_trigger_on_mismatch
         &ManaCost::from_symbols(vec![ManaSymbol::Red]),
         0,
         crate::costs::PaymentReason::CastSpell,
-    ));
+    ).expect("checked fixture mana payment"));
     assert!(game.take_pending_trigger_entries().is_empty());
 }
 
@@ -1784,7 +1784,7 @@ fn indexed_grant_cost_keeps_announcement_method_after_provider_leaves() {
     let cost_method = |amount| crate::alternative_cast::AlternativeCastingMethod::FromZone {
         name: "Indexed graveyard permission".into(), zone: Zone::Graveyard,
         total_cost: TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(amount)])),
-        condition: None, exiles_after_resolution: false,
+        condition: None, exiles_after_resolution: false, entry_counters: Vec::new(),
     };
     let first = cost_method(1);
     let second = cost_method(3);

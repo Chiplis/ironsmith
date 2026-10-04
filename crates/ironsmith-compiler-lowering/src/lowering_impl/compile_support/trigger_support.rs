@@ -751,6 +751,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::YouGainLifeDuringTurn(during_turn) => {
             Trigger::you_gain_life_during_turn(during_turn)
         }
+        TriggerSpec::PlayerPaysLife(player) => Trigger::player_pays_life(player),
         TriggerSpec::PlayerLosesLife(player) => Trigger::player_loses_life(player),
         TriggerSpec::PlayersLoseLifeOneOrMore(player) => {
             Trigger::players_lose_life_one_or_more(player)
@@ -1441,6 +1442,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::SpellCountered { .. }
         | TriggerSpec::PlayerGainsLife { .. }
         | TriggerSpec::PlayerLosesLife(_)
+        | TriggerSpec::PlayerPaysLife(_)
         | TriggerSpec::PlayersLoseLifeOneOrMore(_)
         | TriggerSpec::OpponentsEachLoseExactLife { .. }
         | TriggerSpec::PlayerLosesGame(_)
@@ -1562,6 +1564,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             | TriggerSpec::YouGainLifeCausedBy(_)
             | TriggerSpec::YouGainLifeDuringTurn(_)
             | TriggerSpec::PlayerLosesLife(_)
+        | TriggerSpec::PlayerPaysLife(_)
             | TriggerSpec::PlayersLoseLifeOneOrMore(_)
             | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
             | TriggerSpec::ThisIsDealtDamage

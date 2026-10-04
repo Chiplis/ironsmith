@@ -5563,6 +5563,10 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push(format!("created with {source}"));
         }
 
+        if self.milled_into_graveyard_this_turn {
+            parts.push("that was milled this turn".to_string());
+        }
+
         if self.entered_graveyard_from_library_this_turn && self.zone == Some(Zone::Graveyard) {
             parts.push("that was put there from their library this turn".to_string());
         } else if self.entered_graveyard_from_battlefield_this_turn
