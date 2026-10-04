@@ -5022,8 +5022,15 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter }),
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out: None }),
         )
+    }
+
+    pub fn subject_verb_phase_exchange(phase_in: ObjectFilter, phase_out: ObjectFilter) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll {
+                filter: phase_in, simultaneous_phase_out: Some(phase_out),
+            }))
     }
 
     pub fn subject_verb_transform(target: TargetAst) -> Self {

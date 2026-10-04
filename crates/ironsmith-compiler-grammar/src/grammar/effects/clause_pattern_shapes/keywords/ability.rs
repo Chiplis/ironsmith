@@ -13,6 +13,7 @@ pub(super) fn parse_keyword_mechanic_lexed<'a>(
         parse_harness,
         parse_roll_d6,
         parse_odd_even_result,
+        parse_simultaneous_phase_exchange,
         parse_phase,
         parse_open_attraction,
         alt((

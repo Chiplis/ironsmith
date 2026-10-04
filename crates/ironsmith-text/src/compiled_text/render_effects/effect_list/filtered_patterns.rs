@@ -169,11 +169,6 @@
         return compact;
     }
     if filtered.len() == 2
-        && let Some(compact) = describe_phase_in_out_pair(filtered[0], filtered[1])
-    {
-        return compact;
-    }
-    if filtered.len() == 2
         && let Some(split_for_players) =
             filtered[0].downcast_ref::<crate::effects::ForPlayersEffect>()
         && let Some(choice_for_players) =

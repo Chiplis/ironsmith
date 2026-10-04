@@ -4,9 +4,16 @@ Status: **UNVALIDATED**. No builds, compilation, or tests run under the implemen
 
 Frozen stack07 `bc9e56e2` identities: `fixtures/discard_cost_values.json.fixture`.
 
-Three standalone complete-card proposals: Knollspine Invocation, Krovikan Sorcerer, Sanctum Spirit. Kozilek, the Great Distortion is now a joint complete-card proposal with the integrated relative-hand quantity family.
+The grammar/payment implementations for Knollspine Invocation, Krovikan Sorcerer,
+Sanctum Spirit and Kozilek remain integrated, but all four are **partial** pending
+the completed-action hand-disclosure Undo correction. Their whole-card source
+coverage claims are withheld. Kozilek's draw body is now represented by the
+relative-hand quantity family. See
+[the exact disclosure boundary](card-failure-payment-disclosure-boundary.md).
 
-Remaining partial: Gix, Yawgmoth Praetor retains its independent plural immediate play/cast clause blocker; a singular CastTaggedEffect cannot stand in for choosing and playing multiple cards from the exiled pool.
+Gix, Yawgmoth Praetor additionally retains its independent plural immediate
+play/cast clause blocker; a singular CastTaggedEffect cannot stand in for
+choosing and playing multiple cards from the exiled pool.
 
 ## Mechanism
 

@@ -38,6 +38,7 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::Afflict(_)
             | KeywordAction::Dethrone
             | KeywordAction::Evolve
+            | KeywordAction::Increment
             | KeywordAction::Ingest
             | KeywordAction::Mentor
             | KeywordAction::Training
@@ -154,6 +155,7 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         | KeywordAction::BattleCry
         | KeywordAction::Dethrone
         | KeywordAction::Evolve
+        | KeywordAction::Increment
         | KeywordAction::Ingest
         | KeywordAction::Mentor => None,
         KeywordAction::Skulk => Some(CompilerStaticAbility::skulk()),
@@ -749,6 +751,7 @@ mod dynamic_keyword_grant_tests {
         "battle cry",
         "dethrone",
         "evolve",
+        "increment",
         "ingest",
         "mentor",
         "training",

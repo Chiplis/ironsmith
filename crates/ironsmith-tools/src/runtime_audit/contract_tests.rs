@@ -426,3 +426,12 @@ fn attachment_event_does_not_claim_unrelated_event_amounts() {
     let value = json!({"card": {}, "abilities": [triggered(model, vec![loss(json!({"EventValue": "Amount"}))])]});
     assert_eq!(errors(&audit(&value)).len(), 1);
 }
+
+#[test]
+fn caster_specific_mana_value_requires_a_cast_event_scope() {
+    let value=json!({"card": {}, "abilities": [
+        triggered(json!({"SpellCast": {"caster": "You", "filter": null}}), vec![loss(json!("CasterManaSpentToCastTriggeringObject"))]),
+        triggered(json!({"BeginningOfUpkeep": {"player": "Any"}}), vec![loss(json!("CasterManaSpentToCastTriggeringObject"))]),
+    ]});
+    assert_eq!(errors(&audit(&value)).len(),1);
+}

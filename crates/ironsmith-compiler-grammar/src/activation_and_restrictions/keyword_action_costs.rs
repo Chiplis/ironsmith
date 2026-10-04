@@ -19,6 +19,7 @@ use crate::util::parse_value;
 
 const SIMPLE_HEAD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
     ("evolve", KeywordAction::Evolve),
+    ("increment", KeywordAction::Increment),
     ("mentor", KeywordAction::Mentor),
     ("training", KeywordAction::Training),
     ("soulbond", KeywordAction::Soulbond),
@@ -191,6 +192,7 @@ const SINGLE_WORD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
     ("dethrone", KeywordAction::Dethrone),
     ("enlist", KeywordAction::Enlist),
     ("evolve", KeywordAction::Evolve),
+    ("increment", KeywordAction::Increment),
     ("extort", KeywordAction::Extort),
     ("haunt", KeywordAction::Haunt),
     ("ingest", KeywordAction::Ingest),
@@ -1824,5 +1826,17 @@ mod tests {
                 .expect("coordinated discard objects should inherit the verb");
         assert_eq!(total.costs().len(), 2, "{total:#?}");
         assert!(format!("{total:#?}").contains("Island"));
+    }
+}
+
+#[cfg(test)]
+mod increment_tests {
+    use super::*;
+    #[test]
+    fn increment_registers_as_a_real_typed_keyword_action() {
+        assert_eq!(parse_single_word_keyword_action("increment"), Some(KeywordAction::Increment));
+        assert_eq!(simple_keyword_action_for_head("increment"), Some(KeywordAction::Increment));
+        assert!(is_known_keyword_action_head("increment"));
+        assert_eq!(parse_single_word_keyword_action("incremental"), None);
     }
 }

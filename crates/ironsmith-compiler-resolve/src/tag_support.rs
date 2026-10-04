@@ -1946,9 +1946,6 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
                     | SubjectVerbActionAst::PermanentState(
                         PermanentStateActionAst::PhaseOutAll { filter, .. },
                     )
-                    | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll {
-                        filter,
-                    })
                     | SubjectVerbActionAst::PermanentState(
                         PermanentStateActionAst::ScalePowerToughnessAll { filter, .. },
                     )
@@ -1967,6 +1964,10 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
                     | SubjectVerbActionAst::StatChanges(
                         StatChangeActionAst::RemoveAbilitiesAll { filter, .. },
                     ) => filter_references_event_derived_amount(filter),
+                    SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out }) => {
+                        filter_references_event_derived_amount(filter)
+                            || simultaneous_phase_out.as_ref().is_some_and(filter_references_event_derived_amount)
+                    }
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                         dynamic_power_toughness: Some((power, toughness)),
                         ..
@@ -2203,14 +2204,15 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 filter,
                 ..
             })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll {
-                filter,
-            })
             | SubjectVerbActionAst::PermanentState(
                 PermanentStateActionAst::ScalePowerToughnessAll { filter, .. },
             )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { filter }) => {
                 filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
+            }
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out }) => {
+                filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
+                    || simultaneous_phase_out.as_ref().is_some_and(|filter| filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()))
             }
             SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll {
                 tap_filter,

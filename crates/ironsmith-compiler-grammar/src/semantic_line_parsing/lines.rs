@@ -2172,6 +2172,9 @@ fn returned_object_static_followup_effects<S: AsRef<[OwnedLexToken]>>(
 }
 
 fn sentence_is_conditional_self_replacement_effect(sentence: &[OwnedLexToken]) -> bool {
+    if crate::effect_sentences::recognizes_life_gain_replacement_sentence(sentence) {
+        return true;
+    }
     let instead_semantics =
         crate::grammar::effects::classify_instead_followup_semantics_tokens(sentence);
     if instead_semantics != crate::cards::builders::InsteadSemantics::SelfReplacement {

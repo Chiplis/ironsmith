@@ -1374,6 +1374,11 @@ pub fn resolve_it_tag_key(tag: &TagKey, refs: &ReferenceEnv) -> Result<TagKey, C
     {
         return Ok(concrete.clone());
     }
+    if tag.as_str() == crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG {
+        return Err(CardTextError::ParseError(
+            "returned-object quantity requires a prior return instruction".into(),
+        ));
+    }
     if tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str() {
         // A local exile result can supply this reference; an unrelated event
         // object cannot replace the source's persistent linked exile set.

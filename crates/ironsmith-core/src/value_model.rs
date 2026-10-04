@@ -816,6 +816,9 @@ pub enum Value {
     /// object vote ("for each creature with one or more votes, put that many
     /// stun counters on it").
     ObjectVoteCount(Box<ChooseSpec>),
+    /// Frozen mana the triggering spell's caster actually spent, excluding
+    /// other players' Assist contributions. Distinct from total cast payment.
+    CasterManaSpentToCastTriggeringObject,
 }
 
 impl Value {
@@ -2109,5 +2112,25 @@ mod tests {
             }
             _ => panic!("wrong condition variant"),
         }
+    }
+}
+
+/// Shared structural condition for the Increment triggered keyword. Actual
+/// cast payment is frozen by the event; source P/T is evaluated both when
+/// triggering and on resolution, as required by its intervening "if".
+impl Condition {
+    pub fn increment() -> Self {
+        Self::Or(
+            Box::new(Self::ValueComparison {
+                left: Value::CasterManaSpentToCastTriggeringObject,
+                operator: ValueComparisonOperator::GreaterThan,
+                right: Value::SourcePower,
+            }),
+            Box::new(Self::ValueComparison {
+                left: Value::CasterManaSpentToCastTriggeringObject,
+                operator: ValueComparisonOperator::GreaterThan,
+                right: Value::SourceToughness,
+            }),
+        )
     }
 }

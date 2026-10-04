@@ -13,6 +13,62 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     use crate::tag::CompilerReferenceTag as Tag;
     let offset = usize::from(words.first() == Some(&"the"));
     let rest = &words[offset..];
+    // A definite possessive retains the referenced object, rather than the
+    // resolving spell as damage source. Destroy keeps departure LKI; a live
+    // indestructible object is still read from the same tagged identity.
+    if offset == 1 && rest.len() >= 2 {
+        let noun = rest[0].trim_end_matches("'s").trim_end_matches('s');
+        if matches!(
+            noun,
+            "creature" | "artifact" | "enchantment" | "permanent" | "planeswalker" | "card"
+        ) {
+            let spec = tagged(Tag::It, &format!("the {noun}"));
+            match rest.get(1..) {
+                Some(["power", ..]) => return Some((Value::PowerOf(spec), 3)),
+                Some(["toughness", ..]) => return Some((Value::ToughnessOf(spec), 3)),
+                Some(["mana", "value", ..]) => return Some((Value::ManaValueOf(spec), 4)),
+                _ => {}
+            }
+        }
+    }
+    if rest.starts_with(&["tapped", "creatures", "power"])
+        || rest.starts_with(&["tapped", "creature's", "power"])
+    {
+        return Some((
+            Value::PowerOf(tagged(Tag::TapCost0, "the tapped creature")),
+            offset + 3,
+        ));
+    }
+    for (quantity, length) in [
+        (&["power"][..], 1),
+        (&["toughness"][..], 1),
+        (&["mana", "value"][..], 2),
+    ] {
+        if rest.starts_with(quantity)
+            && rest.get(length..).is_some_and(|tail| {
+                tail.starts_with(&["of", "the", "card", "returned", "this", "way"])
+            })
+        {
+            let spec = Box::new(ChooseSpec::Tagged(crate::tag::TagKey::from(
+                crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG,
+            )));
+            let value = match quantity {
+                ["power"] => Value::PowerOf(spec),
+                ["toughness"] => Value::ToughnessOf(spec),
+                _ => Value::ManaValueOf(spec),
+            };
+            return Some((value, offset + length + 6));
+        }
+    }
+    if words.starts_with(&["its", "loyalty"]) {
+        return Some((
+            Value::CountersOn(
+                tagged(Tag::It, "it"),
+                Some(crate::object::CounterType::Loyalty),
+            ),
+            2,
+        ));
+    }
     // The demonstrative is retained for reference resolution: "that spell"
     // cannot become a created token or a set of destroyed permanents.
     if rest.starts_with(&["mana", "value", "of", "that", "spell"]) {
@@ -106,6 +162,44 @@ mod tests {
             vec!["the", "milled", "cards", "damage"],
         ] {
             assert!(parse(&words).is_none());
+        }
+    }
+}
+
+#[cfg(test)]
+mod damage_reference_tests {
+    use super::*;
+    #[test]
+    fn definite_cost_and_returned_quantities_keep_distinct_identities() {
+        for (text, expected_tag) in [
+            (
+                "the creature's power",
+                crate::tag::CompilerReferenceTag::It.as_str(),
+            ),
+            (
+                "the artifact's mana value",
+                crate::tag::CompilerReferenceTag::It.as_str(),
+            ),
+            (
+                "the tapped creature's power",
+                crate::tag::CompilerReferenceTag::TapCost0.as_str(),
+            ),
+            (
+                "the power of the card returned this way",
+                crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG,
+            ),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let (value, used) = super::super::parse_value_expr_tokens(&tokens).unwrap();
+            assert_eq!(used, tokens.len(), "{text}");
+            let spec = match value.unhinted() {
+                Value::PowerOf(spec) | Value::ManaValueOf(spec) => spec,
+                _ => panic!("{value:?}"),
+            };
+            assert!(
+                matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == expected_tag),
+                "{text}: {value:?}"
+            );
         }
     }
 }

@@ -4169,3 +4169,10 @@ fn strict_hand_comparison_retains_the_authored_operand_for_difference() {
         }
     ));
 }
+
+#[test]
+fn strict_hand_comparisons_preserve_existential_player_group_scopes() {
+    let tokens = lex_line("If an opponent has fewer than three cards in hand", 0).unwrap();
+    assert!(matches!(parse_predicate(&predicate_tokens_after_if(&tokens)).unwrap(),
+        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer { player: PlayerAst::Opponent, count: 2 })));
+}

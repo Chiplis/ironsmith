@@ -1630,6 +1630,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
         | Value::ManaSpentToCast(_)
         | Value::ManaSpentToCastTriggeringObject
+        | Value::CasterManaSpentToCastTriggeringObject
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
@@ -2321,6 +2322,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
         | Value::ManaSpentToCast(_)
         | Value::ManaSpentToCastTriggeringObject
+        | Value::CasterManaSpentToCastTriggeringObject
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::WasKicked

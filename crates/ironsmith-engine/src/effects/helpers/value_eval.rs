@@ -826,6 +826,21 @@ pub(crate) fn resolve(
                     .mana_from_source_spent_to_cast_this_spell(value, source_filter))
             }
         }
+        Value::CasterManaSpentToCastTriggeringObject => {
+            let ctx = context.require_execution(value, RESOLUTION_ONLY);
+            let spent = ctx.triggering_event.as_ref()
+                .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+                .and_then(|cast| match &cast.snapshot {
+                    Some(snapshot) => snapshot.caster_mana_spent_to_cast,
+                    None => game.object(cast.spell).and_then(|object| object.caster_mana_spent_to_cast),
+                });
+            let spent = spent.ok_or_else(|| ExecutionError::UnresolvableValue(
+                "triggering spell has no captured caster payment evidence".into(),
+            ))?;
+            i32::try_from(spent).map_err(|_| ExecutionError::UnresolvableValue(
+                "triggering spell caster payment exceeds the integer value range".into(),
+            ))
+        }
         Value::ManaSpentToCastTriggeringObject => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
             {

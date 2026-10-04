@@ -94,6 +94,9 @@ mod mill_procedure;
 mod next_spell_family;
 mod optional_companion_fanout;
 mod pair_procedure;
+pub(crate) fn recognizes_life_gain_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
+    pair_procedure::recognizes_life_gain_replacement_sentence(tokens)
+}
 mod player_subject_sequences;
 mod procedures;
 mod rider_procedure;

@@ -1,16 +1,17 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "a59a0c96b305b23283974e9f3f6763ceb05e18f7",
+  "source_implementation_commit": "865e1be8501c212079d3d783dfd84a4dc3fac5b9",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 364,
-    "additional_proposed_compile_entries": 364,
+    "additional_proposed_unique_cards": 398,
+    "additional_proposed_compile_entries": 398,
     "extra_fixture_entries_not_baseline_failures": [],
-    "source_coverage_is_not_verified_recovery": true
+    "source_coverage_is_not_verified_recovery": true,
+    "known_runtime_partial_previous_proposals": 4
   },
   "workflow": {
     "effective_at": "2026-10-03T21:19:53Z",
@@ -75,7 +76,8 @@
         "Wall of Wonder",
         "Wingnut, Bat on the Belfry",
         "Zar Ojanen, Scion of Efrava"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "keyword-action-alternatives",
@@ -90,7 +92,8 @@
         "Proft, Consulting Detective",
         "Prudent Fateseer // Peer Review",
         "Saheeli, Consul of Oversight"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "passive-noncombat-triggers",
@@ -102,7 +105,8 @@
         "Massacre Girl, Most Wanted",
         "Master of Barbs",
         "Wildfire Elemental"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "filtered-discard-triggers",
@@ -115,7 +119,8 @@
         "Mishra, Excavation Prodigy",
         "Urza, Powerstone Prodigy",
         "Veronica, Dissident Scribe"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "cycle-discard-other-triggers",
@@ -126,7 +131,8 @@
         "Archfiend of Ifnir",
         "Curator of Mysteries",
         "Horror of the Broken Lands"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "source-untap-triggers",
@@ -136,7 +142,8 @@
       "baseline_entries": [
         "Immovable Rod",
         "Key to the City"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "venture-dispatch",
@@ -176,7 +183,8 @@
         "Yuan-Ti Malison",
         "Zalto, Fire Giant Duke",
         "Zombie Ogre"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "job-select",
@@ -196,7 +204,8 @@
         "Thief's Knife",
         "Warrior's Sword",
         "White Mage's Staff"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "graveyard-additional-costs",
@@ -212,7 +221,8 @@
         "Me, the Immortal",
         "Rona, Sheoldred's Faithful",
         "Wickerfolk Indomitable"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "pack-tactics",
@@ -228,7 +238,8 @@
         "Targ Nar, Demon-Fang Gnoll",
         "Tiger-Tribe Hunter",
         "Werewolf Pack Leader"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "repeated-static-heads",
@@ -257,7 +268,8 @@
         "Sanctuary Blade",
         "Streetwise Negotiator",
         "Temporal Isolation"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "unlimited-blocking-capacity",
@@ -274,7 +286,8 @@
         "Wall of Glare"
       ],
       "implementation_commit": "13287cbd65c701bdf36234ce925f61684af4e45e",
-      "tests": "authored_not_run"
+      "tests": "authored_not_run",
+      "partial_entries": []
     },
     {
       "id": "x-tap-activation-costs",
@@ -292,7 +305,8 @@
         "Secluded Starforge"
       ],
       "implementation_commit": "c22883225db52cb2fd68d5bf0bdf58adf7db7b41",
-      "tests": "authored_not_run"
+      "tests": "authored_not_run",
+      "partial_entries": []
     },
     {
       "id": "compound-blight-forage-costs",
@@ -340,7 +354,8 @@
         "Wall of Nets exile and return ownership",
         "Joven Ferrets next-untap skip",
         "The Wretched control duration"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "conditional-counted-and-compound-block-capacity",
@@ -369,7 +384,8 @@
         "full multi-block current combat edges for referenced creatures",
         "dynamic Equipment attachment counts evaluated at declaration",
         "forced-all legal block requirements composed with unlimited permission"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "empower-jace-action",
@@ -466,7 +482,8 @@
         "self plus other union references",
         "event-time turn qualifications and once-per-turn restrictions",
         "exact self-origin functional zones, preserving existing self-anywhere readers"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "filtered-static-damage-prevention",
@@ -498,7 +515,8 @@
       ],
       "excluded_semantics": [
         "Cover of Winter requires shared X allocation across simultaneous recipients; and/or and one-or-more recipient shapes stay rejected."
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "signed-controller-state-dynamic-anthems",
@@ -524,7 +542,8 @@
         "layer-evaluated controller scalars and source-independent aggregate filters",
         "history-publication and turn-context cache invalidation",
         "legacy object-relative/event/tagged Dynamic paths preserved"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "card-origin-zone-movement-triggers",
@@ -552,7 +571,8 @@
         "one-or-more batches, owner and turn guards",
         "look-back source behavior limited to supported battlefield/graveyard origins",
         "actual mill, return, sacrifice and library producer scenarios authored"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "controller-scoped-zero-loyalty-exception",
@@ -568,7 +588,8 @@
         "live current-controller scoped zero-loyalty SBA exception",
         "incremental candidates revisited after last source leaves, phases, changes control or loses abilities",
         "other state-based death rules and actual granted loyalty activation preserved"
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "passive-filtered-tap-state-triggers",
@@ -666,7 +687,8 @@
         "Source versus prevention-host exact LKI; actual prevented amount distinct from proposed damage.",
         "Genuine damage replacement distinct from prevention plus independent additional actions; unpreventable damage preserved.",
         "Shared additive entry-counter groups retain zone and owner/controller filters."
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "excess-damage-result-binding",
@@ -687,7 +709,8 @@
       "semantic_scope": [
         "Action-qualified prior excess damage and typed ambient excess-trigger amount; ordinary damage/life rejected.",
         "No numeric placeholder or card-name special casing; Violent Echoes closes prior Empower partial."
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "event-and-prior-object-quantities",
@@ -710,7 +733,8 @@
         "Independent local X/Y pump quantities; spell mana value includes announced X and exact face.",
         "Actual mana paid, calculated pre-death power/counters, mill and exact Saga event bindings.",
         "Exact departure identity across simultaneous snapshots and pending stack LKI; intentional movement links preserved."
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "collect-evidence-shared-action-and-costs",
@@ -853,12 +877,7 @@
         "Teferi's Imp",
         "Warping Wurm"
       ],
-      "partial_entries": [
-        {
-          "card_name": "The War Doctor",
-          "remaining_blocker": "The Time and Tide simultaneous exchange needs an explicit grammar/lowering/artifact primitive; see phasing-transition-runtime-gaps.json."
-        }
-      ],
+      "partial_entries": [],
       "implementation_commit": "0e5c8fd67b5810db93a9cee0f013d2e11542274e",
       "tests": "authored_not_run",
       "semantic_scope": [
@@ -888,7 +907,8 @@
       "semantic_scope": [
         "Typed combat-recipient and active/passive source filters; every selected source retains an unlimited identity-bound shield.",
         "Actual combat/end-turn and skipped combat-step expiry; delayed-owned prevention metrics retained."
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "persistent-life-gain-replacements",
@@ -911,23 +931,39 @@
       "semantic_scope": [
         "Real ordered additive/doubling life-event modification with dynamic conditions; no extra life-gain event.",
         "Phial exact draw and life bodies, replacement recursion scope and complete instead marker."
-      ]
+      ],
+      "partial_entries": []
     },
     {
       "id": "typed-discard-cost-values",
       "stage": 33,
       "status": "source_implemented_all_validation_deferred",
       "fixture": "fixtures/discard_cost_values.json.fixture",
-      "baseline_entries": [
-        "Knollspine Invocation",
-        "Kozilek, the Great Distortion",
-        "Krovikan Sorcerer",
-        "Sanctum Spirit"
-      ],
+      "baseline_entries": [],
       "partial_entries": [
         {
           "card_name": "Gix, Yawgmoth Praetor",
           "remaining_blocker": "Immediate optional play/cast over the whole exiled pool needs ordered selection and correct land-play rules; the current singular CastTaggedEffect cannot represent the plural clause alone."
+        },
+        {
+          "card_name": "Knollspine Invocation",
+          "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up.",
+          "source_implementation_retained": true
+        },
+        {
+          "card_name": "Kozilek, the Great Distortion",
+          "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up.",
+          "source_implementation_retained": true
+        },
+        {
+          "card_name": "Krovikan Sorcerer",
+          "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up.",
+          "source_implementation_retained": true
+        },
+        {
+          "card_name": "Sanctum Spirit",
+          "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up.",
+          "source_implementation_retained": true
         }
       ],
       "implementation_commit": "a59a0c96b305b23283974e9f3f6763ceb05e18f7",
@@ -951,10 +987,15 @@
         "Sandstone Oracle",
         "Slithermuse",
         "Skull Raid",
-        "Heed the Mists",
-        "Kozilek, the Great Distortion"
+        "Heed the Mists"
       ],
-      "partial_entries": [],
+      "partial_entries": [
+        {
+          "card_name": "Kozilek, the Great Distortion",
+          "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up.",
+          "source_implementation_retained": true
+        }
+      ],
       "implementation_commit": "a59a0c96b305b23283974e9f3f6763ceb05e18f7",
       "tests": "authored_not_run",
       "semantic_scope": [
@@ -979,6 +1020,126 @@
       "semantic_scope": [
         "Independent cast, ability, true colorless-symbol and face-up transaction predicates; inclusive Outlaw type set.",
         "Frozen producing-controller context survives source theft/departure and WASM checkpoint transfer."
+      ]
+    },
+    {
+      "id": "conditional-life-gain-self-replacement",
+      "stage": 34,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/conditional_life_gain.json.fixture",
+      "baseline_entries": [
+        "Dega Sanctuary",
+        "Feed the Clan",
+        "Life Goes On",
+        "Mine Worker",
+        "Rest for the Weary"
+      ],
+      "implementation_commit": "865e1be8501c212079d3d783dfd84a4dc3fac5b9",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete two-sentence self-replacement ownership; same-player references and current predicates."
+      ]
+    },
+    {
+      "id": "single-source-damage-reference-quantities",
+      "stage": 34,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/damage_reference_quantities.json.fixture",
+      "baseline_entries": [
+        "Cinder Cloud",
+        "Kaervek's Purge",
+        "Morgue Burst",
+        "Unerring Sling",
+        "Viashino Heretic",
+        "Compel Brutality"
+      ],
+      "implementation_commit": "865e1be8501c212079d3d783dfd84a4dc3fac5b9",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Exact destruction LKI versus live returned-card identity, tap-cost binding and source loyalty."
+      ]
+    },
+    {
+      "id": "increment-triggered-keyword",
+      "stage": 34,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/increment_keyword.json.fixture",
+      "baseline_entries": [
+        "Ambitious Augmenter",
+        "Berta, Wise Extrapolator",
+        "Cuboid Colony",
+        "Fractal Tender",
+        "Hungry Graffalon",
+        "Pensive Professor",
+        "Tester of the Tangential",
+        "Textbook Tabulator",
+        "Topiary Lecturer"
+      ],
+      "implementation_commit": "865e1be8501c212079d3d783dfd84a4dc3fac5b9",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Actual caster-paid mana distinct from Assist-inclusive total; immutable event evidence, current P/T strict OR and intervening recheck."
+      ]
+    },
+    {
+      "id": "player-life-damage-history-quantities",
+      "stage": 34,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/life_history_quantities.json.fixture",
+      "baseline_entries": [
+        "Ancient Cellarspawn",
+        "Astarion, the Decadent",
+        "Children of Korlis",
+        "Simulacrum",
+        "Warlock Class",
+        "Wound Reflection"
+      ],
+      "implementation_commit": "865e1be8501c212079d3d783dfd84a4dc3fac5b9",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Distinct actual life gain/loss and damage history, correct player scope, turn boundaries and original cast evidence."
+      ]
+    },
+    {
+      "id": "live-battlefield-population-conditions",
+      "stage": 34,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/battlefield_population_conditions.json.fixture",
+      "baseline_entries": [
+        "Goham Djinn",
+        "Halam Djinn",
+        "Ruham Djinn",
+        "Sulam Djinn",
+        "Zanam Djinn",
+        "Knight of Grace",
+        "Knight of Malice",
+        "Kavu Runner",
+        "Skittish Kavu",
+        "Vexing Beetle",
+        "Tenacious Hunter"
+      ],
+      "implementation_commit": "865e1be8501c212079d3d783dfd84a4dc3fac5b9",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Live color population ties, any-controller existence, all-opponent absence and actual counter predicates; conditional grants/anthems."
+      ]
+    },
+    {
+      "id": "explicit-simultaneous-phase-exchange",
+      "stage": 34,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/phasing_transition_triggers.json.fixture",
+      "baseline_entries": [
+        "The War Doctor"
+      ],
+      "supported_controls": [
+        "Time and Tide"
+      ],
+      "implementation_commit": "865e1be8501c212079d3d783dfd84a4dc3fac5b9",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Explicit compiler/artifact exchange captures both original sets and calls one atomic producer.",
+        "Sequential instructions remain sequential; no newly phased-in outgoing observer and no resolution-wide phase-in exclusion tag."
       ]
     }
   ],
@@ -1602,8 +1763,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ]
     },
     {
       "card_name": "Ambuscade Shaman",
@@ -1714,8 +1877,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-life-damage-history-quantities"
+      ]
     },
     {
       "card_name": "Ancient Lumberknot",
@@ -2480,8 +2645,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-life-damage-history-quantities"
+      ]
     },
     {
       "card_name": "Astonishing Spider-Man",
@@ -3468,8 +3635,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ]
     },
     {
       "card_name": "Besmirch",
@@ -5288,8 +5457,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-life-damage-history-quantities"
+      ]
     },
     {
       "card_name": "Chimeric Mass",
@@ -5420,8 +5591,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "single-source-damage-reference-quantities"
+      ]
     },
     {
       "card_name": "Circle of Affliction",
@@ -5926,8 +6099,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "single-source-damage-reference-quantities"
+      ]
     },
     {
       "card_name": "Concerted Effort",
@@ -6620,8 +6795,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ]
     },
     {
       "card_name": "Cult of the Waxing Moon",
@@ -7337,8 +7514,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-life-gain-self-replacement"
+      ]
     },
     {
       "card_name": "Deicide",
@@ -10355,8 +10534,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-life-gain-self-replacement"
+      ]
     },
     {
       "card_name": "Feed the Infection",
@@ -11036,8 +11217,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ]
     },
     {
       "card_name": "Fractured Powerstone",
@@ -12278,8 +12461,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Goldberry, River-Daughter",
@@ -12884,8 +13069,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Halfdane",
@@ -13902,8 +14089,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ]
     },
     {
       "card_name": "Hunter Sliver",
@@ -15448,8 +15637,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "single-source-damage-reference-quantities"
+      ]
     },
     {
       "card_name": "Kaervek's Torch",
@@ -15712,8 +15903,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Kaya, Geist Hunter",
@@ -16160,8 +16353,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Knight of Malice",
@@ -16170,8 +16365,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Knight of the Holy Nimbus",
@@ -16210,10 +16407,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
-      "source_families": [
+      "source_coverage_status": "partial_known_runtime_gap",
+      "source_families": [],
+      "partial_source_families": [
         "typed-discard-cost-values"
-      ]
+      ],
+      "remaining_runtime_gap": "payment-disclosure-undo"
     },
     {
       "card_name": "Knowledge Is Power",
@@ -16398,11 +16597,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
-      "source_families": [
+      "source_coverage_status": "partial_known_runtime_gap",
+      "source_families": [],
+      "partial_source_families": [
         "typed-discard-cost-values",
         "relative-hand-quantities-and-rounding"
-      ]
+      ],
+      "remaining_runtime_gap": "payment-disclosure-undo"
     },
     {
       "card_name": "Krang & Shredder",
@@ -16463,10 +16664,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
-      "source_families": [
+      "source_coverage_status": "partial_known_runtime_gap",
+      "source_families": [],
+      "partial_source_families": [
         "typed-discard-cost-values"
-      ]
+      ],
+      "remaining_runtime_gap": "payment-disclosure-undo"
     },
     {
       "card_name": "Krumar Initiate",
@@ -16953,8 +17156,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-life-gain-self-replacement"
+      ]
     },
     {
       "card_name": "Life of Toshiro Umezawa // Memory of Toshiro",
@@ -18555,8 +18760,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-life-gain-self-replacement"
+      ]
     },
     {
       "card_name": "Minion of Leshrac",
@@ -19063,8 +19270,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "single-source-damage-reference-quantities"
+      ]
     },
     {
       "card_name": "Mortarion, Daemon Primarch",
@@ -21217,8 +21426,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ]
     },
     {
       "card_name": "Permafrost Trap",
@@ -23461,8 +23672,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-life-gain-self-replacement"
+      ]
     },
     {
       "card_name": "Restore Balance",
@@ -24161,8 +24374,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Ruhan of the Fomori",
@@ -24485,10 +24700,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
-      "source_families": [
+      "source_coverage_status": "partial_known_runtime_gap",
+      "source_families": [],
+      "partial_source_families": [
         "typed-discard-cost-values"
-      ]
+      ],
+      "remaining_runtime_gap": "payment-disclosure-undo"
     },
     {
       "card_name": "Sandman's Quicksand",
@@ -25901,8 +26118,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-life-damage-history-quantities"
+      ]
     },
     {
       "card_name": "Sin, Spira's Punishment",
@@ -26043,8 +26262,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Skittish Valesk",
@@ -27569,8 +27790,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Summer Bloom",
@@ -28527,8 +28750,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Tenth District Hero",
@@ -28621,8 +28846,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ]
     },
     {
       "card_name": "Tetravus",
@@ -28681,8 +28908,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ]
     },
     {
       "card_name": "Teyo, Geometric Tactician",
@@ -29553,8 +29782,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "explicit-simultaneous-phase-exchange"
+      ]
     },
     {
       "card_name": "The War Games",
@@ -30256,8 +30487,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ]
     },
     {
       "card_name": "Torgaar, Famine Incarnate",
@@ -31020,8 +31253,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "single-source-damage-reference-quantities"
+      ]
     },
     {
       "card_name": "Unforge",
@@ -31619,8 +31854,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Vexing Puzzlebox",
@@ -31669,8 +31906,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "single-source-damage-reference-quantities"
+      ]
     },
     {
       "card_name": "Vibranium Mining Mech",
@@ -32472,8 +32711,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-life-damage-history-quantities"
+      ]
     },
     {
       "card_name": "Warped Devotion",
@@ -33511,8 +33752,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-life-damage-history-quantities"
+      ]
     },
     {
       "card_name": "Wrecking Ball Arm",
@@ -33867,8 +34110,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "live-battlefield-population-conditions"
+      ]
     },
     {
       "card_name": "Zar Ojanen, Scion of Efrava",
@@ -34113,6 +34358,25 @@
       "verified_compile_recovery": false,
       "source_coverage_status": "unaddressed",
       "source_families": []
+    }
+  ],
+  "known_runtime_prerequisites": [
+    {
+      "id": "payment-disclosure-undo",
+      "status": "source_proven_remediation_in_progress",
+      "affected_previously_proposed_complete": [
+        "Knollspine Invocation",
+        "Krovikan Sorcerer",
+        "Sanctum Spirit",
+        "Kozilek, the Great Distortion"
+      ],
+      "held_new_cards": [
+        "Illuminated Folio",
+        "Sphinx of the Chimes",
+        "Ormos, Archive Keeper"
+      ],
+      "evidence": "architecture/card-failure-payment-disclosure-boundary.md",
+      "complete_coverage_claims_withheld": true
     }
   ]
 }

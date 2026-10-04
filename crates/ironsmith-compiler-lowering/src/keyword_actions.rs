@@ -51,6 +51,7 @@ pub fn apply_keyword_action(
         KeywordAction::Melee => builder.melee(),
         KeywordAction::Dethrone => builder.dethrone(),
         KeywordAction::Evolve => builder.evolve(),
+        KeywordAction::Increment => builder.increment(),
         KeywordAction::Ingest => builder.ingest(),
         KeywordAction::Mentor => builder.mentor(),
         KeywordAction::Training => builder.training(),

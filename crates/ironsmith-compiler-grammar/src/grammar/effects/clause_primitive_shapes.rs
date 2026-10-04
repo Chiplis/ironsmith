@@ -251,16 +251,18 @@ pub fn is_it_reference_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_phrase(tokens, &["it"])
 }
 
-fn value_references_power_or_toughness(value: &Value) -> bool {
+fn value_references_damage_source_characteristic(value: &Value) -> bool {
     match value {
         Value::SourcePower | Value::SourceToughness | Value::PowerOf(_) | Value::ToughnessOf(_) => {
             true
         }
+        Value::CountersOn(_, Some(crate::object::CounterType::Loyalty)) => true,
         Value::Add(left, right) => {
-            value_references_power_or_toughness(left) || value_references_power_or_toughness(right)
+            value_references_damage_source_characteristic(left)
+                || value_references_damage_source_characteristic(right)
         }
         Value::Scaled(value, _) | Value::SurfaceHinted { value, .. } => {
-            value_references_power_or_toughness(value)
+            value_references_damage_source_characteristic(value)
         }
         _ => false,
     }
@@ -313,6 +315,9 @@ fn bind_damage_source_possessive_characteristic(value: Value) -> Value {
         ),
         Value::PowerOf(spec) => Value::PowerOf(Box::new(local_source_spec(*spec))),
         Value::ToughnessOf(spec) => Value::ToughnessOf(Box::new(local_source_spec(*spec))),
+        Value::CountersOn(spec, kind) => {
+            Value::CountersOn(Box::new(local_source_spec(*spec)), kind)
+        }
         value => value,
     }
 }
@@ -396,17 +401,21 @@ pub fn parse_power_damage_shape(
     let word_refs = power_words.to_word_refs();
     let (amount, used_words) = if crate::word_primitives::parse_any_sequence_prefix(
         &word_refs,
-        &[&["its", "power"], &["its", "toughness"]],
+        &[
+            &["its", "power"],
+            &["its", "toughness"],
+            &["its", "loyalty"],
+        ],
     ) {
         let Some((value, used)) = crate::util::parse_value_expr_words(&word_refs) else {
             return Ok(None);
         };
-        if !value_references_power_or_toughness(&value) {
+        if !value_references_damage_source_characteristic(&value) {
             return Ok(None);
         }
         (bind_damage_source_possessive_characteristic(value), used)
     } else if let Some((value, used)) = crate::util::parse_value_expr_words(&word_refs)
-        && value_references_power_or_toughness(&value)
+        && value_references_damage_source_characteristic(&value)
     {
         (value, used)
     } else if let Some((used, toughness)) = characteristic_reference_word_count(&word_refs) {
