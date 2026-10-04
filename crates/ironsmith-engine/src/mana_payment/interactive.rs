@@ -94,9 +94,10 @@ pub(crate) fn pay_mana_interactively(
         && game.player_can_pay_black_with_life_for_reason(payer, Some(source), request.reason);
     request.preferences.excluded_sources = exclusions.clone();
     loop {
-        let plan = plan_mana_payment(game, &request)
+        // Foreground prompts need one executable proposal. Source selection
+        // remains available through constrained replanning below.
+        let plan = plan_first_mana_payment(game, &request)
             .ok()
-            .and_then(|plans| plans.into_iter().next())
             .unwrap_or_else(|| unfunded_mana_payment_plan(game, &request));
         let subject = game
             .object(source)
@@ -142,6 +143,65 @@ pub(crate) fn pay_mana_interactively(
                 };
             }
             ManaPaymentResponse::Confirm { .. } => return Err(CostPaymentError::InsufficientMana),
+        }
+    }
+}
+
+#[cfg(test)]
+mod foreground_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    struct ConfirmOrReplan {
+        required: Option<ObjectId>,
+        prompts: usize,
+    }
+    impl DecisionMaker for ConfirmOrReplan {
+        fn decide_mana_payment(&mut self, _game: &GameState,
+            context: &crate::decisions::context::ManaPaymentContext) -> ManaPaymentResponse {
+            self.prompts += 1;
+            assert!(last_mana_payment_perf().visited_nodes < 64,
+                "foreground prompt must not rank every equivalent source permutation");
+            if let Some(source) = self.required.take() {
+                let mut preferences = context.request.preferences.clone();
+                preferences.required_sources.push(source);
+                return ManaPaymentResponse::Replan { preferences };
+            }
+            ManaPaymentResponse::Confirm {
+                plan_id: context.plan.id, request_hash: context.plan.request_hash,
+            }
+        }
+    }
+
+    #[test]
+    fn foreground_payment_preserves_life_costs_and_constrained_source_alternatives() {
+        for replan in [false, true] {
+            let alice = PlayerId::from_index(0);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let mut sources = Vec::new();
+            for index in 0..8 {
+                let card = CardBuilder::new(CardId::new(), format!("Mana source {index}"))
+                    .card_types(vec![CardType::Land]).build();
+                let id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+                let mut costs = vec![crate::costs::Cost::tap()];
+                if index >= 3 { costs.push(crate::costs::Cost::life(1)); }
+                game.object_mut(id).unwrap().abilities_mut().push(crate::Ability::mana(
+                    crate::cost::TotalCost::from_costs(costs), vec![ManaSymbol::Red]));
+                sources.push(id);
+            }
+            let mut dm = ConfirmOrReplan { required: replan.then_some(sources[7]), prompts: 0 };
+            pay_mana_interactively(&mut game, alice, sources[0],
+                ManaCost::new().add_generic(4), crate::costs::PaymentReason::Effect,
+                vec![], &mut dm).unwrap();
+            assert_eq!(dm.prompts, if replan { 2 } else { 1 });
+            assert_eq!(sources.iter().filter(|source| game.is_tapped(**source)).count(), 4);
+            assert_eq!(game.player(alice).unwrap().life, 19);
+            assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+            if replan { assert!(game.is_tapped(sources[7])); }
         }
     }
 }

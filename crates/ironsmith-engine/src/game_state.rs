@@ -781,6 +781,12 @@ pub struct ObjectStore {
 }
 
 impl ObjectStore {
+    /// Immutable identity for disposable content caches. Mutations must keep
+    /// using `object_mut`, whose `Arc::make_mut` invalidates weak cache keys.
+    pub(crate) fn shared_object(&self, id: ObjectId) -> Option<&Arc<Object>> {
+        self.objects.get(&id)
+    }
+
     fn object(&self, id: ObjectId) -> Option<&Object> {
         self.objects.get(&id).map(Arc::as_ref)
     }
@@ -918,7 +924,9 @@ pub struct TurnStore {
     last_turn_history_by_player: HashMap<PlayerId, TurnHistory>,
     /// Committed event/action records retained for the full game and indexed
     /// by every player whose action or result the record describes.
-    action_history_by_player: HashMap<PlayerId, Vec<TurnEventRecord>>,
+    // Simulations branch the game frequently. Persistent sequences share the
+    // full immutable history; appending must not clone every prior snapshot.
+    action_history_by_player: HashMap<PlayerId, im::Vector<Arc<TurnEventRecord>>>,
     /// Persistent combat-history timestamps used by "since your last upkeep"
     /// predicates. Stable identity survives ordinary zone/object-id churn.
     creature_last_attacked_turn: HashMap<StableId, u32>,
@@ -5163,6 +5171,10 @@ impl GameState {
             P::CopyActivatedAbilities(copy) => Self::object_filter_is_tap_sensitive(&copy.filter),
             P::CopyTriggeredAbilities(copy) => Self::object_filter_is_tap_sensitive(&copy.filter),
             P::CopyStaticAbilityVariants(copy) => Self::object_filter_is_tap_sensitive(&copy.filter),
+            // These fixed modifications retain their complete target filter;
+            // no scalar dependency is hidden by effect generation.
+            P::MakeColorless(filter) | P::AddSubtypes { filter, .. } =>
+                Self::object_filter_is_tap_sensitive(filter),
             // A currently inactive wrapper may become active after production.
             P::Conditional { ability, condition } => {
                 Self::condition_is_mana_sensitive(condition)
@@ -5208,6 +5220,9 @@ impl GameState {
                 Self::value_is_tap_sensitive(left) || Self::value_is_tap_sensitive(right),
             // A plain mana activation cannot advance the turn or change the
             // source's casting history. Unknown conditions remain dependencies.
+            ConditionExpr::PlayerCardsInHandOrFewer {
+                player: crate::target::PlayerFilter::You, ..
+            } => false,
             ConditionExpr::YourTurn | ConditionExpr::SourceWasCast
                 | ConditionExpr::ThisSpellEscaped | ConditionExpr::ThisSpellWasCastFromZone(_)
                 | ConditionExpr::ThisSpellWasCastFromNonHand => false,

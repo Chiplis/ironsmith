@@ -92,6 +92,10 @@ impl<'a> ManaSourceAnalysis<'a> {
         if !self.projection_safe { return None; }
         let ability = self.view.abilities_rc(choice.source)?.get(choice.ability_index)?.clone();
         let AbilityKind::Activated(activated) = &ability.kind else { return None; };
+        // The source controller and the ability activator can differ. This
+        // projection's event context binds the former; retain full execution
+        // for public activator permissions until it carries an explicit actor.
+        if activated.allows_any_player_to_activate() { return None; }
         let costs = activated.mana_cost.as_all()?;
         if costs.len() != 1 || !costs[0].requires_tap() || !activated.choices.is_empty()
             || activated.is_exhaust_ability()
@@ -157,6 +161,7 @@ impl<'a> ManaSourceAnalysis<'a> {
         let AbilityKind::Activated(activated) = &ability.kind else {
             return None;
         };
+        if activated.allows_any_player_to_activate() { return None; }
         // Tapping is the only state change allowed before the fixed production.
         // Untap, sacrifice, life, counters, filters, exhaust, and player choices
         // remain simulations. Collection has already checked activation legality.
@@ -289,30 +294,28 @@ pub(super) fn pool_units(pool: &ManaPool) -> Vec<ManaSymbol> {
 }
 
 pub(crate) fn has_mana_modifying_replacements(game: &GameState) -> bool {
+    use crate::events::EventKind;
+    has_replacements_for_events(game, &[
+        EventKind::BecomeTapped, EventKind::ManaAdded, EventKind::AbilityActivated,
+    ])
+}
+
+pub(super) fn has_replacements_for_events(game: &GameState, kinds: &[crate::events::EventKind]) -> bool {
+    let unrelated = |effect: &crate::replacement::ReplacementEffect| {
+        effect.matcher.as_ref().is_some_and(|matcher|
+            kinds.iter().all(|&kind| !matcher.may_match_event_kind(kind)))
+    };
     game.effect_store
         .replacement_effects
         .effects()
         .iter()
-        .any(|effect| !replacement_is_unrelated_to_plain_mana(effect))
+        .any(|effect| !unrelated(effect))
         || crate::replacement_ability_processor::generate_replacement_effects_from_abilities(game)
             .map_or(true, |effects| {
                 effects
                     .iter()
-                    .any(|effect| !replacement_is_unrelated_to_plain_mana(effect))
+                    .any(|effect| !unrelated(effect))
             })
-}
-
-fn replacement_is_unrelated_to_plain_mana(effect: &crate::replacement::ReplacementEffect) -> bool {
-    use crate::events::EventKind;
-    effect.matcher.as_ref().is_some_and(|matcher| {
-        [
-            EventKind::BecomeTapped,
-            EventKind::ManaAdded,
-            EventKind::AbilityActivated,
-        ]
-        .into_iter()
-        .all(|kind| !matcher.may_match_event_kind(kind))
-    })
 }
 
 #[cfg(test)]
@@ -408,6 +411,118 @@ mod tests {
         assert!(lands.iter().all(|land| !game.is_tapped(*land)));
         assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
     }
+    #[test]
+    fn ward_does_not_disable_independent_mana_projection() {
+        let (mut game, request) = fixture(
+            TotalCost::from_cost(Cost::tap()),
+            vec![ManaSymbol::Blue],
+            vec![],
+        );
+        game.object_mut(request.source).unwrap().abilities_mut().push(
+            Ability::static_ability(crate::static_abilities::StaticAbility::ward(
+                TotalCost::from_cost(Cost::mana(ManaCost::new().add_generic(4))),
+            )),
+        );
+        game.refresh_continuous_state().unwrap();
+        assert!(!game.continuous_effects_are_tap_sensitive(),
+            "Ward triggers on becoming targeted; it does not generate continuous characteristics");
+        let analysis = ManaSourceAnalysis::new(&game);
+        let choices = collect_activation_choices(&game, &request);
+        assert!(!choices.is_empty());
+        assert!(choices.iter().all(|choice| analysis.project(choice).is_some()));
+        let wards = crate::targeting::collect_ward_costs(
+            &game, &[request.source], PlayerId::from_index(1),
+        );
+        assert_eq!(wards.len(), 1, "opponent targeting still incurs Ward");
+        assert!(crate::targeting::collect_ward_costs(
+            &game, &[request.source], request.payer,
+        ).is_empty(), "controller targeting does not incur Ward");
+        assert!(crate::mana_payment::plan_first_mana_payment(&game, &request).unwrap().payable);
+    }
+
+    #[test]
+    fn unrelated_draw_replacement_preserves_mana_projection() {
+        for conditional in [false, true] {
+            let (mut game, request) = fixture(
+                TotalCost::from_cost(Cost::tap()), vec![ManaSymbol::Blue], vec![],
+            );
+            let mut model = crate::static_abilities::CompiledStaticAbility::draw_extra_cards_replacement(1, "Draw an extra card");
+            if conditional {
+                model = model.with_condition(crate::ConditionExpr::PlayerCardsInHandOrFewer {
+                    player: PlayerFilter::You, count: 1,
+                });
+            }
+            game.object_mut(request.source).unwrap().abilities_mut().push(
+                Ability::static_ability(crate::static_abilities::StaticAbility::from_model(model)),
+            );
+            game.refresh_continuous_state().unwrap();
+            assert!(!has_mana_modifying_replacements(&game),
+                "a draw-only replacement cannot observe tap, mana or activation events");
+            assert!(!game.continuous_effects_are_tap_sensitive());
+            let analysis = ManaSourceAnalysis::new(&game);
+            let choices = collect_activation_choices(&game, &request);
+            assert!(!choices.is_empty());
+            assert!(choices.iter().all(|choice| analysis.project(choice).is_some()));
+            let effects = crate::replacement_ability_processor::generate_replacement_effects_from_abilities(&game).unwrap();
+            assert_eq!(effects.len(), 1);
+            let matcher = effects[0].matcher.as_ref().unwrap();
+            let ctx = crate::events::EventContext::for_replacement_effect(request.payer, request.source, &game);
+            let mut draw = crate::events::DrawEvent::new(request.payer, 1, true);
+            assert!(matcher.may_match_event_kind(crate::events::EventKind::Draw));
+            assert!(matcher.matches_event(&draw, &ctx).unwrap());
+            draw.first_of_instruction = false;
+            assert!(!matcher.matches_event(&draw, &ctx).unwrap());
+        }
+    }
+
+    #[test]
+    fn entry_only_replacements_preserve_mana_projection() {
+        for ability in [
+            crate::static_abilities::StaticAbility::enters_tapped_unless_control_two_or_fewer_other_lands(),
+            crate::static_abilities::StaticAbility::pay_life_or_enter_tapped(2),
+            crate::static_abilities::StaticAbility::affinity_for_artifacts(),
+        ] {
+            let (mut game, request) = fixture(
+                TotalCost::from_cost(Cost::tap()), vec![ManaSymbol::Blue], vec![],
+            );
+            game.object_mut(request.source).unwrap().abilities_mut().push(Ability::static_ability(ability));
+            game.refresh_continuous_state().unwrap();
+            assert!(!has_mana_modifying_replacements(&game));
+            assert!(!game.continuous_effects_are_tap_sensitive());
+            let analysis = ManaSourceAnalysis::new(&game);
+            let choices = collect_activation_choices(&game, &request);
+            assert!(!choices.is_empty());
+            assert!(choices.iter().all(|choice| analysis.project(choice).is_some()));
+        }
+    }
+
+    #[test]
+    fn fixed_color_and_subtype_changes_preserve_only_independent_projection() {
+        for tapped in [false, true] {
+            for subtype in [false, true] {
+                let (mut game, request) = fixture(
+                    TotalCost::from_cost(Cost::tap()), vec![ManaSymbol::Blue], vec![],
+                );
+                let mut filter = crate::target::ObjectFilter::source();
+                filter.tapped = tapped;
+                let model = if subtype {
+                    crate::static_abilities::CompiledStaticAbility::add_subtypes(filter, vec![crate::types::Subtype::Forest])
+                } else {
+                    crate::static_abilities::CompiledStaticAbility::make_colorless(filter)
+                };
+                game.object_mut(request.source).unwrap().abilities_mut().push(Ability::static_ability(
+                    crate::static_abilities::StaticAbility::from_model(model),
+                ));
+                game.refresh_continuous_state().unwrap();
+                assert_eq!(game.continuous_effects_are_tap_sensitive(), tapped);
+                let analysis = ManaSourceAnalysis::new(&game);
+                let choices = collect_activation_choices(&game, &request);
+                assert!(!choices.is_empty());
+                assert_eq!(choices.iter().all(|choice| analysis.project(choice).is_some()), !tapped);
+            }
+        }
+    }
+
     #[test] fn builtin_basic_lands_use_fixed_projection() { check_builtin_basic_land_projection(false); }
     #[test] fn builtin_basic_lands_project_with_unrelated_protection() { check_builtin_basic_land_projection(true); }
 

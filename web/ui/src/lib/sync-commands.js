@@ -52,6 +52,27 @@ export function findPriorityActionForCommand(decision, command) {
   return null;
 }
 
+// A background-confirmed reference may be absent from the authoritative
+// worker's deliberately incomplete menu. Submission still revalidates it there.
+export function serializePriorityCommand(command, decision, stableIds = new Map()) {
+  const action = findPriorityActionForCommand(decision, command);
+  const deferred = decision?.kind === "priority" && decision.analysis_complete === false
+    && isDecisionCommandCompatible(decision, command);
+  const ref = action?.action_ref || (deferred ? command.action_ref : null);
+  if (!ref) throw new Error("Priority action is no longer available");
+  const source = ref.kind === "special_action" ? ref.action : ref;
+  const rawId = action?.object_id ?? source?.land_id ?? source?.spell_id
+    ?? source?.source ?? source?.creature_id ?? source?.card_id ?? source?.source_id;
+  const objectId = rawId == null ? null : Number(rawId);
+  const result = { type: "priority_action", action_ref: ref };
+  if (Number.isSafeInteger(objectId) && objectId > 0) {
+    result.object_id = objectId;
+    const stableId = stableIds.get(objectId);
+    if (stableId != null) result.object_stable_id = stableId;
+  }
+  return result;
+}
+
 export function priorityCommandForAction(action) {
   const command = {
     type: "priority_action",

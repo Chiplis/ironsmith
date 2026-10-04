@@ -1379,6 +1379,9 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
       "normal apply_action should not import a host checkpoint",
     );
 
+    // Recovery must not require exporting an unsupported executable effect.
+    await hostPage.evaluate(() => window.__peerHarness.setFailCheckpointExport(true));
+
     await guestPage.close();
     guestPage = null;
     await waitForSnapshot(
@@ -1425,6 +1428,7 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
       30000,
     );
     assert.equal(promotedGuest.multiplayer.localPlayerIndex, 1);
+    await guestPage.evaluate(() => window.__peerHarness.setFailCheckpointExport(true));
 
     await sleep(2500);
     hostPage = await openHarness(hostContext, baseUrl, "host-reconnect");
@@ -1462,6 +1466,7 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
       "promoted host marks original host reconnected",
     );
 
+    await guestPage.evaluate(() => window.__peerHarness.setFailCheckpointExport(false));
     await guestPage.evaluate(async () => {
       const snap = await window.__peerHarness.snapshot();
       const action = snap.visibleState?.decision?.actions?.[0];

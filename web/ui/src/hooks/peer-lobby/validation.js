@@ -1,3 +1,4 @@
+import { createOperationRevealBatch } from "../../lib/ziffle-operation-reveal-batch.js";
 import { assertMatchNotDisputed, isMatchDisputed } from "./match-lifecycle.js";
 import { acceptedZiffleEpochs, assertZiffleEpochInputs, assertZiffleEpochVerification, buildZiffleInputDeck, isPrivateZiffleEpoch, ziffleEpochMaterial, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { assertRuntimeVersion } from "../../lib/runtime-version.js";
@@ -1337,10 +1338,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
   async function authorizedZiffleRevealPositionsForOwner(owner, deckHash, requester = owner) {
     const requesterIsOwner = Number(requester) === Number(owner);
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return new Set();
     }
-    const checkpoint = await currentGame.exportSyncCheckpoint();
+    const checkpoint = await currentGame.getHiddenCardState();
     const positions = new Set();
     const expectedDeckHash = String(deckHash || "");
     const addMetadataPosition = (metadata) => {
@@ -1632,8 +1633,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
           || value === String(metadata.publicCommitment || ""));
       let objectId = requirement.objectId ?? requirement.object_id;
       let metadata = objectId == null ? null : await currentHiddenCardMetadataForObject(Number(objectId));
-      if (!matchesRequirement(metadata) && typeof currentGame?.exportSyncCheckpoint === "function") {
-        checkpoint ||= await currentGame.exportSyncCheckpoint();
+      if (!matchesRequirement(metadata) && typeof currentGame?.getHiddenCardState === "function") {
+        checkpoint ||= await currentGame.getHiddenCardState();
         // Runtime IDs can differ between peers. Resolve the locally trusted
         // requirement's committed identity before consulting its position.
         objectId = hiddenObjectIdForOpeningFromCheckpoint(checkpoint, {
@@ -1709,8 +1710,12 @@ export function usePeerLobbyValidation(base, servicesRef) {
       }
     }
     for (const proof of candidates) {
-      locks.set(proof.context, { matchId, seq: Number(proof.context.slice(prefix.length).split(":")[0]),
-        deckHash: String(proof.deckHash) });
+      if (!locks.has(proof.context)) {
+        // Reveal authority survives engine rollback. Keep the exact material
+        // with that authority so a retry cannot sample a second library.
+        locks.set(proof.context, { matchId, seq: Number(proof.context.slice(prefix.length).split(":")[0]),
+          deckHash: String(proof.deckHash), proof: cloneMultiplayerPayload(proof) });
+      }
     }
     const oldest = Number(multiplayerRef.current.lastAppliedSequence || 0) - 64;
     for (const [key, lock] of locks) {
@@ -2721,22 +2726,36 @@ export function usePeerLobbyValidation(base, servicesRef) {
       if (inputs.length <= 1) continue;
       const owner = Number(requirement.owner);
       const accepted = acceptedEpochsForProof(owner, seq, [...(options.precedingProofs || []), ...proofs]);
-      const [ceremony] = await runBatchedZiffleShuffleCeremonies([{
-        id: String(requirement.id || ""), requirement, requirementId: String(requirement.id || ""),
-        owner, zone: String(requirement.zone || "library"), deckCount: inputs.length, keyContext,
-        context: [keyContext, "action", Number(seq), "shuffle", String(requirement.id || ""), owner,
-          String(requirement.zone || "library")].join(":"),
-        keys, inputDeck: buildZiffleInputDeck(accepted, inputs),
-      }], players, { keys, kind: "action" });
-      const proof = {
-        type: "ziffle_shuffle", requirementId: ceremony.requirementId,
-        owner, zone: ceremony.zone, epoch: Number(seq), deckCount: ceremony.deckCount,
-        context: ceremony.context, keyContext, keys: cloneMultiplayerPayload(ceremony.keys),
-        steps: cloneMultiplayerPayload(ceremony.steps), deckHash: ceremony.deckHash,
-        ...ziffleInputDeckFields(ceremony),
-      };
-      assertZiffleEpochVerification(proof, ceremony.verification, accepted);
+      const context = [keyContext, "action", Number(seq), "shuffle", String(requirement.id || ""), owner,
+        String(requirement.zone || "library")].join(":");
+      const locked = ziffleActionRevealLocksRef.current.get(context);
+      let proof;
+      if (locked) {
+        if (!locked.proof) throw new Error("Authorized action shuffle material is unavailable for retry");
+        proof = cloneMultiplayerPayload(locked.proof);
+        // Rollback may clear the verification cache, but never reveal authority.
+        // Recheck the signed roster and exact inputs before reusing that epoch.
+        await verifyShuffleProofsForRequirements([requirement],
+          [...(options.precedingProofs || []), ...proofs, proof], { seq });
+      } else {
+        const [ceremony] = await runBatchedZiffleShuffleCeremonies([{
+          id: String(requirement.id || ""), requirement, requirementId: String(requirement.id || ""),
+          owner, zone: String(requirement.zone || "library"), deckCount: inputs.length, keyContext,
+          context, keys, inputDeck: buildZiffleInputDeck(accepted, inputs),
+        }], players, { keys, kind: "action" });
+        proof = {
+          type: "ziffle_shuffle", requirementId: ceremony.requirementId,
+          owner, zone: ceremony.zone, epoch: Number(seq), deckCount: ceremony.deckCount,
+          context: ceremony.context, keyContext, keys: cloneMultiplayerPayload(ceremony.keys),
+          steps: cloneMultiplayerPayload(ceremony.steps), deckHash: ceremony.deckHash,
+          ...ziffleInputDeckFields(ceremony),
+        };
+        assertZiffleEpochVerification(proof, ceremony.verification, accepted);
+      }
       libraryEpochs.push(ziffleEpochMaterial(proof, requirement, assertZiffleEpochInputs(proof, requirement, accepted)));
+      // Retain completed material before any opening request can disclose it.
+      // A failure before final action verification must also reuse this epoch.
+      lockVerifiedZiffleActionShuffles([proof]);
       verifiedShuffleProofsRef.current.add(proof);
       rememberLocalZiffleCeremonyForLookup(proof);
       proofs.push(proof);
@@ -4153,7 +4172,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
     const currentGame = gameRef.current;
     if (
       !currentGame
-      || typeof currentGame.exportSyncCheckpoint !== "function"
+      || typeof currentGame.getHiddenCardState !== "function"
       || typeof currentGame.exportHiddenCardOpening !== "function"
       || typeof currentGame.ziffleRevealCard !== "function"
       || typeof currentGame.ziffleRevealCards !== "function"
@@ -4190,7 +4209,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      }
 	    }
 
-	    const checkpoint = await currentGame.exportSyncCheckpoint();
+	    const checkpoint = await currentGame.getHiddenCardState();
 	    const localPlayer = (checkpoint.players || []).find(
 	      (player) => Number(player.id) === Number(localIndex)
 	    );
@@ -4374,6 +4393,28 @@ export function usePeerLobbyValidation(base, servicesRef) {
 
 	    for (const { ceremony, entries } of ziffleGroups.values()) {
 	      if (ziffleCeremonyHasObjectOrder(ceremony)) {
+          const positions = [...new Set(entries.map(entry => Number(entry.position)))];
+          const revealPosition = createOperationRevealBatch(positions, Number(ceremony.deckCount), async () => {
+            // Preserve each position's authorization route: a newly drawn card can
+            // require the pending action while existing hand cards use visible state.
+            const tokenGroups = await Promise.all(positions.map(async position => {
+              const positionOptions = await ziffleRevealTokenOptionsForLocalHandReveal({
+                ceremony, positions: [position], options, localIndex,
+              });
+              return collectZiffleRevealTokensBatch(ceremony, [position], positionOptions);
+            }));
+            const tokens = tokenGroups.flat();
+            return currentGame.ziffleRevealCards({
+              deckCount: Number(ceremony.deckCount),
+              context: String(ceremony.context || ""),
+              keyContext: ziffleKeyContextForCeremony(ceremony),
+              keys: cloneMultiplayerPayload(ceremony.keys || []),
+              steps: cloneMultiplayerPayload(ceremony.steps || []),
+              ...ziffleInputDeckFields(ceremony),
+              cardPositions: positions,
+              tokens,
+            });
+          });
 	        for (const entry of entries) {
 	          const position = Number(entry.position);
 	          const positionCommitment =
@@ -4396,6 +4437,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	            manifest,
 	            payload,
 	            options: revealTokenOptions,
+            revealPosition,
 	          });
 	          if (!resolvedRevealSlot) {
 	            throw new Error(
@@ -4504,7 +4546,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 		            ].map((id) => Number(id)).filter((id, index, list) =>
 		              Number.isSafeInteger(id) && id >= 0 && list.indexOf(id) === index
 		            );
-		            const checkpoint = await currentGame.exportSyncCheckpoint?.();
+		            const checkpoint = await currentGame.getHiddenCardState?.();
 		            const objectsById = new Map((checkpoint?.objects || []).map((object) => [
 		              Number(object.id),
 		              object,

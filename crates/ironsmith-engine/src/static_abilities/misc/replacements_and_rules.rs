@@ -2198,6 +2198,10 @@ impl DrawExtraCardsReplacement {
 }
 
 impl StaticAbilityKind for DrawExtraCardsReplacement {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::DrawExtraCardsReplacement
     }
@@ -2253,6 +2257,10 @@ struct WouldDrawInstructionMatcher {
 
 impl ReplacementMatcher for WouldDrawInstructionMatcher {
     fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawInstructionMatcher { condition: self.condition.clone(), except_first_of_draw_step: self.except_first_of_draw_step.clone(), per_instruction: self.per_instruction.clone(), display: self.display.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Draw
+    }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if !WouldDrawCardMatcher::you().matches_prepared_event(event, ctx) {
@@ -3351,6 +3359,10 @@ impl PayLifeOrEnterTappedReplacement {
 }
 
 impl StaticAbilityKind for PayLifeOrEnterTappedReplacement {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::PayLifeOrEnterTappedReplacement
     }

@@ -895,6 +895,7 @@ mod tests {
         object_players: Vec<PlayerId>,
         mana_payment_players: Vec<PlayerId>,
         color_players: Vec<PlayerId>,
+        selected_mana_plans: Vec<crate::mana_payment::ManaPaymentPlan>,
     }
 
     impl SearchCastColorChoiceDecisionMaker {
@@ -906,6 +907,7 @@ mod tests {
                 object_players: Vec::new(),
                 mana_payment_players: Vec::new(),
                 color_players: Vec::new(),
+                selected_mana_plans: Vec::new(),
             }
         }
     }
@@ -931,6 +933,21 @@ mod tests {
                 .find(|option| option.legal)
                 .map(|option| vec![option.index])
                 .unwrap_or_default()
+        }
+
+        fn decide_mana_payment(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::ManaPaymentContext,
+        ) -> crate::mana_payment::ManaPaymentResponse {
+            let decision_player = game.controlling_player_for(ctx.player);
+            self.mana_payment_players.push(decision_player);
+            assert_eq!(decision_player, self.controller);
+            self.selected_mana_plans.push(ctx.plan.clone());
+            crate::mana_payment::ManaPaymentResponse::Confirm {
+                plan_id: ctx.plan.id,
+                request_hash: ctx.plan.request_hash,
+            }
         }
 
         fn decide_colors(
@@ -1860,7 +1877,8 @@ mod tests {
         assert_eq!(dm.mana_payment_players, vec![bob]);
         // The selected payment already fixes these outputs. Its confirmation
         // belongs to Bob; the same colors must not be asked for a second time.
-        assert!(dm.color_players.is_empty());
+        assert!(dm.color_players.is_empty(), "selected plans: {:?}; repeated color players: {:?}",
+            dm.selected_mana_plans, dm.color_players);
         assert_eq!(game.controlling_player_for(alice), alice,
             "search control must end after the search");
 

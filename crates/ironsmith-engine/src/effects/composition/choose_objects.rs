@@ -101,6 +101,11 @@ pub(crate) fn search_zones(effect: &ChooseObjectsEffect) -> Result<Vec<Zone>, Ex
     Ok(zones)
 }
 
+fn mana_value_equals_x(filter: &crate::filter::ObjectFilter) -> bool {
+    matches!(&filter.mana_value, Some(Comparison::EqualExpr(value))
+        if matches!(value.unhinted(), crate::effect::Value::X))
+}
+
 fn comparison_references_unbound_x(comparison: &Option<Comparison>) -> bool {
     matches!(
         comparison,
@@ -148,12 +153,16 @@ fn cost_candidate_count(
     game: &GameState,
     source: crate::ids::ObjectId,
     controller: crate::ids::PlayerId,
+    x_value: Option<u32>,
 ) -> Result<usize, CostValidationError> {
-    if let Some(relaxed) = with_unbound_x_relaxed(effect) {
-        return cost_candidate_count(&relaxed, game, source, controller);
+    if x_value.is_none()
+        && let Some(relaxed) = with_unbound_x_relaxed(effect)
+    {
+        return cost_candidate_count(&relaxed, game, source, controller, None);
     }
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let ctx = ExecutionContext::new(source, controller, &mut dm);
+    let mut ctx = ExecutionContext::new(source, controller, &mut dm);
+    ctx.x_value = x_value;
     let filter_ctx = ctx.filter_context(game);
     let chooser_id = match crate::effects::helpers::resolve_player_filter_as_chooser(
         game,
@@ -165,7 +174,7 @@ fn cost_candidate_count(
     };
     let search_zones =
         search_zones(effect).map_err(|err| CostValidationError::Other(format!("{err:?}")))?;
-    let top_only_limit = top_only_selection_limit(effect, None);
+    let top_only_limit = top_only_selection_limit(effect, x_value);
 
     let matches_filter = |obj: &crate::object::Object| {
         if effect.filter.other && obj.id == source {
@@ -387,6 +396,7 @@ impl EffectExecutor for ChooseObjectsEffect {
 
     fn references_cost_x(&self) -> bool {
         self.count.dynamic_x
+            || mana_value_equals_x(&self.filter)
             || self
                 .aggregate_constraint
                 .as_ref()
@@ -407,12 +417,40 @@ impl EffectExecutor for ChooseObjectsEffect {
         if !self.references_cost_x() {
             return None;
         }
+        if mana_value_equals_x(&self.filter) {
+            // Equality gives a finite set of possible X values. Recheck each
+            // against the complete cost filter, including hidden-zone ownership.
+            let mut values: Vec<_> = search_zones(self)
+                .ok()?
+                .into_iter()
+                .flat_map(|zone| game.objects_in_zone(zone))
+                .map(|id| crate::filter::object_current_mana_value(game, id))
+                .filter_map(|value| u32::try_from(value).ok())
+                .collect();
+            values.sort_unstable();
+            values.dedup();
+            return Some(
+                values
+                    .into_iter()
+                    .rev()
+                    .find(|x| {
+                        let required = if self.count.dynamic_x {
+                            self.count.min.max(*x as usize)
+                        } else {
+                            self.count.min
+                        };
+                        cost_candidate_count(self, game, source, controller, Some(*x))
+                            .is_ok_and(|count| count >= required)
+                    })
+                    .unwrap_or(0),
+            );
+        }
         if self.aggregate_constraint.is_some() {
             return aggregate_cost_capacity(self, game, source, controller)
                 .ok()
                 .map(|amount| amount.max(0) as u32);
         }
-        cost_candidate_count(self, game, source, controller)
+        cost_candidate_count(self, game, source, controller, None)
             .ok()
             .and_then(|count| u32::try_from(count).ok())
     }
@@ -566,7 +604,13 @@ impl CostExecutableEffect for ChooseObjectsEffect {
             return Ok(());
         }
 
-        let candidate_count = cost_candidate_count(self, game, source, controller)?;
+        let candidate_count = cost_candidate_count(
+            self,
+            game,
+            source,
+            controller,
+            game.object(source).and_then(|object| object.x_value),
+        )?;
 
         if candidate_count < self.count.min {
             return Err(CostValidationError::Other(format!(

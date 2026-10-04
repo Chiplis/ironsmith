@@ -1051,7 +1051,7 @@ pub(super) fn effect_applies_to(
         return false;
     }
 
-    effect_target_applies_to_direct(effect, object, chars, ctx.objects, ctx.game)
+    effect_target_applies_to_direct(effect, object, chars, ctx.objects, ctx.game, &std::cell::OnceCell::new())
 }
 
 pub(super) fn effect_applies_to_or_started(

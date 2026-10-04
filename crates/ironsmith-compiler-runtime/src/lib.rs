@@ -636,6 +636,16 @@ pub fn compile_to_runtime_definition(
     compile_builder_to_runtime_definition(builder, text, allow_unsupported)
 }
 
+/// Compile source into the same typed transport artifact used by baked catalogs.
+pub fn compile_to_artifact(
+    name: &str,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<(CompiledCardArtifact, ironsmith::cards::CardDefinition), CompilerIntegrationError> {
+    let builder = compiler::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), name);
+    compile_builder_to_artifact(builder, text, allow_unsupported)
+}
+
 pub fn compile_builder_to_runtime_definition(
     builder: compiler::CardDefinitionBuilder,
     text: impl Into<String>,

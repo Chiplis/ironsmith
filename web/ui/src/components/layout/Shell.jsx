@@ -261,6 +261,8 @@ export default function Shell() {
   const startupBoardRef = useRef(null);
   useEffect(() => {
     if (initialPuzzleQueryRef.current || fixedStartingBoard) return;
+    const lobbyQuery = initialLobbyQueryRef.current;
+    if (lobbyQuery.lobbyId || lobbyQuery.deckText || lobbyQuery.commanderText) return;
     startupBoardRef.current = prefetchRandomStartingBoard(parseNames(playerNames), startingLife, semanticThreshold);
     // Mount-time settings are the ones the first init reads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -288,6 +290,15 @@ export default function Shell() {
             ? `; skipped unsupported cards: ${loaded.skippedCardNames.join(", ")}`
             : "";
           await refresh(`Puzzle loaded from link${skippedSuffix}`);
+        } else if (!fixedStartingBoard && (
+          initialLobbyQueryRef.current.lobbyId
+          || initialLobbyQueryRef.current.deckText
+          || initialLobbyQueryRef.current.commanderText
+        )) {
+          // A multiplayer link supplies its own decks. Initialize the empty
+          // table needed by the lobby without loading an unrelated random game.
+          await game.resetEmpty(parseNames(playerNames), startingLife);
+          await refresh("WASM loaded");
         } else {
           const names = parseNames(playerNames);
           const prefetched = startupBoardRef.current;
@@ -673,7 +684,7 @@ export default function Shell() {
       }}
       deckLoadingMode={deckLoadingMode}
       onAddCardNotice={pushNotice}
-      showInlineControls={!nonDesktopViewport && !tabletCompactViewport}
+      showInlineControls={!dockToolbarsInTable && !nonDesktopViewport && !tabletCompactViewport}
     />
   );
   const topbarElement = (
@@ -722,7 +733,7 @@ export default function Shell() {
   );
   const zoneActionControlsElement = (
     <TableActionControls
-      compact={smallDesktopViewport}
+      compact={false}
       onAddCardNotice={pushNotice}
       onEnterDeckLoading={() => {
         setPuzzleSetupMode(false);
@@ -770,6 +781,7 @@ export default function Shell() {
       {renderTopLevelAddCardBar ? addCardBarElement : null}
       <TableErrorBoundary resetKey={state}>
         <Workspace
+          onChangePerspective={handleChangePerspective}
           zoneViews={zoneViews}
           setZoneViews={setZoneViews}
           deckLoadingMode={deckLoadingMode}

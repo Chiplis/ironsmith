@@ -8,6 +8,7 @@ import {
   stackInspectObjectId,
   stackSelectionKeys,
   stackEntryRenderKeys,
+  hoveredObjectZoneViews,
 } from "../src/lib/stack-targets.js";
 
 test("stack render keys distinguish shared ids and survive top pushes and pops", () => {
@@ -103,4 +104,89 @@ test("a spell targeting another spell draws its arrow to that spell's stack tile
   assert.equal(presentation.arrows.length, 1);
   assert.equal(presentation.arrows[0].toId, 272, "the arrow lands on the Bolt tile, drawn under its own id");
   assert.deepEqual(presentation.temporaryZoneViews, []);
+});
+
+test("hovering a hidden opponent hand object never opens the hand or shifts the battlefield", () => {
+  const state = {
+    perspective: 0,
+    players: [
+      { id: 0, hand_cards: [{ id: 11, name: "My card" }] },
+      { id: 1, can_view_hand: false, hand_cards: [{ id: 21, name: "Hidden card" }] },
+    ],
+    stack_objects: [{
+      id: 50,
+      inspect_object_id: 40,
+      controller: 0,
+      targets: [{ kind: "object", object: 21 }],
+    }],
+  };
+
+  assert.deepEqual(hoveredObjectZoneViews(state, 21, ["battlefield"]), []);
+  const presentation = buildStackTargetPresentation(state, ["battlefield"], 50);
+  assert.deepEqual(presentation.temporaryZoneViews, []);
+  assert.deepEqual(presentation.arrows, []);
+});
+
+test("hovering a card in any hand never expands all player hands implicitly", () => {
+  const state = {
+    perspective: 0,
+    players: [
+      { id: 0, can_view_hand: false, hand_cards: [{ id: 11, name: "My card" }] },
+      { id: 1, can_view_hand: true, hand_cards: [{ id: 21, name: "Shared card" }] },
+    ],
+  };
+
+  assert.deepEqual(hoveredObjectZoneViews(state, 11, ["battlefield"]), []);
+  assert.deepEqual(hoveredObjectZoneViews(state, 11, ["battlefield", "hand"]), []);
+  assert.deepEqual(hoveredObjectZoneViews(state, 21, ["battlefield"]), []);
+  assert.deepEqual(hoveredObjectZoneViews(state, 21, ["battlefield", "hand"]), []);
+});
+
+test("hovering a stack object targeting the local hand does not reveal every hand", () => {
+  const state = {
+    perspective: 0,
+    players: [
+      { id: 0, hand_cards: [{ id: 11, name: "My card" }] },
+      { id: 1, can_view_hand: false, hand_cards: [{ id: 21, name: "Hidden card" }] },
+    ],
+    stack_objects: [{
+      id: 50,
+      inspect_object_id: 40,
+      controller: 0,
+      targets: [{ kind: "object", object: 11 }],
+    }],
+  };
+
+  const collapsed = buildStackTargetPresentation(state, ["battlefield"], 50);
+  assert.deepEqual(collapsed.temporaryZoneViews, []);
+  assert.deepEqual(collapsed.arrows, []);
+
+  const open = buildStackTargetPresentation(state, ["battlefield", "hand"], 50);
+  assert.deepEqual(open.temporaryZoneViews, []);
+  assert.equal(open.arrows.length, 1, "an explicitly opened, visible hand can still show its target arrow");
+});
+
+test("a visible opponent hand target stays collapsed until its zone is explicitly open", () => {
+  const state = {
+    perspective: 0,
+    players: [
+      { id: 0 },
+      { id: 1, can_view_hand: true, hand_cards: [{ id: 21, name: "Shared card" }] },
+    ],
+    stack_objects: [{
+      id: 50,
+      inspect_object_id: 40,
+      controller: 0,
+      targets: [{ kind: "object", object: 21 }],
+    }],
+  };
+
+  const collapsed = buildStackTargetPresentation(state, ["battlefield"], 50);
+  assert.deepEqual(collapsed.temporaryZoneViews, []);
+  assert.deepEqual(collapsed.arrows, []);
+
+  const open = buildStackTargetPresentation(state, ["battlefield", "hand"], 50);
+  assert.deepEqual(open.temporaryZoneViews, []);
+  assert.equal(open.arrows.length, 1, "the target is linked once the player has opened the shared hand");
+  assert.equal(open.arrows[0].toId, 21);
 });

@@ -19,7 +19,7 @@ import {
   useObjectSelectionActions,
 } from "@/context/ObjectSelectionContext";
 
-const STRIP_ITEM_BASE_CLASS = "decision-option-row decision-option-row--strip h-8 max-w-[360px] min-w-[120px] shrink-0 justify-start self-stretch px-2.5 text-[12px] font-semibold";
+const STRIP_ITEM_BASE_CLASS = "decision-option-row decision-option-row--strip decision-option-row--vertical-object-select h-auto min-h-9 w-full min-w-0 justify-start self-stretch px-2.5 py-1.5 text-left text-[12px] font-semibold whitespace-normal";
 const STRIP_ITEM_ACTIVE_CLASS = "is-selected";
 const STRIP_ITEM_DISABLED_CLASS = "is-disabled";
 
@@ -182,14 +182,16 @@ export default function SelectObjectsDecision({
         )}
         <div
           className={cn(
-            "w-full transition-[max-height] duration-300 ease-out",
-            stripLayout ? "decision-strip-scroll overflow-x-auto overflow-y-hidden pb-1" : "overflow-y-auto overflow-x-hidden"
+            "w-full min-w-0 transition-[max-height] duration-300 ease-out",
+            stripLayout
+              ? "decision-strip-scroll decision-strip-scroll--vertical-object-options overflow-x-hidden overflow-y-auto pb-1"
+              : "overflow-y-auto overflow-x-hidden"
           )}
           style={stripLayout ? undefined : { maxHeight: `${optionsMaxHeight}px` }}
         >
           <div className={cn(
             stripLayout
-              ? "decision-strip-options-row flex w-max min-w-full flex-nowrap items-center gap-1.5 py-0.5 pr-1"
+              ? "decision-strip-options-row decision-strip-options-row--vertical-objects flex w-full min-w-full flex-col items-stretch gap-1 py-0.5 pr-1"
               : "w-full divide-y divide-[rgba(128,107,78,0.28)]"
           )}>
             {visibleCandidates.map((c) => {

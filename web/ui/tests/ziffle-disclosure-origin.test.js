@@ -40,7 +40,8 @@ test('live origin service consults final engine requirements only in explicit di
   const declaration = source.slice(start, end).trim();
   let calls = 0, currentState = { players: [{ id: 1 }] };
   const context = { useCallback: fn => fn, gameRef: { current: {
-    exportSyncCheckpoint: async () => ({ objects: [] }), uiState: async () => currentState,
+    getHiddenCardState: async () => ({ objects: [] }),
+    getHiddenCardMetadataAtPosition: async () => [], uiState: async () => currentState,
     endOfMatchDisclosureRequirements: async owner => { assert.equal(owner, 1); calls++; return [requirement]; },
   } }, zifflePositionFromCommitment: value => Number(String(value).slice(String(value).lastIndexOf(':') + 1)),
   hiddenCardMetadataForObjectFromCheckpoint: () => null, ziffleOriginAnchorFromMetadata,

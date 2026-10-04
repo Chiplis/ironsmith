@@ -13,6 +13,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 
 /// Why a cost is being paid.
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PaymentReason {
     /// Casting a spell.

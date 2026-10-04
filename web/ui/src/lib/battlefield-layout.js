@@ -72,6 +72,7 @@ export function battlefieldGridSlotAtPoint({
   cardWidth,
   cardHeight,
   gap = 0,
+  rowGap = gap,
   overlap = 0,
   scrollLeft = 0,
   scrollTop = 0,
@@ -87,6 +88,7 @@ export function battlefieldGridSlotAtPoint({
     cardWidth,
     cardHeight,
     gap,
+    rowGap,
     overlap,
     scrollLeft,
     scrollTop,
@@ -98,7 +100,7 @@ export function battlefieldGridSlotAtPoint({
   const trackWidth = Math.max(1, Number(cardWidth) - Math.max(0, Number(overlap)));
   const rowHeight = Math.max(1, Number(cardHeight));
   const columnStride = trackWidth + Math.max(0, Number(gap));
-  const rowStride = rowHeight + Math.max(0, Number(gap));
+  const rowStride = rowHeight + Math.max(0, Number(rowGap));
   const gridWidth = (columnCount * trackWidth) + ((columnCount - 1) * Math.max(0, Number(gap)));
   const gridLeft = Number(left) + Math.max(0, (Number(width) - gridWidth) / 2);
   // x/y are viewport coordinates. Add the scroller offset so a drop over a
@@ -109,7 +111,7 @@ export function battlefieldGridSlotAtPoint({
   if (relativeX < 0 || relativeY < 0) return null;
 
   const column = Math.floor((relativeX + (Math.max(0, Number(gap)) / 2)) / columnStride) + 1;
-  const row = Math.floor((relativeY + (Math.max(0, Number(gap)) / 2)) / rowStride) + 1;
+  const row = Math.floor((relativeY + (Math.max(0, Number(rowGap)) / 2)) / rowStride) + 1;
   if (column < 1 || column > columnCount || row < 1 || row > rowCount) return null;
   return { row, column };
 }

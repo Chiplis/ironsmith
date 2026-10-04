@@ -22,10 +22,12 @@ use crate::replacement::ReplacementEffect;
 /// replacement effects are properly registered.
 pub fn generate_replacement_effects_from_abilities(game: &GameState)
     -> Result<Vec<ReplacementEffect>, crate::static_ability_processor::StaticEffectDiscoveryError> {
-    let continuous = game.try_all_continuous_effects()?;
+    // Validate discovery before allowing the shared layer cache to serve any
+    // object. Every zone remains in scope, including hidden-zone replacements.
     let mut effects = Vec::new();
 
     let object_ids = game.object_ids_in_deterministic_order();
+    let mut characteristics = game.try_current_characteristics_batch(&object_ids)?;
 
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {
@@ -33,7 +35,7 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState)
             if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object_id) {
                 continue;
             }
-            let Some(chars) = game.try_current_characteristics_with_effects(object_id, &continuous)? else { continue; };
+            let Some(chars) = characteristics.remove(&object_id) else { continue; };
             let controller = chars.controller;
             let zone = object.zone;
 
@@ -183,6 +185,10 @@ mod tests {
             ))
             .build();
         let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        game.refresh_continuous_state().unwrap();
+        // Exercise the validated shared cache, then invalidate it with counter
+        // changes; a cached ability must neither survive nor miss its condition.
+        game.prewarm_calculated_characteristics(&[source]);
 
         assert!(
             generate_replacement_effects_from_abilities(&game).unwrap()
@@ -192,6 +198,7 @@ mod tests {
         );
 
         game.add_counters(source, CounterType::PlusOnePlusOne, 1);
+        game.refresh_continuous_state().unwrap();
         let replacements = generate_replacement_effects_from_abilities(&game).unwrap();
         let replacement = replacements
             .iter()
@@ -203,12 +210,63 @@ mod tests {
         ));
 
         game.remove_counters(source, CounterType::PlusOnePlusOne, 1, None, None);
+        game.refresh_continuous_state().unwrap();
         assert!(
             generate_replacement_effects_from_abilities(&game).unwrap()
                 .iter()
                 .all(|effect| effect.source != source),
             "the prevention replacement must deactivate after the last counter is removed"
         );
+    }
+
+    #[test]
+    fn dirty_replacement_batch_matches_individual_queries_and_refresh() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let conditional = ironsmith_core::StaticAbility::prevent_damage_to_self_remove_counter(
+            CounterType::PlusOnePlusOne,
+            crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
+        ).with_condition(crate::effect::Condition::SourceHasCounterAtLeast {
+            counter_type: CounterType::PlusOnePlusOne, count: 1,
+            surface: ironsmith_core::SourceCounterThresholdSurface::SourceHas,
+        });
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Conditional batch recipient")
+            .card_types(vec![CardType::Creature])
+            .with_ability(crate::ability::Ability::static_ability(StaticAbility::from_model(conditional)))
+            .with_ability(crate::ability::Ability::static_ability(StaticAbility::changeling()))
+            .build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        for zone in [Zone::Hand, Zone::Library, Zone::Graveyard, Zone::Exile] {
+            game.create_object_from_definition(&definition, alice, zone);
+        }
+        game.refresh_continuous_state().unwrap();
+        let check = |game: &GameState| {
+            let mut ids = game.object_ids_in_deterministic_order();
+            ids.push(ObjectId::from_raw(999999));
+            let batch = game.try_current_characteristics_batch(&ids).unwrap();
+            for id in ids {
+                let individual = game.try_current_characteristics(id).unwrap();
+                assert_eq!(format!("{:?}", batch.get(&id)), format!("{:?}", individual.as_ref()),
+                    "batch must preserve fallible single-object characteristics for {id:?}");
+            }
+            let dirty = generate_replacement_effects_from_abilities(game).unwrap();
+            let mut refreshed = game.clone();
+            refreshed.refresh_continuous_state().unwrap();
+            let clean = generate_replacement_effects_from_abilities(&refreshed).unwrap();
+            assert_eq!(format!("{dirty:?}"), format!("{clean:?}"));
+            dirty.iter().any(|effect| effect.source == source)
+        };
+        assert!(!check(&game));
+        game.add_counters(source, CounterType::PlusOnePlusOne, 1);
+        assert!(!game.continuous_state_is_clean());
+        assert!(check(&game));
+        let active_branch = game.clone();
+        game.remove_counters(source, CounterType::PlusOnePlusOne, 1, None, None);
+        assert!(!check(&game));
+        assert!(check(&active_branch));
+        game.add_counters(source, CounterType::PlusOnePlusOne, 1);
+        game.phase_out(source);
+        assert!(!check(&game));
     }
 
     #[test]

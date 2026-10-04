@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { localCardPreviewBounds } from "@/lib/card-preview-bounds";
 import { manaPaymentActionMap } from "@/lib/mana-payment-actions";
 import { useCastTargeting, useDragSession } from "@/context/DragContext";
 import { useGame } from "@/context/GameContext";
@@ -127,27 +128,26 @@ function zonePreviewLayout(anchorRect, size, source = null) {
   const margin = 8;
   const gap = 14;
   const localStrip = source?.closest?.('[data-local-zone-strip="true"]');
-  // Our zone previews may extend across the phase band and opponent's board.
-  const minimumTop = localStrip ? margin : phaseToolbarTop(margin);
-  // All of our zone strips share an exclusion boundary, including closed
-  // piles, so hovering Exile cannot cover Graveyard or Look above it.
-  const stripTops = localStrip
-    ? Array.from(document.querySelectorAll(
-      '[data-local-zone-piles="true"] .zone-pile-slot, [data-local-zone-strip="true"]'
-    )).map((element) => element.getBoundingClientRect())
-      .filter((rect) => rect.width > 0 && rect.height > 0)
-      .map((rect) => rect.top)
-    : [];
-  const maximumBottom = Math.min(window.innerHeight - margin, ...stripTops.map((top) => top - gap));
-  // Moving above the strips changes placement, not the inspector's size cap.
-  const battlefieldAvailableHeight = Math.max(0, window.innerHeight - margin - phaseToolbarTop(margin));
-  const availableHeight = Math.max(0, Math.min(maximumBottom - minimumTop, battlefieldAvailableHeight));
-  const height = Math.min(size.height, availableHeight, (window.innerWidth - margin * 2) * 88 / 63);
-  const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));
-  const top = Math.max(
-    minimumTop,
-    Math.min(maximumBottom - height, anchorRect.top + (anchorRect.height / 2) - (height / 2))
+  if (localStrip) return battlefieldPreviewLayout(anchorRect, size, source);
+  const minimumTop = phaseToolbarTop(margin);
+  const maximumBottom = window.innerHeight - margin;
+  const availableHeight = Math.max(0, maximumBottom - minimumTop);
+  const aboveSpace = Math.max(0, anchorRect.top - gap - minimumTop);
+  const belowSpace = Math.max(0, maximumBottom - anchorRect.bottom - gap);
+  const sideAvailableHeight = Math.max(aboveSpace, belowSpace);
+  const height = Math.min(
+    size.height,
+    availableHeight,
+    sideAvailableHeight,
+    (window.innerWidth - margin * 2) * 88 / 63
   );
+  const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));
+  // Keep the preview clear of the hovered zone card. Prefer above; when the
+  // toolbar or viewport leaves too little room, flip it below automatically.
+  const placeAbove = aboveSpace >= height;
+  const top = placeAbove
+    ? anchorRect.top - gap - height
+    : anchorRect.bottom + gap;
   const minimumLeft = previewLeftInset({ top, height, minimumLeft: margin });
   const maximumLeft = Math.max(minimumLeft, window.innerWidth - width - margin);
   let side = "right";
@@ -176,7 +176,7 @@ function zonePreviewLayout(anchorRect, size, source = null) {
     left: Math.round(left),
     top: Math.round(top),
     right: "auto",
-    maxHeight: `${Math.max(0, Math.floor(Math.min(availableHeight, (window.innerWidth - margin * 2) * 88 / 63)))}px`,
+    maxHeight: `${Math.max(0, Math.floor(height))}px`,
   };
 }
 
@@ -203,11 +203,17 @@ function previewPosition(objectId, size) {
   if (!source) return null;
   if (source.hasAttribute("data-zone-card")) return zonePreviewPosition(source, size);
 
-  const rect = source.getBoundingClientRect();
+  return battlefieldPreviewLayout(source.getBoundingClientRect(), size, source);
+}
+
+function battlefieldPreviewLayout(rect, size, source) {
   const margin = 8;
-  // Battlefield previews may cover the phase band, but the band itself is the
-  // hard upper boundary so an inspector never reaches an opponent's zone.
-  const minimumTop = phaseToolbarTop(margin);
+  const localSource = source?.closest?.('[data-local-zone-strip="true"], .battlefield-row[data-bf-side="bottom"]');
+  // Local battlefield and zone inspectors share the same space and size cap.
+  // Raised graveyard/exile strips must not pull the inspector onto the opposing board.
+  const minimumTop = localSource
+    ? localCardPreviewBounds().top
+    : Math.max(phaseToolbarTop(margin), margin);
   const availableHeight = Math.max(0, window.innerHeight - margin - minimumTop);
   const height = Math.min(size.height, availableHeight);
   const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));

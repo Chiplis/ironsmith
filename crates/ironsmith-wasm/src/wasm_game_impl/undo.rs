@@ -177,9 +177,11 @@ impl WasmGame {
         &self,
         _ctx: &ironsmith::decisions::context::SelectOptionsContext,
     ) -> bool {
+        // A pending mana ability may be paused inside an effect (for example,
+        // choosing its mana color). Generic effect options resume that captured
+        // effect; they have no direct PriorityResponse mapping.
         self.game.effect_store.pending_replacement_choice.is_some()
             || self.priority_state.pending_method_selection.is_some()
-            || self.priority_state.pending_mana_ability.is_some()
             || self
                 .priority_state
                 .pending_cast
@@ -254,7 +256,20 @@ impl WasmGame {
 
     fn decision_has_direct_priority_response(&self, ctx: &DecisionContext) -> bool {
         match ctx {
-            DecisionContext::Number(_) | DecisionContext::Targets(_) => {
+            DecisionContext::Targets(targets) => {
+                // A cost can pause on a nested trigger's targets while the
+                // checkpoint still retains its pending cast or activation.
+                // Only its own target-announcement stage accepts a direct
+                // response; nested choices must resume the captured operation.
+                self.priority_state.pending_cast.as_ref().is_some_and(|pending| {
+                    pending.stage == CastStage::ChoosingTargets
+                        && pending.spell_id == targets.source
+                }) || self.priority_state.pending_activation.as_ref().is_some_and(|pending| {
+                    pending.stage == ActivationStage::ChoosingTargets
+                        && pending.source == targets.source
+                })
+            }
+            DecisionContext::Number(_) => {
                 self.priority_state.pending_cast.is_some()
                     || self.priority_state.pending_activation.is_some()
             }

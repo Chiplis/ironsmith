@@ -34,6 +34,7 @@ pub(crate) struct ManaSourceProvenance {
     pub(crate) retention: Option<ironsmith_core::ManaRetentionDuration>,
 }
 
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ManaSpendPolicy {
     pub mode: ironsmith_core::value_model::ManaSpendMode,

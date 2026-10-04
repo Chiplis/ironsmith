@@ -33,7 +33,7 @@ doctest = false
 [features]
 default = ["generated-registry", "dynamic-compile"]
 generated-registry = ["ironsmith/generated-registry"]
-dynamic-compile = ["dep:ironsmith-dynamic-compile"]
+dynamic-compile = ["dep:ironsmith-dynamic-compile", "dep:ironsmith-card-source-build", "dep:ironsmith-compiler-runtime-build"]
 wasm = ["ironsmith/wasm"]
 wasm-lean = ["ironsmith/wasm-lean"]
 shadow-continuous = ["ironsmith/shadow-continuous"]
@@ -43,3 +43,9 @@ paranoid-invariants = ["ironsmith/paranoid-invariants"]
 ironsmith-card-catalog = { path = "../ironsmith-card-catalog", features = ["build"] }
 ironsmith-registry-test = { package = "ironsmith-registry", path = "../ironsmith-registry", default-features = false, features = ["handwritten-parse-support"] }
 ironsmith-tools = { path = "../ironsmith-tools", default-features = false }
+
+[build-dependencies]
+ironsmith-card-source-build = { package = "ironsmith-card-source", path = "../ironsmith-card-source", optional = true }
+ironsmith-compiler-runtime-build = { package = "ironsmith-compiler-runtime", path = "../ironsmith-compiler-runtime", default-features = false, optional = true }
+serde_json = "1.0.149"
+ironsmith-core = { path = "../ironsmith-core", default-features = false }

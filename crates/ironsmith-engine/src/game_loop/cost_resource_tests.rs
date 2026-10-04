@@ -328,3 +328,74 @@ fn delve_resources_expand_the_announced_x_bound() {
         "X includes Delve resources beyond the mana pool"
     );
 }
+
+#[test]
+fn mana_value_x_alternative_cost_bounds_use_eligible_cards_not_the_mana_pool() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let spell = CardBuilder::new(CardId::new(), "Pitch X probe")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::X,
+            ManaSymbol::Red,
+            ManaSymbol::Red,
+        ]))
+        .build();
+    let source = game.create_object_from_card(&spell, alice, Zone::Stack);
+    let mut filter = ObjectFilter::default();
+    filter.zone = Some(Zone::Hand);
+    filter.colors = Some(crate::color::ColorSet::RED);
+    filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(
+        crate::effect::Value::X,
+    )));
+    let selection = crate::effects::ChooseObjectsEffect::new(
+        filter,
+        1,
+        crate::target::PlayerFilter::You,
+        "exiled",
+    );
+    game.object_mut(source).unwrap().alternative_casts =
+        vec![AlternativeCastingMethod::alternative_cost(
+            "Pitch",
+            None,
+            vec![crate::costs::Cost::effect(selection.clone())],
+        )]
+        .into();
+    for (symbol, generic, owner, zone) in [
+        (ManaSymbol::Red, 0, alice, Zone::Hand),
+        (ManaSymbol::Red, 4, alice, Zone::Hand),
+        (ManaSymbol::Blue, 9, alice, Zone::Hand),
+        (ManaSymbol::Red, 11, PlayerId::from_index(1), Zone::Hand),
+        (ManaSymbol::Red, 8, alice, Zone::Graveyard),
+    ] {
+        let card = CardBuilder::new(CardId::new(), "Resource")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(generic)],
+                vec![symbol],
+            ]))
+            .build();
+        game.create_object_from_card(&card, owner, zone);
+    }
+    assert_eq!(
+        compute_spell_cast_x_bounds(&game, alice, source, &CastingMethod::Alternative(0), None),
+        (true, 0, 5),
+        "the red card with mana value five supplies X without spending mana"
+    );
+    use crate::effects::{CostExecutableEffect, EffectExecutor};
+    game.object_mut(source).unwrap().x_value = Some(5);
+    assert!(CostExecutableEffect::can_execute_as_cost(&selection, &game, source, alice).is_ok());
+    game.object_mut(source).unwrap().x_value = Some(2);
+    assert!(
+        CostExecutableEffect::can_execute_as_cost(&selection, &game, source, alice).is_err(),
+        "a gap between eligible mana values must not allow an unrelated red card"
+    );
+    let mut pair = selection.clone();
+    pair.count.min = 2;
+    pair.count.max = Some(2);
+    assert_eq!(
+        pair.max_cost_x(&game, source, alice),
+        Some(0),
+        "two cards of different mana values cannot pay one fixed X"
+    );
+}

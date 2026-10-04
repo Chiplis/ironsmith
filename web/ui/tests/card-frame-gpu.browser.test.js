@@ -26,13 +26,18 @@ test('GPU inpainting preserves unmasked pixels, matches CPU quality, and survive
       const {inpaintCardFrameGpu, cardFrameGpuStats} = await import('/src/lib/card-frame-gpu.js');
       const results = [];
       let last;
-      for (const pattern of ['gradient', 'two-tone', 'wide-glyphs', 'isolated']) {
-        const width = 256, height = 96, data = new Uint8ClampedArray(width * height * 4), mask = new Uint8Array(width * height);
+      for (const pattern of ['gradient', 'two-tone', 'wide-glyphs', 'isolated', 'dense-rules']) {
+        const width = 256, height = pattern==='dense-rules'?128:96, data = new Uint8ClampedArray(width * height * 4), mask = new Uint8Array(width * height);
         for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
           const p = y * width + x;
           const value = pattern === 'two-tone' ? (x < width / 2 ? 150 : 220) : 195 + Math.round(x / width * 35);
           data.set([value, value - 3, value - 9, 255], p * 4);
           if (pattern === 'isolated' || ((pattern === 'wide-glyphs' ? x % 48 >= 10 && x % 48 <= 30 : x % 18 >= 7 && x % 18 <= 10) && y > 20 && y < 70)) {mask[p] = 1; data.set([20, 20, 20, 255], p * 4);}
+          if(pattern==='dense-rules') {
+            data.set([value,value-3,value-9,255],p*4);
+            mask[p]=x>=10&&x<246&&y>=8&&y<120?1:0;
+            if(Math.abs(x-128)<2&&Math.abs(y-64)<2)data.set([20,20,20,255],p*4);
+          }
         }
         const scan = {data, width, height}, startCpu = performance.now(), cpu = inpaintGlyphMask(scan, mask), cpuMs = performance.now() - startCpu;
         const startGpu = performance.now(), gpu = await inpaintCardFrameGpu(scan, mask), gpuMs = performance.now() - startGpu;
@@ -41,7 +46,7 @@ test('GPU inpainting preserves unmasked pixels, matches CPU quality, and survive
           if (!mask[p] && gpu.data[p * 4 + c] !== data[p * 4 + c]) untouchedChanges++;
           if (mask[p] && c < 3) {const delta = Math.abs(cpu.data[p * 4 + c] - gpu.data[p * 4 + c]); maxDifference = Math.max(maxDifference, delta); totalDifference += delta; channels++;}
         }
-        results.push({pattern, untouchedChanges, maxDifference, meanDifference: totalDifference / channels, cpuMs, gpuMs});
+        results.push({pattern, untouchedChanges, maxDifference, meanDifference: totalDifference / channels, cpuMs, gpuMs,center:gpu.data[(Math.floor(height/2)*width+128)*4]});
         last = {scan, mask, cpu};
       }
       const stats = cardFrameGpuStats();
@@ -50,7 +55,8 @@ test('GPU inpainting preserves unmasked pixels, matches CPU quality, and survive
       const fallback = await inpaintCardFrameGpu(last.scan, last.mask);
       return {results, stats, fallbackMatches: fallback.data.every((value, index) => value === last.cpu.data[index]), afterLoss: cardFrameGpuStats()};
     });
-    assert.equal(result.stats.gpuJobs, 4, JSON.stringify(result));
+    assert.equal(result.stats.gpuJobs, 5, JSON.stringify(result));
+    assert.ok(result.results.find(r=>r.pattern==='dense-rules').center>190,'dense rules retain no original center ink');
     for (const entry of result.results) {
       assert.equal(entry.untouchedChanges, 0, JSON.stringify(entry));
       assert.ok(entry.meanDifference <= 2 && entry.maxDifference <= 12, JSON.stringify(entry));

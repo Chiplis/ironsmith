@@ -651,6 +651,7 @@ export default function GameCard({
   onClick,
   onKeyboardActivate,
   onKeyboardNavigation,
+  getKeyboardNavigationScope,
   onContextMenu,
   onPointerDown,
   onPointerMove,
@@ -716,7 +717,7 @@ export default function GameCard({
   const count = Number(card.count);
   const groupSize = Number.isFinite(count) && count > 1 ? count : 1;
   const summoningSick = variant === "battlefield" && card?.summoning_sick === true;
-  const hasActiveAura = variant === "battlefield" && card?.has_active_aura === true;
+  const ptModifiedByEffect = variant === "battlefield" && card?.pt_modified_by_effect === true;
   const battlefieldStackDepth = variant === "battlefield"
     ? Math.max(0, Math.min(groupSize, 4) - 1)
     : 0;
@@ -1346,8 +1347,13 @@ export default function GameCard({
           // Hand navigation must not jump into battlefield/decision cards that
           // happen to be mounted elsewhere in the workspace. Keep the focus
           // loop inside the nearest hand surface when one exists.
-          const navigationScope = event.currentTarget.closest("[data-card-navigation-scope]");
-          const cards = Array.from((navigationScope || document).querySelectorAll('.game-card[role="button"]'))
+          const navigationScope = getKeyboardNavigationScope?.() || event.currentTarget.closest("[data-card-navigation-scope]");
+          const candidates = navigationScope?.dataset.cardNavigationScope === 'hand' && navigationScope.querySelector('.hand-layout-item')
+            ? Array.from(navigationScope.querySelectorAll('.hand-layout-item[data-hand-object-id]')).map(slot =>
+              slot.querySelector('.game-card[role="button"]') || document.querySelector(`.hand-hover-portal .game-card[data-object-id="${slot.dataset.handObjectId}"][role="button"]`)
+            ).filter(Boolean)
+            : Array.from((navigationScope || document).querySelectorAll('.game-card[role="button"]'));
+          const cards = candidates
             .filter((candidate) => {
               if (candidate.offsetParent === null || candidate.hasAttribute("aria-hidden")) return false;
               // Battlefield layout transitions keep temporary cards mounted but
@@ -1692,19 +1698,6 @@ export default function GameCard({
           </div>
         ) : null}
 
-        {summoningSick && !useTokenBattlefield && (
-          <span
-            className="battlefield-summoning-sickness"
-            role="img"
-            aria-label={ui("Summoning sickness")}
-            title={ui("Summoning sickness")}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M18.9 8.1c-1.6-3.5-6.2-4.7-9.6-2.5-3.4 2.1-3.8 6.8-.9 9.4 2.8 2.5 7.4 1.3 8.4-2.2.8-2.8-1.9-5.4-4.7-4.4-2.1.7-2.5 3.6-.7 4.6 1.4.8 3.1-.2 3-1.7" />
-            </svg>
-          </span>
-        )}
-
         {variant === "battlefield" && centerOverlay && (
           <div className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center">
             <div className="pointer-events-auto">
@@ -1718,9 +1711,12 @@ export default function GameCard({
             <span
               className={cn(
                 "battlefield-pt-badge",
-                hasActiveAura && "battlefield-pt-badge--aura",
+                ptModifiedByEffect && "battlefield-pt-badge--modified",
+                summoningSick && "battlefield-pt-badge--summoning-sick",
               )}
-              title={hasActiveAura ? ui("Power/Toughness modified by an active aura") : undefined}
+              title={summoningSick
+                ? ui("Summoning sickness")
+                : ptModifiedByEffect ? ui("Power/Toughness modified by an effect") : undefined}
             >
               {battlefieldPowerToughness(card)}
             </span>

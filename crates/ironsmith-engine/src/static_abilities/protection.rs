@@ -542,6 +542,12 @@ fn ward_waterbend_generic(cost: &crate::cost::TotalCost) -> Option<u32> {
 }
 
 impl StaticAbilityKind for Ward {
+    // Ward is handled when an object becomes targeted. It does not emit
+    // characteristic-changing effects, including when its payment is nonmana.
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
         let ironsmith_core::StaticAbilityPayload::Ward(retained) = &self.retained_model.payload
         else {
@@ -615,6 +621,7 @@ mod tests {
         let cost = TotalCost::from_cost(Cost::life(2));
         let ward = Ward::new(cost.clone());
         assert_eq!(ward.id(), StaticAbilityId::Ward);
+        assert!(!ward.may_generate_continuous_effects());
         assert!(ward.ward_cost().is_some());
     }
 

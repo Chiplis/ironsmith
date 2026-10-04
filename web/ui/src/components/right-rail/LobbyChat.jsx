@@ -39,7 +39,7 @@ function isLocalZoneSurface(target) {
   ));
 }
 
-export default function LobbyChat() {
+export default function LobbyChat({ showOffline = false }) {
   const { multiplayer, sendLobbyChat } = useGame();
   const ui = useUiText();
   const [draft, setDraft] = useState("");
@@ -97,8 +97,11 @@ export default function LobbyChat() {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [messages, collapsed]);
-  if (!multiplayer?.role) return null;
-  return <section className="lobby-chat" data-collapsed={collapsed} aria-label={ui("Lobby chat")}
+  const online = Boolean(multiplayer?.role);
+  // Outside multiplayer the tab can still be shown (desktop HUD) so the
+  // layout is stable; it just explains that chat needs a multiplayer game.
+  if (!online && !showOffline) return null;
+  return <section className="lobby-chat" data-collapsed={collapsed} data-offline={online ? undefined : "true"} aria-label={ui("Lobby chat")}
     ref={chatRef}
     onKeyDown={(event) => event.stopPropagation()}
     onPointerDown={(event) => { event.stopPropagation(); cancelCollapse(); }}
@@ -134,9 +137,11 @@ export default function LobbyChat() {
         followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
       }}>
       {messages.length ? messages.map((message) => <p key={message.id}>
-        <strong data-self={message.peerId === multiplayer.localPeerId}>{message.name}</strong>
+        <strong data-self={message.peerId === multiplayer?.localPeerId}>{message.name}</strong>
         <span>{message.text}</span>
-      </p>) : <p className="lobby-chat-empty">{ui("Say hello to the table.")}</p>}
+      </p>) : <p className="lobby-chat-empty">
+        {ui(online ? "Say hello to the table." : "Chat is available in multiplayer games.")}
+      </p>}
     </div>
     <form className="lobby-chat-compose" onSubmit={(event) => {
       event.preventDefault();
@@ -149,8 +154,9 @@ export default function LobbyChat() {
       } else setError(true);
     }}>
       <input aria-label={ui("Chat message")} placeholder={ui("Message…")} maxLength={MAX_CHAT_LENGTH}
+        disabled={!online}
         value={draft} onChange={(event) => setDraft(cleanChatDraft(event.target.value))} />
-      <button type="submit" disabled={!draft.trim()} aria-label={ui("Send message")}>{ui("Send")}</button>
+      <button type="submit" disabled={!online || !draft.trim()} aria-label={ui("Send message")}>{ui("Send")}</button>
     </form>
     {error && <p role="alert">{ui("Unable to send. Try again when connected.")}</p>}
     </div>

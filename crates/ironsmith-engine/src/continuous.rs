@@ -4262,7 +4262,7 @@ fn effect_applies_to_direct(
         return false;
     }
 
-    effect_target_applies_to_direct(effect, object, chars, objects, game)
+    effect_target_applies_to_direct(effect, object, chars, objects, game, &std::cell::OnceCell::new())
 }
 
 fn effect_applies_to_direct_or_started(
@@ -4533,8 +4533,9 @@ fn effect_target_applies_to_direct(
     chars: &CalculatedCharacteristics,
     objects: &ObjectMap,
     game: &crate::game_state::GameState,
+    filter_context: &std::cell::OnceCell<crate::target::FilterContext>,
 ) -> bool {
-    if !effect_target_matches_object_direct(effect, object, chars, objects, game) {
+    if !effect_target_matches_object_direct(effect, object, chars, objects, game, filter_context) {
         return false;
     }
     // A per-recipient condition on an effect without one fixed recipient
@@ -4559,6 +4560,7 @@ fn effect_target_matches_object_direct(
     chars: &CalculatedCharacteristics,
     objects: &ObjectMap,
     game: &crate::game_state::GameState,
+    filter_context: &std::cell::OnceCell<crate::target::FilterContext>,
 ) -> bool {
     // First, check if this is a Resolution effect with locked targets.
     if let EffectSourceType::Resolution { ref locked_targets } = effect.source_type {
@@ -4589,13 +4591,14 @@ fn effect_target_matches_object_direct(
                 && within_range()
         }
         EffectTarget::Filter(filter) => {
-            filter_matches_with_characteristics(
+            let context = filter_context.get_or_init(||
+                continuous_filter_context(game, effect.controller, effect.source));
+            filter_matches_with_characteristics_in_context(
                 filter,
                 object,
                 chars,
                 game,
-                effect.controller,
-                effect.source,
+                context,
             ) && within_range()
         }
         EffectTarget::AttachedTo(source_id) => {
@@ -4651,6 +4654,10 @@ fn affected_objects_for_effect(
     }
 
     let mut affected = Vec::new();
+    // The game and layer inputs do not change while finding one effect's
+    // recipients. Source tags/snapshots are identical for every candidate;
+    // recipient-dependent conditions are still checked separately below.
+    let filter_context = std::cell::OnceCell::new();
     for (idx, &id) in order.iter().enumerate() {
         let group_started =
             continuous_effect_group_started_for_object(effect, id, started_groups_by_object);
@@ -4665,7 +4672,7 @@ fn affected_objects_for_effect(
         };
         if group_started
             || (condition_active
-                && effect_target_applies_to_direct(effect, object, chars, objects, game))
+                && effect_target_applies_to_direct(effect, object, chars, objects, game, &filter_context))
         {
             affected.push((idx, id));
         }

@@ -37,3 +37,10 @@ art-crop scans of Scryfall printing `0feca3b2-e822-4772-a644-782789f938cb`
 (Magic Origins 212, English), image version `1782745490`. The ink-symbols browser
 regression checks that pale mana discs cannot turn the black title white.
 Run it with `node --test tests/card-frame-ink-symbols.browser.test.js`.
+
+`thundering-giant-normal.jpg` and `thundering-giant-art_crop.jpg` are the scans of
+Scryfall printing `ddbcc6e9-b5f4-4f20-9c15-b690b4f64304` (Welcome Deck 2017 23,
+English), image version `1783936546`. The accompanying metadata and `w17.svg`
+make the rounded-label regression independent of live Scryfall requests.
+Run `node --test tests/card-frame-rounded-labels.browser.test.js` to check full
+initial-letter removal, unchanged panel rails/art/set logo, and P/T overflow.

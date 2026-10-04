@@ -9,11 +9,14 @@ import useManabrewHandScale, {
   MANABREW_HAND_CARD_BASE,
   MANABREW_HAND_FAN_PARAMS,
   useViewportHeight,
+  useViewportWidth,
 } from "@/hooks/useManabrewHandScale";
+import { handSideReserve } from "@/lib/floating-dock-position";
 import {
   CARD_FRAME_RENDER_HEIGHT,
   CARD_FRAME_RENDER_WIDTH,
 } from "@/components/cards/MiniatureCardFrame";
+import HandHoverPortal from "./HandHoverPortal";
 import GameCard from "@/components/cards/GameCard";
 import useHandReflow from "@/hooks/useHandReflow";
 import { samePlayerId } from "@/lib/player-display";
@@ -25,7 +28,12 @@ import {
   keyboardPlacementDragArgs,
 } from "@/lib/hand-cast-keyboard";
 
+import { reconcilePseudoHand } from "@/lib/pseudo-hand";
+
 const HAND_ROULETTE_THRESHOLD = 10;
+// Desktop hands pack up to this many cards into their fixed width; beyond it
+// the spacing stays put and the row scrolls horizontally.
+const HAND_MAX_PACKED_CARDS = 10;
 const HAND_ROULETTE_VISIBLE_CARDS = 7;
 const HAND_ROULETTE_EDGE_PADDING = 12;
 const HAND_ROULETTE_WRAP_GAP = 20;
@@ -196,6 +204,13 @@ function computeManabrewHandDimensions(scale, viewportHeight) {
 
 function computeManabrewSpread(total, dims) {
   if (total <= 1) return 0;
+  if (dims.packWidth) {
+    const packed = Math.min(total, HAND_MAX_PACKED_CARDS);
+    return Math.max(1, Math.min(
+      dims.maxSpread,
+      Math.floor((dims.packWidth - dims.cardW) / (packed - 1))
+    ));
+  }
   return Math.max(
     dims.minSpread,
     Math.min(dims.maxSpread, Math.floor((dims.spreadWidth - dims.cardW) / (total - 1)))
@@ -422,6 +437,7 @@ export default function HandZone({
   const dragSourceObjectId = dragState?.objectId != null ? String(dragState.objectId) : null;
   const handScale = useManabrewHandScale(layout === "mobile-fullscreen");
   const viewportHeight = useViewportHeight();
+  const viewportWidth = useViewportWidth();
   const dragThresholdRef = useRef(null);
   const activePointerIdRef = useRef(null);
   const dragHandlersRef = useRef(null);
@@ -688,11 +704,26 @@ export default function HandZone({
   const isMe = player?.id === state?.perspective;
 
   const actionsPausedForSync = Boolean(multiplayer?.matchStarted && multiplayer?.submittingAction);
-  const { handPlayable, extraPlayable } = useMemo(
-    () => isMe && !actionsPausedForSync
+  const [pseudoHandCache, setPseudoHandCache] = useState({ state: null, perspective: null, cards: new Map() });
+  const { handPlayable, extraPlayable } = useMemo(() => {
+    const maps = isMe
       ? buildPlayableMaps(state, player)
-      : { handPlayable: new Map(), extraPlayable: new Map() },
-    [actionsPausedForSync, isMe, state, player]
+      : { handPlayable: new Map(), extraPlayable: new Map() };
+    const previous = pseudoHandCache;
+    maps.extraPlayable = reconcilePseudoHand(
+      previous.perspective === state?.perspective ? previous.cards : new Map(),
+      maps.extraPlayable,
+      state,
+    );
+    if (!isMe) maps.extraPlayable.clear();
+    return maps;
+  }, [isMe, state, player, pseudoHandCache]);
+  if (pseudoHandCache.state !== state) {
+    setPseudoHandCache({ state, perspective: state?.perspective, cards: extraPlayable });
+  }
+  const displayedHandPlayable = useMemo(
+    () => actionsPausedForSync ? new Map() : handPlayable,
+    [actionsPausedForSync, handPlayable]
   );
   const priorityActionObjectIds = useMemo(() => {
     const ids = new Set();
@@ -716,12 +747,12 @@ export default function HandZone({
         name: data.name,
         card: data.card,
         fromZone: data.fromZone,
-        actions: data.actions,
+        actions: actionsPausedForSync ? [] : data.actions,
         glowKind: data.glowKind,
       });
     }
     return cards;
-  }, [extraPlayable]);
+  }, [actionsPausedForSync, extraPlayable]);
   const hoverableHandObjectIds = useMemo(() => {
     const ids = new Set();
     for (const card of handCards) {
@@ -767,7 +798,6 @@ export default function HandZone({
   const isMobileFan = layout === "mobile-fan" || layout === "mobile-fullscreen";
   const handHoverSuppressed = handDropHoverSuppressed || (isMobileFan && mobileHandDismissed);
   const isVerticalRail = layout === "vertical-rail";
-  const isRoulette = !isVerticalRail && !isMobileFan && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
   const handDimensions = useMemo(() => {
     const dimensions = computeManabrewHandDimensions(handScale, viewportHeight);
     // The fullscreen hand is already sized for reading. Desktop's upward lift
@@ -778,8 +808,23 @@ export default function HandZone({
     if (layout === "mobile-fan" && availableWidth > 0) {
       return { ...dimensions, minSpread: 0, spreadWidth: Math.max(dimensions.cardW, availableWidth - 48) };
     }
+    // Desktop renders the fanned hand without an availableWidth (phones pass
+    // one and are handled above).
+    if ((layout === "fan" || layout === "mobile-fan") && viewportWidth > 0) {
+      // Fixed desktop hand width: centred, leaving room on the right for the
+      // decision dock. Cards squeeze together inside it (see
+      // computeManabrewSpread) instead of growing the row.
+      const packWidth = Math.min(
+        dimensions.spreadWidth,
+        Math.max(dimensions.cardW * 2, viewportWidth - handSideReserve(viewportWidth) * 2 - 32)
+      );
+      return { ...dimensions, packWidth };
+    }
     return dimensions;
-  }, [handScale, viewportHeight, layout, availableWidth]);
+  }, [handScale, viewportHeight, viewportWidth, layout, availableWidth]);
+  const handOverflows = Boolean(handDimensions.packWidth) && renderedHandCardCount > HAND_MAX_PACKED_CARDS;
+  const isRoulette = !isVerticalRail && !isMobileFan && !handDimensions.packWidth
+    && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
   // Only one interaction source may drive the fan at a time. In particular,
   // do not combine a stale keyboard selection with a newly hovered card while
   // the pointer is taking control back from the arrow-key mode.
@@ -802,10 +847,10 @@ export default function HandZone({
   const activeFanIsPlayable = useMemo(() => {
     if (!activeFanObjectId) return false;
     const handCard = handCards.find((card) => String(card.id) === activeFanObjectId);
-    if (handCard) return (handPlayable.get(Number(handCard.id)) || []).length > 0;
+    if (handCard) return (displayedHandPlayable.get(Number(handCard.id)) || []).length > 0;
     const extra = extraCards.find((card) => String(card.id) === activeFanObjectId);
     return Boolean(extra?.actions?.length);
-  }, [activeFanObjectId, extraCards, handCards, handPlayable]);
+  }, [activeFanObjectId, extraCards, handCards, displayedHandPlayable]);
   // Both pointer hover and keyboard focus keep the card in its slot. Explicit
   // click selection also uses the same in-place reading treatment.
   const activeFanShouldCenter = false;
@@ -820,6 +865,8 @@ export default function HandZone({
   );
   const surfaceWidth = isVerticalRail
     ? "100%"
+    : handDimensions.packWidth
+    ? `min(${Math.min(nonRouletteWidth, Math.round(handDimensions.packWidth) + 32)}px, 100%)`
     : isMobileFan
     ? `min(${nonRouletteWidth}px, 100%)`
     : isRoulette
@@ -900,7 +947,7 @@ export default function HandZone({
       if (isMobileFan) {
         const surface = handListRef.current?.closest(".mobile-mtga-hand-fan")
           || handListRef.current?.closest(".hand-zone-surface");
-        if (surface?.contains(target)) {
+        if (surface?.contains(target) || (target instanceof Element && target.closest(".hand-hover-portal .hand-card"))) {
           setMobileHandDismissed(false);
           return;
         }
@@ -937,7 +984,8 @@ export default function HandZone({
       // the slot itself, which the selection lift never moves — anchors the
       // arrow where the card actually is.
       const element = (
-        event.currentTarget?.closest?.(".hand-layout-item")
+        handListRef.current?.querySelector(`.hand-layout-item[data-hand-object-id="${card.id}"]`)
+        || event.currentTarget?.closest?.(".hand-layout-item")
         || event.currentTarget?.closest?.(".game-card")
         || event.currentTarget
       );
@@ -1250,6 +1298,7 @@ export default function HandZone({
   }, [hoverableHandObjectIds, isMobileFan, selectedObjectIdKey]);
 
   const handleHandPointerMove = useCallback((event) => {
+    if (event.target instanceof Element && event.target.closest('.hand-hover-portal')) return;
     if (performance.now() < hoverSuppressedUntilRef.current) return;
     if (event.pointerType === "touch" || activePointerIdRef.current != null) return;
     if (keyboardNavigationRef.current) {
@@ -1377,8 +1426,19 @@ export default function HandZone({
     return () => cancelAnimationFrame(frameId);
   }, [isRoulette]);
 
+  // Past the packed limit, a newly added card (always appended on the right)
+  // is scrolled into view.
+  const previousHandCountRef = useRef(renderedHandCardCount);
+  useLayoutEffect(() => {
+    const previousCount = previousHandCountRef.current;
+    previousHandCountRef.current = renderedHandCardCount;
+    if (!handOverflows || renderedHandCardCount <= previousCount) return;
+    const scrollEl = handScrollRef.current;
+    if (scrollEl) scrollEl.scrollLeft = scrollEl.scrollWidth;
+  }, [handOverflows, renderedHandCardCount]);
+
   const handleRouletteWheel = useCallback((event) => {
-    if (!isRoulette) return;
+    if (!isRoulette && !handOverflows) return;
     const scrollEl = handScrollRef.current;
     if (!scrollEl) return;
     const primaryDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
@@ -1390,7 +1450,7 @@ export default function HandZone({
       left: primaryDelta * 1.1,
       behavior: "auto",
     });
-  }, [isRoulette]);
+  }, [handOverflows, isRoulette]);
 
   const handleRouletteScroll = useCallback(() => {
     recenterRouletteIfNeeded();
@@ -1558,7 +1618,7 @@ export default function HandZone({
 
       if (entry.kind === "hand") {
         const { card, visualIndex } = entry;
-        const plays = handPlayable.get(Number(card.id)) || [];
+        const plays = displayedHandPlayable.get(Number(card.id)) || [];
         const isPlayable = plays.length > 0;
         const baseGlowKind = isPlayable ? handGlowFromTypes(card.card_types) : null;
         const isActionLinkedHover = (
@@ -1694,7 +1754,7 @@ export default function HandZone({
 
       if (entry.kind === "hand") {
         const { card, visualIndex } = entry;
-        const plays = handPlayable.get(Number(card.id)) || [];
+        const plays = displayedHandPlayable.get(Number(card.id)) || [];
         const isPlayable = plays.length > 0;
         const baseGlowKind = isPlayable ? handGlowFromTypes(card.card_types) : null;
         const isActionLinkedHover = (
@@ -1724,7 +1784,7 @@ export default function HandZone({
         const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
           buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
             dims: handDimensions,
-            activeIndex: isPrimaryCycle ? activeFanIndex : null,
+            activeIndex: isPrimaryCycle && !handDimensions.packWidth ? activeFanIndex : null,
             activeIsPlayable: isPrimaryCycle ? activeFanIsPlayable : false,
             centerActive: isPrimaryCycle ? activeFanShouldCenter : false,
             spreadAroundActive: isPrimaryCycle ? activeFanShouldSpread : false,
@@ -1742,6 +1802,7 @@ export default function HandZone({
             inert={isDrawInFlight ? true : undefined}
             style={isDrawInFlight ? { ...wrapperStyle, visibility: "hidden", pointerEvents: "none" } : wrapperStyle}
           >
+            <HandHoverPortal enabled={Boolean(handDimensions.packWidth)} active={Boolean(handDimensions.packWidth) && !isDragSource && (isHovered || isInspected || isKeyboardSelected)} objectId={cardObjectId}>
             <GameCard
               card={card}
               variant="hand"
@@ -1766,6 +1827,7 @@ export default function HandZone({
               ].filter(Boolean).join(" ") || undefined}
               style={cardStyle}
             />
+            </HandHoverPortal>
           </div>
         );
       }
@@ -1800,7 +1862,7 @@ export default function HandZone({
       const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
         buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
             dims: handDimensions,
-            activeIndex: isPrimaryCycle ? activeFanIndex : null,
+          activeIndex: isPrimaryCycle && !handDimensions.packWidth ? activeFanIndex : null,
             activeIsPlayable: isPrimaryCycle ? activeFanIsPlayable : false,
             centerActive: isPrimaryCycle ? activeFanShouldCenter : false,
             spreadAroundActive: isPrimaryCycle ? activeFanShouldSpread : false,
@@ -1815,6 +1877,7 @@ export default function HandZone({
           data-hand-object-id={extraObjectId}
           style={wrapperStyle}
         >
+          <HandHoverPortal enabled={Boolean(handDimensions.packWidth)} active={Boolean(handDimensions.packWidth) && !isDragSource && (isHovered || isInspected || isKeyboardSelected)} objectId={extraObjectId}>
           <GameCard
             card={card}
             variant="hand"
@@ -1839,6 +1902,7 @@ export default function HandZone({
             ].filter(Boolean).join(" ") || undefined}
             style={cardStyle}
           />
+          </HandHoverPortal>
         </div>
       );
     };
@@ -1879,13 +1943,14 @@ export default function HandZone({
           <div
             ref={handScrollRef}
             className={`hand-zone-scroll min-h-0 h-full w-full min-w-0 -mx-2 px-2 overflow-x-auto overflow-y-hidden overscroll-x-contain ${isRoulette ? "hand-zone-scroll-roulette" : ""} ${isMobileFan ? "hand-zone-scroll-mobile-fan" : ""}`}
+            data-hand-overflow={handOverflows ? "true" : undefined}
             onScroll={handleRouletteScroll}
             onPointerMove={handleHandPointerMove}
             onPointerLeave={handleHandPointerLeave}
           >
             <div
               ref={handListRef}
-              className={`hand-zone-row flex min-h-full w-max flex-nowrap items-end pt-1 pb-2 overflow-visible ${isRoulette ? "hand-zone-row-roulette justify-start px-1.5" : "mx-auto min-w-full justify-center pl-4 pr-4"} ${isMobileFan ? "hand-zone-row-mobile-fan" : ""}`}
+              className={`hand-zone-row flex min-h-full w-max flex-nowrap items-end pt-1 pb-2 overflow-visible ${isRoulette ? "hand-zone-row-roulette justify-start px-1.5" : `mx-auto min-w-full ${handOverflows ? "justify-start" : "justify-center"} pl-4 pr-4`} ${isMobileFan ? "hand-zone-row-mobile-fan" : ""}`}
             >
               {rouletteCycleIndexes.map((cycleIndex) => (
                 <Fragment key={`cycle-${cycleIndex}`}>

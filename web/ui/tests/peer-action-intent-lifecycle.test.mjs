@@ -12,7 +12,7 @@ function implementation(name) {
   return source.slice(start, end + 4);
 }
 
-function harness() {
+function harness({ delayObservation = true } = {}) {
   let now = 1000000;
   let nextTimer = 0;
   const timers = new Map(), observations = [], claims = [], events = [];
@@ -30,7 +30,7 @@ function harness() {
     pendingActionIntentsRef: { current: new Map() }, pendingActionIntentTimeoutsRef: { current: new Map() },
     actionIntentOpeningPreviewKeysRef: { current: new Map() },
     multiplayerRef: { current: { mode: 'in_match', matchStarted: true, lastAppliedSequence: 516, localPlayerIndex: 1 } },
-    gameRef: { current: { uiState: () => new Promise(resolve => observations.push(resolve)) } },
+    gameRef: { current: { uiState: () => { throw Error('Progress must not read the engine'); } } },
     stateRef: { current: {} },
     currentAuditMatchId: () => 'match', actionIntentKey: value => `${value.matchId}:${value.seq}:${value.actorIndex}`,
     actionIntentFingerprint: value => JSON.stringify(value), signedActionIntentPayload: value => value,
@@ -38,7 +38,6 @@ function harness() {
     protocolActionIntentInactiveReason: () => context.multiplayerRef.current.matchStarted ? '' : 'match_disputed',
     matchingAppliedActionForIntent: value => value.seq <= context.multiplayerRef.current.lastAppliedSequence ? {} : null,
     cloneMultiplayerPayload: structuredClone, clearPeerWaitForActionIntent() {},
-    updateMatchClockForState: () => { events.push('clock observation'); return { enabled: false }; },
     nowMonotonicMs: () => now,
     recordPeerSyncPerf: (kind, metadata) => events.push({ kind, metadata }),
     normalizePlayerIndex: value => value, canonicalMultiplayerPayload: JSON.stringify,
@@ -47,7 +46,8 @@ function harness() {
     submitProtocolResponseTimeoutClaim: async claim => claims.push(claim),
     emitSyncFailureNotice() {}, setStatus() {}, toErrorMessage: error => error.message,
     // No fair-random reveal is locked to another intent in these scenarios.
-    servicesRef: { current: { fairRandomRevealLockConflict: () => false } },
+    servicesRef: { current: { fairRandomRevealLockConflict: () => false,
+      runtimeMatchClockSnapshot: () => { events.push('clock observation'); return { enabled: false }; } } },
     // Protocol-wait bookkeeping (timeout voters' local observations).
     protocolWaitObservationsRef: { current: new Map() }, PROTOCOL_WAIT_MAX_OBSERVATIONS: 512,
   };
@@ -63,6 +63,15 @@ function harness() {
     'rememberActionIntentObservation', 'pruneProtocolWaitObservations',
   ];
   vm.runInContext(names.map(implementation).join('\n'), context);
+  if (delayObservation) {
+    // Hold the caller's observation promise to exercise lifecycle races. The
+    // production observer itself reads the cached clock and never calls WASM.
+    const observe = context.observedMatchClockElapsedForIntent;
+    context.observedMatchClockElapsedForIntent = async (...args) => {
+      await new Promise(resolve => observations.push(resolve));
+      return observe(...args);
+    };
+  }
   const evidence = timeout => ({ requestType: 'action_intent_progress', requestId: `progress-${timeout}`,
     requestPayload: { phase: 'payload_generation' }, requestPayloadHash: 'hash', responseTimeoutMs: timeout, requestedAtMs: now });
   const remember = (timeout, value = intent) => context.rememberPendingActionIntent(value, evidence(timeout));
@@ -76,6 +85,29 @@ function harness() {
   return { context, intent, key, timers, observations, claims, events, remember, settle, advance,
     record: () => context.pendingActionIntentsRef.current.get(key), setNow: value => { now = value; } };
 }
+
+test('sixty progress updates complete without queueing a single engine read', async () => {
+  const h = harness({ delayObservation: false });
+  await Promise.all(Array.from({ length: 60 }, () => h.remember(120000)));
+  assert.equal(h.context.pendingActionIntentsRef.current.size, 1);
+  assert.equal(h.record().evidence.responseTimeoutMs, 120000);
+  assert.equal(h.timers.size, 1);
+  assert.equal(h.observations.length, 0);
+});
+
+test('progress observes the current clock epoch without replacing it from game state', async () => {
+  const h = harness({ delayObservation: false });
+  h.context.servicesRef.current.runtimeMatchClockSnapshot = () => ({
+    enabled: true, activePlayerIndex: 0, startedAtMs: 999000,
+  });
+  await h.remember(120000);
+  assert.equal(h.record().observedElapsedAtIntentMs, 1000);
+  h.context.servicesRef.current.runtimeMatchClockSnapshot = () => ({
+    enabled: true, activePlayerIndex: 1, startedAtMs: 999000,
+  });
+  await h.remember(120000);
+  assert.equal(h.record().observedElapsedAtIntentMs, 1000, 'another actor epoch cannot extend this observation');
+});
 
 test('overlapping initial progress cannot replace a 120-second allowance with four seconds', async () => {
   const h = harness();

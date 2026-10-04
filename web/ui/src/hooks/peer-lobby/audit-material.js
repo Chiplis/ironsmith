@@ -1,4 +1,5 @@
 import { isPrivateZiffleEpoch, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
+import { hiddenCardMetadataAtPositionFromCheckpoint } from "../../lib/hidden-card-metadata.js";
 import { findZiffleDisclosureOrigin, ziffleDisclosureDueForPlayer } from '../../lib/ziffle-disclosure-origin.js';
 import {
   INITIAL_AUDIT_STATE_HASH,
@@ -222,12 +223,15 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	    const normalized = Number(objectId);
 	    if (!Number.isSafeInteger(normalized) || normalized < 0) return null;
 	    const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
 	    let checkpoint = null;
 	    try {
-	      checkpoint = await currentGame.exportSyncCheckpoint();
+        if (typeof currentGame.getHiddenCardMetadata === "function") {
+          return await currentGame.getHiddenCardMetadata(normalized);
+        }
+	      checkpoint = await currentGame.getHiddenCardState();
 	    } catch {
 	      return null;
 	    }
@@ -242,17 +246,18 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     const position = zifflePositionFromCommitment(commitment);
     if (!Number.isSafeInteger(owner) || owner < 0 || position == null) return null;
     const currentGame = gameRef.current;
-    if (typeof currentGame?.exportSyncCheckpoint !== "function") return null;
-    const checkpoint = await currentGame.exportSyncCheckpoint();
+    if (typeof currentGame?.getHiddenCardState !== "function") return null;
+    const candidates = typeof currentGame.getHiddenCardMetadataAtPosition === "function"
+      ? await currentGame.getHiddenCardMetadataAtPosition(owner, position, commitment)
+      : hiddenCardMetadataAtPositionFromCheckpoint(await currentGame.getHiddenCardState(), owner, position, commitment);
     const matches = [];
-    for (const object of checkpoint?.objects || []) {
-      const metadata = hiddenCardMetadataForObjectFromCheckpoint(checkpoint, object.id);
+    for (const metadata of candidates) {
       if (!metadata || Number(metadata.owner) !== owner) continue;
       const currentCommitment = String(metadata.publicCommitment || metadata.commitment || "");
       const currentPosition = metadata.publicSlot ?? metadata.slot;
       if (currentCommitment !== commitment || Number(currentPosition) !== position) continue;
       const anchor = ziffleOriginAnchorFromMetadata(metadata);
-      if (anchor) matches.push({ ...anchor, objectId: Number(object.id), metadata });
+      if (anchor) matches.push({ ...anchor, objectId: Number(metadata.objectId), metadata });
     }
     if (matches.length > 1) throw new Error("Ziffle position has ambiguous immutable origin metadata");
     if (matches[0]) return matches[0];
@@ -403,9 +408,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 		    }
 
 		    const currentGame = gameRef.current;
-	    if (currentGame && typeof currentGame.exportSyncCheckpoint === "function") {
+	    if (currentGame && typeof currentGame.getHiddenCardState === "function") {
 	      try {
-	        const checkpoint = await currentGame.exportSyncCheckpoint();
+	        const checkpoint = await currentGame.getHiddenCardState();
 	        const explicitObject = checkpointObjectForId(checkpoint, normalizedObjectId);
 	        if (knownCheckpointObjectMatchesOpening(explicitObject, opening)) {
 	          return {
@@ -822,10 +827,10 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
         if (metadataResolved) return metadataResolved;
       }
     }
-    if (currentGame && typeof currentGame.exportSyncCheckpoint === "function") {
+    if (currentGame && typeof currentGame.getHiddenCardState === "function") {
       let checkpoint = null;
       try {
-        checkpoint = await currentGame.exportSyncCheckpoint();
+        checkpoint = await currentGame.getHiddenCardState();
       } catch {
         checkpoint = null;
       }
@@ -903,6 +908,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     manifest = null,
     payload = null,
     options = {},
+    revealPosition = null,
   } = {}) {
     const normalizedPosition = Number(position);
     const normalizedObjectId = Number(objectId);
@@ -962,17 +968,23 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
       && normalizedPosition >= 0
       && ceremony?.deckHash
     ) {
-      const tokens = await collectZiffleRevealTokens(ceremony, normalizedPosition, options);
-      const reveal = await currentGame.ziffleRevealCard({
-        deckCount: Number(ceremony.deckCount),
-        context: String(ceremony.context || ""),
-        keyContext: ziffleKeyContextForCeremony(ceremony),
-        keys: cloneMultiplayerPayload(ceremony.keys || []),
-        steps: cloneMultiplayerPayload(ceremony.steps || []),
-        ...ziffleInputDeckFields(ceremony),
-        cardPosition: normalizedPosition,
-        tokens,
-      });
+      // The callback is a same-operation batch of cryptographically checked reveals,
+      // never a caller-supplied slot or a cache across checkpoint changes.
+      const reveal = typeof revealPosition === "function"
+        ? await revealPosition(normalizedPosition)
+        : await (async () => {
+          const tokens = await collectZiffleRevealTokens(ceremony, normalizedPosition, options);
+          return currentGame.ziffleRevealCard({
+            deckCount: Number(ceremony.deckCount),
+            context: String(ceremony.context || ""),
+            keyContext: ziffleKeyContextForCeremony(ceremony),
+            keys: cloneMultiplayerPayload(ceremony.keys || []),
+            steps: cloneMultiplayerPayload(ceremony.steps || []),
+            ...ziffleInputDeckFields(ceremony),
+            cardPosition: normalizedPosition,
+            tokens,
+          });
+        })();
       const revealedSlot = Number(reveal?.originalSlot);
       if (Number.isSafeInteger(revealedSlot) && revealedSlot >= 0) {
         cryptographicShuffleOriginalSlot = revealedSlot;
@@ -2673,7 +2685,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	        );
 	        let candidateDebug = [];
 	        try {
-	          const checkpoint = await currentGame.exportSyncCheckpoint?.();
+	          const checkpoint = await currentGame.getHiddenCardState?.();
 	          const objectsById = new Map((checkpoint?.objects || []).map((object) => [
 	            Number(object.id),
 	            object,
@@ -3321,7 +3333,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     }
   }, []);
 
-  const verifyAuditSatisfiesCryptoRequirements = useCallback(async ({ requirements = [], audit = {} }) => {
+  const verifyAuditSatisfiesCryptoRequirements = useCallback(async ({
+    requirements = [], audit = {}, allowCachedPublicOpenings = true,
+  }) => {
     for (const requirement of requirements || []) {
       const type = String(requirement?.type || "");
       if (!type || type === "hidden_move" || type === "hidden_order_update") continue;
@@ -3330,7 +3344,9 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
           (audit.openings || []).find((opening) =>
             openingMatchesRequirement(opening, requirement)
           )
-          || localRevealedOpeningForRequirement(requirement);
+          // Receiver replay may already know a prior opening. Outbound coverage
+          // must be checked against the payload: this cache also holds private views.
+          || (allowCachedPublicOpenings && localRevealedOpeningForRequirement(requirement));
         if (!match) {
           throw new Error(
             `Missing ${type} audit opening for player ${Number(requirement.owner) + 1}: `
@@ -3636,7 +3652,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
     }
     if (timing === "post" && Array.isArray(openings) && openings.length > 0) {
       try {
-        const checkpoint = await currentGame.exportSyncCheckpoint?.();
+        const checkpoint = await currentGame.getHiddenCardState?.();
         const inconsistent = (checkpoint?.objects || []).filter((object) => {
           const hidden = object?.hiddenCard || object?.hidden_card || null;
           if (!hidden) return false;
@@ -3744,10 +3760,10 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 		          localHiddenMetadata
 		          && openingObjectId != null
 		          && opening.card
-		          && typeof currentGame.exportSyncCheckpoint === "function"
+		          && typeof currentGame.getHiddenCardState === "function"
 		        ) {
 		          try {
-		            checkpoint = await currentGame.exportSyncCheckpoint();
+		            checkpoint = await currentGame.getHiddenCardState();
 		          } catch {
 		            checkpoint = null;
 		          }
@@ -3776,10 +3792,10 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	        };
 		        let explicitObjectPresent = false;
 		        let explicitObjectExistsWithoutHidden = false;
-	        if (!localHiddenMetadata && typeof currentGame.exportSyncCheckpoint === "function") {
+	        if (!localHiddenMetadata && typeof currentGame.getHiddenCardState === "function") {
 	          if (!checkpoint) {
 	            try {
-	              checkpoint = await currentGame.exportSyncCheckpoint();
+	              checkpoint = await currentGame.getHiddenCardState();
 	            } catch {
 	              checkpoint = null;
 	            }
@@ -4149,12 +4165,12 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
   async function currentHiddenObjectIdForOpening(opening) {
     if (!opening || opening.owner == null) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }

@@ -4,6 +4,7 @@ import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { playerDisplayName } from "@/lib/player-display";
 import ManaPool from "./ManaPool";
+import ZoneCountIcon from "@/components/board/ZoneCountIcon";
 
 export default function PlayerCard({ player, isActive, isPerspective }) {
   const ui = useUiText();
@@ -23,6 +24,15 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
     const count = Number(card.count);
     return total + (Number.isFinite(count) && count > 1 ? count : 1);
   }, 0);
+  const zoneCounts = [
+    ["library", "Library", player.library_size ?? 0],
+    ["hand", "Hand", player.hand_size ?? 0],
+    ["graveyard", "Graveyard", player.graveyard_size ?? 0],
+    ["exile", "Exile", exileCards.length],
+    ["command", "Command Zone", player.command_size ?? commandCards.length],
+    ["ante", "Ante", player.ante_size ?? anteCards.length],
+    ["battlefield", "Battlefield", battlefieldCount],
+  ];
 
   return (
     <section
@@ -56,20 +66,12 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
       </div>
 
       <div className="flex flex-wrap gap-1 text-[11px] text-muted-foreground">
-        <span className="bg-background/70 px-1.5 rounded-none" title={ui("Library")}>{ui("Lib") + " "}<span className="font-bold text-foreground">{player.library_size}</span>
-        </span>
-        <span className="bg-background/70 px-1.5 rounded-none" title={ui("Hand")}>{ui("Hand") + " "}<span className="font-bold text-foreground">{player.hand_size}</span>
-        </span>
-        <span className="bg-background/70 px-1.5 rounded-none" title={ui("GY")}>{ui("GY") + " "}<span className="font-bold text-foreground">{player.graveyard_size}</span>
-        </span>
-        <span className="bg-background/70 px-1.5 rounded-none" title={ui("Exile")}>{ui("Exl") + " "}<span className="font-bold text-foreground">{exileCards.length}</span>
-        </span>
-        <span className="bg-background/70 px-1.5 rounded-none" title={ui("CZ")}>{ui("Cmd") + " "}<span className="font-bold text-foreground">{player.command_size ?? commandCards.length}</span>
-        </span>
-        {anteCards.length > 0 && (
-          <span className="bg-background/70 px-1.5 rounded-none" title={ui("Ante")}>{ui("Ante") + " "}<span className="font-bold text-foreground">{player.ante_size ?? anteCards.length}</span>
+        {zoneCounts.map(([zone, title, count]) => (
+          <span key={zone} className="player-zone-count bg-background/70 px-1.5 rounded-none" title={ui(title)}>
+            <ZoneCountIcon zone={zone} className="player-zone-count-icon" />
+            <span className="font-bold text-foreground">{count}</span>
           </span>
-        )}
+        ))}
         {sideboardCards.length > 0 && (
           <span className="bg-background/70 px-1.5 rounded-none" title={ui("Sideboard")}>{ui("SB") + " "}<span className="font-bold text-foreground">{sideboardCards.length}</span>
           </span>

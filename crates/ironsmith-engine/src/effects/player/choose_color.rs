@@ -37,6 +37,30 @@ impl EffectExecutor for ChooseColorEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
+        // A prepared mana activation may carry this exact stored-color
+        // decision. Manual execution retains its ordinary options prompt.
+        let choice = crate::mana_payment::ManaProductionChoice {
+            purpose: crate::mana_payment::ManaChoicePurpose::StoredColor,
+            source: ctx.source, player: chooser,
+            available: Color::ALL.into_iter().map(crate::mana::ManaSymbol::from_color).collect(),
+            count: 1, same_type: true, distinct: false,
+        };
+        if let Some(output) = ctx.decision_maker.planned_mana_output(game, &choice)
+            .map_err(ExecutionError::InternalError)? {
+            if !choice.accepts(&output) {
+                return Err(ExecutionError::InternalError("invalid prepared stored-color choice".into()));
+            }
+            let color = match output[0] {
+                crate::mana::ManaSymbol::White => Color::White,
+                crate::mana::ManaSymbol::Blue => Color::Blue,
+                crate::mana::ManaSymbol::Black => Color::Black,
+                crate::mana::ManaSymbol::Red => Color::Red,
+                crate::mana::ManaSymbol::Green => Color::Green,
+                _ => return Err(ExecutionError::InternalError("non-color in stored-color witness".into())),
+            };
+            game.set_chosen_color(ctx.source, color);
+            return Ok(EffectOutcome::count(1));
+        }
         let options: Vec<SelectableOption> = Self::color_options()
             .iter()
             .enumerate()

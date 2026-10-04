@@ -1,5 +1,6 @@
 import useUiText from "@/i18n/useUiText";
 import PlayerZonePiles from "./PlayerZonePiles";
+import ZoneCountIcon from "./ZoneCountIcon";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import RollingPanel from "./RollingPanel";
 import { useCastPlayerHovered, useCastTargeting } from "@/context/DragContext";
@@ -97,18 +98,20 @@ function shouldShowZoneBody(player, entry, activity = null) {
 function zoneCounts(player) {
   const exileCards = Array.isArray(player.exile_cards) ? player.exile_cards : [];
   const commandCards = Array.isArray(player.command_cards) ? player.command_cards : [];
+  const anteCards = Array.isArray(player.ante_cards) ? player.ante_cards : [];
   const battlefieldCount = (player.battlefield || []).reduce((total, card) => {
     const count = Number(card.count);
     return total + (Number.isFinite(count) && count > 1 ? count : 1);
   }, 0);
 
   return [
-    { label: "BF", title: "Battlefield", zone: "battlefield", count: battlefieldCount },
-    { label: "Hand", title: "Hand", zone: "hand", count: player.hand_size ?? 0 },
-    { label: "GY", title: "Graveyard", zone: "graveyard", count: player.graveyard_size ?? 0 },
-    { label: "Deck", title: "Library", zone: "library", count: player.library_size ?? 0 },
-    { label: "Exl", title: "Exile", zone: "exile", count: exileCards.length },
-    { label: "CZ", title: "Command Zone", zone: "command", count: player.command_size ?? commandCards.length },
+    { title: "Battlefield", zone: "battlefield", count: battlefieldCount },
+    { title: "Hand", zone: "hand", count: player.hand_size ?? 0 },
+    { title: "Graveyard", zone: "graveyard", count: player.graveyard_size ?? 0 },
+    { title: "Library", zone: "library", count: player.library_size ?? 0 },
+    { title: "Exile", zone: "exile", count: exileCards.length },
+    { title: "Command Zone", zone: "command", count: player.command_size ?? commandCards.length },
+    { title: "Ante", zone: "ante", count: player.ante_size ?? anteCards.length },
   ];
 }
 
@@ -169,11 +172,11 @@ export function ZoneCountInline({ player, onOpenDecklist = null, includeZones = 
   return (
     <div className="battlefield-counts flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#8ea8c8] whitespace-nowrap">
       {counts.map((entry) => {
-        const showLibraryTop = entry.label === "Deck" && libraryTopName;
-        const deckEntry = entry.label === "Deck" && typeof onOpenDecklist === "function";
+        const showLibraryTop = entry.zone === "library" && libraryTopName;
+        const deckEntry = entry.zone === "library" && typeof onOpenDecklist === "function";
         const content = (
           <>
-            <span className="battlefield-count-label font-bold text-[#c1d4ea]">{ui(entry.label)}</span>
+            <ZoneCountIcon zone={entry.zone} className="battlefield-count-icon" />
             <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
             {showLibraryTop && (
               <span className="battlefield-count-top text-[#f0dfba] font-semibold">({libraryTopName})</span>
@@ -183,13 +186,14 @@ export function ZoneCountInline({ player, onOpenDecklist = null, includeZones = 
         if (deckEntry) {
           return (
             <button
-              key={entry.label}
+              key={entry.zone}
               type="button"
               className={cn(
                 "battlefield-count-item cursor-pointer text-left transition-colors hover:border-[#6d8ead] hover:text-[#e5f2ff]",
                 showLibraryTop && "battlefield-count-item--with-top"
               )}
               title={ui("Open decklist")}
+              aria-label={`${ui(entry.title)}: ${entry.count}. ${ui("Open decklist")}`}
               data-zone-anchor={entry.zone}
               data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
               onClick={(event) => {
@@ -204,7 +208,7 @@ export function ZoneCountInline({ player, onOpenDecklist = null, includeZones = 
         }
         return (
           <span
-            key={entry.label}
+            key={entry.zone}
             className={cn("battlefield-count-item", showLibraryTop && "battlefield-count-item--with-top")}
             title={ui(showLibraryTop ? `Top card: ${libraryTopName}` : entry.title)}
             data-zone-anchor={entry.zone}
@@ -271,6 +275,8 @@ export default function MyZone({
   zoneActionControlsOpen = false,
   zoneActionRailOffset = 0,
   dockStackRail = false,
+  stackAdjacentControls = null,
+  hidePriorityHold = false,
   hideHeader = false,
   mobileBattleScene = false,
   hideMobileHandRail = false,
@@ -743,7 +749,7 @@ export default function MyZone({
                     {zoneName && <span className="text-muted-foreground">{ui(zoneName)}</span>}
                   </span>
                 </span>
-                <PriorityHoldControl />
+                {!hidePriorityHold ? <PriorityHoldControl /> : null}
                 {!mergedMobileHeader && (
                   <ManaPool
                     pool={player.mana_pool}
@@ -901,6 +907,11 @@ export default function MyZone({
             />
           </aside>
         ) : null}
+        {stackAdjacentControls ? (
+          <aside className="my-zone-stack-controls" aria-label={ui("Priority controls")}>
+            {stackAdjacentControls}
+          </aside>
+        ) : null}
         <div
           className={cn(
             "battlefield-zone-strip has-zone-piles min-h-0 h-full overflow-visible",
@@ -909,7 +920,24 @@ export default function MyZone({
           data-zone-layout={denseSupportLayout ? "shelf" : "lanes"}
           data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
         >
-          <PlayerZonePiles player={player} onCardClick={handleCardClick} legalTargetObjectIds={legalTargetObjectIds} />
+          <PlayerZonePiles
+            player={player}
+            onCardClick={handleCardClick}
+            legalTargetObjectIds={legalTargetObjectIds}
+            leadingRail={(
+              // Same vertical mana rail the opponents use, at the height of
+              // Graveyard/Exile on the left edge. Only the focused desktop HUD
+              // shows it; it hides the header's inline pool instead.
+              <div className="my-zone-mana-rail opponent-battlefield-mana-rail">
+                <ManaPool
+                  pool={player.mana_pool}
+                  alwaysVisible
+                  compact
+                  className="opponent-battlefield-mana"
+                />
+              </div>
+            )}
+          />
         {(denseSupportLayout && battlefieldZoneEntry
           ? [battlefieldZoneEntry]
           : boardZoneEntries

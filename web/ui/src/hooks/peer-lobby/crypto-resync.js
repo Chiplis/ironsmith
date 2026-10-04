@@ -80,6 +80,7 @@ import {
   normalizePlayerIndex,
   normalizeSelectObjectHiddenRef,
   normalizeShuffleOrder,
+  openingMatchesRequirement,
   nowMonotonicMs,
   payloadSizeBytes,
   playerNameForIndex,
@@ -435,12 +436,16 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     return false;
   }
 
-  function filterOpeningsForCommandHiddenRefs(openings = [], command = null) {
+  function filterOpeningsForCommandHiddenRefs(openings = [], command = null, requirements = []) {
     if (command?.type !== "select_objects") return openings;
     const hiddenRefs = commandObjectHiddenRefs(command).filter(Boolean);
     if (hiddenRefs.length === 0) return openings;
     return (openings || []).filter((opening) =>
       hiddenRefs.some((hiddenRef) => openingMatchesCommandHiddenRef(opening, hiddenRef))
+      // A required public disclosure must survive selection filtering even
+      // when the command's reference predates private identity hydration.
+      || requirements.some(requirement => String(requirement?.type || "") === "public_open"
+        && openingMatchesRequirement(opening, requirement))
     );
   }
 
@@ -448,12 +453,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const normalized = Number(stableId);
     if (!Number.isSafeInteger(normalized) || normalized <= 0) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }
@@ -468,12 +473,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const normalized = Number(objectId);
     if (!Number.isSafeInteger(normalized) || normalized <= 0) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }
@@ -516,12 +521,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   async function currentObjectIdForHiddenRef(hiddenRef) {
     if (!normalizeSelectObjectHiddenRef(hiddenRef)) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }
@@ -1018,7 +1023,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	          );
 	          let candidateDebug = [];
 	          try {
-	            const checkpoint = await currentGame.exportSyncCheckpoint?.();
+	            const checkpoint = await currentGame.getHiddenCardState?.();
 	            const objectsById = new Map((checkpoint?.objects || []).map((object) => [
 	              Number(object.id),
 	              object,
@@ -1590,7 +1595,20 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     }
 
     const seq = Number(message?.seq);
-    await servicesRef.current.waitForProtocolActionHead?.(message, "Cryptographic material request");
+    const authorizePerf = {
+      request_id: String(message?.requestId || ""),
+      seq,
+      actor: actorIndex,
+      command: summarizePeerCommand(message?.command),
+    };
+    const timeAuthorization = (phase, task) => timePeerSyncPhase(
+      `crypto_material_request:authorize:${phase}`,
+      authorizePerf,
+      task
+    );
+    await timeAuthorization("wait_action_head", () =>
+      servicesRef.current.waitForProtocolActionHead?.(message, "Cryptographic material request")
+    );
     session = multiplayerRef.current;
     assertMatchNotDisputed(session, "Cryptographic material request");
     const expectedSeq = Number(session.lastAppliedSequence || 0) + 1;
@@ -1609,9 +1627,11 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       throw new Error("Cryptographic material request is missing the signed command preview");
     }
 
-    const liveState = gameRef.current && typeof gameRef.current.uiState === "function"
-      ? await gameRef.current.uiState()
-      : stateRef.current;
+    const liveState = await timeAuthorization("read_state", () =>
+      gameRef.current && typeof gameRef.current.uiState === "function"
+        ? gameRef.current.uiState()
+        : stateRef.current
+    );
     const decision = liveState?.decision || null;
     if (
       decision?.player !== null
@@ -1623,20 +1643,20 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     if (!isDecisionCommandCompatible(decision, command)) {
       throw new Error("Cryptographic material request command is not available locally");
     }
-    await verifyCurrentPublicCheckpointHash(
+    await timeAuthorization("verify_checkpoint", () => verifyCurrentPublicCheckpointHash(
       message.publicCheckpointHash,
       "Cryptographic material request public checkpoint does not match local state"
-    );
+    ));
 
     // Authenticate the command before a preview can reserve its shuffle locks.
-      const actionIntent = await verifySignedActionIntent(message.actionIntent, {
+      const actionIntent = await timeAuthorization("verify_intent", () => verifySignedActionIntent(message.actionIntent, {
         matchId: currentAuditMatchId(),
         seq,
         actorIndex,
         prevStateHash: message.prevStateHash,
         preActionPublicCheckpointHash: message.publicCheckpointHash,
         command,
-      });
+      }));
 
     assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
 	    const localSeat = resolveLocalCryptoPlayerIndex();
@@ -1645,16 +1665,16 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	      liveState,
 	      freshCryptoRequirementsForSequence(
 	        seq,
-	        await previewRequirementsForCommand(command)
+        await timeAuthorization("preview_requirements", () => previewRequirementsForCommand(command))
 	      )
 	    );
     if ((message.shuffleProofs || []).some(isPrivateZiffleEpoch)
       || (message.rngReveals || []).length
       || previewedRequirements.some(requirement => String(requirement.type || "") === "fair_random")) {
-      previewedRequirements = await servicesRef.current.previewZiffleActionRequirements({
+      previewedRequirements = await timeAuthorization("preview_ziffle", () => servicesRef.current.previewZiffleActionRequirements({
         command, seq, shuffleProofs: message.shuffleProofs || [], openings: message.openings || [],
         rngReveals: message.rngReveals || [],
-      }, previewedRequirements);
+      }, previewedRequirements));
     }
 	    const locallyKnownRequestedPublicOpenRequirements = (
 	      Array.isArray(message.requirements) ? message.requirements : []
@@ -1676,12 +1696,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       return { requirements: authorizedRequirements, actionIntent };
     } catch (err) {
       assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
-      const postApplyRequirements = await derivePostApplyCryptoRequirementsForRequest({
+      const postApplyRequirements = await timeAuthorization("post_apply_requirements", () => derivePostApplyCryptoRequirementsForRequest({
         command,
         seq,
         actorIndex,
         liveState,
-      });
+      }));
       if (postApplyRequirements.length === 0) {
         throw err;
       }
@@ -2235,26 +2255,28 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       }
       const peerIndex = normalizePlayerIndex(peerPlayer?.index);
       const currentGame = gameRef.current;
-	      if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
-	        throw new Error("Game engine cannot export a resync checkpoint");
-	      }
-	      const securityMode = sessionSecurityMode(
-	        session,
-	        matchPayloadSecurityMode(payload.match, MULTIPLAYER_SECURITY_VERIFIED)
-	      );
-	      const trusted = isTrustedMultiplayerSecurityMode(securityMode);
+      if (!currentGame) {
+        throw new Error("Game engine is not available for resync");
+      }
+      const securityMode = sessionSecurityMode(
+        session,
+        matchPayloadSecurityMode(payload.match, MULTIPLAYER_SECURITY_VERIFIED)
+      );
+      const trusted = isTrustedMultiplayerSecurityMode(securityMode);
+      const verified = isVerifiedMultiplayerSecurityMode(securityMode);
       const baseSequence = Number(payload.requesterSequence);
       const suffix = trusted && !payload.forceCheckpoint
         && payload.requestMatchId === relayMatchId(payload.match)
         && matchingActionPrefix(actionHistoryRef.current, baseSequence, payload.requestPrefixHash);
-      // Verified: prefer a stored per-seat checkpoint the requester can import
-      // (its sequence is signed below); otherwise the head export keeps the
-      // message shape and the requester replays from genesis.
+      // A checkpoint is useful only when its accepted sequence is signed.
+      // Otherwise replay the complete signed transcript from genesis without
+      // requiring a head export that the receiver would never import.
       const replayCheckpoint = !trusted && peerIndex != null
         && isVerifiedMultiplayerSecurityMode(securityMode)
         ? selectResyncReplayCheckpoint(peerIndex)
         : null;
-      const checkpoint = trusted ? null
+      const replayOnly = trusted || (verified && !replayCheckpoint);
+      const checkpoint = replayOnly ? null
         : replayCheckpoint ? replayCheckpoint.checkpoint
         : peerIndex != null && typeof currentGame.exportRedactedSyncCheckpoint === "function"
           ? await currentGame.exportRedactedSyncCheckpoint(peerIndex)
@@ -2292,7 +2314,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           conn.peer,
           peerIndex
         ),
-        ...(trusted ? { replayOnly: true, ...(suffix ? { suffix: true, baseSequence, basePrefix: payload.requestPrefixHash } : {}) }
+        ...(replayOnly
+          ? {
+              replayOnly: true,
+              ...(verified ? { checkpoint: serializedCheckpoint } : {}),
+              ...(suffix ? { suffix: true, baseSequence, basePrefix: payload.requestPrefixHash } : {}),
+            }
           : { checkpoint: serializedCheckpoint }),
         actions,
         ...(resyncEnvelope ? { resyncEnvelope } : {}),
@@ -4169,6 +4196,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   }
 
   async function answerActionQuorumVoteRequest(conn, message) {
+    // Close the protocol wait on every peer, including when validation fails.
+    conn = servicesRef.current.protocolResponseConn?.(conn, message) || conn;
     const quorumPerf = {
       request_id: String(message?.requestId || ""),
       requester: message?.requesterIndex == null ? null : Number(message.requesterIndex),

@@ -71,6 +71,7 @@ pub(crate) fn choose_mana_colors(
     };
 
     let planned_choice = crate::mana_payment::ManaProductionChoice {
+        purpose: crate::mana_payment::ManaChoicePurpose::Production,
         source: ctx.source, player: player_id,
         available: effective_available.as_deref().unwrap_or(&Color::ALL).iter().copied().map(ManaSymbol::from_color).collect(),
         count, same_type: same_color, distinct: distinct_colors && !same_color,
@@ -282,6 +283,7 @@ pub(crate) fn choose_mana_symbols(
         return Ok(Vec::new());
     }
     let planned_choice = crate::mana_payment::ManaProductionChoice {
+        purpose: crate::mana_payment::ManaChoicePurpose::Production,
         source: ctx.source, player: player_id, available: available_symbols.to_vec(),
         count, same_type: same_symbol, distinct: false,
     };

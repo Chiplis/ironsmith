@@ -20,3 +20,12 @@ export function previewCryptoRequirementsWithMaterial(game, command, material) {
     }
   }
 }
+// An empty preview stays valid within the same serialized submission when no
+// identity or randomness material has been introduced since it was computed.
+// Unknown/missing collections deliberately require a fresh preview.
+export function canReuseEmptyCryptoPreview({
+  requirements, rngReveals, shuffleProofs, localOpenings, remoteOpenings, remotePrivateViewProofs,
+}) {
+  return [requirements, rngReveals, shuffleProofs, localOpenings, remoteOpenings, remotePrivateViewProofs]
+    .every(entries => Array.isArray(entries) && entries.length === 0);
+}

@@ -1690,10 +1690,23 @@ impl GameState {
     /// Maximum number of cost pips covered by the current spendable pool.
     /// Augmenting paths preserve flexible mana for pips that need it.
     pub(crate) fn covered_mana_payment_pips(
+        &self, request: &crate::mana_payment::ManaPaymentRequest,
+    ) -> usize {
+        self.mana_payment_pip_coverage(request).iter().filter(|(_, covered)| *covered).count()
+    }
+
+    pub(crate) fn uncovered_mana_payment_pips(
+        &self, request: &crate::mana_payment::ManaPaymentRequest,
+    ) -> Vec<Vec<crate::mana::ManaSymbol>> {
+        self.mana_payment_pip_coverage(request).into_iter()
+            .filter_map(|(pip, covered)| (!covered).then_some(pip)).collect()
+    }
+
+    fn mana_payment_pip_coverage(
         &self,
         request: &crate::mana_payment::ManaPaymentRequest,
-    ) -> usize {
-        let pips: Vec<_> = Self::expanded_payment_pips(&request.cost, request.x_value, false)
+    ) -> Vec<(Vec<crate::mana::ManaSymbol>, bool)> {
+        let mut pips: Vec<_> = Self::expanded_payment_pips(&request.cost, request.x_value, false)
             .into_iter()
             .flat_map(|pip| {
                 let units = pip
@@ -1707,6 +1720,9 @@ impl GameState {
                 std::iter::repeat_n(pip, units)
             })
             .collect();
+        // Prefer covering constrained pips before generic ones. The augmenting
+        // matcher still finds maximum coverage across hybrid and restricted mana.
+        pips.sort_by_key(|pip| (pip.iter().any(|symbol| matches!(symbol, crate::mana::ManaSymbol::Generic(_))), pip.len()));
         let units = self.payable_mana_units(
             request.payer,
             Some(request.source),
@@ -1761,7 +1777,7 @@ impl GameState {
         for unit in 0..units.len() {
             assign(unit, &edges, &mut owners, &mut vec![false; pips.len()]);
         }
-        owners.iter().filter(|owner| owner.is_some()).count()
+        pips.into_iter().zip(owners).map(|(pip, owner)| (pip, owner.is_some())).collect()
     }
 
     pub(crate) fn expanded_payment_pips(

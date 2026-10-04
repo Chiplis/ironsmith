@@ -88,8 +88,15 @@ async function compute(scan, mask) {
     if (error) throw new Error(error.message);
     await readback.mapAsync(GPUMapMode.READ);
     const mapped = new Uint32Array(readback.getMappedRange()), data = new Uint8ClampedArray(scan.data.length), packed = new Uint32Array(data.buffer);
-    for (let p = 0; p < count; p++) packed[p] = mapped[p * 2];
+    let unfinished=false;
+    for (let p = 0; p < count; p++) {
+      packed[p] = mapped[p * 2];
+      if(mask[p]&&!mapped[p*2+1])unfinished=true;
+    }
     readback.unmap(); metrics.gpuJobs++; metrics.gpuMs += performance.now() - started;
+    // Expanded rules masks can exceed the fixed GPU propagation budget.
+    // Never publish original ink from an unreached pixel into mirrored paper.
+    if(unfinished){metrics.cpuJobs++;return inpaintGlyphMask(scan,mask);}
     return {data, width: scan.width, height: scan.height, mask};
   } finally {
     if (scopeOpen) await device.popErrorScope();

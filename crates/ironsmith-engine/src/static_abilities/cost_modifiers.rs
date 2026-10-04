@@ -1558,6 +1558,10 @@ fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
 pub struct AffinityForArtifacts;
 
 impl StaticAbilityKind for AffinityForArtifacts {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::AffinityForArtifacts
     }
@@ -2084,6 +2088,10 @@ pub fn activated_ability_cost_condition_is_active_for_activation(
 }
 
 impl StaticAbilityKind for ActivatedAbilityCostReduction {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ActivatedAbilityCostReduction
     }
@@ -2906,6 +2914,10 @@ impl ThisSpellCostReduction {
 }
 
 impl StaticAbilityKind for ThisSpellCostReduction {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         if self.affinity_filter.is_some() {
             return StaticAbilityId::Affinity;

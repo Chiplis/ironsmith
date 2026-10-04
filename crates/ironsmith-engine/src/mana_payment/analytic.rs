@@ -323,11 +323,23 @@ fn solve_assignment(
     // Floating mana is constant for both proposals. Fewer produced units
     // therefore means less excess, followed by flexibility and source count,
     // matching the applicable dimensions of the payment score.
-    let chosen = match (conservative, bundled) {
+    let mut chosen = match (conservative, bundled) {
         (Some(first), Some(second)) if score(&second) < score(&first) => second,
         (Some(first), _) => first,
         (None, second) => second?,
     };
+    // Different source flexibility can leave a single-unit source selected
+    // beside a bundle that covers the whole payment. Remove such sources in
+    // the compact model before replaying, without any extra game simulations.
+    // Dropping sources cannot make a previously indispensable source redundant,
+    // so one bounded pass is sufficient for this fixed-output assignment.
+    for index in chosen.clone().into_iter().rev().take(32) {
+        if measured[index].choice.is_none() { continue; }
+        let reduced: Vec<_> = chosen.iter().copied().filter(|selected| *selected != index).collect();
+        if let Some(assignment) = assign_sources(slots, measured, &reduced) {
+            chosen = assignment;
+        }
+    }
     Some(
         chosen
             .into_iter()

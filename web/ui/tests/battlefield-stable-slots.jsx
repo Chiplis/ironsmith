@@ -17,6 +17,7 @@ const context = {
   dispatch:async()=>{}, dispatchInBackground:async()=>{},
 };
 export function StableSlotsFixture() {
+  const layoutMode = new URLSearchParams(window.location.search).get("layout") || "default";
   const [phase, setPhase] = useState(0);
   const [activating, setActivating] = useState(false);
   const initial = Array.from({ length: 8 }, (_, i) => ({ ...cards[0], id: i + 1, stable_id: i + 1, lane: i < 5 ? "creatures" : "lands" }));
@@ -28,7 +29,7 @@ export function StableSlotsFixture() {
       <button onClick={() => setActivating(false)}>Cancel activation</button>
       <button onClick={() => setPhase(1)}>Remove object</button>
       <button onClick={() => setPhase(2)}>Add many objects</button>
-      <div style={{height:350, marginTop:50}}><BattlefieldRow cards={current} onInspect={()=>{}} activatableMap={new Map()} /></div>
+      <div style={{height:350, marginTop:50}}><BattlefieldRow cards={current} paperLayoutMode={layoutMode} onInspect={()=>{}} activatableMap={new Map()} /></div>
     </main>
   </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>;
 }

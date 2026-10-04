@@ -15,6 +15,9 @@ const CARDS = [
   // Promised by default, and colourless-costed so the filters below would
   // never have sampled it into a green table.
   { route: "omniscience", name: "Omniscience", types: ["Enchantment"], pips: [[{ Generic: 10 }]] },
+  // The local opening-hand card is blue, while this browser scenario allows
+  // only green cards; it must still be resolved by its explicit promise.
+  { route: "sphinx-of-foresight", name: "Sphinx of Foresight", types: ["Creature"], pips: [[{ Generic: 1 }], ["Blue"], ["Blue"], ["Blue"]] },
 ];
 
 const asset = (card) => ({
@@ -45,6 +48,7 @@ async function harness() {
   page.on("pageerror", (error) => errors.push(String(error?.message || error)));
   // Serve a small synthetic catalogue in place of the real card assets. One
   // handler covers both: a later route would otherwise shadow an earlier one.
+  await page.route("**/random-card-pool.json", (route) => route.fulfill({ status: 404, json: {} }));
   await page.route("**/cards/*.json", (route) => {
     const file = route.request().url().split("/cards/")[1].replace(/\.json.*$/, "");
     if (file === "index") {
@@ -106,6 +110,9 @@ test("the sheet generates a table whose zones only hold legal cards", { timeout:
     const permanents = new Set(["Grizzly Bears", "Sol Ring", "Wall of Roots", "Llanowar Elves", "Omniscience"]);
     assert.ok(payload.players[0].zones.battlefield.includes("Omniscience"), "promised to our battlefield");
     assert.ok(!payload.players[1].zones.battlefield.includes("Omniscience"), "and not to theirs");
+    assert.ok(payload.players[0].zones.hand.includes("Sphinx of Foresight"), "promised to our opening hand");
+    assert.equal(payload.players[0].zones.hand.filter((name) => name === "Sphinx of Foresight").length, 1);
+    assert.ok(!payload.players[1].zones.hand.includes("Sphinx of Foresight"), "and not promised to theirs");
     for (const player of payload.players) {
       assert.equal(player.zones.battlefield.length, 4);
       const basicsOnBoard = player.zones.battlefield.filter((name) => name === "Forest");

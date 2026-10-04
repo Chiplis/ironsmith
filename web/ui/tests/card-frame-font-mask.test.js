@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {protectBottomOrnaments,isPanelInk,expandGlyphMask,clearEdgeRules,glyphSimilarity,inpaintGlyphMask} from '../src/lib/card-frame-font-mask.js';
+import {protectBottomOrnaments,isPanelInk,expandGlyphMask,clearEdgeRules,glyphSimilarity,inpaintGlyphMask,findFlavorSeparator,statsGlyphMask} from '../src/lib/card-frame-font-mask.js';
 
 test('glyph matching distinguishes shape rather than merely dark pixels',()=>{
   const a={w:3,h:3,pixels:Uint8Array.from([1,0,0,1,0,0,1,1,1])};
@@ -96,4 +96,41 @@ test('bottom-connected security ornament stays protected without removing nearby
   assert.equal(ink[18*width+10],1);
   const expanded=expandGlyphMask(ink,width,height,protectedPixels,8);
   assert.equal(expanded[25*width+20],0);
+});
+
+test('dense paper cleanup fills ink farther than forty pixels from a donor',()=>{
+  const width=110,height=110,data=new Uint8ClampedArray(width*height*4),mask=new Uint8Array(width*height);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++) {
+    const p=y*width+x,inside=x>=5&&x<105&&y>=5&&y<105;
+    data.set(Math.abs(x-55)<2&&Math.abs(y-55)<2?[10,10,10,255]:[210,220,230,255],p*4);mask[p]=inside?1:0;
+  }
+  const clean=inpaintGlyphMask({data,width,height},mask);
+  assert.ok(clean.data[(55*width+55)*4]>190,'the center contains paper rather than original ink');
+});
+
+test('separator search uses the rules/flavor gap, including a missing font registration',()=>{
+  const width=120,height=100,data=new Uint8ClampedArray(width*height*4);
+  for(let p=0;p<width*height;p++)data.set([220,225,230,255],p*4);
+  for(const top of [12,28,55,72])for(let y=top;y<top+8;y++)for(let x=20;x<95;x+=10)for(let dx=0;dx<3;dx++)data.set([20,20,20,255],(y*width+x+dx)*4);
+  const scan={data,width,height};
+  assert.equal(findFlavorSeparator(scan,55),null,'a blank paragraph gap is not a separator');
+  for(let x=8;x<112;x++)data.set([195,200,205,255],(44*width+x)*4);
+  assert.equal(findFlavorSeparator(scan,55),44);
+  assert.equal(findFlavorSeparator(scan,undefined),44,'text bands locate the gap when font registration fails');
+  assert.equal(findFlavorSeparator(scan,28),null,'a rule below the registered flavor start is excluded');
+});
+
+test('stats contrast removes irregular digits and slash in both polarities while preserving bevels',()=>{
+  for(const [paper,ink] of [[220,25],[50,235]]) {
+    const width=60,height=30,data=new Uint8ClampedArray(width*height*4);
+    for(let p=0;p<width*height;p++)data.set([paper,paper,paper,255],p*4);
+    const paint=(x,y)=>data.set([ink,ink,ink,255],(y*width+x)*4);
+    for(let x=0;x<width;x++)paint(x,1);
+    paint(0,0);paint(0,1);
+    for(let y=6;y<24;y++){paint(12,y);paint(42,y);paint(34-Math.floor(y/2),y);}
+    const mask=statsGlyphMask({data,width,height}),clean=inpaintGlyphMask({data,width,height},mask);
+    for(const x of [12,42])assert.ok(Math.abs(clean.data[(15*width+x)*4]-paper)<10,'digit is filled with paper');
+    assert.ok(Math.abs(clean.data[(15*width+27)*4]-paper)<10,'slash is filled with paper');
+    for(let x=0;x<width;x++)assert.equal(mask[width+x],0,'connected badge bevel stays intact');
+  }
 });

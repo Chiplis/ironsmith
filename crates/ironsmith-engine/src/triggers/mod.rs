@@ -572,7 +572,10 @@ impl Trigger {
 
     /// Create a "at the beginning of [player]'s end step" trigger.
     pub fn beginning_of_end_step(player: PlayerFilter) -> Self {
-        Self::new(BeginningOfEndStepTrigger::new(player))
+        let model = ironsmith_core::trigger_model::Trigger::beginning_of_end_step(player.clone());
+        let mut trigger = Self::new(BeginningOfEndStepTrigger::new(player));
+        trigger.retained_model = Some(Arc::new(model));
+        trigger
     }
 
     /// Create an "at the beginning of [player]'s cleanup step" trigger.

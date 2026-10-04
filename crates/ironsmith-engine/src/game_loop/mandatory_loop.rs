@@ -146,6 +146,39 @@ fn effect_contains_control_branch(effect: &crate::effect::Effect) -> bool {
     found
 }
 
+// Object handles are immutable snapshots. Mutation goes through Arc::make_mut,
+// which dissociates cached Weak handles even when the game is the sole owner.
+// Pointer identity is only a cache key; the resulting digest hashes every
+// Object field and never contains an address or a process-local revision key.
+thread_local! {
+    static OBJECT_FINGERPRINTS: std::cell::RefCell<std::collections::HashMap<usize,
+        (std::sync::Weak<crate::object::Object>, u64)>> = Default::default();
+}
+
+fn object_control_fingerprint(object: &std::sync::Arc<crate::object::Object>) -> u64 {
+    let key = std::sync::Arc::as_ptr(object) as usize;
+    if let Some(fingerprint) = OBJECT_FINGERPRINTS.with(|cache| {
+        cache.borrow().get(&key).and_then(|(weak, fingerprint)| {
+            weak.upgrade().filter(|live| std::sync::Arc::ptr_eq(live, object))
+                .map(|_| *fingerprint)
+        })
+    }) { return fingerprint; }
+    let mut hasher = DefaultHasher::new();
+    crate::trigger_identity::hash_debug(&mut hasher, object.as_ref())
+        .expect("hash-only formatting is infallible");
+    let fingerprint = hasher.finish();
+    OBJECT_FINGERPRINTS.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        // This is a bounded disposable cache, never a search/legality limit.
+        if cache.len() >= 8192 {
+            cache.retain(|_, (object, _)| object.strong_count() != 0);
+            if cache.len() >= 8192 { cache.clear(); }
+        }
+        cache.insert(key, (std::sync::Arc::downgrade(object), fingerprint));
+    });
+    fingerprint
+}
+
 fn source_control_fingerprint(
     game: &GameState,
     source: StableId,
@@ -180,8 +213,8 @@ fn source_control_fingerprint(
         format!("{entry:?}").hash(&mut hasher);
     }
     for object_id in game.object_ids_in_deterministic_order() {
-        if let Some(object) = game.object(object_id) {
-            format!("{object:?}").hash(&mut hasher);
+        if let Some(object) = game.object_store.shared_object(object_id) {
+            object_control_fingerprint(object).hash(&mut hasher);
         }
     }
     if game.find_object_by_stable_id(source).is_none() {
@@ -351,6 +384,39 @@ impl MandatoryLoopTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn object_fingerprint_cache_tracks_mutation_branches_and_rollback() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(991_001), "Control object")
+            .card_types(vec![crate::types::CardType::Creature]).build();
+        let id = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+        let digest = |game: &GameState| {
+            let object = game.object_store.shared_object(id).unwrap();
+            let cached = object_control_fingerprint(object);
+            let mut raw = DefaultHasher::new();
+            crate::trigger_identity::hash_debug(&mut raw, object.as_ref()).unwrap();
+            assert_eq!(cached, raw.finish());
+            cached
+        };
+        let initial = digest(&game);
+        let weak = std::sync::Arc::downgrade(game.object_store.shared_object(id).unwrap());
+        game.object_mut(id).unwrap().initial_controller = PlayerId::from_index(1);
+        assert!(weak.upgrade().is_none(), "cache must not retain or mask sole-owner mutation");
+        assert_ne!(initial, digest(&game));
+        let rollback = game.clone();
+        let rollback_digest = digest(&rollback);
+        let mut sibling = game.clone();
+        game.object_mut(id).unwrap().initial_controller = alice;
+        sibling.object_mut(id).unwrap().owner = PlayerId::from_index(1);
+        assert_ne!(digest(&game), digest(&sibling));
+        game = rollback;
+        assert_eq!(rollback_digest, digest(&game));
+        let weak = std::sync::Arc::downgrade(game.object_store.shared_object(id).unwrap());
+        drop(game);
+        assert!(weak.upgrade().is_none(), "disposable cache must not retain the game");
+    }
 
     fn observation(source: u64, trigger: u64) -> MandatoryProcedureObservation {
         observation_for(source, 0, trigger)

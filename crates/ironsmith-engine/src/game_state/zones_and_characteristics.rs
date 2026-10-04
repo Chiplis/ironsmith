@@ -4176,13 +4176,22 @@ impl GameState {
     pub fn try_all_continuous_effects(
         &self,
     ) -> Result<Vec<ContinuousEffect>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        self.try_all_continuous_effects_arc().map(|effects| effects.as_ref().clone())
+    }
+
+    /// Fallible shared snapshot: the same checked revision/error contract as
+    /// the owned query, without cloning every effect merely to validate it.
+    pub(crate) fn try_all_continuous_effects_arc(
+        &self,
+    ) -> Result<Arc<Vec<ContinuousEffect>>, crate::static_ability_processor::StaticEffectDiscoveryError> {
         let revision = self.effect_store.continuous_effects.revision();
         if self.continuous_state_is_clean()
             && self.runtime_cache.static_effects_cache.borrow().has_checked_snapshot(revision)
         {
-            return Ok(self.cached_continuous_effects_snapshot());
+            return Ok(self.cached_continuous_effects_snapshot_arc());
         }
         crate::static_ability_processor::try_get_all_continuous_effects(self, Default::default())
+            .map(Arc::new)
     }
 
     /// Shared form of [`Self::all_continuous_effects`].
@@ -4538,8 +4547,52 @@ impl GameState {
             Self::normalize_current_characteristic_subtypes(object, &mut chars);
             return Ok(Some(chars));
         }
-        let effects = self.try_all_continuous_effects()?;
+        let effects = self.try_all_continuous_effects_arc()?;
+        // Checked discovery establishes that the shared cache describes this
+        // exact revision. Consumers such as replacement discovery inspect all
+        // zones repeatedly during payment simulation; recalculating each object
+        // separately discards the layer batch already prepared for this state.
+        let revision = self.effect_store.continuous_effects.revision();
+        if self.continuous_state_is_clean()
+            && self.runtime_cache.static_effects_cache.borrow().has_checked_snapshot(revision)
+        {
+            let mut chars = self.calculated_characteristics_arc(id)
+                .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?
+                .as_ref().clone();
+            Self::normalize_current_characteristic_subtypes(object, &mut chars);
+            return Ok(Some(chars));
+        }
         self.try_current_characteristics_with_effects(id, &effects)
+    }
+
+    /// Resolve an immutable group using one complete checked effects snapshot.
+    /// Dirty states cannot publish revision-keyed cache entries, but discovery
+    /// still need only run once while this shared borrow prevents mutations.
+    pub(crate) fn try_current_characteristics_batch(
+        &self,
+        ids: &[ObjectId],
+    ) -> Result<HashMap<ObjectId, CalculatedCharacteristics>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        let effects = self.try_all_continuous_effects_arc()?;
+        let revision = self.effect_store.continuous_effects.revision();
+        if self.continuous_state_is_clean()
+            && self.runtime_cache.static_effects_cache.borrow().has_checked_snapshot(revision)
+        {
+            self.prewarm_calculated_characteristics(ids);
+            return ids.iter().filter_map(|id| match self.try_current_characteristics(*id) {
+                Ok(Some(chars)) => Some(Ok((*id, chars))),
+                Ok(None) => None,
+                Err(error) => Some(Err(error)),
+            }).collect();
+        }
+        let present: Vec<_> = ids.iter().copied().filter(|id| self.object(*id).is_some_and(|object|
+            object.zone != Zone::Battlefield || !self.is_phased_out(*id))).collect();
+        let mut calculated = self.calculated_characteristics_batch_with_effects(&present, &effects);
+        for id in present {
+            let chars = calculated.get_mut(&id).ok_or(
+                crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;
+            Self::normalize_current_characteristic_subtypes(self.object(id).expect("immutable existing object"), chars);
+        }
+        Ok(calculated)
     }
 
     pub(crate) fn try_current_characteristics_with_effects(

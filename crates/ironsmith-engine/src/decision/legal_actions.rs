@@ -53,11 +53,14 @@ pub fn priority_analysis_sources(game: &GameState, player: PlayerId) -> Vec<Obje
     }
     sources.extend(game.battlefield.iter().copied());
     if let Some(p) = game.player(player) { sources.extend(p.graveyard.iter().copied()); }
+    // Land-play grants can refer to cards in another player's public zones.
+    for p in game.players.iter() { sources.extend(p.graveyard.iter().copied()); }
     sources.extend(game.exile.iter().copied());
     // Grants can refer to another player's top card, so include all tops.
     for p in game.players.iter() { sources.extend(p.library.last().copied()); }
     sources.extend(game.command_zone.iter().copied());
     if let Some(p) = game.player(player) { sources.extend(p.sideboard.iter().copied()); }
+    for p in game.players.iter() { sources.extend(p.sideboard.iter().copied()); }
     sources.extend(game.face_up_planar_objects().iter().copied());
     sources.extend(game.stack.iter().map(|entry| entry.object_id));
     let mut seen = std::collections::HashSet::new();
@@ -1195,7 +1198,10 @@ fn add_non_battlefield_ability_actions(
 
 pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
     let checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    let game = &checked;
+    super::mana::with_checked_query(game, &checked, || compute_legal_actions_checked(&checked, player))
+}
+
+fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
     let total_started_at = PerfTimer::start();
     let mut perf = ComputeLegalActionsPerfMetrics::default();
     let empty_zone: &[ObjectId] = &[];

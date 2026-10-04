@@ -62,6 +62,7 @@ test("startup samples the full catalogue for hands, libraries and board zones", 
         }
       }
     }
+    assert.ok(first.players[0].zones.hand.includes("Sphinx of Foresight"), "the local opening hand contains its promised real card");
   }
   assert.ok(uniqueNonbasics.size > 30, "startup is not limited to the old small card pool");
 });
@@ -93,26 +94,36 @@ test("a table generated from the real card assets is one the engine can be hande
   assert.ok(cards.some((card) => !card.permanent), "and spells");
 
   const guaranteedCards = await resolveNamedCards(config.alwaysOnMyBattlefield, { fetchImpl: fileFetch });
+  const guaranteedHandCards = await resolveNamedCards(config.alwaysInMyHand, { fetchImpl: fileFetch });
   assert.deepEqual(
     guaranteedCards.map((card) => card.name),
     ["Omniscience"],
     "the promised card resolves out of the real catalogue",
   );
-  const { payload, shortfalls, unavailableGuaranteed } = generateRandomGamePayload({
+  assert.deepEqual(
+    guaranteedHandCards.map((card) => card.name),
+    ["Sphinx of Foresight"],
+    "the opening-hand card resolves out of the real catalogue",
+  );
+  const { payload, shortfalls, unavailableGuaranteed, unavailableGuaranteedHand } = generateRandomGamePayload({
     config,
     cards,
     guaranteedCards,
+    guaranteedHandCards,
     rng: createSeededRng("real-table"),
   });
   assert.deepEqual(shortfalls, [], "the pool should cover every zone");
   assert.deepEqual(unavailableGuaranteed, []);
+  assert.deepEqual(unavailableGuaranteedHand, []);
   assert.ok(payload.players[0].zones.battlefield.includes("Omniscience"), "on our own battlefield");
   assert.ok(!payload.players[1].zones.battlefield.includes("Omniscience"), "and only ours");
+  assert.equal(payload.players[0].zones.hand.filter((name) => name === "Sphinx of Foresight").length, 1, "once in our own hand");
 
   // The payload has to survive the same normalisation the puzzle loader applies.
   const normalized = normalizePuzzlePayload(payload);
   assert.ok(normalized, "a puzzle payload the loader accepts");
   assert.equal(normalized.players.length, 2);
+  assert.equal(normalized.players[0].zones.hand.filter((name) => name === "Sphinx of Foresight").length, 1);
 
   const byName = new Map([...cards, ...guaranteedCards].map((card) => [card.name, card]));
   const basics = new Set(["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"]);

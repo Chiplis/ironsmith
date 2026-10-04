@@ -70,10 +70,58 @@ test('a registered symbol lets label masking examine suffixes beyond measured bo
 test('the rules mask receives the protected stats region before quality validation',()=>{
   const width=160,height=220,data=new Uint8ClampedArray(width*height*4).fill(220);
   const boxes={title:{x:10,y:10,width:140,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:50}};
-  const panel={x:115,y:190,width:30,height:20};let protectedCount=0;
+  const panel={x:115,y:175,width:30,height:35};let protectedCount=0;
   maskSourceFrame({data,width,height},boxes,null,panel,(patch,options)=>{
     if(options.section==='rules')protectedCount=options.excludedPixels.reduce((a,b)=>a+b,0);
     return {...patch,mask:new Uint8Array(patch.width*patch.height)};
   });
   assert.ok(protectedCount>0);
+});
+
+test('rules reflect cleaned upper paper over lower flavor ink and separators, preserving stats',()=>{
+  for(const boxHeight of [50,51]) {
+    const width=160,height=220,data=new Uint8ClampedArray(width*height*4);
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++)data.set([200+y%13,210+x%7,220,255],(y*width+x)*4);
+    const boxes={title:{x:10,y:10,width:140,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:boxHeight}};
+    const panel={x:115,y:190,width:30,height:20};
+    for(let x=20;x<110;x++)data.set([90,90,90,255],(190*width+x)*4);
+    let inspectedHeight;
+    const clean=(scan,{section})=>{
+      if(section==='rules')inspectedHeight=scan.height;
+      return {...scan,mask:new Uint8Array(scan.width*scan.height)};
+    };
+    const result=maskSourceFrame({data,width,height},boxes,null,panel,clean);
+    assert.equal(inspectedHeight,Math.ceil((boxHeight-10)/2));
+    const top=163,bottom=158+boxHeight-6;
+    for(let y=top+inspectedHeight;y<=bottom;y++) {
+      const sourceY=top+Math.max(8,bottom-y);
+      assert.deepEqual(result.data.subarray((y*width+40)*4,(y*width+41)*4),data.subarray((sourceY*width+40)*4,(sourceY*width+41)*4));
+    }
+    assert.equal(result.mask[190*width+120],0,'stats panel is preserved');
+    assert.equal(result.mask[190*width+12],0,'frame edge is preserved');
+  }
+});
+
+test('reflection does not duplicate the upper panel bevel at the bottom',()=>{
+  const width=160,height=220,data=new Uint8ClampedArray(width*height*4);
+  for(let p=0;p<width*height;p++)data.set([210,220,230,255],p*4);
+  const boxes={title:{x:10,y:10,width:140,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:50}};
+  for(let y=163;y<166;y++)for(let x=16;x<144;x++)data.set([80,100,120,255],(y*width+x)*4);
+  const clean=scan=>({...scan,mask:new Uint8Array(scan.width*scan.height)});
+  const result=maskSourceFrame({data,width,height},boxes,null,null,clean);
+  assert.equal(result.data[(163*width+50)*4],80,'original top bevel stays in place');
+  for(let y=200;y<203;y++)assert.equal(result.data[(y*width+50)*4],210,'bottom uses paper below the bevel');
+});
+
+test('a separator above the midpoint shortens the donor strip before reflection',()=>{
+  const width=160,height=260,data=new Uint8ClampedArray(width*height*4);
+  for(let p=0;p<width*height;p++)data.set([220,230,240,255],p*4);
+  const boxes={title:{x:10,y:10,width:140,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:80}};
+  for(const top of [175,205])for(let y=top;y<top+8;y++)for(let x=30;x<120;x+=10)for(let dx=0;dx<3;dx++)data.set([20,20,20,255],(y*width+x+dx)*4);
+  for(let x=24;x<136;x++)data.set([190,200,210,255],(193*width+x)*4);
+  let donorHeight;
+  const clean=(scan,{section})=>{if(section==='rules')donorHeight=scan.height;return {...scan,mask:new Uint8Array(scan.width*scan.height)};};
+  const result=maskSourceFrame({data,width,height},boxes,null,null,clean,{hasFlavor:true,flavorTop:205});
+  assert.equal(donorHeight,26,'donors end four pixels above the separator');
+  for(let y=193;y<233;y++)assert.ok(result.data[(y*width+60)*4]>210,'the lower box contains paper without repeated separator ink');
 });

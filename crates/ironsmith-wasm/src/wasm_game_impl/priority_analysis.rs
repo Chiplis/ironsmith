@@ -13,6 +13,7 @@ struct PriorityCandidate {
     player: PlayerId,
     source: Option<ObjectId>,
     session: ironsmith::decision::ManaAnalysisSession,
+    work_units: usize,
 }
 
 impl WasmGame {
@@ -25,7 +26,7 @@ impl WasmGame {
         }
         let Some(mut candidate) = job.candidates.pop_front() else { return Ok(Some(true)); };
         let id_counters = snapshot_id_counters();
-        let (actions, complete) = candidate.session.run(budget.clamp(1, 64), || {
+        let (actions, complete) = candidate.session.run_for_game(&job.game, budget.clamp(1, 64), || {
             match candidate.source {
                 Some(source) => ironsmith::decision::compute_actions_for_source(&job.game, candidate.player, Some(source)),
                 None => ironsmith::decision::compute_global_actions(&job.game, candidate.player),
@@ -33,6 +34,7 @@ impl WasmGame {
         });
         restore_id_counters(id_counters);
         self.last_analysis_slice_nodes = candidate.session.last_slice_nodes();
+        candidate.work_units = candidate.work_units.saturating_add(self.last_analysis_slice_nodes);
         let actions = actions.map_err(ironsmith::game_loop::GameLoopError::from)?;
         if complete {
             for action in actions {
@@ -79,6 +81,22 @@ impl WasmGame {
         self.last_analysis_slice_nodes
     }
 
+    /// Read-only profiling metadata for unresolved candidates in this exact job.
+    /// Opaque object IDs and consumed work expose neither card text nor speculative
+    /// legality, and querying this does not advance or reconstruct the snapshot.
+    #[wasm_bindgen(js_name = priorityAnalysisProgress)]
+    pub fn priority_analysis_progress(&self) -> Result<JsValue, JsValue> {
+        let rows: Vec<_> = self.priority_analysis_job.as_ref().into_iter()
+            .flat_map(|job| job.candidates.iter())
+            .map(|candidate| serde_json::json!({
+                "player": candidate.player.0,
+                "source": candidate.source.map(|source| source.0),
+                "workUnits": candidate.work_units,
+            })).collect();
+        serde_wasm_bindgen::to_value(&rows)
+            .map_err(|error| JsValue::from_str(&format!("analysis progress encode failed: {error}")))
+    }
+
     #[wasm_bindgen(js_name = priorityAnalysisIdentity)]
     pub fn priority_analysis_identity(&self) -> String {
         format!("{:?}", self.priority_analysis_key())
@@ -112,9 +130,9 @@ impl WasmGame {
         let mut candidates = std::collections::VecDeque::new();
         for player in self.game.priority_team_players() {
             for source in ironsmith::decision::priority_analysis_sources(&self.game, player) {
-                candidates.push_back(PriorityCandidate { player, source: Some(source), session: Default::default() });
+                candidates.push_back(PriorityCandidate { player, source: Some(source), session: Default::default(), work_units: 0 });
             }
-            candidates.push_back(PriorityCandidate { player, source: None, session: Default::default() });
+            candidates.push_back(PriorityCandidate { player, source: None, session: Default::default(), work_units: 0 });
         }
         self.priority_analysis_job = Some(Box::new(PriorityAnalysisJob {
             token,
@@ -224,6 +242,12 @@ mod priority_analysis_tests {
             let land_card = ironsmith::CardBuilder::new(ironsmith::ids::CardId::new(), "Land probe")
                 .card_types(vec![ironsmith::types::CardType::Land]).build();
             let land = wasm.game.create_object_from_card(&land_card, alice, ironsmith::Zone::Hand);
+            let bob = PlayerId::from_index(1);
+            let foreign_graveyard_land = wasm.game.create_object_from_card(&land_card, bob, ironsmith::Zone::Graveyard);
+            let foreign_sideboard_land = wasm.game.create_object_from_card(&land_card, bob, ironsmith::Zone::OutsideGame);
+            let sources = ironsmith::decision::priority_analysis_sources(&wasm.game, alice);
+            assert!(sources.contains(&foreign_graveyard_land));
+            assert!(sources.contains(&foreign_sideboard_land));
             // Exercise candidate coverage outside hand, including top library.
             for zone in [ironsmith::Zone::Battlefield, ironsmith::Zone::Graveyard, ironsmith::Zone::Exile, ironsmith::Zone::Library, ironsmith::Zone::Command] {
                 wasm.game.create_object_from_definition(&def, alice, zone);
@@ -252,6 +276,53 @@ mod priority_analysis_tests {
                 }
             }
             panic!("analysis did not finish");
+        });
+    }
+    #[test]
+    fn keyword_payment_analysis_suspends_and_preserves_exact_final_menu() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            for amount in [2, 3] {
+                let (mut wasm, _restore) = fixture();
+                let alice = PlayerId::from_index(0);
+                wasm.game.turn.active_player = alice;
+                wasm.game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+                wasm.game.turn.step = None;
+                let source = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Life-cost source")
+                    .card_types(vec![ironsmith::types::CardType::Land])
+                    .with_ability(ironsmith::Ability::mana_with_effects(
+                        ironsmith::cost::TotalCost::from_cost(ironsmith::costs::Cost::life(1)),
+                        vec![ironsmith::effect::Effect::add_mana_of_any_color_restricted(1,
+                            vec![ironsmith::color::Color::White, ironsmith::color::Color::Blue])])).build();
+                for _ in 0..2 { wasm.game.create_object_from_definition(&source, alice, ironsmith::Zone::Battlefield); }
+                let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Improvise slice probe")
+                    .card_types(vec![ironsmith::types::CardType::Artifact])
+                    .mana_cost(ironsmith::mana::ManaCost::from_pips(vec![vec![ironsmith::ManaSymbol::Blue]; amount]))
+                    .with_ability(ironsmith::Ability::static_ability(ironsmith::static_abilities::StaticAbility::improvise()))
+                    .build();
+                let spell = wasm.game.create_object_from_definition(&definition, alice, ironsmith::Zone::Hand);
+                wasm.pending_decision = Some(DecisionContext::Priority(
+                    ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
+                let expected = ironsmith::game_loop::analyze_priority_context(&wasm.game, alice).unwrap().actions;
+                assert_eq!(expected.iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)), amount == 2);
+                assert!(wasm.begin_priority_analysis("keyword".into()));
+                assert_eq!(wasm.advance_priority_analysis("keyword", 1).unwrap(), Some(false));
+                assert!(wasm.last_analysis_slice_nodes <= 1);
+                assert!(wasm.priority_analysis_job.as_ref().unwrap().candidates.iter().any(|candidate| candidate.source == Some(spell)),
+                    "keyword query must retain its unfinished frontier rather than block or publish a false negative: amount={amount}");
+                let mut completed = false;
+                for _ in 0..1000 {
+                    let done = wasm.advance_priority_analysis("keyword", 1).unwrap() == Some(true);
+                    assert!(wasm.last_analysis_slice_nodes <= 1);
+                    if done { completed = true; break; }
+                }
+                assert!(completed);
+                let Some(DecisionContext::Priority(ctx)) = &wasm.pending_decision else { panic!() };
+                assert!(ctx.analysis_complete);
+                assert_eq!(ctx.actions.len(), expected.len());
+                assert!(expected.iter().all(|action| ctx.actions.contains(action)));
+                assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+            }
         });
     }
     #[test]

@@ -174,7 +174,7 @@ export async function closePeerServer(child) {
   ]);
 }
 
-export async function startHarnessServer(peerPort, envOverrides = {}) {
+export async function startHarnessServer(peerPort, envOverrides = {}, plugins = []) {
   const vitePort = await freePort();
   const harnessEnv = {
     VITE_PEER_HOST: "127.0.0.1",
@@ -195,6 +195,7 @@ export async function startHarnessServer(peerPort, envOverrides = {}) {
   }
 
   const vite = await createViteServer({
+    plugins,
     root: UI_ROOT,
     configFile: path.join(UI_ROOT, "vite.config.js"),
     clearScreen: false,
@@ -477,7 +478,8 @@ export async function waitForFullUiSync(hostPage, guestPage, label, timeoutMs = 
   );
 }
 
-export async function waitForFullUiPair(hostPage, guestPage, predicate, label, timeoutMs = 60000) {
+export async function waitForFullUiPair(hostPage, guestPage, predicate, label, timeoutMs = 60000, pollIntervalMs = 250) {
+  assert.ok(Number.isFinite(pollIntervalMs) && pollIntervalMs > 0, 'Positive UI observation interval required');
   const started = Date.now();
   let lastHost = null;
   let lastGuest = null;
@@ -489,7 +491,7 @@ export async function waitForFullUiPair(hostPage, guestPage, predicate, label, t
     if (lastHost && lastGuest && predicate(lastHost, lastGuest)) {
       return { host: lastHost, guest: lastGuest };
     }
-    await sleep(250);
+    await sleep(pollIntervalMs);
   }
   const summarize = (snap) => ({
     status: snap?.status,

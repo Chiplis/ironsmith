@@ -2237,6 +2237,9 @@
 }
 
 .battlefield-pt-badge {
+  position: relative;
+  isolation: isolate;
+  transition: color 600ms ease, border-color 600ms ease, text-shadow 600ms ease, box-shadow 600ms ease;
   min-width: clamp(24px, calc(var(--bf-card-width, 124px) * 0.22), 34px);
   padding-inline: clamp(5px, calc(var(--bf-card-width, 124px) * 0.038), 8px);
   border: 1px solid rgba(248, 221, 166, 0.34);
@@ -2248,7 +2251,7 @@
   clip-path: polygon(13% 0, 87% 0, 100% 38%, 100% 100%, 0 100%, 0 38%);
 }
 
-.battlefield-pt-badge--aura {
+.battlefield-pt-badge--modified {
   border-color: rgba(211, 171, 255, 0.66);
   color: #f2ddff;
   background:
@@ -2259,29 +2262,33 @@
     0 2px 8px rgba(142, 80, 220, 0.34);
 }
 
-.battlefield-summoning-sickness {
+.battlefield-pt-badge::before {
+  content: "";
   position: absolute;
-  top: clamp(22px, calc(var(--bf-card-height, 96px) * 0.25), 30px);
-  left: clamp(5px, calc(var(--bf-card-width, 124px) * 0.045), 8px);
-  z-index: 5;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: clamp(15px, calc(var(--bf-card-width, 124px) * 0.14), 20px);
-  height: clamp(15px, calc(var(--bf-card-width, 124px) * 0.14), 20px);
-  color: #b98cff;
-  filter: drop-shadow(0 0 4px rgba(163, 108, 255, 0.62));
+  inset: 0;
+  z-index: -1;
+  background: #666;
+  opacity: 0;
+  transition: opacity 600ms ease;
   pointer-events: none;
 }
 
-.battlefield-summoning-sickness svg {
-  width: 88%;
-  height: 88%;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.battlefield-pt-badge--summoning-sick {
+  border-color: #888;
+  color: #fff;
+  text-shadow: none;
+  box-shadow: none;
+}
+
+.battlefield-pt-badge--summoning-sick::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battlefield-pt-badge,
+  .battlefield-pt-badge::before {
+    transition: none;
+  }
 }
 
 .game-card.field-card .game-card-surface::before,

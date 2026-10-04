@@ -55,8 +55,7 @@ for(const reducedMotion of ['no-preference','reduce'])test(`name and type stay o
       node.scrollLeft=0;
       return result;
     });
-    assert.equal(labelScroll.overflow,'auto');
-    assert.ok(labelScroll.left>0,'long title can scroll to its end');
+    assert.equal(labelScroll.overflow,'hidden','long titles do not show horizontal scrollbars');
     // The enlarged preview animates from scale(.975) to scale(1). Font
     // readiness and ResizeObserver can refit P/T during that animation.
     const statsAlignment = await page.evaluate(async () => {
@@ -80,7 +79,7 @@ for(const reducedMotion of ['no-preference','reduce'])test(`name and type stay o
     }
     await page.locator('#panel-host').evaluate(el => { el.style.width = '240px'; });
     const narrow = await measure();
-    assert.deepEqual(narrow,wide,'narrow labels scroll at natural size');
+    assert.deepEqual(narrow,wide,'narrow labels retain their natural size');
     await page.getByRole('button', { name: 'Toggle mana' }).click();
     const noMana = await measure();
     assert.deepEqual(noMana,narrow,'mana changes do not change typography');
