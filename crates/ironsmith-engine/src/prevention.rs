@@ -21,6 +21,7 @@ use std::collections::HashMap;
 
 /// Unique identifier for a prevention shield.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub struct PreventionShieldId(pub u64);
 
 impl PreventionShieldId {
@@ -34,7 +35,9 @@ impl PreventionShieldId {
 /// These are created by effects like "Prevent the next 3 damage that would be
 /// dealt to you this turn" or Circle of Protection effects.
 #[derive(Debug, Clone, PartialEq)]
-pub struct PreventionShield {
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
+pub struct PreventionShield<E = Effect, U = Until> {
     /// Unique identifier for this shield
     pub id: PreventionShieldId,
 
@@ -49,16 +52,17 @@ pub struct PreventionShield {
 
     /// Amount of damage remaining to prevent.
     /// None means infinite (e.g., Fog prevents all combat damage)
+    #[cfg_attr(feature="serialization",serde(deserialize_with="deserialize_present_prevention_option"))]
     pub amount_remaining: Option<u32>,
 
     /// How long this shield lasts
-    pub duration: Until,
+    pub duration: U,
 
     /// Filter for what damage this shield applies to
     pub damage_filter: DamageFilter,
 
     /// Effects to execute using the prevented amount when this shield prevents damage.
-    pub follow_up_effects: Vec<Effect>,
+    pub follow_up_effects: Vec<E>,
 
     /// Targets chosen when the prevention shield was created, for delayed follow-ups.
     pub follow_up_targets: Vec<ResolvedTarget>,
@@ -72,6 +76,7 @@ pub struct PreventionShield {
     /// CR 800.4m: a turn-relative shield whose controller left the game ends
     /// when the turn in question would have begun. `Some(turn)` removes the
     /// shield at the start of that turn (or any later one).
+    #[cfg_attr(feature="serialization",serde(deserialize_with="deserialize_present_prevention_option"))]
     pub expires_before_turn: Option<u32>,
 }
 
@@ -248,27 +253,70 @@ pub struct PreventionEffectManager {
     prevented_totals: HashMap<PreventionShieldId, u32>,
 }
 
+/// Complete native prevention-manager state, including work deferred by damage
+/// applications. Wire conversion must supply all three executable converters.
+/// Owning continuation frames retain their deferral start markers separately.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
+pub struct PreventionEffectState<
+    S = PreventionShield, F = PendingPreventionFollowUp,
+    C = crate::effects::ReplacementExecutionContext,
+> {
+    pub shields: Vec<S>,
+    pub next_id: u64,
+    pub current_turn: u32,
+    pub pending_follow_ups: Vec<F>,
+    pub follow_up_deferral_depth: usize,
+    pub follow_up_replacement_scopes: Vec<C>,
+    /// Includes exhausted/removed shields still referenced by delayed effects.
+    pub prevented_totals: Vec<(PreventionShieldId, u32)>,
+}
+
+impl<S, F, C> PreventionEffectState<S, F, C> {
+    pub fn try_map_payloads<S2, F2, C2, Error>(
+        self, shield: impl FnMut(S) -> Result<S2, Error>,
+        follow_up: impl FnMut(F) -> Result<F2, Error>,
+        scope: impl FnMut(C) -> Result<C2, Error>,
+    ) -> Result<PreventionEffectState<S2, F2, C2>, Error> {
+        let Self { shields, next_id, current_turn, pending_follow_ups,
+            follow_up_deferral_depth, follow_up_replacement_scopes, prevented_totals } = self;
+        Ok(PreventionEffectState {
+            shields: shields.into_iter().map(shield).collect::<Result<Vec<_>, _>>()?,
+            pending_follow_ups: pending_follow_ups.into_iter().map(follow_up).collect::<Result<Vec<_>, _>>()?,
+            follow_up_replacement_scopes: follow_up_replacement_scopes.into_iter().map(scope).collect::<Result<Vec<_>, _>>()?,
+            next_id, current_turn, follow_up_deferral_depth, prevented_totals,
+        })
+    }
+}
+
 /// A follow-up to run after a prevention shield is applied to damage.
 ///
 /// `prevented` is zero when CR 615.12 applies the prevention effect to
 /// unpreventable damage without preventing any of it.
 #[derive(Debug, Clone, PartialEq)]
-pub struct PreventionFollowUp {
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
+pub struct PreventionFollowUp<E = Effect> {
     pub source: ObjectId,
     pub controller: PlayerId,
     pub prevented: u32,
-    pub effects: Vec<Effect>,
+    pub effects: Vec<E>,
     pub targets: Vec<ResolvedTarget>,
     pub target_assignments: Vec<TargetAssignment>,
 }
 
 /// A prevention follow-up paired with the exact damage event it modified.
 #[derive(Debug, Clone)]
-pub struct PendingPreventionFollowUp {
-    pub(crate) replacement_scope: crate::effects::ReplacementExecutionContext,
-    pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
-    pub follow_up: PreventionFollowUp,
-    pub damage: crate::events::DamageEvent,
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
+#[cfg_attr(feature="serialization",serde(bound(deserialize="C: serde::Deserialize<'de>, S: serde::Deserialize<'de>, F: serde::Deserialize<'de>, D: serde::Deserialize<'de>")))]
+pub struct PendingPreventionFollowUp<C = crate::effects::ReplacementExecutionContext, S = crate::snapshot::ObjectSnapshot, F = PreventionFollowUp, D = crate::events::DamageEvent> {
+    pub(crate) replacement_scope: C,
+    #[cfg_attr(feature="serialization",serde(deserialize_with="deserialize_present_prevention_option"))]
+    pub source_snapshot: Option<S>,
+    pub follow_up: F,
+    pub damage: D,
     pub provenance: crate::provenance::ProvNodeId,
 }
 
@@ -280,6 +328,70 @@ pub struct PreventionApplicationResult {
 }
 
 impl PreventionEffectManager {
+    /// Capture all manager fields. Do not drop queued work or metrics for a
+    /// shield which has already been consumed when publishing a checkpoint.
+    pub fn retained_state(&self) -> Result<PreventionEffectState, String> {
+        let Self { shields, next_id, current_turn, pending_follow_ups,
+            follow_up_deferral_depth, follow_up_replacement_scopes, prevented_totals } = self;
+        let mut totals: Vec<_> = prevented_totals.iter().map(|(id, amount)| (*id, *amount)).collect();
+        totals.sort_by_key(|(id, _)| id.0);
+        let state = PreventionEffectState {
+            shields: shields.clone(), next_id: *next_id, current_turn: *current_turn,
+            pending_follow_ups: pending_follow_ups.clone(),
+            follow_up_deferral_depth: *follow_up_deferral_depth,
+            follow_up_replacement_scopes: follow_up_replacement_scopes.clone(),
+            prevented_totals: totals,
+        };
+        Self::new().restore_retained_state(state.clone())?;
+        Ok(state)
+    }
+
+    /// Validate before publication; registration would reset remaining amounts,
+    /// creation turns and IDs. The owning importer also validates world and
+    /// provenance references, payloads and matching continuation/deferral frames.
+    pub fn restore_retained_state(&mut self, state: PreventionEffectState) -> Result<(), String> {
+        if state.next_id == u64::MAX || state.follow_up_deferral_depth == usize::MAX {
+            return Err("serialized prevention allocator or deferral depth cannot advance".into());
+        }
+        fn check_assignments(targets: &[ResolvedTarget], assignments: &[TargetAssignment]) -> Result<(), String> {
+            if assignments.iter().any(|assignment| assignment.range.start > assignment.range.end
+                || assignment.range.end > targets.len()) {
+                return Err("invalid prevention follow-up target assignment".into());
+            }
+            Ok(())
+        }
+        let mut ids = std::collections::HashSet::new();
+        for shield in &state.shields {
+            if shield.id.0 >= state.next_id || !ids.insert(shield.id) {
+                return Err("invalid retained prevention shield identity".into());
+            }
+            if shield.created_turn > state.current_turn {
+                return Err("prevention shield was created in a future turn".into());
+            }
+            check_assignments(&shield.follow_up_targets, &shield.follow_up_target_assignments)?;
+        }
+        for pending in &state.pending_follow_ups {
+            check_assignments(&pending.follow_up.targets, &pending.follow_up.target_assignments)?;
+        }
+        let mut totals = HashMap::new();
+        for (id, amount) in state.prevented_totals {
+            if id.0 >= state.next_id || totals.insert(id, amount).is_some() {
+                return Err("invalid retained prevention metric identity".into());
+            }
+        }
+        if ids.iter().any(|id| !totals.contains_key(id)) {
+            return Err("missing prevention metric for an active shield".into());
+        }
+        *self = Self {
+            shields: state.shields, next_id: state.next_id, current_turn: state.current_turn,
+            pending_follow_ups: state.pending_follow_ups,
+            follow_up_deferral_depth: state.follow_up_deferral_depth,
+            follow_up_replacement_scopes: state.follow_up_replacement_scopes,
+            prevented_totals: totals,
+        };
+        Ok(())
+    }
+
     /// Create a new empty manager.
     pub fn new() -> Self {
         Self::default()
@@ -792,6 +904,107 @@ impl PreventionEffectManager {
 mod tests {
     use super::*;
 
+    fn transport_fixture() -> (PreventionEffectManager, PreventionShieldId, PreventionShieldId) {
+        let mut manager = PreventionEffectManager::new();
+        let alice = PlayerId::from_index(0);
+        manager.set_turn(4);
+        let consumed = manager.add_shield(PreventionShield::prevent_next_n(ObjectId::from_raw(71), alice, PreventionTarget::You, 3));
+        assert_eq!(manager.apply_chosen_shield(consumed, 5, true, None).remaining, 2);
+        let mut shield = PreventionShield::new(ObjectId::from_raw(72), alice, PreventionTarget::You, Some(5), Until::YourNextTurn);
+        shield.follow_up_effects = vec![Effect::gain_life(2)];
+        let live = manager.add_shield(shield);
+        assert_eq!(manager.apply_chosen_shield(live, 1, true, None).remaining, 0);
+        manager.prepare_for_departing_player(alice, 8);
+        (manager, consumed, live)
+    }
+
+    #[test]
+    fn prevention_state_transport_preserves_remaining_total_expiry_and_allocation() {
+        let (original, consumed, live) = transport_fixture();
+        let mut restored = PreventionEffectManager::new();
+        restored.restore_retained_state(original.retained_state().unwrap()).unwrap();
+        assert_eq!(restored.current_turn(), 4);
+        assert_eq!(restored.next_id(), original.next_id());
+        assert!(restored.get_shield_mut(consumed).is_none());
+        assert_eq!(restored.prevented_by_shield(consumed), 3);
+        assert_eq!(restored.apply_chosen_shield(live, 2, true, None).remaining, 0);
+        assert_eq!(restored.prevented_by_shield(live), 3);
+        assert_eq!(restored.get_shield_mut(live).unwrap().amount_remaining, Some(2));
+        restored.expire_at_turn_start(7, &[], &[PlayerId::from_index(1)]);
+        assert!(restored.get_shield_mut(live).is_some());
+        restored.expire_at_turn_start(8, &[], &[PlayerId::from_index(1)]);
+        assert!(restored.get_shield_mut(live).is_none());
+        let retained = std::collections::HashSet::from([consumed, live]);
+        restored.cleanup_end_of_turn_retaining_metrics(&retained);
+        assert_eq!(restored.prevented_by_shield(consumed), 3);
+        assert_eq!(restored.prevented_by_shield(live), 3);
+        let next = restored.add_shield(PreventionShield::prevent_all(ObjectId::from_raw(73), PlayerId::from_index(1), PreventionTarget::You));
+        assert_eq!(next.0, original.next_id());
+    }
+
+    #[test]
+    fn prevention_state_transport_preserves_nested_deferral_and_replacement_scopes() {
+        let (mut original, _, live) = transport_fixture();
+        let mut outer = crate::effects::ReplacementExecutionContext::default();
+        outer.suppressed_replacement_effects.insert(crate::replacement::ReplacementEffectId(7));
+        original.begin_follow_up_replacement_scope(&outer);
+        let start = original.begin_follow_up_deferral();
+        let mut inner = outer.clone();
+        inner.entry_reserved_objects.insert(ObjectId::from_raw(91));
+        original.begin_follow_up_replacement_scope(&inner);
+        let nested = original.begin_follow_up_deferral();
+        let follow_up = original.apply_chosen_shield(live, 1, true, None).follow_ups.remove(0);
+        original.queue_follow_up(follow_up, crate::events::DamageEvent::with_cause(
+            ObjectId::from_raw(82), crate::events::DamageTarget::Player(PlayerId::from_index(0)), 1, false,
+            crate::events::cause::EventCause::effect(),
+        ), crate::provenance::ProvNodeId::default());
+        let mut restored = PreventionEffectManager::new();
+        restored.restore_retained_state(original.retained_state().unwrap()).unwrap();
+        assert!(restored.follow_ups_are_deferred());
+        let pending = restored.end_follow_up_deferral(nested);
+        assert_eq!(pending.len(), 1);
+        assert!(pending[0].replacement_scope.entry_reserved_objects.contains(&ObjectId::from_raw(91)));
+        assert!(pending[0].replacement_scope.suppressed_replacement_effects.contains(&crate::replacement::ReplacementEffectId(7)));
+        restored.end_follow_up_replacement_scope();
+        assert!(restored.follow_ups_are_deferred());
+        assert!(restored.end_follow_up_deferral(start).is_empty());
+        restored.end_follow_up_replacement_scope();
+        assert!(!restored.follow_ups_are_deferred());
+        assert!(restored.follow_up_replacement_scopes.is_empty());
+    }
+
+    #[test]
+    fn prevention_state_transport_rejects_malformed_state_atomically() {
+        let (mut manager, consumed, live) = transport_fixture();
+        let valid = manager.retained_state().unwrap();
+        let before = format!("{manager:?}");
+        for case in 0..10 {
+            let mut state = valid.clone();
+            match case {
+                0 => state.next_id = u64::MAX,
+                1 => state.follow_up_deferral_depth = usize::MAX,
+                2 => state.shields.push(state.shields[0].clone()),
+                3 => state.next_id = live.0,
+                4 => state.shields[0].created_turn = state.current_turn + 1,
+                5 => state.prevented_totals.push(state.prevented_totals[0]),
+                6 => state.prevented_totals.push((PreventionShieldId(state.next_id), 1)),
+                7 => state.prevented_totals.retain(|(id, _)| *id != live),
+                8 => state.shields[0].follow_up_target_assignments.push(TargetAssignment {
+                    spec: crate::target::ChooseSpec::target_player(), range: 0..1,
+                }),
+                9 => state.shields[0].follow_up_target_assignments.push(TargetAssignment {
+                    spec: crate::target::ChooseSpec::target_player(), range: 1..0,
+                }),
+                _ => unreachable!(),
+            }
+            assert!(manager.restore_retained_state(state).is_err(), "malformed case {case}");
+            assert_eq!(format!("{manager:?}"), before);
+        }
+        manager.restore_retained_state(valid).unwrap();
+        assert_eq!(manager.prevented_by_shield(consumed), 3);
+        assert_eq!(manager.apply_chosen_shield(live, 4, true, None).remaining, 0);
+    }
+
     #[test]
     fn test_prevention_shield_creation() {
         let shield = PreventionShield::prevent_next_n(
@@ -1144,3 +1357,49 @@ mod tests {
         assert_eq!(manager.shields()[0].amount_remaining, Some(1));
     }
 }
+
+/// Required conversion of both executable fields; scalar shield state is
+/// preserved verbatim, including exhausted quantities and original turn anchors.
+impl<E, U> PreventionShield<E, U> {
+    pub fn try_map_payloads<E2, U2, Error>(self, effect: impl FnMut(E) -> Result<E2, Error>, duration: impl FnOnce(U) -> Result<U2, Error>) -> Result<PreventionShield<E2, U2>, Error> {
+        let Self { id, source, controller, protected, amount_remaining, duration: original_duration, damage_filter, follow_up_effects, follow_up_targets, follow_up_target_assignments, created_turn, expires_before_turn } = self;
+        Ok(PreventionShield { id, source, controller, protected, amount_remaining, duration: duration(original_duration)?, damage_filter, follow_up_effects: follow_up_effects.into_iter().map(effect).collect::<Result<Vec<_>, _>>()?, follow_up_targets, follow_up_target_assignments, created_turn, expires_before_turn })
+    }
+}
+impl<E> PreventionFollowUp<E> {
+    pub fn try_map_effects<E2, Error>(self, effect: impl FnMut(E) -> Result<E2, Error>) -> Result<PreventionFollowUp<E2>, Error> {
+        let Self { source, controller, prevented, effects, targets, target_assignments } = self;
+        Ok(PreventionFollowUp { source, controller, prevented, effects: effects.into_iter().map(effect).collect::<Result<Vec<_>, _>>()?, targets, target_assignments })
+    }
+}
+impl<C, S, F, D> PendingPreventionFollowUp<C, S, F, D> {
+    /// No capture can be omitted by an owning codec. The owner must roll back
+    /// any external mutations made by a converter if a later conversion fails.
+    pub fn try_map_payloads<C2, S2, F2, D2, Error>(self, scope: impl FnOnce(C) -> Result<C2, Error>, snapshot: impl FnOnce(S) -> Result<S2, Error>, follow_up: impl FnOnce(F) -> Result<F2, Error>, damage: impl FnOnce(D) -> Result<D2, Error>) -> Result<PendingPreventionFollowUp<C2, S2, F2, D2>, Error> {
+        let Self { replacement_scope, source_snapshot, follow_up: original_follow_up, damage: original_damage, provenance } = self;
+        Ok(PendingPreventionFollowUp { replacement_scope: scope(replacement_scope)?, source_snapshot: source_snapshot.map(snapshot).transpose()?, follow_up: follow_up(original_follow_up)?, damage: damage(original_damage)?, provenance })
+    }
+}
+#[cfg(test)]
+mod complete_prevention_carrier_mapping_tests {
+    use super::*;
+    #[test]
+    fn shield_mapping_preserves_all_scalar_state_and_effect_order() {
+        let source=ObjectId::from_raw(101);let player=PlayerId::from_index(1);
+        let shield=PreventionShield { id:PreventionShieldId(17),source,controller:player,protected:PreventionTarget::Player(player),amount_remaining:Some(0),duration:11u32,damage_filter:DamageFilter::default(),follow_up_effects:vec![4u32,4,7],follow_up_targets:vec![],follow_up_target_assignments:vec![],created_turn:8,expires_before_turn:Some(13) };
+        let expected=shield.clone();let retained=shield.try_map_payloads(|effect|Ok::<_, &'static str>(effect+20),|duration|Ok(duration+30)).unwrap();let restored=retained.try_map_payloads(|effect|Ok::<_, &'static str>(effect-20),|duration|Ok(duration-30)).unwrap();assert_eq!(restored,expected);
+    }
+    #[test]
+    fn queued_follow_up_mapping_preserves_every_capture_and_stops_on_error() {
+        let pending=PendingPreventionFollowUp { replacement_scope:3u32,source_snapshot:Some(5u32),follow_up:7u32,damage:11u32,provenance:Default::default() };
+        let mapped=pending.clone().try_map_payloads(|v|Ok::<_, &'static str>(v+1),|v|Ok(v+2),|v|Ok(v+3),|v|Ok(v+4)).unwrap();assert_eq!((mapped.replacement_scope,mapped.source_snapshot,mapped.follow_up,mapped.damage),(4,Some(7),10,15));assert_eq!(mapped.provenance,pending.provenance);
+        let mut later=0;let result=pending.try_map_payloads(Ok::<_, &'static str>,|_|Err::<u32,_>("snapshot"),|v|{later+=1;Ok(v)},Ok);assert_eq!(result.unwrap_err(),"snapshot");assert_eq!(later,0);
+    }
+    #[test]
+    fn follow_up_mapping_preserves_prevented_amount_and_all_effects() {
+        let value=PreventionFollowUp {source:ObjectId::from_raw(102),controller:PlayerId::from_index(0),prevented:u32::MAX,effects:vec![2u32,2,9],targets:vec![],target_assignments:vec![]};let original=value.clone();let mapped=value.try_map_effects(|v|Ok::<_, &'static str>(v+1)).unwrap();assert_eq!(mapped.prevented,u32::MAX);assert_eq!(mapped.effects,vec![3,3,10]);let restored=mapped.try_map_effects(|v|Ok::<_, &'static str>(v-1)).unwrap();assert_eq!(restored,original);
+    }
+}
+
+#[cfg(feature="serialization")]
+fn deserialize_present_prevention_option<'de,T:serde::Deserialize<'de>,D:serde::Deserializer<'de>>(d:D)->Result<Option<T>,D::Error>{<Option<T> as serde::Deserialize>::deserialize(d)}

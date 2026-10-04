@@ -15,6 +15,11 @@ use crate::mana::ManaSymbol;
 pub type AddManaOfImprintedColorsEffect = ironsmith_core::AddManaOfImprintedColorsEffect;
 
 impl EffectExecutor for AddManaOfImprintedColorsEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::ImprintedColors)
+    }
+
     fn directly_produces_mana(&self) -> bool {
         true
     }
@@ -44,7 +49,7 @@ impl EffectExecutor for AddManaOfImprintedColorsEffect {
             false,
             Some(&colors),
             colors[0],
-        )
+        )?
         .into_iter()
         .next()
         .unwrap_or(colors[0]);
@@ -76,7 +81,7 @@ impl EffectExecutor for AddManaOfImprintedColorsEffect {
 
 /// The distinct colors among the cards imprinted on, or exiled with,
 /// `source`, in WUBRG order.
-fn linked_exiled_card_colors(game: &GameState, source: crate::ids::ObjectId) -> Vec<Color> {
+pub(super) fn linked_exiled_card_colors(game: &GameState, source: crate::ids::ObjectId) -> Vec<Color> {
     let imprinted = game.get_imprinted_cards(source);
     let exiled_with = game.get_exiled_with_source_links(source);
     [

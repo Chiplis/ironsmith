@@ -184,3 +184,56 @@ fn commit_life_change(
         }
     }
 }
+
+#[cfg(test)]
+mod removed_life_operation_tests {
+    use super::*;
+    fn check_removed_life_change(gain: bool) {
+        struct PreferSubtractor(crate::ids::ObjectId);
+        impl crate::decision::DecisionMaker for PreferSubtractor {
+            fn decide_options(&mut self, _game: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                let choice = ctx.options.iter().find(|option| option.legal && option.object_id == Some(self.0))
+                    .or_else(|| ctx.options.iter().find(|option| option.legal)).unwrap();
+                vec![choice.index]
+            }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Life replacement source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let subtractor = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let adder = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let effect = |source, modification| {
+            let action = crate::replacement::ReplacementAction::Modify(modification);
+            if gain {
+                crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                    crate::events::life::matchers::WouldGainLifeMatcher::any_player(), action)
+            } else {
+                crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                    crate::events::life::matchers::WouldLoseLifeMatcher::any_player(), action)
+            }
+        };
+        game.effect_store.replacement_effects.add_resolution_effect(effect(subtractor, crate::replacement::EventModification::Subtract(1)));
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(effect(adder, crate::replacement::EventModification::Add(2)));
+        let mut chooser = PreferSubtractor(subtractor);
+        for count in [0, 1, 2] {
+            game.take_pending_trigger_events();
+            let before = game.player(alice).unwrap().life;
+            let event = if gain { Event::new_with_provenance(LifeGainEvent::new(alice, count).with_source(subtractor), Default::default()) }
+                else { Event::life_loss(alice, count, false) };
+            let mut ctx = ExecutionContext::new(subtractor, alice, &mut chooser);
+            let outcome = execute_life_change(&mut game, &mut ctx, event).unwrap();
+            let amount = if count == 2 { 3 } else { 0 };
+            assert_eq!(outcome.value, OutcomeValue::Count(amount));
+            assert_eq!(i64::from(game.player(alice).unwrap().life), i64::from(before) + if gain { amount } else { -amount });
+            assert_eq!(outcome.events.len(), usize::from(count == 2));
+            assert!(game.take_pending_trigger_events().is_empty(), "owner returns notifications for its caller to publish");
+            assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_some(), count != 2,
+                "absent life operation must preserve later one-shot until a positive change");
+        }
+    }
+    #[test]
+    fn life_gain_reduced_to_zero_does_not_revive_or_consume_later_one_shot() { check_removed_life_change(true); }
+    #[test]
+    fn life_loss_reduced_to_zero_does_not_revive_or_consume_later_one_shot() { check_removed_life_change(false); }
+}

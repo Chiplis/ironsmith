@@ -43,6 +43,11 @@ impl EffectExecutor for NoteActivationManaTypeEffect {
 }
 
 impl EffectExecutor for AddManaOfNotedTypeEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::NotedType { amount: &self.amount, player: &self.player })
+    }
+
     fn directly_produces_mana(&self) -> bool {
         true
     }

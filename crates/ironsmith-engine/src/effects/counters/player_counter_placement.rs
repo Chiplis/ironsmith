@@ -121,11 +121,6 @@ fn commit_player_counter_placement(
                     "player counter placement exceeds the supported counter range".into(),
                 )
             })?;
-            i32::try_from(resolved.count).map_err(|_| {
-                ExecutionError::InternalError(
-                    "player counter outcome exceeds the supported count range".into(),
-                )
-            })?;
             if resolved.counter_type == CounterType::Poison {
                 game.write_shared_poison(player, proposed_after);
             } else {
@@ -141,11 +136,7 @@ fn commit_player_counter_placement(
             if actual == 0 {
                 return Ok(prevented());
             }
-            let count = i32::try_from(actual).map_err(|_| {
-                ExecutionError::InternalError(
-                    "player counter outcome exceeds the supported count range".into(),
-                )
-            })?;
+            let count = i64::from(actual);
             let mut notification = TriggerEvent::new_with_provenance(
                 MarkersChangedEvent::added(
                     resolved.counter_type,
@@ -225,9 +216,9 @@ mod range_tests {
                         Some("player counter placement exceeds the supported counter range"),
                     ),
                     (
-                        0,
+                        i32::MAX as u32 + 1,
                         i32::MAX / 2 + 1,
-                        Some("player counter outcome exceeds the supported count range"),
+                        Some("player counter placement exceeds the supported counter range"),
                     ),
                     (u32::MAX - 4, 2, None),
                 ] {
@@ -332,5 +323,60 @@ mod range_tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod wide_player_counter_quantity_tests {
+    use super::*;
+    use crate::effect::{Effect,EffectId,Value};
+    use crate::effects::{execute_effect,PutCountersEffect,EnergyCountersEffect,ExperienceCountersEffect,PoisonCountersEffect,PlayerCountersEffect};
+    use crate::ids::{CardId,PlayerId};
+    use crate::target::{ChooseSpec,PlayerFilter};
+    fn object(game:&mut GameState,alice:PlayerId)->crate::ids::ObjectId {
+        let card=crate::card::CardBuilder::new(CardId::new(),"Player quantity source").card_types(vec![crate::types::CardType::Artifact]).build();
+        game.create_object_from_card(&card,alice,crate::zone::Zone::Battlefield)
+    }
+    fn instruction(kind:CounterType,count:Value,player:PlayerId)->Effect {
+        let filter=PlayerFilter::Specific(player);
+        match kind {
+            CounterType::Energy=>Effect::new(EnergyCountersEffect::new(count,filter)),
+            CounterType::Experience=>Effect::new(ExperienceCountersEffect::new(count,filter)),
+            CounterType::Poison=>Effect::new(PoisonCountersEffect::new(count,filter)),
+            _=>Effect::new(PlayerCountersEffect::new(kind,count,filter)),
+        }
+    }
+    fn prior_total_reaches_player(kind:CounterType) {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+            let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);let following=object(&mut game,alice);
+            let mut ctx=ExecutionContext::new_default(source,alice);
+            let prior=Effect::with_id(31,Effect::new(PutCountersEffect::new(CounterType::Charge,amount,ChooseSpec::SpecificObject(source))));
+            let placed=execute_effect(&mut game,&prior,&mut ctx).unwrap();assert_eq!(placed.as_count(),Some(i64::from(amount)));
+            let effect=Effect::with_id(57,instruction(kind,Value::EffectValue(EffectId(31)),bob));
+            let out=execute_effect(&mut game,&effect,&mut ctx).expect("a real unsigned prior receipt reaches the selected player unchanged");
+            assert_eq!(out.as_count(),Some(i64::from(amount)));assert_eq!(game.player(bob).unwrap().counter_count(kind),amount);assert_eq!(game.player(alice).unwrap().counter_count(kind),0);
+            let marker=out.events.iter().find_map(|event|event.downcast::<MarkersChangedEvent>()).unwrap();
+            assert_eq!(marker.amount,amount);assert_eq!(marker.count_after,Some(amount));assert_eq!(marker.location,crate::marker::MarkerLocation::Player(bob));
+            let follow=Effect::new(PutCountersEffect::new(CounterType::Charge,Value::EffectValue(EffectId(57)),ChooseSpec::SpecificObject(following)));
+            let out=execute_effect(&mut game,&follow,&mut ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(amount)));assert_eq!(game.counter_count(following,CounterType::Charge),amount);
+        }
+    }
+    #[test] fn real_unsigned_prior_receipt_reaches_energy_counter_event() {prior_total_reaches_player(CounterType::Energy);}
+    #[test] fn real_unsigned_prior_receipt_reaches_experience_counter_event() {prior_total_reaches_player(CounterType::Experience);}
+    #[test] fn real_unsigned_prior_receipt_reaches_poison_counter_event() {prior_total_reaches_player(CounterType::Poison);}
+    #[test] fn real_unsigned_prior_receipt_reaches_generic_player_counter_event() {prior_total_reaches_player(CounterType::Rad);}
+    #[test]
+    fn doubled_player_counter_event_retains_unsigned_receipt_and_following_value() {
+        let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let source=object(&mut game,alice);let following=object(&mut game,alice);
+        let mut ctx=ExecutionContext::new_default(source,alice);let amount=i32::MAX as u32/2+1;let resolved=amount*2;
+        let prior=Effect::with_id(31,Effect::new(PutCountersEffect::new(CounterType::Charge,amount,ChooseSpec::SpecificObject(source))));execute_effect(&mut game,&prior,&mut ctx).unwrap();
+        let replacement=crate::static_abilities::StaticAbility::double_player_counters_replacement(PlayerFilter::Specific(alice),Some(CounterType::Energy),"Double player counter proposal".into()).generate_replacement_effect(source,alice).unwrap();
+        let one_shot=game.effect_store.replacement_effects.add_one_shot_effect(replacement);
+        let effect=Effect::with_id(57,instruction(CounterType::Energy,Value::EffectValue(EffectId(31)),alice));
+        let out=execute_effect(&mut game,&effect,&mut ctx).expect("replacement-modified unsigned quantity fits player counter storage");
+        assert_eq!(out.as_count(),Some(i64::from(resolved)));assert_eq!(game.player(alice).unwrap().energy_counters,resolved);assert!(game.effect_store.replacement_effects.get_effect(one_shot).is_none());
+        let marker=out.events.iter().find_map(|event|event.downcast::<MarkersChangedEvent>()).unwrap();assert_eq!(marker.amount,resolved);assert_eq!(marker.count_after,Some(resolved));
+        let follow=Effect::new(PutCountersEffect::new(CounterType::Charge,Value::EffectValue(EffectId(57)),ChooseSpec::SpecificObject(following)));let out=execute_effect(&mut game,&follow,&mut ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(resolved)));assert_eq!(game.counter_count(following,CounterType::Charge),resolved);
     }
 }

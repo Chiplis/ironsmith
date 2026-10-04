@@ -13,6 +13,11 @@ use crate::mana::ManaSymbol;
 pub type AddManaOfChosenColorEffect = ironsmith_core::AddManaOfChosenColorEffect;
 
 impl EffectExecutor for AddManaOfChosenColorEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::ChosenColor { amount: &self.amount, fixed_option: self.fixed_option, player: &self.player })
+    }
+
     fn directly_produces_mana(&self) -> bool {
         true
     }
@@ -36,7 +41,7 @@ impl EffectExecutor for AddManaOfChosenColorEffect {
                 fixed
             } else {
                 let options = [fixed, chosen];
-                choose_mana_colors(game, ctx, player_id, 1, true, false, Some(&options), fixed)
+                choose_mana_colors(game, ctx, player_id, 1, true, false, Some(&options), fixed)?
                     .into_iter()
                     .next()
                     .unwrap_or(fixed)

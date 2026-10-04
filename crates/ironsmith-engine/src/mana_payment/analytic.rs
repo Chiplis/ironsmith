@@ -6,14 +6,14 @@
 //! source taps for a fixed bundle, nothing leaves the battlefield, and the only
 //! real question is which sources to tap for which pips. That question is a
 //! bipartite assignment, and solving it directly replaces thousands of clones
-//! with one per source.
+//! with a compact resource assignment and validation of the selected sequence.
 //!
 //! Two rules keep this honest:
 //!
-//! 1. **Bundles are measured, never predicted.** Each candidate activation is
-//!    simulated exactly once against the root state, so triggered mana
-//!    abilities (CR 605.1b), continuous effects, and replacement effects are
-//!    all reflected without this module having to re-derive them.
+//! 1. **Only reviewed bundles are projected.** Fixed-output tap abilities use
+//!    read-only production events, including supported triggers/replacements.
+//!    Unknown candidates are measured by simulation. Typed units qualify
+//!    spending restrictions and snow provenance before matching cost pips.
 //! 2. **Failure means "fall back", never "unpayable".** Every exit here returns
 //!    `None` and hands the request to the search. A gap in the model can cost
 //!    speed; it cannot change which payments are legal.
@@ -25,12 +25,13 @@
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::mana::ManaSymbol;
-use crate::player::ManaPool;
+use super::resources::PaymentManaUnit;
 
 use super::ManaPaymentRequest;
 use super::PlannedManaActivation;
 use super::planner::{
-    ActivationChoice, can_pay_request, collect_activation_choices, prepare_activation,
+    ActivationChoice, can_pay_request, collect_activation_choices_with_view, prepare_activation,
+    prepare_owned_activation,
 };
 
 /// One pip that still needs a mana unit, as a set of acceptable symbols.
@@ -38,8 +39,9 @@ type PipSlot = Vec<ManaSymbol>;
 
 /// A measured activation: what it produces, and what it costs us to keep.
 struct MeasuredChoice {
-    choice: ActivationChoice,
-    produced: Vec<ManaSymbol>,
+    // None represents floating mana, which requires no activation.
+    choice: Option<ActivationChoice>,
+    produced: Vec<PaymentManaUnit>,
     flexibility: usize,
 }
 
@@ -48,6 +50,23 @@ struct MeasuredChoice {
 pub(super) fn try_candidates(
     game: &GameState,
     request: &ManaPaymentRequest,
+) -> Option<Vec<(GameState, Vec<PlannedManaActivation>)>> {
+    try_candidates_inner(game, request, false)
+}
+
+/// Cheap existence-check proposal: unknown sources go directly to the lazy
+/// fallback instead of being simulated just to populate an assignment table.
+pub(super) fn try_projected_candidates(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+) -> Option<Vec<(GameState, Vec<PlannedManaActivation>)>> {
+    try_candidates_inner(game, request, true)
+}
+
+fn try_candidates_inner(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    projection_only: bool,
 ) -> Option<Vec<(GameState, Vec<PlannedManaActivation>)>> {
     if !request_shape_is_supported(request) {
         return None;
@@ -58,7 +77,15 @@ pub(super) fn try_candidates(
         return None;
     }
 
-    let measured = measure_choices(game, request);
+    let mut measured = measure_choices_inner(game, request, projection_only);
+    let produced = game.payment_mana_units(request);
+    if !produced.is_empty() {
+        measured.push(MeasuredChoice {
+            choice: None,
+            produced,
+            flexibility: 0,
+        });
+    }
     if measured.is_empty() {
         return None;
     }
@@ -96,10 +123,11 @@ fn request_shape_is_supported(request: &ManaPaymentRequest) -> bool {
     {
         return false;
     }
-    // Reserved resources belong to an alternative payment (convoke, delve,
-    // improvise) that is being solved around this mana cost.
-    // collect_activation_choices already excludes reserved tap sources.
-    request.reserved_graveyard_sources.is_empty() && request.reserved_permanent_sources.is_empty()
+    // The outer planner has already selected alternative payments and reduced
+    // this cost. Collection excludes reserved tap sources; fixed tap-and-mana
+    // activations cannot consume reserved graveyard cards or sacrifice a
+    // reserved permanent. Replay checks every reservation before accepting.
+    true
 }
 
 /// Expand the request's cost into one slot per pip that must be paid.
@@ -121,12 +149,12 @@ fn expand_pip_slots(request: &ManaPaymentRequest) -> Option<Vec<PipSlot>> {
                 }
             }
             alternatives => {
-                // Snow asks where mana came from, and a life alternative is a
-                // cost trade; neither is a symbol comparison.
+                // Life alternatives require a shared life budget; snow is a
+                // property of the typed mana unit and is handled below.
                 if alternatives.iter().any(|symbol| {
                     matches!(
                         symbol,
-                        ManaSymbol::Snow | ManaSymbol::Life(_) | ManaSymbol::X
+                        ManaSymbol::Life(_) | ManaSymbol::X
                     )
                 }) {
                     return None;
@@ -138,91 +166,68 @@ fn expand_pip_slots(request: &ManaPaymentRequest) -> Option<Vec<PipSlot>> {
     Some(slots)
 }
 
-/// Simulate each candidate activation once against the root state.
+/// Project reviewed activations, measuring other candidates on scratch state.
 ///
 /// Anything whose cost does more than tap the source is dropped rather than
 /// modelled: exiling, sacrificing, or paying life can change what *other*
 /// sources produce, which breaks the independence the assignment relies on.
 /// That is what `undo_safe` reports here. Dropping a source can only cost us a
 /// solution we then fall back to find.
+#[cfg(test)]
 fn measure_choices(game: &GameState, request: &ManaPaymentRequest) -> Vec<MeasuredChoice> {
+    measure_choices_inner(game, request, false)
+}
+
+fn measure_choices_inner(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    projection_only: bool,
+) -> Vec<MeasuredChoice> {
     let mut measured = Vec::new();
-    for choice in collect_activation_choices(game, request) {
-        if !choice_produces_plain_mana(game, request, &choice) {
+    let analysis = super::sources::ManaSourceAnalysis::new(game);
+    for choice in collect_activation_choices_with_view(game, request, false, &analysis.view) {
+        if request.preferences.excluded_sources.contains(&choice.source) {
             continue;
         }
-        let Some((_, _, activation)) = prepare_activation(game, request, choice.clone()) else {
-            continue;
+        let produced = if let Some(projected) = analysis.project(&choice) {
+            projected.credits.iter().flat_map(|credit| credit.spendable_units(game, request)).collect()
+        } else {
+            if projection_only {
+                continue;
+            }
+            let Some((_, staged, activation)) = prepare_activation(game, request, choice.clone()) else {
+                continue;
+            };
+            if !activation.undo_safe {
+                continue;
+            }
+            let mut produced = staged.payment_mana_units(request);
+            // Undo-safe activations only add units. Remove the pre-existing
+            // qualified pool without discarding snow or spending eligibility.
+            for old in game.payment_mana_units(request) {
+                let Some(index) = produced.iter().position(|unit| *unit == old) else { return measured; };
+                produced.remove(index);
+            }
+            produced
         };
-        if !activation.undo_safe {
-            continue;
-        }
-        let produced = pool_symbols(&activation.expected_mana);
         if produced.is_empty() {
             continue;
         }
         measured.push(MeasuredChoice {
-            choice,
+            flexibility: choice.flexibility,
+            choice: Some(choice),
             produced,
-            flexibility: activation.flexibility,
         });
     }
     measured
 }
 
-/// True when this ability adds mana the assignment can treat as a plain unit.
-///
-/// The cost and effect shape is left to [`mana_ability_is_undo_safe`], which
-/// already means "every cost component taps the source and every effect is a
-/// mana producer" — exactly the independence the assignment needs. This adds
-/// the one condition that predicate does not cover: mana carrying a usage
-/// restriction needs the edge predicate to know which pips it may pay, so it
-/// goes to the search.
-fn choice_produces_plain_mana(
-    game: &GameState,
-    request: &ManaPaymentRequest,
-    choice: &ActivationChoice,
-) -> bool {
-    use crate::ability::AbilityKind;
-    if request
-        .preferences
-        .excluded_sources
-        .contains(&choice.source)
-    {
-        return false;
-    }
-    let Some(ability) = game.current_ability(choice.source, choice.ability_index) else {
-        return false;
-    };
-    let AbilityKind::Activated(activated) = &ability.kind else {
-        return false;
-    };
-    activated.mana_usage_restrictions.is_empty()
-}
-
-/// Flatten a produced pool into individual mana units.
-fn pool_symbols(pool: &ManaPool) -> Vec<ManaSymbol> {
-    let mut symbols = Vec::new();
-    for (count, symbol) in [
-        (pool.white, ManaSymbol::White),
-        (pool.blue, ManaSymbol::Blue),
-        (pool.black, ManaSymbol::Black),
-        (pool.red, ManaSymbol::Red),
-        (pool.green, ManaSymbol::Green),
-        (pool.colorless, ManaSymbol::Colorless),
-    ] {
-        for _ in 0..count {
-            symbols.push(symbol);
-        }
-    }
-    symbols
-}
-
 /// Whether a produced symbol may pay a slot.
-fn unit_pays_slot(unit: ManaSymbol, slot: &PipSlot) -> bool {
+fn unit_pays_slot(unit: PaymentManaUnit, slot: &PipSlot) -> bool {
     slot.iter().any(|required| match required {
         ManaSymbol::Generic(_) => true,
-        other => *other == unit,
+        ManaSymbol::Snow => unit.snow,
+        other => *other == unit.symbol,
     })
 }
 
@@ -241,13 +246,15 @@ fn solve_assignment(
     // colour, so a per-ability count cannot tell a Swamp from an Overgrown
     // Tomb — both look like "one colour" — and the preference collapses into
     // board order.
-    let mut source_reach: std::collections::HashMap<ObjectId, Vec<ManaSymbol>> =
+    let mut source_reach: std::collections::HashMap<Option<ObjectId>, Vec<ManaSymbol>> =
         std::collections::HashMap::new();
     for entry in measured {
-        let reach = source_reach.entry(entry.choice.source).or_default();
-        for symbol in &entry.produced {
-            if !reach.contains(symbol) {
-                reach.push(*symbol);
+        let reach = source_reach
+            .entry(entry.choice.as_ref().map(|choice| choice.source))
+            .or_default();
+        for unit in &entry.produced {
+            if !reach.contains(&unit.symbol) {
+                reach.push(unit.symbol);
             }
         }
     }
@@ -258,15 +265,82 @@ fn solve_assignment(
     order.sort_by_key(|&index| {
         let entry = &measured[index];
         (
+            entry.choice.is_some(), // Spend floating mana before tapping a source.
             source_reach
-                .get(&entry.choice.source)
+                .get(&entry.choice.as_ref().map(|choice| choice.source))
                 .map_or(entry.flexibility, Vec::len),
             entry.produced.len(),
-            entry.choice.source.0,
-            entry.choice.ability_index,
+            entry.choice.as_ref().map(|choice| choice.source.0),
+            entry.choice.as_ref().map(|choice| choice.ability_index),
         )
     });
 
+    let conservative = assign_sources(slots, measured, &order);
+    if !measured
+        .iter()
+        .any(|entry| entry.choice.is_some() && entry.produced.len() > 1)
+    {
+        return conservative.map(|chosen| {
+            chosen
+                .into_iter()
+                .filter_map(|index| measured[index].choice.clone())
+                .collect()
+        });
+    }
+    // Fixed bundles have a per-activation cost: using two units from one
+    // source avoids another authoritative activation. Try that ordering too,
+    // then compare compact results before replaying only the better proposal.
+    order.sort_by_key(|&index| {
+        let entry = &measured[index];
+        (
+            entry.choice.is_some(),
+            source_reach
+                .get(&entry.choice.as_ref().map(|choice| choice.source))
+                .map_or(entry.flexibility, Vec::len),
+            entry.produced.len().saturating_sub(slots.len()),
+            std::cmp::Reverse(entry.produced.len()),
+            entry
+                .choice
+                .as_ref()
+                .map(|choice| (choice.source.0, choice.ability_index)),
+        )
+    });
+    let bundled = assign_sources(slots, measured, &order);
+    let score = |indices: &Vec<usize>| {
+        indices
+            .iter()
+            .filter_map(|&index| {
+                let entry = &measured[index];
+                entry
+                    .choice
+                    .as_ref()
+                    .map(|_| (entry.produced.len(), entry.flexibility, 1usize))
+            })
+            .fold((0usize, 0usize, 0usize), |total, entry| {
+                (total.0 + entry.0, total.1 + entry.1, total.2 + entry.2)
+            })
+    };
+    // Floating mana is constant for both proposals. Fewer produced units
+    // therefore means less excess, followed by flexibility and source count,
+    // matching the applicable dimensions of the payment score.
+    let chosen = match (conservative, bundled) {
+        (Some(first), Some(second)) if score(&second) < score(&first) => second,
+        (Some(first), _) => first,
+        (None, second) => second?,
+    };
+    Some(
+        chosen
+            .into_iter()
+            .filter_map(|index| measured[index].choice.clone())
+            .collect(),
+    )
+}
+
+fn assign_sources(
+    slots: &[PipSlot],
+    measured: &[MeasuredChoice],
+    order: &[usize],
+) -> Option<Vec<usize>> {
     // Colour-constrained slots first: they have the fewest candidate sources.
     let mut slot_order: Vec<usize> = (0..slots.len()).collect();
     slot_order.sort_by_key(|&index| {
@@ -284,7 +358,7 @@ fn solve_assignment(
         .collect();
     // Sources already committed, so a second ability on the same permanent is
     // not offered a slot.
-    let mut used_sources: Vec<ObjectId> = Vec::new();
+    let mut used_sources: Vec<Option<ObjectId>> = Vec::new();
 
     for &slot_index in &slot_order {
         let mut visited = vec![false; measured.len()];
@@ -292,7 +366,7 @@ fn solve_assignment(
             slot_index,
             slots,
             measured,
-            &order,
+            order,
             &mut slot_assignment,
             &mut unit_taken,
             &mut used_sources,
@@ -308,12 +382,35 @@ fn solve_assignment(
         .collect();
     chosen.sort_unstable();
     chosen.dedup();
-    Some(
-        chosen
-            .into_iter()
-            .map(|index| measured[index].choice.clone())
-            .collect(),
-    )
+    Some(chosen)
+}
+
+/// Reassign every pip already paid by a source plus one new pip to a different
+/// output of that same activation. This preserves the one-activation resource
+/// constraint while allowing WW to become WU when a later blue pip needs it.
+fn match_bundle(
+    required: &[usize], slots: &[PipSlot], units: &[PaymentManaUnit],
+) -> Option<Vec<(usize, usize)>> {
+    if required.len() > units.len() { return None; }
+    fn assign(
+        slot: usize, slots: &[PipSlot], units: &[PaymentManaUnit],
+        taken: &mut [Option<usize>], seen: &mut [bool],
+    ) -> bool {
+        for unit in 0..units.len() {
+            if seen[unit] || !unit_pays_slot(units[unit], &slots[slot]) { continue; }
+            seen[unit] = true;
+            if taken[unit].is_none_or(|previous| assign(previous, slots, units, taken, seen)) {
+                taken[unit] = Some(slot);
+                return true;
+            }
+        }
+        false
+    }
+    let mut taken = vec![None; units.len()];
+    for &slot in required {
+        if !assign(slot, slots, units, &mut taken, &mut vec![false; units.len()]) { return None; }
+    }
+    Some(taken.into_iter().enumerate().filter_map(|(unit, slot)| slot.map(|slot| (slot, unit))).collect())
 }
 
 /// Kuhn's augmenting path over (slot, mana unit) pairs.
@@ -325,7 +422,7 @@ fn assign_slot(
     order: &[usize],
     slot_assignment: &mut Vec<Option<(usize, usize)>>,
     unit_taken: &mut Vec<Vec<Option<usize>>>,
-    used_sources: &mut Vec<ObjectId>,
+    used_sources: &mut Vec<Option<ObjectId>>,
     visited: &mut Vec<bool>,
 ) -> bool {
     for &choice_index in order {
@@ -337,37 +434,71 @@ fn assign_slot(
         // unit from the same bundle, but an untapped source must not collide
         // with a different ability on a permanent we already committed.
         let already_committed = unit_taken[choice_index].iter().any(Option::is_some);
-        if !already_committed && used_sources.contains(&entry.choice.source) {
-            continue;
-        }
-        for unit_index in 0..entry.produced.len() {
-            if !unit_pays_slot(entry.produced[unit_index], &slots[slot_index]) {
-                continue;
-            }
-            match unit_taken[choice_index][unit_index] {
-                None => {
-                    unit_taken[choice_index][unit_index] = Some(slot_index);
-                    slot_assignment[slot_index] = Some((choice_index, unit_index));
-                    if !used_sources.contains(&entry.choice.source) {
-                        used_sources.push(entry.choice.source);
+        if !already_committed
+            && used_sources.contains(&entry.choice.as_ref().map(|choice| choice.source))
+        {
+            let Some(previous) = measured.iter().enumerate().find_map(|(index, other)| {
+                (other.choice.as_ref().map(|choice| choice.source)
+                    == entry.choice.as_ref().map(|choice| choice.source)
+                    && unit_taken[index].iter().any(Option::is_some)).then_some(index)
+            }) else { continue; };
+            // An augmenting-path ancestor still owns its pending unit update.
+            // Do not replace that ancestor's whole activation underneath it.
+            if !visited[previous] {
+                let mut required: Vec<_> = slot_assignment.iter().enumerate()
+                    .filter_map(|(slot, assignment)| assignment
+                        .is_some_and(|(index, _)| index == previous).then_some(slot))
+                    .collect();
+                if !required.contains(&slot_index) { required.push(slot_index); }
+                if let Some(assignment) = match_bundle(&required, slots, &entry.produced) {
+                    unit_taken[previous].fill(None);
+                    for (slot, unit) in assignment {
+                        unit_taken[choice_index][unit] = Some(slot);
+                        slot_assignment[slot] = Some((choice_index, unit));
                     }
                     return true;
                 }
-                Some(other_slot) => {
-                    visited[choice_index] = true;
-                    if assign_slot(
-                        other_slot,
-                        slots,
-                        measured,
-                        order,
-                        slot_assignment,
-                        unit_taken,
-                        used_sources,
-                        visited,
-                    ) {
+            }
+            continue;
+        }
+        // Fill spare units in this bundle before displacing an existing pip.
+        // Otherwise augmenting paths spread pips across new sources while
+        // already-selected two-mana sources still have unused units.
+        for occupied in [false, true] {
+            for unit_index in 0..entry.produced.len() {
+                if unit_taken[choice_index][unit_index].is_some() != occupied {
+                    continue;
+                }
+                if !unit_pays_slot(entry.produced[unit_index], &slots[slot_index]) {
+                    continue;
+                }
+                match unit_taken[choice_index][unit_index] {
+                    None => {
                         unit_taken[choice_index][unit_index] = Some(slot_index);
                         slot_assignment[slot_index] = Some((choice_index, unit_index));
+                        if !used_sources
+                            .contains(&entry.choice.as_ref().map(|choice| choice.source))
+                        {
+                            used_sources.push(entry.choice.as_ref().map(|choice| choice.source));
+                        }
                         return true;
+                    }
+                    Some(other_slot) => {
+                        visited[choice_index] = true;
+                        if assign_slot(
+                            other_slot,
+                            slots,
+                            measured,
+                            order,
+                            slot_assignment,
+                            unit_taken,
+                            used_sources,
+                            visited,
+                        ) {
+                            unit_taken[choice_index][unit_index] = Some(slot_index);
+                            slot_assignment[slot_index] = Some((choice_index, unit_index));
+                            return true;
+                        }
                     }
                 }
             }
@@ -389,7 +520,7 @@ fn replay(
     let mut staged = game.clone();
     let mut steps = Vec::with_capacity(sequence.len());
     for choice in sequence {
-        let (_, next, activation) = prepare_activation(&staged, request, choice.clone())?;
+        let (_, next, activation) = prepare_owned_activation(staged, request, choice.clone())?;
         staged = next;
         steps.push(activation);
     }
@@ -458,6 +589,203 @@ mod tests {
         let (staged, steps) = &candidates[0];
         assert_eq!(steps.len(), 2, "one source per pip");
         assert!(can_pay_request(staged, &request));
+    }
+
+    #[test]
+    fn snow_assignment_uses_each_producing_source_and_snapshot() {
+        for snow_pips in [1, 2] {
+            let (mut game, alice) = game();
+            let definition = CardBuilder::new(CardId::new(), "Snow source")
+                .card_types(vec![CardType::Land])
+                .supertypes(vec![crate::types::Supertype::Snow]).build();
+            let land = game.create_object_from_card(&definition, alice, Zone::Battlefield);
+            game.object_mut(land).unwrap().abilities_mut().push(crate::Ability::mana(
+                TotalCost::from_cost(crate::costs::Cost::tap()), vec![ManaSymbol::Green]));
+            let bonus = CardBuilder::new(CardId::new(), "Ordinary mana bonus")
+                .card_types(vec![CardType::Enchantment]).build();
+            let bonus = game.create_object_from_card(&bonus, alice, Zone::Battlefield);
+            game.object_mut(bonus).unwrap().abilities_mut().push(crate::Ability::triggered(
+                crate::triggers::Trigger::player_taps_for_mana(
+                    crate::target::PlayerFilter::You, crate::target::ObjectFilter::land()),
+                vec![crate::effect::Effect::add_mana(vec![ManaSymbol::Green])],
+            ));
+            game.refresh_continuous_state().unwrap();
+            let mut pips = vec![vec![ManaSymbol::Snow]; snow_pips];
+            if snow_pips == 1 { pips.push(vec![ManaSymbol::Green]); }
+            let request = request(&mut game, alice, ManaCost::from_pips(pips));
+            let candidates = try_projected_candidates(&game, &request);
+            assert_eq!(candidates.is_some(), snow_pips == 1,
+                "the non-snow trigger cannot inherit its activation source's snow property");
+            if let Some(candidates) = candidates {
+                let (staged, steps) = &candidates[0];
+                assert_eq!(steps.len(), 1);
+                let units = staged.payment_mana_units(&request);
+                assert_eq!(units.iter().filter(|unit| unit.snow).count(), 1);
+                assert_eq!(units.len(), 2);
+                assert!(can_pay_request(staged, &request));
+            }
+            assert!(!game.is_tapped(land));
+        }
+    }
+
+    #[test]
+    fn assignment_preserves_resources_reserved_for_other_payments() {
+        let (mut game, alice) = game();
+        let reserved_tap = add_source(
+            &mut game,
+            alice,
+            crate::costs::Cost::tap(),
+            vec![ManaSymbol::Green],
+        );
+        let reserved_sacrifice = add_source(
+            &mut game,
+            alice,
+            crate::costs::Cost::tap(),
+            vec![ManaSymbol::Green],
+        );
+        let card = CardBuilder::new(CardId::new(), "Reserved graveyard card").build();
+        let graveyard = game.create_object_from_card(&card, alice, Zone::Graveyard);
+        let mut request = request(
+            &mut game,
+            alice,
+            ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+        );
+        request.reserved_tap_sources.push(reserved_tap);
+        request.reserved_permanent_sources.push(reserved_sacrifice);
+        request.reserved_graveyard_sources.push(graveyard);
+        let candidates =
+            try_candidates(&game, &request).expect("reservations permit fixed mana assignment");
+        let (staged, steps) = &candidates[0];
+        assert_eq!(steps.len(), 1);
+        assert_eq!(
+            steps[0].source, reserved_sacrifice,
+            "may tap before paying a sacrifice cost"
+        );
+        assert!(
+            !staged.is_tapped(reserved_tap),
+            "convoke/improvise resource remains untapped"
+        );
+        assert_eq!(
+            staged.object(reserved_sacrifice).unwrap().zone,
+            Zone::Battlefield
+        );
+        assert_eq!(staged.object(graveyard).unwrap().zone, Zone::Graveyard);
+        assert!(can_pay_request(staged, &request));
+        assert!(
+            !game.is_tapped(reserved_sacrifice),
+            "planning does not mutate live resources"
+        );
+    }
+
+    #[test]
+    fn fixed_bundles_reduce_activations_without_increasing_excess() {
+        for amount in [1u32, 4] {
+            let (mut game, alice) = game();
+            for _ in 0..4 {
+                add_source(
+                    &mut game,
+                    alice,
+                    crate::costs::Cost::tap(),
+                    vec![ManaSymbol::Green],
+                );
+            }
+            for _ in 0..2 {
+                add_source(
+                    &mut game,
+                    alice,
+                    crate::costs::Cost::tap(),
+                    vec![ManaSymbol::Green; 2],
+                );
+            }
+            let request = request(&mut game, alice, ManaCost::new().add_generic(amount));
+            let candidates = try_projected_candidates(&game, &request).unwrap();
+            assert_eq!(candidates[0].1.len(), if amount == 1 { 1 } else { 2 });
+            assert_eq!(
+                candidates[0].0.player(alice).unwrap().mana_pool.total(),
+                u32::from(amount)
+            );
+            assert!(can_pay_request(&candidates[0].0, &request));
+            assert!(game.battlefield.iter().all(|id| !game.is_tapped(*id)));
+        }
+    }
+
+    #[test]
+    fn existence_checks_project_plain_sources_and_keep_complex_fallback() {
+        for sacrifice in [false, true] {
+            let (mut game, alice) = game();
+            let cost = if sacrifice {
+                crate::costs::Cost::sacrifice_self()
+            } else {
+                crate::costs::Cost::tap()
+            };
+            let source = add_source(&mut game, alice, cost, vec![ManaSymbol::Blue]);
+            let request = request(
+                &mut game,
+                alice,
+                ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]),
+            );
+            crate::mana_payment::check_mana_payment(&game, &request).unwrap();
+            let metrics = crate::mana_payment::last_mana_payment_perf();
+            assert_eq!(metrics.analytic_selections, usize::from(!sacrifice));
+            assert_eq!(metrics.searched_selections, usize::from(sacrifice));
+            assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
+            assert!(!game.is_tapped(source));
+        }
+    }
+
+    #[test]
+    fn assignment_combines_floating_mana_with_sources_without_freeing_restrictions() {
+        for restricted in [false, true] {
+            let (mut game, alice) = game();
+            let land = add_source(
+                &mut game,
+                alice,
+                crate::costs::Cost::tap(),
+                vec![ManaSymbol::Green],
+            );
+            if restricted {
+                game.player_mut(alice).unwrap().add_restricted_mana(
+                    crate::ability::RestrictedManaUnit {
+                        symbol: ManaSymbol::Blue,
+                        source: land,
+                        source_chosen_creature_type: None,
+                        restrictions: vec![crate::ability::ManaUsageRestriction::CastSpell {
+                            card_types: vec![CardType::Creature],
+                            subtype_requirement: None,
+                            restrict_to_matching_spell: true,
+                            grant_uncounterable: false,
+                            enters_with_counters: vec![],
+                            granted_abilities: vec![],
+                        }],
+                    },
+                );
+            } else {
+                game.player_mut(alice)
+                    .unwrap()
+                    .mana_pool
+                    .add(ManaSymbol::Blue, 1);
+            }
+            let request = request(
+                &mut game,
+                alice,
+                ManaCost::from_pips(vec![vec![ManaSymbol::Blue], vec![ManaSymbol::Green]]),
+            );
+            let candidate = try_projected_candidates(&game, &request);
+            if restricted {
+                assert!(
+                    candidate.is_none(),
+                    "creature-only mana cannot pay this effect"
+                );
+            } else {
+                let candidate =
+                    candidate.expect("floating blue plus one green source pays analytically");
+                assert_eq!(candidate[0].1.len(), 1);
+                assert_eq!(candidate[0].1[0].source, land);
+                assert!(can_pay_request(&candidate[0].0, &request));
+            }
+            assert_eq!(game.player(alice).unwrap().mana_pool.blue, 1);
+            assert!(!game.is_tapped(land));
+        }
     }
 
     /// A colour that only one source can make must not be stranded by a greedy
@@ -579,8 +907,7 @@ mod basic_land_tests {
 impl std::fmt::Debug for MeasuredChoice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MeasuredChoice")
-            .field("source", &self.choice.source)
-            .field("ability_index", &self.choice.ability_index)
+            .field("choice", &self.choice)
             .field("produced", &self.produced)
             .finish()
     }
@@ -676,10 +1003,10 @@ mod quality_tests {
         );
     }
 
-    /// Spend the source that can only make one colour before spending a dual,
-    /// so the flexible source stays available for whatever comes next.
+    /// These abilities produce both B and G (not a choice). One such bundle
+    /// plus a Swamp pays three pips without the excess from two bundles.
     #[test]
-    fn single_colour_sources_are_spent_before_duals() {
+    fn single_unit_source_avoids_excess_from_mixed_bundles() {
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = PlayerId::from_index(0);
         let dual_a = land(
@@ -713,10 +1040,11 @@ mod quality_tests {
 
         let candidates = try_candidates(&game, &request).expect("plain duals should be assigned");
         let used: Vec<ObjectId> = candidates[0].1.iter().map(|step| step.source).collect();
-        assert_eq!(used.len(), 3, "three sources for three pips: {used:?}");
+        assert_eq!(used.len(), 2, "one bundle plus one single unit: {used:?}");
+        assert_eq!(candidates[0].0.player(alice).unwrap().mana_pool.total(), 3);
         assert!(
             used.contains(&swamp),
-            "the single-colour Swamp should be spent before a third dual; used {used:?} \
+            "the Swamp should avoid excess from another bundle; used {used:?} \
              (duals {dual_a:?} {dual_b:?} {dual_c:?})"
         );
     }

@@ -76,6 +76,12 @@ fn describe_color_set(colors: crate::color::ColorSet) -> String {
 }
 
 impl StaticAbilityKind for Protection {
+    // Protection is queried directly by targeting, blocking, attachment and
+    // damage prevention. It does not emit continuous effects.
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Protection
     }
@@ -196,6 +202,10 @@ impl StaticAbilityKind for Protection {
 struct ProtectionDamageMatcher(ProtectionFrom);
 
 impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        kind == crate::events::EventKind::Damage
+    }
+
     fn matches_prepared_event(
         &self,
         event: &dyn crate::events::traits::GameEventType,
@@ -471,11 +481,42 @@ impl StaticAbilityKind for HexproofFrom {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ward {
     pub cost: TotalCost,
+    retained_model: super::CompiledStaticAbility,
 }
 
 impl Ward {
     pub fn new(cost: TotalCost) -> Self {
-        Self { cost }
+        let retained_model = super::CompiledStaticAbility::ward(cost.clone());
+        Self {
+            cost,
+            retained_model,
+        }
+    }
+
+    fn same_payment_graph(left: &TotalCost, right: &TotalCost) -> bool {
+        match (left.kind(), right.kind()) {
+            (
+                ironsmith_core::TotalCostKind::All(left),
+                ironsmith_core::TotalCostKind::All(right),
+            ) => {
+                left.len() == right.len()
+                    && left
+                        .iter()
+                        .zip(right)
+                        .all(|(left, right)| std::sync::Arc::ptr_eq(&left.0, &right.0))
+            }
+            (
+                ironsmith_core::TotalCostKind::OneOf(left),
+                ironsmith_core::TotalCostKind::OneOf(right),
+            ) => {
+                left.len() == right.len()
+                    && left
+                        .iter()
+                        .zip(right)
+                        .all(|(left, right)| Self::same_payment_graph(left, right))
+            }
+            _ => false,
+        }
     }
 }
 
@@ -501,6 +542,14 @@ fn ward_waterbend_generic(cost: &crate::cost::TotalCost) -> Option<u32> {
 }
 
 impl StaticAbilityKind for Ward {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        let ironsmith_core::StaticAbilityPayload::Ward(retained) = &self.retained_model.payload
+        else {
+            return None;
+        };
+        Self::same_payment_graph(&self.cost, retained).then_some(&self.retained_model)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Ward
     }
@@ -528,6 +577,7 @@ impl StaticAbilityKind for Ward {
         Some(&self.cost)
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -736,4 +786,49 @@ pub(crate) fn bind_chosen_filter_qualities(
         }
     }
     changed.then_some(bound)
+}
+
+#[cfg(test)]
+mod retained_native_ward_model_tests {
+    use super::*;
+    #[test]
+    fn retained_native_ward_model_tracks_exact_nested_payment_graph_and_rejects_stale_cost() {
+        let mana =
+            || crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(2)]]);
+        let branch = || TotalCost::mana(mana());
+        let mut ward = Ward::new(TotalCost::one_of(vec![
+            branch(),
+            TotalCost::one_of(vec![branch(), branch()]),
+        ]));
+        let model = ward
+            .compiled_model()
+            .expect("native ward retains complete nested cost")
+            .clone();
+        let restored = crate::static_abilities::StaticAbility::from_model(model);
+        assert_eq!(restored.display(), ward.display());
+        assert!(restored.0.is_keyword());
+        assert_eq!(restored.ward_cost(), Some(&ward.cost));
+        assert!(ward.clone().compiled_model().is_some());
+        let before = ward.cost.display();
+        ward.cost = TotalCost::one_of(vec![branch(), TotalCost::one_of(vec![branch(), branch()])]);
+        assert_eq!(
+            ward.cost.display(),
+            before,
+            "same display is not the same executable payment graph"
+        );
+        assert!(
+            ward.compiled_model().is_none(),
+            "public cost replacement must invalidate captured native ward model"
+        );
+        let mut cost = crate::costs::Cost::mana(mana());
+        assert!(matches!(
+            cost.compiled_model(),
+            Some(ironsmith_core::Cost::Mana(_))
+        ));
+        cost.0 = crate::costs::Cost::life(2).0;
+        assert!(
+            cost.compiled_model().is_none(),
+            "native mana model cannot restore a replaced life payer"
+        );
+    }
 }

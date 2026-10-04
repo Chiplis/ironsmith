@@ -4069,6 +4069,11 @@ impl RemoveAllAbilitiesForFilter {
 }
 
 impl StaticAbilityKind for RemoveAllAbilitiesForFilter {
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        let Self { filter } = self;
+        Some(super::CompiledStaticAbility::remove_all_abilities(filter.clone()))
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::RemoveAllAbilitiesForFilter
     }

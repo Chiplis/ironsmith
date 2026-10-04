@@ -1527,7 +1527,9 @@ version = "0.1.0"
 dependencies = [
  "ironsmith-artifact-effect-decoder",
  "ironsmith-compiled-artifact",
+ "ironsmith-core",
  "ironsmith-engine",
+ "serde",
  "serde_json",
 ]
 

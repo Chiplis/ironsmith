@@ -84,6 +84,16 @@ fn effect_depends_on_with_baseline_and_started_groups(
     started_groups: &HashSet<ContinuousEffectGroupId>,
     representatives: Option<&[ObjectId]>,
 ) -> bool {
+    if [a, b].iter().any(|effect| effect.has_source_controller_context()
+        && !baseline.contains_key(&effect.source_controller_context_host())) { return false; }
+    let bound_a = crate::continuous::bind_effect_controller_to_layer_frame(a, baseline);
+    let bound_b = crate::continuous::bind_effect_controller_to_layer_frame(b, baseline);
+    let a = bound_a.as_ref();
+    let b = bound_b.as_ref();
+    if source_controller_context_changes_output(a, b, baseline, objects, game) {
+        return true;
+    }
+
     // Static ability effects depend on any effect that would remove the
     // originating static ability from their source, unless this effect already
     // began applying in an earlier layer (CR 613.6).
@@ -122,7 +132,7 @@ fn effect_depends_on_with_baseline_and_started_groups(
     }
 
     // Check if applying B would change what A does to any objects it applies to.
-    if modification_can_affect_dependency_output(&a.modification, &b.modification) && {
+    if effect_can_affect_dependency_output(a, b, game) && {
         game.note_dependency_pair_probed();
         effect_output_changed(a, b, baseline, objects, game)
     } {
@@ -130,6 +140,30 @@ fn effect_depends_on_with_baseline_and_started_groups(
     }
 
     false
+}
+
+fn source_controller_context_changes_output(
+    a: &ContinuousEffect, b: &ContinuousEffect,
+    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+    objects: &ObjectMap, game: &GameState,
+) -> bool {
+    if !a.has_source_controller_context() || b.modification.layer() != Layer::Control {
+        return false;
+    }
+    let after = apply_effect_to_baseline(b, baseline, objects, game);
+    let rebound_a = crate::continuous::bind_effect_controller_to_layer_frame(a, &after);
+    if rebound_a.controller == a.controller { return false; }
+    if matches!(a.modification, Modification::ChangeControllerToEffectController)
+        && effect_applies_to_any_object(a, baseline, objects, game) {
+        return true;
+    }
+    objects.iter().any(|(id, object)| {
+        let (Some(before_chars), Some(after_chars)) = (baseline.get(id), after.get(id)) else {
+            return false;
+        };
+        effect_applies_with_chars(a, object, before_chars, game)
+            != effect_applies_with_chars(&rebound_a, object, after_chars, game)
+    })
 }
 
 fn effect_applies_to_any_object(
@@ -282,7 +316,7 @@ fn effect_applicability_changed(
         }
         let applies_before = effect_applies_with_chars(a, obj, chars, game);
         let mut chars_after = chars.clone();
-        apply_modification_to_chars_for_dependency(&b.modification, &mut chars_after, obj, game);
+        apply_continuous_effect_to_chars_for_dependency(b, &mut chars_after, obj, game);
         let applies_after = effect_applies_with_chars(a, obj, &chars_after, game);
         applies_before != applies_after
     };
@@ -330,8 +364,8 @@ fn source_ability_presence_changed(
 
     let mut source_chars_after = source_chars_before.clone();
     if effect_applies_with_chars(b, source_obj, source_chars_before, game) {
-        apply_modification_to_chars_for_dependency(
-            &b.modification,
+        apply_continuous_effect_to_chars_for_dependency(
+            b,
             &mut source_chars_after,
             source_obj,
             game,
@@ -1212,6 +1246,11 @@ fn apply_effect_to_baseline(
     objects: &ObjectMap,
     game: &GameState,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
+    if effect.has_source_controller_context() && !baseline.contains_key(&effect.source_controller_context_host()) {
+        return baseline.clone();
+    }
+    let bound = crate::continuous::bind_effect_controller_to_layer_frame(effect, baseline);
+    let effect = bound.as_ref();
     let mut after = baseline.clone();
     for (&id, obj) in objects {
         let Some(chars) = baseline.get(&id) else {
@@ -1219,8 +1258,8 @@ fn apply_effect_to_baseline(
         };
         if effect_applies_with_chars(effect, obj, chars, game) {
             let mut new_chars = chars.clone();
-            apply_modification_to_chars_for_dependency(
-                &effect.modification,
+            apply_continuous_effect_to_chars_for_dependency(
+                effect,
                 &mut new_chars,
                 obj,
                 game,
@@ -1231,16 +1270,20 @@ fn apply_effect_to_baseline(
     after
 }
 
-pub(crate) fn apply_modification_to_chars_for_dependency(
-    modification: &Modification,
+pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
+    effect: &ContinuousEffect,
     chars: &mut CalculatedCharacteristics,
     object: &crate::object::Object,
     game: &GameState,
 ) {
+    let modification = &effect.modification;
     match modification {
         Modification::CopyOf { .. } => {}
         Modification::ChangeController(new_controller) => {
             chars.controller = *new_controller;
+        }
+        Modification::ChangeControllerToEffectController => {
+            chars.controller = effect.controller;
         }
         Modification::AddCardTypes(types) => {
             for t in types {
@@ -1744,7 +1787,7 @@ fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect], game: &GameS
         return true;
     }
 
-    non_pt_group_has_no_dynamic_dependencies(effects)
+    non_pt_group_has_no_dynamic_dependencies(effects, game)
 }
 
 /// True when every effect in the group is an unconditioned copy of the same
@@ -1906,7 +1949,7 @@ fn attachment_scoped_effects_have_disjoint_scopes(
     true
 }
 
-fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bool {
+fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect], game: &GameState) -> bool {
     for i in 0..effects.len() {
         for j in 0..effects.len() {
             if i == j {
@@ -1915,6 +1958,9 @@ fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bo
 
             let a = effects[i];
             let b = effects[j];
+            if a.has_source_controller_context() && b.modification.layer() == Layer::Control {
+                return false;
+            }
             if a.originating_static_ability.is_some()
                 && modification_can_remove_static_ability_presence(&b.modification)
             {
@@ -1929,7 +1975,7 @@ fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bo
             if modification_can_affect_effect_target(&b.modification, &a.applies_to) {
                 return false;
             }
-            if modification_can_affect_dependency_output(&a.modification, &b.modification) {
+            if effect_can_affect_dependency_output(a, b, game) {
                 return false;
             }
         }
@@ -2409,6 +2455,36 @@ fn modification_can_remove_static_ability_presence(modification: &Modification) 
     )
 }
 
+/// Copying abilities only reads donors selected by its filter. Layered
+/// effects cannot move objects between zones, so a writer confined to another
+/// zone cannot change donor abilities. Keep the full path if the writer can
+/// change the filter itself (including characteristic comparisons), or either
+/// side lacks a known zone.
+fn effect_can_affect_dependency_output(a: &ContinuousEffect, b: &ContinuousEffect, game: &GameState) -> bool {
+    let donor_filter = match &a.modification {
+        Modification::CopyActivatedAbilities { filter, .. }
+        | Modification::CopyTriggeredAbilities { filter, .. }
+        | Modification::CopyStaticAbilityVariants { filter, .. } => Some(filter),
+        _ => None,
+    };
+    if let Some(filter) = donor_filter
+        && let Some(donor_zone) = filter.zone
+        && !modification_can_affect_filter(&b.modification, filter)
+    {
+        let written_zone = match &b.applies_to {
+            EffectTarget::Specific(id) => game.object(*id).map(|object| object.zone),
+            EffectTarget::Source => game.object(b.source).map(|object| object.zone),
+            EffectTarget::Filter(filter) => filter.zone,
+            EffectTarget::AllPermanents | EffectTarget::AllCreatures | EffectTarget::AttachedTo(_) =>
+                Some(crate::zone::Zone::Battlefield),
+        };
+        if written_zone.is_some_and(|zone| zone != donor_zone) {
+            return false;
+        }
+    }
+    modification_can_affect_dependency_output(&a.modification, &b.modification)
+}
+
 fn modification_can_affect_dependency_output(a: &Modification, b: &Modification) -> bool {
     match a {
         Modification::CopyActivatedAbilities { .. }
@@ -2437,7 +2513,7 @@ fn modification_can_change_abilities_or_matching_characteristics(
     matches!(
         modification,
         Modification::CopyOf { .. }
-            | Modification::ChangeController(_)
+            | Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
             | Modification::SetTextBox(_)
             | Modification::SetName(_)
             | Modification::InsertNameWords { .. }
@@ -2506,7 +2582,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
             .is_some_and(|inner| modification_can_affect_filter(modification, inner))
         || match modification {
             Modification::CopyOf { .. } => filter.uses_non_pt_battlefield_characteristics(),
-            Modification::ChangeController(_) => filter.controller.is_some(),
+            Modification::ChangeController(_) | Modification::ChangeControllerToEffectController => filter.controller.is_some(),
             Modification::ChangeText { .. } | Modification::SetTextBox(_) => {
                 filter_uses_ability_characteristics(filter)
             }
@@ -3180,6 +3256,30 @@ mod tests {
     }
 
     #[test]
+    fn exiled_ability_donors_are_independent_of_battlefield_ability_grants() {
+        let game = GameState::new(vec!["Alice".into()], 20);
+        let mut copy = create_test_effect(1, 1, Modification::CopyActivatedAbilities {
+            filter: ObjectFilter::default().in_zone(crate::zone::Zone::Exile),
+            counter: None, include_mana: true, only_loyalty: false,
+            exclude_source_name: false, exclude_source_id: false, force_once_each_turn: false,
+        });
+        let mut grant = create_test_effect(2, 2, Modification::AddAbility(StaticAbility::haste()));
+        assert!(!needs_baseline_dependency_sort(&[&copy, &grant], &game));
+        // A grant in the donor zone can change the copied output.
+        grant.applies_to = EffectTarget::Filter(ObjectFilter::default().in_zone(crate::zone::Zone::Exile));
+        assert!(needs_baseline_dependency_sort(&[&copy, &grant], &game));
+        // An unspecified writer zone must not be assumed to be battlefield.
+        grant.applies_to = EffectTarget::Filter(ObjectFilter::default());
+        assert!(needs_baseline_dependency_sort(&[&copy, &grant], &game));
+        // Donor selection can itself observe ability changes.
+        grant.applies_to = EffectTarget::AllPermanents;
+        if let Modification::CopyActivatedAbilities { filter, .. } = &mut copy.modification {
+            filter.no_abilities = true;
+        }
+        assert!(needs_baseline_dependency_sort(&[&copy, &grant], &game));
+    }
+
+    #[test]
     fn test_timestamp_sorting_without_dependencies() {
         let e1 = create_test_effect(
             1,
@@ -3307,6 +3407,7 @@ mod tests {
                 world_supertype_since: None,
                 colors: object.colors(),
                 loyalty: object.base_loyalty,
+                defense: object.base_defense,
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 ability_gain_prohibitions: Vec::new(),
@@ -3365,6 +3466,7 @@ mod tests {
                 world_supertype_since: None,
                 colors: land.colors(),
                 loyalty: land.base_loyalty,
+                defense: land.base_defense,
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 ability_gain_prohibitions: Vec::new(),
@@ -3488,6 +3590,7 @@ mod tests {
                 world_supertype_since: None,
                 colors: land.colors(),
                 loyalty: land.base_loyalty,
+                defense: land.base_defense,
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 ability_gain_prohibitions: Vec::new(),
@@ -3668,6 +3771,7 @@ mod tests {
                 world_supertype_since: None,
                 colors: object.colors(),
                 loyalty: object.base_loyalty,
+                defense: object.base_defense,
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 ability_gain_prohibitions: Vec::new(),
@@ -3892,6 +3996,7 @@ mod tests {
             world_supertype_since: None,
             colors: object.colors(),
             loyalty: object.base_loyalty,
+            defense: object.base_defense,
             abilities: object.abilities.clone().into(),
             static_abilities: Vec::new().into(),
             ability_gain_prohibitions: Vec::new(),

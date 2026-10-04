@@ -447,6 +447,16 @@ macro_rules! define_combat_ability {
 pub struct Unblockable;
 
 impl StaticAbilityKind for Unblockable {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+            std::sync::LazyLock::new(|| super::CompiledStaticAbility {
+                id: Some(StaticAbilityId::Unblockable),
+                label: "Can't be blocked".to_owned(),
+                payload: ironsmith_core::StaticAbilityPayload::None,
+            });
+        Some(&MODEL)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Unblockable
     }
@@ -2525,6 +2535,16 @@ impl StaticAbilityKind for MustBlock {
 pub struct CantAttack;
 
 impl StaticAbilityKind for CantAttack {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+            std::sync::LazyLock::new(|| super::CompiledStaticAbility {
+                id: Some(StaticAbilityId::CantAttack),
+                label: "Can't attack".to_owned(),
+                payload: ironsmith_core::StaticAbilityPayload::None,
+            });
+        Some(&MODEL)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::CantAttack
     }
@@ -2658,6 +2678,16 @@ impl StaticAbilityKind for CantAttackUnlessControllerCastNonCreatureSpellThisTur
 pub struct CantBlock;
 
 impl StaticAbilityKind for CantBlock {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+            std::sync::LazyLock::new(|| super::CompiledStaticAbility {
+                id: Some(StaticAbilityId::CantBlock),
+                label: "Can't block".to_owned(),
+                payload: ironsmith_core::StaticAbilityPayload::None,
+            });
+        Some(&MODEL)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::CantBlock
     }

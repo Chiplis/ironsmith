@@ -24,7 +24,7 @@ impl EffectExecutor for RepeatProcessEffect {
         let sequence = SequenceEffect::new(self.effects.clone());
         let mut all_events = Vec::new();
         let mut all_execution_facts = Vec::new();
-        let mut continuation_count = 0i32;
+        let mut continuation_count = 0i64;
         let (status, value) = loop {
             // A failed result may itself be the authored continuation gate
             // (for example, paying an "unless" cost records Declined and then

@@ -224,11 +224,23 @@ fn nested_mana_activation_completes_through_protocol() {
             "Protocol filter"
         );
         choose_mana_source(&mut g, land, 0);
+        let child_prompt = g.ensure_manabrew_prompt().unwrap().unwrap();
+        let PromptInput::PayManaCost(child_payment) = child_prompt.input else { panic!("expected child payment"); };
+        assert!(child_payment.can_confirm_from_pool,
+            "child confirmation incomplete, preselected={preselect_land}: {:?}", g.pending_decision);
         live_response(&mut g, PayManaCostOutput::Pay { auto: false });
         assert_eq!(
             g.current_mana_payment_view().unwrap().source_name,
             "Live audit spell"
         );
+        assert!(g.game.is_tapped(land));
+        assert!(g.game.is_tapped(filter.unwrap()));
+        assert_eq!(g.game.player(PlayerId::from_index(0)).unwrap().mana_pool.total(), 2,
+            "completed child must fund the parent before its manual confirmation");
+        let parent_prompt = g.ensure_manabrew_prompt().unwrap().unwrap();
+        let PromptInput::PayManaCost(parent_payment) = parent_prompt.input else { panic!("expected parent payment"); };
+        assert!(parent_payment.can_confirm_from_pool,
+            "parent confirmation incomplete, preselected={preselect_land}: {:?}", g.pending_decision);
         live_response(&mut g, PayManaCostOutput::Pay { auto: false });
         assert!(g.priority_state.pending_cast.is_none());
         assert_eq!(

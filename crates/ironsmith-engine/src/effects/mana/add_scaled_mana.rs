@@ -6,13 +6,17 @@
 use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outcome};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
 pub type AddScaledManaEffect = ironsmith_core::AddScaledManaEffect;
 
 impl EffectExecutor for AddScaledManaEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::Repeated { symbols: &self.mana, amount: &self.amount, player: &self.player })
+    }
+
     fn directly_produces_mana(&self) -> bool {
         !self.mana.is_empty()
     }
@@ -22,16 +26,10 @@ impl EffectExecutor for AddScaledManaEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let repeats = resolve_value(game, &self.amount, ctx)?.max(0) as usize;
-
-        let mut added = Vec::with_capacity(repeats * self.mana.len());
-        for _ in 0..repeats {
-            added.extend(self.mana.iter().copied());
-        }
-        let added = credit_mana_symbols_from_context(game, player_id, added, ctx)?;
-
-        Ok(mana_added_value_outcome(ctx, player_id, added))
+        let (player_id, symbols) = self.mana_production().expect("mana production descriptor")
+            .resolve_exact(game, ctx)?;
+        let mana = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
+        Ok(mana_added_value_outcome(ctx, player_id, mana))
     }
 
     fn producible_mana_symbols(

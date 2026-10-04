@@ -108,6 +108,23 @@ mod tests {
         game.object_mut(source).expect("source exists").owner = bob;
         let ctx = TriggerContext::for_source(source, alice, &game);
         assert!(trigger.timing_matches(&event, &ctx));
+        assert!(trigger.matches(&event, &ctx), "changing ownership does not change control");
+        assert_eq!(game.current_controller(source), Some(alice));
+        let effect = game.effect_store.continuous_effects.add_effect(
+            crate::continuous::ContinuousEffect::gain_control(source, bob, source, bob));
+        game.refresh_continuous_state().expect("source control change completes");
+        assert_eq!(game.object(source).unwrap().owner, bob);
+        assert_eq!(game.current_controller(source), Some(bob));
+        let ctx = TriggerContext::for_source(source, alice, &game);
+        assert!(trigger.timing_matches(&event, &ctx));
+        assert!(!trigger.matches(&event, &ctx));
+        game.effect_store.continuous_effects.remove_effect(effect);
+        game.refresh_continuous_state().expect("source control restores");
+        let ctx = TriggerContext::for_source(source, alice, &game);
+        assert!(trigger.matches(&event, &ctx));
+        game.phase_out(source);
+        let ctx = TriggerContext::for_source(source, alice, &game);
+        assert!(trigger.timing_matches(&event, &ctx));
         assert!(!trigger.matches(&event, &ctx));
     }
 }

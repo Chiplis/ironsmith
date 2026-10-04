@@ -22,17 +22,17 @@ use crate::marker::CounterTypeExt;
 use crate::object::{CounterType, Object, SharedStr, SharedVec};
 use crate::object_query::candidate_ids_for_filter;
 use crate::snapshot::{CopiableValues, ObjectSnapshot};
-use crate::static_abilities::StaticAbility;
+use crate::static_abilities::{StaticAbility, StaticAbilityId};
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
 mod ability_origins;
-pub use ability_origins::{AbilityEffectOrigin, AbilityOrigin, CalculatedAbilities, ContinuousAbilityOrigin};
+pub use ability_origins::{AbilityEffectOrigin, AbilityOrigin, CalculatedAbilities, ContinuousAbilityOrigin, ContinuousOriginMetadata};
 mod layer_resolution;
 pub(crate) mod value_context;
-pub(crate) use layer_resolution::resolve_value_direct;
+pub(crate) use layer_resolution::{resolve_value_direct, bind_effect_controller_to_layer_frame};
 use layer_resolution::*;
 
 
@@ -115,6 +115,7 @@ pub enum Layer {
 /// (like +1/+1 and -1/-1) are part of sublayer 7c, NOT a separate sublayer.
 /// Counters are applied in timestamp order along with other 7c effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum PtSublayer {
     /// 7a: Characteristic-defining abilities that set P/T
     /// (e.g., Tarmogoyf's "* / *+1")
@@ -185,6 +186,7 @@ impl From<ironsmith_core::CompiledPtSublayer> for PtSublayer {
 /// Even though this has a filter, it's a Resolution effect - the "creatures you control"
 /// was evaluated at resolution time. A creature that enters later won't get the bonus.
 #[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum EffectSourceType {
     /// Effect created by a resolving spell or ability (Rule 611.2c).
     /// Targets are locked at resolution time and don't update.
@@ -217,7 +219,11 @@ pub enum EffectSourceType {
 
 /// A continuous effect that modifies game state.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ContinuousEffect {
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+pub struct ContinuousEffect<M = Modification, S = StaticAbility, O = ContinuousAbilityOrigin> {
     /// Unique identifier for this effect
     pub id: ContinuousEffectId,
 
@@ -235,7 +241,7 @@ pub struct ContinuousEffect {
     pub applies_to: EffectTarget,
 
     /// The modification this effect makes
-    pub modification: Modification,
+    pub modification: M,
 
     /// When this effect was created (for timestamp ordering)
     pub timestamp: u64,
@@ -264,14 +270,53 @@ pub struct ContinuousEffect {
     ///
     /// This lets dependency resolution detect when another effect would cause
     /// the source to lose the specific static ability that created this effect.
-    pub originating_static_ability: Option<StaticAbility>,
+    pub originating_static_ability: Option<S>,
 
     /// Stable generating occurrence; distinct equal abilities are independent.
-    pub originating_ability: Option<Box<ContinuousAbilityOrigin>>,
+    pub originating_ability: Option<Box<O>>,
+}
+
+impl<M, S, O> ContinuousEffect<M, S, O> {
+    /// Translate a descriptor's payloads while preserving captured event context,
+    /// chronology, registration and generating occurrence. Display projections
+    /// cannot substitute for these fields in a checkpoint.
+    pub fn try_map_payloads<M2, S2, O2, Error>(
+        self,
+        modification: impl FnOnce(M) -> Result<M2, Error>,
+        static_ability: impl FnOnce(S) -> Result<S2, Error>,
+        origin: impl FnOnce(O) -> Result<O2, Error>,
+    ) -> Result<ContinuousEffect<M2, S2, O2>, Error> {
+        Ok(ContinuousEffect {
+            id: self.id,
+            registration_id: self.registration_id,
+            source: self.source,
+            controller: self.controller,
+            applies_to: self.applies_to,
+            modification: modification(self.modification)?,
+            timestamp: self.timestamp,
+            group: self.group,
+            duration: self.duration,
+            expires_end_of_turn: self.expires_end_of_turn,
+            condition: self.condition,
+            source_type: self.source_type,
+            originating_static_ability: self
+                .originating_static_ability
+                .map(static_ability)
+                .transpose()?,
+            originating_ability: self
+                .originating_ability
+                .map(|value| origin(*value).map(Box::new))
+                .transpose()?,
+        })
+    }
 }
 
 /// Unique identifier for a continuous effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct ContinuousEffectId(pub u64);
 
 impl ContinuousEffectId {
@@ -341,6 +386,7 @@ impl Drop for DurationPredicateEvaluationGuard {
 
 /// Shared identifier for the layer-parts of a single continuous effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContinuousEffectGroupId(pub u64);
 
 impl ContinuousEffectGroupId {
@@ -368,6 +414,7 @@ impl ContinuousEffectGroupId {
 
 /// What objects a continuous effect applies to.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum EffectTarget {
     /// Applies to a specific object
     Specific(ObjectId),
@@ -406,6 +453,7 @@ impl From<ironsmith_core::CompiledContinuousEffectTarget> for EffectTarget {
 
 /// The semantic restriction carried by a registered continuous effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum RestrictionKind {
     CantBeBlocked,
     CantAttack,
@@ -425,7 +473,7 @@ impl RegisteredRestriction {
     pub fn new(kind: RestrictionKind) -> Self {
         let ability = match kind {
             RestrictionKind::CantBeBlocked => StaticAbility::unblockable(),
-            RestrictionKind::CantAttack => StaticAbility::defender(),
+            RestrictionKind::CantAttack => StaticAbility::cant_attack(),
             RestrictionKind::CantBlock => StaticAbility::cant_block(),
             RestrictionKind::DoesntUntap => StaticAbility::doesnt_untap(),
         };
@@ -441,16 +489,110 @@ impl RegisteredRestriction {
     }
 }
 
+/// Complete restriction payload; the owning codec binds ability occurrences.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+pub struct RetainedRestriction<S> {
+    pub kind: RestrictionKind,
+    pub ability: S,
+}
+
+impl<S> RetainedRestriction<S> {
+    pub fn try_map_ability<T, Error>(
+        self,
+        mut map: impl FnMut(S) -> Result<T, Error>,
+    ) -> Result<RetainedRestriction<T>, Error> {
+        let Self { kind, ability } = self;
+        Ok(RetainedRestriction {
+            kind,
+            ability: map(ability)?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestrictionAbilityMismatch {
+    pub detail: &'static str,
+    pub expected: StaticAbilityId,
+    pub actual: StaticAbilityId,
+}
+
+impl std::fmt::Display for RestrictionAbilityMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "restriction requires {:?}, found {:?}: {}",
+            self.expected, self.actual, self.detail
+        )
+    }
+}
+impl std::error::Error for RestrictionAbilityMismatch {}
+
+impl From<RegisteredRestriction> for RetainedRestriction<StaticAbility> {
+    fn from(value: RegisteredRestriction) -> Self {
+        let RegisteredRestriction { kind, ability } = value;
+        Self { kind, ability }
+    }
+}
+
+impl TryFrom<RetainedRestriction<StaticAbility>> for RegisteredRestriction {
+    type Error = RestrictionAbilityMismatch;
+    fn try_from(value: RetainedRestriction<StaticAbility>) -> Result<Self, Self::Error> {
+        let RetainedRestriction { kind, ability } = value;
+        let expected = match kind {
+            RestrictionKind::CantBeBlocked => StaticAbilityId::Unblockable,
+            RestrictionKind::CantAttack => StaticAbilityId::CantAttack,
+            RestrictionKind::CantBlock => StaticAbilityId::CantBlock,
+            RestrictionKind::DoesntUntap => StaticAbilityId::DoesntUntap,
+        };
+        if ability.id() != expected {
+            return Err(RestrictionAbilityMismatch {
+                expected,
+                actual: ability.id(),
+                detail: "wrong ability kind",
+            });
+        }
+        if !ability.compiled_model().is_some_and(|model| {
+            model.id == Some(expected)
+                && matches!(&model.payload, ironsmith_core::StaticAbilityPayload::None)
+        }) {
+            return Err(RestrictionAbilityMismatch {
+                expected,
+                actual: ability.id(),
+                detail: "expected canonical unit restriction model",
+            });
+        }
+        Ok(Self { kind, ability })
+    }
+}
+/// Runtime specialization of the complete modification schema. Wire codecs
+/// specialize the same enum with lossless payload models; no variant is omitted.
+pub type Modification = ContinuousModification<
+    StaticAbility,
+    Ability,
+    CopiableValues,
+    TextBoxOverlay,
+    RegisteredRestriction,
+    crate::object::AuraAttachmentMetadata,
+>;
+
 /// The modification a continuous effect makes.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Modification {
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+pub enum ContinuousModification<S, A, C, T, R, H> {
     // === Layer 1: Copy ===
     /// Become a copy of another object
     CopyOf {
         target_id: ObjectId,
         /// Copiable values are determined once, when the copy effect begins.
         /// Later changes to the source do not change the copy (CR 707.2).
-        copiable_values: Box<CopiableValues>,
+        copiable_values: Box<C>,
         preserve_source_abilities: bool,
         name_override: Option<String>,
         name_override_surface: Option<SourceReferenceSurface>,
@@ -460,12 +602,16 @@ pub enum Modification {
     // === Layer 2: Control ===
     /// Change controller to a specific player
     ChangeController(PlayerId),
+    /// Assign control to the controller in this effect's application context.
+    /// Unlike a literal player assignment, retain the relative value until
+    /// application so source-controller binding can be evaluated in its layer.
+    ChangeControllerToEffectController,
 
     // === Layer 3: Text ===
     /// Change text (e.g., "Swamp" becomes "Forest")
     ChangeText { from: String, to: String },
     /// Replace an object's text box and the rules-text-derived abilities that go with it.
-    SetTextBox(TextBoxOverlay),
+    SetTextBox(T),
     /// Set a permanent's name.
     SetName(String),
     /// A name sticker inserts words at the remembered position in layer 3.
@@ -500,7 +646,7 @@ pub enum Modification {
     SetSubtypes(Vec<Subtype>),
 
     /// Set an Aura attachment restriction for legality checks.
-    SetAuraAttachmentFilter(crate::object::AuraAttachmentMetadata),
+    SetAuraAttachmentFilter(H),
 
     /// Add supertypes
     AddSupertypes(Vec<Supertype>),
@@ -526,20 +672,20 @@ pub enum Modification {
 
     // === Layer 6: Ability ===
     /// Add an ability
-    AddAbility(StaticAbility),
+    AddAbility(S),
 
     /// Add an ability without creating dependency edges against RemoveAllAbilities.
     /// Used for cards like Bello where Gatherer rulings specify timestamp ordering.
 
     /// Add a generic ability (activated, triggered, static, or mana).
-    AddAbilityGeneric(Ability),
+    AddAbilityGeneric(A),
 
     /// Replace all abilities with a specific set.
     ///
     /// This is used for effects that explicitly remove all abilities and then
     /// grant a defined set (e.g., basic land type effects that leave only the
     /// corresponding mana ability).
-    SetAbilities(Vec<Ability>),
+    SetAbilities(Vec<A>),
 
     /// Copy activated abilities from objects matching a filter.
     CopyActivatedAbilities {
@@ -571,12 +717,12 @@ pub enum Modification {
     AddCombatDamageDrawAbility,
 
     /// Remove an ability
-    RemoveAbility(StaticAbility),
+    RemoveAbility(S),
 
     /// Remove a specific object ability, optionally prohibiting later grants
     /// of the same ability while this continuous effect applies.
     RemoveAbilityGeneric {
-        ability: Ability,
+        ability: A,
         mode: ironsmith_core::AbilityLossMode,
     },
 
@@ -591,7 +737,7 @@ pub enum Modification {
     RemoveAllAbilitiesExceptMana,
 
     /// Apply a registered restriction without regenerating its ability identity.
-    Restriction(RegisteredRestriction),
+    Restriction(R),
 
     // === Layer 7: Power/Toughness ===
     /// Set power (7a or 7b depending on source)
@@ -627,6 +773,171 @@ pub enum Modification {
 
     /// Switch power and toughness (7e)
     SwitchPowerToughness,
+}
+
+impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
+    /// Convert every trait-bearing payload without rebuilding the scalar fields.
+    /// Copy/text/attachment and restriction models must include their retained
+    /// abilities and occurrence identities, not just their display projections.
+    /// An unsupported payload returns its converter's error; it is never dropped.
+    pub fn try_map_payloads<S2, A2, C2, T2, R2, H2, Error>(
+        self,
+        mut static_ability: impl FnMut(S) -> Result<S2, Error>,
+        mut ability: impl FnMut(A) -> Result<A2, Error>,
+        mut copy: impl FnMut(C) -> Result<C2, Error>,
+        mut text: impl FnMut(T) -> Result<T2, Error>,
+        mut restriction: impl FnMut(R) -> Result<R2, Error>,
+        mut attachment: impl FnMut(H) -> Result<H2, Error>,
+    ) -> Result<ContinuousModification<S2, A2, C2, T2, R2, H2>, Error> {
+        Ok(match self {
+            Self::CopyOf {
+                target_id,
+                copiable_values,
+                preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
+            } => ContinuousModification::CopyOf {
+                target_id,
+                copiable_values: Box::new(copy(*copiable_values)?),
+                preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
+            },
+            Self::ChangeController(value) => ContinuousModification::ChangeController(value),
+            Self::ChangeControllerToEffectController => {
+                ContinuousModification::ChangeControllerToEffectController
+            }
+            Self::ChangeText { from, to } => ContinuousModification::ChangeText { from, to },
+            Self::SetTextBox(value) => ContinuousModification::SetTextBox(text(value)?),
+            Self::SetName(value) => ContinuousModification::SetName(value),
+            Self::InsertNameWords {
+                words,
+                after_word_count,
+            } => ContinuousModification::InsertNameWords {
+                words,
+                after_word_count,
+            },
+            Self::AddCardTypes(value) => ContinuousModification::AddCardTypes(value),
+            Self::RemoveCardTypes(value) => ContinuousModification::RemoveCardTypes(value),
+            Self::SetCardTypes(value) => ContinuousModification::SetCardTypes(value),
+            Self::AddSubtypes(value) => ContinuousModification::AddSubtypes(value),
+            Self::AddAllSubtypesOfFamily(value) => {
+                ContinuousModification::AddAllSubtypesOfFamily(value)
+            }
+            Self::RemoveSubtypes(value) => ContinuousModification::RemoveSubtypes(value),
+            Self::RemoveAllSubtypesOfFamily(value) => {
+                ContinuousModification::RemoveAllSubtypesOfFamily(value)
+            }
+            Self::SetSubtypes(value) => ContinuousModification::SetSubtypes(value),
+            Self::SetAuraAttachmentFilter(value) => {
+                ContinuousModification::SetAuraAttachmentFilter(attachment(value)?)
+            }
+            Self::AddSupertypes(value) => ContinuousModification::AddSupertypes(value),
+            Self::RemoveSupertypes(value) => ContinuousModification::RemoveSupertypes(value),
+            Self::RemoveAllCreatureTypes => ContinuousModification::RemoveAllCreatureTypes,
+            Self::AddColors(value) => ContinuousModification::AddColors(value),
+            Self::RemoveColors(value) => ContinuousModification::RemoveColors(value),
+            Self::SetColors(value) => ContinuousModification::SetColors(value),
+            Self::MakeColorless => ContinuousModification::MakeColorless,
+            Self::AddAbility(value) => ContinuousModification::AddAbility(static_ability(value)?),
+            Self::AddAbilityGeneric(value) => {
+                ContinuousModification::AddAbilityGeneric(ability(value)?)
+            }
+            Self::SetAbilities(values) => ContinuousModification::SetAbilities(
+                values
+                    .into_iter()
+                    .map(&mut ability)
+                    .collect::<Result<Vec<_>, Error>>()?,
+            ),
+            Self::CopyActivatedAbilities {
+                filter,
+                counter,
+                include_mana,
+                only_loyalty,
+                exclude_source_name,
+                exclude_source_id,
+                force_once_each_turn,
+            } => ContinuousModification::CopyActivatedAbilities {
+                filter,
+                counter,
+                include_mana,
+                only_loyalty,
+                exclude_source_name,
+                exclude_source_id,
+                force_once_each_turn,
+            },
+            Self::CopyStaticAbilityVariants {
+                filter,
+                selectors,
+                exclude_source_id,
+            } => ContinuousModification::CopyStaticAbilityVariants {
+                filter,
+                selectors,
+                exclude_source_id,
+            },
+            Self::CopyTriggeredAbilities {
+                filter,
+                exclude_source_name,
+                exclude_source_id,
+            } => ContinuousModification::CopyTriggeredAbilities {
+                filter,
+                exclude_source_name,
+                exclude_source_id,
+            },
+            Self::AddCombatDamageDrawAbility => ContinuousModification::AddCombatDamageDrawAbility,
+            Self::RemoveAbility(value) => {
+                ContinuousModification::RemoveAbility(static_ability(value)?)
+            }
+            Self::RemoveAbilityGeneric {
+                ability: value,
+                mode,
+            } => ContinuousModification::RemoveAbilityGeneric {
+                ability: ability(value)?,
+                mode,
+            },
+            Self::RemoveStaticAbilityFamily(value) => {
+                ContinuousModification::RemoveStaticAbilityFamily(value)
+            }
+            Self::RemoveAllAbilities => ContinuousModification::RemoveAllAbilities,
+            Self::RemoveAllAbilitiesExceptMana => {
+                ContinuousModification::RemoveAllAbilitiesExceptMana
+            }
+            Self::Restriction(value) => ContinuousModification::Restriction(restriction(value)?),
+            Self::SetPower { value, sublayer } => {
+                ContinuousModification::SetPower { value, sublayer }
+            }
+            Self::SetToughness { value, sublayer } => {
+                ContinuousModification::SetToughness { value, sublayer }
+            }
+            Self::SetPowerToughness {
+                power,
+                toughness,
+                sublayer,
+            } => ContinuousModification::SetPowerToughness {
+                power,
+                toughness,
+                sublayer,
+            },
+            Self::ModifyPower(value) => ContinuousModification::ModifyPower(value),
+            Self::ModifyToughness(value) => ContinuousModification::ModifyToughness(value),
+            Self::ModifyPowerToughness { power, toughness } => {
+                ContinuousModification::ModifyPowerToughness { power, toughness }
+            }
+            Self::ModifyPowerToughnessValue { power, toughness } => {
+                ContinuousModification::ModifyPowerToughnessValue { power, toughness }
+            }
+            Self::ModifyPowerToughnessByColorCount {
+                power_multiplier,
+                toughness_multiplier,
+            } => ContinuousModification::ModifyPowerToughnessByColorCount {
+                power_multiplier,
+                toughness_multiplier,
+            },
+            Self::SwitchPowerToughness => ContinuousModification::SwitchPowerToughness,
+        })
+    }
 }
 
 impl Modification {
@@ -725,7 +1036,7 @@ impl Modification {
         match self {
             Modification::CopyOf { .. } => Layer::Copy,
 
-            Modification::ChangeController(_) => Layer::Control,
+            Modification::ChangeController(_) | Modification::ChangeControllerToEffectController => Layer::Control,
 
             Modification::ChangeText { .. }
             | Modification::SetTextBox(_)
@@ -840,6 +1151,69 @@ pub struct TextBoxOverlay {
     pub ability_labels: SharedVec<String>,
 }
 
+/// Lossless text-effect payload with explicit executable ability conversion.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+pub struct RetainedTextBoxOverlay<A> {
+    pub compiled_card_text: String,
+    pub abilities: Vec<A>,
+    pub ability_labels: Vec<String>,
+}
+
+impl<A> RetainedTextBoxOverlay<A> {
+    pub fn try_map_abilities<B, Error>(
+        self,
+        map: impl FnMut(A) -> Result<B, Error>,
+    ) -> Result<RetainedTextBoxOverlay<B>, Error> {
+        let Self {
+            compiled_card_text,
+            abilities,
+            ability_labels,
+        } = self;
+        Ok(RetainedTextBoxOverlay {
+            compiled_card_text,
+            abilities: abilities
+                .into_iter()
+                .map(map)
+                .collect::<Result<Vec<_>, _>>()?,
+            ability_labels,
+        })
+    }
+}
+
+impl From<TextBoxOverlay> for RetainedTextBoxOverlay<Ability> {
+    fn from(overlay: TextBoxOverlay) -> Self {
+        let TextBoxOverlay {
+            compiled_card_text,
+            abilities,
+            ability_labels,
+        } = overlay;
+        Self {
+            compiled_card_text: compiled_card_text.to_string(),
+            abilities,
+            ability_labels: ability_labels.to_vec(),
+        }
+    }
+}
+
+impl From<RetainedTextBoxOverlay<Ability>> for TextBoxOverlay {
+    fn from(overlay: RetainedTextBoxOverlay<Ability>) -> Self {
+        let RetainedTextBoxOverlay {
+            compiled_card_text,
+            abilities,
+            ability_labels,
+        } = overlay;
+        Self {
+            compiled_card_text: compiled_card_text.into(),
+            abilities,
+            ability_labels: ability_labels.into(),
+        }
+    }
+}
+
 impl TextBoxOverlay {
     pub fn new(
         compiled_card_text: impl Into<Arc<str>>,
@@ -861,11 +1235,62 @@ impl TextBoxOverlay {
 /// Chronology used by permanent, attachment and counter-generated effects.
 /// This does not substitute for the registered resolution effects themselves.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContinuousTimestampState {
     pub current_timestamp: u64,
     pub object_entries: Vec<(ObjectId, u64)>,
     pub counters: Vec<((ObjectId, CounterType), u64)>,
     pub attachments: Vec<(ObjectId, u64)>,
+}
+
+/// Persistent continuous-effect state, distinct from regenerated static descriptors.
+/// A wire codec must encode the complete descriptors rather than their calculated
+/// characteristic results. Registration allocators and duration latches are part
+/// of that state: re-registering effects would change both identity and lifetime.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+pub struct RegisteredContinuousEffectState<E = ContinuousEffect> {
+    pub effects: Vec<E>,
+    pub next_id: u64,
+    /// Last allocated runtime group; the next allocation increments this value.
+    pub next_group_id: u64,
+    pub duration_latches: Vec<(ContinuousEffectId, ContinuousDurationLatch)>,
+    pub timestamps: ContinuousTimestampState,
+}
+
+impl<E> RegisteredContinuousEffectState<E> {
+    /// Translate all descriptors as one fallible operation. Preserve chronology,
+    /// allocator gaps and expired latches rather than replaying registration.
+    pub fn try_map_effects<E2, Error>(
+        self,
+        convert: impl FnMut(E) -> Result<E2, Error>,
+    ) -> Result<RegisteredContinuousEffectState<E2>, Error> {
+        Ok(RegisteredContinuousEffectState {
+            effects: self
+                .effects
+                .into_iter()
+                .map(convert)
+                .collect::<Result<Vec<_>, _>>()?,
+            next_id: self.next_id,
+            next_group_id: self.next_group_id,
+            duration_latches: self.duration_latches,
+            timestamps: self.timestamps,
+        })
+    }
+}
+
+/// A predicate duration cannot start again after it has ended (CR 611.2b).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+pub enum ContinuousDurationLatch {
+    Started,
+    Expired,
 }
 
 /// Manages all continuous effects in the game.
@@ -914,11 +1339,7 @@ pub struct ContinuousEffectManager {
     attachment_timestamps: FxMap<ObjectId, u64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LatchedDurationState {
-    Started,
-    Expired,
-}
+type LatchedDurationState = ContinuousDurationLatch;
 
 impl ContinuousEffectManager {
     /// Create a new empty manager.
@@ -1342,6 +1763,85 @@ impl ContinuousEffectManager {
         self.effects.as_slice()
     }
 
+    /// Capture registered descriptors, allocator continuity, chronology and
+    /// observed duration expiry. Static descriptors are regenerated from objects.
+    pub fn registered_state(&self) -> RegisteredContinuousEffectState {
+        let mut duration_latches: Vec<_> = self
+            .latched_duration_states
+            .borrow()
+            .iter()
+            .map(|(id, state)| (*id, *state))
+            .collect();
+        duration_latches.sort_by_key(|(id, _)| id.0);
+        RegisteredContinuousEffectState {
+            effects: self.effects.as_ref().clone(),
+            next_id: self.next_id,
+            next_group_id: self.next_group_id,
+            duration_latches,
+            timestamps: self.timestamp_state(),
+        }
+    }
+
+    /// Restore without registration, which would allocate new identities and
+    /// restart predicate durations. Validate the whole state before publishing it.
+    /// Object/player references require validation by the owning game importer;
+    /// departed sources are legal and must not be replaced with current objects.
+    pub fn restore_registered_state(
+        &mut self,
+        state: RegisteredContinuousEffectState,
+    ) -> Result<(), String> {
+        if state.next_id == u64::MAX {
+            return Err("serialized continuous effect allocator cannot advance".into());
+        }
+        // Runtime groups must not enter either reserved static group namespace.
+        if state.next_group_id >= ContinuousEffectGroupId::STATIC_SOURCE_PREFIX - 1 {
+            return Err("serialized continuous group allocator cannot advance".into());
+        }
+        let mut expected_latches = HashSet::new();
+        let mut ids = HashSet::new();
+        for effect in &state.effects {
+            if !ids.insert(effect.id)
+                || effect.registration_id != Some(effect.id)
+                || effect.id.0 >= state.next_id
+            {
+                return Err("invalid registered continuous effect identity".into());
+            }
+            if effect.timestamp == 0 || effect.timestamp > state.timestamps.current_timestamp {
+                return Err("invalid registered continuous effect timestamp".into());
+            }
+            if let Some(group) = effect.group {
+                if group.0 == 0 || group.0 > state.next_group_id {
+                    return Err("invalid registered continuous effect group".into());
+                }
+            }
+            if matches!(
+                effect.duration,
+                Until::ForAsLongAs(_) | Until::YouStopControllingThis
+            ) {
+                expected_latches.insert(effect.id);
+            }
+        }
+        let mut latches = FxMap::default();
+        for (id, latch) in state.duration_latches {
+            if !expected_latches.remove(&id) || latches.insert(id, latch).is_some() {
+                return Err("invalid registered continuous duration latch".into());
+            }
+        }
+        if !expected_latches.is_empty() {
+            return Err("missing registered continuous duration latch".into());
+        }
+        let mut staged = self.clone();
+        staged.restore_timestamp_state(state.timestamps)?;
+        staged.effects = Arc::new(state.effects);
+        staged.next_id = state.next_id;
+        staged.next_group_id = state.next_group_id;
+        staged.latched_duration_states = RefCell::new(latches);
+        // Cached static descriptors belong to the pre-restore object world.
+        staged.static_ability_effects = Arc::new(Vec::new());
+        *self = staged;
+        Ok(())
+    }
+
     /// Get the next effect id (for deterministic state hashing).
     pub fn next_id(&self) -> u64 {
         self.next_id
@@ -1529,6 +2029,19 @@ impl ContinuousEffectManager {
 // === Builder functions for common continuous effects ===
 
 impl ContinuousEffect {
+    /// Regenerated static descriptors use the current controller of their host.
+    /// Resolution effects and lingering statics (whose origins are cleared on
+    /// leaving) retain their captured controller context.
+    pub(crate) fn has_source_controller_context(&self) -> bool {
+        self.originating_static_ability.is_some()
+            && matches!(self.source_type, EffectSourceType::StaticAbility
+                | EffectSourceType::CharacteristicDefining | EffectSourceType::Copy)
+    }
+
+    pub(crate) fn source_controller_context_host(&self) -> ObjectId {
+        self.originating_ability.as_ref().map_or(self.source, |origin| origin.host)
+    }
+
     /// Create a new continuous effect.
     /// Defaults to `StaticAbility` source type.
     pub fn new(
@@ -1706,6 +2219,8 @@ pub struct CalculatedCharacteristics {
     pub world_supertype_since: Option<u64>,
     pub colors: ColorSet,
     pub loyalty: Option<u32>,
+    /// Copiable printed defense number; current defense counters are separate.
+    pub defense: Option<u32>,
     pub abilities: CalculatedAbilities,
     /// Static abilities that this object currently has (including from effects)
     pub static_abilities: SharedVec<StaticAbility>,
@@ -1917,9 +2432,18 @@ pub(crate) fn in_progress_characteristics(
     })
 }
 
-fn initial_characteristics(object: &Object) -> CalculatedCharacteristics {
+/// Preserve occurrence identities for printed, registered and level abilities
+/// when no continuous ability modification requires a layered lookup.
+pub(crate) fn unmodified_ability_occurrences(object: &Object, current_turn: u32) -> CalculatedAbilities {
+    let mut chars = initial_characteristics(object, current_turn);
+    add_intrinsic_abilities(&mut chars);
+    apply_level_granted_abilities(object, &mut chars);
+    chars.abilities
+}
+
+fn initial_characteristics(object: &Object, current_turn: u32) -> CalculatedCharacteristics {
     let mut chars = initial_text_box_characteristics(object);
-    add_temporary_static_ability_grants(object, &mut chars);
+    add_temporary_static_ability_grants(object, &mut chars, current_turn);
     chars
 }
 
@@ -1955,11 +2479,12 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         supertypes,
         colors: object.colors(),
         loyalty: object.base_loyalty,
+        defense: object.base_defense,
         abilities: abilities.clone().into(),
         static_abilities: extract_static_abilities(&abilities).into(),
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: object.aura_attach_filter_owned(),
-        controller: object.owner,
+        controller: object.initial_controller,
     };
     chars
 }
@@ -2056,6 +2581,7 @@ fn copy_characteristics_from_copiable_values(
     chars.supertypes = values.supertypes.clone().into();
     chars.colors = values.colors;
     chars.loyalty = values.loyalty;
+    chars.defense = values.defense;
     chars.abilities = values.abilities.as_ref().clone().into();
     chars.abilities.rebind_origin(origin);
     chars.aura_attach_filter = values.aura_attach_filter.clone();
@@ -2201,11 +2727,47 @@ pub(crate) fn intrinsic_basic_land_mana_abilities(
     .collect()
 }
 
+// Intrinsic mana exists at the ability-layer boundary, so layer-six losses
+// and replacements can affect it. Its origin is a rule, not the last effect
+// that happened to run while deriving the object's characteristics.
 fn add_intrinsic_basic_land_mana_abilities(chars: &mut CalculatedCharacteristics) {
-    for ability in intrinsic_basic_land_mana_abilities(&chars.card_types, &chars.subtypes) {
-        if !chars.abilities.contains(&ability) {
-            chars.abilities.push(ability);
+    if !chars.card_types.contains(&CardType::Land) {
+        return;
+    }
+    for subtype in [Subtype::Plains, Subtype::Island, Subtype::Swamp, Subtype::Mountain, Subtype::Forest] {
+        if !chars.subtypes.contains(&subtype) {
+            continue;
         }
+        let ability = Ability::basic_land_mana(subtype).expect("basic land type has intrinsic mana");
+        if !chars.abilities.contains(&ability) {
+            chars.abilities.push_with_origin(ability, AbilityOrigin::IntrinsicBasicLandMana(subtype));
+        }
+    }
+}
+
+pub(crate) fn intrinsic_starting_counter_abilities(card_types: &[CardType]) -> Vec<(ironsmith_core::IntrinsicStartingCounter, Ability)> {
+    [ironsmith_core::IntrinsicStartingCounter::Loyalty, ironsmith_core::IntrinsicStartingCounter::Defense]
+        .into_iter().filter(|rule| card_types.contains(&rule.card_type()))
+        .map(|rule| (rule, Ability::static_ability(StaticAbility::intrinsic_starting_counters(rule)))).collect()
+}
+
+fn add_intrinsic_abilities(chars: &mut CalculatedCharacteristics) {
+    add_intrinsic_basic_land_mana_abilities(chars);
+    for (rule, ability) in intrinsic_starting_counter_abilities(&chars.card_types) {
+        if let AbilityKind::Static(static_ability) = &ability.kind {
+            chars.static_abilities.push(static_ability.clone());
+        }
+        chars.abilities.push_with_origin(ability, AbilityOrigin::IntrinsicStartingCounters(rule));
+    }
+}
+
+// Share this operation across all layer routes: the CR 305.7 type-rule
+// loss supplies new-type mana before ordinary layer-six grants and losses.
+fn remove_all_abilities_for_effect(effect: &ContinuousEffect, chars: &mut CalculatedCharacteristics) {
+    chars.abilities.clear();
+    chars.static_abilities.clear();
+    if is_land_type_rules_text_ability_loss(effect) {
+        add_intrinsic_abilities(chars);
     }
 }
 
@@ -2412,7 +2974,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         let Some(object) = objects.get(&id) else {
             continue;
         };
-        let mut chars = initial_characteristics(object);
+        let mut chars = initial_characteristics(object, game.turn.turn_number);
         if chars.world_supertype_since.is_some() {
             chars.world_supertype_since = game
                 .effect_store
@@ -2464,6 +3026,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 else {
                     continue;
                 };
+                add_intrinsic_abilities(chars);
                 game.apply_deploy_creatures_ability_layer(object, chars);
                 guards[idx].update(chars);
             }
@@ -2546,6 +3109,12 @@ fn calculate_characteristics_layer_batch_with_effects(
 
         let mut applicability_cache = Vec::new();
         for effect in sorted_effects {
+            if effect.has_source_controller_context() && !chars_by_id.contains_key(&effect.source_controller_context_host()) {
+                // A missing static host cannot supply an active static effect.
+                continue;
+            }
+            let bound_effect = bind_effect_controller_to_layer_frame(effect, &chars_by_id);
+            let effect = bound_effect.as_ref();
             if layer == Layer::Ability {
                 for (idx, &id) in order.iter().enumerate() {
                     let (Some(object), Some(chars), Some((counters, next_counter))) = (
@@ -2753,6 +3322,12 @@ fn calculate_characteristics_layer_batch_with_effects(
 
         let mut applicability_cache = Vec::new();
         for effect in sorted_pt {
+            if effect.has_source_controller_context() && !chars_by_id.contains_key(&effect.source_controller_context_host()) {
+                // A missing static host cannot supply an active static effect.
+                continue;
+            }
+            let bound_effect = bind_effect_controller_to_layer_frame(effect, &chars_by_id);
+            let effect = bound_effect.as_ref();
             if !continuous_effect_duration_is_active(effect, game) {
                 continue;
             }
@@ -2862,7 +3437,6 @@ fn calculate_characteristics_layer_batch_with_effects(
         }
         guards[idx].update(chars);
 
-        add_intrinsic_basic_land_mana_abilities(chars);
         prune_ability_gain_prohibitions(chars);
         guards[idx].update(chars);
 
@@ -2921,7 +3495,11 @@ pub(super) fn calculate_characteristics_with_effects_simple_internal(
         battlefield,
         commanders,
         game,
-        DependencySortMode::Heuristic,
+        // A prefix is still a real layer calculation. Earlier layers must
+        // honor dependencies before later-layer values or source contexts read
+        // them. Baseline construction removes the current and later layers,
+        // so this preserves the strictly descending layer recursion boundary.
+        DependencySortMode::Baseline,
         include_ability_counters,
     ))
 }
@@ -3000,6 +3578,12 @@ pub(crate) fn copiable_values_with_effects(
             } else {
                 true
             };
+            if effect.has_source_controller_context()
+                && !objects.contains_key(&effect.source_controller_context_host()) { continue; }
+            let bound_effect = if needs_source_tracking && effect_active {
+                bind_effect_controller_to_layer_frame(effect, &source_state)
+            } else { std::borrow::Cow::Borrowed(effect) };
+            let effect = bound_effect.as_ref();
             if needs_source_tracking && effect_active {
                 advance_layer_source_state(
                     &mut source_state,
@@ -3124,6 +3708,12 @@ pub fn text_box_characteristics_with_effects(
                 true
             };
 
+            if effect.has_source_controller_context()
+                && !objects.contains_key(&effect.source_controller_context_host()) { continue; }
+            let bound_effect = if needs_source_tracking && effect_active {
+                bind_effect_controller_to_layer_frame(effect, &source_state)
+            } else { std::borrow::Cow::Borrowed(effect) };
+            let effect = bound_effect.as_ref();
             if needs_source_tracking && effect_active {
                 advance_layer_source_state(
                     &mut source_state,
@@ -3192,6 +3782,9 @@ fn apply_text_box_modification_to_chars(
         Modification::ChangeController(new_controller) => {
             chars.controller = *new_controller;
         }
+        Modification::ChangeControllerToEffectController => {
+            chars.controller = effect.controller;
+        }
         Modification::ChangeText { .. } => {}
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
@@ -3228,7 +3821,7 @@ fn calculate_with_layers_direct_internal(
     use crate::dependency::sort_layer_effects;
     use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
 
-    let mut chars = initial_characteristics(object);
+    let mut chars = initial_characteristics(object, game.turn.turn_number);
     if chars.world_supertype_since.is_some() {
         chars.world_supertype_since = game
             .effect_store
@@ -3269,6 +3862,7 @@ fn calculate_with_layers_direct_internal(
 
     for layer in layers_1_to_6 {
         if layer == Layer::Ability {
+            add_intrinsic_abilities(&mut chars);
             game.apply_deploy_creatures_ability_layer(object, &mut chars);
             calc_guard.update(&chars);
         }
@@ -3384,6 +3978,12 @@ fn calculate_with_layers_direct_internal(
                 true
             };
 
+            if effect.has_source_controller_context()
+                && !objects.contains_key(&effect.source_controller_context_host()) { continue; }
+            let bound_effect = if needs_source_tracking && effect_active {
+                bind_effect_controller_to_layer_frame(effect, &source_state)
+            } else { std::borrow::Cow::Borrowed(effect) };
+            let effect = bound_effect.as_ref();
             if needs_source_tracking && effect_active {
                 advance_layer_source_state(
                     &mut source_state,
@@ -3555,6 +4155,12 @@ fn calculate_with_layers_direct_internal(
                 true
             };
 
+            if effect.has_source_controller_context()
+                && !objects.contains_key(&effect.source_controller_context_host()) { continue; }
+            let bound_effect = if needs_source_tracking && effect_active {
+                bind_effect_controller_to_layer_frame(effect, &source_state)
+            } else { std::borrow::Cow::Borrowed(effect) };
+            let effect = bound_effect.as_ref();
             if needs_source_tracking && effect_active {
                 advance_layer_source_state(
                     &mut source_state,
@@ -3630,7 +4236,6 @@ fn calculate_with_layers_direct_internal(
     }
     calc_guard.update(&chars);
 
-    add_intrinsic_basic_land_mana_abilities(&mut chars);
     prune_ability_gain_prohibitions(&mut chars);
     calc_guard.update(&chars);
 
@@ -4008,7 +4613,10 @@ fn effect_target_matches_object_direct(
 fn resolution_effect_zone_applies(effect: &ContinuousEffect, zone: Zone) -> bool {
     // Name stickers remain on the same card through public-zone changes
     // (CR 123.5); their stored effect is retargeted to its new object identity.
-    zone == Zone::Battlefield
+    // Resolution effects can modify spells as well as permanents. Their
+    // locked object IDs still prevent them from following ordinary zone changes;
+    // resolving permanent spells explicitly retarget them under CR 400.7a.
+    matches!(zone, Zone::Battlefield | Zone::Stack)
         || (matches!(effect.modification, Modification::InsertNameWords { .. }) && zone.is_public())
         // A lock made over another zone's cards ("each legendary card in your
         // graveyard gains ...") applies to them there; a zone change makes a
@@ -5151,6 +5759,26 @@ pub(crate) fn prune_ability_gain_prohibitions(chars: &mut CalculatedCharacterist
     });
 }
 
+fn ability_copy_candidate_ids(
+    objects: &ObjectMap,
+    filter: &ObjectFilter,
+    context: &crate::target::FilterContext,
+) -> Vec<ObjectId> {
+    objects.values()
+        .filter(|candidate| filter.zone.is_none_or(|zone| candidate.zone == zone))
+        .filter(|candidate| filter.tagged_constraints.iter().all(|constraint| {
+            if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+                return true;
+            }
+            // Identity does not depend on layers. Missing tags may have
+            // intrinsic semantics, so leave those to the complete predicate.
+            context.tagged_objects.get(&constraint.tag).is_none_or(|snapshots|
+                snapshots.iter().any(|snapshot| snapshot.object_id == candidate.id
+                    || snapshot.stable_id == candidate.stable_id))
+        }))
+        .map(|candidate| candidate.id).collect()
+}
+
 /// Apply a modification to calculated characteristics.
 fn apply_modification_to_chars(
     effect: &ContinuousEffect,
@@ -5190,6 +5818,9 @@ fn apply_modification_to_chars(
         // Layer 2: Control
         Modification::ChangeController(new_controller) => {
             chars.controller = *new_controller;
+        }
+        Modification::ChangeControllerToEffectController => {
+            chars.controller = effect.controller;
         }
         Modification::ChangeText { .. } => {
             // Text changes are handled separately.
@@ -5310,11 +5941,15 @@ fn apply_modification_to_chars(
             // calculation, which lands back here — so a board with a
             // copy-activated-abilities source (Agatha's Soul Cauldron) paid a
             // full effect rebuild per candidate per layer pass.
-            let effects = effects.to_vec();
             let commanders = game.commander_objects();
             let battlefield = &game.battlefield;
 
-            let mut candidate_ids: Vec<_> = objects.keys().copied().collect();
+            // Zone is independent of layers. Reject impossible donors before
+            // recursively deriving their abilities; otherwise an exile-only
+            // grant recursively evaluates the entire battlefield for every
+            // recipient and dependency probe.
+            let donor_context = continuous_filter_context(game, effect_controller, effect_source);
+            let mut candidate_ids = ability_copy_candidate_ids(objects, filter, &donor_context);
             candidate_ids.sort();
 
             for candidate_id in candidate_ids {
@@ -5344,13 +5979,8 @@ fn apply_modification_to_chars(
                     continue;
                 };
 
-                if !filter_matches_with_characteristics(
-                    filter,
-                    candidate,
-                    &candidate_chars,
-                    game,
-                    effect_controller,
-                    effect_source,
+                if !filter_matches_with_characteristics_in_context(
+                    filter, candidate, &candidate_chars, game, &donor_context,
                 ) {
                     continue;
                 }
@@ -5422,11 +6052,15 @@ fn apply_modification_to_chars(
             // calculation, which lands back here — so a board with a
             // copy-activated-abilities source (Agatha's Soul Cauldron) paid a
             // full effect rebuild per candidate per layer pass.
-            let effects = effects.to_vec();
             let commanders = game.commander_objects();
             let battlefield = &game.battlefield;
 
-            let mut candidate_ids: Vec<_> = objects.keys().copied().collect();
+            // Zone is independent of layers. Reject impossible donors before
+            // recursively deriving their abilities; otherwise an exile-only
+            // grant recursively evaluates the entire battlefield for every
+            // recipient and dependency probe.
+            let donor_context = continuous_filter_context(game, effect_controller, effect_source);
+            let mut candidate_ids = ability_copy_candidate_ids(objects, filter, &donor_context);
             candidate_ids.sort();
 
             for candidate_id in candidate_ids {
@@ -5451,13 +6085,8 @@ fn apply_modification_to_chars(
                     continue;
                 };
 
-                if !filter_matches_with_characteristics(
-                    filter,
-                    candidate,
-                    &candidate_chars,
-                    game,
-                    effect_controller,
-                    effect_source,
+                if !filter_matches_with_characteristics_in_context(
+                    filter, candidate, &candidate_chars, game, &donor_context,
                 ) {
                     continue;
                 }
@@ -5509,8 +6138,7 @@ fn apply_modification_to_chars(
                 .retain(|candidate| candidate.id() != *id);
         }
         Modification::RemoveAllAbilities => {
-            chars.abilities.clear();
-            chars.static_abilities.clear();
+            remove_all_abilities_for_effect(effect, chars);
             *abilities_removed = true;
         }
         Modification::RemoveAllAbilitiesExceptMana => {
@@ -5761,5 +6389,92 @@ pub(crate) fn add_once_each_turn_activation_limit(activated: &mut crate::ability
     let limit = crate::ConditionExpr::MaxActivationsPerTurn(1);
     if !activated.activation_restrictions.contains(&limit) {
         activated.activation_restrictions.push(limit);
+    }
+}
+
+#[cfg(test)]
+mod relative_control_value_tests {
+    use super::*;
+
+    #[test]
+    fn continuous_control_recipient_preserves_literal_and_effect_relative_values() {
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Control value recipient")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let target = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+        for (modification, expected) in [
+            (Modification::ChangeController(alice), alice),
+            (Modification::ChangeControllerToEffectController, bob),
+        ] {
+            let effect = ContinuousEffect::new(target, bob, EffectTarget::Specific(target), modification);
+            assert_eq!(effect.modification.layer(), Layer::Control);
+            let object = game.object(target).unwrap();
+            let mut simulated = initial_characteristics(object, game.turn.turn_number);
+            crate::dependency::apply_continuous_effect_to_chars_for_dependency(
+                &effect, &mut simulated, object, &game);
+            assert_eq!(simulated.controller, expected);
+            let calculated = calculate_characteristics_with_effects(
+                target, game.objects_map(), &[effect], &game.battlefield, game.commander_objects(), &game)
+                .expect("control value fixture has complete characteristics");
+            assert_eq!(calculated.controller, expected);
+            assert_eq!(game.object(target).unwrap().owner, alice);
+            assert_eq!(game.current_controller(target), Some(alice));
+        }
+    }
+}
+
+impl Modification {
+    pub fn visit_owned_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        let visitor = std::cell::RefCell::new(visitor);
+        let result = self.clone().try_map_payloads(
+            |value| {
+                crate::ability::visit_static_owned_effects(&value, &mut **visitor.borrow_mut());
+                Ok::<_, std::convert::Infallible>(value)
+            },
+            |value| {
+                crate::ability::visit_owned_effects(&value, &mut **visitor.borrow_mut());
+                Ok(value)
+            },
+            |value| {
+                for ability in value.abilities.iter() {
+                    crate::ability::visit_owned_effects(ability, &mut **visitor.borrow_mut());
+                }
+                Ok(value)
+            },
+            |value| {
+                for ability in value.abilities.iter() {
+                    crate::ability::visit_owned_effects(ability, &mut **visitor.borrow_mut());
+                }
+                Ok(value)
+            },
+            |value| {
+                crate::continuous::RetainedRestriction::from(value.clone())
+                    .try_map_ability(|ability| {
+                        crate::ability::visit_static_owned_effects(
+                            &ability,
+                            &mut **visitor.borrow_mut(),
+                        );
+                        Ok(ability)
+                    })
+                    .map(|_| value)
+            },
+            |value| {
+                crate::object::RetainedAuraAttachmentMetadata::from(value.clone())
+                    .try_map_ability(|ability| {
+                        crate::ability::visit_static_owned_effects(
+                            &ability,
+                            &mut **visitor.borrow_mut(),
+                        );
+                        Ok(ability)
+                    })
+                    .map(|_| value)
+            },
+        );
+        match result {
+            Ok(_) => {}
+            Err(never) => match never {},
+        }
     }
 }

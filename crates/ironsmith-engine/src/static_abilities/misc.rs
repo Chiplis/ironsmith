@@ -57,7 +57,7 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use ironsmith_core::{DamagedBySource, TagKey, ValueSurfaceHint};
 
-mod replacements_and_rules;
+pub(crate) mod replacements_and_rules;
 pub use replacements_and_rules::*;
 
 /// Counters on this object survive zone changes except when the destination
@@ -837,6 +837,16 @@ impl StaticAbilityKind for Megamorph {
 pub struct DoesntUntap;
 
 impl StaticAbilityKind for DoesntUntap {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+            std::sync::LazyLock::new(|| super::CompiledStaticAbility {
+                id: Some(StaticAbilityId::DoesntUntap),
+                label: "Doesn't untap during your untap step".to_owned(),
+                payload: ironsmith_core::StaticAbilityPayload::None,
+            });
+        Some(&MODEL)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::DoesntUntap
     }
@@ -1309,6 +1319,10 @@ impl StaticAbilityKind for EntersUnderChosenControl {
 pub struct EntersTapped;
 
 impl StaticAbilityKind for EntersTapped {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::EntersTapped
     }
@@ -1340,6 +1354,10 @@ impl StaticAbilityKind for EntersTapped {
 pub struct EntersTappedUnlessControlTwoOrMoreOtherLands;
 
 impl StaticAbilityKind for EntersTappedUnlessControlTwoOrMoreOtherLands {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::EntersTappedUnlessControlTwoOrMoreOtherLands
     }
@@ -1474,6 +1492,12 @@ impl StaticAbilityKind for EntersTappedUnlessTwoOrMoreOpponents {
 struct ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher) }
+
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        matches!(kind, crate::events::EventKind::ZoneChange | crate::events::EventKind::EnterBattlefield)
+    }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1510,6 +1534,8 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLands
 struct ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher) }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1546,6 +1572,8 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLand
 struct ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher) }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1586,6 +1614,8 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLands
 struct ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher) }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1618,6 +1648,8 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatc
 struct ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher) }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1747,6 +1779,8 @@ struct ThisWouldEnterTappedUnlessConditionMatcher {
 }
 
 impl ReplacementMatcher for ThisWouldEnterTappedUnlessConditionMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessConditionMatcher { condition: self.condition.clone(), display: self.display.clone() }) }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1871,6 +1905,8 @@ impl StaticAbilityKind for Bloodthirst {
 struct ThisWouldEnterWithBloodthirstMatcher;
 
 impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterWithBloodthirstMatcher) }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -1944,6 +1980,29 @@ impl StaticAbilityKind for Tribute {
                 paid_label: "Tribute".to_string(),
             },
         ))
+    }
+}
+
+/// A rule-derived entry ability. It retains a complete typed model and uses
+/// ordinary replacement discovery/application, just like printed entry abilities.
+#[derive(Debug, Clone)]
+pub struct IntrinsicStartingCounters {
+    rule: ironsmith_core::IntrinsicStartingCounter,
+    model: super::CompiledStaticAbility,
+}
+impl IntrinsicStartingCounters {
+    pub fn new(rule: ironsmith_core::IntrinsicStartingCounter) -> Self {
+        Self { rule, model: super::CompiledStaticAbility::intrinsic_starting_counters(rule) }
+    }
+}
+impl StaticAbilityKind for IntrinsicStartingCounters {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::EnterWithCounters }
+    fn display(&self) -> String { self.model.label.clone() }
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> { Some(&self.model) }
+    fn intrinsic_starting_counter_rule(&self) -> Option<ironsmith_core::IntrinsicStartingCounter> { Some(self.rule) }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(source, controller, ThisWouldEnterBattlefieldMatcher,
+            ReplacementAction::EnterWithIntrinsicStartingCounters(self.rule)))
     }
 }
 
@@ -2306,6 +2365,8 @@ struct ThisWouldEnterWithCountersIfConditionMatcher {
 }
 
 impl ReplacementMatcher for ThisWouldEnterWithCountersIfConditionMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterWithCountersIfConditionMatcher { condition: self.condition.clone(), condition_display: self.condition_display.clone() }) }
+
     fn applies_from_entering_source(&self) -> bool {
         true
     }
@@ -2422,6 +2483,10 @@ impl ManaSpendPermissionAbility {
 }
 
 impl StaticAbilityKind for ManaSpendPermissionAbility {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ManaSpendPermission
     }
@@ -3133,6 +3198,8 @@ struct PreventableCombatDamageToOrByObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableCombatDamageToOrByObjectMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableCombatDamageToOrByObjectMatcher { to: self.to.clone(), by: self.by.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if self.to.matches_prepared_event(event, ctx) {
             return true;
@@ -3240,6 +3307,8 @@ struct PreventableAnyDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableAnyDamageToObjectMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableAnyDamageToObjectMatcher { combat: self.combat.clone(), noncombat: self.noncombat.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         self.combat.matches_prepared_event(event, ctx) || self.noncombat.matches_prepared_event(event, ctx)
     }
@@ -4406,6 +4475,8 @@ impl ConditionalWouldEnterBattlefieldMatcher {
 }
 
 impl ReplacementMatcher for ConditionalWouldEnterBattlefieldMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ConditionalWouldEnterBattlefieldMatcher { enter_matcher: self.enter_matcher.clone(), condition: self.condition.clone() }) }
+
     fn applies_from_entering_source(&self) -> bool {
         self.enter_matcher.applies_from_entering_source()
     }
@@ -5043,5 +5114,23 @@ impl StaticAbilityKind for DamagePreventionWithFollowUp {
             // Additional effects happen even when the damage cannot be prevented.
             ReplacementAction::PreventDamageThen(self.effects.clone()),
         ))
+    }
+}
+
+// Engine-owned conversion can access private predicate captures without making them public.
+pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
+    match model {
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher => Some(Box::new(ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLandsMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher => Some(Box::new(ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLandsMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher => Some(Box::new(ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLandsMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher => Some(Box::new(ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher => Some(Box::new(ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterTappedUnlessConditionMatcher { condition, display } => Some(Box::new(ThisWouldEnterTappedUnlessConditionMatcher { condition: condition.clone(), display: display.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterWithBloodthirstMatcher => Some(Box::new(ThisWouldEnterWithBloodthirstMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ThisWouldEnterWithCountersIfConditionMatcher { condition, condition_display } => Some(Box::new(ThisWouldEnterWithCountersIfConditionMatcher { condition: condition.clone(), condition_display: condition_display.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableCombatDamageToOrByObjectMatcher { to, by } => Some(Box::new(PreventableCombatDamageToOrByObjectMatcher { to: to.clone(), by: by.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableAnyDamageToObjectMatcher { combat, noncombat } => Some(Box::new(PreventableAnyDamageToObjectMatcher { combat: combat.clone(), noncombat: noncombat.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::ConditionalWouldEnterBattlefieldMatcher { enter_matcher, condition } => Some(Box::new(ConditionalWouldEnterBattlefieldMatcher { enter_matcher: enter_matcher.clone(), condition: condition.clone() })),
+ _ => None,
     }
 }

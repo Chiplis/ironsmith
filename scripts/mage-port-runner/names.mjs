@@ -2,8 +2,11 @@ import { normalizePlayerId } from "../wasm-test-harness.mjs";
 
 export const PLAYER_NAMES = ["Alice", "Bob", "Charlie", "Dana"];
 export const MAX_ADVANCE_STEPS = 600;
-export const DEFAULT_LIBRARY_CARD = "Plains";
-export const DEFAULT_LIBRARY_SIZE = 60;
+// CardTestPlayerBase uses this upstream fixture for both default decks:
+// https://github.com/magefree/mage/blob/master/Mage.Tests/RB%20Aggro.dck
+// Fetch-land tests depend on these being Mountains, not generic land fillers.
+export const DEFAULT_LIBRARY_CARD = "Mountain";
+export const DEFAULT_LIBRARY_SIZE = 71;
 export const ALLOW_ENGINE_SHIMS = process.env.MAGE_PORT_ALLOW_ENGINE_SHIMS === "1";
 
 export const CARD_FIXTURES = new Map([

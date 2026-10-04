@@ -512,6 +512,11 @@ pub trait EffectExecutor:
     /// provided by the default capability helpers below.
     fn visit_child_effects(&self, _visitor: &mut dyn FnMut(&Effect)) {}
 
+    /// Visit complete definitions directly owned by this executor. Composition
+    /// traversal remains the caller's responsibility through child effects.
+    fn visit_card_definitions(&self, _visitor: &mut dyn FnMut(&crate::cards::CardDefinition)) {}
+
+
     /// Whether this effect is a resolution prelude that only prepares context
     /// for following effects, such as tagging an object for a self-replacement.
     fn is_resolution_prelude(&self) -> bool {
@@ -528,6 +533,14 @@ pub trait EffectExecutor:
     fn max_cost_x(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> Option<u32> {
         self.transparent_child_effect()
             .and_then(|effect| effect.max_cost_x(game, source, controller))
+    }
+
+    /// Complete, side-effect-free mana production semantics for the compact
+    /// evaluator. This is deliberately opt-in: a capability hint is not proof
+    /// that executing an effect only produces mana. Wrappers must preserve
+    /// restrictions, choices and other effects rather than forwarding blindly.
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        None
     }
 
     /// Returns true when this effect is directly capable of adding mana.

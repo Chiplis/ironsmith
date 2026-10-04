@@ -3,7 +3,6 @@
 use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outcome};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
@@ -32,6 +31,11 @@ impl DoubleManaPoolEffect {
 }
 
 impl EffectExecutor for DoubleManaPoolEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::DoublePool { player: &self.player })
+    }
+
     fn directly_produces_mana(&self) -> bool {
         true
     }
@@ -41,17 +45,10 @@ impl EffectExecutor for DoubleManaPoolEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let player = game.player(player_id).ok_or(ExecutionError::InvalidTarget)?;
-        let symbols = [
-            ManaSymbol::White, ManaSymbol::Blue, ManaSymbol::Black,
-            ManaSymbol::Red, ManaSymbol::Green, ManaSymbol::Colorless,
-        ].into_iter().flat_map(|symbol| {
-            std::iter::repeat_n(symbol, player.mana_pool.amount(symbol) as usize)
-        }).collect::<Vec<_>>();
-        let added = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
-
-        Ok(mana_added_value_outcome(ctx, player_id, added))
+        let (player_id, symbols) = self.mana_production().expect("mana production descriptor")
+            .resolve_exact(game, ctx)?;
+        let mana = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
+        Ok(mana_added_value_outcome(ctx, player_id, mana))
     }
 }
 

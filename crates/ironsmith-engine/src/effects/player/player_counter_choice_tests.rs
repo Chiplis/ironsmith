@@ -147,6 +147,10 @@ fn every_player_counter_effect_waits_and_honors_the_second_replacement() {
                 PlayerFilter::Specific(bob),
             )),
         ),
+        (
+            CounterType::Named("ticket".into()),
+            Box::new(crate::effects::TicketCountersEffect::new(1, PlayerFilter::Specific(bob))),
+        ),
     ];
     for (counter_type, effect) in effects {
         let (checkpoint, source, alice, bob) = counter_replacement_game();
@@ -747,3 +751,73 @@ fn player_counter_payload_pause_or_error_restores_earlier_kinds_and_replays_once
         }
     }
 }
+
+#[test]
+fn simultaneous_ticket_counters_stop_and_replay_after_each_recipient() {
+    let (checkpoint, source, alice, bob) = counter_replacement_game();
+    let effect = ForPlayersEffect::new(
+        PlayerFilter::Any,
+        vec![crate::effect::Effect::new(crate::effects::TicketCountersEffect::new(
+            1,
+            PlayerFilter::IteratedPlayer,
+        ))],
+    );
+    for (answers, alice_counters, bob_counters, pending, players) in [
+        (&[][..], 0, 0, true, vec![alice]),
+        (&[1][..], 0, 0, true, vec![alice, bob]),
+        (&[1, 1][..], 3, 3, false, vec![alice, bob]),
+    ] {
+        let mut game = checkpoint.clone();
+        let mut dm = CounterChoiceQueue::new(alice, answers);
+        dm.expected_player = None;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(
+            game.player(alice).unwrap().counter_count(CounterType::Named("ticket".into())),
+            alice_counters
+        );
+        assert_eq!(
+            game.player(bob).unwrap().counter_count(CounterType::Named("ticket".into())),
+            bob_counters
+        );
+        assert_eq!(dm.pending, pending);
+        assert_eq!(dm.seen_players, players);
+        assert_eq!(outcome.events.len(), if pending { 0 } else { 2 });
+        assert!(game.take_pending_trigger_events().is_empty());
+        if pending {
+            // Replay against the actual restored state, not a fresh fixture.
+            let mut resumed = CounterChoiceQueue::new(alice, &[1, 1]);
+            resumed.expected_player = None;
+            let mut resumed_ctx = ExecutionContext::new(source, alice, &mut resumed);
+            let completed = effect.execute(&mut game, &mut resumed_ctx).unwrap();
+            assert!(!resumed_ctx.decision_maker.awaiting_choice());
+            assert_eq!(
+                game.player(alice).unwrap().counter_count(CounterType::Named("ticket".into())),
+                3
+            );
+            assert_eq!(game.player(bob).unwrap().counter_count(CounterType::Named("ticket".into())), 3);
+            assert_eq!(resumed.seen_players, vec![alice, bob]);
+            assert_eq!(completed.events.len(), 2);
+            let markers = completed
+                .events
+                .iter()
+                .map(|event| {
+                    event
+                        .downcast::<crate::events::MarkersChangedEvent>()
+                        .unwrap()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                markers[0].location,
+                crate::marker::MarkerLocation::Player(alice)
+            );
+            assert_eq!(
+                markers[1].location,
+                crate::marker::MarkerLocation::Player(bob)
+            );
+            assert!(markers.iter().all(|event| event.amount == 3));
+            assert!(game.take_pending_trigger_events().is_empty());
+        }
+    }
+}
+

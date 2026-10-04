@@ -40,6 +40,12 @@ impl DamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToPlayerMatcher { player_filter: self.player_filter.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -74,6 +80,12 @@ pub struct PreventableDamageToPlayerMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageToPlayerMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableDamageToPlayerMatcher { player_filter: self.player_filter.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -114,6 +126,12 @@ impl DamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToObjectMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToObjectMatcher { filter: self.filter.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -157,6 +175,12 @@ impl DamageToPlayerOrObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToPlayerOrObjectMatcher { player_filter: self.player_filter.clone(), object_filter: self.object_filter.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -190,6 +214,12 @@ impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
 pub struct CombatDamageMatcher;
 
 impl ReplacementMatcher for CombatDamageMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::CombatDamageMatcher) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, _ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -220,6 +250,12 @@ impl PreventableCombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableCombatDamageToObjectMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableCombatDamageToObjectMatcher { filter: self.filter.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -267,6 +303,12 @@ impl PreventableNoncombatDamageToObjectMatcher {
 }
 
 impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableNoncombatDamageToObjectMatcher { filter: self.filter.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -306,6 +348,12 @@ impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
 pub struct NoncombatDamageMatcher;
 
 impl ReplacementMatcher for NoncombatDamageMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::NoncombatDamageMatcher) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, _ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -321,6 +369,21 @@ impl ReplacementMatcher for NoncombatDamageMatcher {
     fn display(&self) -> String {
         "When noncombat damage would be dealt".to_string()
     }
+}
+
+
+/// CR 608.2h/609.7b: current source properties are authoritative while the
+/// source is present. A failed current match cannot fall back to older LKI.
+/// Phased-out sources are absent for this query (CR 702.26b).
+fn damage_source_matches_filter(source: ObjectId, filter: &ObjectFilter, ctx: &EventContext) -> bool {
+    if !ctx.game.is_phased_out(source) {
+        if let Some(object) = ctx.game.object(source) {
+            return filter.matches(object, &ctx.filter_ctx, ctx.game);
+        }
+    }
+    ctx.event_source_snapshot
+        .filter(|snapshot| snapshot.object_id == source)
+        .is_some_and(|snapshot| filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game))
 }
 
 /// Matches damage events from a source matching the filter.
@@ -341,6 +404,12 @@ impl DamageFromSourceMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceMatcher { filter: self.filter.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -350,16 +419,7 @@ impl ReplacementMatcher for DamageFromSourceMatcher {
             return false;
         };
 
-        ctx.game
-            .object(damage.source)
-            .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
-            || ctx
-                .event_source_snapshot
-                .filter(|snapshot| snapshot.object_id == damage.source)
-                .is_some_and(|snapshot| {
-                    self.filter
-                        .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-                })
+        damage_source_matches_filter(damage.source, &self.filter, ctx)
     }
 
     fn display(&self) -> String {
@@ -388,6 +448,12 @@ impl DamageFromSourceToPlayerMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToPlayerMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceToPlayerMatcher { source_filter: self.source_filter.clone(), player_filter: self.player_filter.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -411,16 +477,7 @@ impl ReplacementMatcher for DamageFromSourceToPlayerMatcher {
             return false;
         }
 
-        ctx.game.object(damage.source).is_some_and(|source_obj| {
-            self.source_filter
-                .matches(source_obj, &ctx.filter_ctx, ctx.game)
-        }) || ctx
-            .event_source_snapshot
-            .filter(|snapshot| snapshot.object_id == damage.source)
-            .is_some_and(|snapshot| {
-                self.source_filter
-                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-            })
+        damage_source_matches_filter(damage.source, &self.source_filter, ctx)
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -462,16 +519,7 @@ impl DamageFromSourceToObjectMatcher {
     }
 
     fn source_matches(&self, damage: &DamageEvent, ctx: &EventContext) -> bool {
-        ctx.game
-            .object(damage.source)
-            .is_some_and(|obj| self.source_filter.matches(obj, &ctx.filter_ctx, ctx.game))
-            || ctx
-                .event_source_snapshot
-                .filter(|snapshot| snapshot.object_id == damage.source)
-                .is_some_and(|snapshot| {
-                    self.source_filter
-                        .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-                })
+        damage_source_matches_filter(damage.source, &self.source_filter, ctx)
     }
 
     fn target_matches(
@@ -495,6 +543,12 @@ impl DamageFromSourceToObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSourceToObjectMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceToObjectMatcher { source_filter: self.source_filter.clone(), target_filter: self.target_filter.clone(), combat_only: self.combat_only.clone(), preventable_only: self.preventable_only.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -548,6 +602,12 @@ impl Default for DamageFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSelfMatcher) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -594,6 +654,12 @@ impl Default for DamageToOrFromSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToOrFromSelfMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToOrFromSelfMatcher) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -640,6 +706,12 @@ impl Default for DamageFromSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageFromSelfCombatMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSelfCombatMatcher) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -667,6 +739,8 @@ impl ReplacementMatcher for DamageFromSelfCombatMatcher {
 
 /// Constraint for matching damage sources.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
 pub enum DamageSourceConstraint {
     /// Damage is dealt by a specific object.
     Specific(ObjectId),
@@ -689,19 +763,7 @@ impl DamageSourceConstraint {
         source: ObjectId,
         ctx: &crate::events::EventContext,
     ) -> bool {
-        let filter_matches = |filter: &ObjectFilter| {
-            let matches_current = ctx
-                .game
-                .object(source)
-                .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game));
-            matches_current
-                || ctx
-                    .event_source_snapshot
-                    .filter(|snapshot| snapshot.object_id == source)
-                    .is_some_and(|snapshot| {
-                        filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-                    })
-        };
+        let filter_matches = |filter: &ObjectFilter| damage_source_matches_filter(source, filter, ctx);
         match self {
             DamageSourceConstraint::Specific(id) => source == *id,
             DamageSourceConstraint::Filter(filter) => filter_matches(filter),
@@ -714,6 +776,8 @@ impl DamageSourceConstraint {
 
 /// Constraint for matching damage targets.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
 pub enum DamageTargetConstraint {
     /// Any damage target.
     Any,
@@ -755,6 +819,12 @@ impl PreventableDamageConstraintMatcher {
 }
 
 impl ReplacementMatcher for PreventableDamageConstraintMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableDamageConstraintMatcher { source: self.source.clone(), target: self.target.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -837,6 +907,12 @@ impl Default for DamageToSelfMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfMatcher) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -878,6 +954,12 @@ impl Default for DamageToAttachedObjectMatcher {
 }
 
 impl ReplacementMatcher for DamageToAttachedObjectMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToAttachedObjectMatcher) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -943,6 +1025,12 @@ impl DamageToSelfConstraintMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfConstraintMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfConstraintMatcher { source_filter: self.source_filter.clone(), combat_only: self.combat_only.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -970,16 +1058,7 @@ impl ReplacementMatcher for DamageToSelfConstraintMatcher {
         }
 
         if let Some(source_filter) = &self.source_filter {
-            let matches_current = ctx.game.object(damage.source).is_some_and(|source_obj| {
-                source_filter.matches(source_obj, &ctx.filter_ctx, ctx.game)
-            });
-            let matches_lki = ctx
-                .event_source_snapshot
-                .filter(|snapshot| snapshot.object_id == damage.source)
-                .is_some_and(|snapshot| {
-                    source_filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-                });
-            if !matches_current && !matches_lki {
+            if !damage_source_matches_filter(damage.source, source_filter, ctx) {
                 return false;
             }
         }
@@ -1013,6 +1092,12 @@ impl Default for DamageToSelfCombatMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfCombatMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfCombatMatcher) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -1062,6 +1147,12 @@ impl DamageToOtherCreatureYouControlMatcher {
 }
 
 impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToOtherCreatureYouControlMatcher { noncombat_only: self.noncombat_only.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -1136,6 +1227,12 @@ impl DamageToSelfFromSourceFilterMatcher {
 }
 
 impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfFromSourceFilterMatcher { source_filter: self.source_filter.clone(), combat_only: self.combat_only.clone(), source_relation: self.source_relation.clone() }) }
+
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -1169,16 +1266,7 @@ impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
             return false;
         }
 
-        ctx.game.object(damage.source).is_some_and(|source_obj| {
-            self.source_filter
-                .matches(source_obj, &ctx.filter_ctx, ctx.game)
-        }) || ctx
-            .event_source_snapshot
-            .filter(|snapshot| snapshot.object_id == damage.source)
-            .is_some_and(|snapshot| {
-                self.source_filter
-                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-            })
+        damage_source_matches_filter(damage.source, &self.source_filter, ctx)
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -1494,5 +1582,78 @@ mod tests {
             DamageToSelfConstraintMatcher::from_source_filter(ObjectFilter::creature())
                 .matches_event(&from_creature, &ctx).expect("finite matcher fixture evaluates successfully")
         );
+    }
+}
+
+#[cfg(test)]
+mod authoritative_damage_source_filter_tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::color::ColorSet;
+    use crate::ids::{CardId, PlayerId};
+    use crate::zone::Zone;
+    #[test]
+    fn all_source_property_owners_select_current_or_lki_without_fallback() {
+        for state in 0..5 {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+            let card = CardBuilder::new(CardId::new(), "Source property selection fixture")
+                .card_types(vec![crate::types::CardType::Creature])
+                .color_indicator(if state == 1 { ColorSet::BLUE } else { ColorSet::RED })
+                .power_toughness(PowerToughness::fixed(3, 9)).build();
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let target = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let mut snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(source).unwrap(), &game);
+            if state == 0 { game.object_mut(source).unwrap().color_override = Some(ColorSet::BLUE); }
+            if state == 1 { game.object_mut(source).unwrap().color_override = Some(ColorSet::RED); }
+            if state == 2 || state == 4 { game.move_object(source, Zone::Exile, crate::events::cause::EventCause::effect()).unwrap(); }
+            if state == 3 { game.phase_out(source); }
+            if state == 4 { snapshot.object_id = target; }
+            let expected = state != 0 && state != 4;
+            let ctx = EventContext::for_replacement_effect(alice, target, &game).with_event_source_snapshot(Some(&snapshot));
+            let filter = ObjectFilter::creature().with_colors(ColorSet::RED);
+            let object_event = DamageEvent::with_cause(source, DamageTarget::Object(target), 3, false, crate::events::cause::EventCause::effect());
+            let player_event = DamageEvent::with_cause(source, DamageTarget::Player(bob), 3, false, crate::events::cause::EventCause::effect());
+            let owners: Vec<(Box<dyn ReplacementMatcher>, &DamageEvent)> = vec![
+                (Box::new(DamageFromSourceMatcher::new(filter.clone())), &object_event),
+                (Box::new(DamageFromSourceToPlayerMatcher::new(filter.clone(), PlayerFilter::Specific(bob))), &player_event),
+                (Box::new(DamageFromSourceToObjectMatcher::new(filter.clone(), ObjectFilter::specific(target))), &object_event),
+                (Box::new(PreventableDamageConstraintMatcher::from_filter(filter.clone(), DamageTargetConstraint::Any)), &object_event),
+                (Box::new(DamageToSelfConstraintMatcher::from_source_filter(filter.clone())), &object_event),
+                (Box::new(DamageToSelfFromSourceFilterMatcher::new(filter.clone())), &object_event),
+            ];
+            for (index, (owner, event)) in owners.iter().enumerate() {
+                assert_eq!(owner.matches_event(*event, &ctx).unwrap(), expected, "source owner {index}, state {state}");
+            }
+            assert_eq!(DamageSourceConstraint::SpecificMatching { source, filter }.matches_damage_source(source, &ctx), expected);
+        }
+    }
+}
+
+// Engine-owned conversion can access private predicate captures without making them public.
+pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
+    match model {
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToPlayerMatcher { player_filter } => Some(Box::new(DamageToPlayerMatcher { player_filter: player_filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableDamageToPlayerMatcher { player_filter } => Some(Box::new(PreventableDamageToPlayerMatcher { player_filter: player_filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToObjectMatcher { filter } => Some(Box::new(DamageToObjectMatcher { filter: filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToPlayerOrObjectMatcher { player_filter, object_filter } => Some(Box::new(DamageToPlayerOrObjectMatcher { player_filter: player_filter.clone(), object_filter: object_filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::CombatDamageMatcher => Some(Box::new(CombatDamageMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableCombatDamageToObjectMatcher { filter } => Some(Box::new(PreventableCombatDamageToObjectMatcher { filter: filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableNoncombatDamageToObjectMatcher { filter } => Some(Box::new(PreventableNoncombatDamageToObjectMatcher { filter: filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::NoncombatDamageMatcher => Some(Box::new(NoncombatDamageMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceMatcher { filter } => Some(Box::new(DamageFromSourceMatcher { filter: filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceToPlayerMatcher { source_filter, player_filter } => Some(Box::new(DamageFromSourceToPlayerMatcher { source_filter: source_filter.clone(), player_filter: player_filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSourceToObjectMatcher { source_filter, target_filter, combat_only, preventable_only } => Some(Box::new(DamageFromSourceToObjectMatcher { source_filter: source_filter.clone(), target_filter: target_filter.clone(), combat_only: combat_only.clone(), preventable_only: preventable_only.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSelfMatcher => Some(Box::new(DamageFromSelfMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToOrFromSelfMatcher => Some(Box::new(DamageToOrFromSelfMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageFromSelfCombatMatcher => Some(Box::new(DamageFromSelfCombatMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::PreventableDamageConstraintMatcher { source, target } => Some(Box::new(PreventableDamageConstraintMatcher { source: source.clone(), target: target.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfMatcher => Some(Box::new(DamageToSelfMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToAttachedObjectMatcher => Some(Box::new(DamageToAttachedObjectMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfConstraintMatcher { source_filter, combat_only } => Some(Box::new(DamageToSelfConstraintMatcher { source_filter: source_filter.clone(), combat_only: combat_only.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfCombatMatcher => Some(Box::new(DamageToSelfCombatMatcher)),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToOtherCreatureYouControlMatcher { noncombat_only } => Some(Box::new(DamageToOtherCreatureYouControlMatcher { noncombat_only: noncombat_only.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageToSelfFromSourceFilterMatcher { source_filter, combat_only, source_relation } => Some(Box::new(DamageToSelfFromSourceFilterMatcher { source_filter: source_filter.clone(), combat_only: combat_only.clone(), source_relation: source_relation.clone() })),
+ _ => None,
     }
 }

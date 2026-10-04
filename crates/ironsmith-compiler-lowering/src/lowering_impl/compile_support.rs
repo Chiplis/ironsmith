@@ -670,6 +670,21 @@ fn prepend_missing_target_choice_prelude(
 }
 
 fn effect_exposes_target_choice(effect: &Effect, choice: &ChooseSpec) -> bool {
+    // A transfer owns both endpoint declarations. Do not synthesize a
+    // recipient prelude whose assignment the executable would lose.
+    let endpoints = if let Some(value) = effect.downcast_ref::<crate::effects::MoveAllCountersEffect>() {
+        Some((&value.from, &value.to))
+    } else if let Some(value) = effect.downcast_ref::<crate::effects::MoveCountersEffect>() {
+        Some((&value.from, &value.to))
+    } else if let Some(value) = effect.downcast_ref::<crate::effects::MoveOneCounterEffect>() {
+        Some((&value.from, &value.to))
+    } else { None };
+    if let Some((from, to)) = endpoints {
+        return from == choice || to == choice;
+    }
+    if let Some(value) = effect.downcast_ref::<crate::effects::MayEffect<Effect>>() {
+        return value.effects.iter().any(|child| effect_exposes_target_choice(child, choice));
+    }
     if effect.target_spec().is_some_and(|spec| spec == choice) {
         return true;
     }

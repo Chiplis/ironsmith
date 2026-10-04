@@ -49,6 +49,7 @@ pub enum CounterActionAst {
     MoveAllCounters {
         from: TargetAst,
         to: TargetAst,
+        remove_from_source: bool,
     },
     MoveOneCounter {
         from: TargetAst,
@@ -58,7 +59,7 @@ pub enum CounterActionAst {
     /// Booster): a counted move of one counter kind (CR 122.5).
     MoveCounters {
         counter_type: CounterType,
-        count: Value,
+        count: ironsmith_core::effect::CounterMoveAmount,
         from: TargetAst,
         to: TargetAst,
     },

@@ -36,6 +36,8 @@ impl WouldDrawCardMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawCardMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawCardMatcher { player_filter: self.player_filter.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Draw {
             return false;
@@ -77,6 +79,8 @@ impl WouldDrawCardWhileLibraryEmptyMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawCardWhileLibraryEmptyMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawCardWhileLibraryEmptyMatcher { player_filter: self.player_filter.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Draw {
             return false;
@@ -124,6 +128,8 @@ impl WouldDrawFirstCardMatcher {
 }
 
 impl ReplacementMatcher for WouldDrawFirstCardMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawFirstCardMatcher { player_filter: self.player_filter.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Draw {
             return false;
@@ -225,6 +231,8 @@ impl WouldDiscardMatcher {
 }
 
 impl ReplacementMatcher for WouldDiscardMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDiscardMatcher { player_filter: self.player_filter.clone(), cause_filter: self.cause_filter.clone(), card_filter: self.card_filter.clone(), destination: self.destination.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Discard {
             return false;
@@ -411,5 +419,16 @@ mod tests {
 
         let matcher = WouldDiscardMatcher::you();
         assert_eq!(matcher.display(), "When you would discard a card");
+    }
+}
+
+// Engine-owned conversion can access private predicate captures without making them public.
+pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
+    match model {
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawCardMatcher { player_filter } => Some(Box::new(WouldDrawCardMatcher { player_filter: player_filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawCardWhileLibraryEmptyMatcher { player_filter } => Some(Box::new(WouldDrawCardWhileLibraryEmptyMatcher { player_filter: player_filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDrawFirstCardMatcher { player_filter } => Some(Box::new(WouldDrawFirstCardMatcher { player_filter: player_filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldDiscardMatcher { player_filter, cause_filter, card_filter, destination } => Some(Box::new(WouldDiscardMatcher { player_filter: player_filter.clone(), cause_filter: cause_filter.clone(), card_filter: card_filter.clone(), destination: destination.clone() })),
+ _ => None,
     }
 }

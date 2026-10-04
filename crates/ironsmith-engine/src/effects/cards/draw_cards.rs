@@ -41,8 +41,8 @@ pub(crate) fn execute_scoped_draw_replacement_effects(
     let drawn_count = outcome.events.iter()
         .filter_map(|event| event.downcast::<CardsDrawnEvent>())
         .filter(|event| event.player == replaced_player)
-        .try_fold(0i32, |total, event| {
-            let amount = i32::try_from(event.amount()).map_err(|_| ExecutionError::InternalError(
+        .try_fold(0i64, |total, event| {
+            let amount = i64::try_from(event.amount()).map_err(|_| ExecutionError::InternalError(
                 "draw replacement outcome exceeds the supported count range".into(),
             ))?;
             total.checked_add(amount).ok_or_else(|| ExecutionError::InternalError(
@@ -418,7 +418,7 @@ fn commit_draw_original_with_reveal_mode(
             let mut drawn = game.draw_cards_with_dm(player, count, &mut *ctx.decision_maker);
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             let count = if player == requested_player {
-                i32::try_from(drawn.len()).map_err(|_| ExecutionError::InternalError("draw outcome exceeds supported count range".into()))?
+                i64::try_from(drawn.len()).map_err(|_| ExecutionError::InternalError("draw outcome exceeds supported count range".into()))?
             } else { 0 };
             let ids = drawn.clone();
             let events = finish_direct_draw_segment(
@@ -492,7 +492,7 @@ fn execute_draw_instruction(
         requested_count
     };
 
-    let mut total_drawn: i32 = 0;
+    let mut total_drawn: i64 = 0;
     let mut replacement_count = 0;
     let mut events = Vec::new();
     let mut replacement_facts = Vec::new();
@@ -640,7 +640,7 @@ fn execute_draw_instruction(
                 if drawn.is_empty() {
                     continue;
                 }
-                let drawn_len = drawn.len() as i32;
+                let drawn_len = drawn.len() as i64;
                 if direct_drawn.is_empty() {
                     direct_draw_is_first = is_first;
                     direct_draw_step_context = (
@@ -1337,5 +1337,101 @@ mod tests {
 
         let event2 = result2.events[0].downcast::<CardsDrawnEvent>().unwrap();
         assert!(!event2.is_first_this_turn); // Not first draw anymore
+    }
+}
+
+#[cfg(test)]
+mod removed_draw_operation_tests {
+    use super::*;
+    fn check_removed_draw(turn_draw: bool) {
+        struct PreferSubtractor(ObjectId);
+        impl DecisionMaker for PreferSubtractor {
+            fn decide_options(&mut self, _game: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                let option = ctx.options.iter().find(|option| option.legal && option.object_id == Some(self.0))
+                    .or_else(|| ctx.options.iter().find(|option| option.legal)).unwrap();
+                vec![option.index]
+            }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Draw replacement source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let subtractor = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let adder = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        for _ in 0..3 { game.create_object_from_definition(&definition, alice, Zone::Library); }
+        let effect = |source, modification| crate::replacement::ReplacementEffect::with_matcher(
+            source, alice, crate::events::cards::matchers::WouldDrawCardMatcher::any_player(),
+            crate::replacement::ReplacementAction::Modify(modification));
+        let removed = game.effect_store.replacement_effects.add_one_shot_effect(effect(subtractor, crate::replacement::EventModification::Subtract(1)));
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(effect(adder, crate::replacement::EventModification::Add(1)));
+        let mut chooser = PreferSubtractor(subtractor);
+        for positive in [false, true] {
+            game.take_pending_trigger_events();
+            let mut ctx = ExecutionContext::new(subtractor, alice, &mut chooser);
+            let outcome = if turn_draw { execute_turn_draw_proposal(&mut game, &mut ctx, alice) }
+                else { crate::effects::execute_effect(&mut game, &Effect::new(DrawCardsEffect::you(1)), &mut ctx) }.unwrap();
+            let count = if positive { 2 } else { 0 };
+            assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(count), "a removed draw cannot be revived by a later increase");
+            assert_eq!(game.player(alice).unwrap().hand.len(), count as usize);
+            assert_eq!(game.player(alice).unwrap().library.len(), 3 - count as usize);
+            assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), count as u32);
+            assert_eq!(outcome.events_of_type::<CardsDrawnEvent>().map(CardsDrawnEvent::amount).sum::<u32>(), count as u32);
+            assert!(game.effect_store.replacement_effects.get_effect(removed).is_none());
+            assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_some(), !positive);
+            if !positive { assert!(game.take_pending_trigger_events().is_empty()); }
+        }
+    }
+    #[test]
+    fn effect_draw_reduced_to_zero_preserves_later_one_shot_until_positive_draw() { check_removed_draw(false); }
+    #[test]
+    fn turn_draw_reduced_to_zero_preserves_later_one_shot_until_positive_draw() { check_removed_draw(true); }
+    #[test]
+    fn positive_draw_from_empty_library_still_applies_its_replacement() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Empty library replacement source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(
+            source, alice, crate::events::cards::matchers::WouldDrawCardWhileLibraryEmptyMatcher::you(),
+            crate::replacement::ReplacementAction::Instead(vec![Effect::gain_life(3)])));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = DrawCardsEffect::you(1).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(game.player(alice).unwrap().life, 23);
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
+        assert!(game.player(alice).unwrap().hand.is_empty());
+        assert_eq!(outcome.events_of_type::<crate::events::LifeGainEvent>().count(), 1);
+        assert_eq!(outcome.events_of_type::<CardsDrawnEvent>().count(), 0);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+    }
+}
+
+#[cfg(test)]
+mod removed_draw_selected_api_tests {
+    use super::*;
+    #[test]
+    fn selected_zero_draw_preserves_one_shot_until_positive_proposal() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Selected draw source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                crate::events::cards::matchers::WouldDrawCardMatcher::any_player(),
+                crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Add(1))));
+        for count in [0, 1] {
+            let result = crate::events::processing::process_event_with_chosen_replacement_trait(
+                &mut game, Event::draw(alice, count, true), shield).unwrap();
+            let event = result.resolved_event().expect("selected draw API retains a resolved proposal");
+            let draw = crate::events::downcast_event::<crate::events::DrawEvent>(event.inner()).unwrap();
+            assert_eq!(draw.count, if count == 0 { 0 } else { 2 });
+            assert_eq!(draw.player, alice);
+            assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_some(), count == 0);
+            assert!(game.player(alice).unwrap().hand.is_empty(), "proposal APIs do not commit a draw");
+            assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
+            assert!(game.take_pending_trigger_events().is_empty());
+        }
     }
 }

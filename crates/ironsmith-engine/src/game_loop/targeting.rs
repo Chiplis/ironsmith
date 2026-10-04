@@ -938,6 +938,55 @@ pub fn extract_target_spec(effect: &Effect) -> Option<ExtractedTarget<'_>> {
     effect.target_selection_profile()
 }
 
+/// Counter transfers retain their authored endpoint order through wrappers.
+pub(super) fn counter_transfer_target_specs(effect: &Effect) -> Option<(ChooseSpec, ChooseSpec)> {
+    if let Some(value) = effect.downcast_ref::<crate::effects::MoveAllCountersEffect>() {
+        return Some((value.from.clone(), value.to.clone()));
+    }
+    if let Some(value) = effect.downcast_ref::<crate::effects::MoveCountersEffect>() {
+        return Some((value.from.clone(), value.to.clone()));
+    }
+    if let Some(value) = effect.downcast_ref::<crate::effects::MoveOneCounterEffect>() {
+        return Some((value.from.clone(), value.to.clone()));
+    }
+    if let Some(child) = effect.transparent_child_effect() {
+        return counter_transfer_target_specs(child);
+    }
+    if let Some(value) = effect.downcast_ref::<crate::effects::MayEffect>() && value.effects.len() == 1 {
+        return counter_transfer_target_specs(&value.effects[0]);
+    }
+    None
+}
+
+fn counter_endpoint_profile(spec: &ChooseSpec) -> ExtractedTarget<'_> {
+    let (min_targets, max_targets) = exchange_target_bounds(spec);
+    crate::effects::TargetSelectionProfile {
+        spec, chooser: None, description: "counter transfer endpoint",
+        min_targets, max_targets, count_value: None, distribution_value: None,
+        distribution_min_per_target: 1,
+        reuse_policy: crate::effects::TargetReusePolicy::AlwaysDeclareNew,
+    }
+}
+
+/// Earlier synthetic declarations are borrowed once; fresh equal specs still
+/// denote independent roles. Indices refer to the announced assignment table.
+pub(super) fn counter_transfer_target_bindings(
+    effect: &Effect, declared: &[DeclaredTarget],
+) -> Option<Vec<(ChooseSpec, Option<usize>)>> {
+    let (from, to) = counter_transfer_target_specs(effect)?;
+    let mut shadow = declared.to_vec();
+    let mut roles = Vec::new();
+    for spec in [from, to] {
+        if !requires_target_selection(&spec) { continue; }
+        let previous = shadow.iter().position(|old| old.synthetic_prelude && !old.synthetic_prelude_consumed
+            && target_spec_reuses_declared_target(&spec, &old.spec));
+        let profile = counter_endpoint_profile(&spec);
+        if !profile_reuses_declared_target(&profile, &mut shadow) { declare_target(&profile, &mut shadow); }
+        roles.push((spec, previous));
+    }
+    Some(roles)
+}
+
 fn exchange_control_target_specs(effect: &Effect) -> Option<(ChooseSpec, ChooseSpec)> {
     if let Some(exchange) = effect.downcast_ref::<crate::effects::ExchangeControlEffect>()
         && exchange.permanent1 != exchange.permanent2
@@ -1995,6 +2044,40 @@ pub(super) fn extract_target_requirements_from_effect_internal(
         return;
     }
 
+    if let Some((from, to)) = counter_transfer_target_specs(effect) {
+        for spec in [from, to] {
+            if !requires_target_selection(&spec) { continue; }
+            let profile = counter_endpoint_profile(&spec);
+            if profile_reuses_declared_target(&profile, declared_targets) { continue; }
+            declare_target(&profile, declared_targets);
+            let (min_targets, max_targets) = exchange_target_bounds(&spec);
+            // The destination can depend on the source selected in the same
+            // announcement. Enumerate candidates without that unresolved
+            // relation, then carry its shared-player group into validation.
+            let candidates_spec = if prior_shared_player_requirement(&spec, requirements).is_some() {
+                relax_target_player_relation(&spec)
+            } else {
+                spec.clone()
+            };
+            let candidates_spec = if prior_relative_target_requirement(&spec, requirements).is_some() {
+                relax_relative_object_target_source_exclusion(&candidates_spec)
+            } else { candidates_spec };
+            let legal_targets = compute_legal_targets(game, &candidates_spec, caster, source_id);
+            if !legal_targets.is_empty() {
+                let legal_target_sets = crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
+                let shared_player_group = link_target_controller_requirement(game, &spec, &legal_targets, requirements, caster, source_id);
+                let distinct_player_group = link_relative_target_to_prior_requirement(&spec, requirements);
+                requirements.push(TargetRequirement {
+                    spec, chooser: None, legal_targets, legal_target_sets, aggregate_constraint: None,
+                    description: "counter transfer endpoint".to_string(), min_targets, max_targets,
+                    distinct_player_group, shared_player_group,
+                    distribution_value: None, distribution_min_per_target: 1,
+                });
+            }
+        }
+        return;
+    }
+
     if let Some((first, second)) = exchange_control_target_specs(effect) {
         for spec in [first, relaxed_exchange_later_target_spec(&second)] {
             if !requires_target_selection(&spec) {
@@ -2099,6 +2182,8 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 extracted.spec,
                 &legal_targets,
                 requirements,
+                caster,
+                source_id,
             );
             requirements.push(TargetRequirement {
                 spec: extracted.spec.clone(),
@@ -2121,6 +2206,34 @@ pub(super) fn extract_target_requirements_from_effect_internal(
 /// The earlier requirement whose player a `TargetPlayerOrControllerOfTarget`
 /// relation refers to: a player target, else (for an owner relation such as
 /// "a card in that player's graveyard") an earlier object target's controller.
+/// Relations to the previously announced object need joint assignment rather
+/// than filtering an endpoint before that object has been chosen.
+fn player_filter_has_prior_object_controller(filter: &PlayerFilter) -> bool {
+    match filter {
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+        | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Target) => true,
+        PlayerFilter::Excluding { base, excluded } => player_filter_has_prior_object_controller(base)
+            || player_filter_has_prior_object_controller(excluded),
+        _ => false,
+    }
+}
+
+fn relax_prior_target_player_filter(filter: &PlayerFilter) -> PlayerFilter {
+    // A dependency under exclusion cannot be replaced with Any in place:
+    // Any minus Any is empty. Enumerate a superset, then validate exact pairs.
+    if player_filter_has_prior_object_controller(filter) { return PlayerFilter::Any; }
+    match filter {
+        PlayerFilter::TargetPlayerOrControllerOfTarget
+        | PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+        | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Target) => PlayerFilter::Any,
+        PlayerFilter::Excluding { base, excluded } => PlayerFilter::Excluding {
+            base: Box::new(relax_prior_target_player_filter(base)),
+            excluded: Box::new(relax_prior_target_player_filter(excluded)),
+        },
+        _ => filter.clone(),
+    }
+}
+
 fn prior_shared_player_requirement(
     spec: &ChooseSpec,
     requirements: &[TargetRequirement],
@@ -2128,6 +2241,10 @@ fn prior_shared_player_requirement(
     let ChooseSpec::Object(filter) = spec.base() else {
         return None;
     };
+    if filter.controller.as_ref().is_some_and(player_filter_has_prior_object_controller)
+        || filter.owner.as_ref().is_some_and(player_filter_has_prior_object_controller) {
+        return requirements.iter().rposition(|r| matches!(r.spec.base(), ChooseSpec::Object(_)));
+    }
     let relation = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
     if filter.controller != relation && filter.owner != relation {
         return None;
@@ -2165,12 +2282,11 @@ pub(super) fn relax_target_player_relation(spec: &ChooseSpec) -> ChooseSpec {
         },
         ChooseSpec::Object(filter) => {
             let mut filter = filter.clone();
-            let relation = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
-            if filter.controller == relation {
-                filter.controller = None;
-            }
-            if filter.owner == relation {
-                filter.owner = None;
+            for player_filter in [&mut filter.controller, &mut filter.owner] {
+                if let Some(original) = player_filter.as_ref() {
+                    let relaxed = relax_prior_target_player_filter(original);
+                    *player_filter = if relaxed == PlayerFilter::Any { None } else { Some(relaxed) };
+                }
             }
             ChooseSpec::Object(filter)
         }
@@ -2183,12 +2299,41 @@ fn link_target_controller_requirement(
     spec: &ChooseSpec,
     candidates: &[Target],
     requirements: &mut [TargetRequirement],
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
 ) -> Option<crate::decisions::context::SharedTargetPlayerGroup> {
     let ChooseSpec::Object(filter) = spec.base() else {
         return None;
     };
     let prior_index = prior_shared_player_requirement(spec, requirements)?;
-    let by_owner = filter.controller != Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+    if filter.controller.as_ref().is_some_and(player_filter_has_prior_object_controller)
+        || filter.owner.as_ref().is_some_and(player_filter_has_prior_object_controller) {
+        let distinct = prior_relative_target_requirement(spec, requirements).is_some();
+        let mut allowed_pairs = Vec::new();
+        for prior in &requirements[prior_index].legal_targets {
+            let Target::Object(id) = prior else { continue; };
+            let Some(controller) = game.current_controller(*id) else { continue; };
+            let mut bound = spec.clone();
+            specialize_target_player_relation_in_choose_spec(&mut bound, controller,
+                ResolutionPlayerRelation::PriorObjectController);
+            let bound = relax_relative_object_target_source_exclusion(&bound);
+            let exact_candidates = compute_legal_targets(game, &bound, caster, source_id);
+            for candidate in candidates {
+                if exact_candidates.contains(candidate) && (!distinct || candidate != prior) {
+                    allowed_pairs.push((*prior, *candidate));
+                }
+            }
+        }
+        return Some(crate::decisions::context::SharedTargetPlayerGroup {
+            group: 0, target_players: Vec::new(),
+            pair_constraint: Some(crate::decisions::context::TargetPairConstraint {
+                prior_requirement: prior_index, allowed_pairs,
+            }),
+        });
+    }
+    let by_owner = !filter.controller.as_ref().is_some_and(|controller|
+        *controller == PlayerFilter::TargetPlayerOrControllerOfTarget
+            || player_filter_has_prior_object_controller(controller));
     let group = requirements
         .iter()
         .filter_map(|r| r.shared_player_group.as_ref().map(|g| g.group))
@@ -2215,10 +2360,12 @@ fn link_target_controller_requirement(
     prior.shared_player_group = Some(crate::decisions::context::SharedTargetPlayerGroup {
         group,
         target_players: map_players(&prior.legal_targets, false),
+        pair_constraint: None,
     });
     Some(crate::decisions::context::SharedTargetPlayerGroup {
         group,
         target_players: map_players(candidates, by_owner),
+        pair_constraint: None,
     })
 }
 
@@ -2736,6 +2883,18 @@ fn count_target_selection_slots_from_effect_internal(
             );
         }
         declared_targets.extend(declared_targets_from_modes);
+        return count;
+    }
+
+    if let Some((from, to)) = counter_transfer_target_specs(effect) {
+        let mut count = 0;
+        for spec in [from, to] {
+            if !requires_target_selection(&spec) { continue; }
+            let profile = counter_endpoint_profile(&spec);
+            if profile_reuses_declared_target(&profile, declared_targets) { continue; }
+            declare_target(&profile, declared_targets);
+            count += 1;
+        }
         return count;
     }
 
@@ -3677,6 +3836,17 @@ pub(super) fn collect_validation_target_specs_from_effect(
         return;
     }
 
+    if let Some((from, to)) = counter_transfer_target_specs(effect) {
+        for spec in [from, to] {
+            if !requires_target_selection(&spec) { continue; }
+            let profile = counter_endpoint_profile(&spec);
+            if profile_reuses_declared_target(&profile, declared_targets) { continue; }
+            declare_target(&profile, declared_targets);
+            specs.push(spec);
+        }
+        return;
+    }
+
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
     {
@@ -3969,11 +4139,23 @@ fn choose_spec_for_resolution_target_validation(
     }
 }
 
-fn specialize_target_player_relation(filter: &mut crate::target::PlayerFilter, player: PlayerId) {
+#[derive(Clone, Copy)]
+enum ResolutionPlayerRelation {
+    PriorPlayerOrController,
+    PriorObjectController,
+}
+
+fn specialize_target_player_relation(filter: &mut crate::target::PlayerFilter, player: PlayerId, relation: ResolutionPlayerRelation) {
     use crate::target::PlayerFilter;
 
     match filter {
-        PlayerFilter::TargetPlayerOrControllerOfTarget => {
+        PlayerFilter::TargetPlayerOrControllerOfTarget
+            if matches!(relation, ResolutionPlayerRelation::PriorPlayerOrController) => {
+            *filter = PlayerFilter::Specific(player);
+        }
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+        | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Target)
+            if matches!(relation, ResolutionPlayerRelation::PriorObjectController) => {
             *filter = PlayerFilter::Specific(player);
         }
         PlayerFilter::Target(inner)
@@ -3984,14 +4166,14 @@ fn specialize_target_player_relation(filter: &mut crate::target::PlayerFilter, p
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
         | PlayerFilter::OpponentOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. } => {
-            specialize_target_player_relation(inner, player);
+            specialize_target_player_relation(inner, player, relation);
         }
         PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, .. } => {
-            specialize_target_player_relation(base, player);
+            specialize_target_player_relation(base, player, relation);
         }
         PlayerFilter::Excluding { base, excluded } => {
-            specialize_target_player_relation(base, player);
-            specialize_target_player_relation(excluded, player);
+            specialize_target_player_relation(base, player, relation);
+            specialize_target_player_relation(excluded, player, relation);
         }
         _ => {}
     }
@@ -4000,6 +4182,7 @@ fn specialize_target_player_relation(filter: &mut crate::target::PlayerFilter, p
 fn specialize_target_player_relation_in_object_filter(
     filter: &mut crate::target::ObjectFilter,
     player: PlayerId,
+    relation: ResolutionPlayerRelation,
 ) {
     for player_filter in [
         &mut filter.controller,
@@ -4015,13 +4198,13 @@ fn specialize_target_player_relation_in_object_filter(
     .into_iter()
     .flatten()
     {
-        specialize_target_player_relation(player_filter, player);
+        specialize_target_player_relation(player_filter, player, relation);
     }
     if let Some(constraint) = &mut filter.counters_put_on_this_turn {
-        specialize_target_player_relation(&mut constraint.source_controller, player);
+        specialize_target_player_relation(&mut constraint.source_controller, player, relation);
     }
     for nested in &mut filter.any_of {
-        specialize_target_player_relation_in_object_filter(nested, player);
+        specialize_target_player_relation_in_object_filter(nested, player, relation);
     }
     for nested in [
         &mut filter.targets_object,
@@ -4033,13 +4216,14 @@ fn specialize_target_player_relation_in_object_filter(
     .into_iter()
     .flatten()
     {
-        specialize_target_player_relation_in_object_filter(nested, player);
+        specialize_target_player_relation_in_object_filter(nested, player, relation);
     }
 }
 
 fn specialize_target_player_relation_in_choose_spec(
     spec: &mut crate::target::ChooseSpec,
     player: PlayerId,
+    relation: ResolutionPlayerRelation,
 ) {
     use crate::target::ChooseSpec;
 
@@ -4048,17 +4232,17 @@ fn specialize_target_player_relation_in_choose_spec(
         | ChooseSpec::Target(spec)
         | ChooseSpec::WithCount(spec, _)
         | ChooseSpec::WithCountValue(spec, _, _) => {
-            specialize_target_player_relation_in_choose_spec(spec, player);
+            specialize_target_player_relation_in_choose_spec(spec, player, relation);
         }
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
-            specialize_target_player_relation_in_object_filter(filter, player);
+            specialize_target_player_relation_in_object_filter(filter, player, relation);
         }
         ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => {
-            specialize_target_player_relation_in_object_filter(object_filter, player);
-            specialize_target_player_relation(player_filter, player);
+            specialize_target_player_relation_in_object_filter(object_filter, player, relation);
+            specialize_target_player_relation(player_filter, player, relation);
         }
         ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
-            specialize_target_player_relation(filter, player);
+            specialize_target_player_relation(filter, player, relation);
         }
         _ => {}
     }
@@ -4133,10 +4317,25 @@ pub(crate) fn stack_entry_assignment_legal_targets(
     if relative_object_target {
         resolved_spec = relax_relative_object_target_source_exclusion(&resolved_spec);
     }
+    // A typed object-controller relation names the prior object endpoint,
+    // independently of earlier player targets. Keep an empty endpoint's
+    // position: it must not fall back to a different earlier assignment.
+    let prior_object_controller = entry.target_assignments[..assignment_index]
+        .iter().rev()
+        .find(|prior| matches!(prior.spec.base(), ChooseSpec::Object(_)))
+        .and_then(|prior| entry.targets.get(prior.range.clone()))
+        .and_then(|targets| targets.first())
+        .and_then(|target| match target {
+            Target::Object(id) => view.current_controller(*id),
+            Target::Player(_) => None,
+        });
+    if let Some(player) = prior_object_controller {
+        specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player, ResolutionPlayerRelation::PriorObjectController);
+    }
     if let Some(player) =
         prior_player_or_planeswalker_target(game, entry, assignment_index, view)
     {
-        specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
+        specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player, ResolutionPlayerRelation::PriorPlayerOrController);
     } else if let Some(player) =
         prior_object_targets
             .first()
@@ -4147,7 +4346,7 @@ pub(crate) fn stack_entry_assignment_legal_targets(
                 Target::Player(_) => None,
             })
     {
-        specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player);
+        specialize_target_player_relation_in_choose_spec(&mut resolved_spec, player, ResolutionPlayerRelation::PriorPlayerOrController);
     }
     // Reflexive entries retain the resolving parent's results. Use
     // them again when rechecking legality after players can respond.
@@ -4385,5 +4584,151 @@ mod captured_incarnation_target_contract_tests {
     #[test]
     fn relational_reference_still_requires_a_candidate() {
         assert!(requires_target_selection(&reference(crate::filter::TaggedOpbjectRelation::SameNameAsTagged)));
+    }
+}
+
+#[cfg(test)]
+mod prior_object_controller_recheck_tests {
+    use super::*;
+    fn scenario(prior:u8,empty_source:bool,changed_source:bool) -> (GameState,StackEntry,usize,ObjectId,ObjectId) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let creature=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Controller reference creature")
+            .card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        let from=game.create_object_from_definition(&creature,alice,Zone::Battlefield);
+        let to=game.create_object_from_definition(&creature,alice,Zone::Battlefield);
+        let other=game.create_object_from_definition(&creature,bob,Zone::Battlefield);
+        let spell=game.create_object_from_definition(&creature,alice,Zone::Hand);
+        let endpoint=ChooseSpec::Target(Box::new(ChooseSpec::creature()));
+        let mut destination=crate::filter::ObjectFilter::creature();destination.other=true;
+        destination.controller=Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
+        let destination=ChooseSpec::Target(Box::new(ChooseSpec::Object(destination)));
+        let mut entry=StackEntry::new(spell,alice);
+        if prior!=0 {
+            entry.targets.push(if prior==1 {Target::Player(bob)} else {Target::Object(other)});
+            entry.target_assignments.push(crate::game_state::TargetAssignment{
+                spec:if prior==1 {ChooseSpec::PlayerOrPlaneswalker(PlayerFilter::Any)} else {endpoint.clone()},range:0..1});
+        }
+        let start=entry.targets.len();
+        if !empty_source {entry.targets.push(Target::Object(from));}
+        entry.target_assignments.push(crate::game_state::TargetAssignment{spec:endpoint,range:start..entry.targets.len()});
+        let start=entry.targets.len();entry.targets.push(Target::Object(to));
+        entry.target_assignments.push(crate::game_state::TargetAssignment{spec:destination,range:start..entry.targets.len()});
+        if changed_source {game.object_mut(from).unwrap().initial_controller=bob;assert_eq!(game.current_controller(from),Some(bob));}
+        let index=entry.target_assignments.len()-1;
+        (game,entry,index,to,other)
+    }
+    fn legal(prior:u8) {
+        let (game,entry,index,to,other)=scenario(prior,false,false);
+        let view=crate::derived_view::DerivedGameView::new(&game);
+        let result=stack_entry_assignment_legal_targets(&game,&entry,index,&view);
+        assert!(result.legal_targets.contains(&Target::Object(to)),"the destination must use the source endpoint's controller at resolution");
+        assert!(!result.legal_targets.contains(&Target::Object(other)),"an unrelated prior declaration cannot supply the controller");
+    }
+    #[test] fn typed_controller_reference_rechecks_two_endpoint_roles(){legal(0);}
+    #[test] fn typed_controller_reference_ignores_unrelated_prior_player(){legal(1);}
+    #[test] fn typed_controller_reference_ignores_unrelated_prior_object(){legal(2);}
+    #[test]
+    fn typed_controller_reference_uses_current_source_controller() {
+        let (game,entry,index,to,other)=scenario(2,false,true);
+        let view=crate::derived_view::DerivedGameView::new(&game);
+        let result=stack_entry_assignment_legal_targets(&game,&entry,index,&view);
+        assert!(!result.legal_targets.contains(&Target::Object(to)));
+        assert!(result.legal_targets.contains(&Target::Object(other)),"a source controller change must be reflected in the legal candidate set");
+    }
+    #[test]
+    fn empty_source_role_does_not_borrow_unrelated_object_controller() {
+        let (game,entry,index,_,_)=scenario(2,true,false);
+        let view=crate::derived_view::DerivedGameView::new(&game);
+        let result=stack_entry_assignment_legal_targets(&game,&entry,index,&view);
+        assert!(result.legal_targets.is_empty(),"an empty source endpoint must preserve its position instead of falling back to a different assignment");
+    }
+}
+
+#[cfg(test)]
+mod authored_initial_controller_view_tests {
+    use super::*;
+    fn entry(owner:PlayerId,controller:PlayerId) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let creature=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Public controlled entry")
+            .card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        let card=game.create_object_from_definition(&creature,owner,Zone::Graveyard);
+        let source=game.create_object_from_definition(&creature,controller,Zone::Battlefield);
+        let instruction=crate::effect::Effect::new(crate::effects::PutOntoBattlefieldEffect::you_control(
+            ChooseSpec::SpecificObject(card),false));
+        let mut ctx=crate::effects::ExecutionContext::new_default(source,controller);
+        let outcome=crate::effects::execute_effect(&mut game,&instruction,&mut ctx).unwrap();
+        let ids=outcome.objects().expect("public battlefield entry result");assert_eq!(ids.len(),1);
+        let entered=ids[0];assert_ne!(entered,card);
+        assert_eq!(game.object(entered).unwrap().zone,Zone::Battlefield);
+        assert_eq!(game.object(entered).unwrap().owner,owner);
+        assert_eq!(game.object(entered).unwrap().initial_controller,controller);
+        assert_eq!(game.current_controller(entered),Some(controller));
+        let view=crate::derived_view::DerivedGameView::new(&game);
+        assert_eq!(view.current_controller(entered),Some(controller),"derived target/replacement consumer must retain the actual authored entry controller instead of restoring ownership");
+    }
+    #[test] fn public_alice_owned_entry_under_bob_retains_derived_controller(){entry(PlayerId::from_index(0),PlayerId::from_index(1));}
+    #[test] fn public_bob_owned_entry_under_alice_retains_derived_controller(){entry(PlayerId::from_index(1),PlayerId::from_index(0));}
+}
+
+#[cfg(test)]
+mod negative_prior_controller_announcement_tests {
+    use super::*;
+    #[test]
+    fn excluded_prior_controller_keeps_two_roles_and_opposing_candidate() {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let creature=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Excluded controller relation")
+            .card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        let from=game.create_object_from_definition(&creature,alice,Zone::Battlefield);
+        let same=game.create_object_from_definition(&creature,alice,Zone::Battlefield);
+        let opposing=game.create_object_from_definition(&creature,bob,Zone::Battlefield);
+        let mut destination=crate::filter::ObjectFilter::creature();destination.other=true;
+        destination.controller=Some(PlayerFilter::Excluding{
+            base:Box::new(PlayerFilter::Any),
+            excluded:Box::new(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))});
+        let effect=Effect::new(crate::effects::MoveCountersEffect::new(crate::object::CounterType::PlusOnePlusOne,1,
+            ChooseSpec::Target(Box::new(ChooseSpec::creature())),
+            ChooseSpec::Target(Box::new(ChooseSpec::Object(destination)))));
+        let requirements=extract_target_requirements_for_effect_with_state(&game,&effect,alice,Some(from),None,&mut false);
+        assert_eq!(requirements.len(),2,"an unresolved excluded-controller relation must retain the destination role");
+        assert!(requirements[1].legal_targets.contains(&Target::Object(opposing)),
+            "opposing controller must remain a candidate until source assignment is known");
+        let contexts=requirements.iter().map(|r|crate::decisions::context::TargetRequirementContext{
+            description:r.description.clone(),legal_targets:r.legal_targets.clone(),legal_target_sets:r.legal_target_sets.clone(),
+            aggregate_constraint:r.aggregate_constraint.clone(),min_targets:r.min_targets,max_targets:r.max_targets,
+            distinct_player_group:r.distinct_player_group,shared_player_group:r.shared_player_group.clone()}).collect::<Vec<_>>();
+        assert!(crate::targeting::validate_flat_target_assignment(&contexts,&[Target::Object(from),Target::Object(opposing)]),
+            "different controllers satisfy the negative relation");
+        assert!(!crate::targeting::validate_flat_target_assignment(&contexts,&[Target::Object(from),Target::Object(same)]),
+            "same controller violates the negative relation");
+    }
+}
+
+#[cfg(test)]
+mod multiplayer_prior_controller_announcement_tests {
+    use super::*;
+    #[test]
+    fn negative_controller_pair_preserves_third_player_and_opponent_intersection() {
+        let mut game=GameState::new(vec!["Alice".into(),"Bob".into(),"Charlie".into()],20);
+        let alice=PlayerId::from_index(0);
+        let definition=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Multiplayer controller relation")
+            .card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        let ids=(0..3).map(|i|game.create_object_from_definition(&definition,PlayerId::from_index(i),Zone::Battlefield)).collect::<Vec<_>>();
+        let mut destination=crate::filter::ObjectFilter::creature();destination.other=true;
+        destination.controller=Some(PlayerFilter::Excluding{base:Box::new(PlayerFilter::Opponent),
+            excluded:Box::new(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))});
+        let effect=Effect::new(crate::effects::MoveCountersEffect::new(crate::object::CounterType::PlusOnePlusOne,1,
+            ChooseSpec::Target(Box::new(ChooseSpec::creature())),ChooseSpec::Target(Box::new(ChooseSpec::Object(destination)))));
+        let req=extract_target_requirements_for_effect_with_state(&game,&effect,alice,Some(ids[0]),None,&mut false);
+        assert_eq!(req.len(),2);
+        let contexts=req.iter().map(|r|crate::decisions::context::TargetRequirementContext{
+            description:r.description.clone(),legal_targets:r.legal_targets.clone(),legal_target_sets:r.legal_target_sets.clone(),
+            aggregate_constraint:r.aggregate_constraint.clone(),min_targets:r.min_targets,max_targets:r.max_targets,
+            distinct_player_group:r.distinct_player_group,shared_player_group:r.shared_player_group.clone()}).collect::<Vec<_>>();
+        for from in 0..3 {for to in 0..3 {
+            assert_eq!(crate::targeting::validate_flat_target_assignment(&contexts,&[Target::Object(ids[from]),Target::Object(ids[to])]),
+                to!=0 && from!=to,"retain both original Opponent and excluded-source-controller predicates");
+        }}
     }
 }

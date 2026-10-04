@@ -98,7 +98,6 @@ export function usePeerLobbyConnections(base, servicesRef) {
   const routePeerIdForPlayer = useCallback((...args) => servicesRef.current.routePeerIdForPlayer(...args), [servicesRef]);
   const sendDirectPeerMessage = useCallback((...args) => servicesRef.current.sendDirectPeerMessage(...args), [servicesRef]);
   const submitProtocolResponseTimeoutClaim = useCallback((...args) => servicesRef.current.submitProtocolResponseTimeoutClaim(...args), [servicesRef]);
-  const updateMatchClockForState = useCallback((...args) => servicesRef.current.updateMatchClockForState(...args), [servicesRef]);
   const verifyCurrentPublicCheckpointHash = useCallback((...args) => servicesRef.current.verifyCurrentPublicCheckpointHash(...args), [servicesRef]);
   const ensureDirectPeerConnections = useCallback((players) => {
     ensureDirectPeerConnectionsRef.current(players);
@@ -3312,17 +3311,16 @@ export function usePeerLobbyConnections(base, servicesRef) {
   async function observedMatchClockElapsedForIntent(intent, record) {
     const payload = signedActionIntentPayload(intent);
     const key = actionIntentKey(payload);
-    const liveState = gameRef.current && typeof gameRef.current.uiState === "function"
-      ? await gameRef.current.uiState()
-      : stateRef.current;
-    // uiState can be delayed behind engine work. Never let that read update
-    // the clock of a completed, cancelled, replaced, or disputed action.
+    // Progress is an observation of the existing clock epoch, not a game-state
+    // transition. Reading WASM here floods the verification queue when progress
+    // arrives faster than snapshots, delaying the very response being awaited.
     if (pendingActionIntentsRef.current.get(key) !== record
       || protocolActionIntentInactiveReason(key)
       || payload.matchId !== currentAuditMatchId()
       || Number(payload.seq) <= Number(multiplayerRef.current.lastAppliedSequence || 0)) return null;
-    const snapshot = updateMatchClockForState(liveState);
-    if (!snapshot.enabled || Number(snapshot.activePlayerIndex) !== Number(payload.actorIndex)) {
+    const snapshot = servicesRef.current.runtimeMatchClockSnapshot?.()
+      || multiplayerRef.current.matchClock;
+    if (!snapshot?.enabled || Number(snapshot.activePlayerIndex) !== Number(payload.actorIndex)) {
       return null;
     }
     if (snapshot.startedAtMs == null) return 0;

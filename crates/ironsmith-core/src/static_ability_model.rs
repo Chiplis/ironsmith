@@ -466,6 +466,23 @@ impl<T, E, C, Cond, ICond> PowerToughnessChoiceOption<T, E, C, Cond, ICond> {
     }
 }
 
+/// An intrinsic starting-counter rule (CR 306.5b and 310.4b). The number is
+/// read from the entering object's prospective printed characteristics.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum IntrinsicStartingCounter {
+    Loyalty,
+    Defense,
+}
+impl IntrinsicStartingCounter {
+    pub fn counter_type(self) -> CounterType {
+        match self { Self::Loyalty => CounterType::Loyalty, Self::Defense => CounterType::Defense }
+    }
+    pub fn card_type(self) -> crate::types::CardType {
+        match self { Self::Loyalty => crate::types::CardType::Planeswalker, Self::Defense => crate::types::CardType::Battle }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
 pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
@@ -1261,6 +1278,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         display: String,
         added_abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
     },
+    IntrinsicStartingCounters(IntrinsicStartingCounter),
     EntersWithCountersValue {
         counter: CounterType,
         count: Value,
@@ -2907,6 +2925,7 @@ where
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             },
+            StaticAbilityPayload::IntrinsicStartingCounters(rule) => StaticAbilityPayload::IntrinsicStartingCounters(rule),
             StaticAbilityPayload::EntersWithCountersValue { counter, count } => {
                 StaticAbilityPayload::EntersWithCountersValue { counter, count }
             }
@@ -7011,6 +7030,17 @@ impl<
             },
         }
     }
+    pub fn intrinsic_starting_counters(rule: IntrinsicStartingCounter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::EnterWithCounters),
+            label: match rule {
+                IntrinsicStartingCounter::Loyalty => "Enters with loyalty counters equal to its printed loyalty number",
+                IntrinsicStartingCounter::Defense => "Enters with defense counters equal to its printed defense number",
+            }.into(),
+            payload: StaticAbilityPayload::IntrinsicStartingCounters(rule),
+        }
+    }
+
     pub fn enters_with_counters_value(counter: CounterType, count: Value) -> Self {
         let counter_text = counter.description();
         let label = match &count {

@@ -147,6 +147,8 @@ use crate::zone::Zone;
 
 /// The target of damage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
 pub enum DamageTarget {
     /// Damage to a player.
     Player(PlayerId),

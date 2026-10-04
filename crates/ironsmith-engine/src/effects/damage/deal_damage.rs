@@ -6,7 +6,7 @@
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
-    resolve_objects_for_effect, resolve_player_from_spec, resolve_players_from_spec, resolve_value,
+    resolve_objects_for_effect, resolve_player_from_spec, resolve_players_from_spec, resolve_nonnegative_u32,
     validate_target,
 };
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
@@ -243,7 +243,9 @@ fn apply_processed_damage_results(
     let keywords = crate::rules::damage::source_damage_keywords(game, source, source_snapshot);
     let mut outcomes = Vec::new();
     let mut programs = Vec::new();
-    let damage_source_snapshot = game.object(source).map(|object|
+    let damage_source_snapshot = game.object(source)
+        .filter(|_| !game.is_phased_out(source))
+        .map(|object|
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
         .or_else(|| source_snapshot.cloned());
     let mut total_damage_dealt = 0u32;
@@ -291,7 +293,7 @@ fn apply_processed_damage_results(
             if let DamageTarget::Object(object_id) = assignment.target {
                 affected_objects.push(object_id);
             }
-            let mut outcome = EffectOutcome::count(assignment.amount as i32);
+            let mut outcome = EffectOutcome::count(i64::from(assignment.amount));
             if excess_damage > 0 {
                 outcome = outcome
                     .with_execution_fact(ExecutionFact::ExcessDamageDealt)
@@ -544,7 +546,7 @@ impl EffectExecutor for DealDamageEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+        let amount = resolve_nonnegative_u32(game, &self.amount, ctx)?;
 
         // Check if this is targeting IteratedPlayer (used in ForEachOpponent)
         // If so, resolve the target from the context's iterated_player
@@ -1130,7 +1132,7 @@ mod replacement_scope_tests {
                 .execute(&mut game, &mut ctx)
                 .unwrap();
             assert_eq!(outcome.value, OutcomeValue::Count(expected));
-            assert_eq!(game.player(bob).unwrap().life, 20 - expected);
+            assert_eq!(i64::from(game.player(bob).unwrap().life), 20 - expected);
             assert_eq!(ctx.replacement.additional_replacement_effects.len(), 1);
             assert_eq!(
                 ctx.replacement
@@ -2160,7 +2162,7 @@ mod replacement_damage_addition_owner_contract_tests {
         if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
         else if mode == 2 { assert!(ctx.decision_maker.awaiting_choice()); assert!(result.unwrap().events.is_empty()); }
         else {
-            let outcome = result.unwrap(); assert_eq!(outcome.count_or_zero(), 3 * victims.len() as i32);
+            let outcome = result.unwrap(); assert_eq!(outcome.count_or_zero(), 3 * victims.len() as i64);
             for id in &victims { assert_eq!(game.damage_on(*id), 3); }
             assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.player(bob).unwrap().life, if mode == 3 { 20 } else { 27 });
             assert_eq!(outcome.events.iter().filter(|event| event.downcast::<DamageEvent>().is_some()).count(), victims.len());
@@ -2181,7 +2183,7 @@ mod replacement_damage_addition_owner_contract_tests {
         if mode == 2 {
             assert_eq!(dm.calls, 1); dm.pause = false; dm.pending = false;
             let mut ctx = ExecutionContext::new(source, alice, &mut dm); ctx.set_tagged_objects("victims", snapshots);
-            let outcome = effect.execute(&mut game, &mut ctx).unwrap(); assert_eq!(outcome.count_or_zero(), 3 * victims.len() as i32);
+            let outcome = effect.execute(&mut game, &mut ctx).unwrap(); assert_eq!(outcome.count_or_zero(), 3 * victims.len() as i64);
             for id in &victims { assert_eq!(game.damage_on(*id), 3); }
             assert_eq!(game.player(bob).unwrap().life, 27); assert!(!ctx.decision_maker.awaiting_choice());
             drop(ctx); assert_eq!(dm.calls, 2);
@@ -2195,4 +2197,187 @@ mod replacement_damage_addition_owner_contract_tests {
     #[test] fn batch_error_restores_all_damage() { check(true, 1); }
     #[test] fn batch_pending_replays_once() { check(true, 2); }
     #[test] fn batch_addition_binds_matched_target() { check(true, 3); }
+}
+
+#[cfg(test)]
+mod damage_source_current_information_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::color::ColorSet;
+    use crate::ids::{CardId, PlayerId};
+    use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
+    use crate::target::ObjectFilter;
+    use crate::zone::Zone;
+
+    fn check(to_player: bool, departed: bool, current_red: bool) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::new(), "Damage source information fixture")
+            .card_types(vec![CardType::Creature]).color_indicator(ColorSet::RED)
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let sponsor = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(source).unwrap(), &game);
+        assert_eq!(snapshot.colors, ColorSet::RED);
+        if !current_red { game.object_mut(source).unwrap().color_override = Some(ColorSet::BLUE); }
+        if departed { game.move_object(source, Zone::Graveyard, crate::events::cause::EventCause::effect()).unwrap(); }
+        let action = ReplacementAction::Modify(EventModification::Add(1));
+        let red = ObjectFilter::creature().with_colors(ColorSet::RED);
+        let effect = if to_player {
+            ReplacementEffect::with_matcher(sponsor, alice,
+                crate::events::damage::matchers::DamageFromSourceToPlayerMatcher::new(red, PlayerFilter::Specific(bob)), action)
+        } else {
+            ReplacementEffect::with_matcher(sponsor, alice, crate::events::damage::matchers::DamageFromSourceMatcher::new(red), action)
+        };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(effect);
+        game.take_pending_trigger_events();
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ctx.source_snapshot = Some(snapshot);
+        let out = DealDamageEffect::new(3, ChooseSpec::SpecificPlayer(bob)).execute(&mut game, &mut ctx).unwrap();
+        let expected = if departed || current_red { 4 } else { 3 };
+        assert_eq!(game.player(bob).unwrap().life, 20 - expected, "present source uses current characteristics rather than a stale stack snapshot");
+        assert_eq!(out.count_or_zero(), i64::from(expected));
+        assert_eq!(game.effect_store.replacement_effects.get_effect(shield).is_none(), expected == 4);
+        let damage = out.events.iter().filter_map(|e| e.downcast::<DamageEvent>()).collect::<Vec<_>>();
+        assert_eq!(damage.len(), 1); assert_eq!(damage[0].amount, expected as u32);
+    }
+    #[test] fn general_source_filter_uses_current_information() { check(false, false, false); }
+    #[test] fn player_source_filter_uses_current_information() { check(true, false, false); }
+    #[test] fn current_red_source_still_matches() { check(false, false, true); check(true, false, true); }
+    #[test] fn departed_red_source_still_matches_snapshot() { check(false, true, true); check(true, true, true); }
+}
+
+#[cfg(test)]
+mod damage_source_phase_publication_tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::color::ColorSet;
+    use crate::ids::{CardId, PlayerId};
+    use crate::target::ObjectFilter;
+    use crate::zone::Zone;
+    fn check(state: u8, simultaneous: bool) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::new(), "Phased damage source publication fixture")
+            .card_types(vec![CardType::Creature]).color_indicator(ColorSet::RED)
+            .power_toughness(PowerToughness::fixed(2, 4)).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(source).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::set_colors(ObjectFilter::source(), ColorSet::BLUE)));
+        game.object_mut(source).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::lifelink()));
+        game.refresh_continuous_state().unwrap();
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(source).unwrap(), &game);
+        assert_eq!(snapshot.colors, ColorSet::BLUE, "last present source had its continuous color");
+        if state == 1 { game.phase_out(source); assert!(game.is_phased_out(source)); }
+        if state == 2 { game.move_object(source, Zone::Exile, crate::events::cause::EventCause::effect()).unwrap(); }
+        game.refresh_continuous_state().unwrap();
+        game.take_pending_trigger_events();
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm); ctx.source_snapshot = Some(snapshot);
+        let target = if simultaneous { ChooseSpec::EachPlayer(PlayerFilter::Opponent) } else { ChooseSpec::SpecificPlayer(bob) };
+        let out = DealDamageEffect::new(3, target).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.player(bob).unwrap().life, 17);
+        assert_eq!(game.player(alice).unwrap().life, 23, "damage consequences use the last present source's lifelink");
+        let damage = out.events.iter().filter(|event| event.downcast::<DamageEvent>().is_some()).collect::<Vec<_>>();
+        assert_eq!(damage.len(), 1);
+        assert_eq!(damage[0].source_snapshot().unwrap().colors, ColorSet::BLUE,
+            "damage observations must retain the same authoritative source characteristics as its consequences");
+        assert_eq!(damage[0].source_snapshot().unwrap().controller, alice);
+        assert_eq!(out.count_or_zero(), 3);
+    }
+    #[test] fn phased_single_damage_retains_source_snapshot() { check(1, false); }
+    #[test] fn phased_simultaneous_damage_retains_source_snapshot() { check(1, true); }
+    #[test] fn present_source_publication_control() { check(0, false); check(0, true); }
+    #[test] fn departed_source_publication_control() { check(2, false); check(2, true); }
+}
+
+#[cfg(test)]
+mod wide_replaced_damage_receipt_tests {
+    use super::*;
+    use crate::card::{CardBuilder,PowerToughness};
+    use crate::effect::{Effect,EffectId,Value};
+    use crate::effects::{execute_effect,PutCountersEffect};
+    use crate::events::damage::matchers::DamageFromSourceMatcher;
+    use crate::ids::{CardId,PlayerId};
+    use crate::replacement::{ReplacementEffect,ReplacementAction,EventModification};
+    use crate::target::ObjectFilter;
+    use crate::object::CounterType;
+    use crate::zone::Zone;
+    fn check(simultaneous:bool) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let source=game.create_object_from_card(&CardBuilder::new(CardId::new(),"Damage source").card_types(vec![CardType::Artifact]).build(),alice,Zone::Battlefield);
+        let victims=(0..if simultaneous {2} else {1}).map(|_|game.create_object_from_card(&CardBuilder::new(CardId::new(),"Damage recipient").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1,1)).build(),bob,Zone::Battlefield)).collect::<Vec<_>>();
+        game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(source,alice,
+            DamageFromSourceMatcher::new(ObjectFilter::specific(source)),ReplacementAction::Modify(EventModification::Multiply(2))));
+        let mut ctx=ExecutionContext::new_default(source,alice);
+        let target=if simultaneous {ChooseSpec::All(ObjectFilter::creature())} else {ChooseSpec::SpecificObject(victims[0])};
+        let outcome=execute_effect(&mut game,&Effect::with_id(19,Effect::new(DealDamageEffect::new(i32::MAX,target))),&mut ctx).unwrap();
+        let expected=u32::MAX-1;
+        for victim in &victims {assert_eq!(game.damage_on(*victim),expected,"commit preserves full resolved unsigned amount");}
+        let damage=outcome.events.iter().filter_map(|event|event.downcast::<DamageEvent>()).collect::<Vec<_>>();
+        assert_eq!(damage.len(),victims.len(),"one actual damage observation per recipient");
+        for event in damage {assert_eq!(event.amount,expected,"published damage agrees with committed damage");}
+        let total=i64::from(expected)*i64::try_from(victims.len()).unwrap();
+        assert_eq!(outcome.as_count(),Some(total),"receipt preserves every resolved amount and their sum");
+        let amount=if simultaneous {Value::HalfRoundedDown(Box::new(Value::EffectValue(EffectId(19))))} else {Value::EffectValue(EffectId(19))};
+        let following=execute_effect(&mut game,&Effect::new(PutCountersEffect::new(CounterType::Charge,amount,ChooseSpec::SpecificObject(source))),&mut ctx).unwrap();
+        assert_eq!(game.counter_count(source,CounterType::Charge),expected,"following arithmetic reads the complete damage receipt");
+        assert_eq!(following.as_count(),Some(i64::from(expected)));
+    }
+    #[test] fn single_replaced_damage_preserves_unsigned_receipt_and_following_effect() {check(false);}
+    #[test] fn simultaneous_replaced_damage_preserves_wide_sum_and_following_effect() {check(true);}
+}
+
+#[cfg(test)]
+mod wide_damage_receipt_consumer_tests {
+    use super::*;
+    use crate::card::{CardBuilder,PowerToughness};
+    use crate::effect::{Effect,EffectId,Value};
+    use crate::effects::execute_effect;
+    use crate::events::damage::matchers::DamageFromSourceMatcher;
+    use crate::ids::{CardId,PlayerId};
+    use crate::replacement::{ReplacementEffect,ReplacementAction,EventModification};
+    use crate::target::ObjectFilter;
+    use crate::zone::Zone;
+    fn check_following(simultaneous:bool, out_of_range:bool) {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let source=game.create_object_from_card(&CardBuilder::new(CardId::new(),"Damage source").card_types(vec![CardType::Artifact]).build(),alice,Zone::Battlefield);
+        let victims=(0..if simultaneous {2} else {1}).map(|_|game.create_object_from_card(&CardBuilder::new(CardId::new(),"Damage recipient").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1,1)).build(),bob,Zone::Battlefield)).collect::<Vec<_>>();
+        let replacement = game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(source,alice,
+            DamageFromSourceMatcher::new(ObjectFilter::specific(source)),ReplacementAction::Modify(EventModification::Multiply(2))));
+        let mut ctx=ExecutionContext::new_default(source,alice);
+        let target=if simultaneous {ChooseSpec::All(ObjectFilter::creature())} else {ChooseSpec::SpecificObject(victims[0])};
+        let outcome=execute_effect(&mut game,&Effect::with_id(19,Effect::new(DealDamageEffect::new(i32::MAX,target))),&mut ctx).unwrap();
+        let expected=u32::MAX-1;
+        for victim in &victims {assert_eq!(game.damage_on(*victim),expected,"commit preserves full resolved unsigned amount");}
+        let damage=outcome.events.iter().filter_map(|event|event.downcast::<DamageEvent>()).collect::<Vec<_>>();
+        assert_eq!(damage.len(),victims.len(),"one actual damage observation per recipient");
+        for event in damage {assert_eq!(event.amount,expected,"published damage agrees with committed damage");}
+        let total=i64::from(expected)*i64::try_from(victims.len()).unwrap();
+        assert_eq!(outcome.as_count(),Some(total),"receipt preserves every resolved amount and their sum");
+        let next=game.create_object_from_card(&CardBuilder::new(CardId::new(),"Following damage recipient").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1,1)).build(),bob,Zone::Battlefield);
+        ctx.replacement.suppressed_replacement_effects.insert(replacement);
+        let amount=if simultaneous && !out_of_range {Value::HalfRoundedDown(Box::new(Value::EffectValue(EffectId(19))))} else {Value::EffectValue(EffectId(19))};
+        game.take_pending_trigger_events();
+        let following=execute_effect(&mut game,&Effect::new(DealDamageEffect::new(amount,ChooseSpec::SpecificObject(next))),&mut ctx);
+        if out_of_range {
+            assert!(matches!(following,Err(ExecutionError::UnresolvableValue(_))),"a quantity beyond one damage event's unsigned range must reject explicitly");
+            assert_eq!(game.damage_on(next),0,"range rejection occurs before mutation");
+            assert!(game.take_pending_trigger_events().is_empty(),"rejected damage publishes no observation");
+        } else {
+            let following=following.expect("representable unsigned following damage must resolve");
+            assert_eq!(game.damage_on(next),expected,"damage consumer reads the complete unsigned receipt");
+            assert_eq!(following.as_count(),Some(i64::from(expected)));
+            let observations=following.events.iter().filter_map(|event|event.downcast::<DamageEvent>()).collect::<Vec<_>>();
+            assert_eq!(observations.len(),1);
+            assert_eq!(observations[0].amount,expected);
+        }
+    }
+    #[test] fn single_receipt_drives_full_unsigned_following_damage() {check_following(false,false);}
+    #[test] fn simultaneous_receipt_arithmetic_drives_unsigned_following_damage() {check_following(true,false);}
+    #[test] fn out_of_range_following_damage_rejects_before_mutation() {check_following(true,true);}
 }

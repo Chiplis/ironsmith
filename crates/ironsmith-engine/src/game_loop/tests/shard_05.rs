@@ -2530,13 +2530,29 @@ pub(super) fn test_distinct_player_target_clauses_resolve_against_their_own_sele
     let spell_card = CardBuilder::new(CardId::from_raw(5_102), "Player Split Effects")
         .card_types(vec![CardType::Sorcery])
         .build();
-    let spell_def = crate::cards::CardDefinition::spell(
-        spell_card,
-        vec![
-            Effect::create_tokens_player(squirrel, 1, PlayerFilter::target_player()),
-            Effect::new(crate::effects::GainLifeEffect::target_player(3)),
-        ],
+    let shared_effects = vec![
+        Effect::create_tokens_player(squirrel, 1, PlayerFilter::target_player()),
+        Effect::new(crate::effects::GainLifeEffect::target_player(3)),
+    ];
+    assert_eq!(
+        extract_target_requirements(&game, &shared_effects, alice, None).len(),
+        1,
+        "bare effects represent a chain sharing one compatible target",
     );
+    // Independent authored target clauses use the same declaration wrappers
+    // as lowering, rather than manually inventing a second stack assignment.
+    let effects = shared_effects.into_iter().enumerate()
+        .map(|(index, effect)| effect.tag(format!("player_clause_{index}")))
+        .collect::<Vec<_>>();
+    let requirements = extract_target_requirements(&game, &effects, alice, None);
+    assert_eq!(requirements.len(), 2, "each target clause must be declared");
+    for requirement in &requirements {
+        assert_eq!(requirement.min_targets, 1);
+        assert_eq!(requirement.max_targets, Some(1));
+        assert!(requirement.legal_targets.contains(&Target::Player(alice)));
+        assert!(requirement.legal_targets.contains(&Target::Player(bob)));
+    }
+    let spell_def = crate::cards::CardDefinition::spell(spell_card, effects);
     let spell_id = game.create_object_from_definition(&spell_def, alice, Zone::Stack);
     game.push_to_stack(
         StackEntry::new(spell_id, alice)

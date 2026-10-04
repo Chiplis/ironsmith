@@ -113,6 +113,7 @@ pub enum TargetError {
 
 /// A resolved target - either a specific object or player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
 pub enum ResolvedTarget {
     Object(ObjectId),
     Player(PlayerId),
@@ -245,23 +246,146 @@ pub struct ManaExecutionContext {
 }
 
 /// Ephemeral replacement effects scoped to the current resolution path.
-#[derive(Debug, Clone, Default)]
-pub struct ReplacementExecutionContext {
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialization", serde(deny_unknown_fields, bound(deserialize = "E: serde::Deserialize<'de>, D: serde::Deserialize<'de>, K: serde::Deserialize<'de> + Eq + std::hash::Hash")))]
+pub struct ReplacementExecutionContext<E = crate::events::EnterBattlefieldEvent, D = ReplacementEffect, K: Eq + std::hash::Hash = ReplacementEffectKey> {
     /// Source counter additions being proposed during battlefield entry.
     /// Their replacements run on the combined ETB event, not the source-zone card.
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_replacement_context_option"))]
     pub entry_counter_source: Option<ObjectId>,
     /// Prospective characteristics, including earlier copy replacements.
-    pub entry_event: Option<Box<crate::events::EnterBattlefieldEvent>>,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_replacement_context_option"))]
+    pub entry_event: Option<Box<E>>,
     /// CR614.13: source objects reserved by simultaneous battlefield entry.
     /// Inherited by nested replacement payloads; never removed from zone indexes.
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_unique_replacement_context_set"))]
     pub entry_reserved_objects: HashSet<ObjectId>,
-    pub additional_replacement_effects: Vec<ReplacementEffect>,
+    pub additional_replacement_effects: Vec<D>,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_unique_replacement_context_set"))]
     pub suppressed_replacement_effects: HashSet<ReplacementEffectId>,
-    pub suppressed_replacement_effect_keys: HashSet<ReplacementEffectKey>,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_unique_replacement_context_set"))]
+    pub suppressed_replacement_effect_keys: HashSet<K>,
     /// CR 400.6 destination choices for objects moved by mutually exclusive
     /// parts of one simultaneous event (for example, a lethal Exquisite
     /// Archangel whose lose-game replacement also tries to exile itself).
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_unique_replacement_context_destinations"))]
     pub simultaneous_zone_destinations: HashMap<ObjectId, crate::zone::Zone>,
+}
+
+#[cfg(feature = "serialization")]
+fn deserialize_present_replacement_context_option<'de, T: serde::Deserialize<'de>, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    <Option<T> as serde::Deserialize>::deserialize(deserializer)
+}
+
+#[cfg(feature = "serialization")]
+fn deserialize_unique_replacement_context_set<'de, T, D>(deserializer: D) -> Result<HashSet<T>, D::Error>
+where T: serde::Deserialize<'de> + Eq + std::hash::Hash, D: serde::Deserializer<'de> {
+    let values = <Vec<T> as serde::Deserialize>::deserialize(deserializer)?;
+    let mut result = HashSet::with_capacity(values.len());
+    for value in values {
+        if !result.insert(value) {
+            return Err(serde::de::Error::custom("duplicate replacement context identity"));
+        }
+    }
+    Ok(result)
+}
+
+#[cfg(feature = "serialization")]
+fn deserialize_unique_replacement_context_destinations<'de, D>(deserializer: D)
+    -> Result<HashMap<ObjectId, crate::Zone>, D::Error>
+where D: serde::Deserializer<'de> {
+    struct Destinations;
+    impl<'de> serde::de::Visitor<'de> for Destinations {
+        type Value = HashMap<ObjectId, crate::Zone>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("unique simultaneous replacement destinations")
+        }
+        fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+            let mut result = HashMap::new();
+            while let Some((object, zone)) = map.next_entry::<ObjectId, crate::Zone>()? {
+                if result.insert(object, zone).is_some() {
+                    return Err(serde::de::Error::custom("duplicate simultaneous replacement destination"));
+                }
+            }
+            Ok(result)
+        }
+    }
+    deserializer.deserialize_map(Destinations)
+}
+
+impl<E, D, K: Eq + std::hash::Hash> Default for ReplacementExecutionContext<E, D, K> {
+    fn default() -> Self {
+        Self {
+            entry_counter_source: None,
+            entry_event: None,
+            entry_reserved_objects: HashSet::new(),
+            additional_replacement_effects: Vec::new(),
+            suppressed_replacement_effects: HashSet::new(),
+            suppressed_replacement_effect_keys: HashSet::new(),
+            simultaneous_zone_destinations: HashMap::new(),
+        }
+    }
+}
+
+/// A failed conversion cannot yield a partial executable replacement scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReplacementContextMappingError<Error> {
+    EntryEvent(Error),
+    AdditionalEffect { index: usize, error: Error },
+    SuppressionKey(Error),
+    /// Distinct histories cannot become one identity during restore.
+    CollapsedSuppressionKey,
+}
+
+impl<Error: std::fmt::Display> std::fmt::Display for ReplacementContextMappingError<Error> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EntryEvent(error) => write!(formatter, "replacement entry context: {error}"),
+            Self::AdditionalEffect { index, error } => write!(formatter, "replacement context effect {index}: {error}"),
+            Self::SuppressionKey(error) => write!(formatter, "replacement suppression identity: {error}"),
+            Self::CollapsedSuppressionKey => write!(formatter, "replacement suppression identities collapsed during conversion"),
+        }
+    }
+}
+impl<Error: std::error::Error + 'static> std::error::Error for ReplacementContextMappingError<Error> {}
+
+impl<E, D, K: Eq + std::hash::Hash> ReplacementExecutionContext<E, D, K> {
+    /// Convert every executable/identity capture through mandatory fallible
+    /// owning codecs. Equal effects in the ordered list remain independent.
+    /// The caller must also roll back any state mutated by its converters.
+    pub fn try_map_payloads<F, G, L: Eq + std::hash::Hash, Error>(
+        self,
+        entry: impl FnOnce(E) -> Result<F, Error>,
+        mut effect: impl FnMut(D) -> Result<G, Error>,
+        mut key: impl FnMut(K) -> Result<L, Error>,
+    ) -> Result<ReplacementExecutionContext<F, G, L>, ReplacementContextMappingError<Error>> {
+        let Self {
+            entry_counter_source, entry_event, entry_reserved_objects,
+            additional_replacement_effects, suppressed_replacement_effects,
+            suppressed_replacement_effect_keys, simultaneous_zone_destinations,
+        } = self;
+        let entry_event = entry_event.map(|value| entry(*value).map(Box::new))
+            .transpose().map_err(ReplacementContextMappingError::EntryEvent)?;
+        let additional_replacement_effects = additional_replacement_effects.into_iter().enumerate()
+            .map(|(index, value)| effect(value).map_err(|error|
+                ReplacementContextMappingError::AdditionalEffect { index, error }))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut keys = HashSet::with_capacity(suppressed_replacement_effect_keys.len());
+        for value in suppressed_replacement_effect_keys {
+            let value = key(value).map_err(ReplacementContextMappingError::SuppressionKey)?;
+            if !keys.insert(value) {
+                return Err(ReplacementContextMappingError::CollapsedSuppressionKey);
+            }
+        }
+        Ok(ReplacementExecutionContext {
+            entry_counter_source, entry_event, entry_reserved_objects,
+            additional_replacement_effects, suppressed_replacement_effects,
+            suppressed_replacement_effect_keys: keys, simultaneous_zone_destinations,
+        })
+    }
 }
 
 /// Context for effect execution.
@@ -1840,5 +1964,113 @@ mod tests {
             filter_ctx.tagged_objects[&TagKey::from("blocking")][0].object_id,
             blocker
         );
+    }
+}
+
+#[cfg(all(test, feature = "serialization"))]
+mod replacement_context_mapping_tests {
+    use super::*;
+    type WireScope = ReplacementExecutionContext<String, String, String>;
+
+    fn fixture() -> ReplacementExecutionContext<u32, u32, u32> {
+        ReplacementExecutionContext {
+            entry_counter_source: Some(ObjectId::from_raw(31)),
+            entry_event: Some(Box::new(17)),
+            entry_reserved_objects: HashSet::from([ObjectId::from_raw(31), ObjectId::from_raw(32)]),
+            additional_replacement_effects: vec![5, 5, 6],
+            suppressed_replacement_effects: HashSet::from([ReplacementEffectId(9), ReplacementEffectId(10)]),
+            suppressed_replacement_effect_keys: HashSet::from([7, 8]),
+            simultaneous_zone_destinations: HashMap::from([
+                (ObjectId::from_raw(31), crate::Zone::Exile),
+                (ObjectId::from_raw(32), crate::Zone::Graveyard),
+            ]),
+        }
+    }
+
+    #[test]
+    fn replacement_context_mapping_preserves_complete_scope_and_ordered_equal_effects() {
+        let original = fixture();
+        let mut effects = Vec::new();
+        let wire: WireScope = original.clone().try_map_payloads(
+            |value| Ok::<_, String>(value.to_string()),
+            |value| { effects.push(value); Ok(value.to_string()) },
+            |value| Ok(value.to_string()),
+        ).unwrap();
+        assert_eq!(effects, [5, 5, 6], "equal effect bodies are separate ordered occurrences");
+        let encoded = serde_json::to_value(&wire).unwrap();
+        let decoded: WireScope = serde_json::from_value(encoded).unwrap();
+        let restored = decoded.try_map_payloads(
+            |value| value.parse::<u32>(), |value| value.parse::<u32>(), |value| value.parse::<u32>(),
+        ).unwrap();
+        assert_eq!(restored, original, "all seven context fields must survive conversion and wire restore");
+        let empty: ReplacementExecutionContext<u32, u32, u32> = Default::default();
+        let empty = empty.try_map_payloads(
+            |_| -> Result<String, String> { panic!("absent event") },
+            |_| -> Result<String, String> { panic!("absent effects") },
+            |_| -> Result<String, String> { panic!("absent keys") },
+        ).unwrap();
+        assert_eq!(empty, WireScope::default());
+    }
+
+    #[test]
+    fn replacement_context_mapping_rejects_each_payload_failure_and_identity_collapse() {
+        let error = fixture().try_map_payloads(
+            |_| Err::<u32, _>("event"), |_| -> Result<u32, &str> { panic!("effects after failed event") },
+            |_| -> Result<u32, &str> { panic!("keys after failed event") },
+        ).unwrap_err();
+        assert_eq!(error, ReplacementContextMappingError::EntryEvent("event"));
+        let mut seen = 0;
+        let error = fixture().try_map_payloads(Ok::<_, &str>, |value| {
+            seen += 1; if seen == 2 { Err("effect") } else { Ok(value) }
+        }, |_| -> Result<u32, &str> { panic!("keys after failed effect") }).unwrap_err();
+        assert_eq!(seen, 2);
+        assert_eq!(error, ReplacementContextMappingError::AdditionalEffect { index: 1, error: "effect" });
+        let error = fixture().try_map_payloads(Ok::<_, &str>, Ok, |_| Err::<u32, _>("key")).unwrap_err();
+        assert_eq!(error, ReplacementContextMappingError::SuppressionKey("key"));
+        let error = fixture().try_map_payloads(Ok::<_, &str>, Ok, |_| Ok(0)).unwrap_err();
+        assert_eq!(error, ReplacementContextMappingError::CollapsedSuppressionKey);
+    }
+
+    #[test]
+    fn replacement_context_mapping_wire_rejects_duplicate_identities_and_destinations() {
+        let value: WireScope = fixture().try_map_payloads(
+            |value| Ok::<_, String>(value.to_string()), |value| Ok(value.to_string()), |value| Ok(value.to_string()),
+        ).unwrap();
+        let encoded = serde_json::to_value(value).unwrap();
+        for field in ["entry_reserved_objects", "suppressed_replacement_effects", "suppressed_replacement_effect_keys"] {
+            let mut duplicate = encoded.clone();
+            let values = duplicate[field].as_array_mut().unwrap();
+            values.push(values[0].clone());
+            let error = serde_json::from_value::<WireScope>(duplicate).unwrap_err();
+            assert!(error.to_string().contains("duplicate replacement context identity"), "{field}: {error}");
+        }
+        let empty = serde_json::to_string(&WireScope::default()).unwrap();
+        let destinations = format!("\"simultaneous_zone_destinations\":{{\"31\":{},\"31\":{}}}",
+            serde_json::to_string(&crate::Zone::Exile).unwrap(),
+            serde_json::to_string(&crate::Zone::Graveyard).unwrap());
+        let duplicate = empty.replace("\"simultaneous_zone_destinations\":{}", &destinations);
+        assert_ne!(duplicate, empty);
+        let error = serde_json::from_str::<WireScope>(&duplicate).unwrap_err();
+        assert!(error.to_string().contains("duplicate simultaneous replacement destination"), "{error}");
+    }
+
+    #[test]
+    fn replacement_context_mapping_wire_requires_all_seven_fields_and_explicit_absence() {
+        let value: WireScope = fixture().try_map_payloads(
+            |value| Ok::<_, String>(value.to_string()), |value| Ok(value.to_string()), |value| Ok(value.to_string()),
+        ).unwrap();
+        let encoded = serde_json::to_value(value).unwrap();
+        assert_eq!(encoded.as_object().unwrap().len(), 7);
+        for field in encoded.as_object().unwrap().keys() {
+            let mut missing = encoded.clone(); missing.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<WireScope>(missing).is_err(), "missing {field} accepted");
+        }
+        let mut unknown = encoded.clone(); unknown["discarded_context"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<WireScope>(unknown).is_err());
+        let mut explicit_none = encoded;
+        explicit_none["entry_counter_source"] = serde_json::Value::Null;
+        explicit_none["entry_event"] = serde_json::Value::Null;
+        let scope: WireScope = serde_json::from_value(explicit_none).unwrap();
+        assert!(scope.entry_counter_source.is_none() && scope.entry_event.is_none());
     }
 }

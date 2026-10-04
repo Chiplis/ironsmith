@@ -27,6 +27,8 @@ impl DamageSourceToSpecificTargetMatcher {
 }
 
 impl ReplacementMatcher for DamageSourceToSpecificTargetMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageSourceToSpecificTargetMatcher { source: self.source.clone(), target: self.target.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -1061,5 +1063,13 @@ mod tests {
             !replacement_prevented,
             "expired redirect should not prevent damage"
         );
+    }
+}
+
+// Engine-owned conversion can access private predicate captures without making them public.
+pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
+    match model {
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::DamageSourceToSpecificTargetMatcher { source, target } => Some(Box::new(DamageSourceToSpecificTargetMatcher { source: source.clone(), target: target.clone() })),
+ _ => None,
     }
 }

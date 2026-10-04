@@ -649,7 +649,9 @@ fn zone_entry_continuation_retains_history_and_zone_cause_matchers() {
         // Without carried history the persistent broad zone redirect applies
         // again to the entry carrier and loses this resolved entry proposal.
         assert!(!result.prevented);
-        assert_eq!(result.controller_override, matching_cause.then_some(bob));
+        // The carrier records initial control even when no replacement changes
+        // it; commit must not reconstruct this field from the old instruction.
+        assert_eq!(result.controller_override, Some(if matching_cause { bob } else { alice }));
         let prepared = game.prepare_etb_entry_with_controller_and_dm(
             entrant, result, Some(alice), &mut dm,
         ).unwrap().unwrap();
@@ -1699,7 +1701,7 @@ fn entry_redirect_back_to_library_keeps_object_identity_and_state() {
     let performed_count = match &outcome.value {
         crate::effect::OutcomeValue::None => 0,
         crate::effect::OutcomeValue::Count(count) => *count,
-        crate::effect::OutcomeValue::Objects(ids) => i32::try_from(ids.len()).unwrap(),
+        crate::effect::OutcomeValue::Objects(ids) => i64::try_from(ids.len()).unwrap(),
         value => panic!("unexpected movement result {value:?}"),
     };
     assert_eq!(performed_count, 0, "a redirect that cannot move reports no performed movement");
@@ -1743,7 +1745,7 @@ fn same_battlefield_destination_does_not_run_entry_programs_or_reset_state() {
         let performed_count = match &outcome.value {
             crate::effect::OutcomeValue::None => 0,
             crate::effect::OutcomeValue::Count(count) => *count,
-            crate::effect::OutcomeValue::Objects(ids) => i32::try_from(ids.len()).unwrap(),
+            crate::effect::OutcomeValue::Objects(ids) => i64::try_from(ids.len()).unwrap(),
             value => panic!("unexpected movement result {value:?}"),
         };
         assert_eq!(performed_count, 0);
@@ -2807,7 +2809,7 @@ fn check_additional_counter_contract(player_target: bool, mode: u8) {
     let count = if player_target { game.player(alice).unwrap().counter_count(counter_type) }
         else { game.counter_count(source, counter_type) };
     assert_eq!(count, expected);
-    assert!(matches!(outcome.value, crate::effect::OutcomeValue::Count(value) if value == expected as i32));
+    assert!(matches!(outcome.value, crate::effect::OutcomeValue::Count(value) if value == expected as i64));
     assert_eq!(game.player(alice).unwrap().life, if mode == 2 { 27 } else { 23 });
     assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
     if let Some(prevention_shield) = prevention_shield {
@@ -3826,7 +3828,7 @@ mod counter_owner_nested_prompt_contract_tests {
                 assert_eq!(game.counter_count(parent,crate::object::CounterType::Charge),0); assert_eq!(game.player(alice).unwrap().counter_count(crate::object::CounterType::Energy),0);
                 assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty());
             } else {
-                let outcome=result.unwrap(); assert_eq!(outcome.count_or_zero(),i32::from(!instead));
+                let outcome=result.unwrap(); assert_eq!(outcome.count_or_zero(),i64::from(!instead));
                 let arrival=game.find_object_by_stable_id(stable).unwrap(); assert_eq!(game.object(arrival).unwrap().zone,Zone::Exile);
                 for player in [alice,bob,charlie,diana] { assert_eq!(game.effect_store.grant_registry.card_can_play_from_zone(&game,arrival,Zone::Exile,player),player==bob); }
                 assert_eq!(game.counter_count(parent,crate::object::CounterType::Charge),u32::from(object&&!instead)); assert_eq!(game.player(alice).unwrap().counter_count(crate::object::CounterType::Energy),u32::from(!object&&!instead));
@@ -5070,4 +5072,124 @@ mod token_owner_nested_prompt_contract_tests {
     #[test] fn copy_instead_retains_nested_prompt_and_replays() {check(true,1);}
     #[test] fn incubate_addition_retains_nested_prompt_and_replays() {check(false,2);}
     #[test] fn incubate_instead_retains_nested_prompt_and_replays() {check(true,2);}
+}
+
+
+#[test]
+fn public_zone_replacement_conversion_keeps_cause_for_later_entry_matchers() {
+    struct PreferEntry { source: ObjectId, choices: usize }
+    impl crate::decision::DecisionMaker for PreferEntry {
+        fn decide_options(&mut self, _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            self.choices += 1;
+            let option = ctx.options.iter().find(|option| option.legal && option.object_id == Some(self.source))
+                .or_else(|| ctx.options.iter().find(|option| option.legal)).unwrap();
+            vec![option.index]
+        }
+    }
+    for matching_cause in [false, true] {
+        let (mut game, entrant, alice) = setup();
+        let bob = PlayerId::from_index(1);
+        let watcher_card = crate::card::CardBuilder::new(CardId::new(), "Carrier cause watcher").build();
+        let watcher = game.create_object_from_card(&watcher_card, alice, Zone::Battlefield);
+        game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+            entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+            ReplacementAction::EnterTapped));
+        let control = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+            watcher, alice, crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                crate::target::ObjectFilter::specific(entrant), Some(Zone::Hand), Some(Zone::Battlefield))
+                .with_cause_filter(crate::events::cause::CauseFilter::effect_like().with_controller(
+                    crate::events::cause::ControllerFilter::Player(bob))),
+            ReplacementAction::EnterUnderControl(bob)));
+        let cause = crate::events::cause::EventCause::from_effect(watcher, if matching_cause { bob } else { alice });
+        let zone = crate::events::ZoneChangeEvent::with_cause(entrant, Zone::Hand, Zone::Battlefield,
+            cause, Some(crate::snapshot::ObjectSnapshot::from_object(game.object(entrant).unwrap(), &game)));
+        let mut dm = PreferEntry { source: entrant, choices: 0 };
+        let event = process_with_dm(&mut game, crate::events::Event::new_with_provenance(zone, Default::default()),
+            &mut dm).unwrap().into_event().unwrap();
+        let entry = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner()).unwrap();
+        assert!(entry.enters_tapped);
+        assert_eq!(entry.controller_override, if matching_cause { Some(bob) } else { None },
+            "a carrier conversion must preserve cause-dependent applicability");
+        assert_eq!(game.effect_store.replacement_effects.get_effect(control).is_some(), !matching_cause);
+        assert_eq!(dm.choices, usize::from(matching_cause));
+        assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand, "processing proposals does not commit entry");
+    }
+}
+
+#[test]
+fn public_converted_entry_prompt_retains_zone_context_without_external_state() {
+    let (mut game, entrant, alice) = setup();
+    let bob = PlayerId::from_index(1);
+    let watcher_card = crate::card::CardBuilder::new(CardId::new(), "Captured carrier watcher").build();
+    let watcher = game.create_object_from_card(&watcher_card, alice, Zone::Battlefield);
+    game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+        entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+        ReplacementAction::EnterTapped).with_priority_override(crate::events::ReplacementPriority::SelfReplacement));
+    let cause_matcher = || crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+        crate::target::ObjectFilter::specific(entrant), Some(Zone::Hand), Some(Zone::Battlefield))
+        .with_cause_filter(crate::events::cause::CauseFilter::effect_like().with_controller(
+            crate::events::cause::ControllerFilter::Player(bob)));
+    let control = game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+        watcher, alice, cause_matcher(), ReplacementAction::EnterUnderControl(bob)));
+    let counter = game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+        watcher, alice, cause_matcher(), ReplacementAction::EnterWithCounters {
+            counter_type: crate::object::CounterType::PlusOnePlusOne, count: Value::Fixed(1),
+            count_condition: None, otherwise_count: None, added_subtypes: Vec::new(), added_abilities: Vec::new(),
+        }));
+    let cause = crate::events::cause::EventCause::from_effect(watcher, bob);
+    let event = crate::events::Event::zone_change(entrant, Zone::Hand, Zone::Battlefield, cause,
+        Some(crate::snapshot::ObjectSnapshot::from_object(game.object(entrant).unwrap(), &game)));
+    let pending = process_trait_event(&mut game, event).unwrap();
+    let TraitEventResult::NeedsChoice { applicable_effects, event, .. } = &pending else {
+        panic!("both cause-matched replacements must remain offered after entry conversion");
+    };
+    assert!(applicable_effects.contains(&control) && applicable_effects.contains(&counter));
+    assert_eq!(event.kind(), crate::events::EventKind::EnterBattlefield);
+    let result = continue_replacement_choice_with_scope(&mut game, pending, control, None, &[], None).unwrap();
+    let event = result.into_event().unwrap();
+    let entry = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner()).unwrap();
+    assert!(entry.enters_tapped);
+    assert_eq!(entry.controller_override, Some(bob));
+    assert_eq!(entry.enters_with_counters, vec![(crate::object::CounterType::PlusOnePlusOne, 1)],
+        "the remaining zone matcher must survive captured choice restoration");
+    assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand);
+}
+
+#[test]
+fn public_entry_redirect_preserves_original_zone_cause_and_lki() {
+    let (mut game, entrant, alice) = setup();
+    let bob = PlayerId::from_index(1);
+    let watcher_card = crate::card::CardBuilder::new(CardId::new(), "Redirect metadata watcher").build();
+    let watcher = game.create_object_from_card(&watcher_card, alice, Zone::Battlefield);
+    game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+        entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+        ReplacementAction::EnterTapped).with_priority_override(crate::events::ReplacementPriority::SelfReplacement));
+    game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+        watcher, alice, crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+            crate::target::ObjectFilter::specific(entrant), Some(Zone::Hand), Some(Zone::Battlefield))
+            .with_cause_filter(crate::events::cause::CauseFilter::any().with_controller(
+                crate::events::cause::ControllerFilter::Player(bob))),
+        ReplacementAction::ChangeDestination(Zone::Exile)));
+    let cause = crate::events::cause::EventCause::from_cost(watcher, bob);
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(entrant).unwrap(), &game);
+    let stable = snapshot.stable_id;
+    let tag = crate::tag::TagKey::from("entry-origin");
+    let zone = crate::events::ZoneChangeEvent::with_cause(entrant, Zone::Hand, Zone::Battlefield,
+        cause.clone(), Some(snapshot.clone())).with_object_tag(tag.clone(), snapshot);
+    let event = crate::events::Event::new_with_provenance(zone, Default::default());
+    let resolved = process_trait_event(&mut game, event).unwrap().into_event().unwrap();
+    let zone = crate::events::downcast_event::<crate::events::ZoneChangeEvent>(resolved.inner()).unwrap();
+    assert_eq!(zone.from, Zone::Hand);
+    assert_eq!(zone.to, Zone::Exile);
+    assert_eq!(zone.objects, vec![entrant]);
+    assert_eq!(zone.cause.cause_type, cause.cause_type, "destination replacement must preserve the operation's original cause");
+    assert_eq!(zone.cause.source, cause.source);
+    assert_eq!(zone.cause.source_controller, cause.source_controller);
+    assert_eq!(zone.snapshot.as_ref().unwrap().stable_id, stable);
+    assert_eq!(zone.snapshots.len(), 1);
+    assert_eq!(zone.snapshots[0].stable_id, stable);
+    assert_eq!(zone.object_tags.get(&tag).unwrap().len(), 1);
+    assert_eq!(zone.object_tags.get(&tag).unwrap()[0].stable_id, stable);
+    assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand);
 }

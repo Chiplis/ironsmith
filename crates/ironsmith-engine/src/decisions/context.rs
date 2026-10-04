@@ -1126,9 +1126,9 @@ pub struct CountersContext {
     /// Display name of the target.
     pub target_name: String,
     /// Minimum total counters that must be removed.
-    pub min_total: u32,
+    pub min_total: u64,
     /// Maximum total counters that can be removed.
-    pub max_total: u32,
+    pub max_total: u64,
     /// Available counters: (counter_type, count_available).
     pub available_counters: Vec<(CounterType, u32)>,
 }
@@ -1142,6 +1142,18 @@ impl CountersContext {
         target_name: impl Into<String>,
         min_total: u32,
         max_total: u32,
+        available_counters: Vec<(CounterType, u32)>,
+    ) -> Self {
+        Self::new_wide(player, source, target, target_name, u64::from(min_total), u64::from(max_total), available_counters)
+    }
+
+    pub fn new_wide(
+        player: PlayerId,
+        source: Option<ObjectId>,
+        target: Target,
+        target_name: impl Into<String>,
+        min_total: u64,
+        max_total: u64,
         available_counters: Vec<(CounterType, u32)>,
     ) -> Self {
         Self {
@@ -1355,6 +1367,14 @@ impl PriorityContext {
 pub struct SharedTargetPlayerGroup {
     pub group: usize,
     pub target_players: Vec<(crate::game_state::Target, PlayerId)>,
+    /// Exact dependency on an earlier target role, including exclusions.
+    pub pair_constraint: Option<TargetPairConstraint>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TargetPairConstraint {
+    pub prior_requirement: usize,
+    pub allowed_pairs: Vec<(crate::game_state::Target, crate::game_state::Target)>,
 }
 
 #[derive(Debug, Clone)]

@@ -136,6 +136,7 @@ function decisionStageLabel(decision, t) {
     case "targets": return t("decision.stage.target");
     case "select_objects": return t("decision.stage.select");
     case "select_options": return t("decision.stage.choose");
+    case "select_counters":
     case "number": return t("decision.stage.number");
     case "mana_payment": return t("decision.stage.payment");
     case "attackers":
@@ -938,6 +939,7 @@ function resolveDecisionTitle(decision, t) {
       return t("decision.title.objects");
     case "select_options":
       return t("decision.title.options");
+    case "select_counters":
     case "number":
       return t("decision.title.number");
     case "mana_payment":

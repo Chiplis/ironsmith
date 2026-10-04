@@ -16,6 +16,7 @@ use super::context::EventContext;
 ///
 /// This allows O(1) type checking without downcasting for common operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum EventKind {
     /// Damage being dealt
     Damage,
@@ -316,6 +317,7 @@ impl Clone for Box<dyn GameEventType> {
 
 /// Priority order for replacement effects per Rule 616.1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum ReplacementPriority {
     /// 616.1a: True self-replacement effects per CR 614.15
     SelfReplacement = 0,
@@ -348,7 +350,26 @@ where
     }
 }
 
-pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone {
+pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone + Any {
+    /// Preserve the exact native predicate captures for an owning canonical codec.
+    /// Unknown external predicate types must fail explicitly rather than guess from text.
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> {
+        Err(format!("unsupported native replacement predicate {}", std::any::type_name::<Self>()))
+    }
+
+    /// Exact mana-event predicate for compact evaluation. Wrappers with
+    /// additional conditions must expose those conditions or leave this unknown.
+    fn mana_predicate(&self) -> Option<crate::events::mana::ManaEventPredicate<'_>> {
+        None
+    }
+
+    /// Conservative event-kind dependency used by specialized planners. False
+    /// proves this matcher cannot observe the event; unknown matchers keep the
+    /// default and are evaluated by the authoritative replacement machinery.
+    fn may_match_event_kind(&self, _kind: EventKind) -> bool {
+        true
+    }
+
     /// CR 614.12: only a replacement affecting this specific entrant can
     /// function from the entering object's own text before it is on the field.
     fn applies_from_entering_source(&self) -> bool {
@@ -439,6 +460,16 @@ pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone {
     fn display(&self) -> String;
 }
 
+impl dyn ReplacementMatcher {
+    /// Inspect the exact native predicate for executable descriptor encoding.
+    /// Display text is not a semantic identifier: different predicates can
+    /// render identically. Unknown native types must remain distinguishable so
+    /// the codec can report an unsupported descriptor instead of guessing.
+    pub fn downcast_ref<T: ReplacementMatcher + 'static>(&self) -> Option<&T> {
+        (self as &dyn Any).downcast_ref::<T>()
+    }
+}
+
 impl Clone for Box<dyn ReplacementMatcher> {
     fn clone(&self) -> Self {
         self.clone_box()
@@ -467,6 +498,38 @@ pub fn downcast_event<T: 'static>(event: &dyn GameEventType) -> Option<&T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_replacement_matcher_access_preserves_identical_display_predicates() {
+        use crate::events::{LifeGainEvent, WouldGainLifeMatcher, WouldLoseLifeMatcher};
+        use crate::target::{FilterContext, PlayerFilter};
+
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let context = EventContext::new(alice, None, FilterContext::new(alice), &game);
+        let first: Box<dyn ReplacementMatcher> =
+            Box::new(WouldGainLifeMatcher::new(PlayerFilter::Specific(alice)));
+        let second: Box<dyn ReplacementMatcher> =
+            Box::new(WouldGainLifeMatcher::new(PlayerFilter::Specific(bob)));
+        assert_eq!(first.display(), second.display());
+
+        for (matcher, recipient) in [(first, alice), (second, bob)] {
+            let cloned = matcher.clone();
+            let native = cloned.as_ref().downcast_ref::<WouldGainLifeMatcher>()
+                .expect("native clone retains its exact predicate type");
+            assert_eq!(native.player_filter, PlayerFilter::Specific(recipient));
+            assert!(cloned.as_ref().downcast_ref::<WouldLoseLifeMatcher>().is_none());
+            // Rebuild from the concrete descriptor and test real applicability,
+            // rather than treating equal display text as equal behavior.
+            let restored: Box<dyn ReplacementMatcher> = Box::new(native.clone());
+            for affected in [alice, bob] {
+                let event = LifeGainEvent::new(affected, 3);
+                assert_eq!(restored.matches_event(&event, &context).unwrap(), affected == recipient);
+                assert_eq!(matcher.matches_event(&event, &context).unwrap(), affected == recipient);
+            }
+        }
+    }
 
     #[test]
     fn test_event_kind_debug() {

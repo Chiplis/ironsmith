@@ -104,7 +104,6 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "CreateTokenCopyEffect" => Some(EffectFamily::Permanent),
         "CreateTokenEffect" => Some(EffectFamily::Permanent),
         "CrewCostEffect" => Some(EffectFamily::Permanent),
-        "SaddleCostEffect" => Some(EffectFamily::Permanent),
         "CumulativeUpkeepEffect" => Some(EffectFamily::CompositionAL),
         "DealDamageEffect" => Some(EffectFamily::Combat),
         "DealDistributedDamageEffect" => Some(EffectFamily::Combat),
@@ -142,7 +141,6 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ExileTopOfLibraryEffect" => Some(EffectFamily::ZoneLibrary),
         "ExileUntilEffect" => Some(EffectFamily::ZoneLibrary),
         "ExperienceCountersEffect" => Some(EffectFamily::Player),
-        "GivePlayerCountersEffect" => Some(EffectFamily::Player),
         "ExploreEffect" => Some(EffectFamily::CompositionAL),
         "ExtraTurnAfterNextTurnEffect" => Some(EffectFamily::Player),
         "ExtraTurnEffect" => Some(EffectFamily::Player),
@@ -157,6 +155,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ForEachTaggedEffect" => Some(EffectFamily::CompositionAL),
         "ForEachTaggedPlayerEffect" => Some(EffectFamily::CompositionAL),
         "ForPlayersEffect" => Some(EffectFamily::CompositionAL),
+        "GivePlayerCountersEffect" => Some(EffectFamily::Player),
         "GainLifeEffect" => Some(EffectFamily::Resources),
         "GoadEffect" => Some(EffectFamily::Combat),
         "ClearGoadEffect" => Some(EffectFamily::Combat),
@@ -166,11 +165,9 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "GrantNextSpellAbilityEffect" => Some(EffectFamily::Player),
         "GrantNextSpellCostReductionEffect" => Some(EffectFamily::Player),
         "GrantPlayTaggedEffect" => Some(EffectFamily::Player),
-        "GrantEndThisEffectPaymentEffect" => Some(EffectFamily::Player),
         "GrantRepeatableManaPaymentActionUntilEndOfTurnEffect" => Some(EffectFamily::CompositionAL),
         "GrantTaggedSpellFreeCastUntilEndOfTurnEffect" => Some(EffectFamily::Player),
         "GrantTaggedSpellLifeCostByManaValueEffect" => Some(EffectFamily::Player),
-        "BecomePlottedEffect" => Some(EffectFamily::ZoneLibrary),
         "HauntExileEffect" => Some(EffectFamily::ZoneLibrary),
         "HealDamageEffect" => Some(EffectFamily::Combat),
         "IfEffect" => Some(EffectFamily::CompositionAL),
@@ -336,6 +333,13 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ImprintFromHandEffect" => Some(EffectFamily::ZoneLibrary),
         "ScaleXValueEffect" => Some(EffectFamily::StackEvent),
         "RevealChosenSubtypeEffect" => Some(EffectFamily::Player),
+        "BecomePlottedEffect" => Some(EffectFamily::ZoneLibrary),
+        "GrantEndThisEffectPaymentEffect" => Some(EffectFamily::Player),
+        "SaddleCostEffect" => Some(EffectFamily::Permanent),
+        "AddManaOfNotedTypeEffect" => Some(EffectFamily::Resources),
+        "NoteActivationManaTypeEffect" => Some(EffectFamily::Resources),
+        "MayCastForMiracleCostEffect" => Some(EffectFamily::Player),
+        "ResolvesDespiteIllegalTargetsEffect" => Some(EffectFamily::CompositionMZ),
         _ => None,
     }
 }
@@ -396,5 +400,435 @@ mod tests {
             Some(EffectFamily::CompositionMZ)
         );
         assert_eq!(family_for_kind("NotAnEffect"), None);
+    }
+}
+
+/// Remap typed card references throughout a canonical payload, including opaque
+/// compiled effects. The callback owns the graph namespace and failure policy.
+pub fn remap_card_ids<T: serde::Serialize>(
+    value: &T,
+    bind: &mut dyn FnMut(u32) -> Result<u32, String>,
+) -> Result<Value, String> {
+    let context = card_graph::Context {
+        bind: std::cell::RefCell::new(bind),
+    };
+    value
+        .serialize(card_graph::Serializer { context: &context })
+        .map_err(|error| error.to_string())
+}
+
+fn remap_effect_payload(
+    kind: &str,
+    payload: Value,
+    context: &card_graph::Context<'_>,
+) -> Result<Value, String> {
+    let mapped = match family_for_kind(kind) {
+        Some(EffectFamily::ZoneLibrary) => zone_library::map_card_ids(kind, payload, context),
+        Some(EffectFamily::Player) => player::map_card_ids(kind, payload, context),
+        Some(EffectFamily::Resources) => resources::map_card_ids(kind, payload, context),
+        Some(EffectFamily::Permanent) => permanent::map_card_ids(kind, payload, context),
+        Some(EffectFamily::Combat) => combat::map_card_ids(kind, payload, context),
+        Some(EffectFamily::StackEvent) => stack_event::map_card_ids(kind, payload, context),
+        Some(EffectFamily::CompositionAL) => composition_a_l::map_card_ids(kind, payload, context),
+        Some(EffectFamily::CompositionMZ) => composition_m_z::map_card_ids(kind, payload, context),
+        None => return Err(format!("unknown compiled effect payload kind: {kind}")),
+    }?;
+    mapped.ok_or_else(|| format!("unknown compiled effect payload kind: {kind}"))
+}
+
+mod card_graph {
+    use serde::ser::{self, Serialize, SerializeMap as _, Serializer as _};
+    use serde_json::{Value, value};
+    use std::cell::RefCell;
+
+    pub(super) struct Context<'b> {
+        pub(super) bind: RefCell<&'b mut dyn FnMut(u32) -> Result<u32, String>>,
+    }
+    #[derive(Clone, Copy)]
+    pub(super) struct Serializer<'a, 'b> {
+        pub(super) context: &'a Context<'b>,
+    }
+    pub(super) fn map_payload_as<D: serde::de::DeserializeOwned + Serialize>(
+        payload: Value,
+        context: &Context<'_>,
+    ) -> Result<Value, String> {
+        let decoded: D = serde_json::from_value(payload).map_err(|error| error.to_string())?;
+        decoded
+            .serialize(Serializer { context })
+            .map_err(|error| error.to_string())
+    }
+    pub(super) struct Compound<'a, 'b, S> {
+        inner: S,
+        context: &'a Context<'b>,
+        name: Option<&'static str>,
+    }
+    impl<'a, 'b, S> Compound<'a, 'b, S> {
+        fn new(inner: S, context: &'a Context<'b>) -> Self {
+            Self {
+                inner,
+                context,
+                name: None,
+            }
+        }
+        fn mapped<T: Serialize + ?Sized>(&self, value: &T) -> Result<Value, serde_json::Error> {
+            value.serialize(Serializer {
+                context: self.context,
+            })
+        }
+    }
+    macro_rules! primitive {
+        ($method:ident, $ty:ty) => {
+            fn $method(self, value: $ty) -> Result<Value, Self::Error> {
+                value::Serializer.$method(value)
+            }
+        };
+    }
+    impl<'a, 'b> ser::Serializer for Serializer<'a, 'b> {
+        type Ok = Value;
+        type Error = serde_json::Error;
+        type SerializeSeq = Compound<'a, 'b, <value::Serializer as ser::Serializer>::SerializeSeq>;
+        type SerializeTuple =
+            Compound<'a, 'b, <value::Serializer as ser::Serializer>::SerializeTuple>;
+        type SerializeTupleStruct =
+            Compound<'a, 'b, <value::Serializer as ser::Serializer>::SerializeTupleStruct>;
+        type SerializeTupleVariant =
+            Compound<'a, 'b, <value::Serializer as ser::Serializer>::SerializeTupleVariant>;
+        type SerializeMap = Compound<'a, 'b, <value::Serializer as ser::Serializer>::SerializeMap>;
+        type SerializeStruct =
+            Compound<'a, 'b, <value::Serializer as ser::Serializer>::SerializeStruct>;
+        type SerializeStructVariant =
+            Compound<'a, 'b, <value::Serializer as ser::Serializer>::SerializeStructVariant>;
+        primitive!(serialize_bool, bool);
+        primitive!(serialize_i8, i8);
+        primitive!(serialize_i16, i16);
+        primitive!(serialize_i32, i32);
+        primitive!(serialize_i64, i64);
+        primitive!(serialize_i128, i128);
+        primitive!(serialize_u8, u8);
+        primitive!(serialize_u16, u16);
+        primitive!(serialize_u32, u32);
+        primitive!(serialize_u64, u64);
+        primitive!(serialize_u128, u128);
+        primitive!(serialize_f32, f32);
+        primitive!(serialize_f64, f64);
+        primitive!(serialize_char, char);
+        primitive!(serialize_str, &str);
+        primitive!(serialize_bytes, &[u8]);
+        fn serialize_none(self) -> Result<Value, Self::Error> {
+            value::Serializer.serialize_none()
+        }
+        fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Value, Self::Error> {
+            value.serialize(self)
+        }
+        fn serialize_unit(self) -> Result<Value, Self::Error> {
+            value::Serializer.serialize_unit()
+        }
+        fn serialize_unit_struct(self, name: &'static str) -> Result<Value, Self::Error> {
+            value::Serializer.serialize_unit_struct(name)
+        }
+        fn serialize_unit_variant(
+            self,
+            name: &'static str,
+            index: u32,
+            variant: &'static str,
+        ) -> Result<Value, Self::Error> {
+            value::Serializer.serialize_unit_variant(name, index, variant)
+        }
+        fn serialize_newtype_struct<T: Serialize + ?Sized>(
+            self,
+            name: &'static str,
+            value: &T,
+        ) -> Result<Value, Self::Error> {
+            if name == "CardId" {
+                let raw = value.serialize(value::Serializer)?;
+                let id = raw
+                    .as_u64()
+                    .and_then(|number| u32::try_from(number).ok())
+                    .ok_or_else(|| <Self::Error as ser::Error>::custom("invalid typed CardId"))?;
+                let bound = (self.context.bind.borrow_mut())(id)
+                    .map_err(<Self::Error as ser::Error>::custom)?;
+                return value::Serializer.serialize_u32(bound);
+            }
+            let mapped = value.serialize(self)?;
+            value::Serializer.serialize_newtype_struct(name, &mapped)
+        }
+        fn serialize_newtype_variant<T: Serialize + ?Sized>(
+            self,
+            name: &'static str,
+            index: u32,
+            variant: &'static str,
+            value: &T,
+        ) -> Result<Value, Self::Error> {
+            let mapped = value.serialize(self)?;
+            value::Serializer.serialize_newtype_variant(name, index, variant, &mapped)
+        }
+        fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+            Ok(Compound::new(
+                value::Serializer.serialize_seq(len)?,
+                self.context,
+            ))
+        }
+        fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
+            Ok(Compound::new(
+                value::Serializer.serialize_tuple(len)?,
+                self.context,
+            ))
+        }
+        fn serialize_tuple_struct(
+            self,
+            name: &'static str,
+            len: usize,
+        ) -> Result<Self::SerializeTupleStruct, Self::Error> {
+            Ok(Compound::new(
+                value::Serializer.serialize_tuple_struct(name, len)?,
+                self.context,
+            ))
+        }
+        fn serialize_tuple_variant(
+            self,
+            name: &'static str,
+            index: u32,
+            variant: &'static str,
+            len: usize,
+        ) -> Result<Self::SerializeTupleVariant, Self::Error> {
+            Ok(Compound::new(
+                value::Serializer.serialize_tuple_variant(name, index, variant, len)?,
+                self.context,
+            ))
+        }
+        fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+            Ok(Compound::new(
+                value::Serializer.serialize_map(len)?,
+                self.context,
+            ))
+        }
+        fn serialize_struct(
+            self,
+            name: &'static str,
+            len: usize,
+        ) -> Result<Self::SerializeStruct, Self::Error> {
+            let mut compound =
+                Compound::new(value::Serializer.serialize_struct(name, len)?, self.context);
+            compound.name = Some(name);
+            Ok(compound)
+        }
+        fn serialize_struct_variant(
+            self,
+            name: &'static str,
+            index: u32,
+            variant: &'static str,
+            len: usize,
+        ) -> Result<Self::SerializeStructVariant, Self::Error> {
+            Ok(Compound::new(
+                value::Serializer.serialize_struct_variant(name, index, variant, len)?,
+                self.context,
+            ))
+        }
+        fn collect_str<T: std::fmt::Display + ?Sized>(
+            self,
+            value: &T,
+        ) -> Result<Value, Self::Error> {
+            value::Serializer.collect_str(value)
+        }
+    }
+    macro_rules! positional {
+        ($trait:ident, $method:ident) => {
+            impl<S> ser::$trait for Compound<'_, '_, S>
+            where
+                S: ser::$trait<Ok = Value, Error = serde_json::Error>,
+            {
+                type Ok = Value;
+                type Error = serde_json::Error;
+                fn $method<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Self::Error> {
+                    let mapped = self.mapped(value)?;
+                    self.inner.$method(&mapped)
+                }
+                fn end(self) -> Result<Value, Self::Error> {
+                    self.inner.end()
+                }
+            }
+        };
+    }
+    positional!(SerializeSeq, serialize_element);
+    positional!(SerializeTuple, serialize_element);
+    positional!(SerializeTupleStruct, serialize_field);
+    positional!(SerializeTupleVariant, serialize_field);
+    impl<S> ser::SerializeMap for Compound<'_, '_, S>
+    where
+        S: ser::SerializeMap<Ok = Value, Error = serde_json::Error>,
+    {
+        type Ok = Value;
+        type Error = serde_json::Error;
+        fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Self::Error> {
+            let mapped = self.mapped(key)?;
+            self.inner.serialize_key(&mapped)
+        }
+        fn serialize_value<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Self::Error> {
+            let mapped = self.mapped(value)?;
+            self.inner.serialize_value(&mapped)
+        }
+        fn end(self) -> Result<Value, Self::Error> {
+            self.inner.end()
+        }
+    }
+    impl<S> ser::SerializeStruct for Compound<'_, '_, S>
+    where
+        S: ser::SerializeStruct<Ok = Value, Error = serde_json::Error>,
+    {
+        type Ok = Value;
+        type Error = serde_json::Error;
+        fn serialize_field<T: Serialize + ?Sized>(
+            &mut self,
+            key: &'static str,
+            value: &T,
+        ) -> Result<(), Self::Error> {
+            let mapped = self.mapped(value)?;
+            self.inner.serialize_field(key, &mapped)
+        }
+        fn end(self) -> Result<Value, Self::Error> {
+            let mut result = self.inner.end()?;
+            if self.name == Some("CompiledEffect") {
+                let kind = result["kind"]
+                    .as_str()
+                    .ok_or_else(|| {
+                        <Self::Error as ser::Error>::custom("missing compiled effect kind")
+                    })?
+                    .to_owned();
+                let payload = result
+                    .get_mut("payload")
+                    .ok_or_else(|| {
+                        <Self::Error as ser::Error>::custom("missing compiled effect payload")
+                    })?
+                    .take();
+                result["payload"] = super::remap_effect_payload(&kind, payload, self.context)
+                    .map_err(<Self::Error as ser::Error>::custom)?;
+            }
+            if self.name == Some("RetainedCardPayload") {
+                match result.get("card_references").and_then(Value::as_str) {
+                    Some("Native" | "Bound") => {}
+                    _ => {
+                        return Err(<Self::Error as ser::Error>::custom(
+                            "missing retained payload card reference mode",
+                        ));
+                    }
+                }
+                result["card_references"] = Value::String("Bound".into());
+            }
+            Ok(result)
+        }
+    }
+    impl<S> ser::SerializeStructVariant for Compound<'_, '_, S>
+    where
+        S: ser::SerializeStructVariant<Ok = Value, Error = serde_json::Error>,
+    {
+        type Ok = Value;
+        type Error = serde_json::Error;
+        fn serialize_field<T: Serialize + ?Sized>(
+            &mut self,
+            key: &'static str,
+            value: &T,
+        ) -> Result<(), Self::Error> {
+            let mapped = self.mapped(value)?;
+            self.inner.serialize_field(key, &mapped)
+        }
+        fn end(self) -> Result<Value, Self::Error> {
+            self.inner.end()
+        }
+    }
+}
+
+#[cfg(test)]
+mod card_graph_tests {
+    use super::*;
+    use ironsmith_compiled_artifact as wire;
+    use ironsmith_core::{CardBuilder, CardId, ObjectId, StableId};
+
+    fn nested_token() -> wire::WireEffect {
+        let token: wire::WireCardDefinition = ironsmith_core::CardDefinition::new(
+            CardBuilder::new(CardId::from_raw(9), "Graph token")
+                .token()
+                .other_face(CardId::from_raw(11))
+                .build(),
+        );
+        let effect = wire::WireEffect::new(
+            "CreateTokenEffect",
+            serde_json::to_value(ironsmith_core::CreateTokenEffect::one(token)).unwrap(),
+        );
+        let tagged = ironsmith_core::TaggedEffect {
+            tag: "created".into(),
+            effect: Box::new(effect),
+            outcome_only: false,
+        };
+        wire::WireEffect::new("TaggedEffect", serde_json::to_value(tagged).unwrap())
+    }
+    #[test]
+    fn card_graph_typed_ids_preserve_other_namespaces_and_arbitrary_json() {
+        #[derive(serde::Serialize)]
+        struct Carrier {
+            card: CardId,
+            object: ObjectId,
+            stable: StableId,
+            arbitrary: Value,
+        }
+        let value = Carrier {
+            card: CardId::from_raw(9),
+            object: ObjectId::from_raw(9),
+            stable: StableId::from_raw(9),
+            arbitrary: serde_json::json!({"id":9,"CardId":9,"kind":"CardId"}),
+        };
+        let mut seen = Vec::new();
+        let mapped = remap_card_ids(&value, &mut |id| {
+            seen.push(id);
+            Ok(id + 1000)
+        })
+        .unwrap();
+        assert_eq!(seen, [9]);
+        assert_eq!(mapped["card"], 1009);
+        assert_eq!(mapped["object"], 9);
+        assert_eq!(mapped["stable"], 9);
+        assert_eq!(mapped["arbitrary"], value.arbitrary);
+    }
+    #[test]
+    fn card_graph_typed_traversal_rebinds_nested_token_and_linked_face_once() {
+        let original = nested_token();
+        let mut seen = Vec::new();
+        let mapped = remap_card_ids(&original, &mut |id| {
+            seen.push(id);
+            Ok(id + 1000)
+        })
+        .unwrap();
+        assert_eq!(seen, [9, 11]);
+        let receiver: wire::WireEffect = serde_json::from_value(mapped).unwrap();
+        let tagged: ironsmith_core::TaggedEffect<wire::WireEffect> =
+            serde_json::from_value(receiver.payload().clone()).unwrap();
+        let token: ironsmith_core::CreateTokenEffect<wire::WireCardDefinition> =
+            serde_json::from_value(tagged.effect.payload().clone()).unwrap();
+        assert_eq!(token.token.card.id, CardId::from_raw(1009));
+        assert_eq!(token.token.card.other_face, Some(CardId::from_raw(1011)));
+        let roundtrip = remap_card_ids(&receiver, &mut |id| Ok(id - 1000)).unwrap();
+        assert_eq!(roundtrip, serde_json::to_value(original).unwrap());
+    }
+    #[test]
+    fn card_graph_typed_traversal_propagates_unknown_graph_and_nested_model_errors() {
+        let mut seen = Vec::new();
+        assert!(
+            remap_card_ids(&nested_token(), &mut |id| {
+                seen.push(id);
+                if id == 11 {
+                    Err("unbound linked template".into())
+                } else {
+                    Ok(1)
+                }
+            })
+            .unwrap_err()
+            .contains("unbound linked template")
+        );
+        assert_eq!(seen, [9, 11]);
+        let unknown = wire::WireEffect::new("UnknownGraphEffect", serde_json::json!({}));
+        assert!(
+            remap_card_ids(&unknown, &mut |id| Ok(id))
+                .unwrap_err()
+                .contains("unknown compiled effect")
+        );
     }
 }

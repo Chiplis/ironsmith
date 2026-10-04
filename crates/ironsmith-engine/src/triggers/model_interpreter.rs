@@ -714,16 +714,8 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::beginning_of_combat(player)
         }
         TriggerKind::EndOfCombat => crate::triggers::Trigger::end_of_combat(),
-        TriggerKind::BeginningOfEndStep { player, surface } => match surface {
-            ironsmith_core::trigger_model::EndStepSurface::Definite => {
-                crate::triggers::Trigger::beginning_of_the_end_step()
-            }
-            ironsmith_core::trigger_model::EndStepSurface::Each => {
-                crate::triggers::Trigger::beginning_of_end_step(player)
-            }
-            ironsmith_core::trigger_model::EndStepSurface::Monarch => {
-                crate::triggers::Trigger::beginning_of_monarch_end_step()
-            }
+        TriggerKind::BeginningOfEndStep { player, surface } => {
+            crate::triggers::Trigger::new(crate::triggers::BeginningOfEndStepTrigger { player, surface })
         },
         TriggerKind::BeginningOfMainPhase { player, surface } => {
             crate::triggers::Trigger::beginning_of_main_phase_with_surface(player, surface)
@@ -1076,7 +1068,10 @@ impl super::Trigger {
     pub fn from_model(
         trigger: ironsmith_core::trigger_model::Trigger,
     ) -> Result<Self, TriggerModelConversionError> {
-        interpret_trigger_model(trigger)
+        let model = trigger.clone();
+        let mut runtime = interpret_trigger_model(trigger)?;
+        runtime.retained_model = Some(std::sync::Arc::new(model));
+        Ok(runtime)
     }
 }
 

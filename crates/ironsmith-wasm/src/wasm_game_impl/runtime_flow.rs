@@ -1,3 +1,31 @@
+// Counter quantities are sparse: aggregate limits do not depend on pointer
+// width, and the selected kind order reaches the owning executor unchanged.
+fn validate_counter_allocations(
+    ctx: &ironsmith::decisions::context::CountersContext,
+    allocations: &[CounterAllocation],
+) -> Result<Vec<(ironsmith::object::CounterType, u32)>, String> {
+    let mut seen = HashSet::new();
+    let mut total = 0u64;
+    let mut selected = Vec::new();
+    for allocation in allocations {
+        if !seen.insert(allocation.index) {
+            return Err(format!("duplicate counter allocation index {}", allocation.index));
+        }
+        let (kind, available) = ctx.available_counters.get(allocation.index).copied()
+            .ok_or_else(|| format!("counter allocation index {} is out of range", allocation.index))?;
+        if allocation.count > available {
+            return Err(format!("cannot remove {} {} counters; only {available} available", allocation.count, kind.description()));
+        }
+        total = total.checked_add(u64::from(allocation.count))
+            .ok_or_else(|| "counter allocation aggregate overflow".to_string())?;
+        if allocation.count > 0 { selected.push((kind, allocation.count)); }
+    }
+    if total < ctx.min_total || total > ctx.max_total {
+        return Err(format!("counter allocation total {total} must be between {} and {}",ctx.min_total,ctx.max_total));
+    }
+    Ok(selected)
+}
+
 // Runner replay and ordinary effect replay share the same option contract.
 // Counts are mode points for weighted decisions; repeating a nonrepeatable
 // option must never stand in for selecting another legal mode.
@@ -1481,50 +1509,26 @@ impl WasmGame {
                 }
                 Ok(ReplayDecisionAnswer::Colors(selected))
             }
+            (DecisionContext::Counters(counters), UiCommand::SelectCounters { allocations }) => {
+                validate_counter_allocations(counters, &allocations)
+                    .map(ReplayDecisionAnswer::Counters)
+                    .map_err(|error| JsValue::from_str(&error))
+            }
             (DecisionContext::Counters(counters), UiCommand::SelectOptions { option_indices }) => {
-                let legal: Vec<usize> = counters
-                    .available_counters
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, (_, available))| *available > 0)
-                    .map(|(index, _)| index)
-                    .collect();
-                validate_option_selection(
-                    0,
-                    Some(counters.max_total as usize),
-                    &option_indices,
-                    &legal,
-                )?;
-
-                let mut counts: HashMap<usize, u32> = HashMap::new();
+                let mut allocations: Vec<CounterAllocation> = Vec::new();
+                let mut positions: HashMap<usize, usize> = HashMap::new();
                 for index in option_indices {
-                    *counts.entry(index).or_insert(0) += 1;
-                }
-
-                let mut selected: Vec<(ironsmith::object::CounterType, u32)> = Vec::new();
-                for index in 0..counters.available_counters.len() {
-                    let Some(chosen) = counts.get(&index).copied() else {
-                        continue;
-                    };
-                    let Some((counter_type, available)) =
-                        counters.available_counters.get(index).copied()
-                    else {
-                        continue;
-                    };
-                    if chosen > available {
-                        return Err(JsValue::from_str(&format!(
-                            "cannot remove {} of counter {} (only {} available)",
-                            chosen,
-                            counter_type.description(),
-                            available
-                        )));
-                    }
-                    if chosen > 0 {
-                        selected.push((counter_type, chosen));
+                    if let Some(position) = positions.get(&index).copied() {
+                        allocations[position].count = allocations[position].count.checked_add(1)
+                            .ok_or_else(|| JsValue::from_str("counter allocation exceeds per-kind range"))?;
+                    } else {
+                        positions.insert(index, allocations.len());
+                        allocations.push(CounterAllocation { index, count: 1 });
                     }
                 }
-
-                Ok(ReplayDecisionAnswer::Counters(selected))
+                validate_counter_allocations(counters, &allocations)
+                    .map(ReplayDecisionAnswer::Counters)
+                    .map_err(|error| JsValue::from_str(&error))
             }
             (
                 DecisionContext::Partition(partition),
@@ -2256,6 +2260,128 @@ mod live_action_rollback_tests {
         assert!(wasm.game.is_tapped(mountain));
         confirm_pending_mana_payment(&mut wasm);
         assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, 1);
+    }
+
+    fn check_nested_mana_continuation(depth: usize, cancel_deepest: bool) {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let filters: Vec<_> = (0..depth).map(|index| {
+            let definition = CardDefinitionBuilder::new(CardId::new(), format!("Nested mana filter {index}"))
+                .card_types(vec![CardType::Artifact])
+                .with_ability(ironsmith::ability::Ability::mana(
+                    ironsmith::cost::TotalCost::from_costs(vec![
+                        ironsmith::costs::Cost::mana(ManaCost::new().add_generic(1)),
+                        ironsmith::costs::Cost::tap(), ironsmith::costs::Cost::life(1),
+                    ]), vec![ManaSymbol::Colorless, ManaSymbol::Colorless],
+                )).build();
+            wasm.game.create_object_from_definition(&definition, alice, Zone::Battlefield)
+        }).collect();
+        let spell = begin_manual_payment_spell(&mut wasm);
+        for (index, source) in filters.iter().enumerate() {
+            activate_manual_source(&mut wasm, *source, 0);
+            assert_eq!(wasm.current_mana_payment_view().unwrap().source_name, format!("Nested mana filter {index}"));
+            assert_eq!(wasm.priority_state.pending_cast.as_ref().unwrap().spell_id, spell);
+            assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+            assert!(filters.iter().all(|source| !wasm.game.is_tapped(*source)));
+        }
+        activate_manual_source(&mut wasm, mountain, 0);
+        assert!(wasm.game.is_tapped(mountain), "completed child mana action must survive every unfinished ancestor");
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.red, 1);
+        let paid_depth = if cancel_deepest {
+            dispatch_manual_payment_command(&mut wasm, UiCommand::ManaPayment { response: ManaPaymentCommand::Cancel });
+            assert!(wasm.game.is_tapped(mountain));
+            assert!(!wasm.game.is_tapped(*filters.last().unwrap()));
+            assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+            depth - 1
+        } else { depth };
+        for (paid, index) in (0..paid_depth).rev().enumerate() {
+            assert_eq!(wasm.current_mana_payment_view().unwrap().source_name, format!("Nested mana filter {index}"));
+            confirm_pending_mana_payment(&mut wasm);
+            assert!(wasm.game.is_tapped(filters[index]));
+            assert_eq!(wasm.game.player(alice).unwrap().life, 19 - paid as i32);
+            assert_eq!(wasm.game.player(alice).unwrap().mana_pool.red, 0);
+            assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, 2 + paid as u32);
+            assert!(wasm.game.is_tapped(mountain));
+        }
+        assert_eq!(wasm.current_mana_payment_view().unwrap().source_name, "Manual Payment Spell");
+        assert_eq!(wasm.priority_state.pending_cast.as_ref().unwrap().spell_id, spell);
+        confirm_pending_mana_payment(&mut wasm);
+        assert!(wasm.priority_state.pending_mana_ability.is_none());
+        assert!(wasm.priority_state.pending_cast.is_none());
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, paid_depth as u32);
+        assert_eq!(wasm.game.player(alice).unwrap().life, 20 - paid_depth as i32);
+    }
+
+    #[test]
+    fn nested_mana_continuations_keep_three_levels_and_pay_each_once() {
+        check_nested_mana_continuation(3, false);
+    }
+
+    #[test]
+    fn nested_mana_continuations_cancel_only_the_unfinished_child() {
+        check_nested_mana_continuation(3, true);
+    }
+
+    fn check_nested_exhaust_announcement(cancel: bool) {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, _) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let mut exhaust = |name: &str, costs, output| {
+            let mut ability = ironsmith::ability::Ability::mana(ironsmith::cost::TotalCost::from_costs(costs), output);
+            let ironsmith::ability::AbilityKind::Activated(activated) = &mut ability.kind else { unreachable!() };
+            activated.additional_restrictions.push("Activate each exhaust ability only once.".to_string());
+            let definition = CardDefinitionBuilder::new(CardId::new(), name)
+                .card_types(vec![CardType::Artifact]).with_ability(ability).build();
+            wasm.game.create_object_from_definition(&definition, alice, Zone::Battlefield)
+        };
+        let parent = exhaust("Exhaust mana parent", vec![
+            ironsmith::costs::Cost::mana(ManaCost::new().add_generic(1)),
+            ironsmith::costs::Cost::tap(), ironsmith::costs::Cost::life(1),
+        ], vec![ManaSymbol::Colorless, ManaSymbol::Colorless]);
+        let child = exhaust("Exhaust mana child", vec![ironsmith::costs::Cost::tap()], vec![ManaSymbol::Red]);
+        let spell = begin_manual_payment_spell(&mut wasm);
+        activate_manual_source(&mut wasm, parent, 0);
+        assert_eq!(wasm.game.exhaust_ability_activation_count_this_turn(alice), 1, "Exhaust counts when activation begins, before mana payment");
+        assert!(wasm.game.exhaust_ability_activated(parent, 0));
+        assert_eq!(wasm.game.ability_activation_count_this_turn(parent, 0), 1);
+        assert!(!wasm.game.is_tapped(parent));
+        activate_manual_source(&mut wasm, child, 0);
+        assert!(wasm.game.is_tapped(child));
+        assert_eq!(wasm.game.exhaust_ability_activation_count_this_turn(alice), 2);
+        if cancel {
+            dispatch_manual_payment_command(&mut wasm, UiCommand::ManaPayment { response: ManaPaymentCommand::Cancel });
+            assert!(!wasm.game.exhaust_ability_activated(parent, 0));
+            assert!(!wasm.game.ability_activated_this_turn(parent, 0));
+            assert_eq!(wasm.game.ability_activation_count_this_turn(parent, 0), 0);
+            assert_eq!(wasm.game.exhaust_ability_activation_count_this_turn(alice), 1);
+            assert!(wasm.game.exhaust_ability_activated(child, 0));
+            assert!(wasm.game.is_tapped(child));
+            assert!(!wasm.game.is_tapped(parent));
+            assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+        } else {
+            confirm_pending_mana_payment(&mut wasm);
+            assert!(wasm.game.is_tapped(parent));
+            assert_eq!(wasm.game.exhaust_ability_activation_count_this_turn(alice), 2);
+            assert_eq!(wasm.game.ability_activation_count_this_turn(parent, 0), 1);
+            assert_eq!(wasm.game.player(alice).unwrap().life, 19);
+        }
+        assert_eq!(wasm.current_mana_payment_view().unwrap().source_name, "Manual Payment Spell");
+        assert_eq!(wasm.priority_state.pending_cast.as_ref().unwrap().spell_id, spell);
+        confirm_pending_mana_payment(&mut wasm);
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, if cancel { 0 } else { 1 });
+        assert!(wasm.game.turn_store.exhaust_activations_in_progress.is_empty());
+        assert!(wasm.priority_state.pending_mana_parents.is_empty());
+    }
+
+    #[test]
+    fn nested_mana_continuations_exhaust_counts_at_announcement_and_commits_once() {
+        check_nested_exhaust_announcement(false);
+    }
+
+    #[test]
+    fn nested_mana_continuations_exhaust_cancel_preserves_completed_child_announcement() {
+        check_nested_exhaust_announcement(true);
     }
 
     #[test]

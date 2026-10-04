@@ -489,3 +489,53 @@ mod tests {
         );
     }
 }
+
+pub fn visit_grantable_owned_effects(
+    value: &Grantable,
+    visitor: &mut dyn FnMut(&crate::effect::Effect),
+) {
+    let visitor = std::cell::RefCell::new(visitor);
+    let result = value.clone().try_map(
+        |ability| {
+            crate::ability::visit_static_owned_effects(&ability, &mut **visitor.borrow_mut());
+            Ok::<_, std::convert::Infallible>(ability)
+        },
+        |effect| {
+            visitor.borrow_mut()(&effect);
+            Ok(effect)
+        },
+        |cost| {
+            crate::ability::visit_cost_owned_effects(&cost, &mut **visitor.borrow_mut());
+            Ok(cost)
+        },
+    );
+    match result {
+        Ok(_) => {}
+        Err(never) => match never {},
+    }
+}
+
+pub fn visit_spec_owned_effects(
+    value: &GrantSpec,
+    visitor: &mut dyn FnMut(&crate::effect::Effect),
+) {
+    let visitor = std::cell::RefCell::new(visitor);
+    let result = value.clone().try_map(
+        |ability| {
+            crate::ability::visit_static_owned_effects(&ability, &mut **visitor.borrow_mut());
+            Ok::<_, std::convert::Infallible>(ability)
+        },
+        |effect| {
+            visitor.borrow_mut()(&effect);
+            Ok(effect)
+        },
+        |cost| {
+            crate::ability::visit_cost_owned_effects(&cost, &mut **visitor.borrow_mut());
+            Ok(cost)
+        },
+    );
+    match result {
+        Ok(_) => {}
+        Err(never) => match never {},
+    }
+}

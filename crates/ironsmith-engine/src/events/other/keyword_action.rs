@@ -192,6 +192,8 @@ impl WouldKeywordActionMatcher {
 }
 
 impl ReplacementMatcher for WouldKeywordActionMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldKeywordActionMatcher { action: self.action.clone(), source_filter: self.source_filter.clone(), performer_filter: self.performer_filter.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::KeywordAction {
             return false;
@@ -381,5 +383,13 @@ mod tests {
             ),
             "expected a typed planeswalk replacement outcome, got {result:?}"
         );
+    }
+}
+
+// Engine-owned conversion can access private predicate captures without making them public.
+pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
+    match model {
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldKeywordActionMatcher { action, source_filter, performer_filter } => Some(Box::new(WouldKeywordActionMatcher { action: action.clone(), source_filter: source_filter.clone(), performer_filter: performer_filter.clone() })),
+ _ => None,
     }
 }

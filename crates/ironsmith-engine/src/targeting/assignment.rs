@@ -8,6 +8,7 @@ use crate::game_state::Target;
 struct TargetGroupSelections {
     distinct: HashMap<usize, HashSet<Target>>,
     players: HashMap<usize, crate::ids::PlayerId>,
+    selected_by_requirement: Vec<Vec<Target>>,
 }
 
 fn selected_targets_satisfy_requirement(
@@ -58,8 +59,18 @@ fn selected_targets_satisfy_distinct_player_group(
     req: &TargetRequirementContext,
     selected: &[Target],
     used_by_group: &TargetGroupSelections,
+    allow_unresolved: bool,
 ) -> bool {
     if let Some(relation) = &req.shared_player_group {
+        if let Some(pair) = &relation.pair_constraint {
+            let anchor = used_by_group.selected_by_requirement.get(pair.prior_requirement)
+                .and_then(|targets| targets.first());
+            if !selected.is_empty() && !anchor.is_some_and(|anchor| selected.iter()
+                .all(|target| pair.allowed_pairs.contains(&(*anchor, *target))))
+                && !(allow_unresolved && anchor.is_none()) {
+                return false;
+            }
+        } else {
         let mut chosen_player = used_by_group.players.get(&relation.group).copied();
         for target in selected {
             let Some((_, player)) = relation
@@ -73,6 +84,7 @@ fn selected_targets_satisfy_distinct_player_group(
                 return false;
             }
             chosen_player = Some(*player);
+        }
         }
     }
     // CR 115.3: one instance of "target" cannot select an object/player
@@ -95,6 +107,7 @@ fn add_distinct_player_group_targets(
     used_by_group: &mut TargetGroupSelections,
 ) {
     if let Some(relation) = &req.shared_player_group {
+        if relation.pair_constraint.is_none() {
         for target in selected {
             if let Some((_, player)) = relation
                 .target_players
@@ -104,7 +117,9 @@ fn add_distinct_player_group_targets(
                 used_by_group.players.insert(relation.group, *player);
             }
         }
+        }
     }
+    used_by_group.selected_by_requirement.push(selected.to_vec());
     if let Some(group) = req.distinct_player_group {
         used_by_group
             .distinct
@@ -156,7 +171,7 @@ fn assign_target_counts(
 
                 let slice = &targets[cursor..cursor + count];
                 if !selected_targets_satisfy_requirement(req, slice)
-                    || !selected_targets_satisfy_distinct_player_group(req, slice, used_by_group)
+                    || !selected_targets_satisfy_distinct_player_group(req, slice, used_by_group, allow_autofill)
                 {
                     continue;
                 }
@@ -247,6 +262,7 @@ pub fn normalize_targets_for_requirements(
                         req,
                         std::slice::from_ref(legal),
                         &used_by_group,
+                        false,
                     )
                 {
                     selected.push(*legal);
@@ -262,7 +278,7 @@ pub fn normalize_targets_for_requirements(
         {
             return None;
         }
-        if !selected_targets_satisfy_distinct_player_group(req, &selected, &used_by_group) {
+        if !selected_targets_satisfy_distinct_player_group(req, &selected, &used_by_group, false) {
             return None;
         }
         add_distinct_player_group_targets(req, &selected, &mut used_by_group);
@@ -609,5 +625,62 @@ mod chooser_assignment_tests {
         assert!(!target_spec_matches_chooser_assignment(
             &assigned, &declared
         ));
+    }
+}
+
+#[cfg(test)]
+mod prior_target_pair_constraint_tests {
+    use super::*;
+    use crate::decisions::context::{SharedTargetPlayerGroup,TargetPairConstraint};
+    fn t(n:u64)->Target {Target::Object(crate::ids::ObjectId::from_raw(n))}
+    fn pair(prior:usize,allowed:Vec<(Target,Target)>)->SharedTargetPlayerGroup {
+        SharedTargetPlayerGroup{group:0,target_players:vec![],pair_constraint:Some(TargetPairConstraint{
+            prior_requirement:prior,allowed_pairs:allowed})}
+    }
+    fn requirements()->Vec<TargetRequirementContext> {
+        let source=TargetRequirementContext::single("source",vec![t(1),t(2),t(3)]);
+        let mut destination=TargetRequirementContext::single("destination",vec![t(1),t(2),t(3)]);
+        // Three controller classes: exclusion permits either of the other two.
+        destination.shared_player_group=Some(pair(0,vec![(t(1),t(2)),(t(1),t(3)),
+            (t(2),t(1)),(t(2),t(3)),(t(3),t(1)),(t(3),t(2))]));
+        vec![source,destination]
+    }
+    #[test]
+    fn excluded_controller_pair_accepts_both_other_player_classes() {
+        let req=requirements();
+        for source in [t(1),t(2),t(3)] {for to in [t(1),t(2),t(3)] {
+            assert_eq!(validate_flat_target_assignment(&req,&[source,to]),source!=to);
+        }}
+    }
+    #[test]
+    fn pair_dependency_normalization_fills_missing_roles_before_validation() {
+        let req=requirements();
+        for partial in [vec![],vec![t(1)],vec![t(3)]] {
+            let result=normalize_targets_for_requirements(&req,partial).expect("fillable pair");
+            assert_eq!(result.len(),2);
+            assert!(validate_flat_target_assignment(&req,&result));
+            assert_ne!(result[0],result[1]);
+        }
+    }
+    #[test]
+    fn empty_prior_role_cannot_borrow_an_unrelated_selection() {
+        let unrelated=TargetRequirementContext::single("unrelated",vec![t(1)]);
+        let mut source=TargetRequirementContext::single("empty source",vec![]);
+        source.min_targets=0;source.max_targets=Some(0);
+        let mut destination=TargetRequirementContext::single("destination",vec![t(2)]);
+        destination.shared_player_group=Some(pair(1,vec![(t(1),t(2))]));
+        let req=vec![unrelated,source,destination];
+        assert!(!validate_flat_target_assignment(&req,&[t(1),t(2)]));
+        assert!(normalize_targets_for_requirements(&req,vec![t(1),t(2)]).is_none());
+    }
+    #[test]
+    fn chained_pair_constraints_bind_each_authored_prior_role() {
+        let mut req=requirements();
+        let mut third=TargetRequirementContext::single("third",vec![t(1),t(2),t(3)]);
+        third.shared_player_group=Some(pair(1,vec![(t(1),t(1)),(t(2),t(2)),(t(3),t(3))]));
+        req.push(third);
+        assert!(validate_flat_target_assignment(&req,&[t(1),t(2),t(2)]));
+        assert!(!validate_flat_target_assignment(&req,&[t(1),t(2),t(1)]));
+        assert!(!validate_flat_target_assignment(&req,&[t(1),t(1),t(1)]));
     }
 }

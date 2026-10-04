@@ -5269,13 +5269,32 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to }),
+            SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to, remove_from_source: true }),
+        )
+    }
+
+    pub fn subject_verb_put_referenced_counters(from: TargetAst, to: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters {
+                from, to, remove_from_source: false,
+            }),
         )
     }
 
     pub fn subject_verb_move_counters(
         counter_type: CounterType,
         count: Value,
+        from: TargetAst,
+        to: TargetAst,
+    ) -> Self {
+        Self::subject_verb_move_counters_amount(counter_type, ironsmith_core::effect::CounterMoveAmount::Exact(count), from, to)
+    }
+
+    pub fn subject_verb_move_counters_amount(
+        counter_type: CounterType,
+        count: ironsmith_core::effect::CounterMoveAmount,
         from: TargetAst,
         to: TargetAst,
     ) -> Self {

@@ -18,6 +18,24 @@ use std::io;
 /// Default implementations provide deterministic minimal behavior, and
 /// implementors can override the relevant methods for interactive or AI control.
 pub trait DecisionMaker {
+    /// Optional exact output selected by the server's mana plan. The effect
+    /// validates this against its current choice domain before adding mana.
+    fn planned_mana_output(&mut self, _game: &GameState, _choice: &crate::mana_payment::ManaProductionChoice)
+        -> Result<Option<Vec<crate::mana::ManaSymbol>>, String> {
+        Ok(None)
+    }
+
+    /// Optional server-selected record for one original mana production event.
+    /// Returning a record does not authorize it: event execution validates every
+    /// rewrite against current replacement candidates before committing it.
+    fn take_mana_replacement_witness(
+        &mut self,
+        _game: &GameState,
+        _event: &crate::events::ManaAddedEvent,
+    ) -> Result<Option<crate::mana_payment::ManaReplacementWitness>, String> {
+        Ok(None)
+    }
+
     /// Called when a player auto-passes (had no actions available).
     /// Default implementation does nothing.
     fn on_auto_pass(&mut self, _game: &GameState, _player: PlayerId) {}
@@ -307,6 +325,16 @@ impl DecisionRouter {
 }
 
 impl DecisionMaker for DecisionRouter {
+    fn planned_mana_output(&mut self, game: &GameState, choice: &crate::mana_payment::ManaProductionChoice)
+        -> Result<Option<Vec<crate::mana::ManaSymbol>>, String> {
+        self.dm_for(game, choice.player).planned_mana_output(game, choice)
+    }
+
+    fn take_mana_replacement_witness(&mut self, game: &GameState, event: &crate::events::ManaAddedEvent)
+        -> Result<Option<crate::mana_payment::ManaReplacementWitness>, String> {
+        self.dm_for(game, event.player).take_mana_replacement_witness(game, event)
+    }
+
     fn on_auto_pass(&mut self, game: &GameState, player: PlayerId) {
         self.dm_for(game, player).on_auto_pass(game, player);
     }
@@ -477,6 +505,16 @@ impl DecisionMaker for DecisionRouter {
 /// Blanket impl so `&mut D` implements `DecisionMaker` where `D: DecisionMaker`.
 /// This allows passing `&mut dyn DecisionMaker` to functions expecting `impl DecisionMaker`.
 impl<D: DecisionMaker + ?Sized> DecisionMaker for &mut D {
+    fn planned_mana_output(&mut self, game: &GameState, choice: &crate::mana_payment::ManaProductionChoice)
+        -> Result<Option<Vec<crate::mana::ManaSymbol>>, String> {
+        (**self).planned_mana_output(game, choice)
+    }
+
+    fn take_mana_replacement_witness(&mut self, game: &GameState, event: &crate::events::ManaAddedEvent)
+        -> Result<Option<crate::mana_payment::ManaReplacementWitness>, String> {
+        (**self).take_mana_replacement_witness(game, event)
+    }
+
     fn on_auto_pass(&mut self, game: &GameState, player: PlayerId) {
         (*self).on_auto_pass(game, player)
     }
@@ -631,6 +669,16 @@ impl<D: DecisionMaker + ?Sized> DecisionMaker for &mut D {
 /// Blanket impl so `Box<D>` implements `DecisionMaker` where `D: DecisionMaker`.
 /// This allows using `Box<dyn DecisionMaker>` in struct fields.
 impl<D: DecisionMaker + ?Sized> DecisionMaker for Box<D> {
+    fn planned_mana_output(&mut self, game: &GameState, choice: &crate::mana_payment::ManaProductionChoice)
+        -> Result<Option<Vec<crate::mana::ManaSymbol>>, String> {
+        (**self).planned_mana_output(game, choice)
+    }
+
+    fn take_mana_replacement_witness(&mut self, game: &GameState, event: &crate::events::ManaAddedEvent)
+        -> Result<Option<crate::mana_payment::ManaReplacementWitness>, String> {
+        (**self).take_mana_replacement_witness(game, event)
+    }
+
     fn on_auto_pass(&mut self, game: &GameState, player: PlayerId) {
         (**self).on_auto_pass(game, player)
     }
@@ -946,10 +994,10 @@ impl DecisionMaker for AutoPassDecisionMaker {
             if remaining == 0 {
                 break;
             }
-            let to_remove = (*available).min(remaining);
+            let to_remove = (*available).min(u32::try_from(remaining).unwrap_or(u32::MAX));
             if to_remove > 0 {
                 selections.push((*counter_type, to_remove));
-                remaining -= to_remove;
+                remaining -= u64::from(to_remove);
             }
         }
         selections
@@ -1131,10 +1179,10 @@ impl DecisionMaker for SelectFirstDecisionMaker {
             if remaining == 0 {
                 break;
             }
-            let to_remove = (*available).min(remaining);
+            let to_remove = (*available).min(u32::try_from(remaining).unwrap_or(u32::MAX));
             if to_remove > 0 {
                 selections.push((*counter_type, to_remove));
-                remaining -= to_remove;
+                remaining -= u64::from(to_remove);
             }
         }
         selections
@@ -1660,10 +1708,10 @@ impl DecisionMaker for NumericInputDecisionMaker {
                 && idx < ctx.available_counters.len()
             {
                 let (counter_type, available) = ctx.available_counters[idx];
-                let to_remove = count.min(available).min(remaining);
+                let to_remove = count.min(available).min(u32::try_from(remaining).unwrap_or(u32::MAX));
                 if to_remove > 0 {
                     selections.push((counter_type, to_remove));
-                    remaining -= to_remove;
+                    remaining -= u64::from(to_remove);
                 }
             }
         }
@@ -3327,7 +3375,7 @@ fn prompt_choose_colors(
 /// Prompt for choosing counters to remove, returning Vec<(CounterType, u32)> directly.
 fn prompt_choose_counters(
     available_counters: &[(CounterType, u32)],
-    max_total: u32,
+    max_total: u64,
 ) -> Vec<(CounterType, u32)> {
     if available_counters.is_empty() {
         return vec![];
@@ -3358,7 +3406,7 @@ fn prompt_choose_counters(
         }
 
         let mut result = vec![];
-        let mut total_removed = 0u32;
+        let mut total_removed = 0u64;
         let mut valid = true;
 
         for part in trimmed.split(',') {
@@ -3402,7 +3450,7 @@ fn prompt_choose_counters(
                 break;
             }
 
-            total_removed += amount;
+            total_removed += u64::from(amount);
             result.push((available_counters[idx].0, amount));
         }
 

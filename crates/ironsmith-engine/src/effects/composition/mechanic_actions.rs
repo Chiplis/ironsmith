@@ -70,6 +70,12 @@ impl BackupEffect {
 }
 
 impl EffectExecutor for BackupEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for ability in &self.granted_abilities {
+            crate::ability::visit_owned_effects(ability, visitor);
+        }
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }

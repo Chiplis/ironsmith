@@ -803,7 +803,7 @@ impl GameState {
     /// is cached by every revision that can alter ability presence/activity.
     pub(crate) fn sparse_enter_as_copy_source_abilities(
         &self,
-    ) -> Option<Arc<Vec<(ObjectId, StaticAbility)>>> {
+    ) -> Option<Arc<Vec<(ObjectId, crate::continuous::AbilityOrigin, StaticAbility)>>> {
         let cache_key = EnterAsCopySourceCache {
             mutation_revision: self.mutation_revision,
             effect_revision: self.effect_store.continuous_effects.revision(),
@@ -843,45 +843,18 @@ impl GameState {
                 let Some(object) = self.object(object_id) else {
                     continue;
                 };
-                let mut active_abilities = Vec::new();
-
-                for ability in object.abilities.iter() {
-                    let AbilityKind::Static(static_ability) = &ability.kind else {
-                        continue;
-                    };
+                let abilities = crate::continuous::unmodified_ability_occurrences(object, self.turn.turn_number);
+                for (index, ability) in abilities.iter().enumerate() {
+                    let AbilityKind::Static(static_ability) = &ability.kind else { continue; };
                     if ability.functions_in(&object.zone)
                         && static_ability.enter_as_copy_as_enters().is_some()
                         && static_ability.is_active(self, object_id)
-                        && !active_abilities.contains(static_ability)
                     {
-                        active_abilities.push(static_ability.clone());
+                        let origin = abilities.origin(index)
+                            .expect("unmodified ability and occurrence remain paired").clone();
+                        candidates.push((object_id, origin, static_ability.clone()));
                     }
                 }
-                for static_ability in object.level_granted_abilities() {
-                    if static_ability.enter_as_copy_as_enters().is_some()
-                        && static_ability.is_active(self, object_id)
-                        && !active_abilities.contains(&static_ability)
-                    {
-                        active_abilities.push(static_ability);
-                    }
-                }
-                for grant in &object.temporary_static_ability_grants {
-                    let Some(static_ability) = grant.materialize() else {
-                        continue;
-                    };
-                    if static_ability.enter_as_copy_as_enters().is_some()
-                        && static_ability.is_active(self, object_id)
-                        && !active_abilities.contains(&static_ability)
-                    {
-                        active_abilities.push(static_ability);
-                    }
-                }
-
-                candidates.extend(
-                    active_abilities
-                        .into_iter()
-                        .map(|ability| (object_id, ability)),
-                );
             }
             Arc::new(candidates)
         });
@@ -913,7 +886,7 @@ impl GameState {
                 AbilityKind::Static(static_ability)
                     if Self::static_ability_may_provide_enter_as_copy(static_ability)
             ),
-            Modification::ChangeController(_)
+            Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
             | Modification::SetName(_)
             | Modification::InsertNameWords { .. }
             | Modification::AddCardTypes(_)
@@ -1701,6 +1674,17 @@ impl GameState {
         }
 
         units
+    }
+
+    /// Transaction-qualified pool units shared with compact source assignment.
+    /// Native provenance matching remains the owner of snow and restrictions.
+    pub(crate) fn payment_mana_units(
+        &self, request: &crate::mana_payment::ManaPaymentRequest,
+    ) -> Vec<crate::mana_payment::resources::PaymentManaUnit> {
+        self.payable_mana_units(request.payer, Some(request.source), request.reason, &request.cost, None)
+            .into_iter().map(|unit| crate::mana_payment::resources::PaymentManaUnit {
+                symbol: unit.symbol, snow: unit.from_snow_source,
+            }).collect()
     }
 
     /// Maximum number of cost pips covered by the current spendable pool.
@@ -2661,6 +2645,29 @@ impl GameState {
         self.players.get_mut(id.index())
     }
 
+    /// Mutate only a player's mana pool and its unit restrictions/provenance.
+    /// The closure must not change life, zones, counters, or other player state.
+    /// Unrelated dirty state is never cleared by this narrower mutation path.
+    pub(crate) fn with_player_mana_mut<R>(
+        &mut self,
+        id: PlayerId,
+        update: impl FnOnce(&mut Player) -> R,
+    ) -> Option<R> {
+        let retain = self.continuous_state_is_clean()
+            && !self.continuous_effects_are_tap_sensitive();
+        if !retain {
+            self.mark_continuous_state_dirty();
+        }
+        let result = update(self.players.get_mut(id.index())?);
+        if retain {
+            // A mana-only mutation cannot invalidate this board's proven
+            // insensitive characteristics. Acknowledge its tracked cursor so
+            // later reads retain both the cache and its characteristic epoch.
+            *self.runtime_cache.observed_players.borrow_mut() = Some(self.players.cursor());
+        }
+        Some(result)
+    }
+
     pub fn player_speed(&self, id: PlayerId) -> Option<u8> {
         self.player(id).and_then(|player| player.speed)
     }
@@ -3424,7 +3431,7 @@ impl GameState {
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::CopyActivatedAbilities { .. }
             | Modification::CopyStaticAbilityVariants { .. }
-            | Modification::ChangeController(_)
+            | Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
             | Modification::SetName(_)
             | Modification::InsertNameWords { .. }
             | Modification::AddCardTypes(_)

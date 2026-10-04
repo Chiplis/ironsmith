@@ -9,9 +9,9 @@ mod deal_damage;
 mod deal_distributed_damage;
 mod heal_damage;
 mod prevent_next_time_damage;
-mod redirect_next_damage_to_target;
-mod redirect_next_time_damage_to_source;
-mod replace_next_damage_to_target;
+pub(crate) mod redirect_next_damage_to_target;
+pub(crate) mod redirect_next_time_damage_to_source;
+pub(crate) mod replace_next_damage_to_target;
 
 pub use clear_damage::ClearDamageEffect;
 pub use deal_damage::DealDamageEffect;

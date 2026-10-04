@@ -19,6 +19,11 @@ use crate::target::ObjectFilter;
 pub type AddManaOfColorsAmongEffect = ironsmith_core::AddManaOfColorsAmongEffect;
 
 impl EffectExecutor for AddManaOfColorsAmongEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::ColorsAmong { filter: &self.filter, choose_one: false, player: &self.player })
+    }
+
     fn directly_produces_mana(&self) -> bool {
         true
     }

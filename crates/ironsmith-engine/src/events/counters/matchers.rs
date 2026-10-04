@@ -44,6 +44,8 @@ impl WouldPutCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldPutCountersMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldPutCountersMatcher { filter: self.filter.clone(), counter_type: self.counter_type.clone(), cause_filter: self.cause_filter.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::PutCounters {
             return false;
@@ -111,6 +113,8 @@ impl WouldRemoveCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldRemoveCountersMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldRemoveCountersMatcher { filter: self.filter.clone(), counter_type: self.counter_type.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::RemoveCounters {
             return false;
@@ -233,5 +237,14 @@ mod tests {
         );
 
         assert!(!matcher.matches_event(&event, &ctx).expect("finite matcher fixture evaluates successfully"));
+    }
+}
+
+// Engine-owned conversion can access private predicate captures without making them public.
+pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
+    match model {
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldPutCountersMatcher { filter, counter_type, cause_filter } => Some(Box::new(WouldPutCountersMatcher { filter: filter.clone(), counter_type: counter_type.clone(), cause_filter: cause_filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldRemoveCountersMatcher { filter, counter_type } => Some(Box::new(WouldRemoveCountersMatcher { filter: filter.clone(), counter_type: counter_type.clone() })),
+ _ => None,
     }
 }

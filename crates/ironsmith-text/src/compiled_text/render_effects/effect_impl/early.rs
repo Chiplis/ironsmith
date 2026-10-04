@@ -3884,11 +3884,12 @@
     }
     if let Some(move_counters) = effect.downcast_ref::<crate::effects::MoveAllCountersEffect>() {
         let from_text = describe_choose_spec(&move_counters.from);
-        if matches!(move_counters.from, ChooseSpec::Source) || from_text == "it" {
-            return format!(
-                "Put its counters on {}",
-                describe_choose_spec(&move_counters.to)
-            );
+        if !move_counters.remove_from_source {
+            if matches!(move_counters.from, ChooseSpec::Source) || from_text == "it" {
+                return format!("Put its counters on {}", describe_choose_spec(&move_counters.to));
+            }
+            return format!("Put the same number of each kind of counter on {} as on {}",
+                describe_choose_spec(&move_counters.to), from_text);
         }
         return format!(
             "Move all counters from {} onto {}",

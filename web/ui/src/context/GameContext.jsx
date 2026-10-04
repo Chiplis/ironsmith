@@ -838,6 +838,7 @@ export function GameProvider({ children }) {
   const { state, setState, stateRef, subscribeState, isSnapshotRendered } = useGameSnapshot();
   const [status, setStatusRaw] = useState({ msg: "Loading WASM...", isError: false });
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
+  const [autoResolveEnabled, setAutoResolveEnabled] = useState(false);
   const [holdRule, setHoldRule] = useState("never");
   const [fixedStartingBoard, setFixedStartingBoard] = useState(readFixedStartingBoard);
   const [uiFont, setUiFont] = useState(() => {
@@ -1938,7 +1939,7 @@ export function GameProvider({ children }) {
     const unsubscribe = game.subscribePriorityAnalysis(apply);
     apply(game.latestPriorityAnalysis());
     return unsubscribe;
-  }, [setState, stateRef, game, state?.__priority_revision, state?.decision?.analysis_complete]);
+  }, [setState, stateRef, game, state?.__priority_revision, state?.decision]);
 
   const automatedAnalysisRevisionRef = useRef(null);
   useEffect(() => {
@@ -2265,45 +2266,66 @@ export function GameProvider({ children }) {
 
   useEffect(() => {
     const run = resolveAllRef.current;
-    if (!run || run.inFlight) return;
+    if ((!run && !autoResolveEnabled) || run?.inFlight) return;
     const stackSize = Number(state?.stack_size || 0);
     if (
       !state
       || state.game_over
       || stackSize <= 0
-      || (state.turn_number ?? null) !== run.turn
-      || run.passes >= 200
+      || (run && (state.turn_number ?? null) !== run.turn)
+      || (run && run.passes >= 200)
     ) {
       stopResolveAll();
       return;
     }
     const top = Array.isArray(state.stack_objects) ? state.stack_objects[0] : null;
-    if (stackSize > run.stackSize && top && !samePlayerId(top.controller, state.perspective)) {
+    if (run && stackSize > run.stackSize && top && !samePlayerId(top.controller, state.perspective)) {
       stopResolveAll();
       return;
     }
-    run.stackSize = stackSize;
+    if (run) run.stackSize = stackSize;
     const decision = state.decision;
     if (decision?.kind !== "priority" || !samePlayerId(decision.player, state.perspective)) return;
-    if (run.dispatchedFrom === state) return;
+    if (run?.dispatchedFrom === state) return;
     const passAction = findPassPriorityAction(decision);
     if (!passAction || (passAction.label && passAction.label !== "Pass priority")) {
       stopResolveAll();
       return;
     }
-    run.inFlight = true;
-    run.dispatchedFrom = state;
-    run.passes += 1;
-    Promise.resolve(dispatch(
-      { type: "priority_action", action_index: passAction.index, action_ref: passAction.action_ref },
-      passAction.label
-    ))
-      .catch(() => stopResolveAll())
-      .finally(() => {
-        run.inFlight = false;
-        if (resolveAllRef.current === run) setResolveAllTick((tick) => tick + 1);
-      });
-  }, [dispatch, resolveAllTick, state, stopResolveAll]);
+    // A continuation must wait for the previous click's cooldown and for
+    // the current snapshot to paint. Otherwise dispatch drops it and the
+    // same-state guard prevents the stack from draining any further.
+    const timer = setTimeout(() => {
+      if (stateRef.current !== state) {
+        setResolveAllTick((tick) => tick + 1);
+        return;
+      }
+      if (wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()
+          || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) {
+        setResolveAllTick((tick) => tick + 1);
+        return;
+      }
+      if (run) {
+        run.inFlight = true;
+        run.dispatchedFrom = state;
+        run.passes += 1;
+      }
+      Promise.resolve(dispatch(
+        { type: "priority_action", action_index: passAction.index, action_ref: passAction.action_ref },
+        passAction.label
+      ))
+        .catch(() => {
+          stopResolveAll();
+          setAutoResolveEnabled(false);
+        })
+        .finally(() => {
+          if (run) run.inFlight = false;
+          setResolveAllTick((tick) => tick + 1);
+        });
+    }, 25);
+    return () => clearTimeout(timer);
+  }, [autoResolveEnabled, dispatch, isSnapshotRendered, multiplayer.submittingAction,
+    resolveAllTick, state, stateRef, stopResolveAll]);
 
   // Ranking is read-only and sliced. Only a finished, still-current suggestion
   // becomes an ordinary synchronized command; manual input wins every race.
@@ -2894,6 +2916,8 @@ export function GameProvider({ children }) {
       refresh,
       autoPassEnabled,
       setAutoPassEnabled,
+      autoResolveEnabled,
+      setAutoResolveEnabled,
       holdRule,
       setHoldRule,
       fixedStartingBoard,
@@ -2951,7 +2975,7 @@ export function GameProvider({ children }) {
       status,
       setStatus,
       runWasmInteraction,
-      dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, autoPassEnabled, holdRule, uiFont,
+      dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, autoPassEnabled, autoResolveEnabled, holdRule, uiFont,
       playerAccentOverrides, setPlayerAccentOverride, inspectorDebug, fixedStartingBoard,
       activeEffectOrderingState, moveEffectOrderingItem,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,

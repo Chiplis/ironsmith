@@ -48,7 +48,7 @@ mod continuous;
 mod cost_modifiers;
 mod id;
 mod keywords;
-mod misc;
+pub(crate) mod misc;
 mod model_interpreter;
 mod protection;
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
@@ -79,7 +79,7 @@ use crate::continuous::ContinuousEffect;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 pub use ironsmith_core::{
-    CompanionDeckCardFacts, CompanionDeckCondition, ConditionalSpellKeywordKind,
+    IntrinsicStartingCounter, CompanionDeckCardFacts, CompanionDeckCondition, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, EscalateSpec, GraveyardCountMetric, PregameActionKind,
     PregameBeginOnBattlefieldSpec, PregameRevealFromOpeningHandSpec, SpliceQuality, SpliceSpec,
 };
@@ -332,6 +332,17 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     }
 
     fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
+        None
+    }
+
+    /// Exact shared model of an immutable native ability's current fields.
+    /// Unrepresented semantics remain an explicit codec boundary; neither id
+    /// nor display text alone is sufficient to reconstruct a parameterized model.
+    fn canonical_model(&self) -> Option<CompiledStaticAbility> {
+        self.compiled_model().cloned()
+    }
+
+    fn intrinsic_starting_counter_rule(&self) -> Option<ironsmith_core::IntrinsicStartingCounter> {
         None
     }
 
@@ -1699,6 +1710,14 @@ impl StaticAbility {
         self.0.compiled_model()
     }
 
+    pub fn canonical_model(&self) -> Option<CompiledStaticAbility> {
+        self.0.canonical_model()
+    }
+
+    pub fn intrinsic_starting_counter_rule(&self) -> Option<ironsmith_core::IntrinsicStartingCounter> {
+        self.0.intrinsic_starting_counter_rule()
+    }
+
     /// Only replacements of this object's own graveyard move function from
     /// every origin zone by default. Global replacement abilities stay in
     /// their declared functional zones.
@@ -1817,7 +1836,10 @@ impl StaticAbility {
         self.0
             .generate_replacement_effect(source, controller)
             .map(|mut effect| {
-                effect.static_ability_instance = Some(self.instance_id());
+                // Intrinsic rules are identified by their typed rule origin and
+                // host, rather than a process-global synthetic instance id.
+                effect.static_ability_instance = self.intrinsic_starting_counter_rule()
+                    .is_none().then_some(self.instance_id());
                 effect
             })
     }
@@ -2948,6 +2970,16 @@ impl StaticAbility {
             counter_type,
             crate::effect::Value::Fixed(count as i32),
         ))
+    }
+
+    pub fn intrinsic_starting_counters(rule: ironsmith_core::IntrinsicStartingCounter) -> Self {
+        static LOYALTY: std::sync::OnceLock<StaticAbility> = std::sync::OnceLock::new();
+        static DEFENSE: std::sync::OnceLock<StaticAbility> = std::sync::OnceLock::new();
+        let slot = match rule {
+            ironsmith_core::IntrinsicStartingCounter::Loyalty => &LOYALTY,
+            ironsmith_core::IntrinsicStartingCounter::Defense => &DEFENSE,
+        };
+        slot.get_or_init(|| Self::new(super::static_abilities::misc::IntrinsicStartingCounters::new(rule))).clone()
     }
 
     pub fn enters_with_counters_value(

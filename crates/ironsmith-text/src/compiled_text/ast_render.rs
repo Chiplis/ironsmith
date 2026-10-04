@@ -30333,7 +30333,7 @@ fn is_graft_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
         return false;
     };
     move_counters.counter_type == CounterType::PlusOnePlusOne
-        && move_counters.count == Value::Fixed(1)
+        && move_counters.count == ironsmith_core::effect::CounterMoveAmount::Exact(Value::Fixed(1))
         && matches!(move_counters.from, ChooseSpec::Source)
         && matches!(&move_counters.to, ChooseSpec::Tagged(found) if found == &tag.tag)
 }

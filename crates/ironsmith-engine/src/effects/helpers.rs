@@ -472,25 +472,25 @@ fn effect_metric_object_count(
     game: &GameState,
     outcome: &EffectOutcome,
     source: EffectMetricSource,
-) -> i32 {
+) -> i64 {
     match source {
         EffectMetricSource::Outcome => outcome.as_count().unwrap_or_else(|| {
             let memory = effect_metric_memory(game, outcome, EffectMetricSource::Outcome);
             if !memory.is_empty() {
-                memory.len() as i32
+                memory.len() as i64
             } else {
-                outcome.output_objects().len() as i32
+                outcome.output_objects().len() as i64
             }
         }),
         EffectMetricSource::ChosenObjects => outcome
             .chosen_object_memory()
-            .map(|memory| memory.len() as i32)
-            .or_else(|| outcome.chosen_objects().map(|ids| ids.len() as i32))
+            .map(|memory| memory.len() as i64)
+            .or_else(|| outcome.chosen_objects().map(|ids| ids.len() as i64))
             .unwrap_or(0),
         EffectMetricSource::AffectedObjects => outcome
             .affected_object_memory()
-            .map(|memory| memory.len() as i32)
-            .or_else(|| outcome.affected_objects().map(|ids| ids.len() as i32))
+            .map(|memory| memory.len() as i64)
+            .or_else(|| outcome.affected_objects().map(|ids| ids.len() as i64))
             .unwrap_or(0),
     }
 }
@@ -501,7 +501,7 @@ fn resolve_effect_metric(
     effect_id: crate::effect::EffectId,
     source: EffectMetricSource,
     metric: EffectMetric,
-) -> Result<i32, ExecutionError> {
+) -> Result<i64, ExecutionError> {
     // "the other result" of a roll-and-choose die roll (Wild Endeavor) is
     // recorded on the roll itself. When the bound producer is a later
     // instruction, read the nearest earlier roll that recorded one.
@@ -509,7 +509,7 @@ fn resolve_effect_metric(
         let other_number = |id: crate::effect::EffectId| {
             ctx.get_outcome(id).and_then(|outcome| {
                 outcome.execution_facts.iter().find_map(|fact| match fact {
-                    crate::effect::ExecutionFact::OtherNumber(value) => Some(*value as i32),
+                    crate::effect::ExecutionFact::OtherNumber(value) => Some(*value as i64),
                     _ => None,
                 })
             })
@@ -536,63 +536,63 @@ fn resolve_effect_metric(
         }
         EffectMetric::LifeLost => outcome
             .events_of_type::<LifeLossEvent>()
-            .map(|event| event.amount as i32)
+            .map(|event| event.amount as i64)
             .sum(),
         EffectMetric::LifeGained => outcome
             .events_of_type::<LifeGainEvent>()
-            .map(|event| event.amount as i32)
+            .map(|event| event.amount as i64)
             .sum(),
         EffectMetric::DamageDealt => outcome
             .events_of_type::<DamageEvent>()
-            .map(|event| event.amount as i32)
+            .map(|event| event.amount as i64)
             .sum(),
         EffectMetric::ExcessDamage => outcome
             .execution_facts
             .iter()
             .filter_map(|fact| match fact {
-                crate::effect::ExecutionFact::ExcessDamage(value) => Some(*value as i32),
+                crate::effect::ExecutionFact::ExcessDamage(value) => Some(*value as i64),
                 _ => None,
             })
             .sum(),
         EffectMetric::DamagePrevented => 0,
         EffectMetric::FirstPower => object_memory()
             .into_iter()
-            .find_map(|memory| memory.power)
+            .find_map(|memory| memory.power.map(i64::from))
             .unwrap_or(0),
         EffectMetric::FirstToughness => object_memory()
             .into_iter()
-            .find_map(|memory| memory.toughness)
+            .find_map(|memory| memory.toughness.map(i64::from))
             .unwrap_or(0),
         EffectMetric::FirstManaValue => object_memory()
             .into_iter()
-            .map(|memory| memory.mana_value)
+            .map(|memory| i64::from(memory.mana_value))
             .next()
             .unwrap_or(0),
         EffectMetric::TotalPower => object_memory()
             .into_iter()
-            .map(|memory| memory.power.unwrap_or(0))
+            .map(|memory| i64::from(memory.power.unwrap_or(0)))
             .sum(),
         EffectMetric::TotalToughness => object_memory()
             .into_iter()
-            .map(|memory| memory.toughness.unwrap_or(0))
+            .map(|memory| i64::from(memory.toughness.unwrap_or(0)))
             .sum(),
         EffectMetric::TotalManaValue => object_memory()
             .into_iter()
-            .map(|memory| memory.mana_value)
+            .map(|memory| i64::from(memory.mana_value))
             .sum(),
         EffectMetric::GreatestPower => object_memory()
             .into_iter()
-            .filter_map(|memory| memory.power)
+            .filter_map(|memory| memory.power.map(i64::from))
             .max()
             .unwrap_or(0),
         EffectMetric::GreatestToughness => object_memory()
             .into_iter()
-            .filter_map(|memory| memory.toughness)
+            .filter_map(|memory| memory.toughness.map(i64::from))
             .max()
             .unwrap_or(0),
         EffectMetric::GreatestManaValue => object_memory()
             .into_iter()
-            .map(|memory| memory.mana_value)
+            .map(|memory| i64::from(memory.mana_value))
             .max()
             .unwrap_or(0),
         EffectMetric::ColorsAmong => object_memory()
@@ -600,13 +600,13 @@ fn resolve_effect_metric(
             .fold(crate::color::ColorSet::COLORLESS, |colors, memory| {
                 colors.union(memory.colors)
             })
-            .count() as i32,
+            .count() as i64,
         EffectMetric::CardTypesAmong => {
             let mut card_types = std::collections::HashSet::new();
             for memory in object_memory() {
                 card_types.extend(memory.card_types);
             }
-            card_types.len() as i32
+            card_types.len() as i64
         }
         EffectMetric::GreatestPlayerCount => outcome
             .player_counts()
@@ -630,14 +630,14 @@ fn resolve_effect_metric(
         }
         EffectMetric::PlayersWithPositiveCount => outcome
             .player_counts()
-            .map(|counts| counts.iter().filter(|(_, count)| *count > 0).count() as i32)
+            .map(|counts| counts.iter().filter(|(_, count)| *count > 0).count() as i64)
             .unwrap_or(0),
         EffectMetric::NameStickerUniqueVowels => outcome
             .execution_facts
             .iter()
             .find_map(|fact| match fact {
                 crate::effect::ExecutionFact::AppliedNameSticker { name, .. } => {
-                    Some(crate::game_state::name_sticker_unique_vowels(name) as i32)
+                    Some(crate::game_state::name_sticker_unique_vowels(name) as i64)
                 }
                 _ => None,
             })
@@ -646,7 +646,7 @@ fn resolve_effect_metric(
             .execution_facts
             .iter()
             .find_map(|fact| match fact {
-                crate::effect::ExecutionFact::OtherNumber(value) => Some(*value as i32),
+                crate::effect::ExecutionFact::OtherNumber(value) => Some(*value as i64),
                 _ => None,
             })
             .unwrap_or(0),
@@ -660,7 +660,7 @@ fn resolve_prior_effect_metric(
     ctx: &ExecutionContext,
     effect_id: crate::effect::EffectId,
     query: &PriorEffectMetricQuery,
-) -> Result<i32, ExecutionError> {
+) -> Result<i64, ExecutionError> {
     if query.filter.is_none() && query.player.is_none() {
         return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);
     }
@@ -709,33 +709,33 @@ fn resolve_prior_effect_metric(
 
     let resolved = match query.metric {
         EffectMetric::Count | EffectMetric::ChosenCount | EffectMetric::AffectedCount => {
-            memory.len() as i32
+            memory.len() as i64
         }
-        EffectMetric::FirstPower => memory.iter().find_map(|object| object.power).unwrap_or(0),
+        EffectMetric::FirstPower => memory.iter().find_map(|object| object.power.map(i64::from)).unwrap_or(0),
         EffectMetric::FirstToughness => memory
             .iter()
-            .find_map(|object| object.toughness)
+            .find_map(|object| object.toughness.map(i64::from))
             .unwrap_or(0),
-        EffectMetric::FirstManaValue => memory.first().map_or(0, |object| object.mana_value),
-        EffectMetric::TotalPower => memory.iter().map(|object| object.power.unwrap_or(0)).sum(),
+        EffectMetric::FirstManaValue => memory.first().map_or(0, |object| i64::from(object.mana_value)),
+        EffectMetric::TotalPower => memory.iter().map(|object| i64::from(object.power.unwrap_or(0))).sum(),
         EffectMetric::TotalToughness => memory
             .iter()
-            .map(|object| object.toughness.unwrap_or(0))
+            .map(|object| i64::from(object.toughness.unwrap_or(0)))
             .sum(),
-        EffectMetric::TotalManaValue => memory.iter().map(|object| object.mana_value).sum(),
+        EffectMetric::TotalManaValue => memory.iter().map(|object| i64::from(object.mana_value)).sum(),
         EffectMetric::GreatestPower => memory
             .iter()
-            .filter_map(|object| object.power)
+            .filter_map(|object| object.power.map(i64::from))
             .max()
             .unwrap_or(0),
         EffectMetric::GreatestToughness => memory
             .iter()
-            .filter_map(|object| object.toughness)
+            .filter_map(|object| object.toughness.map(i64::from))
             .max()
             .unwrap_or(0),
         EffectMetric::GreatestManaValue => memory
             .iter()
-            .map(|object| object.mana_value)
+            .map(|object| i64::from(object.mana_value))
             .max()
             .unwrap_or(0),
         EffectMetric::ColorsAmong => memory
@@ -743,12 +743,12 @@ fn resolve_prior_effect_metric(
             .fold(crate::color::ColorSet::COLORLESS, |colors, object| {
                 colors.union(object.colors)
             })
-            .count() as i32,
+            .count() as i64,
         EffectMetric::CardTypesAmong => memory
             .iter()
             .flat_map(|object| object.card_types.iter().copied())
             .collect::<HashSet<_>>()
-            .len() as i32,
+            .len() as i64,
         _ => resolve_effect_metric(game, ctx, effect_id, query.source, query.metric)?,
     };
     Ok(resolved)
@@ -902,6 +902,24 @@ pub(crate) fn room_unlocked_door_count(game: &GameState, object: &crate::object:
 }
 
 /// Resolve a Value to a concrete i32.
+/// Resolve a numeric quantity without truncating prior instruction counts.
+pub fn resolve_value_wide(game: &GameState, value: &Value, ctx: &ExecutionContext) -> Result<i64, ExecutionError> {
+    value_eval::resolve_wide(value, &value_eval::EvaluationContext::execution_context(game,ctx))
+}
+
+/// Convert a nonnegative instruction quantity into an unsigned event field.
+pub fn resolve_nonnegative_u32(game: &GameState, value: &Value, ctx: &ExecutionContext) -> Result<u32, ExecutionError> {
+    u32::try_from(resolve_value_wide(game,value,ctx)?.max(0)).map_err(|_|
+        ExecutionError::UnresolvableValue("resolved quantity exceeds the unsigned event range".into()))
+}
+
+/// Resolve a requested quantity for an operation bounded by available resources.
+/// Clamp in the wide domain before narrowing the resulting event quantity.
+pub fn resolve_bounded_nonnegative_u32(game: &GameState, value: &Value, ctx: &ExecutionContext, available: u32) -> Result<u32, ExecutionError> {
+    let quantity = resolve_value_wide(game, value, ctx)?.max(0).min(i64::from(available));
+    u32::try_from(quantity).map_err(|_| ExecutionError::InternalError("bounded quantity exceeded its unsigned resource range".into()))
+}
+
 pub fn resolve_value(
     game: &GameState,
     value: &Value,
@@ -967,11 +985,11 @@ fn tagged_snapshots_for_choose_spec<'a>(
 fn snapshot_counter_total(
     snapshot: &ObjectSnapshot,
     counter_type: &Option<crate::object::CounterType>,
-) -> i32 {
+) -> i64 {
     if let Some(counter_type) = counter_type {
-        snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32
+        snapshot.counters.get(counter_type).copied().unwrap_or(0) as i64
     } else {
-        snapshot.counters.values().map(|count| *count as i32).sum()
+        snapshot.counters.values().map(|count| *count as i64).sum()
     }
 }
 
@@ -1464,12 +1482,18 @@ pub fn resolve_player_filter(
             ))
         }
         PlayerFilter::Opponent => {
+            let filter_ctx = ctx.filter_context(game);
+            // Replacement payloads may carry the affected player as context,
+            // even when this instruction asks for a different player. Reuse
+            // only a live candidate satisfying the authored player filter.
             for target in &ctx.targets {
-                if let ResolvedTarget::Player(id) = target {
+                if let ResolvedTarget::Player(id) = target
+                    && game.player(*id).is_some_and(|player| player.is_in_game())
+                    && spec.matches_player(*id, &filter_ctx)
+                {
                     return Ok(*id);
                 }
             }
-            let filter_ctx = ctx.filter_context(game);
             let opponents = game
                 .players
                 .iter()
@@ -1504,12 +1528,18 @@ pub fn resolve_player_filter(
             ))
         }
         PlayerFilter::Teammate => {
+            let filter_ctx = ctx.filter_context(game);
+            // Replacement payloads may carry the affected player as context,
+            // even when this instruction asks for a different player. Reuse
+            // only a live candidate satisfying the authored player filter.
             for target in &ctx.targets {
-                if let ResolvedTarget::Player(id) = target {
+                if let ResolvedTarget::Player(id) = target
+                    && game.player(*id).is_some_and(|player| player.is_in_game())
+                    && spec.matches_player(*id, &filter_ctx)
+                {
                     return Ok(*id);
                 }
             }
-            let filter_ctx = ctx.filter_context(game);
             let teammates = game
                 .players
                 .iter()
@@ -4988,6 +5018,41 @@ mod tests {
             1,
             "should count only attackers attacking Charlie"
         );
+    }
+
+    #[test]
+    fn constrained_player_filters_do_not_accept_unqualified_context_players() {
+        let mut game = new_test_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), bob);
+        for targets in [vec![bob], vec![bob, alice], vec![alice, bob], vec![PlayerId::from_index(99), alice]] {
+            ctx.targets = targets.into_iter().map(ResolvedTarget::Player).collect();
+            assert_eq!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(), alice);
+        }
+        ctx.targets = vec![ResolvedTarget::Player(bob)];
+        assert_eq!(resolve_player_filter(&game, &PlayerFilter::Any, &ctx).unwrap(), bob,
+            "unconstrained affected-player bindings remain available");
+        for target in [alice, bob] {
+            ctx.targets = vec![ResolvedTarget::Player(target)];
+            assert!(matches!(resolve_player_filter(&game, &PlayerFilter::Teammate, &ctx),
+                Err(ExecutionError::UnresolvableValue(_))), "no teammate exists in this game");
+        }
+    }
+
+    #[test]
+    fn constrained_opponent_context_retains_multiplayer_choice_and_valid_targets() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let carol = PlayerId::from_index(2);
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), bob);
+        ctx.targets = vec![ResolvedTarget::Player(bob)];
+        assert!(matches!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx),
+            Err(ExecutionError::UnresolvableValue(ref detail)) if detail == AN_OPPONENT_CHOICE_REQUIRED));
+        ctx.set_tagged_players(AN_OPPONENT_CHOICE_TAG, vec![carol]);
+        assert_eq!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(), carol);
+        ctx.targets = vec![ResolvedTarget::Player(bob), ResolvedTarget::Player(alice)];
+        assert_eq!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(), alice,
+            "a valid explicit context target still takes precedence");
     }
 
     #[test]

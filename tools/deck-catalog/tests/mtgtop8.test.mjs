@@ -7,6 +7,8 @@ import {
   extractDeckLinks,
   formatUrl,
   modernFormatUrl,
+  decodeResponseBody,
+  fetchText,
   normalizeFormat,
   parseDeckPage,
 } from "../sources/mtgtop8.mjs";
@@ -89,4 +91,33 @@ test("parses shared placements such as #3-4", () => {
   const deck = parseDeckPage(html, { eventId: "1", deckId: "2" });
   assert.equal(deck.placement, 3);
   assert.equal(deck.archetype, "Scepter Chant");
+});
+
+test("decodes ISO-8859-1 pages with their declared charset", async () => {
+  const body = Uint8Array.from([
+    ...Buffer.from('<div id=md1 class="deck_line hover_tr">2 <span class=L14>L', "latin1"),
+    0xf3,
+    ...Buffer.from("rien Revealed</span></div>", "latin1"),
+  ]);
+  const fetchImpl = async () => new Response(body, {
+    headers: { "content-type": "text/html; charset=ISO-8859-1" },
+  });
+  const html = await fetchText("https://mtgtop8.com/event?e=1&d=2&f=MO", { fetchImpl, minDelayMs: 0 });
+  const deck = parseDeckPage(html, { eventId: "1", deckId: "2", format: "modern" });
+  assert.deepEqual(deck.mainboard, [{ name: "Lórien Revealed", count: 2 }]);
+});
+
+test("falls back to a meta charset, then UTF-8", () => {
+  const latin = Uint8Array.from([...Buffer.from('<meta charset="iso-8859-1">K', "latin1"), 0xed, ...Buffer.from("li", "latin1")]);
+  assert.match(decodeResponseBody(latin, "text/html"), /Kíli$/);
+  assert.equal(decodeResponseBody(new TextEncoder().encode("Mjölnir"), ""), "Mjölnir");
+});
+
+test("decodes numeric character references in card names", () => {
+  const deck = parseDeckPage('<div id=md1 class="deck_line hover_tr">1 <span class=L14>D&#225;in&#x27;s Company</span></div>', {
+    eventId: "1",
+    deckId: "2",
+    format: "modern",
+  });
+  assert.equal(deck.mainboard[0].name, "Dáin's Company");
 });

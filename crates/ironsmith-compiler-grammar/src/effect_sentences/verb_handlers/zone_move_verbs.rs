@@ -46,7 +46,7 @@ pub fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> 
     };
 
     let from = parse_target_phrase(from_tokens)?;
-    let to = parse_target_phrase(to_tokens)?;
+    let to = parse_counter_move_destination(to_tokens, &from)?;
 
     Ok(if move_all {
         EffectAst::subject_verb_move_all_counters(from, to)
@@ -64,7 +64,11 @@ fn parse_move_counted_counters(
     use super::super::grammar::primitives as grammar;
     use winnow::Parser as _;
 
-    let Some((count, used)) = crate::util::parse_value(tokens) else {
+    let (count, used) = if grammar::strip_lexed_prefix_phrase(tokens, &["any", "number", "of"]).is_some() {
+        (ironsmith_core::effect::CounterMoveAmount::AnyNumber, 3)
+    } else if let Some((count, used)) = crate::util::parse_value(tokens) {
+        (ironsmith_core::effect::CounterMoveAmount::Exact(count), used)
+    } else {
         return Ok(None);
     };
     if used == 0 || used >= tokens.len() {
@@ -93,13 +97,57 @@ fn parse_move_counted_counters(
         return Ok(None);
     }
     let from = parse_target_phrase(from_tokens)?;
-    let to = parse_target_phrase(to_tokens)?;
-    Ok(Some(EffectAst::subject_verb_move_counters(
+    let to = parse_counter_move_destination(to_tokens, &from)?;
+    Ok(Some(EffectAst::subject_verb_move_counters_amount(
         counter_type,
         count,
         from,
         to,
     )))
+}
+
+
+/// A counter movement has a source endpoint and a destination endpoint.
+/// "With the same controller" relates the destination to the source, not to
+/// the spell's controller or a target set confined to one endpoint.
+fn parse_counter_move_destination(tokens: &[OwnedLexToken], from: &TargetAst) -> Result<TargetAst, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+    let Some(core_tokens) = grammar::strip_lexed_suffix_phrase(tokens, &["with", "the", "same", "controller"])
+        .or_else(|| grammar::strip_lexed_suffix_phrase(tokens, &["with", "same", "controller"])) else {
+        return parse_target_phrase(tokens);
+    };
+    fn source_reference(from: &TargetAst) -> Result<crate::filter::ObjectRef, CardTextError> {
+        use crate::filter::ObjectRef;
+        match from {
+            TargetAst::Source(_) => Ok(ObjectRef::tagged(crate::tag::CompilerReferenceTag::SourceObject.bind())),
+            TargetAst::Tagged(tag, _) => Ok(ObjectRef::tagged(tag.clone())),
+            TargetAst::Object(_, Some(_), _) => Ok(ObjectRef::Target),
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => source_reference(inner),
+            _ => Err(CardTextError::ParseError("same-controller counter movement needs a bound source endpoint".into())),
+        }
+    }
+    fn constrain(target: TargetAst, reference: crate::filter::ObjectRef) -> Result<TargetAst, CardTextError> {
+        match target {
+            TargetAst::Object(mut filter, target_span, it_span) => {
+                let relation = PlayerFilter::ControllerOf(reference);
+                // Preserve an existing controller restriction through intersection.
+                filter.controller = Some(match filter.controller.take() {
+                    None => relation,
+                    Some(base) => PlayerFilter::Excluding {
+                        base: Box::new(base),
+                        excluded: Box::new(PlayerFilter::Excluding {
+                            base: Box::new(PlayerFilter::Any), excluded: Box::new(relation),
+                        }),
+                    },
+                });
+                Ok(TargetAst::Object(filter, target_span, it_span))
+            }
+            TargetAst::WithCount(inner, count) => Ok(TargetAst::WithCount(Box::new(constrain(*inner, reference)?), count)),
+            TargetAst::WithCountValue(inner, count, value) => Ok(TargetAst::WithCountValue(Box::new(constrain(*inner, reference)?), count, value)),
+            _ => Err(CardTextError::ParseError("same-controller counter movement needs an object destination".into())),
+        }
+    }
+    constrain(parse_target_phrase(core_tokens)?, source_reference(from)?)
 }
 
 fn draw_count_with_surface(count: Value, additional: bool) -> Value {

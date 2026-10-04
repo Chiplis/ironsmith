@@ -35,6 +35,8 @@ impl WouldGainLifeMatcher {
 }
 
 impl ReplacementMatcher for WouldGainLifeMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldGainLifeMatcher { player_filter: self.player_filter.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::LifeGain {
             return false;
@@ -86,6 +88,8 @@ impl WouldLoseLifeMatcher {
 }
 
 impl ReplacementMatcher for WouldLoseLifeMatcher {
+    fn export_descriptor(&self) -> Result<crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor, String> { Ok(crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldLoseLifeMatcher { player_filter: self.player_filter.clone() }) }
+
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::LifeLoss {
             return false;
@@ -179,5 +183,14 @@ mod tests {
 
         let matcher = WouldLoseLifeMatcher::any_player();
         assert_eq!(matcher.display(), "When any player would lose life");
+    }
+}
+
+// Engine-owned conversion can access private predicate captures without making them public.
+pub(crate) fn restore_replacement_matcher_descriptor(model: &crate::replacement_matcher_descriptor::NativeReplacementMatcherDescriptor) -> Option<Box<dyn crate::events::ReplacementMatcher>> {
+    match model {
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldGainLifeMatcher { player_filter } => Some(Box::new(WouldGainLifeMatcher { player_filter: player_filter.clone() })),
+crate::replacement_matcher_descriptor::ReplacementMatcherDescriptor::WouldLoseLifeMatcher { player_filter } => Some(Box::new(WouldLoseLifeMatcher { player_filter: player_filter.clone() })),
+ _ => None,
     }
 }

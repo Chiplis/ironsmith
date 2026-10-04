@@ -567,6 +567,12 @@ fn execute_token_instruction(
 }
 
 impl EffectExecutor for CreateTokenCopyEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for ability in &self.granted_static_abilities {
+            crate::ability::visit_static_owned_effects(ability, visitor);
+        }
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }

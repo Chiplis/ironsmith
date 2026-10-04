@@ -30,6 +30,16 @@ macro_rules! define_keyword {
                 $display.to_string()
             }
 
+            fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+                static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+                    std::sync::LazyLock::new(|| super::CompiledStaticAbility {
+                        id: Some(StaticAbilityId::$id),
+                        label: $display.to_owned(),
+                        payload: ironsmith_core::StaticAbilityPayload::None,
+                    });
+                Some(&MODEL)
+            }
+
             fn may_generate_continuous_effects(&self) -> bool {
                 false
             }
@@ -263,6 +273,16 @@ define_keyword!(ReadAhead, ReadAhead, "Read ahead");
 pub struct Defender;
 
 impl StaticAbilityKind for Defender {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+            std::sync::LazyLock::new(|| super::CompiledStaticAbility {
+                id: Some(StaticAbilityId::Defender),
+                label: "Defender".to_owned(),
+                payload: ironsmith_core::StaticAbilityPayload::None,
+            });
+        Some(&MODEL)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Defender
     }
@@ -301,6 +321,16 @@ impl StaticAbilityKind for Defender {
 pub struct Indestructible;
 
 impl StaticAbilityKind for Indestructible {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+            std::sync::LazyLock::new(|| super::CompiledStaticAbility {
+                id: Some(StaticAbilityId::Indestructible),
+                label: "Indestructible".to_owned(),
+                payload: ironsmith_core::StaticAbilityPayload::None,
+            });
+        Some(&MODEL)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Indestructible
     }
@@ -335,6 +365,16 @@ impl StaticAbilityKind for Indestructible {
 pub struct Hexproof;
 
 impl StaticAbilityKind for Hexproof {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+            std::sync::LazyLock::new(|| super::CompiledStaticAbility {
+                id: Some(StaticAbilityId::Hexproof),
+                label: "Hexproof".to_owned(),
+                payload: ironsmith_core::StaticAbilityPayload::None,
+            });
+        Some(&MODEL)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Hexproof
     }
@@ -479,11 +519,8 @@ impl StaticAbilityKind for LivingMetal {
         &self,
         source: ObjectId,
         controller: PlayerId,
-        game: &GameState,
+        _game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        if !game.is_active_player(controller) {
-            return vec![];
-        }
 
         vec![
             ContinuousEffect::new(
@@ -492,7 +529,8 @@ impl StaticAbilityKind for LivingMetal {
                 EffectTarget::Source,
                 Modification::AddCardTypes(vec![CardType::Artifact, CardType::Creature]),
             )
-            .with_source_type(EffectSourceType::StaticAbility),
+            .with_source_type(EffectSourceType::StaticAbility)
+            .with_condition(crate::ConditionExpr::YourTurn),
         ]
     }
 }
@@ -520,12 +558,192 @@ mod tests {
                 )
         ));
 
+        assert_eq!(own_turn[0].condition, Some(crate::ConditionExpr::YourTurn));
+        assert!(crate::continuous::continuous_effect_duration_and_condition_are_active(&own_turn[0], &game));
         game.turn.active_player = bob;
-        assert!(
-            LivingMetal
-                .generate_effects(source, alice, &game)
-                .is_empty()
-        );
-        assert_eq!(LivingMetal.generate_effects(source, bob, &game).len(), 1);
+        let other_turn = LivingMetal.generate_effects(source, alice, &game);
+        assert_eq!(other_turn.len(), 1, "retain the conditional descriptor until layer application");
+        assert_eq!(other_turn[0].condition, Some(crate::ConditionExpr::YourTurn));
+        assert!(!crate::continuous::continuous_effect_duration_and_condition_are_active(&other_turn[0], &game));
+        let bob_turn = LivingMetal.generate_effects(source, bob, &game);
+        assert_eq!(bob_turn.len(), 1);
+        assert!(crate::continuous::continuous_effect_duration_and_condition_are_active(&bob_turn[0], &game));
+    }
+
+    #[test]
+    fn living_metal_rechecks_turn_condition_after_static_control() {
+        use crate::ability::Ability;
+        use crate::card::CardBuilder;
+        use crate::ids::CardId;
+        use crate::static_abilities::StaticAbility;
+        use crate::target::ObjectFilter;
+        use crate::zone::Zone;
+        for active in [PlayerId::from_index(0), PlayerId::from_index(1)] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let bob = game.players[1].id;
+            game.turn.active_player = active;
+            let vehicle = CardBuilder::new(CardId::new(), "Living metal control recipient")
+                .card_types(vec![CardType::Artifact]).subtypes(vec![crate::types::Subtype::Vehicle]).build();
+            let source = game.create_object_from_card(&vehicle, bob, Zone::Battlefield);
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::living_metal()));
+            let original = game.continuous_query_snapshot().expect("original living metal query is finite");
+            assert_eq!(original.current_characteristics(source).unwrap().card_types.contains(&CardType::Creature),
+                active == bob, "positive control uses the original controller's turn");
+            let aura = CardBuilder::new(CardId::new(), "Living metal control source")
+                .card_types(vec![CardType::Enchantment]).subtypes(vec![crate::types::Subtype::Aura]).build();
+            let control = game.create_object_from_card(&aura, alice, Zone::Battlefield);
+            game.object_mut(control).unwrap().attached_to = Some(crate::object::AttachmentTarget::Object(source));
+            game.object_mut(source).unwrap().attachments.push(control);
+            game.object_mut(control).unwrap().abilities_mut().extend([
+                Ability::static_ability(StaticAbility::enchant(crate::object::AuraAttachmentFilter::Object(ObjectFilter::permanent()))),
+                Ability::static_ability(StaticAbility::control_attached_permanent("You control the enchanted permanent".into())),
+            ]);
+            let revision = game.effect_store.continuous_effects.revision();
+            let query = game.continuous_query_snapshot().expect("controlled living metal query is finite");
+            assert_eq!(query.current_controller(source), Some(alice));
+            assert_eq!(query.current_characteristics(source).unwrap().card_types.contains(&CardType::Creature),
+                active == alice, "living metal must evaluate its condition after static source control");
+            assert!(query.current_characteristics(source).unwrap().card_types.contains(&CardType::Artifact));
+            assert_eq!(game.object(source).unwrap().owner, bob);
+            assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+        }
+    }
+
+}
+
+#[cfg(test)]
+mod retained_keyword_model_tests {
+    use super::*;
+    use crate::static_abilities::StaticAbility;
+    use ironsmith_core::functional_zones::StaticAbilityFunctionalZones;
+
+    #[test]
+    fn retained_keyword_models_restore_every_declared_unit_keyword() {
+        let abilities = vec![
+            StaticAbility::new(Flying),
+            StaticAbility::new(Shadow),
+            StaticAbility::new(Horsemanship),
+            StaticAbility::new(Fear),
+            StaticAbility::new(Intimidate),
+            StaticAbility::new(Skulk),
+            StaticAbility::new(Prowess),
+            StaticAbility::new(FirstStrike),
+            StaticAbility::new(DoubleStrike),
+            StaticAbility::new(Deathtouch),
+            StaticAbility::new(Lifelink),
+            StaticAbility::new(Trample),
+            StaticAbility::new(TrampleOverPlaneswalkers),
+            StaticAbility::new(Vigilance),
+            StaticAbility::new(Menace),
+            StaticAbility::new(Banding),
+            StaticAbility::new(Reach),
+            StaticAbility::new(Flanking),
+            StaticAbility::new(Partner),
+            StaticAbility::new(StartYourEngines),
+            StaticAbility::new(SpaceSculptor),
+            StaticAbility::new(DoctorsCompanion),
+            StaticAbility::new(Assist),
+            StaticAbility::new(ReadAhead),
+            StaticAbility::new(Flash),
+            StaticAbility::new(Haste),
+            StaticAbility::new(Phasing),
+            StaticAbility::new(Wither),
+            StaticAbility::new(Infect),
+        ];
+        for original in abilities {
+            let model = original
+                .compiled_model()
+                .expect("unit keyword has a canonical model");
+            let restored = StaticAbility::from_model(model.clone());
+            assert_eq!(restored.id(), original.id());
+            assert_eq!(restored.display(), original.display());
+            assert_eq!(
+                restored.default_functional_zones(),
+                original.default_functional_zones()
+            );
+            assert_eq!(
+                restored.is_keyword(),
+                original.is_keyword(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.may_generate_continuous_effects(),
+                original.may_generate_continuous_effects()
+            );
+            assert_eq!(
+                restored.grants_evasion(),
+                original.grants_evasion(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_deathtouch(),
+                original.has_deathtouch(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_double_strike(),
+                original.has_double_strike(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_first_strike(),
+                original.has_first_strike(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_flash(),
+                original.has_flash(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_flying(),
+                original.has_flying(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_haste(),
+                original.has_haste(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_lifelink(),
+                original.has_lifelink(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_menace(),
+                original.has_menace(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_reach(),
+                original.has_reach(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_trample(),
+                original.has_trample(),
+                "{:?}",
+                original.id()
+            );
+            assert_eq!(
+                restored.has_vigilance(),
+                original.has_vigilance(),
+                "{:?}",
+                original.id()
+            );
+        }
     }
 }

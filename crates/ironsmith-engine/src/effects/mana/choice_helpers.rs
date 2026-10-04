@@ -37,7 +37,7 @@ pub(crate) fn mana_added_count_outcome(
     mut receipt: ManaCreditReceipt,
     count: i32,
 ) -> EffectOutcome {
-    receipt.outcome.set_value(OutcomeValue::Count(if receipt.original_committed { count } else { 0 }));
+    receipt.outcome.set_value(OutcomeValue::Count(if receipt.original_committed { i64::from(count) } else { 0 }));
     receipt.outcome
 }
 
@@ -52,9 +52,9 @@ pub(crate) fn choose_mana_colors(
     distinct_colors: bool,
     available_colors: Option<&[Color]>,
     default_color: Color,
-) -> Vec<Color> {
+) -> Result<Vec<Color>, crate::effects::ExecutionError> {
     if count == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     let effective_available = match (available_colors, ctx.mana.mana_color_restriction.as_deref()) {
@@ -70,6 +70,23 @@ pub(crate) fn choose_mana_colors(
         (None, None) => None,
     };
 
+    let planned_choice = crate::mana_payment::ManaProductionChoice {
+        source: ctx.source, player: player_id,
+        available: effective_available.as_deref().unwrap_or(&Color::ALL).iter().copied().map(ManaSymbol::from_color).collect(),
+        count, same_type: same_color, distinct: distinct_colors && !same_color,
+    };
+    if let Some(output) = ctx.decision_maker.planned_mana_output(game, &planned_choice)
+        .map_err(crate::effects::ExecutionError::InternalError)? {
+        if !planned_choice.accepts(&output) {
+            return Err(crate::effects::ExecutionError::InternalError("invalid planned mana colors".into()));
+        }
+        return Ok(output.into_iter().filter_map(|symbol| match symbol {
+            ManaSymbol::White => Some(Color::White), ManaSymbol::Blue => Some(Color::Blue),
+            ManaSymbol::Black => Some(Color::Black), ManaSymbol::Red => Some(Color::Red),
+            ManaSymbol::Green => Some(Color::Green), _ => None,
+        }).collect());
+    }
+
     let fallback = effective_available
         .as_deref()
         .and_then(|colors| colors.first().copied())
@@ -82,12 +99,12 @@ pub(crate) fn choose_mana_colors(
         && let Some([color]) = effective_available.as_deref()
         && (same_color || !distinct_colors || count == 1)
     {
-        return vec![*color; count as usize];
+        return Ok(vec![*color; count as usize]);
     }
 
     let spec = if let Some(colors) = effective_available.as_deref() {
         if colors.is_empty() {
-            return vec![fallback; count as usize];
+            return Ok(vec![fallback; count as usize]);
         }
         if distinct_colors && !same_color {
             ManaColorsSpec::restricted_different_colors(ctx.source, count, colors.to_vec())
@@ -108,7 +125,7 @@ pub(crate) fn choose_mana_colors(
         spec,
     );
     if ctx.decision_maker.awaiting_choice() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     if let Some(available) = effective_available.as_deref() {
@@ -146,7 +163,7 @@ pub(crate) fn choose_mana_colors(
         chosen.fill(first);
     }
 
-    chosen
+    Ok(chosen)
 }
 
 pub(crate) fn credit_mana_symbols_from_context<I>(
@@ -164,15 +181,17 @@ where
         return Ok(ManaCreditReceipt { mana: Vec::new(), original_committed: false, outcome: EffectOutcome::count(0) });
     }
     game.clear_pending_decision_controllers();
+    let mana = symbols.into_iter().collect::<Vec<_>>();
+    // Empty printed output precedes effect-based mana abilities. It emits no
+    // event and cannot fail, so it needs no transactional game/context copy.
+    if mana.is_empty() {
+        return Ok(ManaCreditReceipt { mana, original_committed: true, outcome: EffectOutcome::count(0) });
+    }
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let result = (|| {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(ManaCreditReceipt { mana: Vec::new(), original_committed: false, outcome: EffectOutcome::count(0) });
-        }
-        let mana = symbols.into_iter().collect::<Vec<_>>();
-        if mana.is_empty() {
-            return Ok(ManaCreditReceipt { mana, original_committed: true, outcome: EffectOutcome::count(0) });
         }
         let snapshot = ctx.source_snapshot.clone().or_else(|| game.object(ctx.source)
             .map(|object| ObjectSnapshot::from_object(object, game)));
@@ -211,18 +230,10 @@ fn commit_mana_result(
             TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
                 let resolved = crate::events::downcast_event::<ManaAddedEvent>(event.inner())
                     .ok_or_else(|| ExecutionError::InternalError("mana replacement returned an incompatible event".into()))?;
-                let player = game.player_mut(resolved.player).ok_or(ExecutionError::PlayerNotFound(resolved.player))?;
-                for symbol in resolved.mana.iter().copied() {
-                    if ctx.mana.mana_usage_restrictions.is_empty() {
-                        player.add_unrestricted_mana_with_retention(symbol, resolved.source, resolved.snapshot.clone(), ctx.mana.retention);
-                    } else {
-                        player.add_restricted_mana_with_snapshot_and_retention(crate::ability::RestrictedManaUnit {
-                            symbol, source: resolved.source,
-                            source_chosen_creature_type: ctx.mana.mana_source_chosen_creature_type,
-                            restrictions: ctx.mana.mana_usage_restrictions.clone(),
-                        }, resolved.snapshot.clone(), ctx.mana.retention);
-                    }
-                }
+                crate::mana_payment::resources::ManaCredit {
+                    event: resolved.clone(),
+                    context: crate::mana_payment::resources::ManaCreditContext::from_execution(ctx),
+                }.commit(game)?;
                 let outcome = if resolved.mana.is_empty() { EffectOutcome::count(0) } else {
                     EffectOutcome::count(resolved.mana.len() as i32).with_event(
                         crate::triggers::TriggerEvent::new_with_provenance(resolved.clone(), event.provenance()))
@@ -266,12 +277,24 @@ pub(crate) fn choose_mana_symbols(
     same_symbol: bool,
     available_symbols: &[ManaSymbol],
     default_symbol: ManaSymbol,
-) -> Vec<ManaSymbol> {
+) -> Result<Vec<ManaSymbol>, crate::effects::ExecutionError> {
     if count == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
+    let planned_choice = crate::mana_payment::ManaProductionChoice {
+        source: ctx.source, player: player_id, available: available_symbols.to_vec(),
+        count, same_type: same_symbol, distinct: false,
+    };
+    if let Some(output) = ctx.decision_maker.planned_mana_output(game, &planned_choice)
+        .map_err(crate::effects::ExecutionError::InternalError)? {
+        if !planned_choice.accepts(&output) {
+            return Err(crate::effects::ExecutionError::InternalError("invalid planned mana symbols".into()));
+        }
+        return Ok(output);
+    }
+
     if available_symbols.is_empty() {
-        return vec![default_symbol; count as usize];
+        return Ok(vec![default_symbol; count as usize]);
     }
 
     let choices = available_symbols
@@ -290,7 +313,7 @@ pub(crate) fn choose_mana_symbols(
         )
         .unwrap_or(default_symbol);
         if ctx.decision_maker.awaiting_choice() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let fallback = if available_symbols.contains(&selected) {
             selected
@@ -309,7 +332,7 @@ pub(crate) fn choose_mana_symbols(
             )
             .unwrap_or(default_symbol);
             if ctx.decision_maker.awaiting_choice() {
-                return Vec::new();
+                return Ok(Vec::new());
             }
             chosen.push(if available_symbols.contains(&selected) {
                 selected
@@ -323,7 +346,7 @@ pub(crate) fn choose_mana_symbols(
         chosen.push(default_symbol);
     }
     chosen.truncate(count as usize);
-    chosen
+    Ok(chosen)
 }
 
 fn mana_symbol_oracle(symbol: ManaSymbol) -> String {

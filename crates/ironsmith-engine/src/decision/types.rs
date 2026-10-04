@@ -294,6 +294,7 @@ pub struct ReplacementOption {
 }
 
 /// Pip-level alternative payment effect.
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlternativePaymentEffect {
     Convoke,
@@ -301,6 +302,7 @@ pub enum AlternativePaymentEffect {
 }
 
 /// Tracks a keyword ability payment contribution made while casting a spell.
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeywordPaymentContribution {
     pub permanent_id: ObjectId,

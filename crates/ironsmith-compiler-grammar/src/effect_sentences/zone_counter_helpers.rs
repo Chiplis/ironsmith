@@ -449,7 +449,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     };
 
     // An unqualified referential count ("its counters" / "this's counters")
-    // names the complete counter collection to move.  Interpret that typed
+    // names the complete counter collection to put.  Interpret that typed
     // fact before inspecting the remaining target phrase: words in the target
     // such as "creature" are otherwise valid named-counter surfaces and can
     // be mistaken for a counter descriptor.
@@ -470,7 +470,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
                     render_clause_words(tokens)
                 ))
             })?;
-        return Ok(wrap_conditional(EffectAst::subject_verb_move_all_counters(
+        return Ok(wrap_conditional(EffectAst::subject_verb_put_referenced_counters(
             from, target,
         )));
     }

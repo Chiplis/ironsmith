@@ -6,7 +6,7 @@ import { previewCryptoRequirementsWithMaterial } from "../lib/preview-crypto-mat
 import { replayTrustedMatch, replayTrustedActions } from "../lib/relay/replay-trusted-match.js";
 import { compileWasmWithProgress } from "../lib/wasm-loading.js";
 import { createAdaptiveWorkBudget } from "../lib/adaptive-work-budget.js";
-import { createPriorityAnalysisScheduler } from "../lib/priority-analysis-scheduler.js";
+import { createIsolatedPriorityAnalysis } from "../lib/isolated-priority-analysis.js";
 import { createWorkerTaskDiagnostics } from "../lib/worker-task-diagnostics.js";
 import initWasm, { WasmGame } from "../../../wasm_demo/pkg/ironsmith.js";
 import engineWasmUrl from "../../../wasm_demo/pkg/engine_bg.wasm?url";
@@ -46,6 +46,12 @@ let cardIndexPromise = null;
 let embeddedCardIndex = null;
 const registeredCardRoutes = new Set();
 const previewCardSources = new Map();
+// Explicit registrations and custom drafts are session definitions too.
+const analysisRegistrations = [];
+const ANALYSIS_REGISTRATION_METHODS = new Set([
+  'registerCompiledCardArtifact', 'registerCompiledCardSourceArtifacts',
+  'registerExternalCardSources', 'registerExternalCardSourcesJson', 'createCustomCard',
+]);
 let latestTargetPreview;
 let previewWorker = null;
 const targetPreviews = new Map();
@@ -126,17 +132,20 @@ const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelP
 let priorityIdentity = null;
 let priorityViewRevision = 0;
 const workerTasks = createWorkerTaskDiagnostics({ publish: message => self.postMessage(message) });
-const priorityAnalysis = createPriorityAnalysisScheduler({
-  game: () => game,
-  busy: () => pendingCallCount > 0,
-  enqueue: enqueueCall,
-  reportStage: (name, details) => workerTasks.phaseActive(name, details),
-  runSetup: (metadata, operation) => workerTasks.runSync(metadata, operation),
-  publish: (analysis) => {
-    priorityIdentity = game.priorityAnalysisIdentity();
-    self.postMessage({ type: "priorityAnalysis", ...analysis });
-  },
-  fail: ({ revision, error }) => self.postMessage({ type: "priorityAnalysisError", revision, error: serializeError(error) }),
+const priorityAnalysis = createIsolatedPriorityAnalysis({
+  identity: () => game?.priorityAnalysisIdentity(),
+  pending: () => game?.priorityAnalysisPending?.() === true,
+  eligible: () => game?.hasPriorityDecision?.() === true,
+  capture: () => enqueueCall(() => ({
+    checkpoint: game.exportSyncCheckpoint(),
+    module: engineModule,
+    registrations: analysisRegistrations.slice(),
+    sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route]))]
+      .map(([source, route]) => [route, source]),
+  }), { kind: 'priority_analysis_capture' }),
+  createWorker: () => new Worker(new URL('./priorityAnalysisWorker.js', import.meta.url), { type: 'module' }),
+  publish: analysis => self.postMessage({ type: 'priorityAnalysis', ...analysis }),
+  fail: ({ revision, error }) => self.postMessage({ type: 'priorityAnalysisError', revision, error: serializeError(error) }),
 });
 
 function nowMs() {
@@ -769,7 +778,9 @@ async function handleInit(msg = {}) {
     embeddedCardIndex = null;
     knownRuntimeCardNames.clear();
     registeredCardRoutes.clear();
+    priorityAnalysis.invalidate();
     previewCardSources.clear();
+    analysisRegistrations.length = 0;
     missingCardRoutes.clear();
     transientMissingCardRoutes.clear();
     const assetBaseUrl = String(msg.assetBaseUrl || "").trim();
@@ -886,7 +897,7 @@ function handleCall(msg) {
     }
   }
   // A preview promise must never occupy the authoritative command queue.
-  // Its bounded slices use that queue separately, yielding to game commands.
+  // Its analysis runs on a separate worker against the captured state.
   if (msg.runtimeBranch == null && method === "inspectorActions" && game) {
     const task = workerTasks.create({ kind: 'inspector_request', requestId: id, method });
     workerTasks.phase(task, 'analysis_wait');
@@ -993,6 +1004,9 @@ function handleCall(msg) {
     const previousPerspectiveIdentity = method === "setPerspective" ? game.priorityAnalysisIdentity() : null;
     const wasmStartedAt = nowMs();
     const result = await fn.apply(game, args);
+    if (ANALYSIS_REGISTRATION_METHODS.has(method)) {
+      analysisRegistrations.push({ method, args: structuredClone(args) });
+    }
     if (previousPerspectiveIdentity !== null && previousPerspectiveIdentity !== game.priorityAnalysisIdentity()) priorityAnalysis.invalidate();
     rememberCardNamesFromEngineResult(result);
     const wasmCallMs = nowMs() - wasmStartedAt;

@@ -9,7 +9,12 @@ use ironsmith::turn_runner::{TurnRunner, TurnState as RunnerTurnState};
 use ironsmith::types::Subtype;
 use sha2::{Digest, Sha256};
 
-const SYNC_CHECKPOINT_VERSION: u32 = 1;
+// Version 1 conflated effective control with an initial-controller assignment.
+// That information cannot be recovered losslessly from its object snapshots.
+// Version 3 distinguishes full executable checkpoints from perspective metadata
+// carriers and requires a full payload rather than silently losing programs.
+const SYNC_CHECKPOINT_VERSION: u32 = 4;
+const PUBLIC_AUDIT_CHECKPOINT_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -187,12 +192,29 @@ impl SyncCounterAbilityState {
     }
 }
 
+// Both metadata and executable imports validate the same typed counter facts.
+// This does not replace retained executable ability occurrences with rebuilt ones.
+fn sync_counters_from_checkpoint(object: &SyncObject) -> Result<ironsmith::object::ObjectCounters, String> {
+    let mut counts = std::collections::BTreeMap::new();
+    for counter in &object.counters {
+        let kind = sync_counter_from_wire(&counter.kind, counter.counter_type)?;
+        if counts.insert(kind, counter.amount).is_some() {
+            return Err("duplicate counter kind in checkpoint".into());
+        }
+    }
+    let registrations = object.counter_ability_state.clone()
+        .map(SyncCounterAbilityState::into_runtime).transpose()?;
+    ironsmith::object::ObjectCounters::from_checkpoint(counts, registrations)
+        .map_err(|error| format!("invalid counter registrations: {error}"))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncObject {
     id: u64,
     stable_id: u64,
     owner: u8,
+    initial_controller: u8,
     controller: u8,
     zone: String,
     name: String,
@@ -318,6 +340,7 @@ struct PublicAuditObject {
     id: u64,
     stable_id: u64,
     owner: u8,
+    initial_controller: u8,
     controller: u8,
     zone: String,
     identity: Option<PublicAuditObjectIdentity>,
@@ -513,10 +536,1883 @@ impl SyncContinuousTimestamps {
     }
 }
 
+/// Complete native executable roots for the owning checkpoint. This carrier is
+/// staged separately from publication until perspective reachability is wired.
+/// Graph slots are sorted by source CardId and receiver IDs must preserve that
+/// order: current linked-face semantics still give allocation order meaning.
+
+type SyncStackHistory = ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceObjectSnapshot<u32>;
+type SyncRetainedEvent = ironsmith::events::raw_event::RetainedRawEvent<u32, SyncStackHistory>;
+type SyncRetainedStack = ironsmith::game_state::RetainedStackEntry<
+    ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceProgram,
+    SyncStackHistory, SyncRetainedEvent,
+    ironsmith::effect::RetainedEffectOutcome<SyncRetainedEvent>,
+    ironsmith_core::ManaUsageRestriction<ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceEffect>,
+>;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
+enum SyncEventBody {
+    AbilityActivatedEvent {
+        source: ObjectId,
+        activator: PlayerId,
+        is_mana_ability: bool,
+        is_loyalty_ability: bool,
+        activation_cost_has_x: bool,
+        activation_cost_has_tap: bool,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        x_value: Option<u32>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        stack_entry_provenance: Option<ironsmith::provenance::ProvNodeId>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        activated_ability: Option<ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceAbility>,
+        mana_sources_spent: Vec<SyncStackHistory>,
+        mana_spent_total: u32,
+    },
+    CreateTokensEvent {
+        controller: PlayerId,
+        count: u32,
+        cause: ironsmith::events::cause::EventCause,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        token: Option<ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceLiveObject<u32>>,
+        additional_tokens: Vec<(ironsmith_core::AdditionalTokenKind, u32)>,
+    },
+    EnterBattlefieldEvent { value: ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceEntryEvent<u32> },
+    DamagePreventedEvent {
+        damage_source: ObjectId,
+        target: SyncTarget,
+        amount: u32,
+        prevention_source: ObjectId,
+        prevention_controller: PlayerId,
+        is_combat: bool,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        target_snapshot: Option<SyncStackHistory>,
+        applications: Vec<SyncPreventedDamage>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        prevention_shield: Option<ironsmith::prevention::PreventionShieldId>,
+    },
+    KeywordActionEvent {
+        action: ironsmith_core::KeywordActionKind,
+        player: PlayerId,
+        source: ObjectId,
+        amount: u32,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        votes: Option<Vec<SyncPlayerVote>>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+        player_tags: std::collections::BTreeMap<ironsmith::tag::TagKey, Vec<PlayerId>>,
+        object_tags: std::collections::BTreeMap<ironsmith::tag::TagKey, Vec<SyncStackHistory>>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        combat_phase: Option<u32>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        unlocked_door_triggers: Option<Vec<u64>>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        unlocked_door_ability_range: Option<std::ops::Range<usize>>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        x_value: Option<u32>,
+        voter_teams: Vec<(PlayerId, usize)>,
+    },
+    MarkersChangedEvent {
+        change_type: SyncMarkerChange,
+        marker: ironsmith::CounterType,
+        location: SyncTarget,
+        amount: u32,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        count_after: Option<u32>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        source: Option<ObjectId>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        source_controller: Option<PlayerId>,
+    },
+    PlayersFinishedVotingEvent {
+        source: ObjectId,
+        controller: PlayerId,
+        votes: Vec<SyncPlayerVote>,
+        vote_counts: Vec<(usize, usize)>,
+        option_names: Vec<String>,
+        player_tags: std::collections::BTreeMap<ironsmith::tag::TagKey, Vec<PlayerId>>,
+        voter_teams: Vec<(PlayerId, usize)>,
+    },
+    AbilityTriggeredEvent {
+        source: ObjectId,
+        source_stable_id: StableId,
+        controller: PlayerId,
+        trigger_identity: u64,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        source_snapshot: Option<SyncStackHistory>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        cause_kind: Option<ironsmith::events::EventKind>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        cause_object: Option<ObjectId>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        zone_change_cause: Option<SyncTriggerZoneCause>,
+    },
+    CreatureAttackedEvent {
+        attacker: ObjectId,
+        target: SyncAttackEventTarget,
+        total_attackers: usize,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        declared_attackers: Option<Vec<SyncDeclaredAttacker>>,
+    },
+    CreatureAttackedAndUnblockedEvent {
+        attacker: ObjectId,
+        target: SyncAttackEventTarget,
+    },
+    CreatureBecameBlockedEvent {
+        attacker: ObjectId,
+        blocker_count: u32,
+        blockers: Vec<ObjectId>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        attack_target: Option<SyncAttackEventTarget>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        attacker_snapshot: Option<SyncStackHistory>,
+        blocker_snapshots: Vec<SyncStackHistory>,
+    },
+    ManaAddedEvent {
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+        mana: Vec<ironsmith::mana::ManaSymbol>,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+        provenance: ironsmith::events::mana::ManaProductionProvenance,
+    },
+    ManaUnitSpentEvent {
+        player: PlayerId,
+        mana_source: ObjectId,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        payment_source: Option<ObjectId>,
+        symbol: ironsmith::mana::ManaSymbol,
+        purpose: ironsmith::ability::ManaPaymentPurpose,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        source_snapshot: Option<SyncStackHistory>,
+    },
+    ObjectBecameUnattachedEvent {
+        object: ObjectId,
+        previous_target: ironsmith::object::AttachmentTarget,
+        controller: PlayerId,
+        #[serde(deserialize_with="sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+    },
+    CreatureBlockedEvent {
+        blocker: ObjectId,
+        attacker: ObjectId,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        blocker_snapshot: Option<SyncStackHistory>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        attacker_snapshot: Option<SyncStackHistory>,
+    },
+    CardDiscardedEvent {
+        player: PlayerId,
+        card: ObjectId,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        cause: Option<ironsmith::events::cause::EventCause>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+        batch_cards: Vec<ObjectId>,
+        batch_snapshots: Vec<SyncStackHistory>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        batch_index: Option<usize>,
+    },
+    CardRevealedEvent {
+        player: PlayerId,
+        card: ObjectId,
+        zone: Zone,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        source: Option<ObjectId>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        reveal_context_amount: Option<i32>,
+    },
+    PermanentPhasedOutEvent {
+        permanent: ObjectId,
+        controller: PlayerId,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+    },
+    SpellCounteredEvent {
+        spell: ObjectId,
+        controller: PlayerId,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+    },
+    DestroyEvent {
+        permanent: ObjectId,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        source: Option<ObjectId>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        final_zone: Option<Zone>,
+    },
+    SacrificeEvent {
+        permanent: ObjectId,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        source: Option<ObjectId>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        sacrificing_player: Option<PlayerId>,
+    },
+    SpellCastEvent {
+        spell: ObjectId,
+        caster: PlayerId,
+        from_zone: Zone,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+    },
+    ObjectLeavesGameEvent {
+        object: ObjectId,
+        snapshot: SyncStackHistory,
+        cause: ironsmith::events::cause::EventCause,
+    },
+    ZoneChangeEvent {
+        objects: Vec<ObjectId>,
+        result_objects: Vec<ObjectId>,
+        from: Zone,
+        to: Zone,
+        cause: ironsmith::events::cause::EventCause,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        snapshot: Option<SyncStackHistory>,
+        snapshots: Vec<SyncStackHistory>,
+        object_tags: std::collections::BTreeMap<ironsmith::tag::TagKey, Vec<SyncStackHistory>>,
+    },
+    DiscardEvent {
+        card: ObjectId,
+        player: PlayerId,
+        destination: Zone,
+        cause: ironsmith::events::cause::EventCause,
+        requires_type_verification: bool,
+        madness_applied: bool,
+    },
+    DrawEvent {
+        player: PlayerId,
+        count: u32,
+        is_first_this_turn: bool,
+        first_of_instruction: bool,
+        first_of_draw_step: bool,
+    },
+    MoveCountersEvent {
+        from: ObjectId,
+        to: ObjectId,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        counter_type: Option<ironsmith::CounterType>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        count: Option<u32>,
+    },
+    PutCountersEvent {
+        target: ironsmith::game_state::Target,
+        counter_type: ironsmith::CounterType,
+        count: u32,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        maximum_count: Option<u32>,
+        cause: ironsmith::events::cause::EventCause,
+    },
+    RemoveCountersEvent {
+        target: ObjectId,
+        counter_type: ironsmith::CounterType,
+        count: u32,
+    },
+    BecameMonstrousEvent {
+        creature: ObjectId,
+        controller: PlayerId,
+        n: u32,
+    },
+    CardsDrawnEvent {
+        player: PlayerId,
+        cards: Vec<ObjectId>,
+        is_first_this_turn: bool,
+        is_during_players_draw_step: bool,
+        cards_previously_drawn_this_draw_step: u32,
+    },
+    ChapterAbilityResolvedEvent {
+        saga: ObjectId,
+        controller: PlayerId,
+        final_chapter: bool,
+    },
+    CoinFlippedEvent {
+        player: PlayerId,
+        source: ObjectId,
+        face: ironsmith_core::CoinFace,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        call: Option<ironsmith_core::CoinFace>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        winner: Option<PlayerId>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        loser: Option<PlayerId>,
+    },
+    ControlChangedEvent {
+        permanent: ObjectId,
+        previous_controller: PlayerId,
+        new_controller: PlayerId,
+    },
+    ConvertedEvent {
+        permanent: ObjectId,
+    },
+    CounterPlacedEvent {
+        permanent: ObjectId,
+        counter_type: ironsmith::CounterType,
+        amount: u32,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        previous_count: Option<u32>,
+    },
+    DayNightChangedEvent {
+        is_daytime: bool,
+    },
+    DieRolledEvent {
+        player: PlayerId,
+        source: ObjectId,
+        natural_result: u32,
+        result: u32,
+        sides: u32,
+        is_planar: bool,
+        is_attraction_visit: bool,
+    },
+    GiftGivenEvent {
+        player: PlayerId,
+        recipient: PlayerId,
+        source: ObjectId,
+    },
+    LandPlayedEvent {
+        land: ObjectId,
+        player: PlayerId,
+        from_zone: Zone,
+    },
+    MutatedEvent {
+        permanent: ObjectId,
+        controller: PlayerId,
+    },
+    PermanentTappedEvent {
+        permanent: ObjectId,
+    },
+    PermanentUntappedEvent {
+        permanent: ObjectId,
+    },
+    PlayerLosesGameEvent {
+        player: PlayerId,
+    },
+    SearchLibraryEvent {
+        player: PlayerId,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        library_owner: Option<PlayerId>,
+    },
+    ShuffleLibraryEvent {
+        player: PlayerId,
+        cause: ironsmith::events::cause::EventCause,
+    },
+    StateTriggerEvent {
+        source: ObjectId,
+    },
+    TransformedEvent {
+        permanent: ObjectId,
+    },
+    TurnedFaceUpEvent {
+        permanent: ObjectId,
+        player: PlayerId,
+    },
+    TapEvent {
+        permanent: ObjectId,
+    },
+    UntapEvent {
+        permanent: ObjectId,
+    },
+    BeginningOfCleanupStepEvent {
+        player: PlayerId,
+    },
+    BeginningOfDrawStepEvent {
+        player: PlayerId,
+    },
+    BeginningOfPrecombatMainPhaseEvent {
+        player: PlayerId,
+    },
+    BeginningOfPostcombatMainPhaseEvent {
+        player: PlayerId,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        main_phase_ordinal: Option<u32>,
+    },
+    EndOfCombatEvent,
+    PermanentsUntapStepEvent {
+        player: PlayerId,
+    },
+    BecomesTargetedEvent {
+        target: ironsmith::game_state::Target,
+        source: ObjectId,
+        source_controller: PlayerId,
+        by_ability: bool,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        stack_ability: Option<ObjectId>,
+    },
+    SpellCopiedEvent {
+        spell: ObjectId,
+        copier: PlayerId,
+    },
+    BeginningOfEndStep { player: PlayerId },
+    BeginningOfUpkeep { player: PlayerId },
+    BeginningOfCombat { player: PlayerId },
+    LifeGain { player: PlayerId, amount: u32,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        source: Option<ObjectId> },
+    LifeLoss { player: PlayerId, amount: u32, from_damage: bool, from_radiation: bool },
+    Damage { source: ObjectId, target: SyncTarget, amount: u32, excess_damage: u32,
+        is_combat: bool, is_unpreventable: bool, cause: ironsmith::events::cause::EventCause,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        remainder: Option<(SyncTarget, u32)>,
+        #[serde(deserialize_with = "sync_event_body_required_option")]
+        target_snapshot: Option<SyncStackHistory> },
+}
+fn sync_event_body_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where D: serde::Deserializer<'de>, T: serde::Deserialize<'de> {
+    <Option<T> as serde::Deserialize>::deserialize(deserializer)
+}
+fn validate_sync_event_body_actors(body: &SyncEventBody, player_count: usize) -> Result<(), String> {
+    let check = |player: PlayerId| if usize::from(player.0) < player_count { Ok(()) } else { Err("stack event body has invalid actor".to_string()) };
+    match body {
+        SyncEventBody::DiscardEvent { card, player, destination, cause, requires_type_verification, madness_applied } => { check(*player)?; if let Some(actor) = cause.source_controller { check(actor)?; } Ok(()) },
+        SyncEventBody::DrawEvent { player, count, is_first_this_turn, first_of_instruction, first_of_draw_step } => { check(*player)?; Ok(()) },
+        SyncEventBody::PutCountersEvent { target, counter_type, count, maximum_count, cause } => { if let ironsmith::game_state::Target::Player(actor) = target { check(*actor)?; } if let Some(actor) = cause.source_controller { check(actor)?; } Ok(()) },
+        SyncEventBody::BecameMonstrousEvent { creature, controller, n } => { check(*controller)?; Ok(()) },
+        SyncEventBody::CardsDrawnEvent { player, cards, is_first_this_turn, is_during_players_draw_step, cards_previously_drawn_this_draw_step } => { check(*player)?; Ok(()) },
+        SyncEventBody::ChapterAbilityResolvedEvent { saga, controller, final_chapter } => { check(*controller)?; Ok(()) },
+        SyncEventBody::CoinFlippedEvent { player, source, face, call, winner, loser } => { check(*player)?; if let Some(actor) = winner { check(*actor)?; } if let Some(actor) = loser { check(*actor)?; } Ok(()) },
+        SyncEventBody::ControlChangedEvent { permanent, previous_controller, new_controller } => { check(*previous_controller)?; check(*new_controller)?; Ok(()) },
+        SyncEventBody::DieRolledEvent { player, source, natural_result, result, sides, is_planar, is_attraction_visit } => { check(*player)?; Ok(()) },
+        SyncEventBody::GiftGivenEvent { player, recipient, source } => { check(*player)?; check(*recipient)?; Ok(()) },
+        SyncEventBody::LandPlayedEvent { land, player, from_zone } => { check(*player)?; Ok(()) },
+        SyncEventBody::MutatedEvent { permanent, controller } => { check(*controller)?; Ok(()) },
+        SyncEventBody::PlayerLosesGameEvent { player } => { check(*player)?; Ok(()) },
+        SyncEventBody::SearchLibraryEvent { player, library_owner } => { check(*player)?; if let Some(actor) = library_owner { check(*actor)?; } Ok(()) },
+        SyncEventBody::ShuffleLibraryEvent { player, cause } => { check(*player)?; if let Some(actor) = cause.source_controller { check(actor)?; } Ok(()) },
+        SyncEventBody::TurnedFaceUpEvent { permanent, player } => { check(*player)?; Ok(()) },
+        SyncEventBody::BeginningOfCleanupStepEvent { player } => { check(*player)?; Ok(()) },
+        SyncEventBody::BeginningOfDrawStepEvent { player } => { check(*player)?; Ok(()) },
+        SyncEventBody::BeginningOfPrecombatMainPhaseEvent { player } => { check(*player)?; Ok(()) },
+        SyncEventBody::BeginningOfPostcombatMainPhaseEvent { player, main_phase_ordinal } => { check(*player)?; Ok(()) },
+        SyncEventBody::PermanentsUntapStepEvent { player } => { check(*player)?; Ok(()) },
+        SyncEventBody::BecomesTargetedEvent { target, source, source_controller, by_ability, stack_ability } => { if let ironsmith::game_state::Target::Player(actor) = target { check(*actor)?; } check(*source_controller)?; Ok(()) },
+        SyncEventBody::SpellCopiedEvent { spell, copier } => { check(*copier)?; Ok(()) },
+        SyncEventBody::CardDiscardedEvent { player, cause, .. } => { check(*player)?; if let Some(actor) = cause.as_ref().and_then(|c| c.source_controller) { check(actor)?; } Ok(()) },
+        SyncEventBody::CardRevealedEvent { player, .. } => { check(*player)?; Ok(()) },
+        SyncEventBody::PermanentPhasedOutEvent { controller, .. } => { check(*controller)?; Ok(()) },
+        SyncEventBody::SpellCounteredEvent { controller, .. } => { check(*controller)?; Ok(()) },
+        SyncEventBody::SacrificeEvent { sacrificing_player, .. } => { if let Some(actor) = sacrificing_player { check(*actor)?; } Ok(()) },
+        SyncEventBody::SpellCastEvent { caster, .. } => { check(*caster)?; Ok(()) },
+        SyncEventBody::ObjectLeavesGameEvent { cause, .. } => { if let Some(actor) = cause.source_controller { check(actor)?; } Ok(()) },
+        SyncEventBody::ZoneChangeEvent { cause, .. } => { if let Some(actor) = cause.source_controller { check(actor)?; } Ok(()) },
+        _ => Ok(()),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag="kind", deny_unknown_fields)]
+enum SyncAttackEventTarget { Player { player: PlayerId }, Planeswalker { object: ObjectId }, Battle { object: ObjectId }, Nothing }
+impl SyncAttackEventTarget {
+    fn retain(target: ironsmith::triggers::event::AttackEventTarget) -> Self {
+        use ironsmith::triggers::event::AttackEventTarget as T;
+        match target { T::Player(player) => Self::Player { player }, T::Planeswalker(object) => Self::Planeswalker { object }, T::Battle(object) => Self::Battle { object }, T::Nothing => Self::Nothing }
+    }
+    fn restore(self) -> ironsmith::triggers::event::AttackEventTarget {
+        use ironsmith::triggers::event::AttackEventTarget as T;
+        match self { Self::Player { player } => T::Player(player), Self::Planeswalker { object } => T::Planeswalker(object), Self::Battle { object } => T::Battle(object), Self::Nothing => T::Nothing }
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag="kind", deny_unknown_fields)]
+enum SyncDeclaredAttackTarget { Player { player: PlayerId }, Planeswalker { object: ObjectId }, Battle { object: ObjectId }, Nothing {
+    #[serde(deserialize_with="sync_event_body_required_option")]
+    defending_player: Option<PlayerId>, was_planeswalker: bool } }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SyncDeclaredAttacker { creature: ObjectId, target: SyncDeclaredAttackTarget }
+impl SyncDeclaredAttacker {
+    fn retain(info: ironsmith::combat_state::AttackerInfo) -> Self {
+        use ironsmith::combat_state::AttackTarget as T;
+        let ironsmith::combat_state::AttackerInfo { creature, target } = info;
+        let target = match target { T::Player(player) => SyncDeclaredAttackTarget::Player { player }, T::Planeswalker(object) => SyncDeclaredAttackTarget::Planeswalker { object }, T::Battle(object) => SyncDeclaredAttackTarget::Battle { object }, T::Nothing { defending_player, was_planeswalker } => SyncDeclaredAttackTarget::Nothing { defending_player, was_planeswalker } };
+        Self { creature, target }
+    }
+    fn restore(self) -> ironsmith::combat_state::AttackerInfo {
+        use ironsmith::combat_state::AttackTarget as T;
+        let Self { creature, target } = self;
+        let target = match target { SyncDeclaredAttackTarget::Player { player } => T::Player(player), SyncDeclaredAttackTarget::Planeswalker { object } => T::Planeswalker(object), SyncDeclaredAttackTarget::Battle { object } => T::Battle(object), SyncDeclaredAttackTarget::Nothing { defending_player, was_planeswalker } => T::Nothing { defending_player, was_planeswalker } };
+        ironsmith::combat_state::AttackerInfo { creature, target }
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SyncPlayerVote { player: PlayerId, option_index: usize, option_name: String,
+    #[serde(deserialize_with="sync_event_body_required_option")] object_vote: Option<ObjectId> }
+impl SyncPlayerVote {
+ fn retain(value: ironsmith::events::other::PlayerVote) -> Self { let ironsmith::events::other::PlayerVote { player, option_index, option_name, object_vote } = value; Self { player, option_index, option_name, object_vote } }
+ fn restore(self) -> ironsmith::events::other::PlayerVote { let Self { player, option_index, option_name, object_vote } = self; ironsmith::events::other::PlayerVote { player, option_index, option_name, object_vote } }
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SyncTriggerZoneCause { from: Zone, to: Zone, destination_objects: Vec<ObjectId> }
+impl SyncTriggerZoneCause {
+ fn retain(value: ironsmith::events::spells::AbilityTriggerZoneChangeCause) -> Self { let ironsmith::events::spells::AbilityTriggerZoneChangeCause { from, to, destination_objects } = value; Self { from, to, destination_objects } }
+ fn restore(self) -> ironsmith::events::spells::AbilityTriggerZoneChangeCause { let Self { from, to, destination_objects } = self; ironsmith::events::spells::AbilityTriggerZoneChangeCause { from, to, destination_objects } }
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum SyncMarkerChange { Added, Removed }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SyncPreventedDamage { damage_source: ObjectId, target: SyncTarget, amount: u32, is_combat: bool,
+    #[serde(deserialize_with="sync_event_body_required_option")] target_snapshot: Option<SyncStackHistory> }
+#[derive(Default)]
+struct SyncEventArena {
+    keys: std::collections::HashMap<usize, u32>,
+    bodies: Vec<SyncEventBody>,
+}
+type StackBindingError = ironsmith_runtime_catalog::artifact_materializer::OccurrenceBindingError;
+type SyncStackEncoder<'a, 'b, 'c> = (&'a mut ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceEncoder,
+    &'b mut dyn FnMut(CardId) -> Result<u32, StackBindingError>, &'c mut SyncEventArena);
+type SyncStackDecoder<'a, 'b, 'c> = (&'a ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceDecoder,
+    &'b mut dyn FnMut(u32) -> Result<CardId, StackBindingError>, &'c [std::sync::Arc<dyn ironsmith::events::GameEventType>]);
+fn stack_codec_error(detail: &str) -> StackBindingError {
+    StackBindingError::InvalidModel { detail: detail.into() }
+}
+fn sync_damage_target(target: ironsmith::events::DamageTarget) -> SyncTarget {
+    match target { ironsmith::events::DamageTarget::Player(player) => SyncTarget::Player { player: player.0 },
+        ironsmith::events::DamageTarget::Object(object) => SyncTarget::Object { object: object.0 } }
+}
+fn damage_target_from_sync(target: SyncTarget) -> ironsmith::events::DamageTarget {
+    match target { SyncTarget::Player { player } => ironsmith::events::DamageTarget::Player(PlayerId::from_index(player)),
+        SyncTarget::Object { object } => ironsmith::events::DamageTarget::Object(ObjectId::from_raw(object)) }
+}
+fn retain_sync_event_body(context: &mut SyncStackEncoder<'_, '_, '_>, body: &dyn ironsmith::events::GameEventType) -> Result<SyncEventBody, StackBindingError> {
+    use ironsmith::events::{phase, life, damage};
+    if let Some(value) = body.as_any().downcast_ref::<phase::BeginningOfEndStepEvent>() {
+        let phase::BeginningOfEndStepEvent { player } = value.clone(); return Ok(SyncEventBody::BeginningOfEndStep { player });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<phase::BeginningOfUpkeepEvent>() {
+        let phase::BeginningOfUpkeepEvent { player } = value.clone(); return Ok(SyncEventBody::BeginningOfUpkeep { player });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<phase::BeginningOfCombatEvent>() {
+        let phase::BeginningOfCombatEvent { player } = value.clone(); return Ok(SyncEventBody::BeginningOfCombat { player });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<life::LifeGainEvent>() {
+        let life::LifeGainEvent { player, amount, source } = value.clone(); return Ok(SyncEventBody::LifeGain { player, amount, source });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<life::LifeLossEvent>() {
+        let life::LifeLossEvent { player, amount, from_damage, from_radiation } = value.clone(); return Ok(SyncEventBody::LifeLoss { player, amount, from_damage, from_radiation });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<damage::DamageEvent>() {
+        let damage::DamageEvent { source, target, amount, excess_damage, is_combat, is_unpreventable, cause, remainder, target_snapshot } = value.clone();
+        let target_snapshot = target_snapshot.map(|history| context.0.encode_snapshot(history, &mut *context.1)).transpose()?;
+        return Ok(SyncEventBody::Damage { source, target: sync_damage_target(target), amount, excess_damage, is_combat, is_unpreventable, cause,
+            remainder: remainder.map(|(target, amount)| (sync_damage_target(target), amount)), target_snapshot });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::cards::DiscardEvent>() {
+        let ironsmith::events::cards::DiscardEvent { card, player, destination, cause, requires_type_verification, madness_applied } = value.clone(); return Ok(SyncEventBody::DiscardEvent { card, player, destination, cause, requires_type_verification, madness_applied });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::cards::DrawEvent>() {
+        let ironsmith::events::cards::DrawEvent { player, count, is_first_this_turn, first_of_instruction, first_of_draw_step } = value.clone(); return Ok(SyncEventBody::DrawEvent { player, count, is_first_this_turn, first_of_instruction, first_of_draw_step });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::counters::MoveCountersEvent>() {
+        let ironsmith::events::counters::MoveCountersEvent { from, to, counter_type, count } = value.clone(); return Ok(SyncEventBody::MoveCountersEvent { from, to, counter_type, count });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::counters::PutCountersEvent>() {
+        let ironsmith::events::counters::PutCountersEvent { target, counter_type, count, maximum_count, cause } = value.clone(); return Ok(SyncEventBody::PutCountersEvent { target, counter_type, count, maximum_count, cause });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::counters::RemoveCountersEvent>() {
+        let ironsmith::events::counters::RemoveCountersEvent { target, counter_type, count } = value.clone(); return Ok(SyncEventBody::RemoveCountersEvent { target, counter_type, count });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::BecameMonstrousEvent>() {
+        let ironsmith::events::other::BecameMonstrousEvent { creature, controller, n } = value.clone(); return Ok(SyncEventBody::BecameMonstrousEvent { creature, controller, n });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::CardsDrawnEvent>() {
+        let ironsmith::events::other::CardsDrawnEvent { player, cards, is_first_this_turn, is_during_players_draw_step, cards_previously_drawn_this_draw_step } = value.clone(); return Ok(SyncEventBody::CardsDrawnEvent { player, cards, is_first_this_turn, is_during_players_draw_step, cards_previously_drawn_this_draw_step });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::ChapterAbilityResolvedEvent>() {
+        let ironsmith::events::other::ChapterAbilityResolvedEvent { saga, controller, final_chapter } = value.clone(); return Ok(SyncEventBody::ChapterAbilityResolvedEvent { saga, controller, final_chapter });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::CoinFlippedEvent>() {
+        let ironsmith::events::other::CoinFlippedEvent { player, source, face, call, winner, loser } = value.clone(); return Ok(SyncEventBody::CoinFlippedEvent { player, source, face, call, winner, loser });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::ControlChangedEvent>() {
+        let ironsmith::events::other::ControlChangedEvent { permanent, previous_controller, new_controller } = value.clone(); return Ok(SyncEventBody::ControlChangedEvent { permanent, previous_controller, new_controller });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::ConvertedEvent>() {
+        let ironsmith::events::other::ConvertedEvent { permanent } = value.clone(); return Ok(SyncEventBody::ConvertedEvent { permanent });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::CounterPlacedEvent>() {
+        let ironsmith::events::other::CounterPlacedEvent { permanent, counter_type, amount, previous_count } = value.clone(); return Ok(SyncEventBody::CounterPlacedEvent { permanent, counter_type, amount, previous_count });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::DayNightChangedEvent>() {
+        let ironsmith::events::other::DayNightChangedEvent { is_daytime } = value.clone(); return Ok(SyncEventBody::DayNightChangedEvent { is_daytime });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::DieRolledEvent>() {
+        let ironsmith::events::other::DieRolledEvent { player, source, natural_result, result, sides, is_planar, is_attraction_visit } = value.clone(); return Ok(SyncEventBody::DieRolledEvent { player, source, natural_result, result, sides, is_planar, is_attraction_visit });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::GiftGivenEvent>() {
+        let ironsmith::events::other::GiftGivenEvent { player, recipient, source } = value.clone(); return Ok(SyncEventBody::GiftGivenEvent { player, recipient, source });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::LandPlayedEvent>() {
+        let ironsmith::events::other::LandPlayedEvent { land, player, from_zone } = value.clone(); return Ok(SyncEventBody::LandPlayedEvent { land, player, from_zone });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::MutatedEvent>() {
+        let ironsmith::events::other::MutatedEvent { permanent, controller } = value.clone(); return Ok(SyncEventBody::MutatedEvent { permanent, controller });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::PermanentTappedEvent>() {
+        let ironsmith::events::other::PermanentTappedEvent { permanent } = value.clone(); return Ok(SyncEventBody::PermanentTappedEvent { permanent });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::PermanentUntappedEvent>() {
+        let ironsmith::events::other::PermanentUntappedEvent { permanent } = value.clone(); return Ok(SyncEventBody::PermanentUntappedEvent { permanent });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::PlayerLosesGameEvent>() {
+        let ironsmith::events::other::PlayerLosesGameEvent { player } = value.clone(); return Ok(SyncEventBody::PlayerLosesGameEvent { player });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::SearchLibraryEvent>() {
+        let ironsmith::events::other::SearchLibraryEvent { player, library_owner } = value.clone(); return Ok(SyncEventBody::SearchLibraryEvent { player, library_owner });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::ShuffleLibraryEvent>() {
+        let ironsmith::events::other::ShuffleLibraryEvent { player, cause } = value.clone(); return Ok(SyncEventBody::ShuffleLibraryEvent { player, cause });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::StateTriggerEvent>() {
+        let ironsmith::events::other::StateTriggerEvent { source } = value.clone(); return Ok(SyncEventBody::StateTriggerEvent { source });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::TransformedEvent>() {
+        let ironsmith::events::other::TransformedEvent { permanent } = value.clone(); return Ok(SyncEventBody::TransformedEvent { permanent });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::TurnedFaceUpEvent>() {
+        let ironsmith::events::other::TurnedFaceUpEvent { permanent, player } = value.clone(); return Ok(SyncEventBody::TurnedFaceUpEvent { permanent, player });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::permanents::TapEvent>() {
+        let ironsmith::events::permanents::TapEvent { permanent } = value.clone(); return Ok(SyncEventBody::TapEvent { permanent });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::permanents::UntapEvent>() {
+        let ironsmith::events::permanents::UntapEvent { permanent } = value.clone(); return Ok(SyncEventBody::UntapEvent { permanent });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::phase::BeginningOfCleanupStepEvent>() {
+        let ironsmith::events::phase::BeginningOfCleanupStepEvent { player } = value.clone(); return Ok(SyncEventBody::BeginningOfCleanupStepEvent { player });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::phase::BeginningOfDrawStepEvent>() {
+        let ironsmith::events::phase::BeginningOfDrawStepEvent { player } = value.clone(); return Ok(SyncEventBody::BeginningOfDrawStepEvent { player });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::phase::BeginningOfPrecombatMainPhaseEvent>() {
+        let ironsmith::events::phase::BeginningOfPrecombatMainPhaseEvent { player } = value.clone(); return Ok(SyncEventBody::BeginningOfPrecombatMainPhaseEvent { player });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::phase::BeginningOfPostcombatMainPhaseEvent>() {
+        let ironsmith::events::phase::BeginningOfPostcombatMainPhaseEvent { player, main_phase_ordinal } = value.clone(); return Ok(SyncEventBody::BeginningOfPostcombatMainPhaseEvent { player, main_phase_ordinal });
+    }
+    if body.as_any().is::<ironsmith::events::phase::EndOfCombatEvent>() { return Ok(SyncEventBody::EndOfCombatEvent); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::phase::PermanentsUntapStepEvent>() {
+        let ironsmith::events::phase::PermanentsUntapStepEvent { player } = value.clone(); return Ok(SyncEventBody::PermanentsUntapStepEvent { player });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::spells::BecomesTargetedEvent>() {
+        let ironsmith::events::spells::BecomesTargetedEvent { target, source, source_controller, by_ability, stack_ability } = value.clone(); return Ok(SyncEventBody::BecomesTargetedEvent { target, source, source_controller, by_ability, stack_ability });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::spells::SpellCopiedEvent>() {
+        let ironsmith::events::spells::SpellCopiedEvent { spell, copier } = value.clone(); return Ok(SyncEventBody::SpellCopiedEvent { spell, copier });
+    }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::combat::CreatureBlockedEvent>() { let ironsmith::events::combat::CreatureBlockedEvent { blocker, attacker, blocker_snapshot, attacker_snapshot } = value.clone(); let blocker_snapshot = blocker_snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; let attacker_snapshot = attacker_snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; return Ok(SyncEventBody::CreatureBlockedEvent { blocker, attacker, blocker_snapshot, attacker_snapshot }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::CardDiscardedEvent>() { let ironsmith::events::other::CardDiscardedEvent { player, card, cause, snapshot, batch_cards, batch_snapshots, batch_index } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; let batch_snapshots = batch_snapshots.into_iter().map(|h| context.0.encode_snapshot(h, &mut *context.1)).collect::<Result<Vec<_>, _>>()?; return Ok(SyncEventBody::CardDiscardedEvent { player, card, cause, snapshot, batch_cards, batch_snapshots, batch_index }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::CardRevealedEvent>() { let ironsmith::events::other::CardRevealedEvent { player, card, zone, source, snapshot, reveal_context_amount } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; return Ok(SyncEventBody::CardRevealedEvent { player, card, zone, source, snapshot, reveal_context_amount }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::PermanentPhasedOutEvent>() { let ironsmith::events::other::PermanentPhasedOutEvent { permanent, controller, snapshot } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; return Ok(SyncEventBody::PermanentPhasedOutEvent { permanent, controller, snapshot }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::SpellCounteredEvent>() { let ironsmith::events::other::SpellCounteredEvent { spell, controller, snapshot } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; return Ok(SyncEventBody::SpellCounteredEvent { spell, controller, snapshot }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::permanents::DestroyEvent>() { let ironsmith::events::permanents::DestroyEvent { permanent, source, snapshot, final_zone } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; return Ok(SyncEventBody::DestroyEvent { permanent, source, snapshot, final_zone }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::permanents::SacrificeEvent>() { let ironsmith::events::permanents::SacrificeEvent { permanent, source, snapshot, sacrificing_player } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; return Ok(SyncEventBody::SacrificeEvent { permanent, source, snapshot, sacrificing_player }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::spells::SpellCastEvent>() { let ironsmith::events::spells::SpellCastEvent { spell, caster, from_zone, snapshot } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; return Ok(SyncEventBody::SpellCastEvent { spell, caster, from_zone, snapshot }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::zones::ObjectLeavesGameEvent>() { let ironsmith::events::zones::ObjectLeavesGameEvent { object, snapshot, cause } = value.clone(); let snapshot = context.0.encode_snapshot(snapshot, &mut *context.1)?; return Ok(SyncEventBody::ObjectLeavesGameEvent { object, snapshot, cause }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::zones::ZoneChangeEvent>() { let ironsmith::events::zones::ZoneChangeEvent { objects, result_objects, from, to, cause, snapshot, snapshots, object_tags } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; let snapshots = snapshots.into_iter().map(|h| context.0.encode_snapshot(h, &mut *context.1)).collect::<Result<Vec<_>, _>>()?; let ordered: std::collections::BTreeMap<_, _> = object_tags.into_iter().collect(); let object_tags = ordered.into_iter().map(|(key, hs)| Ok((key, hs.into_iter().map(|h| context.0.encode_snapshot(h, &mut *context.1)).collect::<Result<Vec<_>, StackBindingError>>()?))).collect::<Result<_, StackBindingError>>()?; return Ok(SyncEventBody::ZoneChangeEvent { objects, result_objects, from, to, cause, snapshot, snapshots, object_tags }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::combat::CreatureAttackedEvent>() { let ironsmith::events::combat::CreatureAttackedEvent { attacker, target, total_attackers, declared_attackers } = value.clone(); let target = SyncAttackEventTarget::retain(target); let declared_attackers = declared_attackers.map(|rows| rows.iter().cloned().map(SyncDeclaredAttacker::retain).collect()); return Ok(SyncEventBody::CreatureAttackedEvent { attacker, target, total_attackers, declared_attackers }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::combat::CreatureAttackedAndUnblockedEvent>() { let ironsmith::events::combat::CreatureAttackedAndUnblockedEvent { attacker, target } = value.clone(); let target = SyncAttackEventTarget::retain(target); return Ok(SyncEventBody::CreatureAttackedAndUnblockedEvent { attacker, target }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::combat::CreatureBecameBlockedEvent>() { let ironsmith::events::combat::CreatureBecameBlockedEvent { attacker, blocker_count, blockers, attack_target, attacker_snapshot, blocker_snapshots } = value.clone(); let attack_target = attack_target.map(SyncAttackEventTarget::retain); let attacker_snapshot = attacker_snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; let blocker_snapshots = blocker_snapshots.into_iter().map(|h| context.0.encode_snapshot(h, &mut *context.1)).collect::<Result<Vec<_>, _>>()?; return Ok(SyncEventBody::CreatureBecameBlockedEvent { attacker, blocker_count, blockers, attack_target, attacker_snapshot, blocker_snapshots }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::mana::ManaAddedEvent>() { let ironsmith::events::mana::ManaAddedEvent { source, controller, player, mana, snapshot, provenance } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; return Ok(SyncEventBody::ManaAddedEvent { source, controller, player, mana, snapshot, provenance }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::mana::ManaUnitSpentEvent>() { let ironsmith::events::mana::ManaUnitSpentEvent { player, mana_source, payment_source, symbol, purpose, source_snapshot } = value.clone(); let source_snapshot = source_snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; return Ok(SyncEventBody::ManaUnitSpentEvent { player, mana_source, payment_source, symbol, purpose, source_snapshot }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::ObjectBecameUnattachedEvent>() { let ironsmith::events::other::ObjectBecameUnattachedEvent { object, previous_target, controller, snapshot } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; return Ok(SyncEventBody::ObjectBecameUnattachedEvent { object, previous_target, controller, snapshot }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::damage::DamagePreventedEvent>() { let ironsmith::events::damage::DamagePreventedEvent { damage_source, target, amount, prevention_source, prevention_controller, is_combat, target_snapshot, applications, prevention_shield } = value.clone(); let target = sync_damage_target(target); let target_snapshot = target_snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; let applications = applications.into_iter().map(|row| { let ironsmith::events::damage::PreventedDamage { damage_source, target, amount, is_combat, target_snapshot } = row; Ok(SyncPreventedDamage { damage_source, target: sync_damage_target(target), amount, is_combat, target_snapshot: target_snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()? }) }).collect::<Result<_, StackBindingError>>()?; return Ok(SyncEventBody::DamagePreventedEvent { damage_source, target, amount, prevention_source, prevention_controller, is_combat, target_snapshot, applications, prevention_shield }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::KeywordActionEvent>() { let ironsmith::events::other::KeywordActionEvent { action, player, source, amount, votes, snapshot, player_tags, object_tags, combat_phase, unlocked_door_triggers, unlocked_door_ability_range, x_value, voter_teams } = value.clone(); let votes = votes.map(|rows| rows.into_iter().map(SyncPlayerVote::retain).collect()); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; let player_tags = player_tags.into_iter().collect(); let ordered: std::collections::BTreeMap<_, _> = object_tags.into_iter().collect(); let object_tags = ordered.into_iter().map(|(key, hs)| Ok((key, hs.into_iter().map(|h| context.0.encode_snapshot(h, &mut *context.1)).collect::<Result<Vec<_>, StackBindingError>>()?))).collect::<Result<_, StackBindingError>>()?; let unlocked_door_triggers = unlocked_door_triggers.map(|rows| rows.into_iter().map(|id| id.0).collect()); return Ok(SyncEventBody::KeywordActionEvent { action, player, source, amount, votes, snapshot, player_tags, object_tags, combat_phase, unlocked_door_triggers, unlocked_door_ability_range, x_value, voter_teams }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::MarkersChangedEvent>() { let ironsmith::events::other::MarkersChangedEvent { change_type, marker, location, amount, count_after, source, source_controller } = value.clone(); let change_type = match change_type { ironsmith::events::other::MarkerChangeType::Added => SyncMarkerChange::Added, ironsmith::events::other::MarkerChangeType::Removed => SyncMarkerChange::Removed }; let ironsmith::marker::Marker::Counter(marker) = marker; let location = match location { ironsmith::marker::MarkerLocation::Player(player) => SyncTarget::Player { player: player.0 }, ironsmith::marker::MarkerLocation::Object(object) => SyncTarget::Object { object: object.0 } }; return Ok(SyncEventBody::MarkersChangedEvent { change_type, marker, location, amount, count_after, source, source_controller }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::PlayersFinishedVotingEvent>() { let ironsmith::events::other::PlayersFinishedVotingEvent { source, controller, votes, vote_counts, option_names, player_tags, voter_teams } = value.clone(); let votes = votes.into_iter().map(SyncPlayerVote::retain).collect(); let ordered: std::collections::BTreeMap<_, _> = vote_counts.into_iter().collect(); let vote_counts = ordered.into_iter().collect(); let player_tags = player_tags.into_iter().collect(); return Ok(SyncEventBody::PlayersFinishedVotingEvent { source, controller, votes, vote_counts, option_names, player_tags, voter_teams }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::spells::AbilityTriggeredEvent>() { let ironsmith::events::spells::AbilityTriggeredEvent { source, source_stable_id, controller, trigger_identity, source_snapshot, cause_kind, cause_object, zone_change_cause } = value.clone(); let trigger_identity = trigger_identity.0; let source_snapshot = source_snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; let zone_change_cause = zone_change_cause.map(SyncTriggerZoneCause::retain); return Ok(SyncEventBody::AbilityTriggeredEvent { source, source_stable_id, controller, trigger_identity, source_snapshot, cause_kind, cause_object, zone_change_cause }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::spells::AbilityActivatedEvent>() { let ironsmith::events::spells::AbilityActivatedEvent { source, activator, is_mana_ability, is_loyalty_ability, activation_cost_has_x, activation_cost_has_tap, x_value, stack_entry_provenance, snapshot, activated_ability, mana_sources_spent, mana_spent_total } = value.clone(); let snapshot = snapshot.map(|h| context.0.encode_snapshot(h, &mut *context.1)).transpose()?; let activated_ability = activated_ability.map(|a| context.0.encode_ability_with_card_graph(a, &mut *context.1)).transpose()?; let mana_sources_spent = mana_sources_spent.into_iter().map(|h| context.0.encode_snapshot(h, &mut *context.1)).collect::<Result<Vec<_>, _>>()?; return Ok(SyncEventBody::AbilityActivatedEvent { source, activator, is_mana_ability, is_loyalty_ability, activation_cost_has_x, activation_cost_has_tap, x_value, stack_entry_provenance, snapshot, activated_ability, mana_sources_spent, mana_spent_total }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::tokens::CreateTokensEvent>() { let ironsmith::events::tokens::CreateTokensEvent { controller, count, cause, token, additional_tokens } = value.clone(); let token = token.map(|o| context.0.encode_live_object(o, &mut *context.1)).transpose()?; return Ok(SyncEventBody::CreateTokensEvent { controller, count, cause, token, additional_tokens }); }
+    if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::zones::EnterBattlefieldEvent>() { return Ok(SyncEventBody::EnterBattlefieldEvent { value: context.0.encode_entry_event(value.clone(), &mut *context.1)? }); }
+    Err(stack_codec_error("stack event body has no approved checkpoint codec"))
+}
+fn retain_sync_event(context: &mut SyncStackEncoder<'_, '_, '_>, event: ironsmith::triggers::TriggerEvent) -> Result<SyncRetainedEvent, StackBindingError> {
+    event.try_retain(context, |context, body| {
+        let key = std::sync::Arc::as_ptr(&body) as *const () as usize;
+        if let Some(index) = context.2.keys.get(&key) { return Ok(*index); }
+        let index = u32::try_from(context.2.bodies.len()).map_err(|_| stack_codec_error("too many stack event occurrences"))?;
+        let retained = retain_sync_event_body(context, body.as_ref())?;
+        context.2.keys.insert(key, index); context.2.bodies.push(retained); Ok(index)
+    }, |context, history| context.0.encode_snapshot(history, &mut *context.1))
+}
+fn retain_sync_stack(encoder: &mut ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceEncoder,
+    entry: StackEntry, card: &mut dyn FnMut(CardId) -> Result<u32, StackBindingError>, arena: &mut SyncEventArena) -> Result<SyncRetainedStack, StackBindingError> {
+    entry.try_retain(&mut (encoder, card, arena),
+        |context, program| context.0.encode_program_with_card_graph(program, &mut *context.1),
+        |context, history| context.0.encode_snapshot(history, &mut *context.1),
+        retain_sync_event,
+        |context, outcome| outcome.try_retain(context, retain_sync_event),
+        |context, restriction| restriction.try_map_effects(&mut |effect| context.0.encode_effect_with_card_graph(effect, &mut *context.1)))
+}
+
+type SyncStackProjector<'a, 'b> = (&'a mut dyn FnMut(ironsmith::snapshot::ObjectSnapshot) -> Result<ironsmith::snapshot::ObjectSnapshot, String>,
+    &'b mut std::collections::HashMap<usize, std::sync::Arc<dyn ironsmith::events::GameEventType>>);
+fn project_sync_stack_event(context: &mut SyncStackProjector<'_, '_>, event: ironsmith::triggers::TriggerEvent) -> Result<ironsmith::triggers::TriggerEvent, String> {
+    let retained = event.try_retain(context, |context, body| {
+        let key = std::sync::Arc::as_ptr(&body) as *const () as usize;
+        if let Some(projected) = context.1.get(&key) { return Ok(projected.clone()); }
+        let projected: std::sync::Arc<dyn ironsmith::events::GameEventType> = if let Some(damage) = body.as_any().downcast_ref::<ironsmith::events::damage::DamageEvent>() {
+            let mut damage = damage.clone();
+            damage.target_snapshot = damage.target_snapshot.map(|history| context.0(history)).transpose()?;
+            std::sync::Arc::new(damage)
+        } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::spells::AbilityActivatedEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; value.mana_sources_spent = value.mana_sources_spent.into_iter().map(|h| context.0(h)).collect::<Result<Vec<_>, String>>()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::tokens::CreateTokensEvent>() { let mut value = value.clone(); if let Some(o) = &mut value.token { let capture = ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceEncoder::project_cast_history(ironsmith::object::NativeCastPaymentState::from(&*o), &mut |h| context.0(h)).map_err(|e|e.to_string())?; capture.apply_to(o)?; } std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::zones::EnterBattlefieldEvent>() { let retained = ironsmith::replacement_entry_capture::RetainedEntryEvent::capture(value.clone()).try_map_payloads(Ok::<_, String>, Ok, Ok, |h| h.try_project_tree(&mut *context.0).map_err(|e|e.to_string()), Ok, |e|e)?; std::sync::Arc::new(retained.into_native()?) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::damage::DamagePreventedEvent>() { let mut value = value.clone(); value.target_snapshot = value.target_snapshot.map(|h| context.0(h)).transpose()?; for row in &mut value.applications { row.target_snapshot = row.target_snapshot.take().map(|h| context.0(h)).transpose()?; } std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::KeywordActionEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; let ordered: std::collections::BTreeMap<_, _> = value.object_tags.into_iter().collect(); value.object_tags = ordered.into_iter().map(|(key, hs)| Ok((key, hs.into_iter().map(|h| context.0(h)).collect::<Result<Vec<_>, String>>()?))).collect::<Result<_, String>>()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::MarkersChangedEvent>() { let mut value = value.clone();  std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::PlayersFinishedVotingEvent>() { let mut value = value.clone();  std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::spells::AbilityTriggeredEvent>() { let mut value = value.clone(); value.source_snapshot = value.source_snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::combat::CreatureAttackedEvent>() { let mut value = value.clone();  std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::combat::CreatureAttackedAndUnblockedEvent>() { let mut value = value.clone();  std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::combat::CreatureBecameBlockedEvent>() { let mut value = value.clone(); value.attacker_snapshot = value.attacker_snapshot.map(|h| context.0(h)).transpose()?; value.blocker_snapshots = value.blocker_snapshots.into_iter().map(|h| context.0(h)).collect::<Result<Vec<_>, String>>()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::mana::ManaAddedEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::mana::ManaUnitSpentEvent>() { let mut value = value.clone(); value.source_snapshot = value.source_snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::ObjectBecameUnattachedEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::combat::CreatureBlockedEvent>() { let mut value = value.clone(); value.blocker_snapshot = value.blocker_snapshot.map(|h| context.0(h)).transpose()?; value.attacker_snapshot = value.attacker_snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::CardDiscardedEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; value.batch_snapshots = value.batch_snapshots.into_iter().map(|h| context.0(h)).collect::<Result<Vec<_>, _>>()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::CardRevealedEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::PermanentPhasedOutEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::other::SpellCounteredEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::permanents::DestroyEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::permanents::SacrificeEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::spells::SpellCastEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::zones::ObjectLeavesGameEvent>() { let mut value = value.clone(); value.snapshot = context.0(value.snapshot)?; std::sync::Arc::new(value) } else if let Some(value) = body.as_any().downcast_ref::<ironsmith::events::zones::ZoneChangeEvent>() { let mut value = value.clone(); value.snapshot = value.snapshot.map(|h| context.0(h)).transpose()?; value.snapshots = value.snapshots.into_iter().map(|h| context.0(h)).collect::<Result<Vec<_>, _>>()?; let ordered: std::collections::BTreeMap<_, _> = value.object_tags.into_iter().collect(); value.object_tags = ordered.into_iter().map(|(key, hs)| Ok((key, hs.into_iter().map(|h| context.0(h)).collect::<Result<Vec<_>, String>>()?))).collect::<Result<_, String>>()?; std::sync::Arc::new(value) } else if body.as_any().is::<ironsmith::events::phase::BeginningOfEndStepEvent>()
+            || body.as_any().is::<ironsmith::events::phase::BeginningOfUpkeepEvent>()
+            || body.as_any().is::<ironsmith::events::phase::BeginningOfCombatEvent>()
+            || body.as_any().is::<ironsmith::events::life::LifeGainEvent>()
+            || body.as_any().is::<ironsmith::events::life::LifeLossEvent>()
+            || body.as_any().is::<ironsmith::events::cards::DiscardEvent>()
+            || body.as_any().is::<ironsmith::events::cards::DrawEvent>()
+            || body.as_any().is::<ironsmith::events::counters::MoveCountersEvent>()
+            || body.as_any().is::<ironsmith::events::counters::PutCountersEvent>()
+            || body.as_any().is::<ironsmith::events::counters::RemoveCountersEvent>()
+            || body.as_any().is::<ironsmith::events::other::BecameMonstrousEvent>()
+            || body.as_any().is::<ironsmith::events::other::CardsDrawnEvent>()
+            || body.as_any().is::<ironsmith::events::other::ChapterAbilityResolvedEvent>()
+            || body.as_any().is::<ironsmith::events::other::CoinFlippedEvent>()
+            || body.as_any().is::<ironsmith::events::other::ControlChangedEvent>()
+            || body.as_any().is::<ironsmith::events::other::ConvertedEvent>()
+            || body.as_any().is::<ironsmith::events::other::CounterPlacedEvent>()
+            || body.as_any().is::<ironsmith::events::other::DayNightChangedEvent>()
+            || body.as_any().is::<ironsmith::events::other::DieRolledEvent>()
+            || body.as_any().is::<ironsmith::events::other::GiftGivenEvent>()
+            || body.as_any().is::<ironsmith::events::other::LandPlayedEvent>()
+            || body.as_any().is::<ironsmith::events::other::MutatedEvent>()
+            || body.as_any().is::<ironsmith::events::other::PermanentTappedEvent>()
+            || body.as_any().is::<ironsmith::events::other::PermanentUntappedEvent>()
+            || body.as_any().is::<ironsmith::events::other::PlayerLosesGameEvent>()
+            || body.as_any().is::<ironsmith::events::other::SearchLibraryEvent>()
+            || body.as_any().is::<ironsmith::events::other::ShuffleLibraryEvent>()
+            || body.as_any().is::<ironsmith::events::other::StateTriggerEvent>()
+            || body.as_any().is::<ironsmith::events::other::TransformedEvent>()
+            || body.as_any().is::<ironsmith::events::other::TurnedFaceUpEvent>()
+            || body.as_any().is::<ironsmith::events::permanents::TapEvent>()
+            || body.as_any().is::<ironsmith::events::permanents::UntapEvent>()
+            || body.as_any().is::<ironsmith::events::phase::BeginningOfCleanupStepEvent>()
+            || body.as_any().is::<ironsmith::events::phase::BeginningOfDrawStepEvent>()
+            || body.as_any().is::<ironsmith::events::phase::BeginningOfPrecombatMainPhaseEvent>()
+            || body.as_any().is::<ironsmith::events::phase::BeginningOfPostcombatMainPhaseEvent>()
+            || body.as_any().is::<ironsmith::events::phase::EndOfCombatEvent>()
+            || body.as_any().is::<ironsmith::events::phase::PermanentsUntapStepEvent>()
+            || body.as_any().is::<ironsmith::events::spells::BecomesTargetedEvent>()
+            || body.as_any().is::<ironsmith::events::spells::SpellCopiedEvent>() {
+            body
+        } else { return Err("stack event body lacks historical projection codec".into()); };
+        context.1.insert(key, projected.clone()); Ok(projected)
+    }, |context, history| context.0(history))?;
+    retained.try_restore(&mut (), |_, body| Ok::<_, String>(body), |_, history| Ok(history))
+}
+fn project_sync_stack_history(stack: &[StackEntry], project: &mut dyn FnMut(ironsmith::snapshot::ObjectSnapshot) -> Result<ironsmith::snapshot::ObjectSnapshot, String>) -> Result<Vec<StackEntry>, String> {
+    let mut bodies = std::collections::HashMap::new();
+    let mut context = (project, &mut bodies);
+    stack.iter().cloned().map(|entry| {
+        let retained = entry.try_retain(&mut context,
+            |_, program| Ok::<_, String>(program), |context, history| context.0(history),
+            project_sync_stack_event,
+            |context, outcome| outcome.try_retain(context, project_sync_stack_event),
+            |_, restriction| Ok(restriction))?;
+        retained.try_restore(&mut (), |_, program| Ok::<_, String>(program), |_, history| Ok(history),
+            |_, event| Ok(event), |_, outcome| outcome.try_restore(&mut (), |_, event| Ok::<_, String>(event)), |_, restriction| Ok(restriction))
+    }).collect()
+}
+
+fn sync_restore_vote_counts(rows: Vec<(usize, usize)>) -> Result<std::collections::HashMap<usize, usize>, StackBindingError> {
+    let mut previous = None; let mut counts = std::collections::HashMap::new();
+    for (key, value) in rows {
+        if previous.is_some_and(|last| key <= last) { return Err(stack_codec_error("vote count keys must be unique and sorted")); }
+        previous = Some(key); counts.insert(key, value);
+    }
+    Ok(counts)
+}
+fn restore_sync_event_body(decoder: &ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceDecoder,
+    body: SyncEventBody, face_binding: &mut dyn FnMut(u32) -> Result<CardId, StackBindingError>) -> Result<std::sync::Arc<dyn ironsmith::events::GameEventType>, StackBindingError> {
+    use ironsmith::events::{phase, life, damage};
+    Ok(match body {
+        SyncEventBody::AbilityActivatedEvent { source, activator, is_mana_ability, is_loyalty_ability, activation_cost_has_x, activation_cost_has_tap, x_value, stack_entry_provenance, snapshot, activated_ability, mana_sources_spent, mana_spent_total } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; let activated_ability = activated_ability.map(|a| decoder.restore_ability(a)).transpose()?; let mana_sources_spent = mana_sources_spent.into_iter().map(|h| decoder.restore_snapshot(h, &mut *face_binding)).collect::<Result<Vec<_>, _>>()?; std::sync::Arc::new(ironsmith::events::spells::AbilityActivatedEvent { source, activator, is_mana_ability, is_loyalty_ability, activation_cost_has_x, activation_cost_has_tap, x_value, stack_entry_provenance, snapshot, activated_ability, mana_sources_spent, mana_spent_total }) },
+        SyncEventBody::CreateTokensEvent { controller, count, cause, token, additional_tokens } => { let token = token.map(|o| decoder.restore_live_object(o, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::tokens::CreateTokensEvent { controller, count, cause, token, additional_tokens }) },
+        SyncEventBody::EnterBattlefieldEvent { value } => std::sync::Arc::new(decoder.restore_entry_event(value, &mut *face_binding)?),
+        SyncEventBody::DamagePreventedEvent { damage_source, target, amount, prevention_source, prevention_controller, is_combat, target_snapshot, applications, prevention_shield } => { let target = damage_target_from_sync(target); let target_snapshot = target_snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; let applications = applications.into_iter().map(|row| { let SyncPreventedDamage { damage_source, target, amount, is_combat, target_snapshot } = row; Ok(ironsmith::events::damage::PreventedDamage { damage_source, target: damage_target_from_sync(target), amount, is_combat, target_snapshot: target_snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()? }) }).collect::<Result<_, StackBindingError>>()?; std::sync::Arc::new(ironsmith::events::damage::DamagePreventedEvent { damage_source, target, amount, prevention_source, prevention_controller, is_combat, target_snapshot, applications, prevention_shield }) },
+        SyncEventBody::KeywordActionEvent { action, player, source, amount, votes, snapshot, player_tags, object_tags, combat_phase, unlocked_door_triggers, unlocked_door_ability_range, x_value, voter_teams } => { let votes = votes.map(|rows| rows.into_iter().map(SyncPlayerVote::restore).collect()); let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; let player_tags = player_tags.into_iter().collect(); let object_tags = object_tags.into_iter().map(|(key, hs)| Ok((key, hs.into_iter().map(|h| decoder.restore_snapshot(h, &mut *face_binding)).collect::<Result<Vec<_>, StackBindingError>>()?))).collect::<Result<_, StackBindingError>>()?; let unlocked_door_triggers = unlocked_door_triggers.map(|rows| rows.into_iter().map(ironsmith::triggers::TriggerIdentity).collect()); std::sync::Arc::new(ironsmith::events::other::KeywordActionEvent { action, player, source, amount, votes, snapshot, player_tags, object_tags, combat_phase, unlocked_door_triggers, unlocked_door_ability_range, x_value, voter_teams }) },
+        SyncEventBody::MarkersChangedEvent { change_type, marker, location, amount, count_after, source, source_controller } => { let change_type = match change_type { SyncMarkerChange::Added => ironsmith::events::other::MarkerChangeType::Added, SyncMarkerChange::Removed => ironsmith::events::other::MarkerChangeType::Removed }; let marker = ironsmith::marker::Marker::Counter(marker); let location = match location { SyncTarget::Player { player } => ironsmith::marker::MarkerLocation::Player(PlayerId::from_index(player)), SyncTarget::Object { object } => ironsmith::marker::MarkerLocation::Object(ObjectId::from_raw(object)) }; std::sync::Arc::new(ironsmith::events::other::MarkersChangedEvent { change_type, marker, location, amount, count_after, source, source_controller }) },
+        SyncEventBody::PlayersFinishedVotingEvent { source, controller, votes, vote_counts, option_names, player_tags, voter_teams } => { let votes = votes.into_iter().map(SyncPlayerVote::restore).collect(); let vote_counts = sync_restore_vote_counts(vote_counts)?; let player_tags = player_tags.into_iter().collect(); std::sync::Arc::new(ironsmith::events::other::PlayersFinishedVotingEvent { source, controller, votes, vote_counts, option_names, player_tags, voter_teams }) },
+        SyncEventBody::AbilityTriggeredEvent { source, source_stable_id, controller, trigger_identity, source_snapshot, cause_kind, cause_object, zone_change_cause } => { let trigger_identity = ironsmith::triggers::TriggerIdentity(trigger_identity); let source_snapshot = source_snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; let zone_change_cause = zone_change_cause.map(SyncTriggerZoneCause::restore); std::sync::Arc::new(ironsmith::events::spells::AbilityTriggeredEvent { source, source_stable_id, controller, trigger_identity, source_snapshot, cause_kind, cause_object, zone_change_cause }) },
+        SyncEventBody::CreatureAttackedEvent { attacker, target, total_attackers, declared_attackers } => { let target = target.restore(); let declared_attackers = declared_attackers.map(|rows| rows.into_iter().map(SyncDeclaredAttacker::restore).collect::<Vec<_>>().into()); std::sync::Arc::new(ironsmith::events::combat::CreatureAttackedEvent { attacker, target, total_attackers, declared_attackers }) },
+        SyncEventBody::CreatureAttackedAndUnblockedEvent { attacker, target } => { let target = target.restore(); std::sync::Arc::new(ironsmith::events::combat::CreatureAttackedAndUnblockedEvent { attacker, target }) },
+        SyncEventBody::CreatureBecameBlockedEvent { attacker, blocker_count, blockers, attack_target, attacker_snapshot, blocker_snapshots } => { let attack_target = attack_target.map(SyncAttackEventTarget::restore); let attacker_snapshot = attacker_snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; let blocker_snapshots = blocker_snapshots.into_iter().map(|h| decoder.restore_snapshot(h, &mut *face_binding)).collect::<Result<Vec<_>, _>>()?; std::sync::Arc::new(ironsmith::events::combat::CreatureBecameBlockedEvent { attacker, blocker_count, blockers, attack_target, attacker_snapshot, blocker_snapshots }) },
+        SyncEventBody::ManaAddedEvent { source, controller, player, mana, snapshot, provenance } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::mana::ManaAddedEvent { source, controller, player, mana, snapshot, provenance }) },
+        SyncEventBody::ManaUnitSpentEvent { player, mana_source, payment_source, symbol, purpose, source_snapshot } => { let source_snapshot = source_snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::mana::ManaUnitSpentEvent { player, mana_source, payment_source, symbol, purpose, source_snapshot }) },
+        SyncEventBody::ObjectBecameUnattachedEvent { object, previous_target, controller, snapshot } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::other::ObjectBecameUnattachedEvent { object, previous_target, controller, snapshot }) },
+        SyncEventBody::CreatureBlockedEvent { blocker, attacker, blocker_snapshot, attacker_snapshot } => { let blocker_snapshot = blocker_snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; let attacker_snapshot = attacker_snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::combat::CreatureBlockedEvent { blocker, attacker, blocker_snapshot, attacker_snapshot }) },
+        SyncEventBody::CardDiscardedEvent { player, card, cause, snapshot, batch_cards, batch_snapshots, batch_index } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; let batch_snapshots = batch_snapshots.into_iter().map(|h| decoder.restore_snapshot(h, &mut *face_binding)).collect::<Result<Vec<_>, _>>()?; std::sync::Arc::new(ironsmith::events::other::CardDiscardedEvent { player, card, cause, snapshot, batch_cards, batch_snapshots, batch_index }) },
+        SyncEventBody::CardRevealedEvent { player, card, zone, source, snapshot, reveal_context_amount } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::other::CardRevealedEvent { player, card, zone, source, snapshot, reveal_context_amount }) },
+        SyncEventBody::PermanentPhasedOutEvent { permanent, controller, snapshot } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::other::PermanentPhasedOutEvent { permanent, controller, snapshot }) },
+        SyncEventBody::SpellCounteredEvent { spell, controller, snapshot } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::other::SpellCounteredEvent { spell, controller, snapshot }) },
+        SyncEventBody::DestroyEvent { permanent, source, snapshot, final_zone } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::permanents::DestroyEvent { permanent, source, snapshot, final_zone }) },
+        SyncEventBody::SacrificeEvent { permanent, source, snapshot, sacrificing_player } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::permanents::SacrificeEvent { permanent, source, snapshot, sacrificing_player }) },
+        SyncEventBody::SpellCastEvent { spell, caster, from_zone, snapshot } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; std::sync::Arc::new(ironsmith::events::spells::SpellCastEvent { spell, caster, from_zone, snapshot }) },
+        SyncEventBody::ObjectLeavesGameEvent { object, snapshot, cause } => { let snapshot = decoder.restore_snapshot(snapshot, &mut *face_binding)?; std::sync::Arc::new(ironsmith::events::zones::ObjectLeavesGameEvent { object, snapshot, cause }) },
+        SyncEventBody::ZoneChangeEvent { objects, result_objects, from, to, cause, snapshot, snapshots, object_tags } => { let snapshot = snapshot.map(|h| decoder.restore_snapshot(h, &mut *face_binding)).transpose()?; let snapshots = snapshots.into_iter().map(|h| decoder.restore_snapshot(h, &mut *face_binding)).collect::<Result<Vec<_>, _>>()?; let object_tags = object_tags.into_iter().map(|(key, hs)| Ok((key, hs.into_iter().map(|h| decoder.restore_snapshot(h, &mut *face_binding)).collect::<Result<Vec<_>, StackBindingError>>()?))).collect::<Result<_, StackBindingError>>()?; std::sync::Arc::new(ironsmith::events::zones::ZoneChangeEvent { objects, result_objects, from, to, cause, snapshot, snapshots, object_tags }) },
+        SyncEventBody::DiscardEvent { card, player, destination, cause, requires_type_verification, madness_applied } => std::sync::Arc::new(ironsmith::events::cards::DiscardEvent { card, player, destination, cause, requires_type_verification, madness_applied }),
+        SyncEventBody::DrawEvent { player, count, is_first_this_turn, first_of_instruction, first_of_draw_step } => std::sync::Arc::new(ironsmith::events::cards::DrawEvent { player, count, is_first_this_turn, first_of_instruction, first_of_draw_step }),
+        SyncEventBody::MoveCountersEvent { from, to, counter_type, count } => std::sync::Arc::new(ironsmith::events::counters::MoveCountersEvent { from, to, counter_type, count }),
+        SyncEventBody::PutCountersEvent { target, counter_type, count, maximum_count, cause } => std::sync::Arc::new(ironsmith::events::counters::PutCountersEvent { target, counter_type, count, maximum_count, cause }),
+        SyncEventBody::RemoveCountersEvent { target, counter_type, count } => std::sync::Arc::new(ironsmith::events::counters::RemoveCountersEvent { target, counter_type, count }),
+        SyncEventBody::BecameMonstrousEvent { creature, controller, n } => std::sync::Arc::new(ironsmith::events::other::BecameMonstrousEvent { creature, controller, n }),
+        SyncEventBody::CardsDrawnEvent { player, cards, is_first_this_turn, is_during_players_draw_step, cards_previously_drawn_this_draw_step } => std::sync::Arc::new(ironsmith::events::other::CardsDrawnEvent { player, cards, is_first_this_turn, is_during_players_draw_step, cards_previously_drawn_this_draw_step }),
+        SyncEventBody::ChapterAbilityResolvedEvent { saga, controller, final_chapter } => std::sync::Arc::new(ironsmith::events::other::ChapterAbilityResolvedEvent { saga, controller, final_chapter }),
+        SyncEventBody::CoinFlippedEvent { player, source, face, call, winner, loser } => std::sync::Arc::new(ironsmith::events::other::CoinFlippedEvent { player, source, face, call, winner, loser }),
+        SyncEventBody::ControlChangedEvent { permanent, previous_controller, new_controller } => std::sync::Arc::new(ironsmith::events::other::ControlChangedEvent { permanent, previous_controller, new_controller }),
+        SyncEventBody::ConvertedEvent { permanent } => std::sync::Arc::new(ironsmith::events::other::ConvertedEvent { permanent }),
+        SyncEventBody::CounterPlacedEvent { permanent, counter_type, amount, previous_count } => std::sync::Arc::new(ironsmith::events::other::CounterPlacedEvent { permanent, counter_type, amount, previous_count }),
+        SyncEventBody::DayNightChangedEvent { is_daytime } => std::sync::Arc::new(ironsmith::events::other::DayNightChangedEvent { is_daytime }),
+        SyncEventBody::DieRolledEvent { player, source, natural_result, result, sides, is_planar, is_attraction_visit } => std::sync::Arc::new(ironsmith::events::other::DieRolledEvent { player, source, natural_result, result, sides, is_planar, is_attraction_visit }),
+        SyncEventBody::GiftGivenEvent { player, recipient, source } => std::sync::Arc::new(ironsmith::events::other::GiftGivenEvent { player, recipient, source }),
+        SyncEventBody::LandPlayedEvent { land, player, from_zone } => std::sync::Arc::new(ironsmith::events::other::LandPlayedEvent { land, player, from_zone }),
+        SyncEventBody::MutatedEvent { permanent, controller } => std::sync::Arc::new(ironsmith::events::other::MutatedEvent { permanent, controller }),
+        SyncEventBody::PermanentTappedEvent { permanent } => std::sync::Arc::new(ironsmith::events::other::PermanentTappedEvent { permanent }),
+        SyncEventBody::PermanentUntappedEvent { permanent } => std::sync::Arc::new(ironsmith::events::other::PermanentUntappedEvent { permanent }),
+        SyncEventBody::PlayerLosesGameEvent { player } => std::sync::Arc::new(ironsmith::events::other::PlayerLosesGameEvent { player }),
+        SyncEventBody::SearchLibraryEvent { player, library_owner } => std::sync::Arc::new(ironsmith::events::other::SearchLibraryEvent { player, library_owner }),
+        SyncEventBody::ShuffleLibraryEvent { player, cause } => std::sync::Arc::new(ironsmith::events::other::ShuffleLibraryEvent { player, cause }),
+        SyncEventBody::StateTriggerEvent { source } => std::sync::Arc::new(ironsmith::events::other::StateTriggerEvent { source }),
+        SyncEventBody::TransformedEvent { permanent } => std::sync::Arc::new(ironsmith::events::other::TransformedEvent { permanent }),
+        SyncEventBody::TurnedFaceUpEvent { permanent, player } => std::sync::Arc::new(ironsmith::events::other::TurnedFaceUpEvent { permanent, player }),
+        SyncEventBody::TapEvent { permanent } => std::sync::Arc::new(ironsmith::events::permanents::TapEvent { permanent }),
+        SyncEventBody::UntapEvent { permanent } => std::sync::Arc::new(ironsmith::events::permanents::UntapEvent { permanent }),
+        SyncEventBody::BeginningOfCleanupStepEvent { player } => std::sync::Arc::new(ironsmith::events::phase::BeginningOfCleanupStepEvent { player }),
+        SyncEventBody::BeginningOfDrawStepEvent { player } => std::sync::Arc::new(ironsmith::events::phase::BeginningOfDrawStepEvent { player }),
+        SyncEventBody::BeginningOfPrecombatMainPhaseEvent { player } => std::sync::Arc::new(ironsmith::events::phase::BeginningOfPrecombatMainPhaseEvent { player }),
+        SyncEventBody::BeginningOfPostcombatMainPhaseEvent { player, main_phase_ordinal } => std::sync::Arc::new(ironsmith::events::phase::BeginningOfPostcombatMainPhaseEvent { player, main_phase_ordinal }),
+        SyncEventBody::EndOfCombatEvent => std::sync::Arc::new(ironsmith::events::phase::EndOfCombatEvent),
+        SyncEventBody::PermanentsUntapStepEvent { player } => std::sync::Arc::new(ironsmith::events::phase::PermanentsUntapStepEvent { player }),
+        SyncEventBody::BecomesTargetedEvent { target, source, source_controller, by_ability, stack_ability } => std::sync::Arc::new(ironsmith::events::spells::BecomesTargetedEvent { target, source, source_controller, by_ability, stack_ability }),
+        SyncEventBody::SpellCopiedEvent { spell, copier } => std::sync::Arc::new(ironsmith::events::spells::SpellCopiedEvent { spell, copier }),
+        SyncEventBody::BeginningOfEndStep { player } => std::sync::Arc::new(phase::BeginningOfEndStepEvent { player }),
+        SyncEventBody::BeginningOfUpkeep { player } => std::sync::Arc::new(phase::BeginningOfUpkeepEvent { player }),
+        SyncEventBody::BeginningOfCombat { player } => std::sync::Arc::new(phase::BeginningOfCombatEvent { player }),
+        SyncEventBody::LifeGain { player, amount, source } => std::sync::Arc::new(life::LifeGainEvent { player, amount, source }),
+        SyncEventBody::LifeLoss { player, amount, from_damage, from_radiation } => std::sync::Arc::new(life::LifeLossEvent { player, amount, from_damage, from_radiation }),
+        SyncEventBody::Damage { source, target, amount, excess_damage, is_combat, is_unpreventable, cause, remainder, target_snapshot } =>
+            std::sync::Arc::new(damage::DamageEvent { source, target: damage_target_from_sync(target), amount, excess_damage,
+                is_combat, is_unpreventable, cause, remainder: remainder.map(|(target, amount)| (damage_target_from_sync(target), amount)),
+                target_snapshot: target_snapshot.map(|history| decoder.restore_snapshot(history, &mut *face_binding)).transpose()? }),
+    })
+}
+fn restore_sync_event(context: &mut SyncStackDecoder<'_, '_, '_>, event: SyncRetainedEvent) -> Result<ironsmith::triggers::TriggerEvent, StackBindingError> {
+    event.try_restore(context, |context, index| context.2.get(index as usize).cloned().ok_or_else(|| stack_codec_error("unknown stack event occurrence")),
+        |context, history| context.0.restore_snapshot(history, &mut *context.1))
+}
+fn restore_sync_stack(decoder: &ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceDecoder,
+    entry: SyncRetainedStack, card: &mut dyn FnMut(u32) -> Result<CardId, StackBindingError>, bodies: &[std::sync::Arc<dyn ironsmith::events::GameEventType>]) -> Result<StackEntry, StackBindingError> {
+    entry.try_restore(&mut (decoder, card, bodies),
+        |context, program| context.0.restore_program(program),
+        |context, history| context.0.restore_snapshot(history, &mut *context.1),
+        restore_sync_event,
+        |context, outcome| outcome.try_restore(context, restore_sync_event),
+        |context, restriction| restriction.try_map_effects(&mut |effect| context.0.restore_effect(effect)))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncExecutableState {
+    provenance_graph: ironsmith::provenance::RetainedProvenanceGraph,
+    graph_card_count: u32,
+    occurrences: ironsmith_runtime_catalog::artifact_materializer::RetainedStaticAbilityTable,
+    definitions: Vec<(
+        u32,
+        ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceCardDefinition<u32>,
+    )>,
+    objects:
+        Vec<ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceLiveObject<u32>>,
+    continuous: ironsmith_runtime_catalog::artifact_materializer::RetainedGraphRegisteredState<u32>,
+    replacement: ironsmith_runtime_catalog::artifact_materializer::RetainedRegisteredReplacementState<u32>,
+    prevention: ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrencePreventionState<u32>,
+    grants: ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceGrantRegistry<u32>,
+    used_grant_permissions: Vec<(PlayerId, ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceGrantPermission<u32>)>,
+    delayed_triggers: Vec<ironsmith_runtime_catalog::artifact_materializer::RetainedDelayedTrigger<u32>>,
+    stack: Vec<SyncRetainedStack>,
+    event_bodies: Vec<SyncEventBody>,
+}
+
+struct RestoredSyncExecutableState {
+    provenance_graph: ironsmith::provenance::ProvenanceGraph,
+    definitions: Vec<CardDefinition>,
+    objects: Vec<Object>,
+    continuous: ironsmith::continuous::RegisteredContinuousEffectState,
+    replacement: ironsmith::replacement::RegisteredReplacementEffectState,
+    prevention: ironsmith::prevention::PreventionEffectState,
+    grants: ironsmith::grant_registry::RegisteredGrantState,
+    used_grant_permissions: Vec<(PlayerId, ironsmith::grant_registry::GrantPermissionIdentity)>,
+    delayed_triggers: Vec<ironsmith::triggers::DelayedTrigger>,
+    stack: Vec<StackEntry>,
+}
+
+/// Executable payloads require authorization even when they carry no card ID
+/// or historical ObjectSnapshot. For example copy values retain native ability
+/// programs after printed text/labels and the copied face identity are removed.
+enum SyncContinuousExecutablePayload<'a> {
+    Static(&'a ironsmith::static_abilities::StaticAbility),
+    Ability(&'a ironsmith::Ability),
+    Copy(&'a ironsmith::snapshot::CopiableValues),
+    Text(&'a ironsmith::continuous::TextBoxOverlay),
+    Restriction(&'a ironsmith::continuous::RegisteredRestriction),
+    Attachment(&'a ironsmith::object::AuraAttachmentMetadata),
+    Origin(&'a ironsmith::continuous::ContinuousAbilityOrigin),
+}
+
+fn approve_sync_continuous_payloads<E>(
+    state: &ironsmith::continuous::RegisteredContinuousEffectState,
+    mut approve: impl FnMut(&ironsmith::continuous::ContinuousEffect, SyncContinuousExecutablePayload<'_>) -> Result<(), E>,
+) -> Result<(), E> {
+    let approve = std::cell::RefCell::new(&mut approve);
+    for effect in &state.effects {
+        // These exhaustive native converters include copy/text/attachment and
+        // restriction models, plus static and generating occurrence origins.
+        // This pass neither encodes a program nor discovers a graph reference.
+        let _ = effect.clone().try_map_payloads(
+            |modification| modification.try_map_payloads(
+                |value| { (*approve.borrow_mut())(effect, SyncContinuousExecutablePayload::Static(&value))?; Ok(()) },
+                |value| { (*approve.borrow_mut())(effect, SyncContinuousExecutablePayload::Ability(&value))?; Ok(()) },
+                |value| { (*approve.borrow_mut())(effect, SyncContinuousExecutablePayload::Copy(&value))?; Ok(()) },
+                |value| { (*approve.borrow_mut())(effect, SyncContinuousExecutablePayload::Text(&value))?; Ok(()) },
+                |value| { (*approve.borrow_mut())(effect, SyncContinuousExecutablePayload::Restriction(&value))?; Ok(()) },
+                |value| { (*approve.borrow_mut())(effect, SyncContinuousExecutablePayload::Attachment(&value))?; Ok(()) },
+            ),
+            |value| { (*approve.borrow_mut())(effect, SyncContinuousExecutablePayload::Static(&value))?; Ok(()) },
+            |value| { (*approve.borrow_mut())(effect, SyncContinuousExecutablePayload::Origin(&value))?; Ok(()) },
+        )?;
+    }
+    Ok(())
+}
+
+
+/// Capabilities currently admitted to perspective execution. Other executable
+/// families must acquire their own content/association policy, never disappear
+/// from a successful checkpoint. Full owning checkpoints remain lossless.
+struct SyncPerspectiveExecutionPolicy {
+    visible: std::collections::BTreeSet<ObjectId>,
+    opaque: std::collections::BTreeSet<ObjectId>,
+    perspective: PlayerId,
+}
+impl SyncPerspectiveExecutionPolicy {
+    fn source(&self, source: ObjectId) -> Result<(), String> {
+        if self.visible.contains(&source) { Ok(()) }
+        else { Err("perspective executable source lacks disclosed identity".into()) }
+    }
+    fn history(&self, snapshot: ironsmith::snapshot::ObjectSnapshot) -> Result<ironsmith::snapshot::ObjectSnapshot, String> {
+        let hidden = snapshot.zone == Zone::Library
+            || (matches!(snapshot.zone, Zone::Hand | Zone::OutsideGame) && snapshot.owner != self.perspective)
+            || self.opaque.contains(&snapshot.object_id);
+        if hidden || !self.visible.contains(&snapshot.object_id) {
+            return Err("perspective executable history requires private facts or historical disclosure approval".into());
+        }
+        Ok(snapshot)
+    }
+    fn mana_ability(&self, ability: &ironsmith::Ability) -> Result<(), String> {
+        let ironsmith::ability::AbilityKind::Activated(activated) = &ability.kind else {
+            return Err("perspective ability payload requires content approval".into());
+        };
+        if !ability.is_mana_ability() || !activated.choices.is_empty()
+            || !activated.additional_restrictions.is_empty() || !activated.activation_restrictions.is_empty()
+            || activated.activation_condition.is_some() || !activated.mana_usage_restrictions.is_empty() {
+            return Err("perspective ability payload requires content approval".into());
+        }
+        let _ = activated.mana_cost.clone().try_map(|cost| {
+            match cost.compiled_model() {
+                Some(ironsmith_core::cost_model::Cost::Mana(_) | ironsmith_core::cost_model::Cost::Tap) => Ok(cost),
+                Some(ironsmith_core::cost_model::Cost::Effect(effect)) if effect.downcast_ref::<ironsmith::effects::TapEffect>()
+                    .is_some_and(|tap| matches!(tap.target, ironsmith::target::ChooseSpec::Source)) => Ok(cost),
+                _ => Err("perspective mana cost requires content approval".to_string()),
+            }
+        })?;
+        for effect in activated.effects.all_effects() {
+            if !matches!(effect.mana_production(), Some(ironsmith::mana_payment::program::ManaProduction::Fixed { player: ironsmith::target::PlayerFilter::You, .. })) {
+                return Err("perspective mana program requires content approval".into());
+            }
+        }
+        Ok(())
+    }
+    fn continuous_filter(&self, filter: &ironsmith::target::ObjectFilter) -> Result<(), String> {
+        use ironsmith::target::PlayerFilter;
+        // Admit a closed structural profile. Equality against the complete
+        // native filter prevents nested captures or newly added fields from
+        // bypassing approval. The original filter is retained unchanged.
+        let player = |value: &Option<PlayerFilter>| -> Result<(), String> {
+            match value {
+                None | Some(PlayerFilter::Any | PlayerFilter::You | PlayerFilter::NotYou
+                    | PlayerFilter::Opponent | PlayerFilter::Teammate | PlayerFilter::Active
+                    | PlayerFilter::EffectController) => Ok(()),
+                _ => Err("perspective continuous filter player requires content approval".into()),
+            }
+        };
+        player(&filter.controller)?;
+        player(&filter.owner)?;
+        if matches!(filter.zone, Some(Zone::Library | Zone::Hand | Zone::OutsideGame)) {
+            return Err("perspective continuous filter zone requires disclosure approval".into());
+        }
+        for child in &filter.any_of { self.continuous_filter(child)?; }
+        if let Some(target) = filter.specific { self.source(target)?; }
+        let approved = ironsmith::target::ObjectFilter {
+            zone: filter.zone,
+            controller: filter.controller.clone(),
+            owner: filter.owner.clone(),
+            card_types: filter.card_types.clone(),
+            all_card_types: filter.all_card_types.clone(),
+            excluded_card_types: filter.excluded_card_types.clone(),
+            colors: filter.colors,
+            required_colors: filter.required_colors,
+            excluded_colors: filter.excluded_colors,
+            colorless: filter.colorless,
+            multicolored: filter.multicolored,
+            monocolored: filter.monocolored,
+            token: filter.token,
+            nontoken: filter.nontoken,
+            specific: filter.specific,
+            any_of: filter.any_of.clone(),
+            ..Default::default()
+        };
+        if filter != &approved {
+            return Err("perspective continuous filter requires content approval".into());
+        }
+        Ok(())
+    }
+    fn continuous_value(&self, value: &ironsmith::effect::Value) -> Result<(), String> {
+        use ironsmith::effect::Value;
+        match value {
+            Value::Fixed(_) => Ok(()),
+            Value::Add(left, right) => { self.continuous_value(left)?; self.continuous_value(right) },
+            Value::Scaled(value, _) | Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value) =>
+                self.continuous_value(value),
+            Value::Count(filter) | Value::CountScaled(filter, _) | Value::GreatestCount(filter)
+                | Value::GreatestSharedCreatureTypeCount(filter) | Value::GreatestSharedNameCount(filter)
+                | Value::TotalPower(filter) => self.continuous_filter(filter),
+            _ => Err("perspective continuous value requires content approval".into()),
+        }
+    }
+    fn continuous_condition(&self, condition: &ironsmith::ConditionExpr) -> Result<(), String> {
+        use ironsmith::ConditionExpr as Condition;
+        match condition {
+            Condition::YouControl(filter) | Condition::OpponentControls(filter) => self.continuous_filter(filter),
+            Condition::Not(value) => self.continuous_condition(value),
+            Condition::And(left, right) | Condition::Or(left, right) => {
+                self.continuous_condition(left)?;
+                self.continuous_condition(right)
+            },
+            Condition::SourceIsUntapped | Condition::SourceIsAttacking | Condition::SourceIsBlocking
+                | Condition::SourceIsEquipped | Condition::SourceIsEnchanted => Ok(()),
+            _ => Err("perspective continuous condition requires content approval".into()),
+        }
+    }
+    fn continuous_duration_object(&self, object: &ironsmith_core::effect::ContinuousDurationObject) -> Result<(), String> {
+        use ironsmith_core::effect::ContinuousDurationObject as Object;
+        match object {
+            Object::Source | Object::AffectedObject => Ok(()),
+            Object::Specific(target) => self.source(*target),
+            Object::Tagged(_) => Err("perspective continuous duration capture requires content approval".into()),
+        }
+    }
+    fn continuous_duration_player(&self, player: &ironsmith_core::effect::ContinuousDurationPlayer) -> Result<(), String> {
+        use ironsmith_core::effect::ContinuousDurationPlayer as Player;
+        match player {
+            Player::EffectController | Player::Specific(_) => Ok(()),
+            Player::ControllerOf(object) => self.continuous_duration_object(object),
+            Player::Tagged(_) => Err("perspective continuous duration player requires content approval".into()),
+        }
+    }
+    fn continuous_duration_predicate(&self, predicate: &ironsmith_core::effect::ContinuousDurationPredicate) -> Result<(), String> {
+        use ironsmith_core::effect::ContinuousDurationPredicate as Predicate;
+        match predicate {
+            Predicate::All(values) => { for value in values { self.continuous_duration_predicate(value)?; } Ok(()) },
+            Predicate::ObjectOnBattlefield(object) | Predicate::ObjectTapped(object)
+                | Predicate::ObjectIsEnchanted(object) => self.continuous_duration_object(object),
+            Predicate::ObjectInZone { object, zone } => {
+                if matches!(zone, Zone::Library | Zone::Hand | Zone::OutsideGame) {
+                    return Err("perspective continuous duration zone requires disclosure approval".into());
+                }
+                self.continuous_duration_object(object)
+            },
+            Predicate::ObjectControlledBy { object, player } => {
+                self.continuous_duration_object(object)?;
+                self.continuous_duration_player(player)
+            },
+            Predicate::ObjectHasCounter { object, counter_type, .. } => {
+                if matches!(counter_type, ironsmith::CounterType::Named(_)) {
+                    return Err("perspective continuous duration counter requires content approval".into());
+                }
+                self.continuous_duration_object(object)
+            },
+            Predicate::ObjectAttachedTo { attachment, attached_to } => {
+                self.continuous_duration_object(attachment)?;
+                self.continuous_duration_object(attached_to)
+            },
+            Predicate::PlayerIsMonarch(player) => self.continuous_duration_player(player),
+            Predicate::ObjectPowerAtMostObject { lesser, greater } => {
+                self.continuous_duration_object(lesser)?;
+                self.continuous_duration_object(greater)
+            },
+        }
+    }
+    fn continuous_duration(&self, duration: &ironsmith::effect::Until) -> Result<(), String> {
+        use ironsmith::effect::Until;
+        match duration {
+            Until::Forever | Until::EndOfTurn | Until::EndOfTurnOrAnyPlayerRolls { .. }
+                | Until::YourNextTurn | Until::YourNextTurnEnd | Until::YourNextUpkeep
+                | Until::ControllersNextUntapStep | Until::NextEndStep | Until::EndOfCombat
+                | Until::ThisLeavesTheBattlefield | Until::SourceUntaps | Until::YouStopControllingThis => Ok(()),
+            Until::ForAsLongAs(predicate) => self.continuous_duration_predicate(predicate),
+            Until::TurnsPass(value) => self.continuous_value(value),
+        }
+    }
+    fn continuous_modification(&self, modification: &ironsmith::continuous::Modification) -> Result<(), String> {
+        use ironsmith::continuous::Modification;
+        match modification {
+            // Payload contents are approved separately by the native exhaustive
+            // payload walk. Here approve every non-payload captured operand.
+            Modification::CopyOf { target_id, name_override, name_override_surface, .. } => {
+                self.source(*target_id)?;
+                if name_override.is_some() || name_override_surface.is_some() {
+                    return Err("perspective continuous copy name requires content approval".into());
+                }
+                Ok(())
+            },
+            Modification::ChangeText { .. } | Modification::SetName(_) | Modification::InsertNameWords { .. } =>
+                Err("perspective continuous text requires content approval".into()),
+            Modification::CopyActivatedAbilities { filter, counter, .. } => {
+                if matches!(counter, Some(ironsmith::CounterType::Named(_))) {
+                    return Err("perspective continuous copy counter requires content approval".into());
+                }
+                self.continuous_filter(filter)
+            },
+            Modification::CopyStaticAbilityVariants { filter, .. } | Modification::CopyTriggeredAbilities { filter, .. } =>
+                self.continuous_filter(filter),
+            Modification::SetPower { value, .. } | Modification::SetToughness { value, .. } => self.continuous_value(value),
+            Modification::SetPowerToughness { power, toughness, .. }
+                | Modification::ModifyPowerToughnessValue { power, toughness } => {
+                self.continuous_value(power)?;
+                self.continuous_value(toughness)
+            },
+            Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
+                | Modification::SetTextBox(_) | Modification::AddCardTypes(_) | Modification::RemoveCardTypes(_)
+                | Modification::SetCardTypes(_) | Modification::AddSubtypes(_) | Modification::AddAllSubtypesOfFamily(_)
+                | Modification::RemoveSubtypes(_) | Modification::RemoveAllSubtypesOfFamily(_) | Modification::SetSubtypes(_)
+                | Modification::SetAuraAttachmentFilter(_) | Modification::AddSupertypes(_) | Modification::RemoveSupertypes(_)
+                | Modification::RemoveAllCreatureTypes | Modification::AddColors(_) | Modification::RemoveColors(_)
+                | Modification::SetColors(_) | Modification::MakeColorless | Modification::AddAbility(_)
+                | Modification::AddAbilityGeneric(_) | Modification::SetAbilities(_) | Modification::AddCombatDamageDrawAbility
+                | Modification::RemoveAbility(_) | Modification::RemoveAbilityGeneric { .. }
+                | Modification::RemoveStaticAbilityFamily(_) | Modification::RemoveAllAbilities
+                | Modification::RemoveAllAbilitiesExceptMana | Modification::Restriction(_)
+                | Modification::ModifyPower(_) | Modification::ModifyToughness(_)
+                | Modification::ModifyPowerToughness { .. } | Modification::ModifyPowerToughnessByColorCount { .. }
+                | Modification::SwitchPowerToughness => Ok(()),
+        }
+    }
+    fn continuous_origin(&self, origin: &ironsmith::continuous::ContinuousAbilityOrigin, objects: &[Object]) -> Result<(), String> {
+        use ironsmith::continuous::ContinuousOriginMetadata as Metadata;
+        origin.try_visit_metadata(&mut |metadata| {
+            match metadata {
+                Metadata::Object(id) => self.source(id),
+                Metadata::Printed { host, slot } => {
+                    self.source(host)?;
+                    if objects.iter().find(|object| object.id == host).is_some_and(|object| slot < object.abilities.len()) {
+                        Ok(())
+                    } else { Err("perspective continuous printed origin requires association approval".into()) }
+                },
+                Metadata::Counter { host, occurrence, slot } => {
+                    self.source(host)?;
+                    if objects.iter().find(|object| object.id == host).is_some_and(|object|
+                        object.counters.contains_ability_origin(occurrence, slot)) {
+                        Ok(())
+                    } else { Err("perspective continuous counter origin requires association approval".into()) }
+                },
+                Metadata::Temporary { host, registration } => {
+                    self.source(host)?;
+                    if objects.iter().find(|object| object.id == host).is_some_and(|object|
+                        object.temporary_static_ability_grants.contains_origin(registration)) {
+                        Ok(())
+                    } else { Err("perspective continuous temporary origin requires association approval".into()) }
+                },
+            }
+        })?;
+        let faces: std::collections::BTreeSet<_> = objects.iter()
+            .filter(|object| self.visible.contains(&object.id)).filter_map(|object| object.card.map(|face| face.0)).collect();
+        // The native recursive converter visits faces in levels, borrowed
+        // origins and generating-effect ancestry as well as this outer face.
+        // An origin reference cannot disclose an opaque object's definition.
+        let _ = origin.clone().try_map_card_ids(&mut |face| {
+            if faces.contains(&face.0) { Ok(face) }
+            else { Err("perspective continuous origin face requires disclosure approval".to_string()) }
+        })?;
+        Ok(())
+    }
+    fn continuous_target(&self, effect: &ironsmith::continuous::ContinuousEffect) -> Result<(), String> {
+        use ironsmith::continuous::{EffectSourceType, EffectTarget};
+        self.source(effect.source)?;
+        match &effect.applies_to {
+            EffectTarget::Specific(target) | EffectTarget::AttachedTo(target) => self.source(*target)?,
+            EffectTarget::Filter(filter) => self.continuous_filter(filter)?,
+            EffectTarget::Source | EffectTarget::AllPermanents | EffectTarget::AllCreatures => {},
+        }
+        if let EffectSourceType::Resolution { locked_targets } = &effect.source_type {
+            for target in locked_targets { self.source(*target)?; }
+        }
+        Ok(())
+    }
+    fn roots(&self, roots: SyncExecutableRootView<'_>) -> Result<(), String> {
+        for object in roots.objects {
+            if self.opaque.contains(&object.id) { validate_opaque_sync_executable_object(object)?; }
+            else { self.source(object.id)?; }
+        }
+        for effect in &roots.continuous.effects {
+            self.continuous_target(effect)?;
+            if let Some(condition) = &effect.condition { self.continuous_condition(condition)?; }
+            self.continuous_duration(&effect.duration)?;
+            self.continuous_modification(&effect.modification)?;
+        }
+        approve_sync_continuous_payloads(roots.continuous, |effect, payload| {
+            match payload {
+                SyncContinuousExecutablePayload::Ability(ability) => {
+                    match &effect.source_type {
+                        ironsmith::continuous::EffectSourceType::Resolution { locked_targets } if !locked_targets.is_empty() => {
+                            for target in locked_targets { self.source(*target)?; }
+                        },
+                        _ => {
+                            let target = match effect.applies_to {
+                                ironsmith::continuous::EffectTarget::Specific(target) => target,
+                                ironsmith::continuous::EffectTarget::Source => effect.source,
+                                _ => return Err("perspective ability target requires association approval".into()),
+                            };
+                            self.source(target)?;
+                        },
+                    }
+                    self.mana_ability(ability)
+                },
+                SyncContinuousExecutablePayload::Origin(origin) => self.continuous_origin(origin, roots.objects),
+                _ => Err("perspective continuous payload requires content approval".into()),
+            }
+        })?;
+        for effect in &roots.replacement.effects {
+            self.source(effect.source)?;
+            let _ = effect.replacement.clone().try_map_payloads(
+                |_: ironsmith::Effect| Err::<ironsmith::Effect, String>("perspective replacement program requires content approval".into()),
+                |_: ironsmith::Ability| Err::<ironsmith::Ability, String>("perspective replacement ability requires content approval".into()),
+                |_: ironsmith::resolution::ResolutionProgram| Err::<ironsmith::resolution::ResolutionProgram, String>("perspective replacement continuation requires content approval".into()),
+                Ok::<_, String>,
+            )?;
+        }
+        for shield in &roots.prevention.shields {
+            self.source(shield.source)?;
+            if !shield.follow_up_effects.is_empty() { return Err("perspective prevention program requires content approval".into()); }
+        }
+        if !roots.prevention.pending_follow_ups.is_empty() || !roots.prevention.follow_up_replacement_scopes.is_empty() {
+            return Err("perspective prevention continuation requires content approval".into());
+        }
+        for grant in roots.grant_registry.registered_state().grants {
+            self.source(grant.source.source_id())?;
+            // A disclosed source does not disclose the card selected by a
+            // permission, or literals captured when that permission was made.
+            // Keep the whole permission or reject it; removing a constraint
+            // would change which cards the recipient can legally play.
+            let target = grant.target_id.ok_or_else(||
+                "perspective grant requires recipient association approval".to_string())?;
+            self.source(target)?;
+            if grant.required_face_name.is_some() || grant.filter.is_some()
+                || grant.cast_this_way_filter.is_some() {
+                return Err("perspective grant constraints require content approval".into());
+            }
+            if !matches!(grant.grantable, ironsmith::grant::Grantable::PlayFrom)
+                || !grant.cast_this_way_grants.is_empty() {
+                return Err("perspective grant payload requires content approval".into());
+            }
+        }
+        if !roots.delayed_triggers.is_empty() { return Err("perspective delayed program requires content approval".into()); }
+        if !roots.stack.is_empty() { return Err("perspective stack program and captured context require content approval".into()); }
+        Ok(())
+    }
+}
+
+/// Native opaque object roots retain only public physical state. Comparing
+/// the complete retained native carrier (rather than a list of secret fields)
+/// makes admission fail if any cost, ability, overlay or permission survives.
+/// The perspective owner must separately approve executable roots and histories;
+/// this projection alone does not authorize pending hidden spell execution.
+fn opaque_sync_executable_object(mut object: Object) -> Object {
+    let last_modified = object.last_modified;
+    let counters = object.counters.clone();
+    let attached_to = object.attached_to;
+    let attachments = object.attachments.clone();
+    object.redact_to_hidden_card();
+    object.last_modified = last_modified;
+    object.counters = counters;
+    object.attached_to = attached_to;
+    object.attachments = attachments;
+    object
+}
+
+fn validate_opaque_sync_executable_object(object: &Object) -> Result<(), String> {
+    let expected = opaque_sync_executable_object(object.clone());
+    if ironsmith::object::NativeRetainedLiveObject::from(expected)
+        != ironsmith::object::NativeRetainedLiveObject::from(object.clone())
+    {
+        return Err(format!("opaque executable object {} contains private identity or executable state", object.id.0));
+    }
+    Ok(())
+}
+
+/// The perspective owner must authorize every executable root family, not
+/// merely redact historical snapshot display fields. This view deliberately
+/// exposes native roots before the graph codec discovers nested definitions.
+struct SyncExecutableRootView<'a> {
+    objects: &'a [Object],
+    continuous: &'a ironsmith::continuous::RegisteredContinuousEffectState,
+    replacement: &'a ironsmith::replacement::RegisteredReplacementEffectState,
+    prevention: &'a ironsmith::prevention::PreventionEffectState,
+    provenance: &'a ironsmith::provenance::ProvenanceGraph,
+    grant_registry: &'a ironsmith::grant_registry::GrantRegistry,
+    used_grant_permissions: &'a std::collections::HashSet<(PlayerId, ironsmith::grant_registry::GrantPermissionIdentity)>,
+    player_count: usize,
+    delayed_triggers: &'a [ironsmith::triggers::DelayedTrigger],
+    stack: &'a [StackEntry],
+}
+
+impl SyncExecutableState {
+    fn validate_queued_provenance(graph: &ironsmith::provenance::ProvenanceGraph, prevention: &ironsmith::prevention::PreventionEffectState) -> Result<(), String> {
+        for pending in &prevention.pending_follow_ups {
+            graph.validate_reference(pending.provenance)?;
+        }
+        Ok(())
+    }
+    fn validate_delayed_actors(delayed: &[ironsmith::triggers::DelayedTrigger], player_count: usize) -> Result<(), String> {
+        for trigger in delayed {
+            if usize::from(trigger.controller.0) >= player_count {
+                return Err("delayed trigger has invalid controller".into());
+            }
+            if trigger.prepayment.as_ref().is_some_and(|payment| usize::from(payment.player.0) >= player_count) {
+                return Err("delayed payment has invalid player".into());
+            }
+            if trigger.tagged_players.values().flatten().any(|player| usize::from(player.0) >= player_count) {
+                return Err("delayed player capture has invalid player".into());
+            }
+        }
+        Ok(())
+    }
+    fn validate_stack_roots(graph: &ironsmith::provenance::ProvenanceGraph, stack: &[StackEntry], player_count: usize) -> Result<(), String> {
+        let player = |player: PlayerId| if usize::from(player.0) < player_count { Ok(()) } else { Err("stack capture has invalid player".to_string()) };
+        let history = |snapshot: &ironsmith::snapshot::ObjectSnapshot| -> Result<(), String> { player(snapshot.owner)?; player(snapshot.controller) };
+        let event = |event: &ironsmith::triggers::TriggerEvent| -> Result<(), String> {
+            graph.validate_reference(event.provenance())?;
+            if let Some(batch) = event.simultaneous_batch() { graph.validate_reference(batch)?; }
+            if let Some(actor) = event.player() { player(actor)?; }
+            for actor in event.player_tags().values().flatten() { player(*actor)?; }
+            if let Some(snapshot) = event.source_snapshot() { history(snapshot)?; }
+            for snapshot in event.lookback_source_snapshots() { history(snapshot)?; }
+            if let Some(value) = event.downcast::<ironsmith::events::combat::CreatureBlockedEvent>() { if let Some(h) = &value.blocker_snapshot { history(h)?; } if let Some(h) = &value.attacker_snapshot { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::other::CardDiscardedEvent>() { player(value.player)?; if let Some(actor) = value.cause.as_ref().and_then(|c| c.source_controller) { player(actor)?; } if let Some(h) = &value.snapshot { history(h)?; } for h in &value.batch_snapshots { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::other::CardRevealedEvent>() { player(value.player)?; if let Some(h) = &value.snapshot { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::other::PermanentPhasedOutEvent>() { player(value.controller)?; if let Some(h) = &value.snapshot { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::other::SpellCounteredEvent>() { player(value.controller)?; if let Some(h) = &value.snapshot { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::permanents::DestroyEvent>() { if let Some(h) = &value.snapshot { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::permanents::SacrificeEvent>() { if let Some(h) = &value.snapshot { history(h)?; } if let Some(actor) = value.sacrificing_player { player(actor)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::spells::SpellCastEvent>() { player(value.caster)?; if let Some(h) = &value.snapshot { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::zones::ObjectLeavesGameEvent>() { history(&value.snapshot)?; if let Some(actor) = value.cause.source_controller { player(actor)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::zones::ZoneChangeEvent>() { if let Some(actor) = value.cause.source_controller { player(actor)?; } if let Some(h) = &value.snapshot { history(h)?; } for h in &value.snapshots { history(h)?; } for h in value.object_tags.values().flatten() { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::combat::CreatureAttackedEvent>() { if let ironsmith::triggers::event::AttackEventTarget::Player(actor) = value.target { player(actor)?; } if let Some(rows) = &value.declared_attackers { for row in rows.iter() { match row.target { ironsmith::combat_state::AttackTarget::Player(actor) | ironsmith::combat_state::AttackTarget::Nothing { defending_player: Some(actor), .. } => player(actor)?, _ => {} } } } }
+            if let Some(value) = event.downcast::<ironsmith::events::combat::CreatureAttackedAndUnblockedEvent>() { if let ironsmith::triggers::event::AttackEventTarget::Player(actor) = value.target { player(actor)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::combat::CreatureBecameBlockedEvent>() { if let Some(ironsmith::triggers::event::AttackEventTarget::Player(actor)) = value.attack_target { player(actor)?; } if let Some(h) = &value.attacker_snapshot { history(h)?; } for h in &value.blocker_snapshots { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::mana::ManaAddedEvent>() { player(value.controller)?; player(value.player)?; if let Some(h) = &value.snapshot { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::mana::ManaUnitSpentEvent>() { player(value.player)?; if let Some(h) = &value.source_snapshot { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::other::ObjectBecameUnattachedEvent>() { if let ironsmith::object::AttachmentTarget::Player(actor) = value.previous_target { player(actor)?; } player(value.controller)?; if let Some(h) = &value.snapshot { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::damage::DamagePreventedEvent>() { if let ironsmith::events::DamageTarget::Player(actor) = value.target { player(actor)?; } player(value.prevention_controller)?; if let Some(h) = &value.target_snapshot { history(h)?; } for row in &value.applications { if let ironsmith::events::DamageTarget::Player(actor) = row.target { player(actor)?; } if let Some(h) = &row.target_snapshot { history(h)?; } } }
+            if let Some(value) = event.downcast::<ironsmith::events::other::KeywordActionEvent>() { player(value.player)?; for vote in value.votes.iter().flatten() { player(vote.player)?; } if let Some(h) = &value.snapshot { history(h)?; } for actor in value.player_tags.values().flatten() { player(*actor)?; } for h in value.object_tags.values().flatten() { history(h)?; } for (actor, _) in &value.voter_teams { player(*actor)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::other::MarkersChangedEvent>() { if let ironsmith::marker::MarkerLocation::Player(actor) = value.location { player(actor)?; } if let Some(actor) = value.source_controller { player(actor)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::other::PlayersFinishedVotingEvent>() { player(value.controller)?; for vote in &value.votes { player(vote.player)?; } for actor in value.player_tags.values().flatten() { player(*actor)?; } for (actor, _) in &value.voter_teams { player(*actor)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::spells::AbilityTriggeredEvent>() { player(value.controller)?; if let Some(h) = &value.source_snapshot { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::spells::AbilityActivatedEvent>() { player(value.activator)?; if let Some(id) = value.stack_entry_provenance { graph.validate_reference(id)?; } if let Some(h) = &value.snapshot { history(h)?; } for h in &value.mana_sources_spent { history(h)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::tokens::CreateTokensEvent>() { player(value.controller)?; if let Some(actor) = value.cause.source_controller { player(actor)?; } if let Some(o) = &value.token { player(o.owner)?; player(o.initial_controller)?; } }
+            if let Some(value) = event.downcast::<ironsmith::events::zones::EnterBattlefieldEvent>() { let capture = ironsmith::replacement_entry_capture::RetainedEntryEvent::capture(value.clone()); capture.validate()?; if let Some(actor) = capture.controller_override { player(actor)?; } if let Some((_, actor)) = &capture.pending_program { player(*actor)?; } for choices in std::iter::once(&capture.program_choices).chain(capture.prepared_choices.iter()) { if let Some(actor) = choices.chosen_player { player(actor)?; } if let Some(actor) = choices.battle_protector { player(actor)?; } for (_, snapshots) in &choices.as_enters_tagged_objects { for snapshot in snapshots { history(snapshot)?; } } } }
+            if let Some(damage) = event.downcast::<ironsmith::events::damage::DamageEvent>() {
+                if let Some(actor) = damage.cause.source_controller { player(actor)?; }
+                if let ironsmith::events::DamageTarget::Player(actor) = damage.target { player(actor)?; }
+                if let Some((ironsmith::events::DamageTarget::Player(actor), _)) = damage.remainder { player(actor)?; }
+                if let Some(snapshot) = &damage.target_snapshot { history(snapshot)?; }
+            }
+            Ok(())
+        };
+        for entry in stack {
+            player(entry.controller)?;
+            if let Some(actor) = entry.defending_player { player(actor)?; }
+            if let Some(actor) = entry.chosen_player { player(actor)?; }
+            graph.validate_reference(entry.provenance)?;
+            for target in &entry.targets { if let ironsmith::game_state::Target::Player(actor) = target { player(*actor)?; } }
+            if let Some(snapshot) = &entry.source_snapshot { history(snapshot)?; }
+            for snapshot in entry.tagged_objects.values().flatten() { history(snapshot)?; }
+            if let Some(trigger) = &entry.triggering_event { event(trigger)?; }
+            let mut outcomes: Vec<_> = entry.effect_outcomes.values().collect();
+            while let Some(outcome) = outcomes.pop() {
+                for trigger in &outcome.events { event(trigger)?; }
+                for fact in &outcome.execution_facts {
+                    if let ironsmith::effect::ExecutionFact::PlayerCounts(rows) = fact { for (actor, _) in rows { player(*actor)?; } }
+                }
+                if let Some(authored) = &outcome.instruction_result { outcomes.push(authored); }
+            }
+            for assignment in &entry.target_assignments {
+                if assignment.range.start > assignment.range.end || assignment.range.end > entry.targets.len() {
+                    return Err("stack capture has invalid target assignment".into());
+                }
+            }
+            for distribution in &entry.target_distributions {
+                if distribution.range.start > distribution.range.end || distribution.range.end > entry.targets.len() {
+                    return Err("stack capture has invalid target distribution".into());
+                }
+                for (target, _) in &distribution.allocations { if let ironsmith::game_state::Target::Player(actor) = target { player(*actor)?; } }
+            }
+        }
+        Ok(())
+    }
+    fn validate_native_roots(roots: &SyncExecutableRootView<'_>) -> Result<(), String> {
+        Self::validate_queued_provenance(roots.provenance, roots.prevention)?;
+        Self::validate_delayed_actors(roots.delayed_triggers, roots.player_count)?;
+        Self::validate_stack_roots(roots.provenance, roots.stack, roots.player_count)?;
+        let mut identities = std::collections::BTreeSet::new();
+        for object in roots.objects {
+            if !identities.insert(object.id) { return Err("duplicate executable object root".into()); }
+        }
+        let mut continuous = ironsmith::continuous::ContinuousEffectManager::new();
+        continuous.restore_registered_state(roots.continuous.clone())?;
+        let mut replacement = ironsmith::replacement::ReplacementEffectManager::new();
+        replacement.restore_registered_state(roots.replacement.clone())?;
+        let mut prevention = ironsmith::prevention::PreventionEffectManager::new();
+        prevention.restore_retained_state(roots.prevention.clone())?;
+        let mut grants = ironsmith::grant_registry::GrantRegistry::new();
+        let state = roots.grant_registry.registered_state();
+        grants.restore_registered_state(state.clone())?;
+        for (player, permission) in roots.used_grant_permissions {
+            if usize::from(player.0) >= roots.player_count {
+                return Err("used grant permission has invalid player".into());
+            }
+            if matches!(permission, ironsmith::grant_registry::GrantPermissionIdentity::Stored(id)
+                if *id >= state.next_permission_identity) {
+                return Err("used grant permission exceeds its allocator".into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Mandatory whole-root authorization seam for perspective publication.
+    /// The owner can inspect costs, actions, templates, origins, registrations
+    /// and provenance as well as live abilities. Rejecting a root never drops
+    /// that root, binds a graph node, or calls the history disclosure policy.
+    /// Structural validation precedes authorization; approved histories are
+    /// then projected before graph discovery through the existing typed codecs.
+    fn retain_with_root_approval_and_history_policy<E: std::fmt::Display>(
+        game: &GameState, registry: &ironsmith::cards::CardRegistry,
+        objects: Vec<Object>, continuous: ironsmith::continuous::RegisteredContinuousEffectState,
+        replacement: ironsmith::replacement::RegisteredReplacementEffectState,
+        prevention: ironsmith::prevention::PreventionEffectState,
+        approve: impl FnOnce(SyncExecutableRootView<'_>) -> Result<(), E>,
+        project: impl FnMut(ironsmith::snapshot::ObjectSnapshot) -> Result<ironsmith::snapshot::ObjectSnapshot, E>,
+    ) -> Result<Self, String> {
+        Self::retain_with_root_history_and_reference_policy(game, registry, objects,
+            continuous, replacement, prevention, approve, project, |_| Ok(()))
+    }
+
+    /// Joint approval path: validate native roots, authorize their executable
+    /// payloads, project approved historical captures, then authorize each face
+    /// before graph discovery. No publication caller needs to bypass a policy
+    /// layer or reconstruct a second graph with different occurrence aliases.
+    fn retain_with_root_history_and_reference_policy<E: std::fmt::Display>(
+        game: &GameState, registry: &ironsmith::cards::CardRegistry,
+        objects: Vec<Object>, continuous: ironsmith::continuous::RegisteredContinuousEffectState,
+        replacement: ironsmith::replacement::RegisteredReplacementEffectState,
+        prevention: ironsmith::prevention::PreventionEffectState,
+        approve: impl FnOnce(SyncExecutableRootView<'_>) -> Result<(), E>,
+        project: impl FnMut(ironsmith::snapshot::ObjectSnapshot) -> Result<ironsmith::snapshot::ObjectSnapshot, E>,
+        approve_face: impl FnMut(CardId) -> Result<(), String>,
+    ) -> Result<Self, String> {
+        let roots = SyncExecutableRootView { objects: &objects, continuous: &continuous,
+            replacement: &replacement, prevention: &prevention, provenance: game.provenance_graph(), grant_registry: &game.effect_store.grant_registry, used_grant_permissions: &game.turn_store.grant_cast_uses_this_turn, player_count: game.players.len(), delayed_triggers: &game.effect_store.delayed_triggers, stack: &game.stack };
+        Self::validate_native_roots(&roots)?;
+        approve(roots).map_err(|error| format!("executable root authorization failed: {error}"))?;
+        Self::retain_with_history_selection(game, registry, objects,
+            continuous, replacement, prevention, true, project, approve_face)
+    }
+    /// Owner-approved executable roots receive one historical policy pass before
+    /// graph discovery. Projection preserves native occurrence/application IDs;
+    /// discovery and encoding then consume the same projected roots without
+    /// rerunning authorization callbacks. This is not an automatic perspective
+    /// policy or approval of live abilities/actions/costs/templates/private facts.
+    /// Owner-approved roots with dependency selection for the registered
+    /// replacement manager. Other captured histories still receive the full
+    /// policy pass; this is not automatic perspective root authorization.
+    fn retain_with_registered_predicate_history_policy<E:std::fmt::Display>(
+        game:&GameState,registry:&ironsmith::cards::CardRegistry,
+        objects:Vec<Object>,continuous:ironsmith::continuous::RegisteredContinuousEffectState,
+        replacement:ironsmith::replacement::RegisteredReplacementEffectState,
+        prevention:ironsmith::prevention::PreventionEffectState,
+        project:impl FnMut(ironsmith::snapshot::ObjectSnapshot)->Result<ironsmith::snapshot::ObjectSnapshot,E>,
+    )->Result<Self,String>{
+        Self::retain_with_history_selection(game,registry,objects,continuous,replacement,prevention,true,project, |_| Ok(()))
+    }
+    fn retain_with_history_policy<E:std::fmt::Display>(
+        game:&GameState,registry:&ironsmith::cards::CardRegistry,
+        objects:Vec<Object>,continuous:ironsmith::continuous::RegisteredContinuousEffectState,
+        replacement:ironsmith::replacement::RegisteredReplacementEffectState,
+        prevention:ironsmith::prevention::PreventionEffectState,
+        project:impl FnMut(ironsmith::snapshot::ObjectSnapshot)->Result<ironsmith::snapshot::ObjectSnapshot,E>,
+    )->Result<Self,String>{
+        Self::retain_with_history_selection(game,registry,objects,continuous,replacement,prevention,false,project, |_| Ok(()))
+    }
+    fn retain_with_history_selection<E:std::fmt::Display>(
+        game:&GameState,registry:&ironsmith::cards::CardRegistry,
+        objects:Vec<Object>,continuous:ironsmith::continuous::RegisteredContinuousEffectState,
+        replacement:ironsmith::replacement::RegisteredReplacementEffectState,
+        prevention:ironsmith::prevention::PreventionEffectState,
+        project_registered_predicates:bool,
+        mut project:impl FnMut(ironsmith::snapshot::ObjectSnapshot)->Result<ironsmith::snapshot::ObjectSnapshot,E>,
+        approve_face: impl FnMut(CardId) -> Result<(), String>,
+    )->Result<Self,String>{
+        use ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceEncoder;
+        Self::validate_native_roots(&SyncExecutableRootView { objects: &objects, continuous: &continuous,
+            replacement: &replacement, prevention: &prevention, provenance: game.provenance_graph(), grant_registry: &game.effect_store.grant_registry, used_grant_permissions: &game.turn_store.grant_cast_uses_this_turn, player_count: game.players.len(), delayed_triggers: &game.effect_store.delayed_triggers, stack: &game.stack })?;
+        let objects=objects.into_iter().map(|mut object|{
+            let capture=StaticAbilityOccurrenceEncoder::project_cast_history(ironsmith::object::NativeCastPaymentState::from(&object),&mut project).map_err(|error|error.to_string())?;
+            capture.apply_to(&mut object)?;Ok::<_,String>(object)
+        }).collect::<Result<Vec<_>,_>>()?;
+        let replacement=replacement.try_map_effects(|effect| {
+            if project_registered_predicates {
+                effect.try_project_predicate_history(&mut project)
+            } else {
+                effect.try_project_matcher_history(&mut project)
+            }
+        }).map_err(|error|error.to_string())?;
+        let prevention=StaticAbilityOccurrenceEncoder::project_prevention_history(prevention,&mut project).map_err(|error|error.to_string())?;
+        let delayed_triggers = game.effect_store.delayed_triggers.iter().cloned().map(|trigger|
+            StaticAbilityOccurrenceEncoder::project_delayed_trigger_history(trigger, &mut project)
+                .map_err(|error| error.to_string())).collect::<Result<Vec<_>, _>>()?;
+        let stack = project_sync_stack_history(&game.stack, &mut |history| project(history).map_err(|error| error.to_string()))?;
+        Self::retain_with_card_reference_policy_and_delayed_triggers(game,registry,objects,continuous,replacement,prevention,delayed_triggers,stack,approve_face)
+    }
+    /// The caller supplies already approved native object and manager roots.
+    /// Manager payloads may contain hidden historical/cost/template captures;
+    /// perspective authorization must happen before discovery of graph closure.
+    /// Identity-only
+    /// graph nodes (for embedded templates and departed origins) carry no
+    /// catalog text. Full linked families are retained for physical/live faces.
+    fn retain(
+        game: &GameState,
+        registry: &ironsmith::cards::CardRegistry,
+        objects: Vec<Object>,
+        continuous: ironsmith::continuous::RegisteredContinuousEffectState,
+        replacement: ironsmith::replacement::RegisteredReplacementEffectState,
+        prevention: ironsmith::prevention::PreventionEffectState,
+    ) -> Result<Self, String> {
+        Self::retain_with_card_reference_policy(game, registry, objects, continuous, replacement,
+            prevention, |_| Ok(()))
+    }
+
+    /// Approve each distinct printed/embedded face before visiting its catalog
+    /// definition or admitting it into graph closure. References in all native
+    /// payload families use the same exhaustive codec callback. Approval runs
+    /// once per face; encoding reuses the approved bindings without callbacks.
+    fn retain_with_card_reference_policy(
+        game: &GameState,
+        registry: &ironsmith::cards::CardRegistry,
+        objects: Vec<Object>,
+        continuous: ironsmith::continuous::RegisteredContinuousEffectState,
+        replacement: ironsmith::replacement::RegisteredReplacementEffectState,
+        prevention: ironsmith::prevention::PreventionEffectState,
+        approve: impl FnMut(CardId) -> Result<(), String>,
+    ) -> Result<Self, String> {
+        Self::retain_with_card_reference_policy_and_delayed_triggers(game, registry, objects, continuous, replacement, prevention,
+            game.effect_store.delayed_triggers.clone(), game.stack.iter().cloned().collect(), approve)
+    }
+    fn retain_with_card_reference_policy_and_delayed_triggers(
+        game: &GameState,
+        registry: &ironsmith::cards::CardRegistry,
+        objects: Vec<Object>,
+        continuous: ironsmith::continuous::RegisteredContinuousEffectState,
+        replacement: ironsmith::replacement::RegisteredReplacementEffectState,
+        prevention: ironsmith::prevention::PreventionEffectState,
+        delayed_triggers: Vec<ironsmith::triggers::DelayedTrigger>,
+        stack: Vec<StackEntry>,
+        mut approve: impl FnMut(CardId) -> Result<(), String>,
+    ) -> Result<Self, String> {
+        use ironsmith_runtime_catalog::artifact_materializer::{
+            OccurrenceBindingError, StaticAbilityOccurrenceEncoder,
+        };
+        Self::validate_native_roots(&SyncExecutableRootView { objects: &objects, continuous: &continuous,
+            replacement: &replacement, prevention: &prevention, provenance: game.provenance_graph(), grant_registry: &game.effect_store.grant_registry, used_grant_permissions: &game.turn_store.grant_cast_uses_this_turn, player_count: game.players.len(), delayed_triggers: &delayed_triggers, stack: &stack })?;
+        let grants = game.effect_store.grant_registry.registered_state();
+        let mut approved = std::collections::BTreeSet::new();
+        let mut approve_once = |face: CardId| -> Result<(), String> {
+            if approved.insert(face.0) { approve(face)?; }
+            Ok(())
+        };
+        let mut object_ids = std::collections::BTreeSet::new();
+        let mut pending = std::collections::BTreeSet::new();
+        for object in &objects {
+            if !object_ids.insert(object.id) {
+                return Err("duplicate executable object root".into());
+            }
+            pending.extend(object.card.map(|id| id.0));
+            pending.extend(object.other_face.map(|id| id.0));
+        }
+        let mut definitions = std::collections::BTreeMap::new();
+        while let Some(raw_id) = pending.pop_first() {
+            let id = ironsmith::CardId::from_raw(raw_id);
+            if definitions.contains_key(&raw_id) {
+                continue;
+            }
+            approve_once(id)?;
+            let definition = game
+                .retained_card_definition(id).cloned()
+                .or_else(|| registry.get_by_id(id).cloned())
+                .ok_or_else(|| format!("missing executable definition for live face {}", id.0))?;
+            if definition.card.id != id {
+                return Err("catalog returned wrong executable face identity".into());
+            }
+            pending.extend(definition.card.other_face.map(|id| id.0));
+            definitions.insert(raw_id, definition);
+        }
+        // Discover every typed CardId through the same exhaustive codec that
+        // will publish it. Probe bindings are local and never leave this method.
+        let mut graph = std::collections::BTreeSet::new();
+        let mut probe = StaticAbilityOccurrenceEncoder::default();
+        let mut discover = |id: ironsmith::CardId| {
+            approve_once(id).map_err(|detail| OccurrenceBindingError::InvalidModel { detail })?;
+            graph.insert(id.0);
+            Ok::<_, OccurrenceBindingError>(id.0)
+        };
+        for definition in definitions.values() {
+            probe
+                .encode_card_definition(definition.clone(), &mut discover)
+                .map_err(|e| e.to_string())?;
+        }
+        for object in &objects {
+            probe
+                .encode_live_object(object.clone(), &mut discover)
+                .map_err(|e| e.to_string())?;
+        }
+        probe
+            .encode_registered_state_with_card_graph(continuous.clone(), &mut discover)
+            .map_err(|e| e.to_string())?;
+        probe.encode_registered_replacement_state(replacement.clone(), &mut discover)
+            .map_err(|e| e.to_string())?;
+        probe.encode_prevention_state(prevention.clone(), &mut discover)
+            .map_err(|e| e.to_string())?;
+        probe.encode_grant_registry(grants.clone(), &mut discover)
+            .map_err(|e| e.to_string())?;
+        for trigger in &delayed_triggers {
+            probe.encode_delayed_trigger(trigger.clone(), &mut discover).map_err(|e| e.to_string())?;
+        }
+        let mut probe_events = SyncEventArena::default();
+        for entry in &stack {
+            retain_sync_stack(&mut probe, entry.clone(), &mut discover, &mut probe_events).map_err(|e| e.to_string())?;
+        }
+        for (_, permission) in &game.turn_store.grant_cast_uses_this_turn {
+            probe.encode_permission_identity(permission.clone(), &mut discover).map_err(|e| e.to_string())?;
+        }
+        drop(discover);
+        let graph: Vec<_> = graph.into_iter().collect();
+        let graph_card_count =
+            u32::try_from(graph.len()).map_err(|_| "too many executable graph nodes")?;
+        let bind = |id: ironsmith::CardId| {
+            graph
+                .binary_search(&id.0)
+                .map(|index| index as u32)
+                .map_err(|_| OccurrenceBindingError::InvalidModel {
+                    detail: "undiscovered executable graph node".into(),
+                })
+        };
+        let mut encoder = StaticAbilityOccurrenceEncoder::default();
+        let definitions = definitions
+            .into_iter()
+            .map(|(id, definition)| {
+                let index = bind(ironsmith::CardId::from_raw(id)).map_err(|e| e.to_string())?;
+                let definition = encoder
+                    .encode_card_definition(definition, bind)
+                    .map_err(|e| e.to_string())?;
+                Ok::<_, String>((index, definition))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let objects = objects
+            .into_iter()
+            .map(|object| {
+                encoder
+                    .encode_live_object(object, bind)
+                    .map_err(|e| e.to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let continuous = encoder
+            .encode_registered_state_with_card_graph(continuous, bind)
+            .map_err(|e| e.to_string())?;
+        let replacement=encoder.encode_registered_replacement_state(replacement,bind)
+            .map_err(|e|e.to_string())?;
+        let prevention=encoder.encode_prevention_state(prevention,bind)
+            .map_err(|e|e.to_string())?;
+        let grants = encoder.encode_grant_registry(grants, bind).map_err(|e| e.to_string())?;
+        let delayed_triggers = delayed_triggers.into_iter().map(|trigger|
+            encoder.encode_delayed_trigger(trigger, bind).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
+        let mut events = SyncEventArena::default();
+        let mut stack_bind = bind;
+        let stack = stack.into_iter().map(|entry|
+            retain_sync_stack(&mut encoder, entry, &mut stack_bind, &mut events).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
+        let event_bodies = events.bodies;
+        // References use the shared occurrence table; rows are sorted after
+        // rebinding so HashSet iteration cannot change checkpoint bytes.
+        let mut used_grant_permissions = game.turn_store.grant_cast_uses_this_turn.iter().map(|(player, permission)| {
+            let retained = encoder.encode_permission_identity(permission.clone(), bind).map_err(|e| e.to_string())?;
+            let key = serde_json::to_string(&(*player, &retained)).map_err(|e| e.to_string())?;
+            Ok::<_, String>((key, (*player, retained)))
+        }).collect::<Result<Vec<_>, _>>()?;
+        used_grant_permissions.sort_by(|a, b| a.0.cmp(&b.0));
+        let used_grant_permissions = used_grant_permissions.into_iter().map(|(_, value)| value).collect();
+        Ok(Self {
+            provenance_graph: game.provenance_graph().retained_state(),
+            graph_card_count,
+            occurrences: encoder.into_table(),
+            definitions,
+            objects,
+            continuous,
+            replacement,
+            prevention,
+            grants,
+            used_grant_permissions,
+            delayed_triggers,
+            stack,
+            event_bodies,
+        })
+    }
+
+    /// All roots decode before the caller publishes any object or manager.
+    /// Allocate receiver graph IDs in the surrounding runtime transaction.
+    fn restore(&self, graph: &[ironsmith::CardId]) -> Result<RestoredSyncExecutableState, String> {
+        use ironsmith_runtime_catalog::artifact_materializer::{
+            OccurrenceBindingError, StaticAbilityOccurrenceDecoder,
+        };
+        if graph.len() != self.graph_card_count as usize
+            || graph.windows(2).any(|pair| pair[0].0 >= pair[1].0)
+        {
+            return Err(
+                "executable graph requires exact ordered injective receiver bindings".into(),
+            );
+        }
+        let provenance_graph = ironsmith::provenance::ProvenanceGraph::from_retained_state(self.provenance_graph.clone())?;
+        let bind = |index: u32| {
+            graph
+                .get(index as usize)
+                .copied()
+                .ok_or_else(|| OccurrenceBindingError::InvalidModel {
+                    detail: "unknown executable graph reference".into(),
+                })
+        };
+        let decoder = StaticAbilityOccurrenceDecoder::restore_with_card_graph::<u32>(
+            self.occurrences.clone(),
+            bind,
+        )
+        .map_err(|e| e.to_string())?;
+        let mut definition_slots = std::collections::BTreeSet::new();
+        let definitions = self
+            .definitions
+            .iter()
+            .map(|(index, definition)| {
+                if !definition_slots.insert(*index) {
+                    return Err("duplicate executable definition slot".into());
+                }
+                let expected = bind(*index).map_err(|e| e.to_string())?;
+                let definition = decoder
+                    .restore_card_definition(definition.clone(), bind)
+                    .map_err(|e| e.to_string())?;
+                if definition.card.id != expected {
+                    return Err("executable definition contradicts its graph slot".into());
+                }
+                Ok(definition)
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let mut object_ids = std::collections::BTreeSet::new();
+        let objects = self
+            .objects
+            .iter()
+            .map(|object| {
+                let object = decoder
+                    .restore_live_object(object.clone(), bind)
+                    .map_err(|e| e.to_string())?;
+                if !object_ids.insert(object.id) {
+                    return Err("duplicate executable object root".into());
+                }
+                Ok(object)
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let continuous = decoder
+            .restore_registered_state_with_card_graph(self.continuous.clone(), bind)
+            .map_err(|e| e.to_string())?;
+        // Validate descriptor identity, allocators, chronology and latches now,
+        // rather than leaving a partially decoded world for the owner to reject.
+        let mut manager = ironsmith::continuous::ContinuousEffectManager::new();
+        manager.restore_registered_state(continuous.clone())?;
+        let replacement=decoder.restore_registered_replacement_state(self.replacement.clone(),bind)
+            .map_err(|e|e.to_string())?;
+        let prevention=decoder.restore_prevention_state(self.prevention.clone(),bind)
+            .map_err(|e|e.to_string())?;
+        Self::validate_queued_provenance(&provenance_graph, &prevention)?;
+        let grants = decoder.restore_grant_registry(self.grants.clone(), bind).map_err(|e| e.to_string())?;
+        let mut used = std::collections::HashSet::new();
+        let used_grant_permissions = self.used_grant_permissions.iter().map(|(player, permission)| {
+            let permission = decoder.restore_permission_identity(permission.clone(), bind).map_err(|e| e.to_string())?;
+            if matches!(&permission, ironsmith::grant_registry::GrantPermissionIdentity::Stored(id)
+                if *id >= grants.next_permission_identity) {
+                return Err("used grant permission exceeds its allocator".into());
+            }
+            if !used.insert((*player, permission.clone())) {
+                return Err("duplicate used grant permission root".into());
+            }
+            Ok((*player, permission))
+        }).collect::<Result<Vec<_>, String>>()?;
+        let delayed_triggers = self.delayed_triggers.iter().cloned().map(|trigger|
+            decoder.restore_delayed_trigger(trigger, bind).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
+        let mut stack_bind = bind;
+        let bodies = self.event_bodies.iter().cloned().map(|body|
+            restore_sync_event_body(&decoder, body, &mut stack_bind).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
+        let stack = self.stack.iter().cloned().map(|entry|
+            restore_sync_stack(&decoder, entry, &mut stack_bind, &bodies).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
+        Ok(RestoredSyncExecutableState {
+            provenance_graph,
+            definitions,
+            objects,
+            continuous,
+            replacement,
+            prevention,
+            grants,
+            used_grant_permissions,
+            delayed_triggers,
+            stack,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum SyncCheckpointExecutionKind {
+    FullExecutable,
+    PerspectiveMetadata,
+    PerspectiveExecutable,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SyncCheckpoint {
     version: u32,
+    execution_kind: SyncCheckpointExecutionKind,
+    /// Full checkpoints retain native executable roots. Perspective checkpoints
+    /// still use the metadata carrier until root authorization is integrated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    executable_state: Option<SyncExecutableState>,
     /// Absent only in legacy checkpoints that did not preserve chronology.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     continuous_timestamps: Option<SyncContinuousTimestamps>,
@@ -2595,7 +4491,7 @@ impl WasmGame {
         ids.extend(self.game.exile.iter().copied());
         ids.extend(self.game.command_zone.iter().copied());
         ids.extend(self.game.ante.iter().copied());
-        ids.extend(self.game.stack.iter().map(|entry| entry.object_id));
+        ids.extend(self.game.stack.iter().filter_map(|entry| self.game.object(entry.object_id).map(|_| entry.object_id)));
         // Proposed spells join game.stack only after costs are paid, and
         // resolving spells leave it before interactive effects finish. Both
         // still exist in Zone::Stack and must retain their trusted identity.
@@ -2614,7 +4510,7 @@ impl WasmGame {
     /// Test shorthand for [`WasmGame::try_build_sync_checkpoint`].
     #[cfg(test)]
     pub(crate) fn build_sync_checkpoint(&self) -> SyncCheckpoint {
-        self.try_build_sync_checkpoint()
+        self.try_build_full_sync_checkpoint()
             .expect("sync checkpoint should encode")
     }
 
@@ -2622,6 +4518,32 @@ impl WasmGame {
     /// ledger holds an entry without a lossless encoding (it is never
     /// silently dropped).
     pub(crate) fn try_build_sync_checkpoint(&self) -> Result<SyncCheckpoint, JsValue> {
+        self.try_build_full_sync_checkpoint().map_err(|error| JsValue::from_str(&error))
+    }
+
+    fn try_build_full_sync_checkpoint(&self) -> Result<SyncCheckpoint, String> {
+        let mut checkpoint = self.try_build_sync_checkpoint_metadata()
+            .map_err(|error| format!("checkpoint metadata failed: {error:?}"))?;
+        let objects = self.sync_checkpoint_object_ids().into_iter()
+            .map(|id| self.game.object(id).cloned()
+                .ok_or_else(|| format!("missing full checkpoint object {}", id.0)))
+            .collect::<Result<Vec<_>, _>>()?;
+        checkpoint.executable_state = Some(SyncExecutableState::retain(
+            &self.game, &self.registry, objects,
+            self.game.effect_store.continuous_effects.registered_state(),
+            self.game.effect_store.replacement_effects.registered_state()
+                ?,
+            self.game.effect_store.prevention_effects.retained_state()
+                ?,
+        )?);
+        checkpoint.execution_kind = SyncCheckpointExecutionKind::FullExecutable;
+        Ok(checkpoint)
+    }
+
+    /// Metadata preparation does not discover executable graph closure. A
+    /// perspective exporter must authorize roots before asking a codec to visit
+    /// hidden histories, costs, actions or embedded card definitions.
+    fn try_build_sync_checkpoint_metadata(&self) -> Result<SyncCheckpoint, JsValue> {
         let players = self
             .game
             .players
@@ -2664,6 +4586,7 @@ impl WasmGame {
                     id: object.id.0,
                     stable_id: object.stable_id.0.0,
                     owner: object.owner.0,
+                    initial_controller: object.initial_controller.0,
                     controller: self.game.controller_of(object).0,
                     zone: sync_zone_name(object.zone).to_string(),
                     name: object.name.to_string(),
@@ -2745,6 +4668,8 @@ impl WasmGame {
 
         Ok(SyncCheckpoint {
             version: SYNC_CHECKPOINT_VERSION,
+            execution_kind: SyncCheckpointExecutionKind::PerspectiveMetadata,
+            executable_state: None,
             continuous_timestamps: Some(SyncContinuousTimestamps::from_game(&self.game)),
             format: self.match_format,
             perspective: self.perspective.0,
@@ -3459,7 +5384,7 @@ impl WasmGame {
         ids.extend(self.public_audit_exile_ids());
         ids.extend(self.public_audit_command_ids());
         ids.extend(self.game.ante.iter().copied());
-        ids.extend(self.game.stack.iter().map(|entry| entry.object_id));
+        ids.extend(self.game.stack.iter().filter_map(|entry| self.game.object(entry.object_id).map(|_| entry.object_id)));
         ids.sort_unstable();
         ids.dedup();
         ids
@@ -3553,6 +5478,7 @@ impl WasmGame {
                     id: object.id.0,
                     stable_id: object.stable_id.0.0,
                     owner: object.owner.0,
+                    initial_controller: object.initial_controller.0,
                     controller: self.game.controller_of(object).0,
                     zone: sync_zone_name(object.zone).to_string(),
                     identity: self.public_audit_object_identity(id, object),
@@ -3689,7 +5615,7 @@ impl WasmGame {
         }
 
         Ok(PublicAuditCheckpoint {
-            version: SYNC_CHECKPOINT_VERSION,
+            version: PUBLIC_AUDIT_CHECKPOINT_VERSION,
             format: self.match_format,
             perspective: 0,
             snapshot_serial: 0,
@@ -3864,11 +5790,60 @@ impl WasmGame {
         Ok(())
     }
 
-    fn build_redacted_sync_checkpoint(
+    fn build_redacted_sync_checkpoint(&self, perspective: PlayerId) -> Result<SyncCheckpoint, JsValue> {
+        self.try_build_redacted_executable_checkpoint(perspective).map_err(|error| JsValue::from_str(&error))
+    }
+    fn try_build_redacted_executable_checkpoint(&self, perspective: PlayerId) -> Result<SyncCheckpoint, String> {
+        let mut checkpoint = self.build_redacted_sync_checkpoint_metadata(perspective)
+            .map_err(|error| format!("checkpoint metadata failed: {error:?}"))?;
+        let policy = self.sync_perspective_policy(&checkpoint, perspective)?;
+        let objects = self.sync_checkpoint_object_ids().into_iter().map(|id| {
+            let object = self.game.object(id).cloned().ok_or_else(|| "missing perspective object".to_string())?;
+            if policy.opaque.contains(&id) {
+                // Foretold cards in exile have public physical flags and a
+                // public foretell claim. Their hidden face/cost is supplied by
+                // a later authenticated opening, not by this executable root.
+                let opaque_foretell = self.game.is_foretold(id) && object.zone == Zone::Exile;
+                if (self.game.is_face_down(id) || self.game.is_foretold(id)) && !opaque_foretell {
+                    return Err("hidden physical face requires executable projection approval".into());
+                }
+                Ok(opaque_sync_executable_object(object))
+            } else { Ok(object) }
+        }).collect::<Result<Vec<_>, String>>()?;
+        checkpoint.executable_state = Some(SyncExecutableState::retain_with_root_history_and_reference_policy(
+            &self.game, &self.registry, objects,
+            self.game.effect_store.continuous_effects.registered_state(),
+            self.game.effect_store.replacement_effects.registered_state()?,
+            self.game.effect_store.prevention_effects.retained_state()?,
+            |roots| policy.roots(roots), |history| policy.history(history), |_| Ok(()),
+        )?);
+        checkpoint.execution_kind = SyncCheckpointExecutionKind::PerspectiveExecutable;
+        Ok(checkpoint)
+    }
+    fn sync_perspective_policy(&self, checkpoint: &SyncCheckpoint, perspective: PlayerId) -> Result<SyncPerspectiveExecutionPolicy, String> {
+        let mut visible = std::collections::BTreeSet::new();
+        let mut opaque = std::collections::BTreeSet::new();
+        for object in &checkpoint.objects {
+            let id = ObjectId::from_raw(object.id);
+            if self.should_redact_for_perspective(object, perspective) {
+                let opaque_foretell = object.foretold && object.zone == "exile";
+                if (object.face_down || object.foretold) && !opaque_foretell {
+                    return Err("hidden physical face requires executable projection approval".into());
+                }
+                if object.name != "Hidden Card" || object.original_card_name.is_some()
+                    || !object.oracle_text.is_empty() || !object.card_types.is_empty() || !object.subtypes.is_empty() {
+                    return Err("perspective object metadata contains private identity".into());
+                }
+                opaque.insert(id);
+            } else { visible.insert(id); }
+        }
+        Ok(SyncPerspectiveExecutionPolicy { visible, opaque, perspective })
+    }
+    fn build_redacted_sync_checkpoint_metadata(
         &self,
         perspective: PlayerId,
     ) -> Result<SyncCheckpoint, JsValue> {
-        let mut checkpoint = self.try_build_sync_checkpoint()?;
+        let mut checkpoint = self.try_build_sync_checkpoint_metadata()?;
         checkpoint.perspective = perspective.0;
         for object in &mut checkpoint.objects {
             if self.should_redact_for_perspective(object, perspective) {
@@ -4050,6 +6025,7 @@ impl WasmGame {
         }
 
         restored.zone = zone;
+        restored.initial_controller = PlayerId::from_index(object.initial_controller);
         restored.stable_id = StableId::from_raw(object.stable_id);
         restored.hand_modifier = object.hand_modifier;
         restored.life_modifier = object.life_modifier;
@@ -4058,18 +6034,7 @@ impl WasmGame {
             restored.base_loyalty = object.loyalty;
             restored.base_defense = object.defense;
         }
-        let mut counts = std::collections::BTreeMap::new();
-        for counter in &object.counters {
-            let kind = sync_counter_from_wire(&counter.kind, counter.counter_type)?;
-            if counts.insert(kind, counter.amount).is_some() {
-                return Err("duplicate counter kind in checkpoint".into());
-            }
-        }
-        let registrations = object.counter_ability_state.clone()
-            .map(SyncCounterAbilityState::into_runtime).transpose()?;
-        restored.counters = ironsmith::object::ObjectCounters::from_checkpoint(
-            counts, registrations,
-        ).map_err(|error| format!("invalid counter registrations: {error}"))?;
+        restored.counters = sync_counters_from_checkpoint(object)?;
         restored.attached_to = object.attached_to.clone().map(attachment_target_from_sync);
         restored.attachments = object_ids(object.attachments.clone());
 
@@ -4081,20 +6046,233 @@ impl WasmGame {
     }
 
     fn apply_sync_checkpoint_in_branch(&mut self, checkpoint: SyncCheckpoint) -> Result<(), String> {
+        if checkpoint.executable_state.is_some()
+        {
+            // Validate the entire imported world, including discovery, effective
+            // control and priority analysis, before reserving final CardIds.
+            // Exchange restores the exact live runtime and its analysis caches
+            // on both success and failure; the session catalog stays shared.
+            let mut original = RuntimeSavepoint::capture(self);
+            original.exchange(self);
+            let checked = self.apply_sync_checkpoint_with_bindings(checkpoint.clone(), true).and_then(|()| {
+                if matches!(checkpoint.execution_kind, SyncCheckpointExecutionKind::PerspectiveExecutable) {
+                    let policy = self.sync_perspective_policy(&checkpoint, PlayerId::from_index(checkpoint.perspective))?;
+                    let objects = self.sync_checkpoint_object_ids().into_iter().map(|id|
+                        self.game.object(id).cloned().ok_or_else(|| "missing perspective object".to_string())).collect::<Result<Vec<_>, _>>()?;
+                    let continuous = self.game.effect_store.continuous_effects.registered_state();
+                    let replacement = self.game.effect_store.replacement_effects.registered_state()?;
+                    let prevention = self.game.effect_store.prevention_effects.retained_state()?;
+                    policy.roots(SyncExecutableRootView { objects: &objects, continuous: &continuous, replacement: &replacement,
+                        prevention: &prevention, provenance: self.game.provenance_graph(), grant_registry: &self.game.effect_store.grant_registry,
+                        used_grant_permissions: &self.game.turn_store.grant_cast_uses_this_turn, player_count: self.game.players.len(),
+                        delayed_triggers: &self.game.effect_store.delayed_triggers, stack: &self.game.stack })?;
+                    // Visit every supplied history, including unused matcher captures.
+                    // Incoming redaction cannot be inferred from a label or by silently
+                    // pruning private/unreachable definitions and occurrence cells.
+                    let canonical = SyncExecutableState::retain_with_history_policy(&self.game, &self.registry, objects,
+                        continuous, replacement, prevention, |history| policy.history(history))?;
+                    if serde_json::to_value(&canonical).map_err(|e| e.to_string())?
+                        != serde_json::to_value(checkpoint.executable_state.as_ref().unwrap()).map_err(|e| e.to_string())? {
+                        return Err("perspective executable graph has noncanonical or unreachable payloads".into());
+                    }
+                }
+                Ok(())
+            });
+            original.exchange(self);
+            checked?;
+        }
+        self.apply_sync_checkpoint_with_bindings(checkpoint, false)
+    }
+
+    fn apply_foreign_sync_checkpoint_for_perspective(&mut self, checkpoint: SyncCheckpoint, perspective_index: u8) -> Result<(), String> {
+        if checkpoint.perspective != perspective_index {
+            return Err(format!("foreign sync checkpoint is redacted for seat {}, not seat {perspective_index}", checkpoint.perspective));
+        }
+        match checkpoint.execution_kind {
+            SyncCheckpointExecutionKind::FullExecutable => {
+                return Err("foreign sync checkpoint cannot admit a full executable carrier; perspective approval is required".into());
+            }
+            SyncCheckpointExecutionKind::PerspectiveMetadata | SyncCheckpointExecutionKind::PerspectiveExecutable => {}
+        }
+        self.apply_sync_checkpoint_for_perspective(checkpoint, perspective_index)
+    }
+
+    // String-returning owner adapter is also exercised by native tests; only
+    // the WASM boundary maps errors to JsValue.
+    fn apply_sync_checkpoint_for_perspective(&mut self, checkpoint: SyncCheckpoint, perspective_index: u8) -> Result<(), String> {
+        let player = PlayerId::from_index(perspective_index);
+        if checkpoint.players.get(usize::from(perspective_index))
+            .is_none_or(|seat| seat.id != perspective_index)
+        {
+            return Err("invalid player index".into());
+        }
+        self.apply_sync_checkpoint_in_branch(checkpoint)?;
+        self.perspective = player;
+        Ok(())
+    }
+
+    fn apply_sync_checkpoint_with_bindings(&mut self, checkpoint: SyncCheckpoint, validation_only: bool) -> Result<(), String> {
         if checkpoint.version != SYNC_CHECKPOINT_VERSION {
             return Err(format!(
                 "unsupported checkpoint version: {}",
                 checkpoint.version
             ));
         }
+        match (checkpoint.execution_kind, checkpoint.executable_state.is_some()) {
+            (SyncCheckpointExecutionKind::FullExecutable | SyncCheckpointExecutionKind::PerspectiveExecutable, false) => {
+                return Err("full checkpoint is missing its executable payload".into());
+            }
+            (SyncCheckpointExecutionKind::PerspectiveMetadata, true) => {
+                return Err("perspective metadata checkpoint cannot contain an unapproved executable payload".into());
+            }
+            _ => {}
+        }
         if checkpoint.players.is_empty() {
             return Err("checkpoint has no players".to_string());
         }
 
+        // Runtime construction assigns consecutive IDs in this exact order.
+        // Validate that the wire refers to those same seats, before any reset.
+        for (seat, player) in checkpoint.players.iter().enumerate() {
+            if usize::from(player.id) != seat {
+                return Err(format!("invalid checkpoint player seat {seat}: declared id {}", player.id));
+            }
+        }
+        let player_ids: std::collections::HashSet<_> = checkpoint.players.iter()
+            .map(|player| player.id).collect();
+        for object in &checkpoint.objects {
+            for (role, player) in [("owner", object.owner),
+                ("initial controller", object.initial_controller), ("controller", object.controller)] {
+                if !player_ids.contains(&player) {
+                    return Err(format!("object {} has invalid {role} {player}", object.id));
+                }
+            }
+        }
+        // Reject malformed redundant facts before allocating peer-local graph IDs.
+        let declared_counters = checkpoint.objects.iter().map(|object| {
+            Ok((object.id, sync_counters_from_checkpoint(object)?))
+        }).collect::<Result<std::collections::BTreeMap<_, _>, String>>()?;
+
+        let declared_timestamps = checkpoint.continuous_timestamps.clone()
+            .map(SyncContinuousTimestamps::into_runtime).transpose()?;
+        if let Some(timestamps) = &declared_timestamps {
+            // Use the owning clock validator before peer-local allocation. A
+            // rejected flat record must not advance exported identity counters.
+            ironsmith::continuous::ContinuousEffectManager::new()
+                .restore_timestamp_state(timestamps.clone())
+                .map_err(|error| format!("invalid continuous chronology: {error}"))?;
+        }
+
+        // Decode every executable root before changing the candidate world.
+        // CardId allocation is peer-local; its monotonic high-water mark cannot
+        // be rewound by runtime rollback, so codec validation precedes allocation.
+        let restored_executable = checkpoint.executable_state.as_ref().map(|state| {
+            // Counter counts and origin identities contain no peer-local CardIds.
+            // Compare these retained facts before allocating the executable graph.
+            for object in &state.objects {
+                let flat = declared_counters.get(&object.id.0)
+                    .ok_or_else(|| "executable object missing from checkpoint metadata".to_string())?;
+                let counts = flat.counts().iter().map(|(kind, count)| (*kind, *count))
+                    .collect::<Vec<_>>();
+                let registrations = ironsmith::object::CounterAbilityState {
+                    next_serial: object.counters.next_serial.clone(),
+                    origins: object.counters.occurrences.iter()
+                        .map(|occurrence| occurrence.origin.clone()).collect(),
+                };
+                if object.counters.counts != counts || registrations != flat.ability_state() {
+                    return Err(format!("executable counter state for object {} contradicts checkpoint metadata", object.id.0));
+                }
+            }
+            // Decode and validate using ordered local bindings that never enter
+            // the game or catalog. Malformed roots must not reserve global IDs.
+            let validation_graph = (1..=state.graph_card_count).map(CardId).collect::<Vec<_>>();
+            for body in &state.event_bodies { validate_sync_event_body_actors(body, checkpoint.players.len())?; }
+            let restored = state.restore(&validation_graph)?;
+            SyncExecutableState::validate_delayed_actors(&restored.delayed_triggers, checkpoint.players.len())?;
+            SyncExecutableState::validate_stack_roots(&restored.provenance_graph, &restored.stack, checkpoint.players.len())?;
+            if restored.stack.len() != checkpoint.stack.len() {
+                return Err("executable stack length contradicts checkpoint metadata".into());
+            }
+            for (entry, flat) in restored.stack.iter().zip(&checkpoint.stack) {
+                if serde_json::to_value(sync_stack_entry(entry)).map_err(|e| e.to_string())?
+                    != serde_json::to_value(flat).map_err(|e| e.to_string())? {
+                    return Err("executable stack entry contradicts checkpoint metadata".into());
+                }
+                if usize::from(entry.controller.0) >= checkpoint.players.len()
+                    || entry.defending_player.is_some_and(|p| usize::from(p.0) >= checkpoint.players.len())
+                    || entry.chosen_player.is_some_and(|p| usize::from(p.0) >= checkpoint.players.len()) {
+                    return Err("executable stack has invalid player".into());
+                }
+                restored.provenance_graph.validate_reference(entry.provenance)?;
+                for assignment in &entry.target_assignments {
+                    if assignment.range.start > assignment.range.end || assignment.range.end > entry.targets.len() {
+                        return Err("executable stack has invalid target assignment".into());
+                    }
+                }
+            }
+            for (player, _) in &restored.used_grant_permissions {
+                if !player_ids.contains(&player.0) {
+                    return Err("used grant permission has invalid player".into());
+                }
+            }
+            if restored.objects.len() != checkpoint.objects.len() {
+                return Err("executable object roots disagree with checkpoint metadata".into());
+            }
+            let mut declared = std::collections::BTreeMap::new();
+            for object in &checkpoint.objects {
+                if declared.insert(object.id, object).is_some() {
+                    return Err("duplicate checkpoint metadata object".into());
+                }
+            }
+            for object in &restored.objects {
+                let flat = declared.get(&object.id.0)
+                    .ok_or_else(|| "executable object missing from checkpoint metadata".to_string())?;
+                let counters = &declared_counters[&object.id.0];
+                if object.counters.counts() != counters.counts()
+                    || object.counters.ability_state() != counters.ability_state()
+                {
+                    return Err(format!("executable counter state for object {} contradicts checkpoint metadata", object.id.0));
+                }
+                if object.stable_id.0.0 != flat.stable_id
+                    || object.owner.0 != flat.owner
+                    || object.initial_controller.0 != flat.initial_controller
+                    || sync_zone_name(object.zone) != flat.zone
+                    || object.name.as_ref() != flat.name
+                {
+                    return Err(format!("executable object {} contradicts checkpoint metadata", object.id.0));
+                }
+            }
+            if let Some(timestamps) = &declared_timestamps {
+                if *timestamps != restored.continuous.timestamps {
+                    return Err("executable chronology contradicts checkpoint metadata".into());
+                }
+            }
+            if validation_only {
+                // These local bindings remain inside the disposable probe world.
+                return Ok(restored);
+            }
+            // The wrapper has also validated the complete world on local
+            // bindings. Only the publication pass reserves peer identities.
+            let graph = (0..state.graph_card_count).map(|_| CardId::new()).collect::<Vec<_>>();
+            state.restore(&graph)
+        }).transpose()?;
         self.reset_runtime_for_sync_checkpoint(&checkpoint);
+        if let Some(restored) = &restored_executable {
+            for definition in &restored.definitions {
+                // Imported programs belong to this world. Do not admit them to
+                // the trusted session catalog or overwrite an existing name.
+                // The game-local cache is part of the owning transaction.
+                self.game.register_linked_face_definition(definition);
+            }
+        }
 
         for object in checkpoint.objects.iter() {
-            let restored = self.sync_object_from_checkpoint(object)?;
+            let restored = if let Some(executable) = &restored_executable {
+                executable.objects.iter().find(|root| root.id.0 == object.id)
+                    .expect("complete root identity validated before reset").clone()
+            } else {
+                self.sync_object_from_checkpoint(object)?
+            };
             let restored_id = restored.id;
             let restored_zone = restored.zone;
             self.game.add_object(restored);
@@ -4533,10 +6711,8 @@ impl WasmGame {
             if object.commander {
                 self.game.set_commander(id);
             }
-            let controller = PlayerId::from_index(object.controller);
-            if controller != PlayerId::from_index(object.owner) {
-                self.game.stage_controller_change_for_assembly(id, controller);
-            }
+            // Initial control was restored as an object fact. Effective control
+            // must come from actual effects, never a reconstructed assignment.
         }
 
         if let Some(timestamps) = checkpoint.continuous_timestamps {
@@ -4545,16 +6721,37 @@ impl WasmGame {
                 .map_err(|error| format!("invalid continuous chronology: {error}"))?;
         }
 
+        if let Some(restored) = restored_executable {
+            *self.game.provenance_graph_mut() = restored.provenance_graph;
+            self.game.effect_store.continuous_effects.restore_registered_state(restored.continuous)?;
+            self.game.effect_store.replacement_effects.restore_registered_state(restored.replacement)?;
+            self.game.effect_store.prevention_effects.restore_retained_state(restored.prevention)?;
+            self.game.effect_store.grant_registry.restore_registered_state(restored.grants)?;
+            self.game.turn_store.grant_cast_uses_this_turn = restored.used_grant_permissions.into_iter().collect();
+            self.game.effect_store.delayed_triggers = restored.delayed_triggers;
+            self.game.stack.clear();
+            self.game.stack.extend(restored.stack);
+        }
+
         let mut id_counters = IdCountersSnapshot::from(checkpoint.id_counters.clone());
-        // Retained session definitions include allocations made before and
-        // during import. Their identity allocator must remain monotonic.
-        id_counters.card = id_counters.card.max(snapshot_id_counters().card);
+        // CardIds belong to this peer's session catalog and retained graph.
+        // The sender's catalog high-water mark is not a gameplay identity;
+        // importing it would mutate this allocator even in a disposable probe.
+        // Preserve every actual local allocation, including catalog admission.
+        id_counters.card = snapshot_id_counters().card;
         restore_id_counters(id_counters);
         self.game.set_next_object_id_counter(id_counters.object);
         self.game
             .set_next_stack_ability_id_counter(checkpoint.id_counters.stack_ability);
         self.game = self.game.continuous_query_snapshot()
             .map_err(|error| format!("imported checkpoint continuous discovery failed: {error}"))?;
+        for object in &checkpoint.objects {
+            let restored = self.game.current_controller(ObjectId::from_raw(object.id));
+            if restored != Some(PlayerId::from_index(object.controller)) {
+                return Err(format!("checkpoint cannot restore effective controller for object {}: recorded {}, restored {:?}; actual control effects are required",
+                    object.id, object.controller, restored));
+            }
+        }
         self.pending_decision = self.game.turn.priority_player.map(|player| {
             ironsmith::game_loop::priority_context(&self.game, player).map(DecisionContext::Priority)
         }).transpose().map_err(|error| format!("priority action analysis failed: {error}"))?;
@@ -4599,9 +6796,8 @@ impl WasmGame {
         let checkpoint: SyncCheckpoint = serde_wasm_bindgen::from_value(checkpoint)
             .map_err(|e| JsValue::from_str(&format!("invalid sync checkpoint: {e}")))?;
         self.with_runtime_transaction(|candidate| {
-            candidate.apply_sync_checkpoint_in_branch(checkpoint)
+            candidate.apply_sync_checkpoint_for_perspective(checkpoint, perspective_index)
                 .map_err(|error| JsValue::from_str(&error))?;
-            candidate.set_perspective(perspective_index)?;
             candidate.snapshot()
         })
     }
@@ -4656,19 +6852,28 @@ impl WasmGame {
     ) -> Result<JsValue, JsValue> {
         let checkpoint: SyncCheckpoint = serde_wasm_bindgen::from_value(checkpoint)
             .map_err(|e| JsValue::from_str(&format!("invalid sync checkpoint: {e}")))?;
-        if checkpoint.perspective != perspective_index {
-            return Err(JsValue::from_str(&format!(
-                "foreign sync checkpoint is redacted for seat {}, not seat {perspective_index}",
-                checkpoint.perspective
-            )));
-        }
         self.with_runtime_transaction(|candidate| {
-            candidate.apply_sync_checkpoint_in_branch(checkpoint)
+            candidate.apply_foreign_sync_checkpoint_for_perspective(checkpoint, perspective_index)
                 .map_err(|error| JsValue::from_str(&error))?;
-            candidate.set_perspective(perspective_index)?;
             candidate.export_public_audit_checkpoint()
         })
     }
+}
+
+#[cfg(test)]
+fn test_delayed_registration(turn: u32, alice: PlayerId) -> ironsmith::triggers::DelayedTrigger {
+    ironsmith::triggers::DelayedTrigger {
+            trigger: ironsmith::triggers::Trigger::beginning_of_end_step(ironsmith::target::PlayerFilter::You),
+            effects: ironsmith::resolution::ResolutionProgram::from_effects(vec![ironsmith::Effect::gain_life(7)]),
+            one_shot: true, x_value: Some(3), not_before_turn: Some(turn),
+            expires_at_turn: None, expires_before_controller_turn_after: None,
+            expires_at_end_of_combat: false, bound_extra_turn_index: None,
+            while_any_tagged_object_in_zone: None, target_objects: vec![],
+            ability_source: None, ability_source_stable_id: None, ability_source_name: None,
+            ability_source_snapshot: None, controller: alice, choices: vec![],
+            tagged_objects: std::collections::HashMap::new(),
+            tagged_players: std::collections::HashMap::new(), prepayment: None, prevention_shield: None,
+        }
 }
 
 #[cfg(test)]
@@ -4820,6 +7025,11 @@ mod sync_checkpoint_tests {
             let mut checkpoint = host.build_redacted_sync_checkpoint(PlayerId::from_index(1)).unwrap();
             assert!(checkpoint.rules.hidden_identity_obligations.iter().any(|claim| claim.check == "foretell"));
             assert!(checkpoint.objects.iter().find(|object| object.id == exiled.0).unwrap().original_card_name.is_none());
+            let executable = checkpoint.executable_state.as_ref().expect("foretell physical root is retained");
+            let opaque = executable.objects.iter().find(|object| object.id == exiled).unwrap();
+            assert!(opaque.card.is_none());
+            assert_eq!(opaque.name, "Hidden Card");
+            assert!(executable.definitions.is_empty(), "foretell carrier cannot disclose the hidden definition");
             if legacy {
                 checkpoint.rules.hidden_identity_obligations.clear();
                 checkpoint.rules.hidden_claim_subjects.clear();
@@ -5262,7 +7472,13 @@ mod sync_checkpoint_tests {
 
             let mut guest = WasmGame::new();
             guest.apply_sync_checkpoint(checkpoint).unwrap();
-            let original = guest.find_card_definition(original_name).unwrap().clone();
+            // Incoming executable definitions belong to this world's exact
+            // graph nodes, not the trusted name-based session catalog.
+            let physical = guest.game.object(id).unwrap().card.expect("physical CardId retained");
+            let original = guest.game.retained_card_definition(physical)
+                .expect("physical definition retained in imported world").clone();
+            assert_eq!(original.name(), original_name, "copied or alternate face never replaces physical identity");
+            assert!(guest.find_card_definition(original_name).is_none(), "world import does not enroll definitions in the session catalog");
             assert_eq!(guest.game.object(id).unwrap().card, Some(original.card.id));
             assert_eq!(guest.game.object(id).unwrap().name, current_name);
             let before = guest.game.hidden_card_info(id).unwrap().clone();
@@ -7358,6 +9574,204 @@ mod sync_checkpoint_tests {
         );
     }
     #[test]
+    fn sync_checkpoint_rebuilds_static_control_without_freezing_its_result() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let recipient = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Static control checkpoint recipient")
+            .card_types(vec![CardType::Artifact]).build());
+        let mut control = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Static control checkpoint aura")
+            .card_types(vec![CardType::Enchantment]).subtypes(vec![ironsmith::types::Subtype::Aura]).build());
+        control.abilities.push(ironsmith::Ability::static_ability(ironsmith::static_abilities::StaticAbility::enchant(
+            ironsmith::object::AuraAttachmentFilter::Object(ironsmith::target::ObjectFilter::permanent()))));
+        control.abilities.push(ironsmith::Ability::static_ability(ironsmith::static_abilities::StaticAbility::control_attached_permanent(
+            "You control enchanted permanent".into())));
+        host.registry.register(recipient.clone());
+        host.registry.register(control.clone());
+        let permanent = host.game.create_object_from_definition(&recipient, alice, Zone::Battlefield);
+        host.game.stage_initial_controller_for_assembly(permanent, bob);
+        let aura = host.game.create_object_from_definition(&control, alice, Zone::Battlefield);
+        host.game.object_mut(aura).unwrap().attached_to = Some(ironsmith::object::AttachmentTarget::Object(permanent));
+        host.game.object_mut(permanent).unwrap().attachments.push(aura);
+        host.game.refresh_continuous_state().expect("static control completes");
+        assert_eq!(host.game.current_controller(permanent), Some(alice));
+        let checkpoint = host.build_sync_checkpoint();
+        let audit = host.build_public_audit_checkpoint();
+        assert_eq!(audit.objects.iter().find(|object| object.id == permanent.0).unwrap().initial_controller, bob.0);
+        let mut guest = WasmGame::new();
+        guest.registry.register(recipient);
+        guest.registry.register(control);
+        guest.apply_sync_checkpoint(checkpoint).expect("static control checkpoint imports");
+        assert_eq!(guest.game.object(permanent).unwrap().initial_controller, bob);
+        assert_eq!(guest.game.current_controller(permanent), Some(alice));
+        assert!(guest.game.effect_store.continuous_effects.effects().is_empty());
+        guest.game.move_object(aura, Zone::Graveyard,
+            ironsmith::events::cause::EventCause::from_effect(aura, alice)).expect("control aura leaves");
+        guest.game.refresh_continuous_state().expect("source loss completes");
+        assert_eq!(guest.game.current_controller(permanent), Some(bob),
+            "removing the actual control source reveals initial control, not a frozen imported assignment");
+        assert_eq!(guest.game.object(permanent).unwrap().owner, alice);
+    }
+
+    #[test]
+    fn sync_checkpoint_rejects_declared_player_ids_that_do_not_match_runtime_seats() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Checkpoint declared player fixture")
+            .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let valid = host.build_sync_checkpoint();
+        for sparse in [false, true] {
+            let mut malformed = valid.clone();
+            if sparse {
+                malformed.players[0].id = 255;
+                for object in &mut malformed.objects {
+                    object.owner = 255;
+                    object.initial_controller = 255;
+                    object.controller = 255;
+                }
+            } else {
+                malformed.players[1].id = 0;
+            }
+            let mut guest = WasmGame::new();
+            guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+            guest.registry.register(definition.clone());
+            let error = guest.apply_sync_checkpoint(malformed)
+                .expect_err("declared IDs must name actual imported engine seats");
+            assert!(error.contains("player seat"), "sparse={sparse}: {error}");
+            assert_eq!(guest.game.players[0].name, "Carol");
+            assert_eq!(guest.game.players[1].name, "Dan");
+            assert!(guest.game.object_ids_in_deterministic_order().is_empty());
+            assert!(guest.game.effect_store.continuous_effects.effects().is_empty());
+        }
+    }
+
+    #[test]
+    fn sync_checkpoint_requires_initial_control_and_rejects_invalid_player_roles() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Checkpoint controller validation fixture")
+            .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let checkpoint = host.build_sync_checkpoint();
+        assert_eq!(checkpoint.version, 4);
+        let mut missing = serde_json::to_value(&checkpoint).unwrap();
+        missing["objects"][0].as_object_mut().unwrap().remove("initialController");
+        assert!(serde_json::from_value::<SyncCheckpoint>(missing).unwrap_err().to_string().contains("initialController"));
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.registry.register(definition);
+        let before = guest.game.object_ids_in_deterministic_order();
+        let mut legacy = checkpoint.clone();
+        legacy.version = 1;
+        assert!(guest.apply_sync_checkpoint(legacy).unwrap_err().contains("unsupported checkpoint version"));
+        let mut invalid = checkpoint;
+        invalid.objects[0].initial_controller = 255;
+        assert!(guest.apply_sync_checkpoint(invalid).unwrap_err().contains("invalid initial controller"));
+        assert_eq!(guest.game.players[0].name, "Carol");
+        assert_eq!(guest.game.object_ids_in_deterministic_order(), before);
+    }
+
+    #[test]
+    fn sync_checkpoint_preserves_registered_color_effect_and_its_turn_anchor() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Registered color checkpoint fixture")
+            .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        let permanent = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        host.game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
+            permanent, alice, vec![permanent], ironsmith::continuous::Modification::SetColors(ColorSet::RED))
+            .until(ironsmith::effect::Until::EndOfTurn)
+            .with_expires_end_of_turn(host.game.turn.turn_number));
+        host.game.refresh_continuous_state().expect("registered color completes");
+        assert_eq!(host.game.current_colors(permanent), Some(ColorSet::RED));
+        let expected_effects = host.game.effect_store.continuous_effects.registered_state();
+        let checkpoint = host.build_sync_checkpoint();
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition);
+        guest.apply_sync_checkpoint(checkpoint).expect("color effect checkpoint imports");
+        assert_eq!(guest.game.current_colors(permanent), Some(ColorSet::RED),
+            "successful import cannot silently discard a registered characteristic effect");
+        assert_eq!(guest.game.effect_store.continuous_effects.registered_state(), expected_effects,
+            "effect payload, identity, captured controller and duration must survive import");
+        for peer in [&mut host, &mut guest] {
+            peer.game.effect_store.continuous_effects.remove_effect(expected_effects.effects[0].id);
+            peer.game.refresh_continuous_state().expect("effect removal completes");
+            assert_eq!(peer.game.current_colors(permanent), Some(ColorSet::COLORLESS));
+        }
+    }
+
+    #[test]
+    fn sync_checkpoint_rejects_unencoded_control_effect_instead_of_inventing_assignment() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Unencoded control checkpoint fixture")
+            .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        let permanent = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        host.game.stage_initial_controller_for_assembly(permanent, bob);
+        host.game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::gain_control(
+            permanent, alice, permanent, alice));
+        host.game.refresh_continuous_state().expect("captured control completes");
+        assert_eq!(host.game.current_controller(permanent), Some(alice));
+        // This negative case deliberately supplies the metadata-only carrier;
+        // full checkpoints now include the actual registered control effect.
+        let checkpoint = host.try_build_sync_checkpoint_metadata().unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.registry.register(definition);
+        let error = guest.apply_sync_checkpoint(checkpoint).expect_err("missing actual effect cannot be inferred from controller");
+        assert!(error.contains("actual control effects are required"), "{error}");
+        assert_eq!(guest.game.players[0].name, "Carol");
+        assert!(guest.game.object_ids_in_deterministic_order().is_empty());
+        assert!(guest.game.effect_store.continuous_effects.effects().is_empty());
+    }
+
+    #[test]
+    fn sync_checkpoint_preserves_initial_control_without_inventing_control_effects() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = CardDefinition::new(
+            ironsmith::CardBuilder::new(CardId::new(), "Initial control checkpoint fixture")
+                .card_types(vec![CardType::Artifact]).build());
+        host.registry.register(definition.clone());
+        let permanent = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        host.game.stage_initial_controller_for_assembly(permanent, bob);
+        host.game.refresh_continuous_state().expect("initial-control graph is finite");
+        assert_eq!(host.game.current_controller(permanent), Some(bob));
+        assert_eq!(host.game.object(permanent).unwrap().initial_controller, bob);
+        assert!(host.game.effect_store.continuous_effects.effects().is_empty());
+        let checkpoint = host.build_sync_checkpoint();
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition);
+        guest.apply_sync_checkpoint(checkpoint).expect("initial-control checkpoint imports");
+        assert_eq!(guest.game.object(permanent).unwrap().owner, alice);
+        assert_eq!(guest.game.current_controller(permanent), Some(bob));
+        assert_eq!(guest.game.object(permanent).unwrap().initial_controller, bob,
+            "checkpoint preserves initial control as a fact, independently of ownership");
+        assert!(guest.game.effect_store.continuous_effects.effects().is_empty(),
+            "initial control cannot be reconstructed as an ordinary control modification");
+        assert_eq!(guest.game.object(permanent).unwrap().zone, Zone::Battlefield);
+    }
+
+    #[test]
     fn sync_checkpoint_preserves_zero_counter_saga_entry_completion() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let alice = PlayerId::from_index(0);
@@ -8195,6 +10609,21 @@ fn assert_invalid_counter_identity_import_is_atomic(case: &str) {
             object.counters.push(object.counters[0].clone());
             "duplicate counter kind"
         }
+        "valid-count-conflict" => {
+            object.counters.push(SyncCounter {
+                kind: sync_counter_kind(ironsmith::CounterType::PlusOnePlusOne),
+                amount: 7,
+                counter_type: Some(ironsmith::CounterType::PlusOnePlusOne),
+            });
+            sync_counters_from_checkpoint(object).expect("modified flat counts are valid");
+            "executable counter state"
+        }
+        "valid-registration-conflict" => {
+            object.counter_ability_state.as_mut().expect("registrations exported")
+                .next_serial = vec![3];
+            sync_counters_from_checkpoint(object).expect("modified flat allocator is valid");
+            "executable counter state"
+        }
         "chronology" => {
             incoming
                 .continuous_timestamps
@@ -8226,6 +10655,14 @@ fn sync_checkpoint_rejects_mismatched_counter_identity_without_mutation() {
 #[test]
 fn sync_checkpoint_rejects_mismatched_counter_origin_identity_without_mutation() {
     assert_invalid_counter_identity_import_is_atomic("origin");
+}
+#[test]
+fn sync_checkpoint_rejects_valid_counter_counts_conflicting_with_executable_without_mutation() {
+    assert_invalid_counter_identity_import_is_atomic("valid-count-conflict");
+}
+#[test]
+fn sync_checkpoint_rejects_valid_counter_registrations_conflicting_with_executable_without_mutation() {
+    assert_invalid_counter_identity_import_is_atomic("valid-registration-conflict");
 }
 #[test]
 fn sync_checkpoint_rejects_duplicate_counter_kinds_without_mutation() {
@@ -8292,4 +10729,2769 @@ fn sync_checkpoint_accepts_legacy_canonical_ordinary_counter_counts_and_chronolo
     );
 }
 
+}
+
+#[cfg(test)]
+mod owning_sync_executable_tests {
+    use super::*;
+    use ironsmith::ability::{Ability, AbilityKind};
+    use ironsmith::continuous::{ContinuousEffect, Modification};
+    use ironsmith::effect::Effect;
+    use ironsmith::static_abilities::StaticAbility;
+    fn fixture(compiled: bool) -> (GameState, ironsmith::cards::CardRegistry, Vec<Object>) {
+        let alice = PlayerId::from_index(0);
+        let mut flying = StaticAbility::flying();
+        let token = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Shared template",
+        )
+        .token()
+        .card_types(vec![CardType::Creature])
+        .power_toughness(ironsmith::card::PowerToughness::fixed(1, 1))
+        .with_ability(Ability::static_ability(flying.clone()))
+        .build();
+        let mut definition = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Saved owning program",
+        )
+        .card_types(vec![CardType::Sorcery])
+        .with_ability(Ability::static_ability(flying.clone()))
+        .with_spell_effect(vec![Effect::new(
+            ironsmith::effects::CreateTokenEffect::new(
+                token,
+                1,
+                ironsmith::target::PlayerFilter::You,
+            ),
+        )])
+        .build();
+
+        if compiled {
+            definition = ironsmith_registry_test::compile_to_runtime_definition(
+                "Saved owning program",
+                "Type: Sorcery\nCreate a 1/1 white Soldier creature token with flying.",
+                false,
+            )
+            .unwrap();
+            let mut effect = definition.spell_effect.as_ref().unwrap().all_effects()[0];
+            while let Some(child) = effect.transparent_child_effect() {
+                effect = child;
+            }
+            let template = &effect
+                .downcast_ref::<ironsmith::effects::CreateTokenEffect>()
+                .unwrap()
+                .token;
+            flying = template
+                .abilities
+                .iter()
+                .find_map(|ability| match &ability.kind {
+                    AbilityKind::Static(value) => Some(value.clone()),
+                    _ => None,
+                })
+                .unwrap();
+            definition
+                .abilities
+                .push(Ability::static_ability(flying.clone()));
+            definition.ability_labels.push("Flying".into());
+            definition.canonical_text.push_str("\nFlying");
+        }
+        let active = if compiled {
+            ironsmith_registry_test::compile_to_runtime_definition(
+                "Active owning program",
+                "Type: Sorcery\nYou gain 7 life.",
+                false,
+            )
+            .unwrap()
+            .spell_effect
+            .unwrap()
+            .all_effects()[0]
+                .clone()
+        } else {
+            Effect::gain_life(7)
+        };
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let raw_card = ironsmith::CardBuilder::new(CardId::new(), "Raw physical artifact")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact = game.create_object_from_card(&raw_card, alice, Zone::Battlefield);
+        assert!(
+            game.retained_card_definition(raw_card.id)
+                .is_some_and(|definition| definition.card == raw_card),
+            "raw creation retains original definition"
+        );
+        let object = game.object_mut(spell).unwrap();
+        object.begin_stack_program_overlay();
+        object.spell_effect = Some(
+            ironsmith::resolution::ResolutionProgram::from_effects(vec![active.clone()]).into(),
+        );
+        object.cast_alternative_method = Some(Box::new(
+            ironsmith::alternative_cast::AlternativeCastingMethod::Overload {
+                cost: ironsmith::mana::ManaCost::new(),
+                effects: vec![active.clone()],
+            },
+        ));
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::from_resolution(
+                artifact,
+                alice,
+                vec![artifact],
+                Modification::SetColors(ColorSet::RED),
+            )
+            .until(ironsmith::effect::Until::EndOfTurn)
+            .with_expires_end_of_turn(game.turn.turn_number),
+        );
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::from_resolution(
+                artifact,
+                alice,
+                vec![spell],
+                Modification::AddAbility(flying),
+            ));
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(game.current_colors(artifact), Some(ColorSet::RED));
+        let objects = vec![
+            game.object(artifact).unwrap().clone(),
+            game.object(spell).unwrap().clone(),
+        ];
+        let mut registry = ironsmith::cards::CardRegistry::new();
+        registry.register(definition);
+        (game, registry, objects)
+    }
+    #[test]
+    fn owning_sync_executable_root_rejection_precedes_history_and_preserves_managers() {
+        let _guard = crate::test_id_counter_guard();
+        for compiled in [false, true] {
+            let (game, registry, objects) = fixture(compiled);
+            let continuous = game.effect_store.continuous_effects.registered_state();
+            let replacement = game.effect_store.replacement_effects.registered_state().unwrap();
+            let prevention = game.effect_store.prevention_effects.retained_state().unwrap();
+            let before = serde_json::to_value(SyncExecutableState::retain(&game, &registry, objects.clone(),
+                continuous.clone(), replacement.clone(), prevention.clone()).unwrap()).unwrap();
+            let mut approvals = 0;
+            let mut history_calls = 0;
+            let mut reference_calls = 0;
+            let error = SyncExecutableState::retain_with_root_history_and_reference_policy(
+                &game, &registry, objects.clone(), continuous, replacement, prevention,
+                |roots| {
+                    approvals += 1;
+                    assert_eq!(roots.objects.len(), objects.len());
+                    assert!(roots.continuous.effects.iter().any(|effect|
+                        matches!(effect.modification, ironsmith::continuous::Modification::AddAbility(_))));
+                    assert_eq!(roots.replacement.effects.len(), game.effect_store.replacement_effects.registered_state().unwrap().effects.len());
+                    assert_eq!(roots.prevention.next_id, game.effect_store.prevention_effects.retained_state().unwrap().next_id);
+                    assert_eq!(roots.provenance.retained_state(), game.provenance_graph().retained_state());
+                    Err::<(), _>("continuous executable grant requires approval")
+                },
+                |snapshot| { history_calls += 1; Ok::<_, &str>(snapshot) },
+                |_| { reference_calls += 1; Ok(()) },
+            ).unwrap_err();
+            assert!(error.contains("continuous executable grant requires approval"));
+            assert_eq!(approvals, 1);
+            assert_eq!(history_calls, 0);
+            assert_eq!(reference_calls, 0);
+            let after = serde_json::to_value(SyncExecutableState::retain(&game, &registry, objects,
+                game.effect_store.continuous_effects.registered_state(),
+                game.effect_store.replacement_effects.registered_state().unwrap(),
+                game.effect_store.prevention_effects.retained_state().unwrap()).unwrap()).unwrap();
+            assert_eq!(before, after, "authorization failure cannot mutate authoritative native roots");
+        }
+    }
+    #[test]
+    fn owning_sync_executable_invalid_root_fails_before_authorization() {
+        let _guard = crate::test_id_counter_guard();
+        let (game, registry, mut objects) = fixture(false);
+        objects.push(objects[0].clone());
+        let mut approvals = 0;
+        let mut history_calls = 0;
+        let error = SyncExecutableState::retain_with_root_approval_and_history_policy(
+            &game, &registry, objects, game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.replacement_effects.registered_state().unwrap(),
+            game.effect_store.prevention_effects.retained_state().unwrap(),
+            |_| { approvals += 1; Ok::<_, &str>(()) },
+            |snapshot| { history_calls += 1; Ok::<_, &str>(snapshot) },
+        ).unwrap_err();
+        assert!(error.contains("duplicate executable object root"));
+        assert_eq!((approvals, history_calls), (0, 0));
+    }
+    #[test]
+    fn owning_sync_executable_rejects_face_before_catalog_lookup() {
+        let _guard = crate::test_id_counter_guard();
+        let (game, registry, mut objects) = fixture(false);
+        let missing = CardId::from_raw(u32::MAX);
+        objects[0].card = Some(missing);
+        let mut calls = Vec::new();
+        let error = SyncExecutableState::retain_with_card_reference_policy(&game, &registry, objects,
+            game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.replacement_effects.registered_state().unwrap(),
+            game.effect_store.prevention_effects.retained_state().unwrap(),
+            |face| { calls.push(face); if face == missing { Err("unapproved live face".into()) } else { Ok(()) } },
+        ).unwrap_err();
+        assert!(error.contains("unapproved live face"), "authorization must precede missing catalog lookup: {error}");
+        assert_eq!(calls.iter().filter(|face| **face == missing).count(), 1);
+    }
+    #[test]
+    fn owning_sync_executable_rejects_nested_native_and_compiled_template_faces() {
+        let _guard = crate::test_id_counter_guard();
+        for compiled in [false, true] {
+            let (game, registry, objects) = fixture(compiled);
+            let definition = registry.get("Saved owning program").unwrap();
+            let mut effect = definition.spell_effect.as_ref().unwrap().all_effects()[0];
+            while let Some(child) = effect.transparent_child_effect() { effect = child; }
+            let forbidden = effect.downcast_ref::<ironsmith::effects::CreateTokenEffect>().unwrap().token.card.id;
+            let continuous = game.effect_store.continuous_effects.registered_state();
+            let replacement = game.effect_store.replacement_effects.registered_state().unwrap();
+            let prevention = game.effect_store.prevention_effects.retained_state().unwrap();
+            let original = serde_json::to_value(SyncExecutableState::retain(&game, &registry, objects.clone(),
+                continuous.clone(), replacement.clone(), prevention.clone()).unwrap()).unwrap();
+            let mut calls = Vec::new();
+            let error = SyncExecutableState::retain_with_card_reference_policy(&game, &registry, objects.clone(),
+                continuous, replacement, prevention,
+                |face| { calls.push(face); if face == forbidden { Err("private embedded face".into()) } else { Ok(()) } },
+            ).unwrap_err();
+            assert!(error.contains("private embedded face"));
+            assert_eq!(calls.iter().filter(|face| **face == forbidden).count(), 1);
+            let after = serde_json::to_value(SyncExecutableState::retain(&game, &registry, objects,
+                game.effect_store.continuous_effects.registered_state(),
+                game.effect_store.replacement_effects.registered_state().unwrap(),
+                game.effect_store.prevention_effects.retained_state().unwrap()).unwrap()).unwrap();
+            assert_eq!(original, after, "reference rejection cannot mutate any authoritative root");
+        }
+    }
+    #[test]
+    fn owning_sync_executable_delayed_root_and_history_rejection_precede_discovery() {
+        let _guard = crate::test_id_counter_guard();
+        for compiled in [false, true] {
+            let (mut game, registry, objects) = fixture(compiled);
+            let alice = PlayerId::from_index(0);
+            let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(&objects[0], &game);
+            let mut trigger = test_delayed_registration(game.turn.turn_number, alice);
+            trigger.ability_source = Some(snapshot.object_id);
+            trigger.ability_source_snapshot = Some(snapshot.clone());
+            trigger.tagged_objects.insert("delayed source capture".into(), vec![snapshot.clone()]);
+            game.effect_store.delayed_triggers.push(trigger);
+            let continuous = game.effect_store.continuous_effects.registered_state();
+            let replacement = game.effect_store.replacement_effects.registered_state().unwrap();
+            let prevention = game.effect_store.prevention_effects.retained_state().unwrap();
+            let before = serde_json::to_value(SyncExecutableState::retain(&game, &registry, objects.clone(),
+                continuous.clone(), replacement.clone(), prevention.clone()).unwrap()).unwrap();
+            let mut histories = 0;
+            let mut references = 0;
+            let error = SyncExecutableState::retain_with_root_history_and_reference_policy(&game, &registry, objects.clone(),
+                continuous.clone(), replacement.clone(), prevention.clone(),
+                |roots| {
+                    assert_eq!(roots.delayed_triggers.len(), 1);
+                    assert_eq!(roots.delayed_triggers[0].effects.all_effects().len(), 1);
+                    Err::<(), String>("delayed executable root is private".into())
+                },
+                |snapshot| { histories += 1; Ok::<_, String>(snapshot) },
+                |_| { references += 1; Ok(()) }).unwrap_err();
+            assert!(error.contains("delayed executable root is private"));
+            assert_eq!(histories, 0);
+            assert_eq!(references, 0);
+            let mut history_visits = Vec::new();
+            let error = SyncExecutableState::retain_with_root_history_and_reference_policy(&game, &registry, objects.clone(),
+                continuous.clone(), replacement.clone(), prevention.clone(),
+                |_| Ok::<_, String>(()),
+                |saved| { history_visits.push(saved.object_id); Err::<ironsmith::snapshot::ObjectSnapshot, String>("delayed capture is private".into()) },
+                |_| { references += 1; Ok(()) }).unwrap_err();
+            assert!(error.contains("delayed capture is private"));
+            assert!(history_visits.contains(&snapshot.object_id));
+            assert_eq!(references, 0, "history rejection precedes graph references");
+            let after = serde_json::to_value(SyncExecutableState::retain(&game, &registry, objects,
+                continuous, replacement, prevention).unwrap()).unwrap();
+            assert_eq!(before, after, "rejected delayed publication leaves complete owner graph unchanged");
+        }
+    }
+    #[test]
+    fn owning_sync_executable_reference_approval_is_once_and_canonical() {
+        let _guard = crate::test_id_counter_guard();
+        for compiled in [false, true] {
+            let (game, registry, objects) = fixture(compiled);
+            let continuous = game.effect_store.continuous_effects.registered_state();
+            let replacement = game.effect_store.replacement_effects.registered_state().unwrap();
+            let prevention = game.effect_store.prevention_effects.retained_state().unwrap();
+            let expected = SyncExecutableState::retain(&game, &registry, objects.clone(),
+                continuous.clone(), replacement.clone(), prevention.clone()).unwrap();
+            let mut calls = Vec::new();
+            let mut root_approvals = 0;
+            let actual = SyncExecutableState::retain_with_root_history_and_reference_policy(&game, &registry, objects,
+                continuous, replacement, prevention,
+                |roots| { root_approvals += 1; assert_eq!(roots.objects.len(), 2); Ok::<_, String>(()) },
+                Ok::<_, String>, |face| { calls.push(face); Ok(()) }).unwrap();
+            assert_eq!(root_approvals, 1);
+            assert_eq!(calls.len(), calls.iter().map(|face| face.0).collect::<std::collections::BTreeSet<_>>().len());
+            assert_eq!(calls.len(), actual.graph_card_count as usize);
+            assert_eq!(serde_json::to_value(actual).unwrap(), serde_json::to_value(expected).unwrap(),
+                "authorization cannot change graph slots, aliases or the retained programs");
+        }
+    }
+    #[test]
+    fn owning_sync_executable_private_copy_program_requires_payload_approval_without_private_face_reference() {
+        let _guard = crate::test_id_counter_guard();
+        for compiled in [false, true] {
+            let (mut game, mut registry, mut objects) = fixture(compiled);
+            let alice = PlayerId::from_index(0);
+            let private = if compiled {
+                ironsmith_registry_test::compile_to_runtime_definition("Private copy capture marker",
+                    "Type: Artifact\nPay 1 life: You gain 7777 life.", false).unwrap()
+            } else {
+                ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Private copy capture marker")
+                    .card_types(vec![CardType::Artifact])
+                    .with_ability(Ability::activated(ironsmith::TotalCost::free(), vec![Effect::gain_life(7777)])).build()
+            };
+            registry.register(private.clone());
+            let hidden = game.create_object_from_definition(&private, alice, Zone::Library);
+            let mut values = ironsmith::snapshot::CopiableValues::from_object(game.object(hidden).unwrap());
+            values.name = "Opaque copy".into();
+            values.compiled_card_text.clear();
+            values.ability_labels.clear();
+            assert!(!values.abilities.is_empty());
+            objects.push(opaque_sync_executable_object(game.object(hidden).unwrap().clone()));
+            let source = objects[0].id;
+            let effect_id = game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
+                source, alice, vec![hidden], Modification::CopyOf {
+                    target_id: hidden, copiable_values: Box::new(values), preserve_source_abilities: false,
+                    name_override: None, name_override_surface: None, add_supertypes: Vec::new(),
+                }));
+            let continuous = game.effect_store.continuous_effects.registered_state();
+            let replacement = game.effect_store.replacement_effects.registered_state().unwrap();
+            let prevention = game.effect_store.prevention_effects.retained_state().unwrap();
+            let mut face_calls = Vec::new();
+            let mut history_calls = 0;
+            let full = SyncExecutableState::retain_with_root_history_and_reference_policy(&game, &registry, objects.clone(),
+                continuous.clone(), replacement.clone(), prevention.clone(), |_| Ok::<_, String>(()),
+                |snapshot| { history_calls += 1; Ok(snapshot) },
+                |face| { face_calls.push(face); if face == private.card.id { Err("private face cannot be approved".into()) } else { Ok(()) } },
+            ).unwrap();
+            let json = serde_json::to_string(&full).unwrap();
+            assert!(!face_calls.contains(&private.card.id));
+            assert_eq!(history_calls, 0);
+            assert!(!json.contains("Private copy capture marker"));
+            assert!(json.contains("7777"), "display redaction and face/history policy do not authorize native copy programs");
+            let mut inspected_copy = false;
+            let mut post_history_calls = 0;
+            let mut post_reference_calls = 0;
+            let error = SyncExecutableState::retain_with_root_history_and_reference_policy(&game, &registry, objects.clone(),
+                continuous.clone(), replacement, prevention,
+                |roots| approve_sync_continuous_payloads(roots.continuous, |effect, payload| {
+                    if let SyncContinuousExecutablePayload::Copy(values) = payload {
+                        assert_eq!(effect.id, effect_id);
+                        assert!(values.compiled_card_text.is_empty());
+                        assert!(values.ability_labels.is_empty());
+                        assert!(!values.abilities.is_empty());
+                        inspected_copy = true;
+                        return Err("private copied executable requires disclosure".to_string());
+                    }
+                    Ok(())
+                }),
+                |snapshot| { post_history_calls += 1; Ok(snapshot) },
+                |_| { post_reference_calls += 1; Ok(()) },
+            ).unwrap_err();
+            assert!(error.contains("private copied executable requires disclosure"));
+            assert!(inspected_copy);
+            assert_eq!((post_history_calls, post_reference_calls), (0, 0));
+            // Native Effect::eq intentionally returns false even for a clone.
+            // Compare the complete executable graph, including copied programs,
+            // registrations, chronology and occurrence aliases instead.
+            let after = SyncExecutableState::retain(&game, &registry, objects,
+                game.effect_store.continuous_effects.registered_state(),
+                game.effect_store.replacement_effects.registered_state().unwrap(),
+                game.effect_store.prevention_effects.retained_state().unwrap()).unwrap();
+            assert_eq!(serde_json::to_value(after).unwrap(), serde_json::to_value(full).unwrap(),
+                "payload authorization failure preserves the complete owning graph");
+        }
+    }
+    fn peer_bindings(state: &SyncExecutableState) -> Vec<CardId> {
+        (0..state.graph_card_count).map(|_| CardId::new()).collect()
+    }
+    fn check_restore(compiled: bool) {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (game, registry, objects) = fixture(compiled);
+        let alice = PlayerId::from_index(0);
+        let artifact = objects[0].id;
+        let spell = objects[1].id;
+        let mut approvals = 0;
+        let encoded = SyncExecutableState::retain_with_root_approval_and_history_policy(
+            &game,
+            &registry,
+            objects,
+            game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.replacement_effects.registered_state().unwrap(),
+            game.effect_store.prevention_effects.retained_state().unwrap(),
+            |roots| {
+                approvals += 1;
+                assert_eq!(roots.objects.len(), 2);
+                assert!(roots.continuous.effects.iter().any(|effect|
+                    matches!(effect.modification, ironsmith::continuous::Modification::AddAbility(_))));
+                Ok::<_, &str>(())
+            },
+            Ok::<_, &str>,
+        )
+        .unwrap();
+        assert_eq!(approvals, 1, "whole roots are authorized once before publication");
+        let json = serde_json::to_value(&encoded).unwrap();
+        let wire: SyncExecutableState = serde_json::from_value(json.clone()).unwrap();
+        let peers = peer_bindings(&wire);
+        let restored = wire.restore(&peers).unwrap();
+        assert_eq!(
+            restored.definitions.len(),
+            2,
+            "embedded template identity has its own explicit snapshot, not a guessed catalog definition"
+        );
+        let object = restored
+            .objects
+            .iter()
+            .find(|object| object.id == spell)
+            .unwrap();
+        let AbilityKind::Static(flying) = &object.abilities[0].kind else {
+            panic!("native static ability")
+        };
+        let grant = restored
+            .continuous
+            .effects
+            .iter()
+            .find_map(|effect| match &effect.modification {
+                Modification::AddAbility(value) => Some(value),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(
+            grant.instance_id(),
+            flying.instance_id(),
+            "object and registered descriptor share receiver occurrence"
+        );
+        let definition = restored
+            .definitions
+            .iter()
+            .find(|definition| definition.card.name == "Saved owning program")
+            .unwrap();
+        let AbilityKind::Static(printed) = &definition.abilities[0].kind else {
+            panic!("printed static")
+        };
+        assert_eq!(printed.instance_id(), flying.instance_id());
+        let flying = flying.instance_id();
+        let mut peer = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        *peer.provenance_graph_mut() = restored.provenance_graph.clone();
+        let mut peer_registry = ironsmith::cards::CardRegistry::new();
+        for definition in &restored.definitions {
+            peer_registry.register(definition.clone());
+            peer.register_linked_face_definition(definition);
+        }
+        for object in &restored.objects {
+            peer.add_object(object.clone());
+        }
+        peer.effect_store
+            .continuous_effects
+            .restore_registered_state(restored.continuous.clone())
+            .unwrap();
+        peer.refresh_continuous_state().unwrap();
+        assert_eq!(peer.current_colors(artifact), Some(ColorSet::RED));
+        let reencoded = SyncExecutableState::retain(
+            &peer,
+            &peer_registry,
+            restored.objects,
+            restored.continuous.clone(),
+            restored.replacement.clone(),
+            restored.prevention.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(reencoded).unwrap(),
+            json,
+            "whole owning executable graph canonical reencoding"
+        );
+        let program = peer.object(spell).unwrap().spell_effect_owned().unwrap();
+        let mut context = ironsmith::effects::EffectContext::new_default(spell, alice);
+        for effect in program.all_effects() {
+            ironsmith::effects::execute_effect(&mut peer, effect, &mut context).unwrap();
+        }
+        assert_eq!(
+            peer.player(alice).unwrap().life,
+            27,
+            "restored active overlay executes"
+        );
+
+        let destination = peer
+            .move_object(
+                spell,
+                Zone::Graveyard,
+                ironsmith::events::cause::EventCause::effect(),
+            )
+            .unwrap();
+        assert!(
+            peer.object(destination)
+                .unwrap()
+                .splice_cast_state
+                .is_none()
+        );
+        let program = peer
+            .object(destination)
+            .unwrap()
+            .spell_effect_owned()
+            .unwrap();
+        let mut context = ironsmith::effects::EffectContext::new_default(destination, alice);
+        for effect in program.all_effects() {
+            ironsmith::effects::execute_effect(&mut peer, effect, &mut context).unwrap();
+        }
+        assert_eq!(peer.player(alice).unwrap().life, 27);
+        let token = peer
+            .battlefield
+            .iter()
+            .filter_map(|id| peer.object(*id))
+            .find(|object| object.kind == ironsmith::object::ObjectKind::Token)
+            .unwrap();
+        assert!(token.abilities.iter().any(|ability|matches!(&ability.kind,AbilityKind::Static(value) if value.instance_id()==flying)),"saved original template uses same native receiver occurrence");
+        let color = restored
+            .continuous
+            .effects
+            .iter()
+            .find(|effect| matches!(effect.modification, Modification::SetColors(_)))
+            .unwrap()
+            .id;
+        peer.effect_store.continuous_effects.remove_effect(color);
+        peer.refresh_continuous_state().unwrap();
+        assert_eq!(peer.current_colors(artifact), Some(ColorSet::COLORLESS));
+    }
+    fn check_rejections(compiled: bool) {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let (game, registry, objects) = fixture(compiled);
+        let state = SyncExecutableState::retain(
+            &game,
+            &registry,
+            objects,
+            game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.replacement_effects.registered_state().unwrap(),
+            game.effect_store.prevention_effects.retained_state().unwrap(),
+        )
+        .unwrap();
+        let peers = peer_bindings(&state);
+        for field in [
+            "graphCardCount",
+            "provenanceGraph",
+            "occurrences",
+            "definitions",
+            "objects",
+            "continuous",
+            "replacement",
+            "prevention",
+        ] {
+            let mut missing = serde_json::to_value(&state).unwrap();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(
+                serde_json::from_value::<SyncExecutableState>(missing).is_err(),
+                "required owner field {field}"
+            );
+        }
+        assert!(state.restore(&peers[..peers.len() - 1]).is_err());
+        let mut duplicate_binding = peers.clone();
+        duplicate_binding[1] = duplicate_binding[0];
+        assert!(state.restore(&duplicate_binding).is_err());
+        let mut reversed = peers.clone();
+        reversed.reverse();
+        assert!(
+            state.restore(&reversed).is_err(),
+            "allocation-order face semantics cannot silently invert"
+        );
+        let mut bad = state.clone();
+        bad.definitions.push(bad.definitions[0].clone());
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.definitions[0].0 = u32::MAX;
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.definitions[0].0 = (bad.definitions[0].0 + 1) % bad.graph_card_count;
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.objects.push(bad.objects[0].clone());
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.occurrences.model_card_references.clear();
+        assert!(bad.restore(&peers).is_err());
+        let mut bad = state.clone();
+        bad.continuous.next_id = u64::MAX;
+        assert!(bad.restore(&peers).is_err());
+        assert!(
+            state.restore(&peers).is_ok(),
+            "valid immutable state remains usable after every rejection"
+        );
+    }
+    fn check_approved_hidden_root(compiled: bool) {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let definition = if compiled {
+            ironsmith_registry_test::compile_to_runtime_definition(
+                "Private executable root",
+                "Type: Sorcery\nYou gain 7777 life.",
+                false,
+            )
+            .unwrap()
+        } else {
+            ironsmith::cards::builders::CardDefinitionBuilder::new(
+                CardId::new(),
+                "Private executable root",
+            )
+            .card_types(vec![CardType::Sorcery])
+            .with_spell_effect(vec![Effect::gain_life(7777)])
+            .build()
+        };
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let id = game.create_object_from_definition(&definition, alice, Zone::Library);
+        let original = game.object(id).unwrap();
+        let mut registry = ironsmith::cards::CardRegistry::new();
+        registry.register(definition);
+        let full = SyncExecutableState::retain(
+            &game,
+            &registry,
+            vec![original.clone()],
+            game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.replacement_effects.registered_state().unwrap(),
+            game.effect_store.prevention_effects.retained_state().unwrap(),
+        )
+        .unwrap();
+        assert!(
+            serde_json::to_string(&full)
+                .unwrap()
+                .contains("Private executable root")
+        );
+        let mut placeholder = Object::new_hidden_card(id, alice, Zone::Library);
+        placeholder.stable_id = original.stable_id;
+        let redacted = SyncExecutableState::retain(
+            &game,
+            &registry,
+            vec![placeholder],
+            game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.replacement_effects.registered_state().unwrap(),
+            game.effect_store.prevention_effects.retained_state().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(redacted.graph_card_count, 0);
+        assert!(redacted.definitions.is_empty());
+        assert!(redacted.occurrences.models.is_empty());
+        let json = serde_json::to_string(&redacted).unwrap();
+        assert!(!json.contains("Private executable root"));
+        assert!(!json.contains("7777"));
+        assert!(
+            redacted.restore(&[]).unwrap().objects[0]
+                .spell_effect
+                .is_none()
+        );
+        // This tests approved root closure, not the complete perspective/privacy
+        // projection of captured costs, historical sources or descriptors.
+    }
+
+    fn check_registered_predicate_graph(compiled:bool, dependent:bool){
+        let _guard=crate::test_id_counter_guard();
+        let (mut game,mut registry,mut objects)=fixture(compiled);
+        let source=objects[0].id;let alice=PlayerId::from_index(0);
+        let private=if compiled{
+            ironsmith_registry_test::compile_to_runtime_definition("Private graph capture marker",
+                "Type: Artifact\nPay 1 life: You gain 7777 life.",false).unwrap()
+        }else{
+            ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(),"Private graph capture marker")
+                .card_types(vec![CardType::Artifact])
+                .with_ability(Ability::activated(ironsmith::cost::TotalCost::free(),vec![Effect::gain_life(7777)])).build()
+        };
+        registry.register(private.clone());
+        let hidden=game.create_object_from_definition(&private,alice,Zone::Library);
+        game.set_hidden_card_info(hidden,HiddenCardInfo{owner:alice,zone:Zone::Library,slot:0,
+            commitment:"graph-private-commitment".into(),origin_slot:None,origin_commitment:None,
+            public_slot:None,public_commitment:None});
+        let mut saved=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(hidden).unwrap(),&game);
+        saved.compiled_card_text.clear();saved.ability_labels.clear();
+        saved.copiable_values.compiled_card_text.clear();saved.copiable_values.ability_labels.clear();
+        saved.chosen_object=Some(Box::new(saved.clone()));
+        let mut filter=ironsmith::target::ObjectFilter::permanent();
+        if dependent{filter.controller=Some(ironsmith::target::PlayerFilter::OwnerOf(ironsmith::target::ObjectRef::Specific(hidden)));}
+        let matcher=ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(filter,Some(Zone::Battlefield),Some(Zone::Graveyard))
+            .with_frozen_tagged_objects(std::collections::HashMap::from([("private-history".into(),vec![saved])]));
+        let id=game.effect_store.replacement_effects.add_one_shot_effect(ironsmith::replacement::ReplacementEffect::with_matcher(
+            source,alice,matcher,ironsmith::replacement::ReplacementAction::ChangeDestination(Zone::Exile)));
+        let key=game.effect_store.replacement_effects.get_effect(id).unwrap().application_key();
+        let mut placeholder=Object::new_hidden_card(hidden,alice,Zone::Library);
+        placeholder.stable_id=game.object(hidden).unwrap().stable_id;objects.push(placeholder);
+        let complete=SyncExecutableState::retain(&game,&registry,objects.clone(),game.effect_store.continuous_effects.registered_state(),
+            game.effect_store.replacement_effects.registered_state().unwrap(),game.effect_store.prevention_effects.retained_state().unwrap()).unwrap();
+        let full_json=serde_json::to_string(&complete).unwrap();
+        assert!(full_json.contains("Private graph capture marker"));assert!(full_json.contains("7777"));
+        let mut calls=0;
+        let state=SyncExecutableState::retain_with_registered_predicate_history_policy(&game,&registry,objects,
+            game.effect_store.continuous_effects.registered_state(),game.effect_store.replacement_effects.registered_state().unwrap(),
+            game.effect_store.prevention_effects.retained_state().unwrap(),|snapshot|{
+                calls+=1;
+                if !dependent{return Err("unused private capture must not require disclosure");}
+                assert_eq!(snapshot.object_id,hidden);
+                // Only the public owner/controller/identity tuple is required.
+                Ok(ironsmith::snapshot::ObjectSnapshot::public_placeholder(snapshot.object_id,snapshot.stable_id,
+                    snapshot.owner,snapshot.controller,snapshot.zone))
+            }).unwrap();
+        assert_eq!(calls,usize::from(dependent),"selection and policy run once before graph discovery");
+        let json=serde_json::to_value(&state).unwrap();let text=serde_json::to_string(&json).unwrap();
+        assert!(!text.contains("Private graph capture marker"));assert!(!text.contains("7777"));
+        let wire:SyncExecutableState=serde_json::from_value(json.clone()).unwrap();let peers=peer_bindings(&wire);let restored=wire.restore(&peers).unwrap();
+        let mut peer=GameState::new(vec!["Alice".into(),"Bob".into()],20);*peer.provenance_graph_mut()=restored.provenance_graph.clone();
+        let mut peer_registry=ironsmith::cards::CardRegistry::new();for definition in &restored.definitions{peer_registry.register(definition.clone());}
+        for object in &restored.objects{peer.add_object(object.clone());}
+        // The auxiliary metadata carrier is outside this executable graph.
+        peer.set_hidden_card_info(hidden,game.hidden_card_info(hidden).unwrap().clone());
+        peer.effect_store.continuous_effects.restore_registered_state(restored.continuous.clone()).unwrap();
+        peer.effect_store.replacement_effects.restore_registered_state(restored.replacement.clone()).unwrap();
+        peer.effect_store.prevention_effects.restore_retained_state(restored.prevention.clone()).unwrap();peer.refresh_continuous_state().unwrap();
+        assert_eq!(peer.effect_store.replacement_effects.get_effect(id).unwrap().application_key(),key);
+        let recoded=SyncExecutableState::retain(&peer,&peer_registry,restored.objects,restored.continuous,restored.replacement,restored.prevention).unwrap();
+        assert_eq!(serde_json::to_value(recoded).unwrap(),json,"projected graph is canonical on fresh peer bindings");
+        assert!(peer.is_hidden_card_placeholder(hidden));
+        let mut context=ironsmith::effects::EffectContext::new_default(source,alice);
+        ironsmith::effects::execute_effect(&mut peer,&Effect::move_to_zone(ironsmith::target::ChooseSpec::SpecificObject(source),Zone::Graveyard,true),&mut context).unwrap();
+        assert!(peer.exile.iter().any(|id|peer.object(*id).unwrap().name=="Raw physical artifact"));
+        assert!(peer.effect_store.replacement_effects.get_effect(id).is_none());
+        assert!(game.effect_store.replacement_effects.get_effect(id).is_some());
+    }
+    #[test]fn owning_registered_predicate_graph_native_drops_unused_private_program(){check_registered_predicate_graph(false,false);}
+    #[test]fn owning_registered_predicate_graph_compiled_drops_unused_private_program(){check_registered_predicate_graph(true,false);}
+    #[test]fn owning_registered_predicate_graph_native_preserves_specific_owner_fact(){check_registered_predicate_graph(false,true);}
+    #[test]fn owning_registered_predicate_graph_compiled_preserves_specific_owner_fact(){check_registered_predicate_graph(true,true);}
+    fn history_inputs(compiled:bool)->(GameState,ironsmith::cards::CardRegistry,Vec<Object>,ironsmith::replacement::ReplacementEffectId){
+        let (mut game,mut registry,mut objects)=fixture(compiled);let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);let source=objects[0].id;
+        let private=if compiled{ironsmith_registry_test::compile_to_runtime_definition("Private owner history marker","Type: Artifact\nPay 1 life: You gain 7777 life.",false).unwrap()}else{ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(),"Private owner history marker").card_types(vec![CardType::Artifact]).with_ability(Ability::activated(ironsmith::cost::TotalCost::free(),vec![Effect::gain_life(7777)])).build()};
+        registry.register(private.clone());let hidden=game.create_object_from_definition(&private,bob,Zone::Library);
+        let mut secret=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(hidden).unwrap(),&game);assert!(secret.abilities.iter().any(|ability|matches!(&ability.kind,AbilityKind::Activated(_))));secret.compiled_card_text.clear();secret.ability_labels.clear();secret.copiable_values.compiled_card_text.clear();secret.copiable_values.ability_labels.clear();secret.chosen_object=Some(Box::new(secret.clone()));
+        let mut saved=ironsmith::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(),&game);
+        saved.chosen_object=Some(Box::new(secret.clone()));saved.mana_sources_spent_to_cast=vec![secret.clone()];saved.attachment_snapshots=vec![secret];
+        objects[0].cast_tagged_objects.insert(ironsmith::tag::TagKey::from("paid_history"),vec![saved.clone()]);
+        let matcher=ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ironsmith::target::ObjectFilter::permanent(),Some(Zone::Battlefield),Some(Zone::Graveyard)).with_frozen_tagged_objects(std::collections::HashMap::from([(ironsmith::tag::TagKey::from("history"),vec![saved.clone()])]));
+        let id=game.effect_store.replacement_effects.add_one_shot_effect(ironsmith::replacement::ReplacementEffect::with_matcher(source,alice,matcher,ironsmith::replacement::ReplacementAction::ChangeDestination(Zone::Exile)));
+        let mut capture=ironsmith::replacement_entry_capture::RetainedEntryEvent::capture(ironsmith::events::EnterBattlefieldEvent::new(source,Zone::Hand));capture.program_choices.as_enters_tagged_objects=vec![(ironsmith::tag::TagKey::from("entry"),vec![saved.clone()])];capture.prepared_choices=Some(capture.program_choices.clone());
+        let mut scope=ironsmith::effects::ReplacementExecutionContext::default();scope.entry_event=Some(Box::new(capture.into_native().unwrap()));scope.additional_replacement_effects=vec![game.effect_store.replacement_effects.get_effect(id).unwrap().clone()];scope.suppressed_replacement_effects.insert(id);scope.suppressed_replacement_effect_keys.insert(scope.additional_replacement_effects[0].application_key());
+        let shield=ironsmith::prevention::PreventionShield::prevent_next_n(source,alice,ironsmith::prevention::PreventionTarget::You,3).with_follow_up_effects(vec![Effect::gain_life(2)]);let shield=game.effect_store.prevention_effects.add_shield(shield);let follow=game.effect_store.prevention_effects.apply_chosen_shield(shield,1,true,None).follow_ups.remove(0);
+        let mut damage=ironsmith::events::DamageEvent::with_cause(source,ironsmith::events::DamageTarget::Player(alice),5,true,ironsmith::events::cause::EventCause::effect());damage.target_snapshot=Some(saved.clone());game.effect_store.prevention_effects.queue_follow_up(follow,damage,Default::default());
+        let mut prevention=game.effect_store.prevention_effects.retained_state().unwrap();let pending=prevention.pending_follow_ups.remove(0);let mut pending=pending.try_map_payloads(|_|Ok::<_,String>(scope.clone()),Ok,Ok,Ok).unwrap();pending.source_snapshot=Some(saved);prevention.pending_follow_ups.push(pending);prevention.follow_up_deferral_depth=1;prevention.follow_up_replacement_scopes=vec![scope];game.effect_store.prevention_effects.restore_retained_state(prevention).unwrap();
+        let mut placeholder=Object::new_hidden_card(hidden,bob,Zone::Library);placeholder.stable_id=game.object(hidden).unwrap().stable_id;objects.push(placeholder);
+        (game,registry,objects,id)
+    }
+    fn check_projected_owner(compiled:bool){
+        let _guard=crate::test_id_counter_guard();let (game,registry,objects,id)=history_inputs(compiled);let source=objects[0].id;let alice=PlayerId::from_index(0);
+        let full=SyncExecutableState::retain(&game,&registry,objects.clone(),game.effect_store.continuous_effects.registered_state(),game.effect_store.replacement_effects.registered_state().unwrap(),game.effect_store.prevention_effects.retained_state().unwrap()).unwrap();let control=serde_json::to_string(&full).unwrap();assert!(control.contains("Private owner history marker"));assert!(control.contains("7777"));assert!(serde_json::to_string(&full.replacement).unwrap().contains("7777"),"private activated executable reaches the complete descriptor graph even with snapshot surface text removed");
+        let mut visits=0;
+        let state=SyncExecutableState::retain_with_history_policy(&game,&registry,objects,game.effect_store.continuous_effects.registered_state(),game.effect_store.replacement_effects.registered_state().unwrap(),game.effect_store.prevention_effects.retained_state().unwrap(),|snapshot|{
+            visits+=1;Ok::<_,String>(if snapshot.owner==PlayerId::from_index(1){ironsmith::snapshot::ObjectSnapshot::public_placeholder(snapshot.object_id,snapshot.stable_id,snapshot.owner,snapshot.controller,snapshot.zone)}else{snapshot})
+        }).unwrap();assert_eq!(visits,40,"one policy pass for ten complete history trees, never replayed by discovery or encoding");
+        let json=serde_json::to_string(&state).unwrap();assert!(!json.contains("Private owner history marker"));assert!(!json.contains("7777"));
+        let wire:SyncExecutableState=serde_json::from_str(&json).unwrap();let peers=peer_bindings(&wire);let restored=wire.restore(&peers).unwrap();let mut peer=GameState::new(vec!["Alice".into(),"Bob".into()],20);*peer.provenance_graph_mut()=restored.provenance_graph.clone();
+        let mut peer_registry=ironsmith::cards::CardRegistry::new();for definition in &restored.definitions{peer_registry.register(definition.clone());}for object in &restored.objects{peer.add_object(object.clone());}
+        peer.effect_store.continuous_effects.restore_registered_state(restored.continuous).unwrap();peer.effect_store.replacement_effects.restore_registered_state(restored.replacement).unwrap();peer.effect_store.prevention_effects.restore_retained_state(restored.prevention).unwrap();peer.refresh_continuous_state().unwrap();assert_eq!(peer.current_colors(source),Some(ColorSet::RED));
+        let pending=&peer.effect_store.prevention_effects.retained_state().unwrap().pending_follow_ups[0];let body=pending.follow_up.effects[0].clone();assert_eq!(peer.effect_store.prevention_effects.retained_state().unwrap().shields[0].amount_remaining,Some(2));
+        let mut ctx=ironsmith::effects::EffectContext::new_default(source,alice);ironsmith::effects::execute_effect(&mut peer,&Effect::move_to_zone(ironsmith::target::ChooseSpec::SpecificObject(source),Zone::Graveyard,true),&mut ctx).unwrap();assert!(peer.object(source).is_none());assert!(peer.exile.iter().any(|id|peer.object(*id).unwrap().name=="Raw physical artifact"));assert!(peer.effect_store.replacement_effects.get_effect(id).is_none());
+        ironsmith::effects::execute_effect(&mut peer,&body,&mut ctx).unwrap();assert_eq!(peer.player(alice).unwrap().life,22);assert!(game.effect_store.replacement_effects.get_effect(id).is_some());
+    }
+    #[test]fn owning_sync_history_policy_native_projects_once_and_preserves_gameplay(){check_projected_owner(false);}
+    #[test]fn owning_sync_history_policy_compiled_projects_once_and_preserves_gameplay(){check_projected_owner(true);}
+    #[test]fn owning_sync_history_policy_bad_manager_rejects_before_policy_callbacks(){
+        let _guard=crate::test_id_counter_guard();let (game,registry,objects,_)=history_inputs(false);let mut prevention=game.effect_store.prevention_effects.retained_state().unwrap();prevention.next_id=0;let mut calls=0;
+        let error=SyncExecutableState::retain_with_history_policy(&game,&registry,objects,game.effect_store.continuous_effects.registered_state(),game.effect_store.replacement_effects.registered_state().unwrap(),prevention,|snapshot|{calls+=1;Ok::<_,String>(snapshot)}).unwrap_err();assert!(!error.is_empty());assert_eq!(calls,0);
+    }
+    fn check_all_managers(compiled:bool){
+        let _id_counter_guard=crate::test_id_counter_guard();
+        let (mut game,registry,objects)=fixture(compiled);let source=objects[0].id;let alice=PlayerId::from_index(0);
+        let replacement=game.effect_store.replacement_effects.add_one_shot_effect(ironsmith::replacement::ReplacementEffect::with_matcher(source,alice,ironsmith::events::life::matchers::WouldGainLifeMatcher::you(),ironsmith::replacement::ReplacementAction::Modify(ironsmith::replacement::EventModification::Multiply(2))));
+        let shield=game.effect_store.prevention_effects.add_shield(ironsmith::prevention::PreventionShield::prevent_next_n(source,alice,ironsmith::prevention::PreventionTarget::You,3));
+        let encoded=SyncExecutableState::retain(&game,&registry,objects,game.effect_store.continuous_effects.registered_state(),game.effect_store.replacement_effects.registered_state().unwrap(),game.effect_store.prevention_effects.retained_state().unwrap()).unwrap();
+        let json=serde_json::to_value(&encoded).unwrap();let wire:SyncExecutableState=serde_json::from_value(json.clone()).unwrap();let peers=peer_bindings(&wire);let restored=wire.restore(&peers).unwrap();
+        let mut peer=GameState::new(vec!["Alice".into(),"Bob".into()],20);*peer.provenance_graph_mut()=restored.provenance_graph.clone();let mut peer_registry=ironsmith::cards::CardRegistry::new();for definition in &restored.definitions{peer_registry.register(definition.clone());}for object in &restored.objects{peer.add_object(object.clone());}peer.effect_store.continuous_effects.restore_registered_state(restored.continuous.clone()).unwrap();peer.effect_store.replacement_effects.restore_registered_state(restored.replacement.clone()).unwrap();peer.effect_store.prevention_effects.restore_retained_state(restored.prevention.clone()).unwrap();peer.refresh_continuous_state().unwrap();assert_eq!(peer.current_colors(source),Some(ColorSet::RED));
+        let reencoded=SyncExecutableState::retain(&peer,&peer_registry,restored.objects,restored.continuous,restored.replacement,restored.prevention).unwrap();assert_eq!(serde_json::to_value(reencoded).unwrap(),json,"all manager graph canonical reencoding");
+        let mut ctx=ironsmith::effects::EffectContext::new_default(source,alice);let gain=Effect::new(ironsmith::effects::GainLifeEffect::new(3,ironsmith::target::ChooseSpec::SpecificPlayer(alice)));let out=ironsmith::effects::execute_effect(&mut peer,&gain,&mut ctx).unwrap();assert_eq!(out.as_count(),Some(6));assert_eq!(peer.player(alice).unwrap().life,26);assert!(peer.effect_store.replacement_effects.get_effect(replacement).is_none());let damage=Effect::new(ironsmith::effects::DealDamageEffect::new(5,ironsmith::target::ChooseSpec::SpecificPlayer(alice)));let out=ironsmith::effects::execute_effect(&mut peer,&damage,&mut ctx).unwrap();assert_eq!(peer.player(alice).unwrap().life,24);let amounts:Vec<_>=out.events.iter().filter_map(|e|e.downcast::<ironsmith::events::DamageEvent>()).map(|e|e.amount).collect();assert_eq!(amounts,vec![2]);assert_eq!(peer.effect_store.prevention_effects.prevented_by_shield(shield),3);assert!(peer.effect_store.prevention_effects.get_shield_mut(shield).is_none());
+        let independent=Effect::new(ironsmith::effects::GainLifeEffect::new(1,ironsmith::target::ChooseSpec::SpecificPlayer(alice)));let out=ironsmith::effects::execute_effect(&mut peer,&independent,&mut ctx).unwrap();assert_eq!(out.as_count(),Some(1));assert_eq!(peer.player(alice).unwrap().life,25);
+    }
+    #[test] fn owning_sync_executable_all_managers_retain_and_restore_actual_native_gameplay(){check_all_managers(false);}
+    #[test] fn owning_sync_executable_all_managers_retain_and_restore_actual_compiled_gameplay(){check_all_managers(true);}
+    #[test]
+    fn owning_sync_executable_restores_live_programs_shared_aliases_and_registered_effects() {
+        check_restore(false);
+    }
+    #[test]
+    fn owning_sync_executable_rejects_missing_fields_duplicate_roots_and_bad_bindings() {
+        check_rejections(false);
+    }
+    #[test]
+    fn owning_sync_executable_approved_hidden_placeholder_does_not_enroll_private_program() {
+        check_approved_hidden_root(false);
+    }
+    #[test]
+    fn owning_sync_executable_compiled_restores_live_programs_shared_aliases_and_registered_effects()
+     {
+        check_restore(true);
+    }
+    #[test]
+    fn owning_sync_executable_compiled_rejects_missing_fields_duplicate_roots_and_bad_bindings() {
+        check_rejections(true);
+    }
+    #[test]
+    fn owning_sync_executable_compiled_approved_hidden_placeholder_does_not_enroll_private_program()
+    {
+        check_approved_hidden_root(true);
+    }
+    #[test]
+    fn owning_sync_executable_retains_queued_provenance_graph() {
+        let _guard=crate::test_id_counter_guard();
+        let (mut game,registry,objects,_)=history_inputs(false);
+        let source=objects[0].id;let alice=PlayerId::from_index(0);
+        let root=game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::Damage);
+        let child=game.provenance_graph_mut().alloc_child(root,ironsmith::provenance::ProvenanceNodeKind::EffectExecution{source,controller:alice});
+        let mut prevention=game.effect_store.prevention_effects.retained_state().unwrap();prevention.pending_follow_ups[0].provenance=child;
+        let state=SyncExecutableState::retain(&game,&registry,objects,game.effect_store.continuous_effects.registered_state(),game.effect_store.replacement_effects.registered_state().unwrap(),prevention).unwrap();
+        let json=serde_json::to_value(&state).unwrap();
+        let graph=json.get("provenanceGraph").expect("queued provenance needs its complete owning graph");
+        assert_eq!(graph["next_id"],child.raw());
+        assert_eq!(graph["nodes"][child.raw() as usize-1]["id"],child.raw());
+        assert_eq!(graph["nodes"][child.raw() as usize-1]["parent"],root.raw());
+        assert_eq!(json["prevention"]["pending_follow_ups"][0]["provenance"],child.raw());
+        let restored=state.restore(&peer_bindings(&state)).unwrap();
+        assert!(restored.provenance_graph.is_descendant_of(child,root));
+        let mut peer=GameState::new(vec!["Alice".into(),"Bob".into()],20);
+        *peer.provenance_graph_mut()=restored.provenance_graph.clone();
+        for object in restored.objects {peer.add_object(object);}
+        peer.effect_store.continuous_effects.restore_registered_state(restored.continuous).unwrap();
+        peer.effect_store.replacement_effects.restore_registered_state(restored.replacement).unwrap();
+        let mut pending=restored.prevention;pending.shields.clear();pending.follow_up_deferral_depth=0;pending.follow_up_replacement_scopes.clear();
+        peer.effect_store.prevention_effects.restore_retained_state(pending).unwrap();
+        let mut dm=ironsmith::decision::SelectFirstDecisionMaker;
+        let run=|peer:&mut GameState,dm:&mut ironsmith::decision::SelectFirstDecisionMaker|ironsmith::events::processing::process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(peer,source,ironsmith::events::DamageTarget::Player(alice),1,false,true,ironsmith::events::cause::EventCause::effect(),None,dm).unwrap();
+        let _=run(&mut peer,&mut dm);
+        assert_eq!(peer.player(alice).unwrap().life,22,"restored queue executes through owning damage processing");
+        assert!(peer.effect_store.prevention_effects.retained_state().unwrap().pending_follow_ups.is_empty());
+        let gains:Vec<_>=peer.take_pending_trigger_events().into_iter().filter(|event|event.downcast::<ironsmith::events::LifeGainEvent>().is_some()).collect();
+        assert_eq!(gains.len(),1);assert!(peer.provenance_graph().is_descendant_of(gains[0].provenance(),child));
+        let _=run(&mut peer,&mut dm);assert_eq!(peer.player(alice).unwrap().life,22);assert!(peer.effect_store.prevention_effects.retained_state().unwrap().pending_follow_ups.is_empty());
+        assert!(peer.take_pending_trigger_events().iter().all(|event|event.downcast::<ironsmith::events::LifeGainEvent>().is_none()));
+        let mut invalid=serde_json::to_value(&state).unwrap();invalid["provenanceGraph"]["nodes"][child.raw() as usize-1]["parent"]=serde_json::json!(child.raw());
+        let invalid:SyncExecutableState=serde_json::from_value(invalid).unwrap();assert!(invalid.restore(&peer_bindings(&state)).is_err());
+        let mut invalid=state.clone();invalid.prevention.pending_follow_ups[0].provenance=serde_json::from_value(serde_json::json!(u64::MAX)).unwrap();assert!(invalid.restore(&peer_bindings(&state)).is_err());
+
+    }
+    #[test]
+    fn owning_sync_executable_rejects_dangling_queued_provenance_before_policy() {
+        let _guard=crate::test_id_counter_guard();
+        let (game,registry,objects,_)=history_inputs(false);
+        let mut prevention=game.effect_store.prevention_effects.retained_state().unwrap();
+        prevention.pending_follow_ups[0].provenance=serde_json::from_value(serde_json::json!(u64::MAX)).unwrap();
+        let mut calls=0;
+        let error=SyncExecutableState::retain_with_history_policy(&game,&registry,objects,game.effect_store.continuous_effects.registered_state(),game.effect_store.replacement_effects.registered_state().unwrap(),prevention,|snapshot|{calls+=1;Ok::<_,String>(snapshot)}).unwrap_err();
+        assert!(error.contains("provenance"));assert_eq!(calls,0,"invalid owning reference must fail before disclosure callbacks");
+    }
+
+}
+
+#[cfg(test)]
+mod public_registered_replacement_prevention_checkpoint_contract_tests {
+    use super::*;
+    use ironsmith::effects::{EffectContext,execute_effect,GainLifeEffect,DealDamageEffect};
+    use ironsmith::target::{ChooseSpec,PlayerFilter};
+    fn setup()->(WasmGame,CardDefinition,ObjectId,PlayerId) {
+        let alice=PlayerId::from_index(0);let mut host=WasmGame::new();host.initialize_empty_match(vec!["Alice".into(),"Bob".into()],20,1);
+        let definition=CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(),"Registered event checkpoint owner").card_types(vec![CardType::Artifact]).build());host.registry.register(definition.clone());let source=host.game.create_object_from_definition(&definition,alice,Zone::Battlefield);(host,definition,source,alice)
+    }
+    fn restore(host:&WasmGame,definition:CardDefinition)->WasmGame {
+        let checkpoint=host.build_sync_checkpoint();let wire=serde_json::to_string(&checkpoint).unwrap();let checkpoint:SyncCheckpoint=serde_json::from_str(&wire).unwrap();let mut guest=WasmGame::new();guest.initialize_empty_match(vec!["Carol".into(),"Dan".into()],20,2);guest.registry.register(definition);guest.apply_sync_checkpoint(checkpoint).expect("public registered-event checkpoint imports");guest
+    }
+    #[test]fn public_plain_checkpoint_gameplay_control(){let _g=crate::test_id_counter_guard();let (mut host,definition,source,alice)=setup();let mut guest=restore(&host,definition);for peer in [&mut host,&mut guest]{let mut ctx=EffectContext::new_default(source,alice);let out=execute_effect(&mut peer.game,&ironsmith::Effect::new(GainLifeEffect::new(3,ChooseSpec::SpecificPlayer(alice))),&mut ctx).unwrap();assert_eq!(out.as_count(),Some(3));assert_eq!(peer.game.player(alice).unwrap().life,23);}}
+    #[test]fn public_checkpoint_preserves_registered_one_shot_replacement_gameplay(){let _g=crate::test_id_counter_guard();let (mut host,definition,source,alice)=setup();let effect=ironsmith::replacement::ReplacementEffect::with_matcher(source,alice,ironsmith::events::life::matchers::WouldGainLifeMatcher::new(PlayerFilter::Specific(alice)),ironsmith::replacement::ReplacementAction::Modify(ironsmith::replacement::EventModification::Multiply(2)));let id=host.game.effect_store.replacement_effects.add_one_shot_effect(effect);let mut guest=restore(&host,definition);for peer in [&mut host,&mut guest]{let mut ctx=EffectContext::new_default(source,alice);let out=execute_effect(&mut peer.game,&ironsmith::Effect::new(GainLifeEffect::new(3,ChooseSpec::SpecificPlayer(alice))),&mut ctx).unwrap();assert_eq!(out.as_count(),Some(6),"public import must retain the executable replacement, not just object metadata");assert_eq!(peer.game.player(alice).unwrap().life,26);assert!(peer.game.effect_store.replacement_effects.get_effect(id).is_none(),"one shot consumed once");}}
+    #[test]fn public_checkpoint_preserves_registered_prevention_gameplay(){let _g=crate::test_id_counter_guard();let (mut host,definition,source,alice)=setup();let shield=ironsmith::prevention::PreventionShield::new(source,alice,ironsmith::prevention::PreventionTarget::Player(alice),Some(3),ironsmith::effect::Until::EndOfTurn);let id=host.game.effect_store.prevention_effects.add_shield(shield);let mut guest=restore(&host,definition);for peer in [&mut host,&mut guest]{let mut ctx=EffectContext::new_default(source,alice);execute_effect(&mut peer.game,&ironsmith::Effect::new(DealDamageEffect::new(5,ChooseSpec::SpecificPlayer(alice))),&mut ctx).unwrap();assert_eq!(peer.game.player(alice).unwrap().life,18,"public import must retain the shield before damage occurs");assert_eq!(peer.game.effect_store.prevention_effects.prevented_by_shield(id),3);}}
+}
+
+#[cfg(test)]
+mod public_replacement_hidden_history_checkpoint_contract_tests {
+    use super::*;
+    fn check_private_capture(compiled:bool){
+        let _guard=crate::test_id_counter_guard();let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);let mut host=WasmGame::new();host.initialize_empty_match(vec!["Alice".into(),"Bob".into()],20,1);
+        let definition=CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(),"Public replacement capture owner").card_types(vec![CardType::Artifact]).build());host.registry.register(definition.clone());let source=host.game.create_object_from_definition(&definition,alice,Zone::Battlefield);let stable=host.game.object(source).unwrap().stable_id;
+        let private=if compiled{ironsmith_registry_test::compile_to_runtime_definition("Private replacement capture marker","Type: Sorcery\nYou gain 7777 life.",false).unwrap()}else{ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(),"Private replacement capture marker").card_types(vec![CardType::Sorcery]).with_spell_effect(vec![ironsmith::Effect::gain_life(7777)]).build()};host.registry.register(private.clone());let hidden=host.game.create_object_from_definition(&private,bob,Zone::Library);host.game.set_hidden_card_info(hidden,HiddenCardInfo{owner:bob,zone:Zone::Library,slot:0,commitment:"private-capture-commitment".into(),origin_slot:None,origin_commitment:None,public_slot:None,public_commitment:None});let mut saved=ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(hidden).unwrap(),&host.game);saved.chosen_object=Some(Box::new(saved.clone()));saved.attachment_snapshots.push(saved.chosen_object.as_ref().unwrap().as_ref().clone());
+        let matcher=ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ironsmith::target::ObjectFilter::permanent(),Some(Zone::Battlefield),Some(Zone::Graveyard)).with_frozen_tagged_objects(std::collections::HashMap::from([(ironsmith::tag::TagKey::from("private-history"),vec![saved])]));host.game.effect_store.replacement_effects.add_resolution_effect(ironsmith::replacement::ReplacementEffect::with_matcher(source,alice,matcher,ironsmith::replacement::ReplacementAction::ChangeDestination(Zone::Exile)));
+        let checkpoint=host.try_build_redacted_executable_checkpoint(alice).unwrap();let json=serde_json::to_string(&checkpoint).unwrap();assert!(!json.contains("Private replacement capture marker"),"hidden captured identity must not be reachable from public manager graph");assert!(!json.contains("7777"),"hidden captured program must not be reachable from public manager graph");let checkpoint:SyncCheckpoint=serde_json::from_str(&json).unwrap();let mut guest=WasmGame::new();guest.initialize_empty_match(vec!["Carol".into(),"Dan".into()],20,2);guest.registry.register(definition);guest.apply_sync_checkpoint(checkpoint).unwrap();assert!(guest.game.is_hidden_card_placeholder(hidden));
+        for peer in [&mut host,&mut guest]{let mut ctx=ironsmith::effects::EffectContext::new_default(source,alice);ironsmith::effects::execute_effect(&mut peer.game,&ironsmith::Effect::move_to_zone(ironsmith::target::ChooseSpec::SpecificObject(source),Zone::Graveyard,true),&mut ctx).unwrap();let moved=peer.game.objects_in_deterministic_order().into_iter().find(|object|object.stable_id==stable).unwrap();assert_eq!(moved.zone,Zone::Exile,"public import must retain registered replacement while projecting its private historical captures");}
+    }
+    #[test]fn public_native_replacement_hidden_history_preserves_behavior_without_private_program(){check_private_capture(false);}
+    #[test]fn public_compiled_replacement_hidden_history_preserves_behavior_without_private_program(){check_private_capture(true);}
+}
+
+#[cfg(test)]
+mod public_full_executable_checkpoint_validation_tests {
+    use super::*;
+    fn full_fixture() -> (WasmGame, ObjectId, PlayerId) {
+        let alice = PlayerId::from_index(0);
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Full checkpoint typed owner")
+            .card_types(vec![CardType::Artifact])
+            .with_spell_effect(vec![ironsmith::Effect::gain_life(2)])
+            .build();
+        host.registry.register(definition.clone());
+        let source = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        host.game.effect_store.replacement_effects.add_one_shot_effect(ironsmith::replacement::ReplacementEffect::with_matcher(
+            source, alice, ironsmith::events::life::matchers::WouldGainLifeMatcher::you(),
+            ironsmith::replacement::ReplacementAction::Modify(ironsmith::replacement::EventModification::Multiply(2)),
+        ));
+        let root = host.game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::Damage);
+        host.game.provenance_graph_mut().alloc_child(root, ironsmith::provenance::ProvenanceNodeKind::EffectExecution { source, controller: alice });
+        (host, source, alice)
+    }
+    type StackFixtureHistory = ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceObjectSnapshot<u32>;
+    type StackFixtureEvent = ironsmith::events::raw_event::RetainedRawEvent<PlayerId, StackFixtureHistory>;
+    type Carrier = ironsmith::game_state::RetainedStackEntry<ironsmith_runtime_catalog::artifact_materializer::RetainedOccurrenceProgram, StackFixtureHistory, StackFixtureEvent, ironsmith::effect::RetainedEffectOutcome<StackFixtureEvent>, ()>;
+    fn unsupported<T>() -> Result<T, ironsmith_runtime_catalog::artifact_materializer::OccurrenceBindingError> {
+        Err(ironsmith_runtime_catalog::artifact_materializer::OccurrenceBindingError::InvalidModel { detail: "fixture has no such payload".into() })
+    }
+    fn retain_stack_fixture_event(encoder: &mut ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceEncoder,
+        event: ironsmith::triggers::TriggerEvent) -> Result<StackFixtureEvent, ironsmith_runtime_catalog::artifact_materializer::OccurrenceBindingError> {
+        event.try_retain(encoder,
+            |_, body| body.as_any().downcast_ref::<ironsmith::events::phase::BeginningOfEndStepEvent>()
+                .map(|phase| phase.player).ok_or_else(|| ironsmith_runtime_catalog::artifact_materializer::OccurrenceBindingError::InvalidModel { detail: "fixture event kind differs".into() }),
+            |encoder, history| encoder.encode_snapshot(history, |id| Ok(id.0)))
+    }
+    fn restore_stack_fixture_event(decoder: &mut ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceDecoder,
+        event: StackFixtureEvent, peer_face: ironsmith::CardId) -> Result<ironsmith::triggers::TriggerEvent, ironsmith_runtime_catalog::artifact_materializer::OccurrenceBindingError> {
+        event.try_restore(decoder,
+            |_, player| Ok(std::sync::Arc::new(ironsmith::events::phase::BeginningOfEndStepEvent::new(player)) as std::sync::Arc<dyn ironsmith::events::GameEventType>),
+            |decoder, history| decoder.restore_snapshot(history, |_| Ok(peer_face)))
+    }
+    #[test]
+    fn complete_stack_carrier_preserves_program_and_announced_context_through_json() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let mut entry = ironsmith::game_state::StackEntry::ability(source, alice, vec![ironsmith::Effect::gain_life(ironsmith::effect::Value::X)]);
+        let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game);
+        entry.source_snapshot = Some(snapshot.clone());
+        let event_provenance = host.game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::BeginningOfEndStep);
+        entry.provenance = event_provenance;
+        entry.triggering_event = Some(ironsmith::triggers::TriggerEvent::new_with_provenance(
+            ironsmith::events::phase::BeginningOfEndStepEvent::new(alice), event_provenance)
+            .with_simultaneous_batch(event_provenance).with_source_snapshot(snapshot.clone())
+            .with_lookback_source_snapshots(vec![snapshot.clone()])
+            .with_player_tags([("captured player".into(), vec![alice])].into_iter().collect()));
+        entry.tagged_objects.insert("captured source".into(), vec![snapshot.clone()]);
+        let event = entry.triggering_event.as_ref().unwrap().clone();
+        let mut outcome = ironsmith::effect::EffectOutcome::count(9).with_event(event.clone());
+        outcome.execution_facts.push(ironsmith::effect::ExecutionFact::PlayerCounts(vec![(alice, 9)]));
+        outcome.instruction_result = Some(Box::new(ironsmith::effect::EffectOutcome::count(11).with_event(event)));
+        assert!(serde_json::to_value(&outcome).unwrap().get("events").is_none(),
+            "legacy event-free serializer cannot serve executable stack outcomes");
+        entry.effect_outcomes.insert(ironsmith::effect::EffectId(7), outcome);
+        entry.x_value = Some(3);
+        entry.activation_cost_has_x = true;
+        entry.activation_cost_has_tap = true;
+        entry.mana_spent_on_activation.green = 2;
+        entry.casting_method = ironsmith::CastingMethod::GrantedEscape { source, exile_count: 4 };
+        entry.optional_costs_paid.cast_at_sorcery_timing = true;
+        entry.defending_player = Some(PlayerId::from_index(1));
+        entry.chosen_player = Some(alice);
+        entry.chapter_ability_source = Some(source);
+        entry.battle_defeat_source = Some(source);
+        entry.event_value_amount = Some(9);
+        entry.trigger_identity = Some(ironsmith::triggers::TriggerIdentity(17));
+        entry.ability_index = Some(2);
+        entry.chosen_modes = Some(vec![1, 3]);
+        entry.crew_contributors = vec![ObjectId::from_raw(72)];
+        entry.saddle_contributors = vec![ObjectId::from_raw(73)];
+        let mut encoder = ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceEncoder::default();
+        let carrier: Carrier = entry.try_retain(&mut encoder,
+            |encoder, program| encoder.encode_program_with_card_graph(program, |id| Ok(id.0)),
+            |encoder, history| encoder.encode_snapshot(history, |id| Ok(id.0)),
+            retain_stack_fixture_event,
+            |encoder, outcome| outcome.try_retain(encoder, retain_stack_fixture_event),
+            |_, _| unsupported()).unwrap();
+        let wire = serde_json::to_value(&carrier).unwrap();
+        for field in ["ability_effects", "source_snapshot", "triggering_event", "x_value", "defending_player", "chosen_modes"] {
+            let mut omitted = wire.clone();
+            omitted.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<Carrier>(omitted).is_err(), "missing {field} cannot restore a default");
+        }
+        let carrier: Carrier = serde_json::from_value(wire).unwrap();
+        let peer_face = ironsmith::CardId::new();
+        let mut decoder = ironsmith_runtime_catalog::artifact_materializer::StaticAbilityOccurrenceDecoder::restore_with_card_graph::<u32>(encoder.into_table(),
+            |_| Ok(peer_face)).unwrap();
+        let restored = carrier.try_restore(&mut decoder,
+            |decoder, program| decoder.restore_program(program),
+            |decoder, history| decoder.restore_snapshot(history, |_| Ok(peer_face)),
+            |decoder, event| restore_stack_fixture_event(decoder, event, peer_face),
+            |decoder, outcome| outcome.try_restore(decoder, |decoder, event| restore_stack_fixture_event(decoder, event, peer_face)),
+            |_, _| unsupported()).unwrap();
+        let outcome = &restored.effect_outcomes[&ironsmith::effect::EffectId(7)];
+        assert_eq!(outcome.value, ironsmith::effect::OutcomeValue::Count(9));
+        assert_eq!(outcome.execution_facts, vec![ironsmith::effect::ExecutionFact::PlayerCounts(vec![(alice, 9)])]);
+        assert_eq!(outcome.events.len(), 1);
+        assert_eq!(outcome.events[0].source_snapshot().unwrap().card, Some(peer_face));
+        let authored = outcome.instruction_result.as_ref().unwrap();
+        assert_eq!(authored.value, ironsmith::effect::OutcomeValue::Count(11));
+        assert_eq!(authored.events.len(), 1);
+        assert_eq!(authored.events[0].lookback_source_snapshots()[0].card, Some(peer_face));
+        let event = restored.triggering_event.as_ref().unwrap();
+        assert_eq!(restored.provenance, event_provenance);
+        assert_eq!(event.provenance(), event_provenance);
+        assert_eq!(event.simultaneous_batch(), Some(event_provenance));
+        assert_eq!(event.downcast::<ironsmith::events::phase::BeginningOfEndStepEvent>().unwrap().player, alice);
+        assert_eq!(event.source_snapshot().unwrap().card, Some(peer_face));
+        assert_eq!(event.lookback_source_snapshots()[0].card, Some(peer_face));
+        assert_eq!(event.player_tags()["captured player"], vec![alice]);
+        assert_ne!(snapshot.card, Some(peer_face));
+        assert_eq!(restored.source_snapshot.as_ref().unwrap().card, Some(peer_face));
+        assert_eq!(restored.tagged_objects["captured source"][0].card, Some(peer_face),
+            "source and tagged histories share the receiver face binding");
+        assert!(restored.activation_cost_has_x && restored.activation_cost_has_tap);
+        assert_eq!(restored.mana_spent_on_activation.green, 2);
+        assert_eq!(restored.casting_method, ironsmith::CastingMethod::GrantedEscape { source, exile_count: 4 });
+        assert!(restored.optional_costs_paid.cast_at_sorcery_timing);
+        assert_eq!(restored.defending_player, Some(PlayerId::from_index(1)));
+        assert_eq!(restored.chosen_player, Some(alice));
+        assert_eq!(restored.chapter_ability_source, Some(source));
+        assert_eq!(restored.battle_defeat_source, Some(source));
+        assert_eq!(restored.event_value_amount, Some(9));
+        assert_eq!(restored.trigger_identity, Some(ironsmith::triggers::TriggerIdentity(17)));
+        assert_eq!(restored.ability_index, Some(2));
+        assert_eq!(restored.chosen_modes, Some(vec![1, 3]));
+        assert_eq!(restored.crew_contributors, vec![ObjectId::from_raw(72)]);
+        assert_eq!(restored.saddle_contributors, vec![ObjectId::from_raw(73)]);
+        let mut game = host.game;
+        game.push_to_stack(restored);
+        ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 26,
+            "restored program executes captured X instead of printed source text");
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_pending_stack_ability_program() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let mut entry = ironsmith::game_state::StackEntry::ability(source, alice,
+            vec![ironsmith::Effect::gain_life(ironsmith::effect::Value::X)]);
+        entry.x_value = Some(3);
+        entry.source_stable_id = Some(host.game.object(source).unwrap().stable_id);
+        entry.source_snapshot = Some(ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game));
+        host.game.push_to_stack(entry);
+        let checkpoint = host.try_build_full_sync_checkpoint().unwrap();
+        let checkpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.apply_sync_checkpoint(checkpoint).unwrap();
+        ironsmith::game_loop::resolve_stack_entry(&mut host.game).unwrap();
+        assert_eq!(host.game.player(alice).unwrap().life, 26);
+        ironsmith::game_loop::resolve_stack_entry(&mut guest.game).unwrap();
+        assert_eq!(guest.game.player(alice).unwrap().life, 26,
+            "checkpoint must preserve captured X and the stack ability program independently of printed source text");
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_rich_stack_context_and_event_aliases() {
+        let _guard = crate::test_id_counter_guard();
+        for compiled in [false, true] {
+            for departed in [false, true] {
+                let (mut host, source, alice) = full_fixture();
+                let program = if compiled {
+                    ironsmith_registry_test::compile_to_runtime_definition("Captured stack program", "Type: Sorcery\nYou gain X life.", false).unwrap().spell_effect.unwrap()
+                } else { ironsmith::resolution::ResolutionProgram::from_effects(vec![ironsmith::Effect::gain_life(ironsmith::effect::Value::X)]) };
+                let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game);
+                let provenance = host.game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::BeginningOfEndStep);
+                let shared = ironsmith::triggers::TriggerEvent::new_with_provenance(
+                    ironsmith::events::phase::BeginningOfEndStepEvent::new(alice), provenance)
+                    .with_simultaneous_batch(provenance).with_source_snapshot(snapshot.clone())
+                    .with_lookback_source_snapshots(vec![snapshot.clone()])
+                    .with_player_tags([("captured actor".into(), vec![alice])].into_iter().collect());
+                let distinct = ironsmith::triggers::TriggerEvent::new_with_provenance(
+                    ironsmith::events::phase::BeginningOfEndStepEvent::new(alice), provenance);
+                let mut entry = StackEntry::ability(source, alice, program);
+                entry.x_value = Some(3); entry.provenance = provenance;
+                entry.activation_cost_has_x = true; entry.activation_cost_has_tap = true;
+                entry.mana_spent_on_activation.green = 2;
+                entry.mana_usage_restrictions = vec![ironsmith::ability::ManaUsageRestriction::ActivateAbility];
+                entry.optional_costs_paid.cast_at_sorcery_timing = true;
+                entry.source_stable_id = Some(snapshot.stable_id); entry.source_snapshot = Some(snapshot.clone());
+                entry.source_name = Some("Captured source context".into());
+                entry.triggering_event = Some(shared.clone()); entry.event_value_amount = Some(9);
+                entry.tagged_objects.insert("captured source".into(), vec![snapshot.clone()]);
+                let mut outcome = ironsmith::effect::EffectOutcome::count(9).with_event(shared.clone()).with_event(distinct);
+                outcome.execution_facts.push(ironsmith::effect::ExecutionFact::PlayerCounts(vec![(alice, 9)]));
+                outcome.instruction_result = Some(Box::new(ironsmith::effect::EffectOutcome::count(11).with_event(shared)));
+                entry.effect_outcomes.insert(ironsmith::effect::EffectId(7), outcome);
+                host.game.push_to_stack(entry);
+                let live_source = if departed { host.game.move_object(source, Zone::Graveyard, ironsmith::events::cause::EventCause::effect()).unwrap() } else { source };
+                let checkpoint = host.try_build_full_sync_checkpoint().unwrap();
+                assert_eq!(checkpoint.executable_state.as_ref().unwrap().event_bodies.len(), 2,
+                    "cloned body is shared, equal-looking separate event is distinct");
+                let checkpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+                let mut guest = WasmGame::new();
+                guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+                guest.apply_sync_checkpoint(checkpoint).unwrap();
+                let restored = &guest.game.stack[0];
+                assert_eq!(restored.x_value, Some(3));
+                assert!(restored.activation_cost_has_x && restored.activation_cost_has_tap);
+                assert_eq!(restored.mana_spent_on_activation.green, 2);
+                assert!(matches!(restored.mana_usage_restrictions.as_slice(), [ironsmith::ability::ManaUsageRestriction::ActivateAbility]));
+                assert!(restored.optional_costs_paid.cast_at_sorcery_timing);
+                let face = guest.game.object(live_source).unwrap().card;
+                assert_eq!(restored.source_snapshot.as_ref().unwrap().card, face);
+                assert_eq!(restored.tagged_objects["captured source"][0].card, face);
+                let event = restored.triggering_event.as_ref().unwrap();
+                let outcome = &restored.effect_outcomes[&ironsmith::effect::EffectId(7)];
+                assert!(std::ptr::eq(event.inner(), outcome.events[0].inner()), "cloned event occurrence lost its shared identity");
+                assert!(!std::ptr::eq(event.inner(), outcome.events[1].inner()), "equal-looking separate events were merged");
+                assert!(std::ptr::eq(event.inner(), outcome.instruction_result.as_ref().unwrap().events[0].inner()));
+                assert_eq!(event.source_snapshot().unwrap().card, face);
+                assert_eq!(event.simultaneous_batch(), Some(provenance));
+                assert_eq!(event.player_tags()["captured actor"], vec![alice]);
+                ironsmith::game_loop::resolve_stack_entry(&mut host.game).unwrap();
+                ironsmith::game_loop::resolve_stack_entry(&mut guest.game).unwrap();
+                assert!(host.game.player(alice).unwrap().life > 20);
+                assert_eq!(guest.game.player(alice).unwrap().life, host.game.player(alice).unwrap().life,
+                    "native/compiled captured program and context must survive source departure and checkpoint import");
+            }
+        }
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_malformed_stack_without_mutation() {
+        let _guard = crate::test_id_counter_guard();
+        for case in 0..5 {
+            let (mut host, source, alice) = full_fixture();
+            let provenance = host.game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::BeginningOfEndStep);
+            let mut entry = StackEntry::ability(source, alice, vec![ironsmith::Effect::gain_life(3)]);
+            entry.triggering_event = Some(ironsmith::triggers::TriggerEvent::new_with_provenance(
+                ironsmith::events::phase::BeginningOfEndStepEvent::new(alice), provenance));
+            host.game.push_to_stack(entry);
+            let mut incoming = host.try_build_full_sync_checkpoint().unwrap();
+            match case {
+                0 => incoming.executable_state.as_mut().unwrap().stack.clear(),
+                1 => incoming.executable_state.as_mut().unwrap().stack[0].triggering_event.as_mut().unwrap().inner = u32::MAX,
+                2 => { incoming.stack[0].controller = 99; incoming.executable_state.as_mut().unwrap().stack[0].controller = PlayerId::from_index(99); },
+                3 => { let SyncEventBody::BeginningOfEndStep { player } = &mut incoming.executable_state.as_mut().unwrap().event_bodies[0] else { panic!("fixture body"); }; *player = PlayerId::from_index(99); },
+                _ => incoming.executable_state.as_mut().unwrap().stack[0].target_assignments.push(ironsmith::game_state::TargetAssignment { spec: ironsmith::target::ChooseSpec::Source, range: 0..1 }),
+            }
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            host.apply_sync_checkpoint(incoming).expect_err("malformed stack cannot publish");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before,
+                "failed stack import must preserve runtime and exported identity allocators");
+        }
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_executable_event_payloads() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let shared = ironsmith::Ability::static_ability(ironsmith::static_abilities::StaticAbility::flying());
+        std::sync::Arc::make_mut(&mut host.game.object_mut(source).unwrap().abilities).push(shared.clone());
+        let activated = ironsmith_registry_test::compile_to_runtime_definition("Captured executable ability", "Type: Artifact\n{T}: You gain X life.", false).unwrap().abilities[0].clone();
+        let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game);
+        let mut token = ironsmith::object::Object::new_token(ObjectId::from_raw(9001), alice, "Captured template".into(), vec![CardType::Creature], vec![ironsmith::types::Subtype::Soldier], Some(2), Some(3), ironsmith::color::ColorSet::GREEN);
+        token.abilities = vec![shared.clone(), activated.clone()].into();
+        let provenance = host.game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::BeginningOfEndStep);
+        let mut entry_capture = ironsmith::replacement_entry_capture::RetainedEntryEvent::capture(ironsmith::events::zones::EnterBattlefieldEvent::new(source, Zone::Hand));
+        entry_capture.object = source;
+        entry_capture.from = Zone::Hand;
+        entry_capture.enters_tapped = true;
+        entry_capture.enters_with_counters = vec![(ironsmith::CounterType::Named("Entry counter".into()), 7)];
+        entry_capture.linked_exile_with_entering = vec![source];
+        entry_capture.enters_as_copy_of = Some(source);
+        entry_capture.copy_followups = vec![ironsmith_core::EnterAsCopyFollowup::ExileCopiedObject];
+        entry_capture.copy_duration = Some(ironsmith::effect::Until::EndOfTurn);
+        entry_capture.copy_name_override = Some("Saved copy name".into());
+        entry_capture.added_colors = ironsmith::color::ColorSet::GREEN;
+        entry_capture.added_card_types = vec![CardType::Creature];
+        entry_capture.removes_other_card_types = true;
+        entry_capture.added_supertypes = vec![ironsmith::types::Supertype::Legendary];
+        entry_capture.removed_supertypes = vec![ironsmith::types::Supertype::Legendary];
+        entry_capture.added_subtypes = vec![ironsmith::types::Subtype::Soldier];
+        entry_capture.added_abilities = vec![shared.clone(), activated.clone()];
+        entry_capture.set_base_power_toughness = Some((4,5));
+        entry_capture.controller_override = Some(alice);
+        let ironsmith::ability::AbilityKind::Activated(a) = &activated.kind else { panic!("activated fixture"); };
+        entry_capture.pending_program = Some((a.effects.clone(), alice));
+        entry_capture.program_choices.chosen_player = Some(alice);
+        entry_capture.program_choices.noted_life_total = Some(17);
+        let ironsmith::ability::AbilityKind::Static(shared_static) = &shared.kind else { panic!("static fixture"); };
+        entry_capture.program_choices.power_toughness_choices = vec![(7, 8, vec![shared_static.clone()])];
+        entry_capture.program_choices.as_enters_tagged_objects = vec![("captured entry history".into(), vec![snapshot.clone()])];
+        entry_capture.prepared_choices = Some(entry_capture.program_choices.clone());
+        let bodies: Vec<std::sync::Arc<dyn ironsmith::events::GameEventType>> = vec![
+std::sync::Arc::new(ironsmith::events::spells::AbilityActivatedEvent { source: source, activator: alice, is_mana_ability: true, is_loyalty_ability: true, activation_cost_has_x: true, activation_cost_has_tap: true, x_value: Some(3), stack_entry_provenance: Some(provenance), snapshot: Some(snapshot.clone()), activated_ability: Some(activated.clone()), mana_sources_spent: vec![snapshot.clone()], mana_spent_total: 3 }),
+std::sync::Arc::new(ironsmith::events::tokens::CreateTokensEvent { controller: alice, count: 3, cause: ironsmith::events::cause::EventCause::from_effect(source, alice), token: Some(token.clone()), additional_tokens: vec![(ironsmith_core::AdditionalTokenKind::Treasure, 2)] }),
+std::sync::Arc::new(entry_capture.into_native().unwrap())
+        ];
+        let mut entry = StackEntry::ability(source, alice, vec![ironsmith::Effect::gain_life(3)]);
+        let mut outcome = ironsmith::effect::EffectOutcome::count(9);
+        for body in bodies { outcome.events.push(ironsmith::triggers::TriggerEvent::from_boxed_with_provenance(body.clone_box(), provenance)); }
+        entry.effect_outcomes.insert(ironsmith::effect::EffectId(7), outcome); host.game.push_to_stack(entry);
+        let before = host.try_build_full_sync_checkpoint().unwrap();
+        assert_eq!(before.executable_state.as_ref().unwrap().event_bodies.len(), 3);
+        let unchanged = serde_json::to_value(&before).unwrap();
+        for case in 0..11 {
+            let mut forged = before.clone(); let bad = PlayerId::from_index(99);
+            let bodies = &mut forged.executable_state.as_mut().unwrap().event_bodies;
+            match case {
+                0 => { let SyncEventBody::AbilityActivatedEvent { activator, .. } = &mut bodies[0] else { panic!("fixture"); }; *activator = bad; },
+                1 => { let SyncEventBody::AbilityActivatedEvent { mana_sources_spent, .. } = &mut bodies[0] else { panic!("fixture"); }; mana_sources_spent[0].owner = bad; },
+                2 => { let SyncEventBody::CreateTokensEvent { token, .. } = &mut bodies[1] else { panic!("fixture"); }; token.as_mut().unwrap().owner = bad; },
+                3 => { let SyncEventBody::CreateTokensEvent { token, .. } = &mut bodies[1] else { panic!("fixture"); }; token.as_mut().unwrap().initial_controller = bad; },
+                4 => { let SyncEventBody::EnterBattlefieldEvent { value } = &mut bodies[2] else { panic!("fixture"); }; value.controller_override = Some(bad); },
+                5 => { let SyncEventBody::EnterBattlefieldEvent { value } = &mut bodies[2] else { panic!("fixture"); }; value.pending_program.as_mut().unwrap().1 = bad; },
+                6 => { let SyncEventBody::EnterBattlefieldEvent { value } = &mut bodies[2] else { panic!("fixture"); }; value.program_choices.chosen_player = Some(bad); },
+                7 => { let SyncEventBody::EnterBattlefieldEvent { value } = &mut bodies[2] else { panic!("fixture"); }; value.prepared_choices.as_mut().unwrap().battle_protector = Some(bad); },
+                8 => { let SyncEventBody::EnterBattlefieldEvent { value } = &mut bodies[2] else { panic!("fixture"); }; value.program_choices.as_enters_tagged_objects[0].1[0].controller = bad; },
+                9 => { let SyncEventBody::EnterBattlefieldEvent { value } = &mut bodies[2] else { panic!("fixture"); }; value.program_choices.power_toughness_choices[0].2[0].0 = u32::MAX; },
+                _ => { let SyncEventBody::AbilityActivatedEvent { stack_entry_provenance, .. } = &mut bodies[0] else { panic!("fixture"); }; *stack_entry_provenance = Some(serde_json::from_value(serde_json::json!(u64::MAX)).unwrap()); },
+            }
+            let forged = serde_json::from_slice(&serde_json::to_vec(&forged).unwrap()).unwrap();
+            assert!(host.apply_sync_checkpoint(forged).is_err(), "invalid executable capture case {case} cannot publish");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), unchanged,
+                "failed executable body import must preserve runtime and exported allocators");
+        }
+        let expected = serde_json::to_value(&before.executable_state.as_ref().unwrap().event_bodies).unwrap();
+        let mut projected_count = 0;
+        let _ = project_sync_stack_history(&host.game.stack, &mut |h| { projected_count += 1; Ok(h) }).unwrap();
+        assert_eq!(projected_count, 5, "activation/mana-source, both prepared histories and stack source");
+        let checkpoint = serde_json::from_slice(&serde_json::to_vec(&before).unwrap()).unwrap();
+        let mut guest = WasmGame::new(); guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2); guest.apply_sync_checkpoint(checkpoint).unwrap();
+        let restored = guest.try_build_full_sync_checkpoint().unwrap();
+        assert_eq!(serde_json::to_value(&restored.executable_state.as_ref().unwrap().event_bodies).unwrap(), expected);
+        for peer in [&mut host, &mut guest] {
+            let events = &peer.game.stack[0].effect_outcomes[&ironsmith::effect::EffectId(7)].events;
+            let activated = events[0].downcast::<ironsmith::events::spells::AbilityActivatedEvent>().unwrap();
+            let token = events[1].downcast::<ironsmith::events::tokens::CreateTokensEvent>().unwrap().token.as_ref().unwrap();
+            let enter = events[2].downcast::<ironsmith::events::zones::EnterBattlefieldEvent>().unwrap();
+            let identity = |ability: &ironsmith::Ability| { let ironsmith::ability::AbilityKind::Static(a) = &ability.kind else { panic!("static fixture"); }; a.instance_id() };
+            assert_eq!(identity(&peer.game.object(source).unwrap().abilities[0]), identity(&token.abilities[0]));
+            assert_eq!(identity(&token.abilities[0]), identity(&enter.added_abilities[0]), "body templates and live roots must share executable identities");
+            let native_capture = ironsmith::replacement_entry_capture::RetainedEntryEvent::capture(enter.clone());
+            assert_eq!(native_capture.program_choices.noted_life_total, Some(17));
+            assert_eq!(native_capture.prepared_choices.as_ref().unwrap().chosen_player, Some(alice));
+            assert_eq!(native_capture.program_choices.power_toughness_choices[0].2[0].instance_id(), identity(&token.abilities[0]));
+            assert_eq!(native_capture.program_choices.as_enters_tagged_objects[0].1[0].card, peer.game.object(source).unwrap().card);
+            let pending = native_capture.pending_program.as_ref().unwrap().0.clone();
+            let programs = [activated.activated_ability.as_ref().unwrap(), &token.abilities[1], &enter.added_abilities[1]].map(|ability| {
+                let ironsmith::ability::AbilityKind::Activated(a) = &ability.kind else { panic!("captured activated fixture"); }; a.effects.clone()
+            });
+            ironsmith::game_loop::resolve_stack_entry(&mut peer.game).unwrap();
+            assert_eq!(peer.game.player(alice).unwrap().life, 26);
+            for program in programs.into_iter().chain(std::iter::once(pending)) { let mut captured = StackEntry::ability(source, alice, program); captured.x_value = Some(3); peer.game.push_to_stack(captured); ironsmith::game_loop::resolve_stack_entry(&mut peer.game).unwrap(); }
+            assert_eq!(peer.game.player(alice).unwrap().life, 38, "all captured programs including private pending entry program remain executable after import");
+        }
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_data_event_capture_matrix() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game);
+        let vote = ironsmith::events::other::PlayerVote { player: alice, option_index: 1, option_name: "Second".into(), object_vote: Some(source) };
+        let provenance = host.game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::BeginningOfEndStep);
+        let bodies: Vec<std::sync::Arc<dyn ironsmith::events::GameEventType>> = vec![
+std::sync::Arc::new(ironsmith::events::damage::DamagePreventedEvent { damage_source: source, target: ironsmith::events::DamageTarget::Player(alice), amount: 3, prevention_source: source, prevention_controller: alice, is_combat: true, target_snapshot: Some(snapshot.clone()), applications: vec![ironsmith::events::damage::PreventedDamage { damage_source: source, target: ironsmith::events::DamageTarget::Player(alice), amount: 2, is_combat: false, target_snapshot: Some(snapshot.clone()) }], prevention_shield: Some(ironsmith::prevention::PreventionShieldId(17)) }),
+std::sync::Arc::new(ironsmith::events::other::KeywordActionEvent { action: ironsmith_core::KeywordActionKind::Scry, player: alice, source: source, amount: 3, votes: Some(vec![vote.clone()]), snapshot: Some(snapshot.clone()), player_tags: std::collections::HashMap::from([("captured player".into(), vec![alice])]), object_tags: std::collections::HashMap::from([("captured card".into(), vec![snapshot.clone()])]), combat_phase: Some(3), unlocked_door_triggers: Some(vec![ironsmith::triggers::TriggerIdentity(19)]), unlocked_door_ability_range: Some(1..4), x_value: Some(3), voter_teams: vec![(alice, 2)] }),
+std::sync::Arc::new(ironsmith::events::other::MarkersChangedEvent { change_type: ironsmith::events::other::MarkerChangeType::Removed, marker: ironsmith::marker::Marker::Counter(ironsmith::CounterType::Named("Event marker".into())), location: ironsmith::marker::MarkerLocation::Player(alice), amount: 3, count_after: Some(3), source: Some(source), source_controller: Some(alice) }),
+std::sync::Arc::new(ironsmith::events::other::PlayersFinishedVotingEvent { source: source, controller: alice, votes: vec![vote.clone()], vote_counts: std::collections::HashMap::from([(1, 1)]), option_names: vec!["First".into(), "Second".into()], player_tags: std::collections::HashMap::from([("captured player".into(), vec![alice])]), voter_teams: vec![(alice, 2)] }),
+std::sync::Arc::new(ironsmith::events::spells::AbilityTriggeredEvent { source: source, source_stable_id: snapshot.stable_id, controller: alice, trigger_identity: ironsmith::triggers::TriggerIdentity(23), source_snapshot: Some(snapshot.clone()), cause_kind: Some(ironsmith::events::EventKind::BeginningOfEndStep), cause_object: Some(source), zone_change_cause: Some(ironsmith::events::spells::AbilityTriggerZoneChangeCause { from: Zone::Graveyard, to: Zone::Battlefield, destination_objects: vec![source] }) })
+        ];
+        let mut entry = StackEntry::ability(source, alice, vec![ironsmith::Effect::gain_life(3)]);
+        let mut outcome = ironsmith::effect::EffectOutcome::count(9);
+        for body in bodies { outcome.events.push(ironsmith::triggers::TriggerEvent::from_boxed_with_provenance(body.clone_box(), provenance)); }
+        entry.effect_outcomes.insert(ironsmith::effect::EffectId(7), outcome); host.game.push_to_stack(entry);
+        let before = host.try_build_full_sync_checkpoint().unwrap();
+        assert_eq!(before.executable_state.as_ref().unwrap().event_bodies.len(), 5);
+        let unchanged = serde_json::to_value(&before).unwrap();
+        for case in 0..10 {
+            let mut forged = before.clone(); let bad = PlayerId::from_index(99);
+            let bodies = &mut forged.executable_state.as_mut().unwrap().event_bodies;
+            match case {
+                0 => { let SyncEventBody::DamagePreventedEvent { applications, .. } = &mut bodies[0] else { panic!("fixture"); }; applications[0].target = SyncTarget::Player { player: 99 }; },
+                1 => { let SyncEventBody::KeywordActionEvent { votes, .. } = &mut bodies[1] else { panic!("fixture"); }; votes.as_mut().unwrap()[0].player = bad; },
+                2 => { let SyncEventBody::MarkersChangedEvent { location, .. } = &mut bodies[2] else { panic!("fixture"); }; *location = SyncTarget::Player { player: 99 }; },
+                3 => { let SyncEventBody::PlayersFinishedVotingEvent { votes, .. } = &mut bodies[3] else { panic!("fixture"); }; votes[0].player = bad; },
+                4 => { let SyncEventBody::AbilityTriggeredEvent { controller, .. } = &mut bodies[4] else { panic!("fixture"); }; *controller = bad; },
+                5 => { let SyncEventBody::DamagePreventedEvent { applications, .. } = &mut bodies[0] else { panic!("fixture"); }; applications[0].target_snapshot.as_mut().unwrap().owner = bad; },
+                6 => { let SyncEventBody::KeywordActionEvent { object_tags, .. } = &mut bodies[1] else { panic!("fixture"); }; object_tags.values_mut().next().unwrap()[0].controller = bad; },
+                7 => { let SyncEventBody::KeywordActionEvent { player_tags, .. } = &mut bodies[1] else { panic!("fixture"); }; player_tags.values_mut().next().unwrap()[0] = bad; },
+                8 => { let SyncEventBody::PlayersFinishedVotingEvent { voter_teams, .. } = &mut bodies[3] else { panic!("fixture"); }; voter_teams[0].0 = bad; },
+                _ => { let SyncEventBody::PlayersFinishedVotingEvent { vote_counts, .. } = &mut bodies[3] else { panic!("fixture"); }; vote_counts.push((1, 4)); },
+            }
+            let forged = serde_json::from_slice(&serde_json::to_vec(&forged).unwrap()).unwrap();
+            let error = host.apply_sync_checkpoint(forged).unwrap_err();
+            assert!(error.contains(if case == 9 { "unique and sorted" } else { "invalid player" }), "capture case {case}: {error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), unchanged,
+                "failed data event import must preserve runtime and exported allocators");
+        }
+        assert!(sync_restore_vote_counts(vec![(2, 1), (1, 1)]).is_err());
+        let missing = serde_json::json!({"player":0,"option_index":1,"option_name":"Second"});
+        assert!(serde_json::from_value::<SyncPlayerVote>(missing).is_err(), "object vote capture must be explicitly present");
+        let expected = serde_json::to_value(&before.executable_state.as_ref().unwrap().event_bodies).unwrap();
+        let mut projected_count = 0;
+        let _ = project_sync_stack_history(&host.game.stack, &mut |h| { projected_count += 1; Ok(h) }).unwrap();
+        assert_eq!(projected_count, 6, "five body snapshots and the stack source");
+        let checkpoint = serde_json::from_slice(&serde_json::to_vec(&before).unwrap()).unwrap();
+        let mut guest = WasmGame::new(); guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2); guest.apply_sync_checkpoint(checkpoint).unwrap();
+        let restored = guest.try_build_full_sync_checkpoint().unwrap();
+        assert_eq!(serde_json::to_value(&restored.executable_state.as_ref().unwrap().event_bodies).unwrap(), expected);
+        let events = &guest.game.stack[0].effect_outcomes[&ironsmith::effect::EffectId(7)].events;
+        let prevented = events[0].downcast::<ironsmith::events::damage::DamagePreventedEvent>().unwrap();
+        assert_eq!(prevented.applications[0].target_snapshot.as_ref().unwrap().card, guest.game.object(source).unwrap().card);
+        let keyword = events[1].downcast::<ironsmith::events::other::KeywordActionEvent>().unwrap();
+        assert_eq!(keyword.object_tags["captured card"][0].card, guest.game.object(source).unwrap().card);
+        assert_eq!(keyword.unlocked_door_triggers, Some(vec![ironsmith::triggers::TriggerIdentity(19)]));
+        assert_eq!(keyword.unlocked_door_ability_range, Some(1..4));
+        assert_eq!(keyword.votes.as_ref().unwrap()[0], vote);
+        ironsmith::game_loop::resolve_stack_entry(&mut host.game).unwrap(); ironsmith::game_loop::resolve_stack_entry(&mut guest.game).unwrap();
+        assert_eq!(host.game.player(alice).unwrap().life, 26); assert_eq!(guest.game.player(alice).unwrap().life, 26);
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_mana_combat_event_captures() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game);
+        let provenance = host.game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::BeginningOfEndStep);
+        let bodies: Vec<std::sync::Arc<dyn ironsmith::events::GameEventType>> = vec![
+std::sync::Arc::new(ironsmith::events::combat::CreatureAttackedEvent { attacker: source, target: ironsmith::triggers::event::AttackEventTarget::Player(alice), total_attackers: 2, declared_attackers: Some(vec![ironsmith::combat_state::AttackerInfo { creature: source, target: ironsmith::combat_state::AttackTarget::Nothing { defending_player: Some(alice), was_planeswalker: true } }].into()) }),
+std::sync::Arc::new(ironsmith::events::combat::CreatureAttackedAndUnblockedEvent { attacker: source, target: ironsmith::triggers::event::AttackEventTarget::Player(alice) }),
+std::sync::Arc::new(ironsmith::events::combat::CreatureBecameBlockedEvent { attacker: source, blocker_count: 3, blockers: vec![source], attack_target: Some(ironsmith::triggers::event::AttackEventTarget::Battle(source)), attacker_snapshot: Some(snapshot.clone()), blocker_snapshots: vec![snapshot.clone()] }),
+std::sync::Arc::new(ironsmith::events::mana::ManaAddedEvent { source: source, controller: alice, player: alice, mana: vec![ironsmith::mana::ManaSymbol::Green, ironsmith::mana::ManaSymbol::Colorless], snapshot: Some(snapshot.clone()), provenance: ironsmith::events::mana::ManaProductionProvenance::TappedSourceForMana }),
+std::sync::Arc::new(ironsmith::events::mana::ManaUnitSpentEvent { player: alice, mana_source: source, payment_source: Some(source), symbol: ironsmith::mana::ManaSymbol::Green, purpose: ironsmith::ability::ManaPaymentPurpose::ActivateManaAbility, source_snapshot: Some(snapshot.clone()) }),
+std::sync::Arc::new(ironsmith::events::other::ObjectBecameUnattachedEvent { object: source, previous_target: ironsmith::object::AttachmentTarget::Player(alice), controller: alice, snapshot: Some(snapshot.clone()) })
+        ];
+        let mut entry = StackEntry::ability(source, alice, vec![ironsmith::Effect::gain_life(3)]);
+        let mut outcome = ironsmith::effect::EffectOutcome::count(9);
+        for body in bodies { outcome.events.push(ironsmith::triggers::TriggerEvent::from_boxed_with_provenance(body.clone_box(), provenance)); }
+        entry.effect_outcomes.insert(ironsmith::effect::EffectId(7), outcome);
+        host.game.push_to_stack(entry);
+        let before = host.try_build_full_sync_checkpoint().unwrap();
+        assert_eq!(before.executable_state.as_ref().unwrap().event_bodies.len(), 6);
+        let unchanged = serde_json::to_value(&before).unwrap();
+        for case in 0..7 {
+            let mut forged = before.clone(); let bad = PlayerId::from_index(99);
+            let bodies = &mut forged.executable_state.as_mut().unwrap().event_bodies;
+            match case {
+                0 => { let SyncEventBody::CreatureAttackedEvent { target, .. } = &mut bodies[0] else { panic!("fixture"); }; *target = SyncAttackEventTarget::Player { player: bad }; },
+                1 => { let SyncEventBody::CreatureAttackedAndUnblockedEvent { target, .. } = &mut bodies[1] else { panic!("fixture"); }; *target = SyncAttackEventTarget::Player { player: bad }; },
+                2 => { let SyncEventBody::CreatureBecameBlockedEvent { attack_target, .. } = &mut bodies[2] else { panic!("fixture"); }; *attack_target = Some(SyncAttackEventTarget::Player { player: bad }); },
+                3 => { let SyncEventBody::ManaAddedEvent { controller, .. } = &mut bodies[3] else { panic!("fixture"); }; *controller = bad; },
+                4 => { let SyncEventBody::ManaUnitSpentEvent { player, .. } = &mut bodies[4] else { panic!("fixture"); }; *player = bad; },
+                5 => { let SyncEventBody::ObjectBecameUnattachedEvent { previous_target, .. } = &mut bodies[5] else { panic!("fixture"); }; *previous_target = ironsmith::object::AttachmentTarget::Player(bad); },
+                _ => { let SyncEventBody::CreatureAttackedEvent { declared_attackers, .. } = &mut bodies[0] else { panic!("fixture"); }; declared_attackers.as_mut().unwrap()[0].target = SyncDeclaredAttackTarget::Nothing { defending_player: Some(bad), was_planeswalker: true }; },
+            }
+            let forged = serde_json::from_slice(&serde_json::to_vec(&forged).unwrap()).unwrap();
+            let error = host.apply_sync_checkpoint(forged).unwrap_err();
+            assert!(error.contains("invalid player"), "capture case {case}: {error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), unchanged,
+                "failed capture import must preserve runtime and exported allocators");
+        }
+        let missing = serde_json::json!({"kind":"Nothing", "was_planeswalker":true});
+        assert!(serde_json::from_value::<SyncDeclaredAttackTarget>(missing).is_err(), "captured defender cannot be silently defaulted");
+        let expected = serde_json::to_value(&before.executable_state.as_ref().unwrap().event_bodies).unwrap();
+        let mut projected_count = 0;
+        let _ = project_sync_stack_history(&host.game.stack, &mut |h| { projected_count += 1; Ok(h) }).unwrap();
+        assert_eq!(projected_count, 6, "five body captures plus the pushed stack source history");
+        let checkpoint = serde_json::from_slice(&serde_json::to_vec(&before).unwrap()).unwrap();
+        let mut guest = WasmGame::new(); guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.apply_sync_checkpoint(checkpoint).unwrap();
+        let restored = guest.try_build_full_sync_checkpoint().unwrap();
+        assert_eq!(serde_json::to_value(&restored.executable_state.as_ref().unwrap().event_bodies).unwrap(), expected);
+        let events = &guest.game.stack[0].effect_outcomes[&ironsmith::effect::EffectId(7)].events;
+        let attack = events[0].downcast::<ironsmith::events::combat::CreatureAttackedEvent>().unwrap();
+        assert_eq!(attack.total_attackers, 2);
+        assert!(matches!(attack.declared_attackers.as_ref().unwrap()[0].target, ironsmith::combat_state::AttackTarget::Nothing { defending_player: Some(p), was_planeswalker: true } if p == alice));
+        let mana = events[3].downcast::<ironsmith::events::mana::ManaAddedEvent>().unwrap();
+        assert_eq!(mana.provenance, ironsmith::events::mana::ManaProductionProvenance::TappedSourceForMana);
+        assert_eq!(mana.snapshot.as_ref().unwrap().card, guest.game.object(source).unwrap().card);
+        let spent = events[4].downcast::<ironsmith::events::mana::ManaUnitSpentEvent>().unwrap();
+        assert_eq!(spent.purpose, ironsmith::ability::ManaPaymentPurpose::ActivateManaAbility);
+        assert_eq!(spent.source_snapshot.as_ref().unwrap().card, guest.game.object(source).unwrap().card);
+        ironsmith::game_loop::resolve_stack_entry(&mut host.game).unwrap(); ironsmith::game_loop::resolve_stack_entry(&mut guest.game).unwrap();
+        assert_eq!(host.game.player(alice).unwrap().life, 26); assert_eq!(guest.game.player(alice).unwrap().life, 26);
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_history_event_body_matrix() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game);
+        let provenance = host.game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::BeginningOfEndStep);
+        let bodies: Vec<std::sync::Arc<dyn ironsmith::events::GameEventType>> = vec![
+std::sync::Arc::new(ironsmith::events::combat::CreatureBlockedEvent { blocker: source, attacker: source, blocker_snapshot: Some(snapshot.clone()), attacker_snapshot: Some(snapshot.clone()) }),
+std::sync::Arc::new(ironsmith::events::other::CardDiscardedEvent { player: alice, card: source, cause: Some(ironsmith::events::cause::EventCause::from_effect(source, alice)), snapshot: Some(snapshot.clone()), batch_cards: vec![source], batch_snapshots: vec![snapshot.clone()], batch_index: Some(2) }),
+std::sync::Arc::new(ironsmith::events::other::CardRevealedEvent { player: alice, card: source, zone: Zone::Graveyard, source: Some(source), snapshot: Some(snapshot.clone()), reveal_context_amount: Some(17) }),
+std::sync::Arc::new(ironsmith::events::other::PermanentPhasedOutEvent { permanent: source, controller: alice, snapshot: Some(snapshot.clone()) }),
+std::sync::Arc::new(ironsmith::events::other::SpellCounteredEvent { spell: source, controller: alice, snapshot: Some(snapshot.clone()) }),
+std::sync::Arc::new(ironsmith::events::permanents::DestroyEvent { permanent: source, source: Some(source), snapshot: Some(snapshot.clone()), final_zone: Some(Zone::Exile) }),
+std::sync::Arc::new(ironsmith::events::permanents::SacrificeEvent { permanent: source, source: Some(source), snapshot: Some(snapshot.clone()), sacrificing_player: Some(alice) }),
+std::sync::Arc::new(ironsmith::events::spells::SpellCastEvent { spell: source, caster: alice, from_zone: Zone::Graveyard, snapshot: Some(snapshot.clone()) }),
+std::sync::Arc::new(ironsmith::events::zones::ObjectLeavesGameEvent { object: source, snapshot: snapshot.clone(), cause: ironsmith::events::cause::EventCause::from_effect(source, alice) }),
+std::sync::Arc::new(ironsmith::events::zones::ZoneChangeEvent { objects: vec![source], result_objects: vec![source], from: Zone::Graveyard, to: Zone::Graveyard, cause: ironsmith::events::cause::EventCause::from_effect(source, alice), snapshot: Some(snapshot.clone()), snapshots: vec![snapshot.clone()], object_tags: std::collections::HashMap::from([("captured card".into(), vec![snapshot.clone()])]) })
+        ];
+        let mut entry = StackEntry::ability(source, alice, vec![ironsmith::Effect::gain_life(3)]);
+        let mut outcome = ironsmith::effect::EffectOutcome::count(9);
+        for body in bodies { outcome.events.push(ironsmith::triggers::TriggerEvent::from_boxed_with_provenance(body.clone_box(), provenance)); }
+        entry.effect_outcomes.insert(ironsmith::effect::EffectId(7), outcome);
+        let mut projected_count = 0;
+        let projected = project_sync_stack_history(&[entry.clone()], &mut |mut history| {
+            projected_count += 1; history.name = "Approved historical view".into(); Ok(history)
+        }).unwrap();
+        assert_eq!(projected_count, 14, "every scalar, vector and tagged history is projected");
+        let event = &projected[0].effect_outcomes[&ironsmith::effect::EffectId(7)].events[9];
+        let zone = event.downcast::<ironsmith::events::zones::ZoneChangeEvent>().unwrap();
+        assert_eq!(zone.snapshot.as_ref().unwrap().name, "Approved historical view");
+        assert_eq!(zone.snapshots[0].name, "Approved historical view");
+        assert_eq!(zone.object_tags["captured card"][0].name, "Approved historical view");
+        host.game.push_to_stack(entry);
+        let before = host.try_build_full_sync_checkpoint().unwrap();
+        let expected = serde_json::to_value(&before.executable_state.as_ref().unwrap().event_bodies).unwrap();
+        assert_eq!(before.executable_state.as_ref().unwrap().event_bodies.len(), 10);
+        let unchanged = serde_json::to_value(&before).unwrap();
+        for index in 0..10 {
+            let mut forged = before.clone();
+            let bad = PlayerId::from_index(99);
+            match &mut forged.executable_state.as_mut().unwrap().event_bodies[index] {
+                SyncEventBody::CreatureBlockedEvent { attacker_snapshot, .. } => attacker_snapshot.as_mut().unwrap().owner = bad,
+                SyncEventBody::CardDiscardedEvent { batch_snapshots, .. } => batch_snapshots[0].controller = bad,
+                SyncEventBody::CardRevealedEvent { snapshot, .. }
+                | SyncEventBody::PermanentPhasedOutEvent { snapshot, .. }
+                | SyncEventBody::SpellCounteredEvent { snapshot, .. }
+                | SyncEventBody::DestroyEvent { snapshot, .. }
+                | SyncEventBody::SacrificeEvent { snapshot, .. }
+                | SyncEventBody::SpellCastEvent { snapshot, .. } => snapshot.as_mut().unwrap().controller = bad,
+                SyncEventBody::ObjectLeavesGameEvent { snapshot, .. } => snapshot.owner = bad,
+                SyncEventBody::ZoneChangeEvent { object_tags, .. } => object_tags.values_mut().next().unwrap()[0].controller = bad,
+                _ => panic!("unexpected history matrix body"),
+            }
+            let forged = serde_json::from_slice(&serde_json::to_vec(&forged).unwrap()).unwrap();
+            let error = host.apply_sync_checkpoint(forged).unwrap_err();
+            assert!(error.contains("invalid player"), "history body {index}: {error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), unchanged,
+                "rejected captured history actor must preserve the world and allocators");
+        }
+        let checkpoint = serde_json::from_slice(&serde_json::to_vec(&before).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.apply_sync_checkpoint(checkpoint).unwrap();
+        let restored = guest.try_build_full_sync_checkpoint().unwrap();
+        assert_eq!(serde_json::to_value(&restored.executable_state.as_ref().unwrap().event_bodies).unwrap(), expected);
+        let events = &guest.game.stack[0].effect_outcomes[&ironsmith::effect::EffectId(7)].events;
+        let zone = events[9].downcast::<ironsmith::events::zones::ZoneChangeEvent>().unwrap();
+        let peer_face = guest.game.object(source).unwrap().card;
+        assert_eq!(zone.snapshot.as_ref().unwrap().card, peer_face);
+        assert_eq!(zone.snapshots[0].card, peer_face);
+        assert_eq!(zone.object_tags["captured card"][0].card, peer_face);
+        assert_eq!(events[0].downcast::<ironsmith::events::combat::CreatureBlockedEvent>().unwrap().blocker_snapshot.as_ref().unwrap().card, peer_face);
+        ironsmith::game_loop::resolve_stack_entry(&mut host.game).unwrap();
+        ironsmith::game_loop::resolve_stack_entry(&mut guest.game).unwrap();
+        assert_eq!(host.game.player(alice).unwrap().life, 26);
+        assert_eq!(guest.game.player(alice).unwrap().life, 26);
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_invalid_event_history_actor() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let mut snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game);
+        snapshot.controller = PlayerId::from_index(99);
+        let provenance = host.game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::BeginningOfEndStep);
+        let mut entry = StackEntry::ability(source, alice, vec![ironsmith::Effect::gain_life(3)]);
+        entry.triggering_event = Some(ironsmith::triggers::TriggerEvent::new_with_provenance(
+            ironsmith::events::zones::ZoneChangeEvent { objects: vec![source], result_objects: vec![source], from: Zone::Battlefield, to: Zone::Graveyard,
+                cause: ironsmith::events::cause::EventCause::from_effect(source, alice), snapshot: None, snapshots: vec![],
+                object_tags: std::collections::HashMap::from([("captured card".into(), vec![snapshot])]) }, provenance));
+        host.game.push_to_stack(entry);
+        assert!(host.try_build_full_sync_checkpoint().unwrap_err().contains("invalid player"));
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_scalar_event_body_matrix() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let provenance = host.game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::BeginningOfEndStep);
+        let bodies: Vec<std::sync::Arc<dyn ironsmith::events::GameEventType>> = vec![
+                    std::sync::Arc::new(ironsmith::events::cards::DiscardEvent { card: source, player: alice, destination: Zone::Exile, cause: ironsmith::events::cause::EventCause::from_effect(source, alice), requires_type_verification: true, madness_applied: true }),
+                    std::sync::Arc::new(ironsmith::events::cards::DrawEvent { player: alice, count: 3, is_first_this_turn: true, first_of_instruction: true, first_of_draw_step: true }),
+                    std::sync::Arc::new(ironsmith::events::counters::MoveCountersEvent { from: source, to: source, counter_type: Some(ironsmith::CounterType::Named("Checkpoint event counter".into())), count: Some(3) }),
+                    std::sync::Arc::new(ironsmith::events::counters::PutCountersEvent { target: ironsmith::game_state::Target::Player(alice), counter_type: ironsmith::CounterType::Named("Checkpoint event counter".into()), count: 3, maximum_count: Some(3), cause: ironsmith::events::cause::EventCause::from_effect(source, alice) }),
+                    std::sync::Arc::new(ironsmith::events::counters::RemoveCountersEvent { target: source, counter_type: ironsmith::CounterType::Named("Checkpoint event counter".into()), count: 3 }),
+                    std::sync::Arc::new(ironsmith::events::other::BecameMonstrousEvent { creature: source, controller: alice, n: 3 }),
+                    std::sync::Arc::new(ironsmith::events::other::CardsDrawnEvent { player: alice, cards: vec![source], is_first_this_turn: true, is_during_players_draw_step: true, cards_previously_drawn_this_draw_step: 3 }),
+                    std::sync::Arc::new(ironsmith::events::other::ChapterAbilityResolvedEvent { saga: source, controller: alice, final_chapter: true }),
+                    std::sync::Arc::new(ironsmith::events::other::CoinFlippedEvent { player: alice, source: source, face: ironsmith_core::CoinFace::Heads, call: Some(ironsmith_core::CoinFace::Tails), winner: Some(alice), loser: Some(alice) }),
+                    std::sync::Arc::new(ironsmith::events::other::ControlChangedEvent { permanent: source, previous_controller: alice, new_controller: alice }),
+                    std::sync::Arc::new(ironsmith::events::other::ConvertedEvent { permanent: source }),
+                    std::sync::Arc::new(ironsmith::events::other::CounterPlacedEvent { permanent: source, counter_type: ironsmith::CounterType::Named("Checkpoint event counter".into()), amount: 3, previous_count: Some(3) }),
+                    std::sync::Arc::new(ironsmith::events::other::DayNightChangedEvent { is_daytime: true }),
+                    std::sync::Arc::new(ironsmith::events::other::DieRolledEvent { player: alice, source: source, natural_result: 3, result: 3, sides: 3, is_planar: true, is_attraction_visit: true }),
+                    std::sync::Arc::new(ironsmith::events::other::GiftGivenEvent { player: alice, recipient: alice, source: source }),
+                    std::sync::Arc::new(ironsmith::events::other::LandPlayedEvent { land: source, player: alice, from_zone: Zone::Exile }),
+                    std::sync::Arc::new(ironsmith::events::other::MutatedEvent { permanent: source, controller: alice }),
+                    std::sync::Arc::new(ironsmith::events::other::PermanentTappedEvent { permanent: source }),
+                    std::sync::Arc::new(ironsmith::events::other::PermanentUntappedEvent { permanent: source }),
+                    std::sync::Arc::new(ironsmith::events::other::PlayerLosesGameEvent { player: alice }),
+                    std::sync::Arc::new(ironsmith::events::other::SearchLibraryEvent { player: alice, library_owner: Some(alice) }),
+                    std::sync::Arc::new(ironsmith::events::other::ShuffleLibraryEvent { player: alice, cause: ironsmith::events::cause::EventCause::from_effect(source, alice) }),
+                    std::sync::Arc::new(ironsmith::events::other::StateTriggerEvent { source: source }),
+                    std::sync::Arc::new(ironsmith::events::other::TransformedEvent { permanent: source }),
+                    std::sync::Arc::new(ironsmith::events::other::TurnedFaceUpEvent { permanent: source, player: alice }),
+                    std::sync::Arc::new(ironsmith::events::permanents::TapEvent { permanent: source }),
+                    std::sync::Arc::new(ironsmith::events::permanents::UntapEvent { permanent: source }),
+                    std::sync::Arc::new(ironsmith::events::phase::BeginningOfCleanupStepEvent { player: alice }),
+                    std::sync::Arc::new(ironsmith::events::phase::BeginningOfDrawStepEvent { player: alice }),
+                    std::sync::Arc::new(ironsmith::events::phase::BeginningOfPrecombatMainPhaseEvent { player: alice }),
+                    std::sync::Arc::new(ironsmith::events::phase::BeginningOfPostcombatMainPhaseEvent { player: alice, main_phase_ordinal: Some(3) }),
+                    std::sync::Arc::new(ironsmith::events::phase::EndOfCombatEvent),
+                    std::sync::Arc::new(ironsmith::events::phase::PermanentsUntapStepEvent { player: alice }),
+                    std::sync::Arc::new(ironsmith::events::spells::BecomesTargetedEvent { target: ironsmith::game_state::Target::Player(alice), source: source, source_controller: alice, by_ability: true, stack_ability: Some(source) }),
+                    std::sync::Arc::new(ironsmith::events::spells::SpellCopiedEvent { spell: source, copier: alice }),
+        ];
+        let mut entry = StackEntry::ability(source, alice, vec![ironsmith::Effect::gain_life(3)]);
+        let mut outcome = ironsmith::effect::EffectOutcome::count(9);
+        for body in bodies { outcome.events.push(ironsmith::triggers::TriggerEvent::from_boxed_with_provenance(body.clone_box(), provenance)); }
+        entry.effect_outcomes.insert(ironsmith::effect::EffectId(7), outcome);
+        host.game.push_to_stack(entry);
+        let before = host.try_build_full_sync_checkpoint().unwrap();
+        assert_eq!(before.executable_state.as_ref().unwrap().event_bodies.len(), 35);
+        let expected = serde_json::to_value(&before.executable_state.as_ref().unwrap().event_bodies).unwrap();
+        let checkpoint = serde_json::from_slice(&serde_json::to_vec(&before).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.apply_sync_checkpoint(checkpoint).unwrap();
+        let restored = guest.try_build_full_sync_checkpoint().unwrap();
+        assert_eq!(serde_json::to_value(&restored.executable_state.as_ref().unwrap().event_bodies).unwrap(), expected,
+            "all scalar body fields, including draw flags, counter limits, causes, search ownership and random outcomes must round-trip");
+        ironsmith::game_loop::resolve_stack_entry(&mut host.game).unwrap();
+        ironsmith::game_loop::resolve_stack_entry(&mut guest.game).unwrap();
+        assert_eq!(host.game.player(alice).unwrap().life, 26);
+        assert_eq!(guest.game.player(alice).unwrap().life, 26);
+    }
+    #[test]
+    fn public_full_executable_checkpoint_restores_without_receiver_catalog_definition() {
+        let _guard = crate::test_id_counter_guard();
+        let (host, source, alice) = full_fixture();
+        let checkpoint = host.build_sync_checkpoint();
+        assert!(checkpoint.executable_state.is_some());
+        let wire = serde_json::to_string(&checkpoint).unwrap();
+        let checkpoint: SyncCheckpoint = serde_json::from_str(&wire).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        assert!(guest.registry.get("Full checkpoint typed owner").is_none());
+        guest.apply_sync_checkpoint(checkpoint).unwrap();
+        let object = guest.game.object(source).unwrap();
+        let definition = guest.game.retained_card_definition(object.card.unwrap()).unwrap();
+        let program = definition.spell_effect.as_ref().unwrap().all_effects_owned();
+        let mut ctx = ironsmith::effects::EffectContext::new_default(source, alice);
+        let out = ironsmith::effects::execute_effect(&mut guest.game, &program[0], &mut ctx).unwrap();
+        assert_eq!(out.as_count(), Some(4));
+        assert_eq!(guest.game.player(alice).unwrap().life, 24);
+        assert_eq!(serde_json::to_value(&guest.game.provenance_graph().retained_state().nodes[..2]).unwrap(), serde_json::to_value(&host.game.provenance_graph().retained_state().nodes[..2]).unwrap());
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_registered_mana_grant_and_removal() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let effect_id = host.game.effect_store.continuous_effects.add_effect(
+            ironsmith::continuous::ContinuousEffect::from_resolution(
+                source, alice, vec![source],
+                ironsmith::continuous::Modification::AddAbilityGeneric(ironsmith::Ability::mana(
+                    ironsmith::TotalCost::free(), vec![ironsmith::mana::ManaSymbol::Green]))));
+        host.game.refresh_continuous_state().unwrap();
+        assert!(host.game.current_abilities(source).unwrap().iter().any(|ability| ability.is_mana_ability()));
+        let original = host.game.effect_store.continuous_effects.registered_state();
+        // Exercise the actual owning exporter, JSON wire, fresh catalog and
+        // importer: a manager-only codec test cannot catch publication gaps.
+        let checkpoint = host.try_build_full_sync_checkpoint().expect("executable grant exports");
+        let checkpoint: SyncCheckpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        assert!(guest.registry.get("Full checkpoint typed owner").is_none());
+        guest.apply_sync_checkpoint(checkpoint).expect("executable grant imports");
+        for peer in [&mut host, &mut guest] {
+            let ability = peer.game.current_abilities(source).unwrap().into_iter()
+                .find(|ability| ability.is_mana_ability()).expect("registered mana grant survives");
+            let ironsmith::ability::AbilityKind::Activated(activated) = ability.kind else { panic!("mana grant is activated"); };
+            let mut context = ironsmith::effects::EffectContext::new_default(source, alice);
+            for effect in activated.effects.all_effects_owned() {
+                ironsmith::effects::execute_effect(&mut peer.game, &effect, &mut context).unwrap();
+            }
+            peer.game.effect_store.continuous_effects.remove_effect(effect_id);
+            peer.game.refresh_continuous_state().unwrap();
+            assert!(!peer.game.current_abilities(source).unwrap().iter().any(|ability| ability.is_mana_ability()),
+                "removing the granting effect removes its imported executable ability");
+        }
+        assert_eq!(host.game.player(alice).unwrap().mana_pool, guest.game.player(alice).unwrap().mana_pool,
+            "restored ability executes the same mana production as the source");
+        assert_eq!(original.effects.len(), 1);
+    }
+    #[test]
+    fn public_perspective_checkpoint_preserves_registered_mana_grant() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        host.game.effect_store.continuous_effects.add_effect(
+            ironsmith::continuous::ContinuousEffect::from_resolution(
+                source, alice, vec![source],
+                ironsmith::continuous::Modification::AddAbilityGeneric(ironsmith::Ability::mana(
+                    ironsmith::TotalCost::free(), vec![ironsmith::mana::ManaSymbol::Green]))));
+        host.game.refresh_continuous_state().unwrap();
+        assert!(host.game.current_abilities(source).unwrap().iter().any(|ability| ability.is_mana_ability()));
+        let checkpoint = host.try_build_redacted_executable_checkpoint(alice).expect("public grant exports");
+        let checkpoint: SyncCheckpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        // Metadata reconstruction has the printed source, but the granted
+        // program exists only in the registered runtime effect.
+        guest.registry.register(host.registry.get("Full checkpoint typed owner").unwrap().clone());
+        guest.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0).expect("public grant imports");
+        assert!(guest.game.current_abilities(source).unwrap().iter().any(|ability| ability.is_mana_ability()),
+            "perspective import cannot silently lose the registered executable grant");
+        for peer in [&mut host, &mut guest] {
+            let index = peer.game.current_abilities(source).unwrap().iter().position(|ability| ability.is_mana_ability()).unwrap();
+            let before = peer.game.player(alice).unwrap().mana_pool.green;
+            let mut dm = ironsmith::decision::AutoPassDecisionMaker;
+            ironsmith::special_actions::perform_activate_mana_ability(&mut peer.game, alice, source, index, &mut dm).unwrap();
+            assert_eq!(peer.game.player(alice).unwrap().mana_pool.green, before + 1,
+                "retained mana output and source-tap cost execute through the real activation path");
+            assert!(peer.game.is_tapped(source));
+        }
+
+    }
+    fn perspective_private_fixture(compiled: bool) -> (WasmGame, ObjectId, ObjectId, PlayerId) {
+        let (mut host, source, alice) = full_fixture();
+        let hidden = add_perspective_private_card(&mut host, compiled);
+        (host, source, hidden, alice)
+    }
+    fn perspective_origin_fixture(compiled: bool) -> (WasmGame, ObjectId, ObjectId, PlayerId) {
+        let (mut host, _, alice) = full_fixture();
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Public origin owner")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(ironsmith::Ability::mana(ironsmith::TotalCost::free(), vec![ironsmith::mana::ManaSymbol::Green]))
+            .build();
+        host.registry.register(definition.clone());
+        let source = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let hidden = add_perspective_private_card(&mut host, compiled);
+        (host, source, hidden, alice)
+    }
+    fn add_perspective_private_card(host: &mut WasmGame, compiled: bool) -> ObjectId {
+        let bob = PlayerId::from_index(1);
+        let private = if compiled {
+            ironsmith_registry_test::compile_to_runtime_definition("Private perspective program marker",
+                "Type: Artifact\nPay 1 life: You gain 7777 life.", false).unwrap()
+        } else {
+            ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Private perspective program marker")
+                .card_types(vec![CardType::Artifact]).with_ability(ironsmith::Ability::activated(
+                    ironsmith::TotalCost::free(), vec![ironsmith::Effect::gain_life(7777)])).build()
+        };
+        host.registry.register(private.clone());
+        let hidden = host.game.create_object_from_definition(&private, bob, Zone::Library);
+        host.game.set_hidden_card_info(hidden, HiddenCardInfo { owner: bob, zone: Zone::Library, slot: 0,
+            commitment: "private-perspective-commitment".into(), origin_slot: None, origin_commitment: None,
+            public_slot: None, public_commitment: None });
+        hidden
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_private_continuous_filter_capture() {
+        let _guard = crate::test_id_counter_guard();
+        for compiled in [false, true] {
+            let (mut host, source, hidden, alice) = perspective_private_fixture(compiled);
+            let mut filter = ironsmith::target::ObjectFilter::default();
+            filter.name = Some(host.game.object(hidden).unwrap().name.to_string());
+            let mut effect = ironsmith::continuous::ContinuousEffect::from_resolution(source, alice, vec![],
+                ironsmith::continuous::Modification::ModifyPowerToughness { power: 1, toughness: 1 });
+            effect.applies_to = ironsmith::continuous::EffectTarget::Filter(filter);
+            host.game.effect_store.continuous_effects.add_effect(effect);
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            let result = host.try_build_redacted_executable_checkpoint(alice);
+            if let Ok(checkpoint) = &result {
+                assert!(!serde_json::to_string(checkpoint).unwrap().contains("Private perspective program marker"),
+                    "scalar filter captured from an opaque library root must not publish its private name");
+            }
+            assert!(result.is_err(), "unapproved captured filter cannot be silently dropped or published");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_preserves_disclosed_origin_face() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, _, alice) = perspective_origin_fixture(false);
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Public origin recipient")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(2, 3)).build();
+        host.registry.register(definition.clone());
+        let recipient = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let mut effect = ironsmith::continuous::ContinuousEffect::from_resolution(source, alice, vec![recipient],
+            ironsmith::continuous::Modification::ModifyPowerToughness { power: 1, toughness: 1 });
+        effect.originating_ability = Some(Box::new(ironsmith::continuous::ContinuousAbilityOrigin {
+            host: source, ability: ironsmith::continuous::AbilityOrigin::Printed(0),
+            printed_face: host.game.object(source).unwrap().card, branch: 0,
+        }));
+        host.game.effect_store.continuous_effects.add_effect(effect);
+        host.game.refresh_continuous_state().unwrap();
+        let checkpoint = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+        let checkpoint: SyncCheckpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.registry.register(host.registry.get("Full checkpoint typed owner").unwrap().clone());
+        guest.registry.register(host.registry.get("Public origin owner").unwrap().clone());
+        guest.registry.register(definition);
+        guest.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0).unwrap();
+        for peer in [&host, &guest] {
+            let chars = peer.game.calculated_characteristics(recipient).unwrap();
+            assert_eq!((chars.power, chars.toughness), (Some(3), Some(4)));
+            let state = peer.game.effect_store.continuous_effects.registered_state();
+            let origin = state.effects[0].originating_ability.as_ref().unwrap();
+            assert_eq!(origin.printed_face, peer.game.object(source).unwrap().card,
+                "origin binds to recipient allocation of the disclosed printed face");
+            assert_eq!(origin.host, source);
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_forged_private_origin_face_atomically() {
+        let _guard = crate::test_id_counter_guard();
+        for (compiled, nested) in [(false, false), (false, true), (true, false), (true, true)] {
+            let (mut host, source, hidden, alice) = perspective_origin_fixture(compiled);
+            let mut effect = ironsmith::continuous::ContinuousEffect::from_resolution(source, alice, vec![source],
+                ironsmith::continuous::Modification::ModifyPowerToughness { power: 1, toughness: 1 });
+            effect.originating_ability = Some(Box::new(ironsmith::continuous::ContinuousAbilityOrigin {
+                host: source, ability: ironsmith::continuous::AbilityOrigin::Printed(0),
+                printed_face: host.game.object(source).unwrap().card, branch: 0,
+            }));
+            host.game.effect_store.continuous_effects.add_effect(effect);
+            let mut checkpoint = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+            let full = host.try_build_full_sync_checkpoint().unwrap().executable_state.unwrap();
+            let private_face = full.objects.iter().find(|object| object.id == hidden).unwrap().card.unwrap();
+            let state = checkpoint.executable_state.as_mut().unwrap();
+            state.graph_card_count = full.graph_card_count;
+            state.definitions = full.definitions;
+            state.occurrences = full.occurrences;
+            let origin = state.continuous.effects[0].originating_ability.as_mut().unwrap();
+            if nested {
+                origin.ability = ironsmith::continuous::AbilityOrigin::Level {
+                    printed_face: Some(private_face), parent: Box::new(ironsmith::continuous::AbilityOrigin::Printed(0)),
+                    tier: 0, slot: 0,
+                };
+            } else { origin.printed_face = Some(private_face); }
+            let checkpoint: SyncCheckpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+            assert!(serde_json::to_string(&checkpoint).unwrap().contains("7777"));
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            let error = host.with_runtime_transaction(|candidate|
+                candidate.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0)).unwrap_err();
+            assert!(error.contains("continuous origin face"), "{error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_preserves_registered_origin_metadata() {
+        let _guard = crate::test_id_counter_guard();
+        for (temporary, borrowed) in [(false, false), (false, true), (true, false), (true, true)] {
+            let (mut host, source, _, alice) = perspective_private_fixture(false);
+            let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Public registration recipient")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(ironsmith::card::PowerToughness::fixed(2, 3)).build();
+            host.registry.register(definition.clone());
+            let recipient = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let registration_source = if borrowed {
+                let provider = host.registry.get("Full checkpoint typed owner").unwrap().clone();
+                host.game.create_object_from_definition(&provider, alice, Zone::Battlefield)
+            } else { source };
+            let origin = if temporary {
+                host.game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+                    registration_source, ironsmith::static_abilities::StaticAbilityId::Flying, None);
+                ironsmith::continuous::AbilityOrigin::Temporary(host.game.object(registration_source).unwrap()
+                    .temporary_static_ability_grants.origin(0).unwrap().clone())
+            } else {
+                host.game.add_counters(registration_source, ironsmith::CounterType::Flying, 1).unwrap();
+                ironsmith::continuous::AbilityOrigin::Counter {
+                    occurrence: host.game.object(registration_source).unwrap().counters.ability_state().origins[0].clone(), slot: 0,
+                }
+            };
+            let mut effect = ironsmith::continuous::ContinuousEffect::from_resolution(source, alice, vec![recipient],
+                ironsmith::continuous::Modification::ModifyPowerToughness { power: 1, toughness: 1 });
+            let origin = if borrowed { ironsmith::continuous::AbilityOrigin::Borrowed {
+                effect: (&effect).into(), source: registration_source, origin: Box::new(origin),
+            } } else { origin };
+            effect.originating_ability = Some(Box::new(ironsmith::continuous::ContinuousAbilityOrigin {
+                host: source, ability: origin, printed_face: None, branch: 0,
+            }));
+            host.game.effect_store.continuous_effects.add_effect(effect);
+            host.game.refresh_continuous_state().unwrap();
+            let checkpoint = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+            let checkpoint: SyncCheckpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+            let mut guest = WasmGame::new();
+            guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+            guest.registry.register(host.registry.get("Full checkpoint typed owner").unwrap().clone());
+            guest.registry.register(definition);
+            guest.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0).unwrap();
+            for peer in [&host, &guest] {
+                let chars = peer.game.calculated_characteristics(recipient).unwrap();
+                assert_eq!((chars.power, chars.toughness), (Some(3), Some(4)));
+                let state = peer.game.effect_store.continuous_effects.registered_state();
+                let value = &state.effects[0].originating_ability.as_ref().unwrap().ability;
+                let value = if borrowed {
+                    let ironsmith::continuous::AbilityOrigin::Borrowed { source: provider, origin, .. } = value else { panic!("borrowed fixture"); };
+                    assert_eq!(*provider, registration_source);
+                    origin.as_ref()
+                } else { value };
+                let object = peer.game.object(registration_source).unwrap();
+                match value {
+                    ironsmith::continuous::AbilityOrigin::Counter { occurrence, slot } =>
+                        assert!(object.counters.contains_ability_origin(occurrence, *slot)),
+                    ironsmith::continuous::AbilityOrigin::Temporary(registration) =>
+                        assert!(object.temporary_static_ability_grants.contains_origin(registration)),
+                    _ => panic!("fixture origin"),
+                }
+            }
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_forged_origin_metadata_atomically() {
+        let _guard = crate::test_id_counter_guard();
+        for case in 0..5 {
+            let (mut host, source, hidden, alice) = perspective_private_fixture(false);
+            host.game.add_counters(source, ironsmith::CounterType::Flying, 1).unwrap();
+            let registration = host.game.object(source).unwrap().counters.ability_state().origins[0].clone();
+            let mut effect = ironsmith::continuous::ContinuousEffect::from_resolution(source, alice, vec![source],
+                ironsmith::continuous::Modification::ModifyPower(1));
+            effect.originating_ability = Some(Box::new(ironsmith::continuous::ContinuousAbilityOrigin {
+                host: source, ability: ironsmith::continuous::AbilityOrigin::Counter { occurrence: registration, slot: 0 },
+                printed_face: None, branch: 0,
+            }));
+            host.game.effect_store.continuous_effects.add_effect(effect);
+            let mut checkpoint = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+            let origin = checkpoint.executable_state.as_mut().unwrap().continuous.effects[0].originating_ability.as_mut().unwrap();
+            match case {
+                0 => {
+                    let ironsmith::continuous::AbilityOrigin::Counter { occurrence, .. } = &mut origin.ability else { panic!("fixture"); };
+                    occurrence.counter_type = ironsmith::CounterType::Named("Private perspective program marker".into());
+                },
+                1 => {
+                    let ironsmith::continuous::AbilityOrigin::Counter { occurrence, .. } = &mut origin.ability else { panic!("fixture"); };
+                    occurrence.serial = vec![u32::MAX];
+                },
+                2 => {
+                    let ironsmith::continuous::AbilityOrigin::Counter { slot, .. } = &mut origin.ability else { panic!("fixture"); };
+                    *slot = usize::MAX;
+                },
+                3 => origin.ability = ironsmith::continuous::AbilityOrigin::Printed(usize::MAX),
+                _ => origin.host = hidden,
+            }
+            let checkpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            let error = host.with_runtime_transaction(|candidate|
+                candidate.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0)).unwrap_err();
+            assert!(error.contains(if case == 4 { "disclosed identity" } else { "origin requires association approval" }), "{error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_unapproved_origin_metadata() {
+        let _guard = crate::test_id_counter_guard();
+        let mut accepted = vec![];
+        for compiled in [false, true] {
+            for case in 0..4 {
+                let (mut host, source, hidden, alice) = perspective_private_fixture(compiled);
+                let mut effect = ironsmith::continuous::ContinuousEffect::from_resolution(source, alice, vec![source],
+                    ironsmith::continuous::Modification::ModifyPowerToughness { power: 1, toughness: 1 });
+                let leaf = match case {
+                    0 => ironsmith::continuous::AbilityOrigin::Counter {
+                        occurrence: ironsmith::object::CounterAbilityOrigin {
+                            counter_type: ironsmith::CounterType::Named("Private perspective program marker".into()), serial: vec![1],
+                        }, slot: 0,
+                    },
+                    1 => {
+                        let parent = ironsmith::continuous::ContinuousEffect::from_resolution(hidden, alice, vec![],
+                            ironsmith::continuous::Modification::ModifyPower(1));
+                        ironsmith::continuous::AbilityOrigin::Effect { effect: (&parent).into(), slot: 0 }
+                    },
+                    2 => ironsmith::continuous::AbilityOrigin::Borrowed {
+                        effect: (&effect).into(), source: hidden, origin: Box::new(ironsmith::continuous::AbilityOrigin::Printed(0)),
+                    },
+                    _ => {
+                        let mut grants = ironsmith::object::TemporaryStaticAbilityGrants::new(hidden);
+                        grants.push(ironsmith::object::TemporaryStaticAbilityGrant {
+                            ability: ironsmith::static_abilities::StaticAbilityId::Flying,
+                            ability_payload: None, expires_end_of_turn: 4,
+                        });
+                        ironsmith::continuous::AbilityOrigin::Temporary(grants.origin(0).unwrap().clone())
+                    },
+                };
+                effect.originating_ability = Some(Box::new(ironsmith::continuous::ContinuousAbilityOrigin {
+                    host: source, ability: leaf, printed_face: host.game.object(source).unwrap().card, branch: 0,
+                }));
+                host.game.effect_store.continuous_effects.add_effect(effect);
+                let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+                if let Ok(checkpoint) = host.try_build_redacted_executable_checkpoint(alice) {
+                    accepted.push((compiled, case, serde_json::to_string(&checkpoint).unwrap().contains("Private perspective program marker")));
+                }
+                assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+            }
+        }
+        assert!(accepted.is_empty(), "unapproved origin metadata admitted (compiled, case, name leaked): {accepted:?}");
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_private_origin_face_capture() {
+        let _guard = crate::test_id_counter_guard();
+        let mut accepted = vec![];
+        for (compiled, nested) in [(false, 0), (false, 1), (false, 2), (true, 0), (true, 1), (true, 2)] {
+            let (mut host, source, hidden, alice) = perspective_origin_fixture(compiled);
+            let mut effect = ironsmith::continuous::ContinuousEffect::from_resolution(source, alice, vec![source],
+                ironsmith::continuous::Modification::ModifyPowerToughness { power: 1, toughness: 1 });
+            effect.originating_ability = Some(Box::new(ironsmith::continuous::ContinuousAbilityOrigin {
+                host: source, ability: ironsmith::continuous::AbilityOrigin::Printed(0),
+                printed_face: host.game.object(hidden).unwrap().card, branch: 0,
+            }));
+            if nested == 1 {
+                effect.originating_ability = Some(Box::new(ironsmith::continuous::ContinuousAbilityOrigin {
+                    host: source, ability: ironsmith::continuous::AbilityOrigin::Level {
+                        printed_face: host.game.object(hidden).unwrap().card,
+                        parent: Box::new(ironsmith::continuous::AbilityOrigin::Printed(0)), tier: 0, slot: 0,
+                    }, printed_face: host.game.object(source).unwrap().card, branch: 0,
+                }));
+            } else if nested == 2 {
+                let parent: ironsmith::continuous::AbilityEffectOrigin = (&effect).into();
+                effect.originating_ability = Some(Box::new(ironsmith::continuous::ContinuousAbilityOrigin {
+                    host: source, ability: ironsmith::continuous::AbilityOrigin::Effect { effect: parent, slot: 0 },
+                    printed_face: host.game.object(source).unwrap().card, branch: 0,
+                }));
+            }
+            host.game.effect_store.continuous_effects.add_effect(effect);
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            if let Ok(checkpoint) = host.try_build_redacted_executable_checkpoint(alice) {
+                let wire = serde_json::to_string(&checkpoint).unwrap();
+                accepted.push((compiled, nested, wire.contains("Private perspective program marker"), wire.contains("7777")));
+            }
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+        }
+        assert!(accepted.is_empty(), "origin admitted hidden printed face (compiled, name leaked, programme leaked): {accepted:?}");
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_private_continuous_metadata_captures() {
+        let _guard = crate::test_id_counter_guard();
+        let mut accepted = vec![];
+        for compiled in [false, true] {
+            for case in 0..4 {
+                let (mut host, source, hidden, alice) = perspective_private_fixture(compiled);
+                let marker = host.game.object(hidden).unwrap().name.to_string();
+                let mut captured = ironsmith::target::ObjectFilter::default();
+                captured.name = Some(marker.clone());
+                let mut effect = ironsmith::continuous::ContinuousEffect::from_resolution(source, alice, vec![source],
+                    ironsmith::continuous::Modification::ModifyPowerToughness { power: 1, toughness: 1 });
+                match case {
+                    0 => effect.condition = Some(ironsmith::ConditionExpr::Not(Box::new(
+                        ironsmith::ConditionExpr::YouControl(captured)))),
+                    1 => effect.modification = ironsmith::continuous::Modification::SetName(marker.clone()),
+                    2 => effect.modification = ironsmith::continuous::Modification::SetPower {
+                        value: ironsmith::effect::Value::Add(Box::new(ironsmith::effect::Value::Fixed(1)),
+                            Box::new(ironsmith::effect::Value::Count(captured))),
+                        sublayer: ironsmith::continuous::PtSublayer::Setting,
+                    },
+                    _ => effect.duration = ironsmith::effect::Until::ForAsLongAs(
+                        ironsmith_core::effect::ContinuousDurationPredicate::ObjectHasCounter {
+                            object: ironsmith_core::effect::ContinuousDurationObject::Source,
+                            counter_type: ironsmith::CounterType::Named(marker.into()), minimum: 1,
+                        }),
+                }
+                host.game.effect_store.continuous_effects.add_effect(effect);
+                let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+                if host.try_build_redacted_executable_checkpoint(alice).is_ok() { accepted.push((compiled, case)); }
+                assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+            }
+        }
+        assert!(accepted.is_empty(), "private metadata captures were admitted: {accepted:?}");
+    }
+    #[test]
+    fn public_perspective_checkpoint_preserves_continuous_condition_value_and_duration() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, _, alice) = perspective_private_fixture(false);
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Public metadata recipient")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(2, 3)).build();
+        host.registry.register(definition.clone());
+        let recipient = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let mut filter = ironsmith::target::ObjectFilter::creature();
+        filter.controller = Some(ironsmith::target::PlayerFilter::You);
+        let mut effect = ironsmith::continuous::ContinuousEffect::anthem(source, alice, filter.clone(), 0, 0);
+        effect.modification = ironsmith::continuous::Modification::ModifyPowerToughnessValue {
+            power: ironsmith::effect::Value::Count(filter.clone()), toughness: ironsmith::effect::Value::Fixed(1),
+        };
+        effect.condition = Some(ironsmith::ConditionExpr::And(Box::new(ironsmith::ConditionExpr::YouControl(filter)),
+            Box::new(ironsmith::ConditionExpr::Not(Box::new(ironsmith::ConditionExpr::SourceIsEquipped)))));
+        effect.duration = ironsmith::effect::Until::ForAsLongAs(
+            ironsmith_core::effect::ContinuousDurationPredicate::ObjectOnBattlefield(
+                ironsmith_core::effect::ContinuousDurationObject::Specific(source)));
+        host.game.effect_store.continuous_effects.add_effect(effect);
+        host.game.refresh_continuous_state().unwrap();
+        let checkpoint = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+        let checkpoint: SyncCheckpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.registry.register(host.registry.get("Full checkpoint typed owner").unwrap().clone());
+        guest.registry.register(definition.clone());
+        guest.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0).unwrap();
+        for peer in [&mut host, &mut guest] {
+            let stats = |state: &GameState| {
+                let value = state.calculated_characteristics(recipient).unwrap();
+                (value.power, value.toughness)
+            };
+            assert_eq!(stats(&peer.game), (Some(3), Some(4)));
+            peer.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            peer.game.refresh_continuous_state().unwrap();
+            assert_eq!(stats(&peer.game), (Some(4), Some(4)), "count expression reevaluates after import");
+            let departed = peer.game.move_object(source, Zone::Graveyard, ironsmith::events::cause::EventCause::effect()).unwrap();
+            peer.game.refresh_continuous_state().unwrap();
+            assert_eq!(stats(&peer.game), (Some(2), Some(3)), "captured source duration expires after import");
+            peer.game.move_object(departed, Zone::Battlefield, ironsmith::events::cause::EventCause::effect()).unwrap();
+            peer.game.refresh_continuous_state().unwrap();
+            assert_eq!(stats(&peer.game), (Some(2), Some(3)), "expired duration cannot resume on return");
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_forged_continuous_metadata_atomically() {
+        let _guard = crate::test_id_counter_guard();
+        for case in 0..4 {
+            let (mut host, source, _, alice) = perspective_private_fixture(false);
+            let mut initial = ironsmith::continuous::ContinuousEffect::anthem(
+                source, alice, ironsmith::target::ObjectFilter::creature(), 1, 1);
+            if case == 3 {
+                initial.duration = ironsmith::effect::Until::ForAsLongAs(
+                    ironsmith_core::effect::ContinuousDurationPredicate::ObjectOnBattlefield(
+                        ironsmith_core::effect::ContinuousDurationObject::Source));
+            }
+            host.game.effect_store.continuous_effects.add_effect(initial);
+            host.game.refresh_continuous_state().unwrap();
+            let mut checkpoint = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+            let effect = &mut checkpoint.executable_state.as_mut().unwrap().continuous.effects[0];
+            let marker = "Private perspective program marker";
+            let mut captured = ironsmith::target::ObjectFilter::default();
+            captured.name = Some(marker.into());
+            use ironsmith::continuous::ContinuousModification as Modification;
+            match case {
+                0 => effect.condition = Some(ironsmith::ConditionExpr::Not(Box::new(ironsmith::ConditionExpr::YouControl(captured)))),
+                1 => effect.modification = Modification::SetName(marker.into()),
+                2 => effect.modification = Modification::SetPower {
+                    value: ironsmith::effect::Value::Add(Box::new(ironsmith::effect::Value::Fixed(1)),
+                        Box::new(ironsmith::effect::Value::Count(captured))),
+                    sublayer: ironsmith::continuous::PtSublayer::Setting,
+                },
+                _ => effect.duration = ironsmith::effect::Until::ForAsLongAs(
+                    ironsmith_core::effect::ContinuousDurationPredicate::ObjectHasCounter {
+                        object: ironsmith_core::effect::ContinuousDurationObject::Source,
+                        counter_type: ironsmith::CounterType::Named(marker.into()), minimum: 1,
+                    }),
+            }
+            let checkpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            let error = host.with_runtime_transaction(|candidate|
+                candidate.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0)).unwrap_err();
+            assert!(error.contains("perspective continuous"), "{error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_preserves_structural_continuous_filter() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, _, alice) = perspective_private_fixture(false);
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Public filter recipient")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(2, 3)).build();
+        host.registry.register(definition.clone());
+        let recipient = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let bob = PlayerId::from_index(1);
+        let other = host.game.create_object_from_definition(&definition, bob, Zone::Battlefield);
+        let mut filter = ironsmith::target::ObjectFilter::default();
+        filter.controller = Some(ironsmith::target::PlayerFilter::You);
+        filter.zone = Some(Zone::Battlefield);
+        filter.any_of = vec![ironsmith::target::ObjectFilter::creature()];
+        host.game.effect_store.continuous_effects.add_effect(
+            ironsmith::continuous::ContinuousEffect::anthem(source, alice, filter, 1, 1));
+        host.game.refresh_continuous_state().unwrap();
+        let checkpoint = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+        let checkpoint: SyncCheckpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.registry.register(host.registry.get("Full checkpoint typed owner").unwrap().clone());
+        guest.registry.register(definition);
+        guest.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0).unwrap();
+        for peer in [&host, &guest] {
+            let boosted = peer.game.calculated_characteristics(recipient).unwrap();
+            let excluded = peer.game.calculated_characteristics(other).unwrap();
+            assert_eq!((boosted.power, boosted.toughness), (Some(3), Some(4)));
+            assert_eq!((excluded.power, excluded.toughness), (Some(2), Some(3)));
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_forged_continuous_targets_atomically() {
+        let _guard = crate::test_id_counter_guard();
+        for case in 0..4 {
+            let (mut host, source, hidden, alice) = perspective_private_fixture(false);
+            host.game.effect_store.continuous_effects.add_effect(
+                ironsmith::continuous::ContinuousEffect::anthem(source, alice,
+                    ironsmith::target::ObjectFilter::creature(), 1, 1));
+            let mut checkpoint = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+            let effect = &mut checkpoint.executable_state.as_mut().unwrap().continuous.effects[0];
+            use ironsmith::continuous::{EffectSourceType, EffectTarget};
+            match case {
+                0 | 1 => {
+                    let mut captured = ironsmith::target::ObjectFilter::default();
+                    captured.name = Some("Private perspective program marker".into());
+                    if case == 1 {
+                        let mut outer = ironsmith::target::ObjectFilter::default();
+                        outer.any_of.push(captured);
+                        captured = outer;
+                    }
+                    effect.applies_to = EffectTarget::Filter(captured);
+                },
+                2 => effect.applies_to = EffectTarget::Specific(hidden),
+                _ => effect.source_type = EffectSourceType::Resolution { locked_targets: vec![hidden] },
+            }
+            let checkpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            let error = host.with_runtime_transaction(|candidate|
+                candidate.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0)).unwrap_err();
+            assert!(error.contains(if case < 2 { "continuous filter" } else { "disclosed identity" }), "{error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_private_grant_face_constraint() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, hidden, alice) = perspective_private_fixture(false);
+        let bob = PlayerId::from_index(1);
+        host.game.effect_store.grant_registry.grant_play_from_to_card(hidden, Zone::Library, alice,
+            ironsmith::grant_registry::PlayFromConstraints::default(),
+            ironsmith::grant_registry::GrantSource::until_end_of_turn(source, 4));
+        let mut grants = host.game.effect_store.grant_registry.registered_state();
+        grants.grants[0].required_face_name = Some("Private perspective program marker".into());
+        host.game.effect_store.grant_registry.restore_registered_state(grants).unwrap();
+        let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+        let result = host.try_build_redacted_executable_checkpoint(bob);
+        if let Ok(checkpoint) = &result {
+            assert!(!serde_json::to_string(checkpoint).unwrap().contains("Private perspective program marker"),
+                "opponent-only grant constraint disclosed a hidden library identity despite opaque live root");
+        }
+        assert!(result.is_err(), "unapproved face constraint must not be silently removed");
+        assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+    }
+    #[test]
+    fn public_perspective_checkpoint_preserves_disclosed_play_permission_constraints() {
+        let _guard = crate::test_id_counter_guard();
+        for enters_tapped in [false, true] {
+            let (mut host, source, alice) = full_fixture();
+            host.game.turn.phase = Phase::FirstMain;
+            host.game.turn.step = None;
+            host.game.turn.active_player = alice;
+            host.game.turn.priority_player = Some(alice);
+            let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Disclosed permission land")
+                .card_types(vec![CardType::Land]).build();
+            host.registry.register(definition.clone());
+            let target = host.game.create_object_from_definition(&definition, alice, Zone::Exile);
+            let constraints = ironsmith::grant_registry::PlayFromConstraints {
+                lands_enter_tapped: enters_tapped,
+                spell_cost_increase: Some(ironsmith::mana::ManaCost::new()),
+                spell_cost_reduction: None,
+            };
+            host.game.effect_store.grant_registry.grant_play_from_to_card(target, Zone::Exile, alice,
+                constraints, ironsmith::grant_registry::GrantSource::until_end_of_turn(source, 4));
+            let expected = host.game.effect_store.grant_registry.registered_state();
+            let checkpoint = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+            let checkpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+            let mut guest = WasmGame::new();
+            guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+            guest.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0).unwrap();
+            assert_eq!(guest.game.effect_store.grant_registry.registered_state(), expected,
+                "public permissions retain their constraints, lifetime and permission allocators");
+            for peer in [&mut host, &mut guest] {
+                let mut dm = ironsmith::decision::AutoPassDecisionMaker;
+                ironsmith::special_actions::perform(ironsmith::special_actions::SpecialAction::PlayLand { card_id: target },
+                    &mut peer.game, alice, &mut dm).unwrap();
+                let entered = peer.game.battlefield.iter().copied().find(|id|
+                    peer.game.object(*id).is_some_and(|object| object.name == "Disclosed permission land")).unwrap();
+                assert_eq!(peer.game.is_tapped(entered), enters_tapped,
+                    "real land play must honor the retained entry constraint, including untapped control");
+                assert!(!peer.game.player(alice).unwrap().can_play_land());
+            }
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_unapproved_grant_metadata() {
+        let _guard = crate::test_id_counter_guard();
+        for case in 0..4 {
+            let (mut host, source, hidden, alice) = perspective_private_fixture(false);
+            let target = if case == 0 { hidden } else { source };
+            host.game.effect_store.grant_registry.grant_play_from_to_card(target, Zone::Library, alice,
+                ironsmith::grant_registry::PlayFromConstraints::default(),
+                ironsmith::grant_registry::GrantSource::until_end_of_turn(source, 4));
+            let mut grants = host.game.effect_store.grant_registry.registered_state();
+            match case {
+                0 => {},
+                1 => grants.grants[0].required_face_name = Some("Private perspective program marker".into()),
+                2 => grants.grants[0].filter = Some(Default::default()),
+                _ => grants.grants[0].cast_this_way_filter = Some(Default::default()),
+            }
+            host.game.effect_store.grant_registry.restore_registered_state(grants).unwrap();
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            let error = host.try_build_redacted_executable_checkpoint(alice).unwrap_err();
+            assert!(error.contains(if case == 0 { "disclosed identity" } else { "grant constraints" }), "{error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_forged_grant_constraints_atomically() {
+        let _guard = crate::test_id_counter_guard();
+        for case in 0..4 {
+            let (mut host, source, hidden, alice) = perspective_private_fixture(false);
+            host.game.effect_store.grant_registry.grant_play_from_to_card(source, Zone::Battlefield, alice,
+                ironsmith::grant_registry::PlayFromConstraints::default(),
+                ironsmith::grant_registry::GrantSource::until_end_of_turn(source, 4));
+            let mut checkpoint = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+            let grant = &mut checkpoint.executable_state.as_mut().unwrap().grants.grants[0];
+            match case {
+                0 => { grant.target_id = Some(hidden); grant.target_stable_id = Some(host.game.object(hidden).unwrap().stable_id); },
+                1 => grant.required_face_name = Some("Private perspective program marker".into()),
+                2 => grant.filter = Some(Default::default()),
+                _ => grant.cast_this_way_filter = Some(Default::default()),
+            }
+            let checkpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            let error = host.with_runtime_transaction(|candidate|
+                candidate.apply_foreign_sync_checkpoint_for_perspective(checkpoint, alice.0)).unwrap_err();
+            assert!(error.contains(if case == 0 { "disclosed identity" } else { "grant constraints" }), "{error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before,
+                "forged grant rejection must preserve all executable roots and allocator state");
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_anonymous_private_copy_without_mutation() {
+        let _guard = crate::test_id_counter_guard();
+        for (compiled, disclosed_target) in [(false, false), (false, true), (true, false), (true, true)] {
+            let (mut host, source, hidden, alice) = perspective_private_fixture(compiled);
+            let target = if disclosed_target { source } else { hidden };
+            let mut values = ironsmith::snapshot::CopiableValues::from_object(host.game.object(hidden).unwrap());
+            values.name = "Opaque copy".into();
+            values.compiled_card_text.clear();
+            values.ability_labels.clear();
+            host.game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
+                source, alice, vec![target], ironsmith::continuous::Modification::CopyOf {
+                    target_id: target, copiable_values: Box::new(values), preserve_source_abilities: false,
+                    name_override: None, name_override_surface: None, add_supertypes: vec![],
+                }));
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            assert!(serde_json::to_string(&before).unwrap().contains("7777"), "control retains private executable body despite cleared text/labels");
+            let error = host.try_build_redacted_executable_checkpoint(alice).expect_err("anonymous copy body is not authorized by source visibility");
+            assert!(error.contains(if disclosed_target { "perspective continuous payload requires content approval" }
+                else { "disclosed identity" }), "{error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before);
+        }
+    }
+    #[test]
+    fn public_perspective_checkpoint_rejects_relabeled_full_and_unreachable_private_payloads() {
+        let _guard = crate::test_id_counter_guard();
+        for compiled in [false, true] {
+            for case in ["full-label", "unreachable"] {
+                let (mut host, _, hidden, alice) = perspective_private_fixture(compiled);
+                let full = host.try_build_full_sync_checkpoint().unwrap();
+                let mut redacted = host.try_build_redacted_executable_checkpoint(alice).unwrap();
+                assert!(!serde_json::to_string(&redacted).unwrap().contains("7777"));
+                assert!(redacted.executable_state.as_ref().unwrap().objects.iter().find(|o| o.id.0 == hidden.0).unwrap().card.is_none());
+                if case == "full-label" {
+                    redacted.executable_state = full.executable_state;
+                } else {
+                    let incoming = full.executable_state.unwrap();
+                    let state = redacted.executable_state.as_mut().unwrap();
+                    state.graph_card_count = incoming.graph_card_count;
+                    state.definitions = incoming.definitions;
+                    state.occurrences = incoming.occurrences;
+                }
+                assert!(serde_json::to_string(&redacted).unwrap().contains("7777"), "malformed carrier actually contains private body");
+                let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+                let error = host.with_runtime_transaction(|candidate|
+                    candidate.apply_foreign_sync_checkpoint_for_perspective(redacted, alice.0)).expect_err("carrier label cannot authorize hidden or unreachable body");
+                if case == "full-label" { assert!(error.contains("contradicts checkpoint metadata"), "{error}"); }
+                else { assert!(error.contains("noncanonical or unreachable payloads"), "{error}"); }
+                assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before,
+                    "recipient rejection must preserve runtime and allocator");
+            }
+        }
+    }
+    #[test]
+    fn public_opaque_executable_root_preserves_physical_state_without_private_program() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Private opaque executable marker")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(ironsmith::Ability::mana(ironsmith::TotalCost::free(), vec![ironsmith::mana::ManaSymbol::Green]))
+            .with_spell_effect(vec![ironsmith::Effect::gain_life(7777)])
+            .build();
+        host.registry.register(definition.clone());
+        let hidden = host.game.create_object_from_definition(&definition, alice, Zone::Library);
+        host.game.add_counters(hidden, ironsmith::CounterType::Charge, 3).unwrap();
+        let mut original = host.game.object(hidden).unwrap().clone();
+        original.initial_controller = PlayerId::from_index(1);
+        original.last_modified = 17;
+        original.attached_to = Some(ironsmith::object::AttachmentTarget::Object(source));
+        original.attachments = vec![source];
+        validate_opaque_sync_executable_object(&original).expect_err("private identity cannot be admitted as opaque");
+        let projected = opaque_sync_executable_object(original.clone());
+        validate_opaque_sync_executable_object(&projected).unwrap();
+        assert_eq!((projected.id, projected.stable_id, projected.owner, projected.initial_controller, projected.zone),
+            (original.id, original.stable_id, original.owner, original.initial_controller, original.zone));
+        assert_eq!(projected.last_modified, original.last_modified);
+        assert_eq!(projected.counters, original.counters);
+        assert_eq!(projected.counters.get(&ironsmith::CounterType::Charge), Some(&3));
+        assert_eq!(projected.attached_to, original.attached_to);
+        assert_eq!(projected.attachments, original.attachments);
+        assert!(projected.card.is_none() && projected.abilities.is_empty() && projected.spell_effect.is_none());
+        let state = SyncExecutableState::retain(&host.game, &host.registry, vec![projected, host.game.object(source).unwrap().clone()],
+            host.game.effect_store.continuous_effects.registered_state(),
+            ironsmith::replacement::ReplacementEffectManager::new().registered_state().unwrap(),
+            ironsmith::prevention::PreventionEffectManager::new().retained_state().unwrap()).unwrap();
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(!json.contains("Private opaque executable marker"));
+        assert!(!json.contains("7777"));
+    }
+    #[test]
+    fn public_opaque_executable_root_rejects_nested_captures_costs_and_programs() {
+        let _guard = crate::test_id_counter_guard();
+        let (host, source, _) = full_fixture();
+        let base = opaque_sync_executable_object(host.game.object(source).unwrap().clone());
+        for case in ["ability", "spell", "cast-tags", "face", "cost", "chosen-x"] {
+            let mut forged = base.clone();
+            match case {
+                "ability" => forged.abilities = std::sync::Arc::new(vec![ironsmith::Ability::activated(
+                    ironsmith::TotalCost::free(), vec![ironsmith::Effect::gain_life(7777)])]),
+                "spell" => forged.spell_effect = host.game.object(source).unwrap().spell_effect.clone(),
+                "cast-tags" => { forged.cast_tagged_objects.insert("private-history".into(), vec![ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game)]); },
+                "face" => forged.other_face = host.game.object(source).unwrap().card,
+                "cost" => forged.additional_cost = ironsmith::TotalCost::from_costs(vec![ironsmith::costs::Cost::tap()]).into(),
+                "chosen-x" => forged.x_value = Some(7777),
+                _ => unreachable!(),
+            }
+            assert!(validate_opaque_sync_executable_object(&forged).unwrap_err().contains("private identity or executable state"),
+                "complete native carrier rejects {case}");
+            validate_opaque_sync_executable_object(&base).unwrap();
+        }
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_grant_registry_budgets_and_allocators() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Granted checkpoint card")
+            .card_types(vec![CardType::Artifact]).build();
+        host.registry.register(definition.clone());
+        let target = host.game.create_object_from_definition(&definition, alice, Zone::Exile);
+        let registry = &mut host.game.effect_store.grant_registry;
+        let exhausted = registry.create_shared_usage_budget(1);
+        let unused = registry.create_shared_usage_budget(3);
+        registry.grant_play_from_to_card_in_shared_budget(target, None, Zone::Exile, alice,
+            ironsmith::grant_registry::PlayFromConstraints::default(),
+            ironsmith::grant_registry::GrantSource::until_end_of_turn(source, 4), exhausted);
+        assert!(registry.consume_shared_usage(exhausted));
+        let expected = registry.registered_state();
+        assert_eq!(expected.grants.len(), 1);
+        let checkpoint = host.try_build_full_sync_checkpoint().unwrap();
+        let checkpoint: SyncCheckpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.apply_sync_checkpoint(checkpoint).unwrap();
+        assert_eq!(guest.game.effect_store.grant_registry.registered_state(), expected,
+            "owning checkpoint must preserve runtime grants, consumed budgets and both allocator high-water marks");
+        assert!(!guest.game.effect_store.grant_registry.consume_shared_usage(exhausted));
+        assert!(guest.game.effect_store.grant_registry.consume_shared_usage(unused));
+        assert_eq!(host.game.effect_store.grant_registry.registered_state(), expected,
+            "peer use cannot consume the sender's budget");
+        let next = guest.game.effect_store.grant_registry.create_shared_usage_budget(2);
+        assert_ne!(next, exhausted);
+        assert_ne!(next, unused);
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_used_permissions_after_provider_departure() {
+        let _guard = crate::test_id_counter_guard();
+        for variant in 0..3 {
+            let (mut host, _, alice) = full_fixture();
+            host.game.turn.phase = Phase::FirstMain;
+            let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Once turn checkpoint spell")
+                .card_types(vec![CardType::Artifact]).mana_cost(ironsmith::mana::ManaCost::new()).with_spell_effect(vec![ironsmith::Effect::gain_life(1)]).build();
+            host.registry.register(definition.clone());
+            let target = host.game.create_object_from_definition(&definition, alice, Zone::Exile);
+            let provider = host.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            host.game.effect_store.grant_registry.grant_play_from_to_card(target, Zone::Exile, alice,
+                ironsmith::grant_registry::PlayFromConstraints::default(),
+                ironsmith::grant_registry::GrantSource::until_end_of_turn(provider, 4));
+            let mut state = host.game.effect_store.grant_registry.registered_state();
+            let permission = match variant {
+                0 => state.grants[0].permission_identity.clone().unwrap(),
+                1 => ironsmith::grant_registry::GrantPermissionIdentity::Static {
+                    source: provider, origin: ironsmith::continuous::AbilityOrigin::Printed(3),
+                    printed_face: Some(definition.card.id),
+                },
+                _ => ironsmith::grant_registry::GrantPermissionIdentity::LinkedFace {
+                    source: provider, face: definition.card.id, slot: 4,
+                },
+            };
+            state.grants[0].permission_identity = Some(permission.clone());
+            state.grants[0].usage_limit = Some(ironsmith::grant::GrantUsageLimit::OnceEachTurn);
+            host.game.effect_store.grant_registry.restore_registered_state(state).unwrap();
+            let can_play = |game: &ironsmith::game_state::GameState| {
+                ironsmith::decision::compute_legal_actions(game, alice).unwrap().iter()
+                    .any(|action| matches!(action, ironsmith::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == target))
+            };
+            assert!(can_play(&host.game), "unused permission initially offers spell cast");
+            host.game.turn_store.grant_cast_uses_this_turn.extend([
+                (alice, permission),
+                (alice, ironsmith::grant_registry::GrantPermissionIdentity::Stored(0)),
+                (alice, ironsmith::grant_registry::GrantPermissionIdentity::Static {
+                    source: provider, origin: ironsmith::continuous::AbilityOrigin::Printed(3),
+                    printed_face: Some(definition.card.id),
+                }),
+                (alice, ironsmith::grant_registry::GrantPermissionIdentity::LinkedFace {
+                    source: provider, face: definition.card.id, slot: 4,
+                }),
+            ]);
+            host.game.move_object(provider, Zone::Graveyard, ironsmith::events::cause::EventCause::effect()).unwrap();
+            assert!(host.game.object(provider).is_none());
+            assert!(!can_play(&host.game), "provider departure must not reset use");
+            let checkpoint = host.try_build_full_sync_checkpoint().unwrap();
+            let wire = serde_json::to_vec(&checkpoint).unwrap();
+            let mut rows = host.game.turn_store.grant_cast_uses_this_turn.iter().cloned().collect::<Vec<_>>();
+            rows.reverse();
+            host.game.turn_store.grant_cast_uses_this_turn = rows.into_iter().collect();
+            assert_eq!(serde_json::to_vec(&host.try_build_full_sync_checkpoint().unwrap()).unwrap(), wire,
+                "HashSet order cannot change canonical checkpoint encoding");
+            let checkpoint: SyncCheckpoint = serde_json::from_slice(&wire).unwrap();
+            let mut guest = WasmGame::new();
+            guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+            guest.apply_sync_checkpoint(checkpoint).unwrap();
+            assert!(!can_play(&guest.game), "checkpoint import reset consumed permission variant {variant}");
+            let restored_permission = guest.game.effect_store.grant_registry.registered_state().grants[0].permission_identity.clone().unwrap();
+            assert!(guest.game.turn_store.grant_cast_uses_this_turn.contains(&(alice, restored_permission)),
+                "ledger and permission must share rebound face identities");
+            let used = guest.game.turn_store.grant_cast_uses_this_turn.clone();
+            guest.game.turn_store.grant_cast_uses_this_turn.clear();
+            assert!(can_play(&guest.game), "turn usage reset makes retained permission usable again");
+            guest.game.turn_store.grant_cast_uses_this_turn = used;
+            let mut empty = guest.game.effect_store.grant_registry.registered_state();
+            empty.grants.clear();
+            guest.game.effect_store.grant_registry.restore_registered_state(empty).unwrap();
+            let checkpoint = guest.try_build_full_sync_checkpoint().unwrap();
+            host.apply_sync_checkpoint(checkpoint).unwrap();
+            assert_eq!(host.game.turn_store.grant_cast_uses_this_turn.len(), 3,
+                "historical use survives even with no active grant");
+        }
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_invalid_permission_ledger_without_mutation() {
+        let _guard = crate::test_id_counter_guard();
+        use ironsmith::grant_registry::RetainedGrantPermissionIdentity as Permission;
+        for case in ["allocator", "duplicate", "player", "face"] {
+            let (mut host, source, alice) = full_fixture();
+            host.game.effect_store.grant_registry.grant_play_from_to_card(source, Zone::Battlefield, alice,
+                ironsmith::grant_registry::PlayFromConstraints::default(),
+                ironsmith::grant_registry::GrantSource::until_end_of_turn(source, 4));
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            let mut checkpoint: SyncCheckpoint = serde_json::from_value(before.clone()).unwrap();
+            checkpoint.players[0].life = 3;
+            let state = checkpoint.executable_state.as_mut().unwrap();
+            let expected = match case {
+                "allocator" => {
+                    state.used_grant_permissions.push((alice, Permission::Stored(state.grants.next_permission_identity)));
+                    "used grant permission exceeds its allocator"
+                },
+                "duplicate" => {
+                    state.used_grant_permissions.extend([(alice, Permission::Stored(0)), (alice, Permission::Stored(0))]);
+                    "duplicate used grant permission root"
+                },
+                "player" => {
+                    state.used_grant_permissions.push((PlayerId::from_index(2), Permission::Stored(0)));
+                    "used grant permission has invalid player"
+                },
+                "face" => {
+                    state.used_grant_permissions.push((alice, Permission::LinkedFace { source, face: state.graph_card_count, slot: 4 }));
+                    "unknown executable graph reference"
+                },
+                _ => unreachable!(),
+            };
+            let error = host.apply_sync_checkpoint(checkpoint).expect_err("malformed ledger must reject before publication");
+            assert!(error.contains(expected), "wrong rejection for {case}: {error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before,
+                "rejected {case} cannot mutate runtime or identity allocators");
+        }
+    }
+    fn check_delayed_checkpoint_execution(compiled: bool) {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, _, alice) = full_fixture();
+        let definition = if compiled {
+            ironsmith_registry_test::compile_to_runtime_definition("Delayed checkpoint source",
+                "Type: Sorcery\nYou gain X life.", false).unwrap()
+        } else {
+            ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Delayed checkpoint source")
+                .card_types(vec![CardType::Sorcery]).with_spell_effect(vec![ironsmith::Effect::gain_life(ironsmith::effect::Value::X)]).build()
+        };
+        host.registry.register(definition.clone());
+        let source = host.game.create_object_from_definition(&definition, alice, Zone::Exile);
+        let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game);
+        let turn = host.game.turn.turn_number;
+        let delayed = ironsmith::triggers::DelayedTrigger {
+            trigger: ironsmith::triggers::Trigger::beginning_of_end_step(ironsmith::target::PlayerFilter::You),
+            effects: definition.spell_effect.clone().unwrap(), one_shot: true, x_value: Some(3),
+            not_before_turn: Some(turn + 1), expires_at_turn: Some(turn + 2),
+            expires_before_controller_turn_after: Some(turn + 2), expires_at_end_of_combat: false,
+            bound_extra_turn_index: None, while_any_tagged_object_in_zone: None,
+            target_objects: vec![source], ability_source: Some(source),
+            ability_source_stable_id: Some(snapshot.stable_id), ability_source_name: Some("Captured delayed source".into()),
+            ability_source_snapshot: Some(snapshot.clone()), controller: alice, choices: vec![],
+            tagged_objects: [("captured delayed object".into(), vec![snapshot.clone()])].into_iter().collect(),
+            tagged_players: [("captured delayed player".into(), vec![alice])].into_iter().collect(),
+            prepayment: Some(ironsmith::triggers::PendingDelayedTriggerPayment {
+                player: alice, source, cost: ironsmith::cost::TotalCost::mana(ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::mana::ManaSymbol::Generic(2)])),
+            }), prevention_shield: None,
+        };
+        host.game.effect_store.delayed_triggers.push(delayed);
+        let moved = host.game.move_object(source, Zone::Graveyard, ironsmith::events::cause::EventCause::effect()).unwrap();
+        assert!(host.game.object(source).is_none());
+        let checkpoint = host.try_build_full_sync_checkpoint().unwrap();
+        let checkpoint: SyncCheckpoint = serde_json::from_slice(&serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 20, 2);
+        guest.apply_sync_checkpoint(checkpoint).unwrap();
+        assert_eq!(guest.game.effect_store.delayed_triggers.len(), 1,
+            "actual full checkpoint must preserve delayed registration and executable program");
+        let retained = &guest.game.effect_store.delayed_triggers[0];
+        assert_eq!(retained.x_value, Some(3));
+        assert_eq!(retained.not_before_turn, Some(turn + 1));
+        assert_eq!(retained.expires_at_turn, Some(turn + 2));
+        assert_eq!(retained.expires_before_controller_turn_after, Some(turn + 2));
+        assert_eq!(retained.ability_source, Some(source));
+        assert_eq!(retained.ability_source_name.as_deref(), Some("Captured delayed source"));
+        assert_eq!(retained.ability_source_stable_id, Some(snapshot.stable_id));
+        assert_eq!(retained.ability_source_snapshot.as_ref().unwrap().card, guest.game.object(moved).unwrap().card);
+        assert_eq!(retained.tagged_objects["captured delayed object"][0].card,
+            retained.ability_source_snapshot.as_ref().unwrap().card);
+        assert_eq!(retained.tagged_players["captured delayed player"], vec![alice]);
+        assert_eq!(retained.prepayment.as_ref().unwrap().player, alice);
+        assert_eq!(retained.prepayment.as_ref().unwrap().source, source);
+        assert_eq!(retained.prepayment.as_ref().unwrap().cost, host.game.effect_store.delayed_triggers[0].prepayment.as_ref().unwrap().cost);
+        for peer in [&mut host, &mut guest] {
+            let event = ironsmith::triggers::TriggerEvent::new_with_provenance(
+                ironsmith::events::phase::BeginningOfEndStepEvent::new(alice), ironsmith::provenance::ProvNodeId::default());
+            assert!(ironsmith::triggers::check_delayed_triggers(&mut peer.game, &event).is_empty(), "not-before gate survives import");
+            peer.game.turn.turn_number = turn + 1;
+            let wrong_player = ironsmith::triggers::TriggerEvent::new_with_provenance(
+                ironsmith::events::phase::BeginningOfEndStepEvent::new(PlayerId::from_index(1)), ironsmith::provenance::ProvNodeId::default());
+            assert!(ironsmith::triggers::check_delayed_triggers(&mut peer.game, &wrong_player).is_empty());
+            let entries = ironsmith::triggers::check_delayed_triggers(&mut peer.game, &event);
+            assert_eq!(entries.len(), 1);
+            assert_eq!(entries[0].x_value, Some(3));
+            assert_eq!(entries[0].source, source);
+            assert_eq!(entries[0].source_stable_id, snapshot.stable_id);
+            assert!(peer.game.effect_store.delayed_triggers.is_empty(), "one-shot registration consumed exactly once");
+            let mut queue = ironsmith::triggers::TriggerQueue::new();
+            for entry in entries { queue.add(entry); }
+            ironsmith::game_loop::put_triggers_on_stack(&mut peer.game, &mut queue).unwrap();
+            assert_eq!(peer.game.stack.len(), 1);
+            ironsmith::game_loop::resolve_stack_entry(&mut peer.game).unwrap();
+            assert_eq!(peer.game.player(alice).unwrap().life, 26,
+                "captured X program executes through stack resolution and retained life replacement");
+            assert!(ironsmith::triggers::check_delayed_triggers(&mut peer.game, &event).is_empty());
+        }
+    }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_native_delayed_execution() { check_delayed_checkpoint_execution(false); }
+    #[test]
+    fn public_full_executable_checkpoint_preserves_compiled_delayed_execution() { check_delayed_checkpoint_execution(true); }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_invalid_delayed_actors_without_mutation() {
+        let _guard = crate::test_id_counter_guard();
+        for case in ["controller", "payment", "tagged-player", "face"] {
+            let (mut host, source, alice) = full_fixture();
+            let mut trigger = test_delayed_registration(host.game.turn.turn_number, alice);
+            trigger.ability_source = Some(source);
+            trigger.ability_source_snapshot = Some(ironsmith::snapshot::ObjectSnapshot::from_object(host.game.object(source).unwrap(), &host.game));
+            trigger.prepayment = Some(ironsmith::triggers::PendingDelayedTriggerPayment {
+                player: alice, source, cost: ironsmith::cost::TotalCost::free(),
+            });
+            trigger.tagged_players.insert("captured player".into(), vec![alice]);
+            host.game.effect_store.delayed_triggers.push(trigger);
+            let before = serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap();
+            let mut checkpoint: SyncCheckpoint = serde_json::from_value(before.clone()).unwrap();
+            checkpoint.players[0].life = 3;
+            let state = checkpoint.executable_state.as_mut().unwrap();
+            let trigger = &mut state.delayed_triggers[0];
+            let expected = match case {
+                "controller" => { trigger.controller = PlayerId::from_index(2); "delayed trigger has invalid controller" },
+                "payment" => { trigger.prepayment.as_mut().unwrap().player = PlayerId::from_index(2); "delayed payment has invalid player" },
+                "tagged-player" => { trigger.tagged_players.insert("captured player".into(), vec![PlayerId::from_index(2)]); "delayed player capture has invalid player" },
+                "face" => { trigger.ability_source_snapshot.as_mut().unwrap().card = Some(state.graph_card_count); "unknown executable graph reference" },
+                _ => unreachable!(),
+            };
+            let error = host.apply_sync_checkpoint(checkpoint).expect_err("malformed delayed actor/capture must reject before publication");
+            assert!(error.contains(expected), "wrong rejection for {case}: {error}");
+            assert_eq!(serde_json::to_value(host.try_build_full_sync_checkpoint().unwrap()).unwrap(), before,
+                "rejection cannot mutate life, registration, program, provenance, history or allocator");
+        }
+    }
+    #[test]
+    fn public_full_executable_checkpoint_requires_its_payload() {
+        let _guard = crate::test_id_counter_guard();
+        let (host, _, _) = full_fixture();
+        let mut checkpoint = host.build_sync_checkpoint();
+        let mut missing_kind = serde_json::to_value(&checkpoint).unwrap();
+        missing_kind.as_object_mut().unwrap().remove("executionKind");
+        assert!(serde_json::from_value::<SyncCheckpoint>(missing_kind).is_err(),
+            "carrier purpose is required, never inferred from payload absence");
+        checkpoint.executable_state = None;
+        let mut guest = WasmGame::new();
+        guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 31, 2);
+        // A missing catalog entry must not make the malformed carrier fail
+        // accidentally before testing whether executable state is mandatory.
+        guest.registry.register(host.registry.get("Full checkpoint typed owner").unwrap().clone());
+        guest.apply_sync_checkpoint(checkpoint).expect_err("full executable payload cannot silently disappear");
+        assert_eq!(guest.game.players[0].name, "Carol");
+        assert_eq!(guest.game.players[0].life, 31);
+    }
+    fn reject_root_without_allocating_card_identity(case: &str) {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, _, _) = full_fixture();
+        let before = serde_json::to_value(host.build_sync_checkpoint()).unwrap();
+        let mut incoming: SyncCheckpoint = serde_json::from_value(before.clone()).unwrap();
+        incoming.players[0].life = 3;
+        let expected = match case {
+            "object-reference" => {
+                incoming.executable_state.as_mut().unwrap().objects[0].card = Some(u32::MAX);
+                "unknown executable graph reference"
+            }
+            "definition-reference" => {
+                incoming.executable_state.as_mut().unwrap().definitions[0].0 = u32::MAX;
+                "unknown executable graph reference"
+            }
+            "flat-name" => {
+                incoming.objects[0].name = "Contradictory executable name".into();
+                "contradicts checkpoint metadata"
+            }
+            "flat-stable" => {
+                incoming.objects[0].stable_id += 1;
+                "contradicts checkpoint metadata"
+            }
+            "late-controller" => {
+                incoming.objects[0].controller = 1;
+                "cannot restore effective controller"
+            }
+            "foreign-card-counter-late-controller" => {
+                incoming.objects[0].controller = 1;
+                incoming.id_counters.card = incoming.id_counters.card.checked_add(100).unwrap();
+                "cannot restore effective controller"
+            }
+            _ => panic!("unknown root fixture case"),
+        };
+        let error = host.apply_sync_checkpoint(incoming).expect_err("invalid root must reject before publication");
+        assert!(error.contains(expected), "wrong error for {case}: {error}");
+        assert_eq!(serde_json::to_value(host.build_sync_checkpoint()).unwrap(), before,
+            "rejected {case} cannot change any live exported state, including identity allocators");
+    }
+    #[test]
+    fn public_foreign_checkpoint_rejects_unapproved_full_carrier_without_mutation() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, _, alice) = full_fixture();
+        let private = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Private foreign executable marker")
+            .card_types(vec![CardType::Sorcery]).with_spell_effect(vec![ironsmith::Effect::gain_life(7777)]).build();
+        host.registry.register(private.clone());
+        host.game.create_object_from_definition(&private, PlayerId::from_index(1), Zone::Library);
+        let before = serde_json::to_value(host.build_sync_checkpoint()).unwrap();
+        let incoming: SyncCheckpoint = serde_json::from_value(before.clone()).unwrap();
+        assert!(serde_json::to_string(&incoming).unwrap().contains("7777"), "fixture full graph carries private executable data");
+        let error = host.with_runtime_transaction(|candidate|
+            candidate.apply_foreign_sync_checkpoint_for_perspective(incoming, alice.0))
+            .expect_err("foreign import cannot admit a full owner-only executable graph");
+        assert!(error.contains("full executable carrier"), "wrong rejection: {error}");
+        assert_eq!(serde_json::to_value(host.build_sync_checkpoint()).unwrap(), before,
+            "unapproved carrier must preserve the complete live runtime and identity allocators");
+    }
+    #[test]
+    fn public_foreign_checkpoint_accepts_metadata_carrier_for_matching_perspective() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, alice) = full_fixture();
+        let incoming = host.try_build_sync_checkpoint_metadata().unwrap();
+        assert!(incoming.executable_state.is_none());
+        host.with_runtime_transaction(|candidate|
+            candidate.apply_foreign_sync_checkpoint_for_perspective(incoming, alice.0)).unwrap();
+        assert!(host.game.object(source).is_some());
+        assert_eq!(host.perspective, alice);
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_invalid_import_perspective_without_mutation() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, _, _) = full_fixture();
+        let before = serde_json::to_value(host.build_sync_checkpoint()).unwrap();
+        let incoming: SyncCheckpoint = serde_json::from_value(before.clone()).unwrap();
+        let error = host.with_runtime_transaction(|candidate|
+            candidate.apply_sync_checkpoint_for_perspective(incoming, 7))
+            .expect_err("invalid target perspective cannot publish an imported world");
+        assert_eq!(error, "invalid player index");
+        assert_eq!(serde_json::to_value(host.build_sync_checkpoint()).unwrap(), before,
+            "invalid import perspective must preserve all live state and allocators");
+    }
+    #[test]
+    fn public_full_executable_checkpoint_import_selects_valid_incoming_perspective() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, source, _) = full_fixture();
+        let incoming = host.build_sync_checkpoint();
+        host.with_runtime_transaction(|candidate|
+            candidate.apply_sync_checkpoint_for_perspective(incoming, 1)).unwrap();
+        assert_eq!(host.perspective, PlayerId::from_index(1));
+        assert!(host.game.object(source).is_some());
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_late_controller_without_allocator_mutation() {
+        reject_root_without_allocating_card_identity("late-controller");
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_foreign_card_counter_and_late_controller_without_mutation() {
+        reject_root_without_allocating_card_identity("foreign-card-counter-late-controller");
+    }
+    #[test]
+    fn public_full_executable_checkpoint_keeps_card_allocator_peer_local() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut host, _, _) = full_fixture();
+        let mut incoming = host.build_sync_checkpoint();
+        let graph_count = incoming.executable_state.as_ref().unwrap().graph_card_count;
+        let before = snapshot_id_counters().card;
+        incoming.id_counters.card = before.checked_add(100).unwrap();
+        host.apply_sync_checkpoint(incoming).expect("valid world imports independently of sender CardId high-water mark");
+        assert_eq!(snapshot_id_counters().card, before + graph_count,
+            "CardId graph nodes use only peer-local allocation, not the sender's catalog allocator");
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_unknown_object_card_without_allocator_mutation() {
+        reject_root_without_allocating_card_identity("object-reference");
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_unknown_definition_slot_without_allocator_mutation() {
+        reject_root_without_allocating_card_identity("definition-reference");
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_conflicting_name_without_allocator_mutation() {
+        reject_root_without_allocating_card_identity("flat-name");
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_conflicting_stable_id_without_allocator_mutation() {
+        reject_root_without_allocating_card_identity("flat-stable");
+    }
+    #[test]
+    fn public_full_executable_checkpoint_rejects_conflicting_roots_and_rolls_back_late_failure() {
+        let _guard = crate::test_id_counter_guard();
+        let (host, _, _) = full_fixture();
+        let valid = host.build_sync_checkpoint();
+        for case in 0..7 {
+            let mut incoming = valid.clone();
+            match case {
+                0 => incoming.objects[0].name = "Contradictory name".into(),
+                1 => { let state = incoming.executable_state.as_mut().unwrap(); state.objects.push(state.objects[0].clone()); }
+                2 => incoming.objects[0].stable_id += 1,
+                3 => incoming.executable_state.as_mut().unwrap().definitions[0].0 = u32::MAX,
+                4 => incoming.continuous_timestamps.as_mut().unwrap().current_timestamp += 1,
+                5 => incoming.objects[0].controller = 1, // Fails after installation/discovery in candidate world.
+                _ => incoming.objects.pop().map(|_| ()).unwrap(),
+            }
+            let mut guest = WasmGame::new();
+            guest.initialize_empty_match(vec!["Carol".into(), "Dan".into()], 31, 2);
+            let before_objects = guest.game.object_ids_in_deterministic_order();
+            let before_replacements = guest.game.effect_store.replacement_effects.registered_state().unwrap();
+            let before_provenance = serde_json::to_value(guest.game.provenance_graph().retained_state()).unwrap();
+            let error = guest.apply_sync_checkpoint(incoming).expect_err("malformed full world cannot publish");
+            assert!(!error.is_empty(), "case {case}");
+            assert_eq!(guest.game.players[0].name, "Carol", "case {case}");
+            assert_eq!(guest.game.players[0].life, 31, "case {case}");
+            assert_eq!(guest.game.object_ids_in_deterministic_order(), before_objects, "case {case}");
+            let after_replacements = guest.game.effect_store.replacement_effects.registered_state().unwrap();
+            assert_eq!(after_replacements.effects.len(), before_replacements.effects.len(), "case {case}");
+            assert_eq!(after_replacements.next_id, before_replacements.next_id, "case {case}");
+            assert_eq!(after_replacements.one_shot_effects, before_replacements.one_shot_effects, "case {case}");
+            assert_eq!(serde_json::to_value(guest.game.provenance_graph().retained_state()).unwrap(), before_provenance, "case {case}");
+            assert!(guest.registry.get("Full checkpoint typed owner").is_none(), "case {case}: catalog publication also rolls back");
+            guest.apply_sync_checkpoint(valid.clone()).expect("retry after rollback imports the complete world");
+        }
+    }
 }

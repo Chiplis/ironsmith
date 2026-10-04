@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""Review the sole WithId-wrapped Exile additional-cost path: Urgent Necropsy."""
+import hashlib,json
+from pathlib import Path
+P=Path('reports/runtime-audit')
+def ref(p):return {'path':str(p),'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
+def main():
+ ip=P/'extended-cost-dependency-candidates.json';c=next(c for c in json.load(open(ip))['rows']if c['card']=='Urgent Necropsy'and c['consumer_kind']=='WithIdEffect');rp=P/'additional-withid-evidence-execution.json';raw=json.load(open(rp));rr=ref(rp)
+ assert len(raw['rows'])==6 and raw['provenance']['artifacts_unchanged']and all(d['definition_matches_frozen_except_unique_card_ids']for d in raw['compilation'])
+ findings=[];evidence=[]
+ for i,r in enumerate(raw['rows']):
+  assert r['status']=='outcome_mismatch'and r['expected']['cast_offered']and not r['actual']['cast_offered']and not r['actual']['source_action_dispatched'];assert r['actual']['total_cost_check']=='Ok(())'and r['actual']['component_checks']==['Ok(())','Err(Other("exile cost has no chosen object"))'];assert r['actual']['ordinary_control']=={'enters_battlefield':True,'mana_paid':0,'source_stays_hand':True}
+  assert r['fixture_evidence']['path']==c['path']and r['fixture_evidence']['consumer_path']==c['consumer_path'];state=r['fixture_evidence']['state_at_probe'];assert r['expected']['intended_target_mana_value']==r['expected']['intended_evidence_mana_value'];assert all(t['controller']==1 and t['zone']=='Battlefield'for t in state['targets']);assert all(t['owner']==0 and t['zone']=='Graveyard'for t in state['intended_evidence'])
+  if i==0:assert state['entire_graveyard']==[]and state['targets']==[]
+  findings.append({'card':r['card'],'scenario':r['scenario'],'source_report':rr,'source_row':i,'confirmed_cards':['Urgent Necropsy'],'classification':'runtime_defect_card_reproduced','outcome_category':'silent_wrong_result','finding':'The normal paid cast is unavailable, including the legal zero-target/zero-evidence state. The total cost checker succeeds, while the WithId-wrapped Exile component says no object was chosen. An actual same-state normal Ornithopter cast succeeds. No targets, evidence payment or destruction are dispatched.','expected':r['expected'],'observed':r['actual'],'scope':'Exact additional choose/WithId-exile path at the first cast-availability gate only.'})
+  evidence.append({'source_report':rr,'source_row':i,'scenario':r['scenario'],'intended_legal':True,'source_cast_executed':False})
+ directp=P/'extended-optional-exile-reproductions.json';direct=json.load(open(directp));names={'Analyze the Pollen','Bite Down on Crime','Crimestopper Sprite','Deadly Cover-Up','Extract a Confession','Vitu-Ghazi Inspector'}
+ controls=[]
+ for i,r in enumerate(direct['rows']):
+  if r['card']in names:
+   assert r['status']=='expected_result_observed';controls.append({'source_report':ref(directp),'source_row':i,'card':r['card'],'scenario':r['scenario'],'scope':'Separately reviewed direct Exile optional collect-evidence control; does not credit the Urgent additional-cost path.'})
+ assert len(controls)==24
+ paths=[{**c,'status':'scoped_legality_failure_reproduced','source_evidence':evidence,'scope':'Six legal intended casts absent with actual targets/evidence and exact printed mana. Zero-target state is legal with an empty graveyard. No source payment or resolution reached.'}]
+ limits=['All10 full canonical definitions strictly load and match frozen definitions except unique CardIds. Actual paid permanents and normal Murder/Disenchant casts create evidence; intended evidence and the entire graveyard are separately recorded.','The source allows zero targets, so insufficient evidence for an intended nonzero target set cannot establish that the card should disappear from legal cast actions. The empty-graveyard case is a positive zero-target control.','Additional Murder/Disenchant cards remain in the graveyard: selected intended evidence has exact MV2/3/10, but these are not exact-total-graveyard-resource boundaries.','Because no source cast is offered, target choices, aggregate evidence selection, exile payment and destroy outcomes remain untested. No action is forced.','The24 sibling direct-Exile optional-cost controls are separately attributed to their own immutable reviewed report; they do not constitute Urgent payment coverage.']
+ counts={'paths':1,'scenarios':6,'valid_state_missing_cast_observations':6,'actual_same_state_cast_controls':6,'actual_source_casts':0,'strict_frozen_definitions':len(raw['compilation']),'separate_direct_exile_control_rows':24,'unrun_paths':0}
+ out=P/'additional-withid-evidence-reviewed-attribution.json';out.write_text(json.dumps({'scope':__doc__,'findings':findings,'confirmed_cards':['Urgent Necropsy'],'counts':counts,'path_coverage':paths,'source_reports':[rr],'supporting_direct_exile_controls':controls,'supporting_direct_exile_review':ref(P/'extended-optional-exile-reviewed-attribution.json'),'provenance':{'artifacts_unchanged':True,'native_source_runs':[{'source_report':rr,'run':raw['provenance'],'attempt':json.load(open(P/'additional-withid-evidence-attempt.json'))}]},'limitations':limits},indent=2)+'\n')
+ (P/'additional-withid-evidence-path-coverage.json').write_text(json.dumps({'family':'additional_cost_withid','subfamily':'wrapped_exile','inventory':ref(ip),'path_count':1,'rows':paths,'counts':counts,'reviewed_sources':[ref(out)],'status_counts':{'scoped_legality_failure_reproduced':1},'limitations':limits,'generator_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},indent=2)+'\n')
+ (P/'additional-withid-evidence-review.md').write_text('# Wrapped evidence additional cost\n\nUrgent Necropsy: six legal casts are absent, including no targets with an empty graveyard. Six same-state normal creature casts succeed.\n\n'+'\n'.join('- '+s for s in limits)+'\n');print(json.dumps(counts))
+if __name__=='__main__':main()

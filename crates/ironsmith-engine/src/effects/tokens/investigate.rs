@@ -65,7 +65,7 @@ impl EffectExecutor for InvestigateEffect {
 
         let created_clues = outcomes
             .iter()
-            .map(|outcome| outcome.output_objects().len() as i32)
+            .map(|outcome| outcome.output_objects().len() as i64)
             .sum();
         let mut outcome = EffectOutcome::aggregate(outcomes).with_events(action_events);
         outcome.set_value(crate::effect::OutcomeValue::Count(created_clues));

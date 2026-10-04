@@ -452,6 +452,10 @@ fn execute_token_instruction(
 }
 
 impl EffectExecutor for CreateTokenEffect {
+    fn visit_card_definitions(&self, visitor: &mut dyn FnMut(&CardDefinition)) {
+        visitor(&self.token);
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -1643,4 +1647,96 @@ mod replacement_token_entry_owner_contract_tests {
     #[test] fn incubated_error() {check(2,1);}
     #[test] fn incubated_pending_replay() {check(2,2);}
     #[test] fn incubated_binding() {check(2,3);}
+}
+
+#[cfg(test)]
+mod surviving_added_token_group_tests {
+    use super::*;
+    use crate::events::tokens::matchers::WouldCreateTokensUnderControlMatcher;
+    use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
+    use crate::target::{ObjectFilter, PlayerFilter};
+    fn check_creation(mode: u8) {
+        struct Ordered(crate::ids::ObjectId, crate::ids::ObjectId);
+        impl crate::decision::DecisionMaker for Ordered {
+            fn decide_options(&mut self, _game: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                let option = [self.0, self.1].into_iter().find_map(|source|
+                    ctx.options.iter().find(|option| option.legal && option.object_id == Some(source)))
+                    .or_else(|| ctx.options.iter().find(|option| option.legal)).unwrap();
+                vec![option.index]
+            }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let source_def = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Token replacement source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let adder = game.create_object_from_definition(&source_def, alice, Zone::Battlefield);
+        let remover = game.create_object_from_definition(&source_def, alice, Zone::Battlefield);
+        let doubler = game.create_object_from_definition(&source_def, alice, Zone::Battlefield);
+        let reviver = game.create_object_from_definition(&source_def, alice, Zone::Battlefield);
+        let creature_matcher = || WouldCreateTokensUnderControlMatcher::new(PlayerFilter::Any)
+            .with_token_filter(ObjectFilter::creature());
+        game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+            adder, alice, creature_matcher(), ReplacementAction::AddTokens { token: ironsmith_core::AdditionalTokenKind::Treasure, count: 1 }));
+        game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+            remover, alice, creature_matcher(), ReplacementAction::Modify(EventModification::ReduceToZero)));
+        let unused_creature = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+            reviver, alice, creature_matcher(), ReplacementAction::Modify(EventModification::Add(1))));
+        let used_treasure = (mode != 0).then(|| {
+            let matcher = WouldCreateTokensUnderControlMatcher::new(PlayerFilter::Any);
+            let (matcher, action) = if mode == 1 {
+                (matcher.with_token_filter(ObjectFilter::default().with_subtype(crate::types::Subtype::Treasure)), ReplacementAction::Double)
+            } else {
+                (matcher, ReplacementAction::Modify(EventModification::Add(1)))
+            };
+            game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(doubler, alice, matcher, action))
+        });
+        let token = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Original creature token")
+            .token().card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(1, 1)).build();
+        let mut chooser = Ordered(adder, remover);
+        let mut ctx = ExecutionContext::new(adder, alice, &mut chooser);
+        let outcome = CreateTokenEffect::you(token, 1).execute(&mut game, &mut ctx).unwrap();
+        let ids = outcome.result_objects().unwrap();
+        assert!(ids.iter().all(|id| game.object(*id).unwrap().subtypes.contains(&crate::types::Subtype::Treasure)),
+            "removed original creature group must not be revived by a stale primary-token filter");
+        assert_eq!(ids.len(), if mode != 0 { 2 } else { 1 },
+            "positive added Treasure group survives removal of original group and remains replaceable");
+        assert_eq!(game.battlefield.iter().filter(|id| game.object(**id).unwrap().kind == crate::object::ObjectKind::Token).count(), ids.len());
+        assert!(game.effect_store.replacement_effects.get_effect(unused_creature).is_some());
+        if let Some(shield) = used_treasure { assert!(game.effect_store.replacement_effects.get_effect(shield).is_none()); }
+    }
+    #[test]
+    fn added_treasure_group_is_doubled_after_original_creature_group_is_removed() { check_creation(1); }
+    #[test]
+    fn removed_primary_creature_group_does_not_consume_its_unused_replacement() { check_creation(0); }
+    #[test]
+    fn unfiltered_extra_token_uses_surviving_group_without_reviving_removed_primary() { check_creation(2); }
+    #[test]
+    fn combined_count_adjustment_skips_empty_primary_group() {
+        let alice = crate::ids::PlayerId::from_index(0);
+        let event = crate::events::CreateTokensEvent::with_token_cause(alice, 0,
+            crate::events::tokens::additional_token_object(ironsmith_core::AdditionalTokenKind::Squirrel, alice),
+            crate::events::cause::EventCause::effect())
+            .with_additional_tokens(ironsmith_core::AdditionalTokenKind::Treasure, 1);
+        let modified = event.adjusted_covered_total(|_| true, |count| count + 1);
+        assert_eq!(modified.count, 0, "a removed primary group is not a destination for additional tokens");
+        assert_eq!(modified.additional_tokens, vec![(ironsmith_core::AdditionalTokenKind::Treasure, 2)]);
+    }
+    #[test]
+    fn positive_added_group_remains_matchable_without_matching_zero_primary_group() {
+        use crate::events::ReplacementMatcher;
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let ctx = crate::events::EventContext::for_controller(alice, &game);
+        let event = crate::events::CreateTokensEvent::with_token_cause(alice, 0,
+            crate::events::tokens::additional_token_object(ironsmith_core::AdditionalTokenKind::Squirrel, alice),
+            crate::events::cause::EventCause::effect())
+            .with_additional_tokens(ironsmith_core::AdditionalTokenKind::Treasure, 1);
+        let creature = WouldCreateTokensUnderControlMatcher::new(PlayerFilter::Any).with_token_filter(ObjectFilter::creature());
+        let treasure = WouldCreateTokensUnderControlMatcher::new(PlayerFilter::Any)
+            .with_token_filter(ObjectFilter::default().with_subtype(crate::types::Subtype::Treasure));
+        assert!(!creature.matches_event(&event, &ctx).unwrap());
+        assert!(treasure.matches_event(&event, &ctx).unwrap(), "positive added group still creates tokens");
+        assert!(WouldCreateTokensUnderControlMatcher::new(PlayerFilter::Any).matches_event(&event, &ctx).unwrap());
+    }
 }

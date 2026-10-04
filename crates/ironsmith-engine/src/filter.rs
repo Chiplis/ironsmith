@@ -1623,27 +1623,27 @@ impl ComparisonRuntimeExt for Comparison {
         match self {
             Comparison::EqualExpr(rhs) => {
                 resolve_filter_comparison_rhs_value(rhs, game, ctx, stack_entry)
-                    .is_some_and(|rhs| value == rhs)
+                    .is_some_and(|rhs| i64::from(value) == rhs)
             }
             Comparison::NotEqualExpr(rhs) => {
                 resolve_filter_comparison_rhs_value(rhs, game, ctx, stack_entry)
-                    .is_some_and(|rhs| value != rhs)
+                    .is_some_and(|rhs| i64::from(value) != rhs)
             }
             Comparison::LessThanExpr(rhs) => {
                 resolve_filter_comparison_rhs_value(rhs, game, ctx, stack_entry)
-                    .is_some_and(|rhs| value < rhs)
+                    .is_some_and(|rhs| i64::from(value) < rhs)
             }
             Comparison::LessThanOrEqualExpr(rhs) => {
                 resolve_filter_comparison_rhs_value(rhs, game, ctx, stack_entry)
-                    .is_some_and(|rhs| value <= rhs)
+                    .is_some_and(|rhs| i64::from(value) <= rhs)
             }
             Comparison::GreaterThanExpr(rhs) => {
                 resolve_filter_comparison_rhs_value(rhs, game, ctx, stack_entry)
-                    .is_some_and(|rhs| value > rhs)
+                    .is_some_and(|rhs| i64::from(value) > rhs)
             }
             Comparison::GreaterThanOrEqualExpr(rhs) => {
                 resolve_filter_comparison_rhs_value(rhs, game, ctx, stack_entry)
-                    .is_some_and(|rhs| value >= rhs)
+                    .is_some_and(|rhs| i64::from(value) >= rhs)
             }
             _ => self.satisfies(value),
         }
@@ -1699,19 +1699,19 @@ fn resolve_filter_comparison_rhs_value(
     game: &crate::game_state::GameState,
     ctx: &FilterContext,
     stack_entry: Option<&crate::game_state::StackEntry>,
-) -> Option<i32> {
+) -> Option<i64> {
     use crate::effect::Value;
     use crate::target::ChooseSpec;
 
-    fn total_counters(counters: &std::collections::BTreeMap<CounterType, u32>) -> i32 {
-        counters.values().copied().sum::<u32>() as i32
+    fn total_counters(counters: &std::collections::BTreeMap<CounterType, u32>) -> i64 {
+        counters.values().map(|n| i64::from(*n)).sum::<i64>()
     }
 
     fn resolve_x_value(
         game: &crate::game_state::GameState,
         ctx: &FilterContext,
         stack_entry: Option<&crate::game_state::StackEntry>,
-    ) -> Option<i32> {
+    ) -> Option<i64> {
         ctx.x_value
             .or_else(|| stack_entry.and_then(|entry| entry.x_value))
             .or_else(|| {
@@ -1726,14 +1726,14 @@ fn resolve_filter_comparison_rhs_value(
                 ctx.source
                     .and_then(|source| game.object(source).and_then(|object| object.x_value))
             })
-            .map(|value| value as i32)
+            .map(|value| value as i64)
     }
 
-    fn snapshot_pt(snapshot: &ObjectSnapshot, power: bool) -> Option<i32> {
+    fn snapshot_pt(snapshot: &ObjectSnapshot, power: bool) -> Option<i64> {
         if power {
-            snapshot.power
+            snapshot.power.map(i64::from)
         } else {
-            snapshot.toughness
+            snapshot.toughness.map(i64::from)
         }
     }
 
@@ -1741,13 +1741,13 @@ fn resolve_filter_comparison_rhs_value(
         game: &crate::game_state::GameState,
         object_id: ObjectId,
         power: bool,
-    ) -> Option<i32> {
+    ) -> Option<i64> {
         let object = game.object(object_id)?;
         if power {
-            game.calculated_power(object_id).or_else(|| object.power())
+            game.calculated_power(object_id).or_else(|| object.power()).map(i64::from)
         } else {
             game.calculated_toughness(object_id)
-                .or_else(|| object.toughness())
+                .or_else(|| object.toughness()).map(i64::from)
         }
     }
 
@@ -1756,7 +1756,7 @@ fn resolve_filter_comparison_rhs_value(
         game: &crate::game_state::GameState,
         ctx: &FilterContext,
         power: bool,
-    ) -> Option<i32> {
+    ) -> Option<i64> {
         match spec.base() {
             ChooseSpec::Source => current_object_pt(game, ctx.source?, power).or_else(|| {
                 ctx.source_snapshot
@@ -1814,7 +1814,7 @@ fn resolve_filter_comparison_rhs_value(
         ctx: &FilterContext,
         power: bool,
         greatest: bool,
-    ) -> Option<i32> {
+    ) -> Option<i64> {
         if let Some(snapshots) = aggregate_tagged_snapshots(filter, ctx) {
             let values = snapshots
                 .into_iter()
@@ -1864,13 +1864,13 @@ fn resolve_filter_comparison_rhs_value(
         game: &GameState,
         ctx: &FilterContext,
         greatest: bool,
-    ) -> Option<i32> {
+    ) -> Option<i64> {
         if filter.cast_this_turn && filter.zone == Some(Zone::Stack) {
             let snapshots = game.turn_store.turn_history.spell_cast_snapshot_history();
             let values = snapshots
                 .iter()
                 .filter(|snapshot| filter.matches_snapshot(snapshot, ctx, game))
-                .map(snapshot_mana_value_for_filter);
+                .map(|snapshot| i64::from(snapshot_mana_value_for_filter(snapshot)));
             return if greatest { values.max() } else { values.min() };
         }
 
@@ -1878,7 +1878,7 @@ fn resolve_filter_comparison_rhs_value(
             let values = snapshots
                 .into_iter()
                 .filter(|snapshot| filter.matches_snapshot(snapshot, ctx, game))
-                .map(snapshot_mana_value_for_filter);
+                .map(|snapshot| i64::from(snapshot_mana_value_for_filter(snapshot)));
             return if greatest { values.max() } else { values.min() };
         }
 
@@ -1886,10 +1886,10 @@ fn resolve_filter_comparison_rhs_value(
             .objects_in_deterministic_order()
             .into_iter()
             .filter(|object| filter.matches(object, ctx, game))
-            .map(object_mana_value_for_filter)
+            .map(|object| i64::from(object_mana_value_for_filter(object)))
             .chain(
                 departed_battlefield_lookback(filter, game, ctx)
-                    .map(snapshot_mana_value_for_filter),
+                    .map(|snapshot| i64::from(snapshot_mana_value_for_filter(snapshot))),
             );
         if greatest { values.max() } else { values.min() }
     }
@@ -1898,10 +1898,10 @@ fn resolve_filter_comparison_rhs_value(
         Value::SurfaceHinted { value, .. } => {
             resolve_filter_comparison_rhs_value(value, game, ctx, stack_entry)
         }
-        Value::Fixed(value) => Some(*value),
+        Value::Fixed(value) => Some(i64::from(*value)),
         Value::X => resolve_x_value(game, ctx, stack_entry),
         Value::XTimes(multiplier) => {
-            resolve_x_value(game, ctx, stack_entry).map(|value| value * multiplier)
+            resolve_x_value(game, ctx, stack_entry).map(|value| value * i64::from(*multiplier))
         }
         Value::EffectMetric { .. }
         | Value::EffectMetricOffset { .. }
@@ -1914,7 +1914,7 @@ fn resolve_filter_comparison_rhs_value(
             execution.tagged_objects = ctx.tagged_objects.clone();
             execution.source_snapshot = ctx.source_snapshot.clone();
             execution.x_value = ctx.x_value;
-            crate::effects::helpers::resolve_value(game, rhs, &execution).ok()
+            crate::effects::helpers::resolve_value_wide(game, rhs, &execution).ok()
         }
         Value::EffectValue(effect_id) => ctx
             .effect_outcomes
@@ -1924,18 +1924,18 @@ fn resolve_filter_comparison_rhs_value(
             .effect_outcomes
             .get(effect_id)
             .and_then(|outcome| outcome.as_count())
-            .map(|value| value + offset),
+            .map(|value| value + i64::from(*offset)),
         Value::Add(left, right) => Some(
             resolve_filter_comparison_rhs_value(left, game, ctx, stack_entry)?
                 + resolve_filter_comparison_rhs_value(right, game, ctx, stack_entry)?,
         ),
         Value::Scaled(inner, multiplier) => {
             resolve_filter_comparison_rhs_value(inner, game, ctx, stack_entry)
-                .map(|value| value * multiplier)
+                .map(|value| value * i64::from(*multiplier))
         }
         Value::DividedRoundedDown(inner, divisor) if *divisor != 0 => {
             resolve_filter_comparison_rhs_value(inner, game, ctx, stack_entry)
-                .map(|value| value.div_euclid(*divisor))
+                .map(|value| value.div_euclid(i64::from(*divisor)))
         }
         Value::Min(left, right) => Some(
             resolve_filter_comparison_rhs_value(left, game, ctx, stack_entry)?.min(
@@ -1943,7 +1943,7 @@ fn resolve_filter_comparison_rhs_value(
             ),
         ),
         Value::Count(filter) => {
-            let mut count = 0i32;
+            let mut count = 0i64;
             for object in game.objects_in_deterministic_order() {
                 if filter.matches(object, ctx, game) {
                     count += 1;
@@ -1952,13 +1952,13 @@ fn resolve_filter_comparison_rhs_value(
             Some(count)
         }
         Value::CountScaled(filter, factor) => {
-            let mut count = 0i32;
+            let mut count = 0i64;
             for object in game.objects_in_deterministic_order() {
                 if filter.matches(object, ctx, game) {
                     count += 1;
                 }
             }
-            Some(count * *factor)
+            Some(count * i64::from(*factor))
         }
         Value::GreatestSharedCreatureTypeCount(filter) => {
             let mut counts = std::collections::HashMap::new();
@@ -1976,7 +1976,7 @@ fn resolve_filter_comparison_rhs_value(
                 let mut types_on_object = std::collections::HashSet::new();
                 for subtype in subtypes {
                     if subtype.is_creature_type() && types_on_object.insert(subtype) {
-                        *counts.entry((controller_group, subtype)).or_insert(0i32) += 1;
+                        *counts.entry((controller_group, subtype)).or_insert(0i64) += 1;
                     }
                 }
             }
@@ -2000,7 +2000,7 @@ fn resolve_filter_comparison_rhs_value(
                         }
                     }
                 }
-                return Some(colors.count() as i32);
+                return Some(colors.count() as i64);
             }
             let mut colors = ColorSet::new();
             for object in game.objects_in_deterministic_order() {
@@ -2008,7 +2008,7 @@ fn resolve_filter_comparison_rhs_value(
                     colors = colors.union(object.colors());
                 }
             }
-            Some(colors.count() as i32)
+            Some(colors.count() as i64)
         }
         Value::CreatureTypesAmong(filter) => {
             let mut seen = std::collections::HashSet::new();
@@ -2024,7 +2024,7 @@ fn resolve_filter_comparison_rhs_value(
                     }
                 }
             }
-            Some(seen.len() as i32)
+            Some(seen.len() as i64)
         }
         Value::CardTypesAmong(filter) => {
             let mut seen = std::collections::HashSet::new();
@@ -2038,7 +2038,7 @@ fn resolve_filter_comparison_rhs_value(
                     }
                 }
             }
-            Some(seen.len() as i32)
+            Some(seen.len() as i64)
         }
         Value::StaticAbilitiesAmong { filter, abilities } => {
             let mut seen = std::collections::HashSet::new();
@@ -2051,13 +2051,13 @@ fn resolve_filter_comparison_rhs_value(
                     }
                 }
             }
-            Some(seen.len() as i32)
+            Some(seen.len() as i64)
         }
         Value::UnlockedDoorsAmong(filter) => Some(
             game.objects_in_deterministic_order()
                 .into_iter()
                 .filter(|object| filter.matches(object, ctx, game))
-                .map(|object| crate::effects::helpers::room_unlocked_door_count(game, object))
+                .map(|object| i64::from(crate::effects::helpers::room_unlocked_door_count(game, object)))
                 .sum(),
         ),
         Value::DistinctManaValues(filter) => {
@@ -2067,7 +2067,7 @@ fn resolve_filter_comparison_rhs_value(
                     seen.insert(object_mana_value_for_filter(object));
                 }
             }
-            Some(seen.len() as i32)
+            Some(seen.len() as i64)
         }
         Value::DistinctPowers(filter) => {
             let mut seen = std::collections::HashSet::new();
@@ -2078,7 +2078,7 @@ fn resolve_filter_comparison_rhs_value(
                     seen.insert(power);
                 }
             }
-            Some(seen.len() as i32)
+            Some(seen.len() as i64)
         }
         Value::ColorPairsAmong(filter) => {
             let mut seen = std::collections::HashSet::new();
@@ -2090,7 +2090,7 @@ fn resolve_filter_comparison_rhs_value(
                     }
                 }
             }
-            Some(seen.len() as i32)
+            Some(seen.len() as i64)
         }
         Value::DistinctCounterTypesAmong(filter) => {
             let mut seen = std::collections::HashSet::new();
@@ -2099,7 +2099,7 @@ fn resolve_filter_comparison_rhs_value(
                     seen.extend(object.counters.keys().copied());
                 }
             }
-            Some(seen.len() as i32)
+            Some(seen.len() as i64)
         }
         Value::GreatestPower(filter) => aggregate_pt(filter, game, ctx, true, true),
         Value::GreatestToughness(filter) => aggregate_pt(filter, game, ctx, false, true),
@@ -2123,10 +2123,10 @@ fn resolve_filter_comparison_rhs_value(
                             .team_index_for(candidate.id)
                             .is_none_or(|team| seen_teams.insert(team))
                 })
-                .fold(0u32, |count, candidate| {
-                    count.saturating_add(candidate.counter_count(*counter_type))
+                .fold(0i64, |count, candidate| {
+                    count + i64::from(candidate.counter_count(*counter_type))
                 });
-            Some(i32::try_from(count).unwrap_or(i32::MAX))
+            Some(count)
         }
         Value::CountersOnSource(counter_type) => {
             let counters = game
@@ -2137,7 +2137,7 @@ fn resolve_filter_comparison_rhs_value(
                         .as_ref()
                         .map(|snapshot| &snapshot.counters)
                 })?;
-            Some(counters.get(counter_type).copied().unwrap_or(0) as i32)
+            Some(counters.get(counter_type).copied().unwrap_or(0) as i64)
         }
         Value::SourcePower => current_object_pt(game, ctx.source?, true).or_else(|| {
             ctx.source_snapshot
@@ -2156,7 +2156,7 @@ fn resolve_filter_comparison_rhs_value(
                 let source = game.object(ctx.source?)?;
                 Some(match counter_type {
                     Some(counter_type) => {
-                        source.counters.get(counter_type).copied().unwrap_or(0) as i32
+                        source.counters.get(counter_type).copied().unwrap_or(0) as i64
                     }
                     None => total_counters(&source.counters),
                 })
@@ -2166,7 +2166,7 @@ fn resolve_filter_comparison_rhs_value(
                 let snapshot = snapshots.first()?;
                 Some(match counter_type {
                     Some(counter_type) => {
-                        snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32
+                        snapshot.counters.get(counter_type).copied().unwrap_or(0) as i64
                     }
                     None => total_counters(&snapshot.counters),
                 })
@@ -2178,12 +2178,12 @@ fn resolve_filter_comparison_rhs_value(
                 let mana_value = game
                     .object(ctx.source?)
                     .and_then(|source| source.mana_cost.as_ref())
-                    .map(|cost| cost.mana_value() as i32)
+                    .map(|cost| cost.mana_value() as i64)
                     .or_else(|| {
                         ctx.source_snapshot
                             .as_ref()
                             .and_then(|snapshot| snapshot.mana_cost.as_ref())
-                            .map(|cost| cost.mana_value() as i32)
+                            .map(|cost| cost.mana_value() as i64)
                     });
                 Some(mana_value.unwrap_or(0))
             }
@@ -2193,7 +2193,7 @@ fn resolve_filter_comparison_rhs_value(
                     snapshot
                         .mana_cost
                         .as_ref()
-                        .map_or(0, |cost| cost.mana_value() as i32),
+                        .map_or(0, |cost| cost.mana_value() as i64),
                 )
             }
             // "with greater mana value than that creature" (Evil's Thrall):
@@ -2208,7 +2208,7 @@ fn resolve_filter_comparison_rhs_value(
                     snapshot
                         .mana_cost
                         .as_ref()
-                        .map_or(0, |cost| cost.mana_value() as i32),
+                        .map_or(0, |cost| cost.mana_value() as i64),
                 )
             }
             _ => None,
@@ -2225,7 +2225,7 @@ fn resolve_filter_comparison_rhs_value(
             Some(
                 game.turn_store
                     .turn_history
-                    .total_life_lost_for_players(&players) as i32,
+                    .total_life_lost_for_players(&players) as i64,
             )
         }
         Value::UnspentMana(player_filter) => Some(
@@ -2234,7 +2234,7 @@ fn resolve_filter_comparison_rhs_value(
                 .filter(|player| {
                     player.is_in_game() && player_filter.matches_player(player.id, ctx)
                 })
-                .map(|player| player.mana_pool.total() as i32)
+                .map(|player| player.mana_pool.total() as i64)
                 .sum(),
         ),
         Value::Devotion { player, color } => Some(
@@ -2243,7 +2243,7 @@ fn resolve_filter_comparison_rhs_value(
                 .filter(|candidate| {
                     candidate.is_in_game() && player.matches_player(candidate.id, ctx)
                 })
-                .map(|candidate| game.devotion_to_color(candidate.id, *color) as i32)
+                .map(|candidate| game.devotion_to_color(candidate.id, *color) as i64)
                 .sum(),
         ),
         _ => None,

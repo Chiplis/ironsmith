@@ -237,10 +237,20 @@ impl TriggerIntroSurface {
     }
 }
 
-#[derive(Debug)]
 pub struct Trigger {
     matcher: Arc<dyn TriggerMatcher>,
     intro_surface: Option<TriggerIntroSurface>,
+    retained_model: Option<Arc<ironsmith_core::trigger_model::Trigger>>,
+}
+
+impl std::fmt::Debug for Trigger {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Trigger")
+            .field("matcher", &self.matcher)
+            .field("intro_surface", &self.intro_surface)
+            .finish()
+    }
 }
 
 impl Clone for Trigger {
@@ -248,6 +258,7 @@ impl Clone for Trigger {
         Self {
             matcher: Arc::clone(&self.matcher),
             intro_surface: self.intro_surface,
+            retained_model: self.retained_model.clone(),
         }
     }
 }
@@ -259,17 +270,48 @@ impl PartialEq for Trigger {
 }
 
 impl Trigger {
+    /// Process-local identity for immutable runtime cache eligibility. This is
+    /// never a checkpoint reference or a substitute for a retained wire model.
+    pub(crate) fn runtime_matcher_identity(&self) -> usize {
+        Arc::as_ptr(&self.matcher) as *const () as usize
+    }
+
     /// Create a new Trigger wrapping a TriggerMatcher implementation.
     pub fn new<T: TriggerMatcher + 'static>(matcher: T) -> Self {
+        let retained_model = matcher.canonical_model().map(Arc::new);
+        let intro_surface = retained_model.as_ref().and_then(|model| model.intro_surface.as_ref())
+            .map(|intro| match intro {
+                ironsmith_core::trigger_model::TriggerIntroSurface::When => TriggerIntroSurface::When,
+                ironsmith_core::trigger_model::TriggerIntroSurface::Whenever => TriggerIntroSurface::Whenever,
+                ironsmith_core::trigger_model::TriggerIntroSurface::At => TriggerIntroSurface::At,
+            });
         Self {
             matcher: Arc::new(matcher),
-            intro_surface: None,
+            intro_surface,
+            retained_model,
         }
     }
 
     pub fn with_intro_surface(mut self, intro: TriggerIntroSurface) -> Self {
         self.intro_surface = Some(intro);
+        if let Some(model) = &mut self.retained_model {
+            Arc::make_mut(model).intro_surface = Some(match intro {
+                TriggerIntroSurface::When => {
+                    ironsmith_core::trigger_model::TriggerIntroSurface::When
+                }
+                TriggerIntroSurface::Whenever => {
+                    ironsmith_core::trigger_model::TriggerIntroSurface::Whenever
+                }
+                TriggerIntroSurface::At => ironsmith_core::trigger_model::TriggerIntroSurface::At,
+            });
+        }
         self
+    }
+
+    /// The complete shared trigger vocabulary captured during model lowering.
+    /// Presentation intro metadata remains separately available to the codec.
+    pub fn compiled_model(&self) -> Option<&ironsmith_core::trigger_model::Trigger> {
+        self.retained_model.as_deref()
     }
 
     pub fn intro_surface(&self) -> Option<TriggerIntroSurface> {
@@ -314,8 +356,12 @@ impl Trigger {
     }
 
     pub fn downcast_mut<T: TriggerMatcher + 'static>(&mut self) -> Option<&mut T> {
-        Arc::get_mut(&mut self.matcher)
-            .and_then(|matcher| (matcher as &mut dyn std::any::Any).downcast_mut::<T>())
+        let matcher = Arc::get_mut(&mut self.matcher)
+            .and_then(|matcher| (matcher as &mut dyn std::any::Any).downcast_mut::<T>())?;
+        // Only successful mutable access invalidates the model. Failed type or
+        // shared-ownership checks cannot discard otherwise valid transport data.
+        self.retained_model = None;
+        Some(matcher)
     }
 
     /// Whether this trigger uses snapshot-based matching.
@@ -1870,6 +1916,10 @@ impl Trigger {
 }
 
 impl TriggerMatcher for Trigger {
+    fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
+        self.compiled_model().cloned()
+    }
+
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         self.matcher.matches(event, ctx)
     }
@@ -1937,5 +1987,143 @@ mod tests {
     fn test_trigger_as_trait_object() {
         let trigger: Box<dyn TriggerMatcher> = Box::new(Trigger::this_enters_battlefield());
         assert!(trigger.display().contains("enters"));
+    }
+}
+
+
+#[cfg(test)]
+mod retained_trigger_model_tests {
+    use super::*;
+
+    #[test]
+    fn retained_trigger_model_preserves_failed_access_and_invalidates_mutable_matcher() {
+        let model = ironsmith_core::trigger_model::Trigger::this_enters_battlefield();
+        let mut trigger = Trigger::from_model(model.clone()).expect("trigger model lowers");
+        assert_eq!(trigger.compiled_model(), Some(&model));
+        assert_eq!(
+            format!("{trigger:?}"),
+            format!("{:?}", Trigger::this_enters_battlefield())
+        );
+        let cloned = trigger.clone();
+        assert!(
+            trigger.downcast_mut::<ZoneChangeTrigger>().is_none(),
+            "shared matcher cannot be mutated"
+        );
+        assert_eq!(
+            trigger.compiled_model(),
+            Some(&model),
+            "failed access cannot lose retained data"
+        );
+        assert_eq!(cloned.compiled_model(), Some(&model));
+        drop(cloned);
+        assert!(
+            trigger.downcast_mut::<ZoneChangeTrigger>().is_some(),
+            "ordinary unique matcher mutation remains available"
+        );
+        assert!(
+            trigger.compiled_model().is_none(),
+            "mutable access invalidates the old model"
+        );
+    }
+
+    #[test]
+    fn retained_trigger_model_preserves_intro_mutation_and_clone_isolation() {
+        let model = ironsmith_core::trigger_model::Trigger::this_enters_battlefield();
+        let original = Trigger::from_model(model.clone()).expect("complete trigger model lowers");
+        for (native, core) in [
+            (
+                TriggerIntroSurface::When,
+                ironsmith_core::trigger_model::TriggerIntroSurface::When,
+            ),
+            (
+                TriggerIntroSurface::Whenever,
+                ironsmith_core::trigger_model::TriggerIntroSurface::Whenever,
+            ),
+            (
+                TriggerIntroSurface::At,
+                ironsmith_core::trigger_model::TriggerIntroSurface::At,
+            ),
+        ] {
+            let changed = original.clone().with_intro_surface(native);
+            let mut expected = model.clone();
+            expected.intro_surface = Some(core);
+            assert_eq!(changed.compiled_model(), Some(&expected));
+            assert_eq!(changed.intro_surface(), Some(native));
+            assert_eq!(original.compiled_model(), Some(&model));
+            assert_eq!(original.intro_surface(), None);
+        }
+    }
+}
+
+#[cfg(test)]
+mod native_random_trigger_model_contract_tests {
+    use super::*;
+    fn cases() -> Vec<(&'static str, Trigger, ironsmith_core::trigger_model::Trigger)> {
+        use ironsmith_core::trigger_model::Trigger as Model;
+        let player = PlayerFilter::Specific(crate::PlayerId::from_index(1));
+        vec![
+            ("die", Trigger::player_rolls_die(player.clone()), Model::player_rolls_die(player.clone())),
+            ("grouped", Trigger::player_rolls_die_with_surface(player.clone(), true), Model::player_rolls_die_with_surface(player.clone(), true)),
+            ("attractions", Trigger::player_rolls_to_visit_attractions(player.clone()), Model::player_rolls_to_visit_attractions(player.clone())),
+            ("result", Trigger::player_rolls_result(player.clone(), 3), Model::player_rolls_result(player.clone(), 3)),
+            ("highest", Trigger::player_rolls_highest_natural_result(player.clone()), Model::player_rolls_highest_natural_result(player.clone())),
+            ("win", Trigger::player_coin_flip_result(player.clone(), true), Model::player_coin_flip_result(player.clone(), true)),
+            ("lose", Trigger::player_coin_flip_result(player.clone(), false), Model::player_coin_flip_result(player.clone(), false)),
+            ("direct", Trigger::new(PlayerRollsDieTrigger::with_surface(player.clone(), true)), Model::player_rolls_die_with_surface(player.clone(), true)),
+            ("wrapped", Trigger::new(Trigger::player_rolls_die(player.clone())), Model::player_rolls_die(player)),
+        ]
+    }
+    #[test]
+    fn native_random_trigger_models_retain_all_fields_and_matching_semantics() {
+        let cases = cases();
+        let missing = cases.iter().filter(|(_, trigger, _)| trigger.compiled_model().is_none()).map(|(name, _, _)| *name).collect::<Vec<_>>();
+        assert!(missing.is_empty(), "native constructors lost canonical models: {missing:?}");
+        let game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = crate::PlayerId::from_index(0);
+        let bob = crate::PlayerId::from_index(1);
+        let source = crate::ObjectId::from_raw(123);
+        let context = TriggerContext::for_source(source, alice, &game);
+        let events = [
+            TriggerEvent::new_with_provenance(crate::events::other::DieRolledEvent::new(bob, source, 3, 6), Default::default()),
+            TriggerEvent::new_with_provenance(crate::events::other::DieRolledEvent::new(bob, source, 6, 6), Default::default()),
+            TriggerEvent::new_with_provenance(crate::events::other::DieRolledEvent::new(bob, source, 3, 6).for_attraction_visit(), Default::default()),
+            TriggerEvent::new_with_provenance(crate::events::other::DieRolledEvent::new_planar(bob, source, 6), Default::default()),
+            TriggerEvent::new_with_provenance(crate::events::other::DieRolledEvent::new(alice, source, 3, 6), Default::default()),
+            TriggerEvent::new_with_provenance(crate::events::CoinFlippedEvent { player: bob, source, face: ironsmith_core::CoinFace::Heads, call: Some(ironsmith_core::CoinFace::Heads), winner: Some(bob), loser: Some(alice) }, Default::default()),
+            TriggerEvent::new_with_provenance(crate::events::CoinFlippedEvent { player: bob, source, face: ironsmith_core::CoinFace::Heads, call: Some(ironsmith_core::CoinFace::Tails), winner: Some(alice), loser: Some(bob) }, Default::default()),
+        ];
+        for (name, native, expected) in cases {
+            assert_eq!(native.compiled_model(), Some(&expected), "{name}");
+            let wire = serde_json::to_string(native.compiled_model().unwrap()).unwrap();
+            let model = serde_json::from_str(&wire).unwrap();
+            let restored = Trigger::from_model(model).unwrap();
+            assert_eq!(restored.display(), native.display(), "{name}");
+            for event in &events {
+                assert_eq!(restored.matches(event, &context), native.matches(event, &context), "{name}: {event:?}");
+                assert_eq!(restored.simultaneous_trigger_key(event), native.simultaneous_trigger_key(event), "{name}");
+            }
+            let changed = native.clone().with_intro_surface(TriggerIntroSurface::When);
+            let mut changed_expected = expected.clone();
+            changed_expected.intro_surface = Some(ironsmith_core::trigger_model::TriggerIntroSurface::When);
+            assert_eq!(changed.compiled_model(), Some(&changed_expected), "{name}");
+            assert_eq!(native.compiled_model(), Some(&expected), "{name}: alias remains immutable");
+        }
+    }
+}
+
+#[cfg(test)]
+mod native_trigger_model_boundary_tests {
+    use super::*;
+    #[test]
+    fn native_trigger_model_rejects_unrepresented_qualifiers_and_invalidates_mutation() {
+        let player = PlayerFilter::You;
+        let unsupported = Trigger::new(PlayerRollsDieTrigger { player: player.clone(), one_or_more: true, attraction_visit_only: true });
+        assert!(unsupported.compiled_model().is_none(), "never discard simultaneous grouping from an Attraction-only trigger");
+        let mut ordinary = Trigger::player_rolls_die(player.clone());
+        assert!(ordinary.compiled_model().is_some());
+        ordinary.downcast_mut::<PlayerRollsDieTrigger>().unwrap().one_or_more = true;
+        assert!(ordinary.compiled_model().is_none(), "mutable matcher access invalidates prior canonical data");
+        let rebuilt = Trigger::new(ordinary.downcast_ref::<PlayerRollsDieTrigger>().unwrap().clone());
+        assert_eq!(rebuilt.compiled_model(), Some(&ironsmith_core::trigger_model::Trigger::player_rolls_die_with_surface(player, true)));
     }
 }

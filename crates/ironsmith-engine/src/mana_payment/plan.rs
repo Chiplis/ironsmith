@@ -158,6 +158,10 @@ impl ManaPaymentRequest {
 /// A single mana ability activation selected by a plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedManaActivation {
+    /// Exact server-selected production outputs and replacement decisions,
+    /// grouped by the original nonempty mana event for authoritative replay.
+    pub replacement_witnesses: Option<Vec<super::ManaReplacementWitness>>,
+
     pub source: ObjectId,
     pub ability_index: usize,
     /// Restriction supplied to existing mana-choice effects during execution.

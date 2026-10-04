@@ -61,14 +61,14 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "ExperienceCountersEffect" => {
             decode_as::<ironsmith_core::ExperienceCountersEffect>(payload).map(Some)
         }
-        "GivePlayerCountersEffect" => {
-            decode_as::<ironsmith_core::GivePlayerCountersEffect>(payload).map(Some)
-        }
         "ExtraTurnAfterNextTurnEffect" => {
             decode_as::<ironsmith_core::ExtraTurnAfterNextTurnEffect>(payload).map(Some)
         }
         "ExtraTurnEffect" => decode_as::<ironsmith_core::ExtraTurnEffect>(payload).map(Some),
         "FlipCoinEffect" => decode_as::<ironsmith_core::FlipCoinEffect>(payload).map(Some),
+        "GivePlayerCountersEffect" => {
+            decode_as::<ironsmith_core::GivePlayerCountersEffect>(payload).map(Some)
+        }
         "GrantBySpecEffect" => decode_as::<
             ironsmith_core::GrantBySpecEffect<wire::WireGrantSpec, wire::WireGrantDuration>,
         >(payload)
@@ -86,9 +86,6 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         }
         "GrantPlayTaggedEffect" => {
             decode_as::<ironsmith_core::GrantPlayTaggedEffect>(payload).map(Some)
-        }
-        "GrantEndThisEffectPaymentEffect" => {
-            decode_as::<ironsmith_core::GrantEndThisEffectPaymentEffect>(payload).map(Some)
         }
         "GrantTaggedSpellFreeCastUntilEndOfTurnEffect" => {
             decode_as::<ironsmith_core::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(payload)
@@ -154,6 +151,262 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RevealChosenSubtypeEffect" => {
             decode_as::<ironsmith_core::RevealChosenSubtypeEffect>(payload).map(Some)
         }
+        "GrantEndThisEffectPaymentEffect" => {
+            decode_as::<ironsmith_core::GrantEndThisEffectPaymentEffect>(payload).map(Some)
+        }
+        "MayCastForMiracleCostEffect" => {
+            decode_as::<ironsmith_core::MayCastForMiracleCostEffect>(payload).map(Some)
+        }
+        _ => Ok(None),
+    }
+}
+
+pub(super) fn map_card_ids(
+    kind: &str,
+    payload: Value,
+    context: &super::card_graph::Context<'_>,
+) -> Result<Option<Value>, String> {
+    match kind {
+        "AdditionalLandPlaysEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::AdditionalLandPlaysEffect,
+        >(payload, context)
+        .map(Some),
+        "AdditionalPhasesEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::AdditionalPhasesEffect,
+        >(payload, context)
+        .map(Some),
+        "AscendEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::AscendEffect>(payload, context)
+                .map(Some)
+        }
+        "BecomeMonarchEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::BecomeMonarchEffect,
+        >(payload, context)
+        .map(Some),
+        "CastSourceEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::CastSourceEffect>(payload, context)
+                .map(Some)
+        }
+        "CastTaggedEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::CastTaggedEffect>(payload, context)
+                .map(Some)
+        }
+        "ChooseCardNameEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChooseCardNameEffect,
+        >(payload, context)
+        .map(Some),
+        "ChooseCardTypeEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChooseCardTypeEffect,
+        >(payload, context)
+        .map(Some),
+        "ChooseColorEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::ChooseColorEffect>(payload, context)
+                .map(Some)
+        }
+        "ChooseCreatureTypeEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChooseCreatureTypeEffect,
+        >(payload, context)
+        .map(Some),
+        "ChooseLandTypeEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChooseLandTypeEffect,
+        >(payload, context)
+        .map(Some),
+        "ChooseNamedOptionEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChooseNamedOptionEffect,
+        >(payload, context)
+        .map(Some),
+        "ChoosePlayerEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChoosePlayerEffect,
+        >(payload, context)
+        .map(Some),
+        "ControlCombatChoicesThisTurnEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ControlCombatChoicesThisTurnEffect,
+        >(payload, context)
+        .map(Some),
+        "ControlPlayerEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ControlPlayerEffect,
+        >(payload, context)
+        .map(Some),
+        "CreateEmblemEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::CreateEmblemEffect<wire::WireEmblemDescription>,
+        >(payload, context)
+        .map(Some),
+        "DiscoverEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::DiscoverEffect>(payload, context)
+                .map(Some)
+        }
+        "EndCombatPhaseEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::EndCombatPhaseEffect,
+        >(payload, context)
+        .map(Some),
+        "EndTurnEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::EndTurnEffect>(payload, context)
+                .map(Some)
+        }
+        "EnergyCountersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::EnergyCountersEffect,
+        >(payload, context)
+        .map(Some),
+        "ExileInsteadOfGraveyardEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ExileInsteadOfGraveyardEffect,
+        >(payload, context)
+        .map(Some),
+        "ExperienceCountersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ExperienceCountersEffect,
+        >(payload, context)
+        .map(Some),
+        "ExtraTurnAfterNextTurnEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ExtraTurnAfterNextTurnEffect,
+        >(payload, context)
+        .map(Some),
+        "ExtraTurnEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::ExtraTurnEffect>(payload, context)
+                .map(Some)
+        }
+        "FlipCoinEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::FlipCoinEffect>(payload, context)
+                .map(Some)
+        }
+        "GivePlayerCountersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GivePlayerCountersEffect,
+        >(payload, context)
+        .map(Some),
+        "GrantBySpecEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantBySpecEffect<wire::WireGrantSpec, wire::WireGrantDuration>,
+        >(payload, context)
+        .map(Some),
+        "GrantEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantEffect<wire::WireGrantable, wire::WireGrantDuration>,
+        >(payload, context)
+        .map(Some),
+        "GrantNextSpellAbilityEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantNextSpellAbilityEffect<wire::WireAbility>,
+        >(payload, context)
+        .map(Some),
+        "GrantNextSpellCostReductionEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantNextSpellCostReductionEffect,
+        >(payload, context)
+        .map(Some),
+        "GrantPlayTaggedEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantPlayTaggedEffect,
+        >(payload, context)
+        .map(Some),
+        "GrantTaggedSpellFreeCastUntilEndOfTurnEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
+        >(payload, context)
+        .map(Some),
+        "GrantTaggedSpellLifeCostByManaValueEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantTaggedSpellLifeCostByManaValueEffect,
+        >(payload, context)
+        .map(Some),
+        "IncreaseSpeedEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::IncreaseSpeedEffect,
+        >(payload, context)
+        .map(Some),
+        "LoseTheGameEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::LoseTheGameEffect>(payload, context)
+                .map(Some)
+        }
+        "MayCastMatchingSpellWithoutPayingManaCostEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::MayCastMatchingSpellWithoutPayingManaCostEffect,
+        >(payload, context)
+        .map(Some),
+        "PayAnyEnergyEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::PayAnyEnergyEffect,
+        >(payload, context)
+        .map(Some),
+        "PayAnyLifeEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::PayAnyLifeEffect>(payload, context)
+                .map(Some)
+        }
+        "PayEnergyEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::PayEnergyEffect>(payload, context)
+                .map(Some)
+        }
+        "PlaySubgameEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::PlaySubgameEffect<wire::WireEffect>,
+        >(payload, context)
+        .map(Some),
+        "PoisonCountersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::PoisonCountersEffect,
+        >(payload, context)
+        .map(Some),
+        "ReduceSpeedEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::ReduceSpeedEffect>(payload, context)
+                .map(Some)
+        }
+        "RestartGameEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::RestartGameEffect>(payload, context)
+                .map(Some)
+        }
+        "ReverseTurnOrderEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ReverseTurnOrderEffect,
+        >(payload, context)
+        .map(Some),
+        "RingTemptsYouEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RingTemptsYouEffect,
+        >(payload, context)
+        .map(Some),
+        "RollDiceChooseResultEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RollDiceChooseResultEffect,
+        >(payload, context)
+        .map(Some),
+        "RollDieEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::RollDieEffect>(payload, context)
+                .map(Some)
+        }
+        "SkipCombatPhasesEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::SkipCombatPhasesEffect,
+        >(payload, context)
+        .map(Some),
+        "SkipCombatPhasesThisTurnEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::SkipCombatPhasesThisTurnEffect,
+        >(payload, context)
+        .map(Some),
+        "SkipDrawStepEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::SkipDrawStepEffect,
+        >(payload, context)
+        .map(Some),
+        "SkipMainPhasesThisTurnEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::SkipMainPhasesThisTurnEffect,
+        >(payload, context)
+        .map(Some),
+        "SkipNextCombatPhaseThisTurnEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::SkipNextCombatPhaseThisTurnEffect,
+        >(payload, context)
+        .map(Some),
+        "SkipTurnEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::SkipTurnEffect>(payload, context)
+                .map(Some)
+        }
+        "TakeInitiativeEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::TakeInitiativeEffect,
+        >(payload, context)
+        .map(Some),
+        "TicketCountersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::TicketCountersEffect,
+        >(payload, context)
+        .map(Some),
+        "VentureIntoDungeonEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::VentureIntoDungeonEffect,
+        >(payload, context)
+        .map(Some),
+        "WinTheGameEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::WinTheGameEffect>(payload, context)
+                .map(Some)
+        }
+        "RevealChosenSubtypeEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RevealChosenSubtypeEffect,
+        >(payload, context)
+        .map(Some),
+        "GrantEndThisEffectPaymentEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantEndThisEffectPaymentEffect,
+        >(payload, context)
+        .map(Some),
+        "MayCastForMiracleCostEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::MayCastForMiracleCostEffect,
+        >(payload, context)
+        .map(Some),
         _ => Ok(None),
     }
 }

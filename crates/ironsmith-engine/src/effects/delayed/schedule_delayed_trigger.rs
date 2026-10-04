@@ -203,8 +203,11 @@ impl ScheduleDelayedTriggerEffect {
 
 impl EffectExecutor for ScheduleDelayedTriggerEffect {
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
-        for effect in self.effects.flattened_default_effects() {
+        for effect in self.effects.all_effects() {
             visitor(effect);
+        }
+        if let Some(prepayment) = &self.prepayment {
+            crate::ability::visit_total_cost_owned_effects(&prepayment.cost, visitor);
         }
     }
 

@@ -14,7 +14,7 @@ use crate::static_abilities::StaticAbilityId;
 use std::collections::HashMap;
 #[cfg(any(test, feature = "handwritten-parse-support"))]
 use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// Registry of all card definitions.
 ///
@@ -22,9 +22,10 @@ use std::sync::{Mutex, OnceLock};
 #[derive(Debug, Clone, Default)]
 pub struct CardRegistry {
     /// Cards indexed by name
-    cards: HashMap<String, CardDefinition>,
-    /// Mapping for looking up cards by CardId without duplicating CardDefinition storage.
-    names_by_id: HashMap<CardId, String>,
+    cards: HashMap<String, Arc<CardDefinition>>,
+    /// Exact immutable native definitions, independent of the latest name alias.
+    /// Both indexes share storage; replacing a name never changes another ID.
+    definitions_by_id: HashMap<CardId, Arc<CardDefinition>>,
     /// Alias name -> canonical name (used for card-face layouts where Scryfall's
     /// `name` is "Front // Back" but the playable card name is the front face).
     aliases: HashMap<String, String>,
@@ -35,7 +36,7 @@ impl CardRegistry {
     pub fn new() -> Self {
         Self {
             cards: HashMap::new(),
-            names_by_id: HashMap::new(),
+            definitions_by_id: HashMap::new(),
             aliases: HashMap::new(),
         }
     }
@@ -491,22 +492,22 @@ impl CardRegistry {
 
     fn register_explicit(&mut self, def: CardDefinition) {
         let name = def.card.name.clone();
-        self.names_by_id
-            .entry(def.card.id)
-            .or_insert_with(|| name.clone());
-        self.cards.insert(name, def);
+        let id = def.card.id;
+        let definition = Arc::new(def);
+        self.definitions_by_id.insert(id, definition.clone());
+        self.cards.insert(name, definition);
     }
 
     /// Look up a card by name.
     pub fn get(&self, name: &str) -> Option<&CardDefinition> {
         if let Some(def) = self.cards.get(name) {
-            return Some(def);
+            return Some(def.as_ref());
         }
         let canonical = self
             .aliases
             .get(name)
             .or_else(|| self.aliases.get(&normalize_card_lookup_name(name)))?;
-        self.cards.get(canonical)
+        self.cards.get(canonical).map(Arc::as_ref)
     }
 
     /// Register an alternate name for an existing definition.
@@ -523,8 +524,7 @@ impl CardRegistry {
 
     /// Look up a card by CardId.
     pub fn get_by_id(&self, id: CardId) -> Option<&CardDefinition> {
-        let name = self.names_by_id.get(&id)?;
-        self.cards.get(name)
+        self.definitions_by_id.get(&id).map(Arc::as_ref)
     }
 
     pub fn linked_face_definition_by_name_or_id(
@@ -532,6 +532,17 @@ impl CardRegistry {
         face_name: Option<&str>,
         id: Option<CardId>,
     ) -> Option<&CardDefinition> {
+        // An explicit ID disambiguates independent graphs sharing face names.
+        // A genuinely different requested face still uses the name path below.
+        if let Some(definition) = id.and_then(|id| self.get_by_id(id))
+            && face_name.is_none_or(|name| {
+                normalize_card_loose_lookup_name(name)
+                    == normalize_card_loose_lookup_name(&definition.card.name)
+                    || self.get(name).is_some_and(|named| named.card.name == definition.card.name)
+            })
+        {
+            return Some(definition);
+        }
         if let Some(face_name) = face_name {
             if let Some(definition) = self.get(face_name) {
                 return Some(definition);
@@ -546,7 +557,7 @@ impl CardRegistry {
 
     /// Get all card definitions.
     pub fn all(&self) -> impl Iterator<Item = &CardDefinition> {
-        self.cards.values()
+        self.cards.values().map(Arc::as_ref)
     }
 
     /// Get the number of registered cards.
@@ -561,17 +572,17 @@ impl CardRegistry {
 
     /// Get all creatures.
     pub fn creatures(&self) -> impl Iterator<Item = &CardDefinition> {
-        self.cards.values().filter(|c| c.is_creature())
+        self.cards.values().map(Arc::as_ref).filter(|c| c.is_creature())
     }
 
     /// Get all spells (instants and sorceries).
     pub fn spells(&self) -> impl Iterator<Item = &CardDefinition> {
-        self.cards.values().filter(|c| c.is_spell())
+        self.cards.values().map(Arc::as_ref).filter(|c| c.is_spell())
     }
 
     /// Get all lands.
     pub fn lands(&self) -> impl Iterator<Item = &CardDefinition> {
-        self.cards.values().filter(|c| c.card.is_land())
+        self.cards.values().map(Arc::as_ref).filter(|c| c.card.is_land())
     }
 }
 
@@ -750,7 +761,7 @@ fn loose_name_match<'a>(registry: &'a CardRegistry, requested: &str) -> Option<&
     }
 
     registry.cards.iter().find_map(|(name, definition)| {
-        (normalize_card_loose_lookup_name(name) == requested_key).then_some(definition)
+        (normalize_card_loose_lookup_name(name) == requested_key).then_some(definition.as_ref())
     })
 }
 

@@ -314,13 +314,13 @@ mod tests {
         assert!(!event.flipper_lost());
         assert_eq!(
             outcome.as_count(),
-            Some(i32::from(event.face == ironsmith_core::CoinFace::Heads))
+            Some(i64::from(event.face == ironsmith_core::CoinFace::Heads))
         );
     }
 
     #[test]
     fn each_player_face_only_flips_keep_per_player_heads_and_tails_results() {
-        fn run(face: ironsmith_core::CoinFace) -> Vec<(PlayerId, i32)> {
+        fn run(face: ironsmith_core::CoinFace) -> Vec<(PlayerId, i64)> {
             let mut game = crate::tests::test_helpers::setup_two_player_game();
             let alice = PlayerId::from_index(0);
             let source = game.new_object_id();

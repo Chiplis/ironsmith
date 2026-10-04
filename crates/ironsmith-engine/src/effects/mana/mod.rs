@@ -14,6 +14,7 @@ mod add_mana_of_land_produced_types;
 mod add_one_mana_of_any_color_among;
 mod add_scaled_mana;
 mod choice_helpers;
+pub(crate) mod production_resolution;
 mod double_mana_pool;
 mod empty_mana_pool;
 mod grant_mana_ability_until_eot;

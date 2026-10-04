@@ -11,6 +11,7 @@ pub(super) fn active_target_assignments_for_effect(
     assignments: &[crate::game_state::TargetAssignment],
     cursor: &mut usize,
 ) -> Vec<crate::game_state::TargetAssignment> {
+    let counter_roles = targeting::counter_transfer_target_bindings(effect, declared_targets);
     let target_profile = effect.target_selection_profile();
     let count = count_target_selection_slots_for_effect(
         effect,
@@ -18,6 +19,17 @@ pub(super) fn active_target_assignments_for_effect(
         consumed_modal_selection,
         declared_targets,
     );
+    if let Some(roles) = counter_roles {
+        let start = *cursor;
+        let mut next = start;
+        let mut selected = Vec::new();
+        for (_spec, previous) in roles {
+            let index = previous.unwrap_or_else(|| { let index = next; next += 1; index });
+            if let Some(assignment) = assignments.get(index) { selected.push(assignment.clone()); }
+        }
+        *cursor = start.saturating_add(count).min(assignments.len());
+        return selected;
+    }
     if count == 1
         && let Some(profile) = effect.target_selection_profile()
     {
@@ -1051,7 +1063,8 @@ fn resolve_stack_entry_full_inner(
     decision_maker: &mut dyn DecisionMaker,
     mut trigger_queue: Option<&mut TriggerQueue>,
 ) -> Result<(), GameLoopError> {
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(|error| GameLoopError::ExecutionFailed(
+        crate::effects::ExecutionError::ContinuousDiscovery(error)))?;
     // Rebound granted by a static ability (Cast Through Time) applies to
     // spells on the stack, so read it before the entry is popped.
     let resolving_spell_has_granted_rebound = game.stack.last().is_some_and(|entry| {
@@ -1061,9 +1074,15 @@ fn resolve_stack_entry_full_inner(
                 crate::static_abilities::StaticAbilityId::Rebound,
             )
     });
-    let entry = game
+    let mut entry = game
         .pop_from_stack()
         .ok_or_else(|| GameLoopError::InvalidState("Stack is empty".to_string()))?;
+    // Spells use their current controller (CR 109.5, 112.2); abilities keep
+    // the controller captured when they were put on the stack (CR 113.8).
+    if !entry.is_ability {
+        entry.controller = game.current_controller(entry.object_id).ok_or_else(||
+            GameLoopError::InvalidState("Resolving spell has no object controller".to_string()))?;
+    }
 
     // Get the object for this stack entry
     let mut obj = game.object(entry.object_id).cloned();
@@ -1535,9 +1554,10 @@ fn resolve_stack_entry_full_inner(
                     obj.alternative_casts.get(index).cloned()
                 } else { None }
             });
+            let current_turn = game.turn.turn_number;
             if let Some(method) = battlefield_method
                 && let Some(spell) = game.object_mut(entry.object_id) {
-                crate::alternative_cast::ensure_alternative_battlefield_abilities(spell, &method);
+                crate::alternative_cast::ensure_alternative_battlefield_abilities(spell, &method, current_turn);
             }
 
             // It's a permanent spell, move to battlefield with ETB processing
@@ -1547,7 +1567,7 @@ fn resolve_stack_entry_full_inner(
                 Target::Player(id) => crate::object::AttachmentTarget::Player(*id),
             })).flatten();
             if let Some(player) = chosen_player { game.set_chosen_player(entry.object_id, player); }
-            let mut options = crate::effects::zones::BattlefieldEntryOptions::specific(entry.controller, cast_with_sneak);
+            let mut options = crate::effects::zones::BattlefieldEntryOptions::specific(obj.initial_controller, cast_with_sneak);
             if obj.subtypes.contains(&Subtype::Aura) { options = options.with_aura_entry_attachment(aura_target); }
             let receipt = crate::effects::zones::move_to_battlefield_with_options(game, &mut ctx, entry.object_id, options)?;
             if ctx.decision_maker.awaiting_choice() { return Ok(()); }
@@ -3410,4 +3430,82 @@ mod replacement_spell_completion_owner_contract_tests {
     #[test] fn adventure_error_restores_stack_and_registrations() { check(4, 1); }
     #[test] fn adventure_pending_replays_once() { check(4, 2); }
     #[test] fn adventure_addition_binds_actual_arrival() { check(4, 3); }
+}
+
+#[cfg(test)]
+mod counter_transfer_role_assignment_tests {
+    use super::*;
+    use crate::effects::{MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, WithIdEffect, MayEffect, TargetOnlyEffect};
+    use crate::target::{ChooseSpec, PlayerFilter};
+    use crate::game_state::TargetAssignment;
+    fn owners() -> Vec<Effect> {
+        let endpoint = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
+        vec![
+            Effect::new(MoveAllCountersEffect::new(endpoint.clone(), endpoint.clone())),
+            Effect::new(MoveCountersEffect::new(crate::object::CounterType::Charge, 1, endpoint.clone(), endpoint.clone())),
+            Effect::new(MoveOneCounterEffect::new(endpoint.clone(), endpoint)),
+        ]
+    }
+    fn variants(effect: Effect) -> Vec<Effect> {
+        vec![effect.clone(), effect.clone().tag("role"),
+            Effect::new(WithIdEffect::new(crate::effect::EffectId(0), effect.clone())),
+            Effect::new(MayEffect::new(vec![effect]))]
+    }
+    fn bind(effect: &Effect, declared: &mut Vec<DeclaredTarget>, assignments: &[TargetAssignment], cursor: &mut usize) -> Vec<TargetAssignment> {
+        active_target_assignments_for_effect(effect, None, &mut false, declared, assignments, cursor)
+    }
+    #[test]
+    fn independent_equal_filters_keep_two_roles_through_wrappers() {
+        for owner in owners() { for effect in variants(owner) {
+            let spec = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
+            let assignments = vec![TargetAssignment { spec: spec.clone(), range: 0..1 }, TargetAssignment { spec, range: 1..2 }];
+            let mut cursor = 0;
+            let selected = bind(&effect, &mut Vec::new(), &assignments, &mut cursor);
+            assert_eq!(cursor, 2);
+            assert_eq!(selected.len(), 2);
+            assert_eq!(selected[0].range, 0..1);
+            assert_eq!(selected[1].range, 1..2);
+        }}
+    }
+    #[test]
+    fn illegal_endpoint_empty_ranges_do_not_shift_the_other_role() {
+        for owner in owners() { for effect in variants(owner) { for first_illegal in [true, false] {
+            let spec = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
+            let ranges = if first_illegal { [0..0, 0..1] } else { [0..1, 1..1] };
+            let assignments = vec![TargetAssignment { spec: spec.clone(), range: ranges[0].clone() }, TargetAssignment { spec, range: ranges[1].clone() }];
+            let mut cursor = 0;
+            let selected = bind(&effect, &mut Vec::new(), &assignments, &mut cursor);
+            assert_eq!(cursor, 2);
+            assert_eq!(selected.len(), 2);
+            assert_eq!(selected[0].range, ranges[0]);
+            assert_eq!(selected[1].range, ranges[1]);
+        }}}
+    }
+    #[test]
+    fn synthetic_endpoint_is_borrowed_once_after_unrelated_declaration() {
+        for owner in owners() { for effect in variants(owner) {
+            let endpoint = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
+            let unrelated = ChooseSpec::Player(PlayerFilter::Any);
+            let assignments = vec![
+                TargetAssignment { spec: unrelated.clone(), range: 0..1 },
+                TargetAssignment { spec: endpoint.clone(), range: 1..2 },
+                TargetAssignment { spec: endpoint.clone(), range: 2..3 },
+                TargetAssignment { spec: endpoint.clone(), range: 3..4 },
+                TargetAssignment { spec: endpoint.clone(), range: 4..5 },
+            ];
+            let mut declared = Vec::new(); let mut cursor = 0;
+            assert_eq!(bind(&Effect::new(TargetOnlyEffect::new(unrelated)), &mut declared, &assignments, &mut cursor).len(), 1);
+            assert_eq!(bind(&Effect::new(TargetOnlyEffect::new(endpoint)), &mut declared, &assignments, &mut cursor).len(), 1);
+            let selected = bind(&effect, &mut declared, &assignments, &mut cursor);
+            assert_eq!(cursor, 3);
+            assert_eq!(selected.len(), 2);
+            assert_eq!(selected[0].range, 1..2);
+            assert_eq!(selected[1].range, 2..3);
+            let next = bind(&effect, &mut declared, &assignments, &mut cursor);
+            assert_eq!(cursor, 5);
+            assert_eq!(next.len(), 2);
+            assert_eq!(next[0].range, 3..4);
+            assert_eq!(next[1].range, 4..5);
+        }}
+    }
 }

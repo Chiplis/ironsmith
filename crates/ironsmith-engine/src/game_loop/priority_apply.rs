@@ -103,10 +103,13 @@ pub fn apply_priority_response_with_dm(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     if !decision_maker.awaiting_choice() { game.clear_pending_decision_controllers(); }
-    // Land entry can suspend inside an as-enters program. Its face selection,
+    // Entry and activation can suspend inside replacement programs. Their
     // priority actor and loop bookkeeping are part of the same operation.
     let checkpoint = matches!(response,
-        PriorityResponse::PriorityAction(LegalAction::PlayLand { .. } | LegalAction::PlayLandBackFace { .. } | LegalAction::ActivateManaAbility { .. })
+        PriorityResponse::PriorityAction(LegalAction::PlayLand { .. } | LegalAction::PlayLandBackFace { .. } | LegalAction::ActivateManaAbility { .. } | LegalAction::ActivateAbility { .. })
+        | PriorityResponse::NextCostChoice(_)
+        | PriorityResponse::SacrificeTarget(_)
+        | PriorityResponse::CardCostChoice(_)
     ).then(|| (game.clone(), trigger_queue.clone(), state.clone()));
     let result = apply_priority_response_with_dm_inner(game, trigger_queue, state, response, decision_maker);
     if let Some((game_before, queue_before, state_before)) = checkpoint {
@@ -118,6 +121,234 @@ pub fn apply_priority_response_with_dm(
         if decision_maker.awaiting_choice() {
             return Ok(GameProgress::Continue);
         }
+    }
+    result
+}
+
+/// Prepare one mana activation for its actual payer. Explicit payment state
+/// keeps completed child activations outside an unfinished parent's replay.
+pub(super) fn begin_mana_ability_activation(
+    game: &mut GameState, trigger_queue: &mut TriggerQueue, state: &mut PriorityLoopState,
+    source: &ObjectId, ability_index: &usize, player: PlayerId,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
+    let result = (|| -> Result<GameProgress, GameLoopError> {
+    if game.object(*source).is_some()
+        && let Some(ability) = game.current_ability(*source, *ability_index)
+        && let AbilityKind::Activated(mana_ability) = &ability.kind
+        && mana_ability.is_runtime_mana_ability(game, *source, player)
+    {
+        let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
+        let effects_to_run = mana_ability.effects.clone();
+        let base_cost = mana_ability.mana_cost.clone();
+        let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
+        let mana_source_chosen_creature_type = game.chosen_creature_type(*source);
+        let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
+            game,
+            player,
+            *source,
+            &base_cost,
+            &[],
+            Some(crate::decision::ActivationCostAbility::of(
+                game,
+                player,
+                *source,
+                mana_ability,
+            )),
+        );
+        let activation_cost_has_tap = cost.costs().iter().any(|cost| cost.requires_tap());
+        let mana_production_provenance =
+            crate::special_actions::mana_production_provenance_for_activation_cost(&cost);
+
+        // Separate mana costs from other costs
+        let mut mana_cost: Option<crate::mana::ManaCost> = None;
+        let mut other_costs: Vec<crate::costs::Cost> = Vec::new();
+
+        for c in cost.costs() {
+            if let Some(mc) = c.processing_mode().mana_cost() {
+                mana_cost = Some(mc.clone());
+            } else {
+                other_costs.push(c.clone());
+            }
+        }
+
+        // CR 602.2b / 601.2f: an {X} in a mana ability's activation
+        // cost (Wizard's Rockets) is announced before the cost is
+        // paid; the ability's effect then refers to that X.
+        let mut announced_x: Option<u32> = None;
+        if let Some(mc) = mana_cost.as_ref()
+            && mc.has_x()
+        {
+            let policy = game.mana_spend_policy(player, Some(*source));
+            let allow_black_life = crate::decision::mana_cost_has_black_symbol(mc)
+                && game.player_can_pay_black_with_life_for_reason(
+                    player,
+                    Some(*source),
+                    crate::costs::PaymentReason::ActivateManaAbility,
+                );
+            let max_x = crate::decision::compute_potential_mana(game, player)
+                .max_x_for_cost_with_mana_spend_policy_and_black_life(
+                    mc,
+                    &policy,
+                    allow_black_life,
+                );
+            let x_ctx =
+                crate::decisions::context::NumberContext::x_value(player, *source, max_x);
+            let x = decision_maker.decide_number(game, &x_ctx).min(max_x);
+            if decision_maker.awaiting_choice() {
+                return Ok(GameProgress::Continue);
+            }
+            announced_x = Some(x);
+            let locked =
+                crate::decision::mana_cost_with_locked_x_and_generic_reduction(mc, x, 0);
+            mana_cost = (!locked.pips().is_empty()).then_some(locked);
+        }
+
+        let mana_ability_provenance =
+            game.provenance_graph_mut()
+                .alloc_root(ProvenanceNodeKind::EffectExecution {
+                    source: *source,
+                    controller: player,
+                });
+        // Continuous effects have to be part of the snapshot: an
+        // animated land (earthbend, Awaken, ...) is a creature only in
+        // its calculated characteristics, and "whenever you tap a
+        // creature for mana" matches against this snapshot.
+        let source_snapshot = game.object(*source).map(|obj| {
+            ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+        });
+
+        let view = crate::derived_view::DerivedGameView::new(game);
+        if !crate::decision::exhaust_activation_allows(
+            game, player, *source, *ability_index, mana_ability, &view,
+        ) {
+            return Err(GameLoopError::InvalidState("Exhaust ability was already activated".into()));
+        }
+        let exhaust_announcement = if mana_ability.is_exhaust_ability() {
+            if state.checkpoint.is_none() { state.save_checkpoint(game); }
+            game.announce_exhaust_activation(*source, *ability_index)
+        } else { None };
+
+        if mana_cost.is_none() {
+            // Pay all costs immediately
+            let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
+                .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
+                .with_provenance(mana_ability_provenance);
+            cost_ctx.x_value = announced_x;
+            let cost_summary =
+                crate::special_actions::pay_total_cost_without_preflight_with_choice(
+                    game,
+                    &cost,
+                    &mut cost_ctx,
+                )
+                .map_err(super::priority_mana::activation_cost_error)?;
+            let x_value_from_costs = cost_summary.x_value;
+            // The effects may refer to objects the costs chose
+            // ("the exiled creature's mana value", Food Chain).
+            let cost_tagged_objects = cost_ctx.tagged_objects.clone();
+            drop(cost_ctx);
+
+            if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+            drain_pending_trigger_events(game, trigger_queue);
+
+            let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+                .with_provenance(mana_ability_provenance)
+                .with_mana_usage_restrictions(mana_usage_restrictions.clone())
+                .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
+                .with_mana_production_provenance(mana_production_provenance)
+                .with_tagged_objects(cost_tagged_objects.clone());
+            if let Some(snapshot) = source_snapshot.clone() { mana_ctx = mana_ctx.with_source_snapshot(snapshot); }
+            if let Some(x) = x_value_from_costs { mana_ctx = mana_ctx.with_x(x); }
+            let outcome = crate::effects::EffectExecutor::execute(
+                &crate::effects::AddManaEffect::new(mana_to_add.clone(), crate::target::PlayerFilter::Specific(player)),
+                game, &mut mana_ctx,
+            )?;
+            if mana_ctx.decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+            drop(mana_ctx);
+            queue_triggers_for_events(game, trigger_queue, outcome.events);
+
+            // Execute additional effects (for complex mana abilities)
+            if !effects_to_run.is_empty() {
+                let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+                    .with_provenance(mana_ability_provenance)
+                    .with_mana_usage_restrictions(mana_usage_restrictions.clone())
+                    .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
+                    .with_mana_production_provenance(mana_production_provenance);
+                if let Some(snapshot) = source_snapshot.clone() {
+                    ctx = ctx.with_source_snapshot(snapshot);
+                }
+                if let Some(x) = x_value_from_costs {
+                    ctx = ctx.with_x(x);
+                }
+                ctx = ctx.with_tagged_objects(cost_tagged_objects);
+                let mut emitted_events = Vec::new();
+
+                for effect in &effects_to_run {
+                    let outcome = execute_effect(game, effect, &mut ctx)?;
+                    if ctx.decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+                    emitted_events.extend(outcome.events);
+                }
+                queue_triggers_for_events(game, trigger_queue, emitted_events);
+                drain_pending_trigger_events(game, trigger_queue);
+            }
+
+            game.record_ability_activation(*source, *ability_index);
+
+            queue_ability_activated_event(
+                game,
+                trigger_queue,
+                &mut *decision_maker,
+                *source,
+                player,
+                true,
+                None,
+                activation_cost_has_tap,
+            );
+
+            // Player retains priority after activating mana ability
+            return advance_priority_with_dm(game, trigger_queue, decision_maker);
+        } else {
+            // Need to tap lands / activate mana abilities to pay the mana cost
+            // Create a pending mana ability and show PayMana decision
+            let source_name = game
+                .object(*source)
+                .map(|o| o.name.to_string())
+                .unwrap_or_else(|| "Unknown".to_string());
+            let context = format!("{}'s ability", source_name);
+
+            let pending = PendingManaAbility {
+                source: *source,
+                ability_index: *ability_index,
+                activator: player,
+                provenance: mana_ability_provenance,
+                mana_cost: mana_cost.unwrap_or_default(),
+                other_costs,
+                mana_to_add,
+                effects: effects_to_run,
+                mana_usage_restrictions,
+                mana_source_chosen_creature_type,
+                mana_production_provenance,
+                undo_locked_by_mana: !mana_ability_is_undo_safe(
+                    game,
+                    *source,
+                    *ability_index,
+                ),
+                pending_mana_payment: None,
+                x_value: announced_x,
+                exhaust_announcement,
+            };
+            return prompt_pending_mana_ability_payment(game, state, pending, context);
+        }
+    }
+
+    // Player retains priority after activating mana ability
+    advance_priority_with_dm(game, trigger_queue, decision_maker)
+    })();
+    if result.is_err() || decision_maker.awaiting_choice() {
+        *game = checkpoint.0;
+        *trigger_queue = checkpoint.1;
+        *state = checkpoint.2;
     }
     result
 }
@@ -868,227 +1099,10 @@ fn apply_priority_response_with_dm_inner(
                 advance_priority_with_dm(game, trigger_queue, decision_maker)
             }
         }
-        LegalAction::ActivateManaAbility {
-            source,
-            ability_index,
-        } => {
-            // Mana abilities don't use the stack
-            let player = game
-                .turn
-                .priority_player
+        LegalAction::ActivateManaAbility { source, ability_index } => {
+            let player = game.turn.priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
-
-            if game.object(*source).is_some()
-                && let Some(ability) = game.current_ability(*source, *ability_index)
-                && let AbilityKind::Activated(mana_ability) = &ability.kind
-                && mana_ability.is_runtime_mana_ability(game, *source, player)
-            {
-                let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
-                let effects_to_run = mana_ability.effects.clone();
-                let base_cost = mana_ability.mana_cost.clone();
-                let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
-                let mana_source_chosen_creature_type = game.chosen_creature_type(*source);
-                let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
-                    game,
-                    player,
-                    *source,
-                    &base_cost,
-                    &[],
-                    Some(crate::decision::ActivationCostAbility::of(
-                        game,
-                        player,
-                        *source,
-                        mana_ability,
-                    )),
-                );
-                let activation_cost_has_tap = cost.costs().iter().any(|cost| cost.requires_tap());
-                let mana_production_provenance =
-                    crate::special_actions::mana_production_provenance_for_activation_cost(&cost);
-
-                // Separate mana costs from other costs
-                let mut mana_cost: Option<crate::mana::ManaCost> = None;
-                let mut other_costs: Vec<crate::costs::Cost> = Vec::new();
-
-                for c in cost.costs() {
-                    if let Some(mc) = c.processing_mode().mana_cost() {
-                        mana_cost = Some(mc.clone());
-                    } else {
-                        other_costs.push(c.clone());
-                    }
-                }
-
-                // CR 602.2b / 601.2f: an {X} in a mana ability's activation
-                // cost (Wizard's Rockets) is announced before the cost is
-                // paid; the ability's effect then refers to that X.
-                let mut announced_x: Option<u32> = None;
-                if let Some(mc) = mana_cost.as_ref()
-                    && mc.has_x()
-                {
-                    let policy = game.mana_spend_policy(player, Some(*source));
-                    let allow_black_life = crate::decision::mana_cost_has_black_symbol(mc)
-                        && game.player_can_pay_black_with_life_for_reason(
-                            player,
-                            Some(*source),
-                            crate::costs::PaymentReason::ActivateManaAbility,
-                        );
-                    let max_x = crate::decision::compute_potential_mana(game, player)
-                        .max_x_for_cost_with_mana_spend_policy_and_black_life(
-                            mc,
-                            &policy,
-                            allow_black_life,
-                        );
-                    let x_ctx =
-                        crate::decisions::context::NumberContext::x_value(player, *source, max_x);
-                    let x = decision_maker.decide_number(game, &x_ctx).min(max_x);
-                    if decision_maker.awaiting_choice() {
-                        return Ok(GameProgress::Continue);
-                    }
-                    announced_x = Some(x);
-                    let locked =
-                        crate::decision::mana_cost_with_locked_x_and_generic_reduction(mc, x, 0);
-                    mana_cost = (!locked.pips().is_empty()).then_some(locked);
-                }
-
-                let mana_ability_provenance =
-                    game.provenance_graph_mut()
-                        .alloc_root(ProvenanceNodeKind::EffectExecution {
-                            source: *source,
-                            controller: player,
-                        });
-                // Continuous effects have to be part of the snapshot: an
-                // animated land (earthbend, Awaken, ...) is a creature only in
-                // its calculated characteristics, and "whenever you tap a
-                // creature for mana" matches against this snapshot.
-                let source_snapshot = game.object(*source).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                });
-
-                let view = crate::derived_view::DerivedGameView::new(game);
-                if !crate::decision::exhaust_activation_allows(
-                    game, player, *source, *ability_index, mana_ability, &view,
-                ) {
-                    return Err(GameLoopError::InvalidState("Exhaust ability was already activated".into()));
-                }
-                if mana_ability.is_exhaust_ability() {
-                    state.save_checkpoint(game);
-                    game.begin_exhaust_activation(*source, *ability_index);
-                }
-
-                if mana_cost.is_none() {
-                    // Pay all costs immediately
-                    let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
-                        .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
-                        .with_provenance(mana_ability_provenance);
-                    cost_ctx.x_value = announced_x;
-                    let cost_summary =
-                        crate::special_actions::pay_total_cost_without_preflight_with_choice(
-                            game,
-                            &cost,
-                            &mut cost_ctx,
-                        )
-                        .map_err(|e| {
-                            GameLoopError::InvalidState(format!("Failed to pay cost: {e}"))
-                        })?;
-                    let x_value_from_costs = cost_summary.x_value;
-                    // The effects may refer to objects the costs chose
-                    // ("the exiled creature's mana value", Food Chain).
-                    let cost_tagged_objects = cost_ctx.tagged_objects.clone();
-                    drop(cost_ctx);
-
-                    if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
-                    drain_pending_trigger_events(game, trigger_queue);
-
-                    let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
-                        .with_provenance(mana_ability_provenance)
-                        .with_mana_usage_restrictions(mana_usage_restrictions.clone())
-                        .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
-                        .with_mana_production_provenance(mana_production_provenance)
-                        .with_tagged_objects(cost_tagged_objects.clone());
-                    if let Some(snapshot) = source_snapshot.clone() { mana_ctx = mana_ctx.with_source_snapshot(snapshot); }
-                    if let Some(x) = x_value_from_costs { mana_ctx = mana_ctx.with_x(x); }
-                    let outcome = crate::effects::EffectExecutor::execute(
-                        &crate::effects::AddManaEffect::new(mana_to_add.clone(), crate::target::PlayerFilter::Specific(player)),
-                        game, &mut mana_ctx,
-                    )?;
-                    if mana_ctx.decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
-                    drop(mana_ctx);
-                    queue_triggers_for_events(game, trigger_queue, outcome.events);
-
-                    // Execute additional effects (for complex mana abilities)
-                    if !effects_to_run.is_empty() {
-                        let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
-                            .with_provenance(mana_ability_provenance)
-                            .with_mana_usage_restrictions(mana_usage_restrictions.clone())
-                            .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
-                            .with_mana_production_provenance(mana_production_provenance);
-                        if let Some(snapshot) = source_snapshot.clone() {
-                            ctx = ctx.with_source_snapshot(snapshot);
-                        }
-                        if let Some(x) = x_value_from_costs {
-                            ctx = ctx.with_x(x);
-                        }
-                        ctx = ctx.with_tagged_objects(cost_tagged_objects);
-                        let mut emitted_events = Vec::new();
-
-                        for effect in &effects_to_run {
-                            let outcome = execute_effect(game, effect, &mut ctx)?;
-                            if ctx.decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
-                            emitted_events.extend(outcome.events);
-                        }
-                        queue_triggers_for_events(game, trigger_queue, emitted_events);
-                        drain_pending_trigger_events(game, trigger_queue);
-                    }
-
-                    game.record_ability_activation(*source, *ability_index);
-
-                    queue_ability_activated_event(
-                        game,
-                        trigger_queue,
-                        &mut *decision_maker,
-                        *source,
-                        player,
-                        true,
-                        None,
-                        activation_cost_has_tap,
-                    );
-
-                    // Player retains priority after activating mana ability
-                    return advance_priority_with_dm(game, trigger_queue, decision_maker);
-                } else {
-                    // Need to tap lands / activate mana abilities to pay the mana cost
-                    // Create a pending mana ability and show PayMana decision
-                    let source_name = game
-                        .object(*source)
-                        .map(|o| o.name.to_string())
-                        .unwrap_or_else(|| "Unknown".to_string());
-                    let context = format!("{}'s ability", source_name);
-
-                    let pending = PendingManaAbility {
-                        source: *source,
-                        ability_index: *ability_index,
-                        activator: player,
-                        provenance: mana_ability_provenance,
-                        mana_cost: mana_cost.unwrap_or_default(),
-                        other_costs,
-                        mana_to_add,
-                        effects: effects_to_run,
-                        mana_usage_restrictions,
-                        mana_source_chosen_creature_type,
-                        mana_production_provenance,
-                        undo_locked_by_mana: !mana_ability_is_undo_safe(
-                            game,
-                            *source,
-                            *ability_index,
-                        ),
-                        pending_mana_payment: None,
-                        x_value: announced_x,
-                    };
-                    return prompt_pending_mana_ability_payment(game, state, pending, context);
-                }
-            }
-
-            // Player retains priority after activating mana ability
-            advance_priority_with_dm(game, trigger_queue, decision_maker)
+            begin_mana_ability_activation(game, trigger_queue, state, source, ability_index, player, decision_maker)
         }
         LegalAction::TurnFaceUp {
             creature_id,

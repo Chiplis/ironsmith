@@ -44,7 +44,7 @@ fn numeric_life_loss_modifications_commit_the_resolved_amount() {
             .execute(&mut game, &mut ctx)
             .unwrap();
         assert_eq!(outcome.count_or_zero(), expected);
-        assert_eq!(game.player(bob).unwrap().life, 20 - expected);
+        assert_eq!(i64::from(game.player(bob).unwrap().life), 20 - expected);
         assert_eq!(game.player(alice).unwrap().life, 20);
         let mut events = outcome.events;
         events.extend(game.take_pending_trigger_events());
@@ -104,7 +104,7 @@ fn temporary_life_effect_ids_do_not_alias_registered_suppression() {
             .unwrap();
         let expected = if mask & 2 == 0 { 4 } else { 2 };
         assert_eq!(outcome.count_or_zero(), expected);
-        assert_eq!(game.player(alice).unwrap().life, 20 + expected);
+        assert_eq!(i64::from(game.player(alice).unwrap().life), 20 + expected);
         assert_eq!(
             ctx.replacement.additional_replacement_effects[0].id,
             registered

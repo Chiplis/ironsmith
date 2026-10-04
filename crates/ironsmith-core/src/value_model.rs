@@ -823,6 +823,20 @@ impl Value {
         Self::Fixed(n)
     }
 
+    /// Evaluate context-free integer arithmetic without a game or execution context.
+    /// Dynamic values, division by zero and arithmetic outside i64 return None.
+    pub fn constant_integer(&self) -> Option<i64> {
+        match self.unhinted() {
+            Self::Fixed(n) => Some(i64::from(*n)),
+            Self::Add(left, right) => left.constant_integer()?.checked_add(right.constant_integer()?),
+            Self::Scaled(value, multiplier) => value.constant_integer()?.checked_mul(i64::from(*multiplier)),
+            Self::DividedRoundedDown(value, divisor) => value.constant_integer()?.checked_div_euclid(i64::from(*divisor)),
+            Self::HalfRoundedDown(value) => Some(value.constant_integer()?.div_euclid(2)),
+            Self::Min(left, right) => Some(left.constant_integer()?.min(right.constant_integer()?)),
+            _ => None,
+        }
+    }
+
     pub fn creatures_you_control() -> Self {
         Self::Count(ObjectFilter::creature().you_control())
     }
@@ -940,7 +954,13 @@ impl From<i32> for Value {
 
 impl From<u32> for Value {
     fn from(n: u32) -> Self {
-        Self::Fixed(n as i32)
+        match i32::try_from(n) {
+            Ok(n) => Self::Fixed(n),
+            Err(_) => Self::Add(
+                Box::new(Self::Fixed(i32::MAX)),
+                Box::new(Self::from(n - i32::MAX as u32)),
+            ),
+        }
     }
 }
 

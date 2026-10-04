@@ -53,6 +53,12 @@ impl GrantAbilitiesAllEffect {
 }
 
 impl EffectExecutor for GrantAbilitiesAllEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for ability in &self.abilities {
+            crate::ability::visit_static_owned_effects(ability, visitor);
+        }
+    }
+
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         vec![ChooseSpec::All(self.filter.clone())]
     }

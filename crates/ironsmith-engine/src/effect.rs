@@ -95,7 +95,7 @@ impl OutcomeStatus {
 pub enum OutcomeValue {
     #[default]
     None,
-    Count(i32),
+    Count(i64),
     ManaAdded(Vec<ManaSymbol>),
     Objects(Vec<ObjectId>),
     MonstrosityApplied {
@@ -105,15 +105,15 @@ pub enum OutcomeValue {
 }
 
 impl OutcomeValue {
-    pub fn as_count(&self) -> Option<i32> {
+    pub fn as_count(&self) -> Option<i64> {
         match self {
             Self::Count(n) => Some(*n),
-            Self::ManaAdded(mana) => Some(mana.len() as i32),
+            Self::ManaAdded(mana) => Some(mana.len() as i64),
             _ => None,
         }
     }
 
-    pub fn count_or_zero(&self) -> i32 {
+    pub fn count_or_zero(&self) -> i64 {
         self.as_count().unwrap_or(0)
     }
 
@@ -322,7 +322,7 @@ pub enum ExecutionFact {
     ChosenObjectMemory(Vec<OutcomeObjectMemory>),
     AffectedObjectMemory(Vec<OutcomeObjectMemory>),
     PlayerAffectedObjectMemory(Vec<(PlayerId, Vec<OutcomeObjectMemory>)>),
-    PlayerCounts(Vec<(PlayerId, i32)>),
+    PlayerCounts(Vec<(PlayerId, i64)>),
     ExcessDamageDealt,
     ExcessDamage(u32),
     ChosenOptions(Vec<usize>),
@@ -405,6 +405,58 @@ pub struct EffectOutcome {
     /// the enclosing event stream and facts still retain all actual side effects.
     #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
     pub instruction_result: Option<Box<EffectOutcome>>,
+}
+
+
+/// Executable checkpoint outcome. Unlike the event-free filter serializer,
+/// this carrier retains every event and nested authored-instruction result.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialization", serde(deny_unknown_fields, bound(deserialize = "E: serde::Deserialize<'de>")))]
+pub struct RetainedEffectOutcome<E> {
+    pub status: OutcomeStatus,
+    pub value: OutcomeValue,
+    pub events: Vec<E>,
+    pub execution_facts: Vec<ExecutionFact>,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "outcome_required_option"))]
+    pub instruction_result: Option<Box<RetainedEffectOutcome<E>>>,
+}
+#[cfg(feature = "serialization")]
+fn outcome_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where D: serde::Deserializer<'de>, T: serde::Deserialize<'de> {
+    <Option<T> as serde::Deserialize>::deserialize(deserializer)
+}
+impl EffectOutcome {
+    pub fn try_retain<E, C, Error>(self, context: &mut C,
+        mut event: impl FnMut(&mut C, crate::triggers::TriggerEvent) -> Result<E, Error>,
+    ) -> Result<RetainedEffectOutcome<E>, Error> {
+        self.retain_with_event_codec(context, &mut event)
+    }
+    fn retain_with_event_codec<E, C, Error>(self, context: &mut C,
+        event: &mut dyn FnMut(&mut C, crate::triggers::TriggerEvent) -> Result<E, Error>,
+    ) -> Result<RetainedEffectOutcome<E>, Error> {
+        let EffectOutcome { status, value, events, execution_facts, instruction_result } = self;
+        let events = events.into_iter().map(|value| event(context, value)).collect::<Result<Vec<_>, _>>()?;
+        let instruction_result = instruction_result.map(|value|
+            value.retain_with_event_codec(context, event).map(Box::new)).transpose()?;
+        Ok(RetainedEffectOutcome { status, value, events, execution_facts, instruction_result })
+    }
+}
+impl<E> RetainedEffectOutcome<E> {
+    pub fn try_restore<C, Error>(self, context: &mut C,
+        mut event: impl FnMut(&mut C, E) -> Result<crate::triggers::TriggerEvent, Error>,
+    ) -> Result<EffectOutcome, Error> {
+        self.restore_with_event_codec(context, &mut event)
+    }
+    fn restore_with_event_codec<C, Error>(self, context: &mut C,
+        event: &mut dyn FnMut(&mut C, E) -> Result<crate::triggers::TriggerEvent, Error>,
+    ) -> Result<EffectOutcome, Error> {
+        let RetainedEffectOutcome { status, value, events, execution_facts, instruction_result } = self;
+        let events = events.into_iter().map(|value| event(context, value)).collect::<Result<Vec<_>, _>>()?;
+        let instruction_result = instruction_result.map(|value|
+            value.restore_with_event_codec(context, event).map(Box::new)).transpose()?;
+        Ok(EffectOutcome { status, value, events, execution_facts, instruction_result })
+    }
 }
 
 impl EffectOutcome {
@@ -609,8 +661,8 @@ impl EffectOutcome {
     }
 
     /// Create a count outcome (no events).
-    pub fn count(n: i32) -> Self {
-        Self::from_value(OutcomeValue::Count(n))
+    pub fn count(n: impl Into<i64>) -> Self {
+        Self::from_value(OutcomeValue::Count(n.into()))
     }
 
     pub fn mana_added(mana: Vec<ManaSymbol>) -> Self {
@@ -751,7 +803,7 @@ impl EffectOutcome {
     }
 
     /// Record per-player counts produced by an iterating effect.
-    pub fn with_player_counts(self, counts: Vec<(PlayerId, i32)>) -> Self {
+    pub fn with_player_counts(self, counts: Vec<(PlayerId, i64)>) -> Self {
         if counts.is_empty() {
             self
         } else {
@@ -837,12 +889,12 @@ impl EffectOutcome {
     }
 
     /// Get the count value, or zero if not a Count result.
-    pub fn count_or_zero(&self) -> i32 {
+    pub fn count_or_zero(&self) -> i64 {
         self.value.count_or_zero()
     }
 
     /// Get the count value if this is a Count result.
-    pub fn as_count(&self) -> Option<i32> {
+    pub fn as_count(&self) -> Option<i64> {
         self.value.as_count()
     }
 
@@ -896,7 +948,7 @@ impl EffectOutcome {
     }
 
     /// Access per-player count partitions captured during execution.
-    pub fn player_counts(&self) -> Option<&[(PlayerId, i32)]> {
+    pub fn player_counts(&self) -> Option<&[(PlayerId, i64)]> {
         self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::PlayerCounts(counts) => Some(counts.as_slice()),
             _ => None,
@@ -1157,7 +1209,7 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                         .any(|memory| prior_result_memory_matches_filter(memory, &surface.filter))
                 })
             }
-            Self::Value(cmp) => outcome.as_count().is_some_and(|n| cmp.evaluate(n)),
+            Self::Value(cmp) => outcome.as_count().is_some_and(|n| cmp.evaluate_wide(n)),
             Self::Chosen => {
                 !outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::Declined))
             }
@@ -1246,7 +1298,10 @@ impl RestrictionExt for Restriction {
                     .map(|player| player.id)
                     .collect();
                 for player_id in affected_players {
-                    if let Some(player) = game.player_mut(player_id) {
+                    // This is an output of restriction refresh, like the base
+                    // value reset in update_cant_effects, not a player input.
+                    // Using player_mut would invalidate the refresh itself.
+                    if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
                         player.land_plays_per_turn =
                             player.land_plays_per_turn.saturating_add(*count);
                     }
@@ -1262,7 +1317,7 @@ impl RestrictionExt for Restriction {
                     .map(|player| player.id)
                     .collect();
                 for player_id in affected_players {
-                    if let Some(player) = game.player_mut(player_id) {
+                    if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
                         player.max_hand_size = i32::MAX;
                     }
                 }
@@ -1829,12 +1884,26 @@ impl RestrictionExt for Restriction {
 ///
 /// Use the helper constructors (e.g., `Effect::draw()`, `Effect::damage()`) to
 /// create effects rather than constructing directly.
-#[derive(Debug)]
-pub struct Effect(pub Arc<dyn EffectExecutor>);
+pub struct Effect(pub Arc<dyn EffectExecutor>, Option<RetainedEffectModel>);
+
+/// The canonical executable model belongs to this exact immutable executor.
+/// A direct replacement of the public executor must invalidate its model.
+#[derive(Clone)]
+struct RetainedEffectModel {
+    executor: std::sync::Weak<dyn EffectExecutor>,
+    json: Arc<str>,
+}
+
+impl std::fmt::Debug for Effect {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Preserve the runtime debug surface; transport metadata is not rules text.
+        formatter.debug_tuple("Effect").field(&self.0).finish()
+    }
+}
 
 impl Clone for Effect {
     fn clone(&self) -> Self {
-        Effect(Arc::clone(&self.0))
+        Effect(Arc::clone(&self.0), self.1.clone())
     }
 }
 
@@ -1851,12 +1920,39 @@ impl PartialEq for Effect {
 impl Effect {
     /// Create a new effect from an EffectExecutor implementation.
     pub fn new<E: EffectExecutor + 'static>(executor: E) -> Self {
-        Effect(Arc::new(executor))
+        Effect(Arc::new(executor), None)
+    }
+
+    /// Retain the canonical model encoded by the compiler/artifact service.
+    /// This is not a display string and must never be reparsed as Oracle text.
+    /// The service owns validation and the versioned model vocabulary.
+    pub fn with_serialized_model(mut self, json: impl Into<Arc<str>>) -> Self {
+        self.1 = Some(RetainedEffectModel {
+            executor: Arc::downgrade(&self.0),
+            json: json.into(),
+        });
+        self
+    }
+
+    /// Return the retained model only while it describes this executor.
+    /// Native callbacks without a model require an explicit codec boundary.
+    pub fn serialized_model(&self) -> Option<&str> {
+        let model = self.1.as_ref()?;
+        let executor = model.executor.upgrade()?;
+        if !Arc::ptr_eq(&executor, &self.0) {
+            return None;
+        }
+        Some(&model.json)
     }
 
     /// Attempt to downcast this effect to a concrete executor type.
     pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
         (self.0.as_ref() as &dyn std::any::Any).downcast_ref::<T>()
+    }
+
+    /// Structured production semantics, when the executor supports compact evaluation.
+    pub fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        self.0.mana_production()
     }
 
     /// Return mana symbols this effect can produce for inference call sites.
@@ -1873,6 +1969,13 @@ impl Effect {
     pub fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         self.0.visit_child_effects(visitor);
     }
+
+    /// Visit definitions owned by this immutable executor, preserving native
+    /// ability occurrence identities that canonical models cannot reconstruct.
+    pub fn visit_card_definitions(&self, visitor: &mut dyn FnMut(&crate::cards::CardDefinition)) {
+        self.0.visit_card_definitions(visitor);
+    }
+
 
     /// Return a transparent wrapper's inner effect, if this effect has one.
     pub fn transparent_child_effect(&self) -> Option<&Effect> {
@@ -5538,5 +5641,56 @@ mod replacement_instruction_predicate_contract_tests {
         assert!(EffectPredicate::Happened.evaluate_outcome(&outcome));
         let failed = outcome.with_execution_fact(ExecutionFact::Impossible);
         assert!(!EffectPredicate::Happened.evaluate_outcome(&failed));
+    }
+}
+
+#[cfg(test)]
+mod retained_effect_model_tests {
+    use super::*;
+
+    #[test]
+    fn retained_effect_model_survives_clone_without_changing_runtime_introspection() {
+        let effect = Effect::gain_life(3);
+        let before = format!("{effect:?}");
+        let encoded = effect.with_serialized_model("canonical executable envelope");
+        let cloned = encoded.clone();
+        assert_eq!(
+            encoded.serialized_model(),
+            Some("canonical executable envelope")
+        );
+        assert_eq!(cloned.serialized_model(), encoded.serialized_model());
+        assert_eq!(format!("{encoded:?}"), before);
+        assert!(
+            encoded
+                .downcast_ref::<crate::effects::GainLifeEffect>()
+                .is_some()
+        );
+        assert!(
+            cloned
+                .downcast_ref::<crate::effects::GainLifeEffect>()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn retained_effect_model_cannot_describe_a_replaced_executor() {
+        let original = Effect::gain_life(3).with_serialized_model("original gain-life model");
+        let mut replaced = original.clone();
+        replaced.0 = Effect::draw(1).0;
+        assert_eq!(
+            replaced.serialized_model(),
+            None,
+            "retaining metadata cannot authorize restoration of an unrelated executor"
+        );
+        assert_eq!(
+            original.serialized_model(),
+            Some("original gain-life model"),
+            "replacing one clone cannot corrupt another"
+        );
+        assert_eq!(
+            Effect::draw(1).serialized_model(),
+            None,
+            "an unencoded native callback is not an empty successful model"
+        );
     }
 }

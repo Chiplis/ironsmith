@@ -16,8 +16,9 @@ impl EffectExecutor for MoveOneCounterEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
-            let target_pair = if ctx.target_assignments.is_empty() && ctx.targets.len() >= 2 {
-                ctx.resolve_two_object_targets()
+            let target_pair = if crate::game_loop::requires_target_selection(&self.from)
+                && crate::game_loop::requires_target_selection(&self.to) {
+                super::assigned_counter_transfer_pair(ctx)
             } else {
                 let from = resolve_objects_for_effect(game, ctx, &self.from)?;
                 let to = resolve_objects_for_effect(game, ctx, &self.to)?;
@@ -26,6 +27,10 @@ impl EffectExecutor for MoveOneCounterEffect {
             let Some((from_id, to_id)) = target_pair else {
                 return Ok(EffectOutcome::target_invalid());
             };
+            // CR 122.5: a same-object move has no removal or placement event.
+            if game.is_phased_out(from_id) || from_id == to_id {
+                return Ok(EffectOutcome::count(0));
+            }
             if game.object(to_id).is_none() {
                 return Ok(EffectOutcome::count(0));
             }
@@ -49,7 +54,8 @@ impl EffectExecutor for MoveOneCounterEffect {
                 return Ok(EffectOutcome::count(0));
             }
 
-            let spec = CounterRemovalSpec::new(ctx.source, from_id, 1, available_counters);
+            let spec = CounterRemovalSpec::new(ctx.source, from_id, 1, available_counters)
+                .with_min_total(1);
             let selections = make_decision_with_fallback(
                 game,
                 &mut ctx.decision_maker,
@@ -66,19 +72,10 @@ impl EffectExecutor for MoveOneCounterEffect {
                 if to_remove == 0 {
                     continue;
                 }
-                let Some((removed, remove_event)) = game.remove_counters(
-                    from_id,
-                    counter_type,
-                    1,
-                    Some(ctx.source),
-                    Some(ctx.controller),
-                ) else {
-                    continue;
-                };
-                if removed == 0 {
-                    continue;
+                let mut outcome = super::remove_moved_counters(game, ctx, from_id, counter_type, 1)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
                 }
-                let mut outcome = EffectOutcome::count(1).with_event(remove_event);
                 let placed = super::put_moved_counters(game, ctx, to_id, counter_type, 1)?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
@@ -91,7 +88,7 @@ impl EffectExecutor for MoveOneCounterEffect {
             Ok(EffectOutcome::count(0))
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
+            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
             context_checkpoint.restore(ctx);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));

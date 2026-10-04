@@ -152,6 +152,21 @@ export function useOptimisticPeerState(base, servicesRef) {
     return result;
   }
 
+  function deferUntilVerifiedIdle(task) {
+    const runtime = runtimeRef.current;
+    // Recovery can submit another verified task. It must run after the current
+    // task's catch/finally has unwound, without becoming part of that queue tail.
+    return verifierQueueRef.current.then(async () => {
+      // The foreground caller can have its own promise-race/finally gate. Let
+      // those completion handlers run before recovery tries to acquire it.
+      await new Promise(resolve => setTimeout(resolve, 0));
+      // Discarding a failed provisional suffix is normal timeout cleanup. Only
+      // replacement of the owning runtime makes this deferred recovery stale.
+      if (runtime !== runtimeRef.current) return;
+      return task();
+    });
+  }
+
   async function verifiedState(state) {
     stateRef.current = state;
     if (!runtimeRef.current) { publish(state); return; }
@@ -344,7 +359,7 @@ export function useOptimisticPeerState(base, servicesRef) {
 
   resetRef.current = reset;
   useEffect(() => () => { void resetRef.current('Lobby closed'); }, []);
-  return { optimistic, waitingForMaterial, ensureOptimisticRuntime: ensureRuntime, runVerifiedTask,
+  return { optimistic, waitingForMaterial, ensureOptimisticRuntime: ensureRuntime, runVerifiedTask, deferUntilVerifiedIdle,
     setVerifiedState: verifiedState, resetOptimisticState: reset,
     stageOptimisticLocalCommand: stageLocal, receiveProvisionalAction: receive,
     stagePreparedLocalAction,

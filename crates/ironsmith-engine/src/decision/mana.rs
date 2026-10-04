@@ -2756,7 +2756,9 @@ fn mana_cost_can_be_paid_with_view_at_x(
     x_value: u32,
     view: &DerivedGameView<'_>,
 ) -> bool {
-    if game.object(spell_id).is_some_and(|spell| {
+    if crate::mana_payment::has_potential_mana_triggers(game, view)
+        || crate::mana_payment::has_mana_modifying_replacements(game)
+        || game.object(spell_id).is_some_and(|spell| {
         game.controller_of(spell) == player
             && (spell_has_delve(game, spell)
                 || spell_has_convoke(game, spell)

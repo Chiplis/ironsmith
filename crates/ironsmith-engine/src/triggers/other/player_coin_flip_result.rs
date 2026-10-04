@@ -16,6 +16,11 @@ impl PlayerCoinFlipResultTrigger {
 }
 
 impl TriggerMatcher for PlayerCoinFlipResultTrigger {
+    fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
+        let Self { player, won } = self;
+        Some(ironsmith_core::trigger_model::Trigger::player_coin_flip_result(player.clone(), *won))
+    }
+
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::CoinFlipped {
             return false;

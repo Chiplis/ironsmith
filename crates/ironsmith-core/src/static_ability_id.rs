@@ -765,6 +765,7 @@ impl StaticAbilityId {
                 | Companion
                 | Partner
                 | PartnerWith
+                | StartYourEngines
                 | SpaceSculptor
                 | DoctorsCompanion
                 | Assist

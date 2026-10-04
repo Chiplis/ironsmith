@@ -22,19 +22,21 @@ pub fn derive_tag_key_walk(input: TokenStream) -> TokenStream {
         }
     }
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
-    let (visit_body, map_body) = match &input.data {
+    let (visit_body, map_body, object_body) = match &input.data {
         Data::Struct(data) => {
-            let (visit, map) = fields_walk(&data.fields, quote!(self), true);
-            (visit, map)
+            let (visit, map, object) = fields_walk(&data.fields, quote!(self), true);
+            (visit, map, object)
         }
         Data::Enum(data) => {
             let mut visit_arms = Vec::new();
             let mut map_arms = Vec::new();
+            let mut object_arms = Vec::new();
             for variant in &data.variants {
                 let variant_name = &variant.ident;
-                let (pattern, visit, map) = variant_walk(&variant.fields);
+                let (pattern, visit, map, object) = variant_walk(&variant.fields);
                 visit_arms.push(quote!(Self::#variant_name #pattern => { #visit }));
                 map_arms.push(quote!(Self::#variant_name #pattern => { #map }));
+                object_arms.push(quote!(Self::#variant_name #pattern => { #object }));
             }
             let visit = if visit_arms.is_empty() {
                 quote!(match *self {})
@@ -46,7 +48,12 @@ pub fn derive_tag_key_walk(input: TokenStream) -> TokenStream {
             } else {
                 quote!(match self { #(#map_arms)* })
             };
-            (visit, map)
+            let object = if object_arms.is_empty() {
+                quote!(match *self {})
+            } else {
+                quote!(match self { #(#object_arms)* })
+            };
+            (visit, map, object)
         }
         Data::Union(_) => {
             return syn::Error::new_spanned(name, "TagKeyWalk cannot be derived for unions")
@@ -59,6 +66,10 @@ pub fn derive_tag_key_walk(input: TokenStream) -> TokenStream {
             fn for_each_tag_key(&self, f: &mut dyn FnMut(&::ironsmith_core::tag::TagKey)) {
                 let _ = &f;
                 #visit_body
+            }
+            fn for_each_object_ref(&self, f: &mut dyn FnMut(&::ironsmith_core::filter_model::ObjectRef)) {
+                let _ = &f;
+                #object_body
             }
             fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut ::ironsmith_core::tag::TagKey)) {
                 let _ = &f;
@@ -90,9 +101,10 @@ fn fields_walk(
     fields: &Fields,
     receiver: proc_macro2::TokenStream,
     _is_struct: bool,
-) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream, proc_macro2::TokenStream) {
     let mut visit = Vec::new();
     let mut map = Vec::new();
+    let mut object = Vec::new();
     match fields {
         Fields::Named(named) => {
             for field in &named.named {
@@ -101,6 +113,7 @@ fn fields_walk(
                 }
                 let ident = field.ident.as_ref().unwrap();
                 visit.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_tag_key(&#receiver.#ident, f);));
+                object.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_object_ref(&#receiver.#ident, f);));
                 map.push(quote!(::ironsmith_core::tag::TagKeyWalk::map_tag_keys(&mut #receiver.#ident, f);));
             }
         }
@@ -111,12 +124,13 @@ fn fields_walk(
                 }
                 let index = Index::from(position);
                 visit.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_tag_key(&#receiver.#index, f);));
+                object.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_object_ref(&#receiver.#index, f);));
                 map.push(quote!(::ironsmith_core::tag::TagKeyWalk::map_tag_keys(&mut #receiver.#index, f);));
             }
         }
         Fields::Unit => {}
     }
-    (quote!(#(#visit)*), quote!(#(#map)*))
+    (quote!(#(#visit)*), quote!(#(#map)*), quote!(#(#object)*))
 }
 
 /// Pattern and walks for one enum variant; bound names are `f0`, `f1`, … or
@@ -127,10 +141,12 @@ fn variant_walk(
     proc_macro2::TokenStream,
     proc_macro2::TokenStream,
     proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
 ) {
     let mut bindings = Vec::new();
     let mut visit = Vec::new();
     let mut map = Vec::new();
+    let mut object = Vec::new();
     match fields {
         Fields::Named(named) => {
             for field in &named.named {
@@ -140,10 +156,11 @@ fn variant_walk(
                 }
                 bindings.push(quote!(#ident));
                 visit.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_tag_key(#ident, f);));
+                object.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_object_ref(#ident, f);));
                 map.push(quote!(::ironsmith_core::tag::TagKeyWalk::map_tag_keys(#ident, f);));
             }
             let pattern = quote!({ #(#bindings,)* .. });
-            (pattern, quote!(#(#visit)*), quote!(#(#map)*))
+            (pattern, quote!(#(#visit)*), quote!(#(#map)*), quote!(#(#object)*))
         }
         Fields::Unnamed(unnamed) => {
             let mut pattern_parts = Vec::new();
@@ -155,11 +172,12 @@ fn variant_walk(
                 let ident = format_ident!("f{position}");
                 pattern_parts.push(quote!(#ident));
                 visit.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_tag_key(#ident, f);));
+                object.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_object_ref(#ident, f);));
                 map.push(quote!(::ironsmith_core::tag::TagKeyWalk::map_tag_keys(#ident, f);));
             }
             let pattern = quote!(( #(#pattern_parts),* ));
-            (pattern, quote!(#(#visit)*), quote!(#(#map)*))
+            (pattern, quote!(#(#visit)*), quote!(#(#map)*), quote!(#(#object)*))
         }
-        Fields::Unit => (quote!(), quote!(), quote!()),
+        Fields::Unit => (quote!(), quote!(), quote!(), quote!()),
     }
 }

@@ -235,7 +235,7 @@ pub(super) fn test_activation_cost_source_lki_uses_state_after_prior_costs() {
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut dm = AutoPassDecisionMaker;
 
-    let cost_order_ctx = match apply_priority_response_with_dm(
+    let progress = apply_priority_response_with_dm(
         &mut game,
         &mut trigger_queue,
         &mut state,
@@ -245,28 +245,11 @@ pub(super) fn test_activation_cost_source_lki_uses_state_after_prior_costs() {
         }),
         &mut dm,
     )
-    .expect("activation should begin")
-    {
-        crate::decision::GameProgress::NeedsDecisionCtx(
-            crate::decisions::context::DecisionContext::SelectOptions(ctx),
-        ) => ctx,
-        other => panic!("expected activation to ask for cost order, got {other:?}"),
-    };
-
-    let add_counter_cost_index = cost_order_ctx
-        .options
-        .iter()
-        .find(|option| option.description.to_ascii_lowercase().contains("counter"))
-        .map(|option| option.index)
-        .expect("expected an add-counter cost option");
-    apply_priority_response_with_dm(
-        &mut game,
-        &mut trigger_queue,
-        &mut state,
-        &PriorityResponse::NextCostChoice(add_counter_cost_index),
-        &mut dm,
-    )
-    .expect("add-counter cost should be paid before sacrifice");
+    .expect("activation should pay its atomic costs and finish");
+    assert!(matches!(progress, crate::decision::GameProgress::NeedsDecisionCtx(
+        crate::decisions::context::DecisionContext::Priority(_)
+    )), "atomic costs finish without an ordering prompt, got {progress:?}");
+    assert!(!state.has_pending_action(), "atomic payment must finish the owning action");
 
     assert_eq!(
         game.stack.len(),
@@ -276,6 +259,12 @@ pub(super) fn test_activation_cost_source_lki_uses_state_after_prior_costs() {
     assert!(
         !game.battlefield.contains(&source_id),
         "the source should be sacrificed as a cost before the ability resolves"
+    );
+
+    assert_eq!(
+        game.stack[0].source_snapshot.as_ref().and_then(|snapshot| snapshot.power),
+        Some(3),
+        "the stacked ability must capture source power after the counter cost and before sacrifice",
     );
 
     resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");

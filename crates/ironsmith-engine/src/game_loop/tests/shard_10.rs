@@ -2054,8 +2054,9 @@ pub(super) fn test_return_from_graveyard_with_counter_effect() {
 
     // Create triggering event with the snapshot
     let trigger_event = TriggerEvent::new_with_provenance(
-        ZoneChangeEvent::with_cause(
+        ZoneChangeEvent::with_results(
             creature_id,
+            vec![graveyard_id],
             Zone::Battlefield,
             Zone::Graveyard,
             crate::events::cause::EventCause::from_sba(),

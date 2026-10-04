@@ -9,11 +9,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-// Version 4 stores authoritative functional zones, including intrinsic defaults.
-// Older artifacts could rely on runtime zone inference and must be rebuilt.
-pub const FORMAT_VERSION: u32 = 4;
+// Version 5 requires canonical text and ability labels on every executable
+// definition, including nested templates. Older artifacts dropped that
+// metadata and must be rebuilt rather than silently inventing empty values.
+pub const FORMAT_VERSION: u32 = 5;
 pub const ENGINE_SCHEMA_HASH: &str =
-    "ae7c0125d24414668cf49f94857c3ae4bf6a8245dd483582822a22faf9d56421";
+    "f4872928326e3ea14e25666b90d7eb4ce9add2d18c628c2c1936c96f100e4d96";
 
 /// A compiler effect transported without linking compiler code into the
 /// engine. The payload is decoded lazily into the exact canonical schema type
@@ -432,7 +433,15 @@ mod tests {
     #[test]
     fn golden_json_is_stable() {
         let actual = String::from_utf8(fixture().to_json().unwrap()).unwrap();
-        assert_eq!(actual.trim(), include_str!("../fixtures/v3.json").trim());
+        assert_eq!(actual.trim(), include_str!("../fixtures/v5.json").trim());
+    }
+
+    #[test]
+    fn previous_artifact_versions_are_rejected_instead_of_inventing_definition_metadata() {
+        let mut previous = fixture();
+        previous.format_version = 4;
+        assert!(matches!(previous.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 4, expected: 5 })));
+        assert!(CompiledCardArtifact::from_json(include_bytes!("../fixtures/v3.json")).is_err());
     }
 
     #[test]

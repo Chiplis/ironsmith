@@ -5713,7 +5713,10 @@
     if let Some(move_counters) = effect.downcast_ref::<crate::effects::MoveCountersEffect>() {
         return format!(
             "Move {} from {} onto {}",
-            describe_put_counter_phrase(&move_counters.count, move_counters.counter_type),
+            match &move_counters.count {
+                ironsmith_core::effect::CounterMoveAmount::Exact(count) => describe_put_counter_phrase(count, move_counters.counter_type),
+                ironsmith_core::effect::CounterMoveAmount::AnyNumber => format!("any number of {} counters", move_counters.counter_type.description()),
+            },
             describe_choose_spec(&move_counters.from),
             describe_choose_spec(&move_counters.to)
         );

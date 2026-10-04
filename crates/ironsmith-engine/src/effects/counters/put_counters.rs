@@ -3,7 +3,7 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::{DistributeSpec, NumberSpec, make_decision_with_fallback};
 use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, Value};
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
+use crate::effects::helpers::{resolve_objects_for_effect, resolve_nonnegative_u32};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::{FilterContext, ObjectFilterExt as _};
@@ -117,7 +117,7 @@ impl EffectExecutor for PutCountersEffect {
                             return Ok(EffectOutcome::count(0));
                         }
                         // No target chosen (valid for "up to" effects).
-                        let count = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+                        let count = resolve_nonnegative_u32(game, &self.amount, ctx)?;
                         return Ok(counter_action_completed(
                             self,
                             ctx,
@@ -131,7 +131,7 @@ impl EffectExecutor for PutCountersEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            let max_count = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+            let max_count = resolve_nonnegative_u32(game, &self.amount, ctx)?;
             let amount_is_up_to = self
                 .amount
                 .has_surface_hint(ironsmith_core::ValueSurfaceHint::UpTo);

@@ -317,7 +317,7 @@ fn dynamic_counter_removal_cost_precheck(
     let available = crate::effects::counters::remove_any_counters_among_total_available(
         effect, game, ctx.source, ctx.payer,
     );
-    if announced_x < effect.min_count || announced_x > effect.count || announced_x > available {
+    if announced_x < effect.min_count || announced_x > effect.count || u64::from(announced_x) > available {
         Some(Err(CostPaymentError::Other(
             "not enough counters".to_string(),
         )))
@@ -1050,10 +1050,8 @@ mod tests {
             .build();
         let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
 
-        let cost = CostEffect::new(RemoveCountersEffect::new(
-            CounterType::Charge,
-            u32::MAX,
-            crate::target::ChooseSpec::Source,
+        let cost = CostEffect::new(crate::effects::RemoveAnyCountersFromSourceEffect::all(
+            Some(CounterType::Charge),
         ));
         let mut dm = SelectFirstDecisionMaker;
         let mut ctx = CostContext::new(source, alice, &mut dm);
@@ -1294,4 +1292,70 @@ mod energy_cost_error_contract_tests {
         assert_eq!(cost(crate::effect::Value::Fixed(1), crate::target::PlayerFilter::Specific(
             crate::ids::PlayerId::from_index(9))).can_pay(&game, &ctx), Err(CostPaymentError::PlayerNotFound));
     }
+}
+
+#[cfg(test)]
+mod unsigned_counter_cost_contract_tests {
+    use super::*;
+    use crate::effects::{RemoveCountersEffect,RemoveAnyCountersFromSourceEffect};
+    use crate::object::CounterType;
+    use crate::ids::{CardId,PlayerId};
+    use crate::types::CardType;
+    use crate::zone::Zone;
+    use crate::decision::SelectFirstDecisionMaker;
+    fn fixture(amount:u32)->(GameState,crate::ids::ObjectId,PlayerId) {
+        let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let alice=PlayerId::from_index(0);
+        let card=crate::card::CardBuilder::new(CardId::new(),"Counter cost recipient").card_types(vec![CardType::Artifact]).build();
+        let source=game.create_object_from_card(&card,alice,Zone::Battlefield);
+        game.object_mut(source).unwrap().counters.insert(CounterType::Charge,amount);
+        game.object_mut(source).unwrap().counters.insert(CounterType::PlusOnePlusOne,7);
+        (game,source,alice)
+    }
+    #[test]
+    fn fixed_unsigned_counter_cost_pays_exact_requested_amount() {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let (mut game,source,alice)=fixture(amount);
+            let cost=CostEffect::new(RemoveCountersEffect::new(CounterType::Charge,amount,crate::target::ChooseSpec::Source));
+            let mut dm=SelectFirstDecisionMaker;let mut ctx=CostContext::new(source,alice,&mut dm);
+            let result=cost.pay(&mut game,&mut ctx).expect("exact unsigned literal is a fixed payable cost when every required counter is available");
+            assert_eq!(result,CostPaymentResult::Paid);assert_eq!(ctx.x_value,Some(amount));
+            assert_eq!(game.counter_count(source,CounterType::Charge),0);assert_eq!(game.counter_count(source,CounterType::PlusOnePlusOne),7);
+        }
+    }
+    #[test]
+    fn fixed_unsigned_counter_cost_cannot_use_remove_all_semantics() {
+        let (mut game,source,alice)=fixture(3);
+        let cost=CostEffect::new(RemoveCountersEffect::new(CounterType::Charge,u32::MAX,crate::target::ChooseSpec::Source));
+        let mut dm=SelectFirstDecisionMaker;let mut ctx=CostContext::new(source,alice,&mut dm);
+        assert!(cost.pay(&mut game,&mut ctx).is_err());assert_eq!(ctx.x_value,None);assert_eq!(game.counter_count(source,CounterType::Charge),3);
+    }
+    #[test]
+    fn explicit_all_counter_cost_preserves_zero_and_full_unsigned_totals() {
+        for amount in [0,3,i32::MAX as u32+1,u32::MAX] {
+            let (mut game,source,alice)=fixture(amount);
+            let cost=CostEffect::new(RemoveAnyCountersFromSourceEffect::all(Some(CounterType::Charge)));
+            let mut dm=SelectFirstDecisionMaker;let mut ctx=CostContext::new(source,alice,&mut dm);
+            assert_eq!(cost.pay(&mut game,&mut ctx).unwrap(),CostPaymentResult::Paid);assert_eq!(ctx.x_value,Some(amount));
+            assert_eq!(game.counter_count(source,CounterType::Charge),0);assert_eq!(game.counter_count(source,CounterType::PlusOnePlusOne),7);
+        }
+    }
+    #[test]
+    fn cost_builder_removes_exact_unsigned_literal_instead_of_zero() {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let (mut game,source,alice)=fixture(amount);let cost=crate::costs::Cost::remove_counters(CounterType::Charge,amount);
+            let mut dm=SelectFirstDecisionMaker;let mut ctx=CostContext::new(source,alice,&mut dm);
+            assert_eq!(cost.pay(&mut game,&mut ctx).unwrap(),CostPaymentResult::Paid);assert_eq!(ctx.x_value,Some(amount));
+            assert_eq!(game.counter_count(source,CounterType::Charge),0);assert_eq!(game.counter_count(source,CounterType::PlusOnePlusOne),7);
+        }
+    }
+    #[test]
+    fn cost_builder_adds_full_unsigned_literal_instead_of_zero() {
+        for amount in [i32::MAX as u32,i32::MAX as u32+1,u32::MAX] {
+            let (mut game,source,alice)=fixture(0);let cost=crate::costs::Cost::add_counters(CounterType::Charge,amount);
+            let mut dm=SelectFirstDecisionMaker;let mut ctx=CostContext::new(source,alice,&mut dm);
+            assert_eq!(cost.pay(&mut game,&mut ctx).unwrap(),CostPaymentResult::Paid);
+            assert_eq!(game.counter_count(source,CounterType::Charge),amount);assert_eq!(game.counter_count(source,CounterType::PlusOnePlusOne),7);
+        }
+    }
+
 }

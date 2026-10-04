@@ -5,6 +5,13 @@ pub(super) struct PriorityAnalysisJob {
     key: SnapshotCacheKey,
     game: GameState,
     player: PlayerId,
+    candidates: std::collections::VecDeque<PriorityCandidate>,
+    actions: Vec<LegalAction>,
+}
+
+struct PriorityCandidate {
+    player: PlayerId,
+    source: Option<ObjectId>,
     session: ironsmith::decision::ManaAnalysisSession,
 }
 
@@ -16,23 +23,38 @@ impl WasmGame {
         if job.token != token || job.key != self.priority_analysis_key() {
             return Ok(None);
         }
+        let Some(mut candidate) = job.candidates.pop_front() else { return Ok(Some(true)); };
         let id_counters = snapshot_id_counters();
-        let (ctx, complete) = job.session.run(budget.clamp(1, 4096), || {
-            ironsmith::game_loop::analyze_priority_context(&job.game, job.player)
+        let (actions, complete) = candidate.session.run(budget.clamp(1, 64), || {
+            match candidate.source {
+                Some(source) => ironsmith::decision::compute_actions_for_source(&job.game, candidate.player, Some(source)),
+                None => ironsmith::decision::compute_global_actions(&job.game, candidate.player),
+            }
         });
         restore_id_counters(id_counters);
-        let ctx = match ctx {
-            Ok(ctx) => ctx,
-            Err(error) => { self.priority_analysis_job = Some(job); return Err(error); }
-        };
-        self.last_analysis_slice_nodes = job.session.last_slice_nodes();
-        if !complete {
-            self.priority_analysis_job = Some(job);
-            return Ok(Some(false));
+        self.last_analysis_slice_nodes = candidate.session.last_slice_nodes();
+        let actions = actions.map_err(ironsmith::game_loop::GameLoopError::from)?;
+        if complete {
+            for action in actions {
+                if !job.actions.contains(&action) { job.actions.push(action); }
+            }
+        } else {
+            // Rotate unresolved cards: one search cannot consume every slice.
+            job.candidates.push_back(candidate);
         }
+        let finished = job.candidates.is_empty();
+        let mut ctx = ironsmith::decisions::context::PriorityContext::new(
+            &job.game, job.player, job.actions.clone(),
+        ).map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
+        ctx.analysis_complete = finished;
         self.pending_decision = Some(DecisionContext::Priority(ctx));
         self.cached_snapshot = None;
-        Ok(Some(true))
+        if !finished {
+            // Publishing a partial menu changes the decision hash, not the game.
+            job.key = self.priority_analysis_key();
+            self.priority_analysis_job = Some(job);
+        }
+        Ok(Some(finished))
     }
 
     fn priority_analysis_key(&self) -> SnapshotCacheKey {
@@ -68,6 +90,17 @@ impl WasmGame {
         self.inspector_analysis_job = None;
     }
 
+    #[wasm_bindgen(js_name = hasPriorityDecision)]
+    pub fn has_priority_decision(&self) -> bool {
+        matches!(self.pending_decision, Some(DecisionContext::Priority(_))) && self.pregame.is_none()
+    }
+
+    #[wasm_bindgen(js_name = priorityAnalysisPending)]
+    pub fn priority_analysis_pending(&self) -> bool {
+        matches!(self.pending_decision.as_ref(), Some(DecisionContext::Priority(ctx)) if !ctx.analysis_complete)
+            && self.pregame.is_none()
+    }
+
     #[wasm_bindgen(js_name = beginPriorityAnalysis)]
     pub fn begin_priority_analysis(&mut self, token: String) -> bool {
         let Some(DecisionContext::Priority(ctx)) = self.pending_decision.as_ref() else {
@@ -76,17 +109,26 @@ impl WasmGame {
         if ctx.analysis_complete || self.pregame.is_some() {
             return false;
         }
+        let mut candidates = std::collections::VecDeque::new();
+        for player in self.game.priority_team_players() {
+            for source in ironsmith::decision::priority_analysis_sources(&self.game, player) {
+                candidates.push_back(PriorityCandidate { player, source: Some(source), session: Default::default() });
+            }
+            candidates.push_back(PriorityCandidate { player, source: None, session: Default::default() });
+        }
         self.priority_analysis_job = Some(Box::new(PriorityAnalysisJob {
             token,
             key: self.priority_analysis_key(),
             game: self.game.clone(),
             player: ctx.player,
-            session: Default::default(),
+            candidates,
+            actions: vec![LegalAction::PassPriority],
         }));
         true
     }
 
-    /// Null means pending; false means cancelled/stale. Only a complete exact menu is published.
+    /// False means cancelled/stale. Every step returns cumulative confirmed actions;
+    /// analysis_complete distinguishes pending cards from proven unavailable cards.
     #[wasm_bindgen(js_name = stepPriorityAnalysis)]
     pub fn step_priority_analysis(
         &mut self,
@@ -96,8 +138,7 @@ impl WasmGame {
         match self.advance_priority_analysis(&token, budget)
             .map_err(|error| JsValue::from_str(&format!("priority action analysis failed: {error}")))? {
             None => return Ok(JsValue::FALSE),
-            Some(false) => return Ok(JsValue::NULL),
-            Some(true) => {}
+            Some(false) | Some(true) => {}
         }
         let decision = DecisionView::from_context(
             &self.game,
@@ -158,6 +199,59 @@ mod priority_analysis_tests {
             assert!(ctx.analysis_complete);
             assert_eq!(ctx.actions, expected);
             assert_eq!(wasm.game.turn.priority_player, Some(alice));
+        });
+    }
+    #[test]
+    fn incremental_land_precedes_warp_and_final_actions_match_full_enumeration() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            let (mut wasm, _restore) = fixture();
+            let alice = PlayerId::from_index(0);
+            wasm.game.turn.active_player = alice;
+            wasm.game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+            wasm.game.turn.step = None;
+            wasm.game.player_mut(alice).unwrap().mana_pool.red = 3;
+            let card = ironsmith::CardBuilder::new(ironsmith::ids::CardId::new(), "Warp probe")
+                .card_types(vec![ironsmith::types::CardType::Creature])
+                .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::ManaSymbol::Generic(5)]))
+                .build();
+            let mut def = ironsmith::cards::CardDefinition::new(card);
+            def.alternative_casts.push(ironsmith::alternative_cast::AlternativeCastingMethod::Warp {
+                cost: ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::ManaSymbol::Generic(2), ironsmith::ManaSymbol::Red]),
+                additional_cost: ironsmith::cost::TotalCost::free(),
+            });
+            let spell = wasm.game.create_object_from_definition(&def, alice, ironsmith::Zone::Hand);
+            let land_card = ironsmith::CardBuilder::new(ironsmith::ids::CardId::new(), "Land probe")
+                .card_types(vec![ironsmith::types::CardType::Land]).build();
+            let land = wasm.game.create_object_from_card(&land_card, alice, ironsmith::Zone::Hand);
+            // Exercise candidate coverage outside hand, including top library.
+            for zone in [ironsmith::Zone::Battlefield, ironsmith::Zone::Graveyard, ironsmith::Zone::Exile, ironsmith::Zone::Library, ironsmith::Zone::Command] {
+                wasm.game.create_object_from_definition(&def, alice, zone);
+            }
+            wasm.pending_decision = Some(DecisionContext::Priority(
+                ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
+            let expected = ironsmith::game_loop::analyze_priority_context(&wasm.game, alice).unwrap().actions;
+            assert!(expected.iter().any(|a| matches!(a, LegalAction::CastSpell { spell_id, casting_method: ironsmith::alternative_cast::CastingMethod::Alternative(0), .. } if *spell_id == spell)));
+            assert!(wasm.begin_priority_analysis("progress".into()));
+            assert_eq!(wasm.advance_priority_analysis("progress", 1).unwrap(), Some(false));
+            let Some(DecisionContext::Priority(first)) = &wasm.pending_decision else { panic!() };
+            assert!(first.actions.contains(&LegalAction::PlayLand { land_id: land }));
+            assert!(!first.analysis_complete);
+            assert!(!first.actions.iter().any(|a| matches!(a, LegalAction::CastSpell { .. })));
+            let mut previous = first.actions.clone();
+            for _ in 0..1000 {
+                let done = wasm.advance_priority_analysis("progress", 8).unwrap() == Some(true);
+                let Some(DecisionContext::Priority(ctx)) = &wasm.pending_decision else { panic!() };
+                assert!(previous.iter().all(|action| ctx.actions.contains(action)));
+                previous = ctx.actions.clone();
+                if done {
+                    assert!(ctx.analysis_complete);
+                    assert_eq!(ctx.actions.len(), expected.len());
+                    assert!(expected.iter().all(|action| ctx.actions.contains(action)));
+                    return;
+                }
+            }
+            panic!("analysis did not finish");
         });
     }
     #[test]

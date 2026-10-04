@@ -3,7 +3,7 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::{NumberSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
+use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value_wide};
 use crate::effects::{EffectExecutor, RemoveAnyCountersAmongEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -62,23 +62,53 @@ impl EffectExecutor for RemoveUpToCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let max_count = resolve_value(game, &self.max_count, ctx)?.max(0) as u32;
-        if let ChooseSpec::All(filter) = self.target.unhinted() {
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        game.clear_pending_decision_controllers();
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = execute_up_to_counter_removal(self, game, ctx);
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        }
+        result
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        Some(&self.target)
+    }
+
+    fn target_description(&self) -> &'static str {
+        "target to remove counters from"
+    }
+}
+
+fn execute_up_to_counter_removal(
+    effect: &RemoveUpToCountersEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
+        let max_count = resolve_value_wide(game, &effect.max_count, ctx)?.max(0) as u64;
+        if let ChooseSpec::All(filter) = effect.target.unhinted() {
+            if max_count > u64::from(u32::MAX) {
+                return super::remove_any_counters_among::execute_wide_counter_removal_among(game, ctx, filter.clone(), Some(effect.counter_type), max_count, true);
+            }
             let distributed =
-                RemoveAnyCountersAmongEffect::dynamic(0, max_count, filter.clone(), false)
-                    .with_counter_type(Some(self.counter_type));
+                RemoveAnyCountersAmongEffect::dynamic(0, u32::try_from(max_count).expect("bounded branch"), filter.clone(), false)
+                    .with_counter_type(Some(effect.counter_type));
             return distributed.execute(game, ctx);
         }
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
+        let target_id = resolve_single_object_for_effect(game, ctx, &effect.target)?;
 
         // Get the current count of counters on the target
         let available = game
             .object(target_id)
-            .map(|obj| obj.counters.get(&self.counter_type).copied().unwrap_or(0))
+            .map(|obj| obj.counters.get(&effect.counter_type).copied().unwrap_or(0))
             .unwrap_or(0);
 
         // The actual maximum we can remove is the lesser of max_count and available
-        let actual_max = max_count.min(available);
+        let actual_max = u32::try_from(max_count.min(u64::from(available))).expect("bounded by per-kind storage");
 
         // If there's nothing to remove, return 0
         if actual_max == 0 {
@@ -88,7 +118,7 @@ impl EffectExecutor for RemoveUpToCountersEffect {
         // Ask the player how many counters to remove (0 to actual_max)
         let description = format!(
             "Choose how many {} counters to remove (0-{})",
-            self.counter_type.description(),
+            effect.counter_type.description(),
             actual_max
         );
         let spec = NumberSpec::up_to(ctx.source, actual_max, description);
@@ -105,26 +135,9 @@ impl EffectExecutor for RemoveUpToCountersEffect {
         }
         let chosen_count = chosen_count.min(actual_max);
 
-        // Remove the chosen number of counters using centralized method
-        match game.remove_counters(
-            target_id,
-            self.counter_type,
-            chosen_count,
-            Some(ctx.source),
-            Some(ctx.controller),
-        ) {
-            Some((removed, event)) => Ok(EffectOutcome::count(removed as i32).with_event(event)),
-            None => Ok(EffectOutcome::count(0)),
-        }
-    }
-
-    fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        Some(&self.target)
-    }
-
-    fn target_description(&self) -> &'static str {
-        "target to remove counters from"
-    }
+        let event = crate::events::Event::remove_counters(target_id, effect.counter_type, chosen_count)
+            .with_provenance(ctx.provenance);
+        super::remove_counters::execute_counter_removal_event(game, ctx, event)
 }
 
 #[cfg(test)]
@@ -283,4 +296,51 @@ mod tests {
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("RemoveUpToCountersEffect"));
     }
+}
+
+#[cfg(test)]
+mod removal_caller_replacement_owner_tests {
+    use super::*;
+    fn check_owner(any_from_source: bool, instead: bool) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Removal caller source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Battlefield);
+        let counter_type = crate::object::CounterType::Charge;
+        game.object_mut(source).unwrap().counters.insert(counter_type, 3);
+        let action = if instead {
+            crate::replacement::ReplacementAction::Instead(vec![crate::effect::Effect::gain_life(2)])
+        } else { crate::replacement::ReplacementAction::Prevent };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                crate::events::counters::matchers::WouldRemoveCountersMatcher::any(), action));
+        let effect = if any_from_source {
+            crate::effect::Effect::new(crate::effects::RemoveAnyCountersFromSourceEffect::all(Some(counter_type)))
+        } else {
+            crate::effect::Effect::new(RemoveUpToCountersEffect::new(counter_type, 2, ChooseSpec::Source))
+        };
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        assert_eq!(game.counter_count(source, counter_type), 3, "every removal owner must process its replacement proposal");
+        assert_eq!(outcome.count_or_zero(), 0);
+        assert_eq!(game.player(alice).unwrap().life, if instead { 22 } else { 20 });
+        assert_eq!(outcome.events_of_type::<crate::events::MarkersChangedEvent>().count(), 0);
+        assert_eq!(outcome.events_of_type::<crate::events::LifeGainEvent>().count(), usize::from(instead));
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        let next = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        let actual = if any_from_source { 3 } else { 2 };
+        assert_eq!(next.count_or_zero(), actual);
+        assert_eq!(game.counter_count(source, counter_type), 3 - actual as u32);
+        assert_eq!(next.events_of_type::<crate::events::MarkersChangedEvent>().count(), 1);
+        assert_eq!(game.player(alice).unwrap().life, if instead { 22 } else { 20 });
+    }
+    #[test]
+    fn up_to_counter_removal_honors_prevention() { check_owner(false, false); }
+    #[test]
+    fn up_to_counter_removal_honors_instead_program() { check_owner(false, true); }
+    #[test]
+    fn source_any_counter_removal_honors_prevention() { check_owner(true, false); }
+    #[test]
+    fn source_any_counter_removal_honors_instead_program() { check_owner(true, true); }
 }

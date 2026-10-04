@@ -28,6 +28,12 @@ pub type CreateEmblemEffect = ironsmith_core::CreateEmblemEffect<EmblemDescripti
 /// let effect = CreateEmblemEffect::new(emblem);
 /// ```
 impl EffectExecutor for CreateEmblemEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for ability in &self.emblem.abilities {
+            crate::ability::visit_owned_effects(ability, visitor);
+        }
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }

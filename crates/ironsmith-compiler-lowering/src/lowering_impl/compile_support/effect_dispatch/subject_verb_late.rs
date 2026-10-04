@@ -1609,7 +1609,7 @@ pub(super) fn compile_subject_verb_late(
                 tag_object_target_effect(Effect::with_id(id.0, effect), &spec, ctx, "counters");
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to }) => {
+        SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to, remove_from_source }) => {
             let (from_spec, mut choices) =
                 resolve_target_spec_with_choices(from, &current_reference_env(ctx))?;
             let (to_spec, to_choices) =
@@ -1619,7 +1619,11 @@ pub(super) fn compile_subject_verb_late(
             }
             let effect = tag_object_target_effect(
                 tag_object_target_effect(
-                    Effect::move_all_counters(from_spec.clone(), to_spec.clone()),
+                    Effect::new(if *remove_from_source {
+                        crate::effects::MoveAllCountersEffect::new(from_spec.clone(), to_spec.clone())
+                    } else {
+                        crate::effects::MoveAllCountersEffect::put_referenced(from_spec.clone(), to_spec.clone())
+                    }),
                     &from_spec,
                     ctx,
                     "from",
@@ -1636,7 +1640,6 @@ pub(super) fn compile_subject_verb_late(
             from,
             to,
         }) => {
-            let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             let (from_spec, mut choices) =
                 resolve_target_spec_with_choices(from, &current_reference_env(ctx))?;
             let (to_spec, to_choices) =
@@ -1646,12 +1649,12 @@ pub(super) fn compile_subject_verb_late(
             }
             let effect = tag_object_target_effect(
                 tag_object_target_effect(
-                    Effect::new(crate::effects::MoveCountersEffect::new(
-                        *counter_type,
-                        resolved_count,
-                        from_spec.clone(),
-                        to_spec.clone(),
-                    )),
+                    Effect::new(match count {
+                        ironsmith_core::effect::CounterMoveAmount::Exact(value) => crate::effects::MoveCountersEffect::new(
+                            *counter_type, resolve_value_it_tag(value, &current_reference_env(ctx))?, from_spec.clone(), to_spec.clone()),
+                        ironsmith_core::effect::CounterMoveAmount::AnyNumber => crate::effects::MoveCountersEffect::any_number(
+                            *counter_type, from_spec.clone(), to_spec.clone()),
+                    }),
                     &from_spec,
                     ctx,
                     "from",

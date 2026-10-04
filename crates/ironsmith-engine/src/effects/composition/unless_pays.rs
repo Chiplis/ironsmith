@@ -305,6 +305,7 @@ impl EffectExecutor for UnlessPaysEffect {
         for effect in &self.effects {
             visitor(effect);
         }
+        crate::ability::visit_total_cost_owned_effects(&self.cost, visitor);
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {

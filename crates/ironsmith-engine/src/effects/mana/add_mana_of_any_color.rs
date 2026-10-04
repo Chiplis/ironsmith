@@ -32,6 +32,11 @@ pub use ironsmith_core::AddManaOfAnyColorEffect;
 /// let effect = AddManaOfAnyColorEffect::you(Value::X);
 /// ```
 impl EffectExecutor for AddManaOfAnyColorEffect {
+    fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
+        use crate::mana_payment::program::ManaProduction;
+        Some(ManaProduction::ChooseColors { amount: &self.amount, available: self.available_colors.as_deref().unwrap_or(&crate::color::Color::ALL), same_color: false, distinct: self.distinct_colors, player: &self.player })
+    }
+
     fn directly_produces_mana(&self) -> bool {
         self.available_colors
             .as_ref()
@@ -59,7 +64,7 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
             self.distinct_colors,
             self.available_colors.as_deref(),
             Color::Green,
-        );
+        )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }

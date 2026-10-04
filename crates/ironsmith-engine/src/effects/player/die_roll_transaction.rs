@@ -234,10 +234,10 @@ fn apply_numerical_modifiers(
             continue;
         }
         let options = [
-            ("Increase".to_string(), modifier.spec.amount as i32),
-            ("Decrease".to_string(), -(modifier.spec.amount as i32)),
+            ("Increase".to_string(), true),
+            ("Decrease".to_string(), false),
         ];
-        let Some(delta) = ask_choose_one(
+        let Some(increase) = ask_choose_one(
             game,
             &mut ctx.decision_maker,
             player,
@@ -252,10 +252,10 @@ fn apply_numerical_modifiers(
         if !game.pay_life(player, modifier.spec.life_cost) {
             continue;
         }
-        roll.result = if delta.is_negative() {
-            roll.result.saturating_sub(delta.unsigned_abs())
+        roll.result = if increase {
+            roll.result.saturating_add(modifier.spec.amount)
         } else {
-            roll.result.saturating_add(delta as u32)
+            roll.result.saturating_sub(modifier.spec.amount)
         };
         mark_used(game, &modifier);
     }
