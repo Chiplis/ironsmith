@@ -416,26 +416,28 @@ The protocol cannot prevent a malicious player from going offline. It can preven
 
 Peer-to-peer delivery is unreliable by design. A peer can miss messages, reconnect with a new PeerJS id, or receive action `N + 1` before action `N`.
 
-Resync uses a signed envelope:
+Resync carries the authenticated action transcript in a signed envelope:
 
 ```text
 {
-  domain: "ironsmith-resync-envelope-v1",
+  domain: "ironsmith-resync-envelope-v2",
   matchId,
   signer,
   lastSequence,
   finalStateHash,
-  checkpointHash,
   actionsHash,
+  signatureAlgorithm,
   signature
 }
 ```
 
-The checkpoint hash is domain-separated with `ironsmith-resync-checkpoint-v1`. The action log hash is domain-separated with `ironsmith-resync-actions-v1`. A recipient refuses resync data that is older than its local transcript or does not contain its local prefix exactly. That prevents a peer from "resyncing" someone onto a fork that erases already-applied actions.
+The action log hash is domain-separated with `ironsmith-resync-actions-v1`. A recipient refuses resync data that is older than its local transcript or does not contain its local prefix exactly. That prevents a peer from "resyncing" someone onto a fork that erases already-applied actions. Serialized engine state and legacy checkpoint fields are rejected.
 
-In Verified mode the recipient always verifies the whole signed transcript, but it no longer has to replay every action through the engine. Every 32 accepted actions the host keeps a checkpoint redacted for each other seat, and it keeps one only if its public state hashes to that action's signed `publicCheckpointHash`. A resync response carries the newest such checkpoint that is at least 64 actions behind the head, with its sequence `N` covered by the signed envelope (`checkpointSequence`). The recipient restarts from genesis, imports the checkpoint with `importForeignSyncCheckpoint`, and accepts it only if the resulting public checkpoint hashes to action `N`'s signed value. It then replays actions `N + 1` onward. Any mismatch or failure falls back to a full replay from genesis.
+In Verified mode the recipient verifies the signed transcript and attempts recovery from its current runtime, then its recent local native savepoints, then genesis. Each local runtime must match its accepted action's public audit hash before replaying subsequent actions. Every recovery level must reproduce the signed head; a failed level falls back to an older local savepoint or full replay.
 
-This is safe because the hidden-identity claim ledger is shared: every peer records every claim identically, and in a public-safe form, and its digest (`hiddenClaimLedgerDigest`) is part of the public checkpoint. An exporter therefore can't drop or alter a claim without breaking the hash. Audit-layer state at `N` (chain hash, clock chain, accepted ziffle ceremonies) is rebuilt from the verified transcript, never taken from the host. A foreign checkpoint lacks the importer's own private knowledge, so the importer reopens its own hidden cards with reveal tokens from the other peers. Private peeks older than the replayed tail are not restored. The 64-action tail exists because some per-sequence audit state (requirement dedupe, historical reveal-token authorization, shuffle reveal locks) can only be rebuilt by replay.
+Each client retains up to three native savepoints, captured once per turn or every 32 accepted actions. They preserve the live engine, pending choices and executable effects together with the client's transcript cursor, crypto bookkeeping, and match clock. Savepoints are tied to the same engine instance, match, seat, and signed transcript prefix. They remain local and survive a network disconnect while the worker stays alive. Reloading the page or replacing the worker requires replay from genesis.
+
+Replay reuses the accepted random results, shuffle proofs, and authorized card openings. It does not repeat completed cryptographic ceremonies. Missing records may need to be fetched, and new actions can require new material. Public audit projections remain available for hash verification; they are not imported as executable game state.
 
 When closed-list redaction is active, the payload sent to a peer can redact other players' decklists while preserving the signed audit material needed for verification. Current open-decklist matches simply send the full payload.
 

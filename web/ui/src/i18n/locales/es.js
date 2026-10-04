@@ -1175,7 +1175,7 @@ export const ui = {
   "Offline {0}": "Sin conexión {0}",
   "Omniscience": "Omniscience",
   "one or more peers": "uno o más jugadores",
-  "One or more peers are importing the latest checkpoint before another action can be submitted.": "Uno o más jugadores están importando el último punto de control antes de poder enviar otra acción.",
+  "One or more peers are recovering the game before another action can be submitted.": "Uno o más jugadores están recuperando la partida antes de poder enviar otra acción.",
   "open": "abierto",
   "Open decklist": "Abrir lista del mazo",
   "Open decklist ·": "Abrir lista del mazo ·",

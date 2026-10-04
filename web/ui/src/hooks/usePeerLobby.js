@@ -749,7 +749,7 @@ export function usePeerLobby({
             kind: "peer_resync",
             title: "Waiting for peer resync",
             description:
-              "One or more peers are importing the latest checkpoint before another action can be submitted.",
+              "One or more peers are recovering the game before another action can be submitted.",
           });
           setStatus("Waiting for peers to finish resyncing");
           try {
