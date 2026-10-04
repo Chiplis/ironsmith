@@ -979,6 +979,11 @@ impl GameState {
             }
         }
 
+        if self.object(old_id).is_some_and(|object| object.zone == Zone::Battlefield)
+            && new_zone != Zone::Battlefield
+        {
+            self.detach_relations_for_leaving_object(old_id);
+        }
         self.object_store.changes.record(old_id);
         self.object_store.render_changes.record(old_id);
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
@@ -3294,9 +3299,6 @@ impl GameState {
                 if !self.attach_object_to_target(new_id, target) {
                     return false;
                 }
-                self.effect_store
-                    .continuous_effects
-                    .record_attachment(new_id);
                 true
             });
             if !attached && let Some(checkpoint) = aura_entry_checkpoint.take() {
@@ -3404,6 +3406,9 @@ impl GameState {
     pub fn remove_object(&mut self, id: ObjectId) {
         if !self.objects.contains_key(&id) {
             return;
+        }
+        if self.object(id).is_some_and(|object| object.zone == Zone::Battlefield) {
+            self.detach_relations_for_leaving_object(id);
         }
         self.battlefield_flags_mut().saga_entry_lore_processed.remove(&id);
         if let Some(stable_id) = self.object(id).map(|object| object.stable_id) {
@@ -3804,102 +3809,6 @@ impl GameState {
                 self.player(id).is_some_and(|player| player.is_in_game())
             }
         }
-    }
-
-    pub fn detach_object_from_current_target(&mut self, attachment_id: ObjectId) -> bool {
-        let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
-        let attachment_snapshot = self
-            .object(attachment_id)
-            .map(|object| self.cached_object_snapshot_with_calculated_characteristics(object));
-        self.mark_continuous_state_dirty();
-        let Some(current_target) = self
-            .object(attachment_id)
-            .and_then(|object| object.attached_to)
-        else {
-            return false;
-        };
-
-        match current_target {
-            AttachmentTarget::Object(id) => {
-                if let Some(parent) = self.object_mut(id) {
-                    parent
-                        .attachments
-                        .retain(|existing| *existing != attachment_id);
-                }
-            }
-            AttachmentTarget::Player(id) => {
-                if let Some(player) = self.player_mut(id) {
-                    player
-                        .attachments
-                        .retain(|existing| *existing != attachment_id);
-                }
-            }
-        }
-
-        if let Some(object) = self.object_mut(attachment_id) {
-            object.attached_to = None;
-        }
-
-        if let Some(snapshot) = attachment_snapshot {
-            let provenance = self
-                .provenance_graph_mut()
-                .alloc_root_event(crate::events::EventKind::ObjectBecameUnattached);
-            let event = crate::triggers::TriggerEvent::new_with_provenance(
-                crate::events::ObjectBecameUnattachedEvent::new(
-                    attachment_id,
-                    current_target,
-                    snapshot.controller,
-                    Some(snapshot),
-                ),
-                provenance,
-            )
-            .with_lookback_source_snapshots(lookback_source_snapshots);
-            self.queue_trigger_event(provenance, event);
-        }
-
-        true
-    }
-
-    pub fn attach_object_to_target(
-        &mut self,
-        attachment_id: ObjectId,
-        target: AttachmentTarget,
-    ) -> bool {
-        self.mark_continuous_state_dirty();
-        if !self
-            .object(attachment_id)
-            .is_some_and(|object| object.zone == Zone::Battlefield)
-            || !self.attachment_target_exists(target)
-        {
-            return false;
-        }
-
-        self.detach_object_from_current_target(attachment_id);
-
-        if let Some(object) = self.object_mut(attachment_id) {
-            object.attached_to = Some(target);
-        } else {
-            return false;
-        }
-
-        match target {
-            AttachmentTarget::Object(id) => {
-                if let Some(parent) = self.object_mut(id)
-                    && !parent.attachments.contains(&attachment_id)
-                {
-                    parent.attachments.push(attachment_id);
-                }
-            }
-            AttachmentTarget::Player(id) => {
-                if let Some(player) = self.player_mut(id)
-                    && !player.attachments.contains(&attachment_id)
-                {
-                    player.attachments.push(attachment_id);
-                }
-            }
-        }
-
-        true
     }
 
     // =========================================================================

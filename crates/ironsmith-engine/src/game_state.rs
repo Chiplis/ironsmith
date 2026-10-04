@@ -61,6 +61,8 @@ mod turns_and_tracking;
 mod two_headed_giant;
 mod vanguard;
 mod zones_and_characteristics;
+mod attachment_transitions;
+mod phasing_transitions;
 pub use alternating_teams::AlternatingTeamsState;
 pub use attack_direction::AttackDirection;
 pub use attractions::AttractionVisitProfile;

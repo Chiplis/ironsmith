@@ -240,10 +240,10 @@ pub(crate) fn tagged_object_follow_permitted(
             zone_change.result_objects.contains(&current_id)
         };
     }
-    // A tap/untap occurrence does not move its object. A permanent that
-    // left and returned while its trigger waited is not that event's object,
-    // including the additional members of a grouped tap-state event.
-    if matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped) {
+    // Tap-state and attachment transitions don't create new incarnations
+    // of their participants. A later blink isn't the event's permanent,
+    // including additional members of a grouped tap-state event.
+    if matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped | crate::events::EventKind::ObjectBecameAttached | crate::events::EventKind::ObjectBecameUnattached | crate::events::EventKind::PermanentPhasedIn | crate::events::EventKind::PermanentPhasedOut) {
         return false;
     }
     // Other events that move their object (a sacrifice, a discard) don't
@@ -1778,7 +1778,7 @@ fn resolve_controller_of(
                     })
                     .map(|object| game.controller_of(object));
                 let departure_controller = ctx.triggering_event.as_ref()
-                    .filter(|event| matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped))
+                    .filter(|event| matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped | crate::events::EventKind::ObjectBecameAttached | crate::events::EventKind::ObjectBecameUnattached | crate::events::EventKind::PermanentPhasedIn | crate::events::EventKind::PermanentPhasedOut))
                     .and_then(|_| latest_zone_change_snapshot_for_object(game, snapshot.object_id))
                     .map(|departed| departed.controller);
                 Ok(live_controller.or(departure_controller).unwrap_or(snapshot.controller))

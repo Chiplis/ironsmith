@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "526ff45fedeee8b6be525b0ac03e95178666961c",
+  "source_implementation_commit": "0e5c8fd67b5810db93a9cee0f013d2e11542274e",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 316,
-    "additional_proposed_compile_entries": 316,
+    "additional_proposed_unique_cards": 328,
+    "additional_proposed_compile_entries": 328,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -817,6 +817,53 @@
       "tests": "authored_not_run",
       "semantic_scope": [
         "X energy/life bounds, rounded half-life and per-counter values; actual activation total-cost determination before modifiers."
+      ]
+    },
+    {
+      "id": "attachment-transition-events",
+      "stage": 31,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/attachment_transition_triggers.json.fixture",
+      "baseline_entries": [
+        "Bramble Elemental",
+        "Brood Keeper",
+        "Captain's Hook",
+        "Enormous Energy Blade",
+        "Grafted Exoskeleton",
+        "Grafted Wargear",
+        "Siona, Captain of the Pyleas",
+        "Stitcher's Graft"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "0e5c8fd67b5810db93a9cee0f013d2e11542274e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Separate attachment/recipient snapshots and exact tags; actual attach, reattach, leave and SBA producers.",
+        "Same-destination attachment is a no-op; unknown participants fail closed."
+      ]
+    },
+    {
+      "id": "phasing-transition-events",
+      "stage": 31,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/phasing_transition_triggers.json.fixture",
+      "baseline_entries": [
+        "King of the Oathbreakers",
+        "Shimmering Efreet",
+        "Teferi's Imp",
+        "Warping Wurm"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "The War Doctor",
+          "remaining_blocker": "The Time and Tide simultaneous exchange needs an explicit grammar/lowering/artifact primitive; see phasing-transition-runtime-gaps.json."
+        }
+      ],
+      "implementation_commit": "0e5c8fd67b5810db93a9cee0f013d2e11542274e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Atomic regular-turn in/out exchange with complete pre-out LKI and completed-state in snapshots.",
+        "Direct/indirect attachment phasing, grouped combinator forwarding and exact object identity."
       ]
     }
   ],
@@ -3916,8 +3963,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "attachment-transition-events"
+      ]
     },
     {
       "card_name": "Brass Infiniscope",
@@ -4126,8 +4175,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "attachment-transition-events"
+      ]
     },
     {
       "card_name": "Brutal Hordechief",
@@ -4574,8 +4625,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "attachment-transition-events"
+      ]
     },
     {
       "card_name": "Captured by the Consulate",
@@ -9017,8 +9070,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "attachment-transition-events"
+      ]
     },
     {
       "card_name": "Enshrouding Mist",
@@ -12246,8 +12301,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "attachment-transition-events"
+      ]
     },
     {
       "card_name": "Grafted Wargear",
@@ -12256,8 +12313,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "attachment-transition-events"
+      ]
     },
     {
       "card_name": "Grand Master of Flowers",
@@ -15828,8 +15887,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "phasing-transition-events"
+      ]
     },
     {
       "card_name": "Kiora of Salt and Sand",
@@ -25304,8 +25365,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "phasing-transition-events"
+      ]
     },
     {
       "card_name": "Shimmerwilds Growth",
@@ -25708,8 +25771,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "attachment-transition-events"
+      ]
     },
     {
       "card_name": "Siren's Call",
@@ -26980,8 +27045,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "attachment-transition-events"
+      ]
     },
     {
       "card_name": "Stolen Uniform",
@@ -28148,8 +28215,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "phasing-transition-events"
+      ]
     },
     {
       "card_name": "Teferi's Reproach",
@@ -32247,8 +32316,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "phasing-transition-events"
+      ]
     },
     {
       "card_name": "Warrior's Sword",

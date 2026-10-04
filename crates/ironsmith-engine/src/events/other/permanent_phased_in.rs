@@ -1,4 +1,4 @@
-//! Permanent-phased-out event implementation.
+//! Permanent-phased-in event implementation.
 
 use std::any::Any;
 
@@ -8,15 +8,13 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 
 #[derive(Debug, Clone)]
-pub struct PermanentPhasedOutEvent {
+pub struct PermanentPhasedInEvent {
     pub permanent: ObjectId,
     pub controller: PlayerId,
     pub snapshot: Option<ObjectSnapshot>,
-    /// The producer captured every visible pre-transition trigger source.
-    pub complete_source_lookback: bool,
 }
 
-impl PermanentPhasedOutEvent {
+impl PermanentPhasedInEvent {
     pub fn new(
         permanent: ObjectId,
         controller: PlayerId,
@@ -26,21 +24,13 @@ impl PermanentPhasedOutEvent {
             permanent,
             controller,
             snapshot,
-            complete_source_lookback: false,
         }
     }
 }
 
-impl PermanentPhasedOutEvent {
-    pub fn with_complete_source_lookback(mut self) -> Self {
-        self.complete_source_lookback = true;
-        self
-    }
-}
-
-impl GameEventType for PermanentPhasedOutEvent {
+impl GameEventType for PermanentPhasedInEvent {
     fn event_kind(&self) -> EventKind {
-        EventKind::PermanentPhasedOut
+        EventKind::PermanentPhasedIn
     }
 
     fn affected_player(&self, _game: &GameState) -> PlayerId {
@@ -52,7 +42,7 @@ impl GameEventType for PermanentPhasedOutEvent {
     }
 
     fn display(&self) -> String {
-        "Permanent phased out".to_string()
+        "Permanent phased in".to_string()
     }
 
     fn as_any(&self) -> &dyn Any {

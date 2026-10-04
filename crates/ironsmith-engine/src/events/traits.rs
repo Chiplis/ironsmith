@@ -147,6 +147,10 @@ pub enum EventKind {
     StateTrigger,
     /// A Saga chapter ability resolved
     ChapterAbilityResolved,
+    /// An Aura, Equipment or Fortification became attached.
+    ObjectBecameAttached,
+    /// A permanent phased in (not a zone change).
+    PermanentPhasedIn,
 }
 
 /// A target within an event that can potentially be redirected.

@@ -147,6 +147,11 @@ pub const SURVEILLED_THIS_TURN_TAG: &str = "__surveilled_this_turn__";
 /// performing the manifest-dread keyword action.
 pub const MANIFEST_DREAD_GRAVEYARD_TAG: &str = "__manifest_dread_graveyard__";
 
+/// The two exact participants of a matched attachment transition. The
+/// recipient is the permanent "that creature/permanent" in its body.
+pub const TRIGGER_ATTACHMENT_TAG: &str = "__trigger_attachment__";
+pub const TRIGGER_ATTACHMENT_RECIPIENT_TAG: &str = "__trigger_attachment_recipient__";
+
 /// The complete set of attackers captured by a group attack trigger.
 pub const ATTACKING_GROUP_TAG: &str = "__attacking_group__";
 
@@ -166,6 +171,8 @@ pub const COMBAT_DAMAGE_GROUP_TAG: &str = "__combat_damage_group__";
 pub const ZONE_CHANGE_GROUP_TAG: &str = "__zone_change_group__";
 /// Matched objects in one simultaneous tap/untap instruction.
 pub const TAP_STATE_GROUP_TAG: &str = "__tap_state_group__";
+/// Exact participants of one matched simultaneous phasing transition.
+pub const PHASING_GROUP_TAG: &str = "__phasing_group__";
 
 /// The player who currently holds the initiative designation.
 ///
@@ -213,6 +220,7 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     COMBAT_DAMAGE_GROUP_TAG,
     ZONE_CHANGE_GROUP_TAG,
     TAP_STATE_GROUP_TAG,
+    PHASING_GROUP_TAG,
     INITIATIVE_HOLDER_TAG,
     PREVIOUS_ITERATED_OBJECTS_TAG,
     CAST_MODIFIED_CREATURES_TAG,

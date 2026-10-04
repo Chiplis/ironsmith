@@ -15,6 +15,23 @@ use std::collections::HashMap;
 
 use super::TriggerEvent;
 
+/// Forward a grouped alternative only when all arms subscribing to this
+/// event kind carry the same key. Unknown subscriptions or mixed singular/
+/// grouped arms keep the previous conservative ungrouped behavior.
+pub(crate) fn alternative_grouping_key<'a>(
+    branches: impl Iterator<Item = &'a super::Trigger>,
+    event: &TriggerEvent,
+) -> Option<SimultaneousTriggerKey> {
+    let mut agreed = None;
+    for branch in branches {
+        if !branch.subscribed_kinds()?.contains(&event.kind()) { continue; }
+        let key = branch.simultaneous_trigger_key(event)?;
+        if agreed.is_some_and(|agreed| agreed != key) { return None; }
+        agreed = Some(key);
+    }
+    agreed
+}
+
 /// Rules grouping key for a trigger that says "one or more" damage sources or
 /// recipients. Matches with the same key during one simultaneous action queue
 /// the ability only once.
@@ -26,6 +43,8 @@ pub enum SimultaneousTriggerKey {
     ZoneChangeBatch,
     /// One simultaneous instruction changes several permanents' tap states.
     TapStateBatch { tapped: bool },
+    /// One simultaneous phasing transition, including indirect attachments.
+    PhasingBatch { phased_in: bool },
     /// Active player-subject clauses group each acting player separately.
     PlayerTapStateBatch { tapped: bool, actor: PlayerId },
     /// Non-zone departures from one simultaneous game action.
