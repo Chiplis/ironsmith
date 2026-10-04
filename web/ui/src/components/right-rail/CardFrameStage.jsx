@@ -45,6 +45,8 @@ export default function CardFrameStage({ preparation, assets = preparation, show
   useLayoutEffect(() => { onReadyChange?.(frameVisible); }, [onReadyChange, frameVisible]);
   return <div className="card-frame-preview-shell">
     <div {...props} ref={ref} data-render-ready={ready ? 'true' : 'false'} data-frame-reused={presentation.reuse ? 'true' : 'false'}
+    data-printing-profile={preparation?.typography?.profile?.id}
+    data-printing-branches={preparation?.typography?.profile?.chartBranches?.join(' ')}
     data-loading-frame={loadingFrameVisible ? 'true' : undefined}
     aria-hidden={!frameVisible} inert={!frameVisible}
     style={{...style, opacity: frameVisible ? 1 : 0, ...(presentation.reuse ? {transition: 'none'} : {}), ...(!frameVisible ? {pointerEvents: 'none'} : {})}}>

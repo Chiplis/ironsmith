@@ -651,7 +651,6 @@ export default function GameCard({
   onClick,
   onKeyboardActivate,
   onKeyboardNavigation,
-  getKeyboardNavigationScope,
   onContextMenu,
   onPointerDown,
   onPointerMove,
@@ -1347,13 +1346,8 @@ export default function GameCard({
           // Hand navigation must not jump into battlefield/decision cards that
           // happen to be mounted elsewhere in the workspace. Keep the focus
           // loop inside the nearest hand surface when one exists.
-          const navigationScope = getKeyboardNavigationScope?.() || event.currentTarget.closest("[data-card-navigation-scope]");
-          const candidates = navigationScope?.dataset.cardNavigationScope === 'hand' && navigationScope.querySelector('.hand-layout-item')
-            ? Array.from(navigationScope.querySelectorAll('.hand-layout-item[data-hand-object-id]')).map(slot =>
-              slot.querySelector('.game-card[role="button"]') || document.querySelector(`.hand-hover-portal .game-card[data-object-id="${slot.dataset.handObjectId}"][role="button"]`)
-            ).filter(Boolean)
-            : Array.from((navigationScope || document).querySelectorAll('.game-card[role="button"]'));
-          const cards = candidates
+          const navigationScope = event.currentTarget.closest("[data-card-navigation-scope]");
+          const cards = Array.from((navigationScope || document).querySelectorAll('.game-card[role="button"]'))
             .filter((candidate) => {
               if (candidate.offsetParent === null || candidate.hasAttribute("aria-hidden")) return false;
               // Battlefield layout transitions keep temporary cards mounted but

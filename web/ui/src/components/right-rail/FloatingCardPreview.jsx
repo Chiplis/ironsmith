@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { localCardPreviewBounds } from "@/lib/card-preview-bounds";
 import { manaPaymentActionMap } from "@/lib/mana-payment-actions";
 import { useCastTargeting, useDragSession } from "@/context/DragContext";
 import { useGame } from "@/context/GameContext";
@@ -211,9 +210,10 @@ function battlefieldPreviewLayout(rect, size, source) {
   const localSource = source?.closest?.('[data-local-zone-strip="true"], .battlefield-row[data-bf-side="bottom"]');
   // Local battlefield and zone inspectors share the same space and size cap.
   // Raised graveyard/exile strips must not pull the inspector onto the opposing board.
-  const minimumTop = localSource
-    ? localCardPreviewBounds().top
-    : Math.max(phaseToolbarTop(margin), margin);
+  const localBoard = localSource
+    ? document.querySelector('[data-my-zone] .my-zone-board-shell')?.getBoundingClientRect()
+    : null;
+  const minimumTop = Math.max(phaseToolbarTop(margin), localBoard?.top ?? margin);
   const availableHeight = Math.max(0, window.innerHeight - margin - minimumTop);
   const height = Math.min(size.height, availableHeight);
   const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));

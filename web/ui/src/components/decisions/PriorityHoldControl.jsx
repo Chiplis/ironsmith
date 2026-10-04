@@ -3,10 +3,11 @@ import { useRef } from "react";
 import { Hand, FastForward } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 
-export default function PriorityHoldControl({ compact = false }) {
+export default function PriorityHoldControl({ compact = false, previousRuleRef = null }) {
   const ui = useUiText();
   const { holdRule, setHoldRule, autoResolveEnabled, setAutoResolveEnabled } = useGame();
-  const previousRule = useRef("never");
+  const localPreviousRule = useRef("never");
+  const previousRule = previousRuleRef || localPreviousRule;
   const holding = holdRule === "always";
   const holdLabel = ui(holding ? "Holding priority" : "Hold priority");
   const autoResolveLabel = ui("Auto-pass");
@@ -18,7 +19,7 @@ export default function PriorityHoldControl({ compact = false }) {
         className={`player-priority-hold${compact ? " player-priority-hold--compact" : ""}`}
         aria-pressed={holding}
         aria-label={holdLabel}
-        title={compact ? undefined : ui(holding
+        title={compact ? holdLabel : ui(holding
           ? "Automatic priority passing is paused. Click to restore your previous hold setting."
           : "Hold priority until turned off, including after casting your own spells. Enable before casting.")}
         data-tooltip={compact ? holdLabel : undefined}

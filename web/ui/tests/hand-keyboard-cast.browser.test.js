@@ -138,11 +138,11 @@ test("a permanent stays held so its battlefield slot follows the mouse", { timeo
 test("an accepted drop tucks the hand and suppresses hover for 200ms", async () => {
   const h = await harness();
   try {
-    const card = h.page.locator('.game-card[data-object-id="8"]');
+    const card = h.page.locator('[data-hand-case] .game-card[data-object-id="8"]');
     await card.focus();
     await h.page.evaluate(() => {
       window.dispatchEvent(new CustomEvent("ironsmith:hand-card-dropped"));
-      const card = document.querySelector('.game-card[data-object-id="8"]');
+      const card = document.querySelector('[data-hand-case] .game-card[data-object-id="8"]');
       card.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
     await h.page.waitForTimeout(80);
@@ -151,7 +151,7 @@ test("an accepted drop tucks the hand and suppresses hover for 200ms", async () 
     await h.page.waitForFunction(() => !document.documentElement.hasAttribute("data-hand-drop-cooldown"));
     assert.notEqual(await card.evaluate((el) => getComputedStyle(el).pointerEvents), "none");
     await card.hover();
-    await h.page.waitForFunction(() => document.querySelector('.game-card[data-object-id="8"]')?.classList.contains("hovered"));
+    await h.page.waitForFunction(() => document.querySelector('[data-hand-case] .game-card[data-object-id="8"]').classList.contains("hovered"));
     assert.deepEqual(h.errors, []);
   } finally {
     await h.close();

@@ -2,6 +2,7 @@ import useUiText from "@/i18n/useUiText";
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {SymbolText} from '@/lib/mana-symbols';
 import {mergeRegisteredLineSegments,registeredColumns,registeredFieldLayouts,registeredRuleAssignments,trimRegisteredNameCosts} from '@/lib/card-region-layout';
+import {profileSectionInk} from '@/lib/card-printing-profile';
 import {maskRegisteredRegion} from '@/lib/card-region-mask';
 import CardFrameRulesBox from './CardFrameRulesBox';
 import GroupedManaAbility from './GroupedManaAbility';
@@ -23,7 +24,7 @@ function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceRe
   useEffect(()=>{
     if(!changed || field.unprinted || !field.lines.length)return;
     let active=true;
-    maskRegisteredRegion(imageUrl,field,typography[field.kind==='name'?'title':field.kind==='flavor'?'rules':field.kind]||typography.rules)
+    maskRegisteredRegion(imageUrl,field,typography[field.kind==='name'?'title':field.kind==='flavor'?'rules':field.kind]||typography.rules,typography.profile)
       .then(value=>{if(active)setPatch({field,imageUrl,value});});
     return ()=>{active=false;};
   },[changed,field,imageUrl,typography]);
@@ -50,6 +51,8 @@ function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceRe
     delete style.maxHeight;
   }
   if(showReplacement&&patch?.value?.ink)style['--registered-field-ink']=patch.value.ink;
+  if(showReplacement&&profileSectionInk(typography.profile,field.kind)==='light')
+    style['--registered-field-shadow']='.035em .035em .025em rgb(0,0,0)';
   return <>
     {showReplacement&&patch?.field===field&&<img className="registered-card-frame__patch" src={patch.value.image} alt="" style={{...position(patch.value.bounds),...(columnTop?{top:`${(patch.value.bounds.y-columnTop)*unit*680/488}px`,height:`${patch.value.bounds.height*unit*680/488}px`}:{})}} />}
     <div className="registered-card-frame__field" style={style} data-field-kind={field.kind}
