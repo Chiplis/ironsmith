@@ -30,6 +30,15 @@ pub fn compute_global_actions(
 ) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
     compute_scoped_actions(game, player, ActionScope::Globals)
 }
+/// Current non-mana eligibility for a previously confirmed presentation action.
+/// Timing/restrictions/targets are recomputed normally; this is never an oracle
+/// for execution or a way to introduce a newly seen action into the menu.
+pub fn compute_actions_assuming_mana_for_presentation(
+    game: &GameState, player: PlayerId, source: Option<ObjectId>,
+) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
+    super::mana::with_assumed_mana_for_presentation(|| compute_actions_for_source(game, player, source))
+}
+
 fn compute_scoped_actions(
     game: &GameState, player: PlayerId, scope: ActionScope,
 ) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {

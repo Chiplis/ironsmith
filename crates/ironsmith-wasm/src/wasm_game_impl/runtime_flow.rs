@@ -1076,6 +1076,11 @@ impl WasmGame {
     }
 
     fn restore_replay_checkpoint(&mut self, checkpoint: &ReplayCheckpoint) {
+        // Priority replay also restores ordinary checkpoints before each prompt.
+        // Keep the last presentation result and recompute its non-mana gates.
+
+        self.priority_affordability_seed_key = None;
+        self.priority_affordability_completed_key = None;
         restore_id_counters(checkpoint.id_counters);
         self.game = (*checkpoint.game).clone();
         self.trigger_queue = checkpoint.trigger_queue.clone();

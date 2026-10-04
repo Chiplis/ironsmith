@@ -25,6 +25,7 @@ import HighlightedDecisionText from "@/components/decisions/HighlightedDecisionT
 import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
 import useDeclareAttackersButtonTransition from "@/hooks/useDeclareAttackersButtonTransition";
+import useViewedCardsAcknowledgement from "@/hooks/useViewedCardsAcknowledgement";
 import {
   collectSelectedPriorityActionIndices,
   filterPriorityActionGroups,
@@ -1668,8 +1669,10 @@ function MobileBattleDecisionLayer({
     [viewedCards]
   );
   const viewedCardsToken = viewedCardsIdentity ? `${decisionIdentity}|${viewedCardsIdentity}` : "";
+  const viewAcknowledged = useViewedCardsAcknowledgement(decision, viewedCards, viewedCardsIdentity);
   const showViewedCardsStep = decision?.kind === "priority"
     && Boolean(viewedCardsToken)
+    && !viewAcknowledged
     && acknowledgedViewedCardsToken !== viewedCardsToken;
   const showInlineViewedCards = Boolean(viewedCardsToken)
     && !showViewedCardsStep
@@ -2551,8 +2554,10 @@ function PriorityBar({
   );
   const [acknowledgedViewedCardsToken, setAcknowledgedViewedCardsToken] = useState("");
   const viewedCardsToken = viewedCardsIdentity ? `${decisionIdentity}|${viewedCardsIdentity}` : "";
+  const viewAcknowledged = useViewedCardsAcknowledgement(decision, viewedCards, viewedCardsIdentity);
   const showViewedCardsStep = isPriorityDecision
     && Boolean(viewedCardsToken)
+    && !viewAcknowledged
     && acknowledgedViewedCardsToken !== viewedCardsToken;
   const showInlineViewedCards = Boolean(viewedCardsToken)
     && !showViewedCardsStep

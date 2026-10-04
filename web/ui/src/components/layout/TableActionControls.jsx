@@ -1,10 +1,8 @@
-import { useState } from "react";
 import { Download } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { buildPuzzleUrlFromGameState } from "@/lib/puzzles";
-import CreateCardForgeSheet from "./CreateCardForgeSheet";
-import AddCardSheet from "./AddCardSheet";
+import CardCreationControls from "./CardCreationControls";
 import RandomGameSheet from "./RandomGameSheet";
 import AuditReplayControls from "./AuditReplayControls";
 import VerifyMatchSheet from "./VerifyMatchSheet";
@@ -29,16 +27,6 @@ export default function TableActionControls({
     exportAuditTranscript,
   } = useGame();
   const { t } = useI18n();
-  // Start the quick counter showcase on the battlefield so the result is
-  // immediately visible while iterating on its badge styling.
-  const [zone, setZone] = useState("battlefield");
-  const [playerIndex, setPlayerIndex] = useState(null);
-  const [skipTriggers, setSkipTriggers] = useState(false);
-
-  const players = state?.players || [];
-  const perspective = state?.perspective ?? 0;
-  const selectedPlayer = playerIndex ?? perspective;
-  const addLocked = multiplayer.mode !== "idle" && !multiplayer.matchStarted;
   const lobbyBusy = multiplayer.mode !== "idle";
   const canExportMatch = Boolean(
     typeof exportAuditTranscript === "function"
@@ -102,37 +90,7 @@ export default function TableActionControls({
           {t("action.exportMatch")}
         </button>
       ) : null}
-      <AddCardSheet
-        onAddCardNotice={onAddCardNotice}
-        trigger={(
-          <button
-            type="button"
-            className={triggerPill}
-            disabled={addLocked}
-          >
-            {t("action.addCard")}
-          </button>
-        )}
-      />
-      <CreateCardForgeSheet
-        disabled={addLocked}
-        players={players}
-        selectedPlayer={selectedPlayer}
-        onSelectPlayer={setPlayerIndex}
-        zone={zone}
-        onZoneChange={setZone}
-        skipTriggers={skipTriggers}
-        onSkipTriggersChange={(checked) => setSkipTriggers(checked === true)}
-        trigger={(
-          <button
-            type="button"
-            className={triggerPill}
-            disabled={addLocked}
-          >
-            {t("action.compileCard")}
-          </button>
-        )}
-      />
+      <CardCreationControls onAddCardNotice={onAddCardNotice} />
       <button
         type="button"
         className={triggerPill}

@@ -931,7 +931,7 @@ export default function BattlefieldRow({
   const pendingPlacement = usePendingPlacement();
   const placementSlots = usePlacementSlots();
   const { commitPlacementSlot } = usePlacementActions();
-  const { hoverCard, clearHover, clearAnchoredCardPreview, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
+  const { hoverCard, clearHover, clearAnchoredCardPreview, hoveredObjectId, hoveredLinkedObjectIds, activeHoveredLinkedObjectIds } = useHover();
 
   useEffect(() => {
     const handleHandInspectionState = (event) => {
@@ -2672,6 +2672,8 @@ export default function BattlefieldRow({
           && Number.isFinite(activeSourceId)
           && !!activeTargetObjects?.has?.(Number(card.id))
         );
+        const isPaymentOptionHover = !isLayoutHold && state?.decision?.kind === "mana_payment"
+          && cardObjectIds.some(id => activeHoveredLinkedObjectIds.has(String(id)));
         const isActionLinkedHover = (
           !isLayoutHold
           && (
@@ -2724,6 +2726,7 @@ export default function BattlefieldRow({
             compact={compact}
             className={[
               "battlefield-row-card",
+              isPaymentOptionHover ? "payment-source-option-hover" : "",
               isLayoutHold ? "battlefield-row-card--layout-hold" : "",
               isPaperBattlefieldLayout && paperGridPosition?.row
                 ? `battlefield-row-card--paper-row-${paperGridPosition.row}`
@@ -2737,7 +2740,7 @@ export default function BattlefieldRow({
             isPlayable={isInteractable}
             hasAvailableAction={isActivatable || isCombatCandidate}
             glowKind={appliedGlowKind}
-            isHovered={isCombatHoverTarget || isActionLinkedHover}
+            isHovered={isCombatHoverTarget || isActionLinkedHover || isPaymentOptionHover}
             isNew={isNew}
             isBumped={isBumped}
             bumpDirection={bumpDir}

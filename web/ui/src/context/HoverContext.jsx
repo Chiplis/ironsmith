@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useMemo, u
 
 const HoverStateContext = createContext(undefined);
 const HoverLinkedObjectsContext = createContext(undefined);
+const ActiveHoverLinkedObjectsContext = createContext(undefined);
 const AnchoredCardPreviewContext = createContext(undefined);
 const HoverActionsContext = createContext(undefined);
 const CardPreviewSuppressedContext = createContext(false);
@@ -147,6 +148,7 @@ export function HoverProvider({ children }) {
   return (
     <HoverStateContext.Provider value={hoveredObjectId}>
       <HoverLinkedObjectsContext.Provider value={linkedObjectIds}>
+        <ActiveHoverLinkedObjectsContext.Provider value={hoveredLinkedObjectIds}>
         <AnchoredCardPreviewContext.Provider value={anchoredCardPreview}>
           <HoverActionsContext.Provider value={actions}>
             <CardPreviewSuppressionActionsContext.Provider value={setPreviewSuppressors}>
@@ -156,6 +158,7 @@ export function HoverProvider({ children }) {
             </CardPreviewSuppressionActionsContext.Provider>
           </HoverActionsContext.Provider>
         </AnchoredCardPreviewContext.Provider>
+      </ActiveHoverLinkedObjectsContext.Provider>
       </HoverLinkedObjectsContext.Provider>
     </HoverStateContext.Provider>
   );
@@ -186,6 +189,7 @@ export function useHoverActions() {
 export function useHover() {
   const hoveredObjectId = useHoveredObjectId();
   const hoveredLinkedObjectIds = useContext(HoverLinkedObjectsContext);
+  const activeHoveredLinkedObjectIds = useContext(ActiveHoverLinkedObjectsContext);
   if (hoveredLinkedObjectIds === undefined) {
     throw new Error("useHover must be inside HoverProvider");
   }
@@ -204,6 +208,7 @@ export function useHover() {
   return {
     hoveredObjectId,
     hoveredLinkedObjectIds,
+    activeHoveredLinkedObjectIds,
     hoverCard,
     clearHover,
     setHoverLinkedObjects,

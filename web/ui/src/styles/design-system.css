@@ -1182,63 +1182,6 @@
   );
 }
 
-/* Hidden hands use compact portrait card backs instead of full-width rows. */
-.zone-hidden-card-list,
-.battlefield-panel--opponents .zone-hidden-card-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
-  grid-auto-rows: auto;
-  align-content: start;
-  gap: 4px;
-  padding: 4px;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-.zone-hidden-card-row,
-.battlefield-panel--opponents .zone-hidden-card-row {
-  position: relative;
-  display: grid;
-  width: 100%;
-  max-width: 44px;
-  min-width: 0;
-  aspect-ratio: 63 / 88;
-  place-items: center;
-  justify-self: center;
-  overflow: hidden;
-  border: 1px solid rgba(206, 181, 132, 0.5);
-  padding: 2px;
-  background:
-    radial-gradient(ellipse at center, rgba(50, 97, 122, 0.9) 0 22%, transparent 23%),
-    conic-gradient(from 45deg, #54331e, #101923, #235270, #111a22, #54331e);
-  box-shadow:
-    inset 0 0 0 2px rgba(6, 9, 12, 0.82),
-    inset 0 0 0 3px rgba(197, 162, 99, 0.28),
-    0 3px 8px rgba(0, 0, 0, 0.32);
-}
-
-.zone-hidden-card-row::before {
-  content: "";
-  position: absolute;
-  inset: 12% 10%;
-  border: 1px solid rgba(218, 188, 126, 0.42);
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(112, 179, 209, 0.34), rgba(13, 26, 35, 0.62) 58%, transparent 60%);
-}
-
-.zone-hidden-card-row .zone-hidden-card-sigil,
-.battlefield-panel--opponents .zone-hidden-card-row .zone-hidden-card-sigil {
-  position: relative;
-  z-index: 1;
-  overflow: visible;
-  color: rgba(241, 218, 169, 0.74);
-  font-family: var(--font-heading, "Alegreya"), Georgia, serif;
-  font-size: clamp(8px, 0.75vw, 11px);
-  font-weight: 800;
-  line-height: 1;
-  text-shadow: 0 1px 3px #000;
-}
-
 .battlefield-placement-preview__lane {
   color: var(--ui-action-hover);
   font-size: clamp(8px, 0.68vw, 10px);
@@ -7513,4 +7456,29 @@ html[data-hand-pointer-suspended="true"] * {
 .action-strip-main-title-text {
   color: #ffe083 !important;
   -webkit-text-fill-color: #ffe083 !important;
+}
+
+/* Card tools stay directly below the local name and lobby row. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .player-header-card-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    pointer-events: auto;
+  }
+
+  .player-header-card-controls .table-zone-action-button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: max-content;
+    white-space: nowrap;
+    min-height: 24px;
+    font-size: 10px;
+  }
 }

@@ -13,10 +13,9 @@ import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
-const ZONE_ORDER = ["battlefield", "hand", "graveyard", "library", "exile", "command", "ante"];
+const ZONE_ORDER = ["battlefield", "graveyard", "library", "exile", "command", "ante"];
 const ZONE_LABELS = {
   battlefield: "Battlefield",
-  hand: "Hand",
   graveyard: "GY",
   library: "Deck",
   exile: "Exile",
@@ -33,7 +32,6 @@ function normalizeZoneViews(zoneViews) {
 
 function getZoneCards(player, zone) {
   switch (zone) {
-    case "hand": return player.hand_cards || [];
     case "graveyard": return player.graveyard_cards || [];
     case "library": return [];
     case "exile": return player.exile_cards || [];
@@ -45,8 +43,6 @@ function getZoneCards(player, zone) {
 
 function getZoneCount(player, zone) {
   switch (zone) {
-    case "hand":
-      return player.hand_size ?? 0;
     case "graveyard":
       return player.graveyard_size ?? 0;
     case "library":
@@ -82,9 +78,6 @@ function shouldShowZoneBody(player, entry, activity = null) {
   if (entry.zone === "library") return false;
   if (activity) return true;
   if (entry.zone === "battlefield") return true;
-  if (entry.zone === "hand") {
-    return true;
-  }
   if (entry.zone === "graveyard" || entry.zone === "exile") return true;
   return entry.count > 0 || (entry.cards || []).length > 0;
 }
@@ -211,20 +204,6 @@ function ZoneCountInline({ player, onOpenDecklist = null }) {
         );
       })}
     </span>
-  );
-}
-
-function HiddenHandRows({ count }) {
-  const ui = useUiText();
-  const hiddenCount = Math.max(0, Math.floor(Number(count) || 0));
-  return (
-    <div className="zone-hidden-card-list" aria-label={ui("{0} hidden cards", { 0: hiddenCount })}>
-      {Array.from({ length: hiddenCount }).map((_, index) => (
-        <div key={index} className="zone-hidden-card-row" aria-hidden="true">
-          <span className="zone-hidden-card-sigil">{ui("I")}</span>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -786,7 +765,6 @@ function OpponentSlot({
                   onMobileCardLongPress={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardLongPress : null}
                   activatableMap={activatableMap}
                   legalTargetObjectIds={legalTargetObjectIds}
-                  allowVerticalScroll={entry.zone === "hand"}
                 />
               </div>
             </div>
@@ -837,16 +815,12 @@ function OpponentSlot({
                         </span>
                       ) : null}
                     </div>
-                    {entry.zone === "hand" && displayCards.length === 0 && displayCount > 0 ? (
-                      <HiddenHandRows count={displayCount} />
-                    ) : (
-                      <ZoneCardNameRows
-                        cards={displayCards}
-                        selectedObjectId={selectedObjectId}
-                        onCardClick={handleCardClick}
-                        onCardPointerDown={handleCardPointerDown}
-                      />
-                    )}
+                    <ZoneCardNameRows
+                      cards={displayCards}
+                      selectedObjectId={selectedObjectId}
+                      onCardClick={handleCardClick}
+                      onCardPointerDown={handleCardPointerDown}
+                    />
                   </div>
                 </div>
               );

@@ -1226,7 +1226,7 @@ pub(super) fn resolve_priority_action(
 ) -> Result<Option<LegalAction>, ironsmith::effects::ExecutionError> {
     if let Some(action_ref) = action_ref {
         let action_ref = &action_ref_for_matching(action_ref);
-        if let Some(action) = priority.actions.iter().find(|action| priority_action_ref(action) == *action_ref) {
+        if priority.analysis_complete && let Some(action) = priority.actions.iter().find(|action| priority_action_ref(action) == *action_ref) {
             return Ok(Some(action.clone()));
         }
         // Foretell never opens the hand card. An explicit reference may be
@@ -1283,7 +1283,11 @@ pub(super) fn resolve_priority_action(
         }
         return Ok(None);
     }
-    Ok(action_index.and_then(|index| priority.actions.get(index).cloned()))
+    let action = action_index.and_then(|index| priority.actions.get(index).cloned());
+    if !priority.analysis_complete && let Some(action) = action.as_ref() {
+        return resolve_priority_action(game, priority, None, Some(&priority_action_ref(action)));
+    }
+    Ok(action)
 }
 
 /// Derive a short structured reason label from a DecisionContext.

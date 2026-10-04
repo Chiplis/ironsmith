@@ -7,6 +7,7 @@ pub(super) struct PriorityAnalysisJob {
     player: PlayerId,
     candidates: std::collections::VecDeque<PriorityCandidate>,
     actions: Vec<LegalAction>,
+    provisional_actions: Vec<LegalAction>,
 }
 
 struct PriorityCandidate {
@@ -37,6 +38,9 @@ impl WasmGame {
         candidate.work_units = candidate.work_units.saturating_add(self.last_analysis_slice_nodes);
         let actions = actions.map_err(ironsmith::game_loop::GameLoopError::from)?;
         if complete {
+            if !job.candidates.iter().any(|other| other.source == candidate.source) {
+                job.provisional_actions.retain(|action| ironsmith::decision::legal_action_source(action) != candidate.source);
+            }
             for action in actions {
                 if !job.actions.contains(&action) { job.actions.push(action); }
             }
@@ -45,8 +49,10 @@ impl WasmGame {
             job.candidates.push_back(candidate);
         }
         let finished = job.candidates.is_empty();
+        let mut displayed = job.actions.clone();
+        for action in &job.provisional_actions { if !displayed.contains(action) { displayed.push(action.clone()); } }
         let mut ctx = ironsmith::decisions::context::PriorityContext::new(
-            &job.game, job.player, job.actions.clone(),
+            &job.game, job.player, displayed,
         ).map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
         ctx.analysis_complete = finished;
         self.pending_decision = Some(DecisionContext::Priority(ctx));
@@ -59,6 +65,69 @@ impl WasmGame {
         Ok(Some(finished))
     }
 
+    fn current_non_mana_eligibility(&self, cached: &[LegalAction]) -> Result<Vec<LegalAction>, ironsmith::effects::ExecutionError> {
+        if cached.is_empty() { return Ok(Vec::new()); }
+        let counters = snapshot_id_counters();
+        let result = (|| {
+            let mut eligible = Vec::new();
+            for actor in self.game.priority_team_players() {
+                eligible.extend(ironsmith::decision::compute_actions_assuming_mana_for_presentation(&self.game, actor, None)?);
+            }
+            Ok(eligible)
+        })();
+        restore_id_counters(counters);
+        result
+    }
+
+    fn refresh_priority_affordability_display(&mut self) -> Result<(), ironsmith::effects::ExecutionError> {
+        let Some(DecisionContext::Priority(ctx)) = self.pending_decision.as_ref() else { return Ok(()); };
+        if self.pregame.is_some() { return Ok(()); }
+        let player = ctx.player;
+        let cached = self.priority_affordability_cache.get(&player).cloned().unwrap_or_default();
+        if ctx.analysis_complete {
+            let key = self.priority_analysis_key();
+            if self.priority_affordability_completed_key.as_ref() == Some(&key) { return Ok(()); }
+            let confirmed = ctx.actions.to_vec();
+            self.remember_confirmed_affordability(player, confirmed)?;
+            self.priority_affordability_seed_key = None;
+            self.priority_affordability_completed_key = Some(key);
+            return Ok(());
+        }
+        if self.priority_analysis_job.is_some() || ctx.actions.as_ref() != [LegalAction::PassPriority] { return Ok(()); }
+        let mut key = self.priority_analysis_key();
+        key.pending_decision_hash = 0;
+        if self.priority_affordability_seed_key.as_ref() == Some(&key) { return Ok(()); }
+        let eligible = self.current_non_mana_eligibility(&cached)?;
+        let mut displayed = vec![LegalAction::PassPriority];
+        for action in cached {
+            if eligible.contains(&action) && !displayed.contains(&action) { displayed.push(action); }
+        }
+        let mut ctx = ironsmith::decisions::context::PriorityContext::new(&self.game, player, displayed)
+            .map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
+        ctx.analysis_complete = false;
+        self.pending_decision = Some(DecisionContext::Priority(ctx));
+        self.priority_affordability_seed_key = Some(key);
+        self.priority_affordability_completed_key = None;
+        Ok(())
+    }
+
+    fn remember_confirmed_affordability(&mut self, player: PlayerId, confirmed: Vec<LegalAction>) -> Result<(), ironsmith::effects::ExecutionError> {
+        let cached = self.priority_affordability_cache.get(&player).cloned().unwrap_or_default();
+        let eligible = self.current_non_mana_eligibility(&cached)?;
+        // Timing/target restrictions supply no new affordability result.
+        let mut retained: Vec<_> = cached.into_iter().filter(|action| {
+            let source_exists = ironsmith::decision::legal_action_source(action)
+                .is_none_or(|source| self.game.object(source).is_some());
+            source_exists && (!eligible.contains(action) || confirmed.contains(action))
+        }).collect();
+        for action in confirmed {
+            if !matches!(action, LegalAction::PassPriority) && !retained.contains(&action) { retained.push(action); }
+        }
+        self.priority_affordability_cache.insert(player, retained);
+        self.priority_affordability_seed_key = None;
+        Ok(())
+    }
+
     fn priority_analysis_key(&self) -> SnapshotCacheKey {
         self.snapshot_cache_key(None, false, None, &None)
     }
@@ -66,6 +135,29 @@ impl WasmGame {
 
 #[wasm_bindgen]
 impl WasmGame {
+    /// Local worker results update presentation affordability only. These
+    /// references never become authoritative legal actions or bypass payment.
+    #[wasm_bindgen(js_name = rememberPriorityAffordability)]
+    pub fn remember_priority_affordability(&mut self, references: JsValue) -> Result<(), JsValue> {
+        let Some(DecisionContext::Priority(ctx)) = self.pending_decision.as_ref() else { return Ok(()); };
+        let player = ctx.player;
+        let references: Vec<PriorityActionRef> = serde_wasm_bindgen::from_value(references)
+            .map_err(|error| JsValue::from_str(&format!("invalid affordability references: {error}")))?;
+        let mut confirmed = Vec::new();
+        let counters = snapshot_id_counters();
+        let result = (|| {
+            for actor in self.game.priority_team_players() {
+                for action in ironsmith::decision::compute_actions_assuming_mana_for_presentation(&self.game, actor, None)? {
+                    if references.iter().any(|reference| priority_action_ref(&action) == action_ref_for_matching(reference))
+                        && !confirmed.contains(&action) { confirmed.push(action); }
+                }
+            }
+            self.remember_confirmed_affordability(player, confirmed)
+        })();
+        restore_id_counters(counters);
+        result.map_err(|error| JsValue::from_str(&format!("affordability cache refresh failed: {error}")))
+    }
+
     #[wasm_bindgen(js_name = setDeferredPriorityAnalysis)]
     pub fn set_deferred_priority_analysis(&mut self, enabled: bool) {
         ironsmith::game_loop::set_priority_analysis_deferred(enabled);
@@ -141,6 +233,7 @@ impl WasmGame {
             player: ctx.player,
             candidates,
             actions: vec![LegalAction::PassPriority],
+            provisional_actions: ctx.actions.iter().filter(|action| !matches!(action, LegalAction::PassPriority)).cloned().collect(),
         }));
         true
     }
@@ -201,6 +294,64 @@ mod priority_analysis_tests {
             .join()
             .unwrap();
     }
+    #[test]
+    fn affordability_cache_keeps_previous_mana_result_but_checks_timing_immediately() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            let (mut wasm, _restore) = fixture();
+            let alice = PlayerId::from_index(0);
+            wasm.game.turn.active_player = alice;
+            wasm.game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+            wasm.game.turn.step = None;
+            wasm.game.player_mut(alice).unwrap().mana_pool.red = 1;
+            let card = ironsmith::CardBuilder::new(ironsmith::ids::CardId::new(), "Cached sorcery")
+                .card_types(vec![ironsmith::types::CardType::Sorcery])
+                .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::ManaSymbol::Red])).build();
+            let spell = wasm.game.create_object_from_card(&card, alice, ironsmith::Zone::Hand);
+            let has_spell = |wasm: &WasmGame| match &wasm.pending_decision {
+                Some(DecisionContext::Priority(ctx)) => ctx.actions.iter().any(|action|
+                    matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)),
+                _ => false,
+            };
+            wasm.pending_decision = Some(DecisionContext::Priority(ironsmith::game_loop::analyze_priority_context(&wasm.game, alice).unwrap()));
+            wasm.refresh_priority_affordability_display().unwrap();
+            assert!(has_spell(&wasm));
+            // Timing must mask the cached positive even before any mana search.
+            wasm.game.turn.phase = ironsmith::game_state::Phase::Combat;
+            wasm.pending_decision = Some(DecisionContext::Priority(ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
+            wasm.refresh_priority_affordability_display().unwrap();
+            assert!(!has_spell(&wasm));
+            wasm.pending_decision = Some(DecisionContext::Priority(ironsmith::game_loop::analyze_priority_context(&wasm.game, alice).unwrap()));
+            wasm.refresh_priority_affordability_display().unwrap();
+            // Returning to main restores the old affordability while recomputing.
+            wasm.game.turn.phase = ironsmith::game_state::Phase::NextMain;
+            wasm.game.player_mut(alice).unwrap().mana_pool.red = 0;
+            wasm.pending_decision = Some(DecisionContext::Priority(ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
+            wasm.refresh_priority_affordability_display().unwrap();
+            assert!(has_spell(&wasm));
+            let Some(DecisionContext::Priority(ctx)) = &wasm.pending_decision else { panic!() };
+            let provisional_index = ctx.actions.iter().position(|action|
+                matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)).unwrap();
+            let reference = priority_action_ref(&ctx.actions[provisional_index]);
+            assert!(resolve_priority_action(&wasm.game, ctx, None, Some(&reference)).unwrap().is_none());
+            assert!(resolve_priority_action(&wasm.game, ctx, Some(provisional_index), None).unwrap().is_none());
+            assert!(!ironsmith::game_loop::analyze_priority_context(&wasm.game, alice).unwrap().actions.iter().any(|action|
+                matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)),
+                "presentation assumption must never leak into authoritative affordability");
+            assert!(wasm.begin_priority_analysis("cached".into()));
+            for _ in 0..100 {
+                if wasm.advance_priority_analysis("cached", 64).unwrap() == Some(true) { break; }
+            }
+            assert!(!wasm.priority_analysis_pending());
+            assert!(!has_spell(&wasm), "completed negative must replace provisional positive");
+            wasm.refresh_priority_affordability_display().unwrap();
+            wasm.game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+            wasm.pending_decision = Some(DecisionContext::Priority(ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
+            wasm.refresh_priority_affordability_display().unwrap();
+            assert!(!has_spell(&wasm), "cached negative stays unavailable during recheck");
+        });
+    }
+
     #[test]
     fn priority_analysis_publishes_exact_menu_without_advancing_priority() {
         with_fixture_stack(|| {
@@ -279,7 +430,7 @@ mod priority_analysis_tests {
         });
     }
     #[test]
-    fn keyword_payment_analysis_suspends_and_preserves_exact_final_menu() {
+    fn keyword_payment_analysis_obeys_budget_and_preserves_exact_final_menu() {
         with_fixture_stack(|| {
             let _ids = crate::test_id_counter_guard();
             for amount in [2, 3] {
@@ -307,8 +458,12 @@ mod priority_analysis_tests {
                 assert_eq!(expected.iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)), amount == 2);
                 assert!(wasm.begin_priority_analysis("keyword".into()));
                 assert_eq!(wasm.advance_priority_analysis("keyword", 1).unwrap(), Some(false));
-                assert!(wasm.priority_analysis_job.as_ref().unwrap().candidates.iter().any(|candidate| candidate.source == Some(spell)),
-                    "keyword query must retain its unfinished frontier rather than block or publish a false negative");
+                let retained = wasm.priority_analysis_job.as_ref().unwrap().candidates.iter().any(|candidate| candidate.source == Some(spell));
+                let Some(DecisionContext::Priority(first)) = &wasm.pending_decision else { panic!() };
+                let first_has_spell = first.actions.iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell));
+                assert!(retained || first_has_spell == (amount == 2),
+                    "unfinished queries must retain their frontier; a completed shortcut must already be exact");
+                assert!(wasm.last_analysis_slice_nodes <= 1);
                 let mut completed = false;
                 for _ in 0..1000 {
                     let done = wasm.advance_priority_analysis("keyword", 1).unwrap() == Some(true);

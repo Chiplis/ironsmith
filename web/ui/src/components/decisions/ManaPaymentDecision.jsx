@@ -1,14 +1,15 @@
 import useUiText from "@/i18n/useUiText";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, LoaderCircle, LockKeyhole, Plus, RotateCcw, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ChevronDown, LoaderCircle, RotateCcw, SlidersHorizontal } from "lucide-react";
 import usePaymentDraft from "@/hooks/usePaymentDraft";
 import { useManaPaymentEditor } from "@/context/ManaPaymentEditorContext.shared";
 import ActionPopover from "@/components/overlays/ActionPopover";
-import { paymentDraftRows, paymentSourceOptions } from "@/lib/payment-draft";
+import { paymentDraftRows, paymentSourceOptions, sourceChoiceKey } from "@/lib/payment-draft";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { paymentPipRows, paymentOptionsForPip } from "@/lib/payment-pip-rows";
 import { ManaSymbol } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";
 
@@ -47,7 +48,6 @@ function PoolSummary({ label, pool }) {
 
 function warningText(value) {
   const text = String(value || "");
-  if (text.startsWith("UsesNonUndoSafeSource")) return "This plan uses a source that cannot be safely undone.";
   if (text.startsWith("UsesPreservedSource")) return "This plan uses a source marked Preserve.";
   if (text.startsWith("ProducesExcessMana")) return "This plan leaves mana floating after payment.";
   if (text.startsWith("PaysLife")) return "This plan pays life.";
@@ -63,37 +63,14 @@ function sourceActionLabel(source) {
 
 function PaymentCardName({ objectId, onInspect, children, className = "" }) {
   const ui = useUiText();
-  const containerRef = useRef(null);
-  const textRef = useRef(null);
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    const text = textRef.current;
-    if (!container || !text) return undefined;
-    const fit = () => {
-      text.style.fontSize = "inherit";
-      const baseSize = parseFloat(getComputedStyle(container).fontSize);
-      const available = container.clientWidth;
-      const width = text.getBoundingClientRect().width;
-      if (available > 0 && width > available) {
-        text.style.fontSize = `${baseSize * available / width}px`;
-      }
-    };
-    fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(container);
-    let disposed = false;
-    document.fonts?.ready.then(() => { if (!disposed) fit(); });
-    return () => { disposed = true; observer.disconnect(); };
-  }, [children]);
-  const label = <span ref={textRef} className="inline-block whitespace-nowrap">{children}</span>;
+  const label = <span>{children}</span>;
   if (objectId == null || typeof onInspect !== "function") {
-    return <span ref={containerRef} className={cn("block min-w-0 max-w-full overflow-hidden whitespace-nowrap", className)}>{ui(label)}</span>;
+    return <span className={cn("block min-w-0 max-w-full whitespace-normal break-words", className)}>{ui(label)}</span>;
   }
   return (
     <button
       type="button"
-      ref={containerRef}
-      className={cn("decision-card-name-trigger block min-w-0 max-w-full overflow-hidden whitespace-nowrap", className)}
+      className={cn("decision-card-name-trigger block min-w-0 max-w-full whitespace-normal break-words text-left", className)}
       data-inspector-object-id={String(objectId)}
       aria-label={ui("Inspect {0}", { 0: String(children || "card") })}
       onPointerDown={(event) => {
@@ -120,21 +97,21 @@ function outputText(source) {
   return mana || sourceActionLabel(source);
 }
 
-export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = true, onSubmitActionChange = null, layout = "panel" }) {
+export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = true, onSubmitActionChange = null }) {
   const ui = useUiText();
-  const { state, dispatch, dispatchInBackground, cancelBackgroundDispatch } = useGame();
+  const { state, dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision } = useGame();
   const { setPreviewLinkedObjects, clearPreviewLinkedObjects, showAnchoredCardPreview } = useHover();
   const payment = state?.mana_payment || null;
   const sharedEditor = useManaPaymentEditor();
   const localEditor = usePaymentDraft({ payment, dispatch, cancelBackgroundDispatch, enabled: !sharedEditor });
   const editor = sharedEditor || localEditor;
   const { draft, dirty, confirming } = editor;
-  const [menu, setMenu] = useState(null);
+  const [menuState, setMenu] = useState(null);
+  const menu = menuState?.planId === payment?.plan_id ? menuState : null;
   const closeMenu = useCallback(() => setMenu(null), []);
-  const optimizationKeyRef = useRef("");
-  const strip = layout === "strip";
+  const optimizationKeyRef = useRef('');
   const sources = useMemo(() => paymentDraftRows(payment, draft), [payment, draft]);
-  const options = useMemo(() => paymentSourceOptions(payment), [payment]);
+  const rows = useMemo(() => paymentPipRows(payment, draft), [payment, draft]);
   useEffect(() => {
     setPreviewLinkedObjects(sources.map(source => source.source_id));
     return () => clearPreviewLinkedObjects();
@@ -146,118 +123,98 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
     optimizationKeyRef.current = key;
     dispatchInBackground();
   }, [editor.edited, confirming, canAct, dispatchInBackground, payment]);
-  const payDisabled = !canAct || !payment || payment.can_confirm === false || dirty || confirming;
-  const submitAction = useMemo(() => ({ label: "Pay", disabled: payDisabled, onSubmit: editor.confirm }), [payDisabled, editor.confirm]);
-  useEffect(() => {
-    onSubmitActionChange?.(submitAction);
-    return () => onSubmitActionChange?.(null);
-  }, [onSubmitActionChange, submitAction]);
-  const cancel = () => { cancelBackgroundDispatch?.(); dispatch({ type: "mana_payment", response: { action: "cancel" } }, "Mana payment cancelled", { waitForPaymentReady: true }); };
+  // Confirmation always waits for the authoritative acknowledgement of edits.
+  const payDisabled = !canAct || !payment || payment.can_confirm !== true || dirty || confirming;
+  const submitAction = useMemo(() => ({ label: 'Pay', disabled: payDisabled, onSubmit: editor.confirm }), [payDisabled, editor.confirm]);
+  useEffect(() => { onSubmitActionChange?.(submitAction); return () => onSubmitActionChange?.(null); }, [onSubmitActionChange, submitAction]);
+  const cancel = () => { closeMenu(); cancelBackgroundDispatch?.(); cancelDecision({ waitForPaymentReady: true }); };
   const pickAction = action => {
     closeMenu();
-    if (action.operation === "activate") {
-      editor.activate(action);
-    } else if (action.operation === "exclude") editor.exclude(action.source_id);
-    else if (action.operation === "restore") editor.restore(action.source_id);
-    else if (action.operation === "preserve") editor.preserve(action.source_id);
-    else if (action.operation === "unpin") editor.unpin(action.source_id);
-    else editor.select(action, { replace: !action.repeatable, step: menu?.source });
+    if (action.operation === 'activate') editor.activate(action);
+    else if (action.operation === 'preserve') editor.preserve(action.source_id);
+    else if (action.operation === 'unpin') editor.unpin(action.source_id);
+    else if (action.operation === 'current') return;
+    else if (action.operation === 'life') editor.selectPip({ payment_kind: 'life', pip_id: menu.row.pip_id }, menu.row, rows);
+    else editor.selectPip(action, menu.row, rows);
   };
-  const openSourceMenu = (event, source = null) => {
-    const id = source && String(source.source_id);
-    const choices = options.filter(option => !id || String(option.source_id) === id);
-    const actions = choices.map(option => ({ ...option, label: `${option.source_name}: ${ui(outputText(option))}${option.payment_kind === "mana_ability" ? ` · ${option.label}` : ""}` }));
-    if (source) {
-      actions.push({ source_id: id, operation: "exclude", label: ui("Keep this source unused") });
-      actions.push({ source_id: id, operation: "preserve", label: ui(draft.preserved_source_ids.includes(id) ? "Remove save preference" : "Prefer to save this source") });
-      if (source.pinned) actions.push({ source_id: id, operation: "unpin", label: ui("Let the planner choose") });
-      for (const ability of payment.mana_abilities || []) if (String(ability.source_id) === id) {
-        actions.push({ ...ability, operation: "activate", disabled: dirty || confirming, label: `${ui("Activate now")}: ${ability.label}` });
-      }
-    } else {
-      // Complex abilities that cannot be represented by an exact planned output
-      // remain explicit activations, with their own subsequent choices.
-      for (const ability of payment.mana_abilities || []) if (!choices.some(option => String(option.source_id) === String(ability.source_id) && option.ability_index === ability.ability_index)) {
-        actions.push({ ...ability, operation: "activate", disabled: dirty || confirming, label: `${ui("Activate now")} ${ability.source_name}: ${ability.label}` });
-      }
-      for (const sourceId of draft.excluded_source_ids.filter(id => !payment.fixed_excluded_source_ids?.includes(id))) {
-        const sourceName = payment.available_sources?.find(value => String(value.source_id) === sourceId)?.source_name || sourceId;
-        actions.push({ source_id: sourceId, operation: "restore", label: `${ui("Allow again")}: ${sourceName}` });
+  const openSourceMenu = (event, row) => {
+    const choices = paymentOptionsForPip(payment, draft, row, rows);
+    const source = row.source;
+    const currentKey = source && sourceChoiceKey(source);
+    const actions = choices.map(option => {
+      const selected = currentKey === sourceChoiceKey(option);
+      return { ...option, object_id: option.source_id, selected, operation: selected ? 'current' : undefined, label: `${option.source_name}: ${ui(outputText(option))}` };
+    });
+    // The reviewed current choice remains visible even while options refresh.
+    if (source && !actions.some(action => action.selected)) actions.unshift({ ...source, object_id: source.source_id, selected: true, operation: 'current', label: `${source.source_name}: ${ui(outputText(source))}` });
+    if (row.kind === 'pool') actions.unshift({ operation: 'current', selected: true, label: ui('Floating mana') });
+    const life = payment.life_options?.find(option => option.pip_id === row.pip_id);
+    if (life) actions.push({ operation: row.kind === 'life' ? 'current' : 'life', selected: row.kind === 'life', label: ui('Pay {0} life', { 0: life.life }) });
+    // An ability represented by a planner option needs no separate activation.
+    // Only abilities requiring unresolved choices use the explicit flow.
+    if (payment.activation_options_complete !== false && !payment.activation_options_error) {
+      for (const ability of payment.mana_abilities || []) {
+        if (!(payment.activation_options || []).some(option => String(option.source_id) === String(ability.source_id) && option.ability_index === ability.ability_index)) {
+          actions.push({ ...ability, object_id: ability.source_id, operation: 'activate', disabled: dirty || confirming, label: `${ui('Activate now')} ${ability.source_name}: ${ability.label}` });
+        }
       }
     }
-    if (actions.length) setMenu({ anchor: event.currentTarget, source, actions });
+    setMenu({ anchor: event.currentTarget, row, actions, mode: 'sources', planId: payment.plan_id });
   };
-  if (!payment) return <div className="p-3 text-sm italic opacity-70">{ui("Preparing a mana payment plan…")}</div>;
-  const warnings = [
-    payment.life_to_pay > 0 ? ui("Pay {0} life.", { 0: payment.life_to_pay }) : "",
-    ...sources.filter(source => source.payment_kind === "delve").map(source => ui("Exile {0} for delve.", { 0: source.source_name })),
-    ...sources.filter(source => source.undo_safe === false && source.payment_kind === "mana_ability").map(source => {
-      const ability = payment.mana_abilities?.find(ability => String(ability.source_id) === String(source.source_id) && ability.ability_index === source.ability_index);
-      return `${source.source_name}: ${ability?.label || ui("Cannot safely undo")}`;
-    }),
-    ...(payment.warnings || []).filter(warning => !String(warning).startsWith("PaysLife")).map(warningText),
-  ].filter(Boolean);
-  const sourceList = <div className={strip ? "mana-plan-strip-source-scroller" : "mana-plan-source-list"} aria-label={ui("Payment sources")}>
-    {sources.map((source, index) => <div key={`${source.choice_key}:${source.occurrence}`} className={cn(strip ? "mana-plan-strip-source" : "mana-plan-source", "is-planned", source.pinned && "is-required", source.pending && "is-pending")}>
-      <span className="mana-plan-source-index" title={ui(source.pinned ? "Your choice" : "Automatic choice")}>
-        {source.pinned ? <LockKeyhole size={12} /> : index + 1}
-      </span>
-      <span className={strip ? "mana-plan-strip-source-copy" : "min-w-0 flex-1"}>
-        <PaymentCardName objectId={source.source_id} onInspect={showAnchoredCardPreview} className={strip ? "mana-plan-strip-source-name" : "text-sm font-semibold"}>{source.source_name || source.source_id}</PaymentCardName>
-        <span className="mana-plan-strip-source-action">{ui(sourceActionLabel(source)) || ui(source.pinned ? "Your choice" : "Automatic")}</span>
-      </span>
-      <button type="button" className="mana-plan-output" disabled={!canAct || confirming} onClick={event => openSourceMenu(event, source)} aria-label={ui("Choose payment for {0}", { 0: source.source_name || source.source_id })} title={ui("Choose ability or mana output")}>
-        {poolEntries(source.expected_mana).map(({ symbol, amount }) => <span key={symbol} className="inline-flex items-center gap-0.5"><ManaSymbol sym={symbol} size={16} />{amount > 1 ? `×${amount}` : ""}</span>)}
-        <span aria-hidden="true">⌄</span>
-      </button>
-      <button type="button" className="mana-plan-constraint" disabled={!canAct || confirming} aria-label={ui("Remove {0} from payment", { 0: source.source_name || source.source_id })} title={ui("Remove this payment source")} onClick={() => editor.remove(source)}><X size={13} /></button>
-    </div>)}
-    {payment.activation_options_error && <span className="text-xs opacity-60" role="status">{ui("Payment options could not be loaded.")}</span>}
-    {canAct && payment.activation_options_complete === false && <span className="text-xs opacity-60" role="status">{ui("Loading payment options…")}</span>}
-    {!sources.length && <span className="mana-plan-empty">{ui(payment.can_confirm === false ? "Choose another source to cover the cost." : "Floating mana covers the cost.")}</span>}
-    <Button type="button" variant="outline" size="sm" disabled={!canAct || confirming} onClick={event => openSourceMenu(event)} aria-label={ui("Add payment source")} className="mana-plan-add"><Plus size={14} />{ui("Source")}</Button>
-  </div>;
-  const lifeChoices = payment.life_options?.length ? <div className="mana-plan-life-choices" aria-label={ui("Life payment choices")}>
-    {payment.life_options.map(option => <button type="button" key={option.pip_id} className="mana-plan-life-choice" disabled={!canAct || confirming} aria-pressed={draft.required_life_pips.includes(option.pip_id)} title={ui("Choose life for mana pip {0}", { 0: option.pip_id + 1 })} onClick={() => editor.toggleLife(option.pip_id)}>
-      {payment.payment_pips?.[option.pip_id] && <ManaSymbol sym={payment.payment_pips[option.pip_id].join("/")} size={17} />}
-      {ui("Pip {0}: {1} life", { 0: option.pip_id + 1, 1: option.life })} · {ui(draft.required_life_pips.includes(option.pip_id) ? "Selected" : "Auto")}
-    </button>)}
-  </div> : null;
-  const busyLabel = dirty ? ui("Updating payment…") : !payment.planning_complete && !editor.edited ? ui("Improving") : null;
+  const openAdvancedMenu = event => {
+    const preferenceSources = [...new Map([...paymentSourceOptions(payment), ...sources].map(source => [String(source.source_id), source])).values()];
+    const actions = preferenceSources.map(source => ({ source_id: source.source_id, object_id: source.source_id, operation: 'preserve', selected: draft.preserved_source_ids.includes(String(source.source_id)), label: ui('Prefer to save {0}', { 0: source.source_name || source.source_id }) }));
+    for (const source of preferenceSources.filter(source => sources.some(step => String(step.source_id) === String(source.source_id) && step.pinned))) {
+      actions.push({ source_id: source.source_id, object_id: source.source_id, operation: 'unpin', label: ui('Let the planner choose for {0}', { 0: source.source_name || source.source_id }) });
+    }
+    setMenu({ anchor: event.currentTarget, actions, mode: 'advanced', planId: payment.plan_id });
+  };
+  if (!payment) return <div className="p-3 text-sm italic opacity-70">{ui('Preparing a mana payment plan…')}</div>;
+  const warnings = [...new Set([
+    payment.life_to_pay > 0 ? ui('Pay {0} life.', { 0: payment.life_to_pay }) : '',
+    ...sources.filter(source => source.payment_kind === 'delve').map(source => ui('Exile {0} for delve.', { 0: source.source_name })),
+    ...(payment.warnings || []).filter(warning => !String(warning).startsWith('PaysLife') && !String(warning).startsWith('UsesNonUndoSafeSource')).map(warningText),
+  ].filter(Boolean))];
+  const additionalSources = sources.filter(source => !rows.some(row => row.source?.choice_key === source.choice_key && row.source?.occurrence === source.occurrence));
   const hasChoices = editor.edited || draft.required_source_ids.length || draft.required_activations.length || draft.required_alternatives.length || draft.required_life_pips.length || draft.preserved_source_ids.length || draft.excluded_source_ids.some(id => !payment.fixed_excluded_source_ids?.includes(id));
-  const resetControl = hasChoices ? <Button type="button" variant="ghost" size="sm" disabled={!canAct || confirming} onClick={editor.reset} title={ui("Clear payment choices; actual activations stay paid")}><RotateCcw size={13} />{ui("Reset")}</Button> : null;
-  const controls = <>
-    {busyLabel && <span className="mana-plan-strip-planning" role="status"><LoaderCircle size={14} className="animate-spin" />{busyLabel}</span>}
-    {strip && resetControl}
-  </>;
-  const popover = menu?.anchor.isConnected ? <ActionPopover anchorElement={menu.anchor} anchorRect={menu.anchor.getBoundingClientRect()} actions={menu.actions} onAction={pickAction} onClose={closeMenu} variant="game" collapseEquivalentActions={false} previewCards={false} fitViewport focusOnOpen disabled={!canAct || confirming} ariaLabel={ui("Choose payment source")} /> : null;
-  if (strip) return <div className="mana-plan-strip">
-    {payment.cost_context?.length > 0 && <span className="mana-plan-strip-context" title={payment.cost_context.map(context => ui(context)).join(" · ")}>{payment.cost_context.map(context => ui(context)).join(" · ")}</span>}
-    <div className="mana-plan-strip-source-region">{sourceList}</div>
-    {lifeChoices}
-    {warnings.length > 0 && <div className="mana-plan-strip-warning" title={warnings.join(" ")} aria-label={warnings.join(" ")}><AlertTriangle size={15} /><span>{payment.life_to_pay > 0 ? ui("{0} life", { 0: payment.life_to_pay }) : ui("Warning")}</span></div>}
-    {controls}{popover}
-  </div>;
-  return <div className="flex h-full min-h-0 flex-col">
-    <ScrollArea className="min-h-0 flex-1"><div className="mana-plan-content">
-      <div className="mana-plan-heading"><div><div className="mana-plan-eyebrow">{ui("Mana payment")}</div><h3 className="mana-plan-title"><PaymentCardName objectId={decision?.source_id} onInspect={showAnchoredCardPreview}>{payment.source_name || decision.subject}</PaymentCardName></h3></div>
-        <div className="flex flex-wrap gap-1">{(payment.payment_pips || payment.pips || []).map((pip, index) => {
-          const allocation = payment.allocations?.find(allocation => allocation.pip_id === index);
-          const label = allocation?.payment_kind === "life" ? ui("{0} life", { 0: allocation.life }) : allocation?.payment_kind === "mana" ? allocation.symbol : allocation?.payment_kind;
-          return <span className="mana-plan-pip" key={index} title={ui("Mana pip {0}", { 0: index + 1 })}><ManaSymbol sym={pip.join("/")} size={22} />{label && <span className="mana-plan-pip-method">{ui(label)}</span>}</span>;
-        })}</div>
+  const busyLabel = dirty ? ui('Updating payment…') : !payment.planning_complete && !editor.edited ? ui('Improving') : null;
+  const costPips = payment.pips || payment.payment_pips || [];
+  const canConfigureSources = sources.length > 0 || paymentSourceOptions(payment).length > 0;
+  return <div className="mana-payment-editor">
+    <div className="mana-payment-editor-header">
+      <div className="mana-payment-editor-heading"><div className="mana-plan-eyebrow">{ui('Mana payment')}</div>{canConfigureSources && <button type="button" className="mana-payment-source-picker" disabled={!canAct || confirming} aria-label={ui('Advanced payment controls')} aria-expanded={menu?.mode === 'advanced'} onClick={openAdvancedMenu}><SlidersHorizontal size={15} /></button>}</div>
+      <h3 className="mana-payment-editor-title"><PaymentCardName objectId={decision?.source_id} onInspect={showAnchoredCardPreview}>{payment.source_name || decision?.subject}</PaymentCardName></h3>
+      <div className="mana-payment-editor-cost"><span>{ui('Cost to pay')}</span><span className="inline-flex flex-wrap justify-end gap-1">{costPips.map((pip, index) => <ManaSymbol key={index} sym={pip.join('/')} size={23} />)}</span></div>
+      {payment.cost_context?.length > 0 && <div className="mana-plan-cost-context">{payment.cost_context.map(context => ui(context)).join(' · ')}</div>}
+    </div>
+    <div className="mana-payment-editor-scroll">
+      <div className="mana-payment-pip-list" aria-label={ui('Payment sources')}>
+        {rows.map(row => <div key={row.pip_id} className={cn('mana-payment-pip-row', row.source?.pending && 'is-pending')} data-payment-pip-id={row.pip_id}>
+          <ManaSymbol sym={row.pip.join('/')} size={24} />
+          <div className="min-w-0 flex-1">
+            {row.source ? <PaymentCardName objectId={row.source.source_id} onInspect={showAnchoredCardPreview} className="mana-payment-source-name">{row.source.source_name || row.source.source_id}</PaymentCardName> : <span className="mana-payment-source-name">{ui(row.kind === 'pool' ? 'Floating mana' : row.kind === 'life' ? '{0} life' : 'Choose a source', { 0: row.allocation?.life || payment.life_options?.find(option => option.pip_id === row.pip_id)?.life })}</span>}
+          </div>
+          <button type="button" className="mana-payment-source-picker" disabled={!canAct || confirming} aria-expanded={menu?.row?.pip_id === row.pip_id} aria-label={row.source ? ui('Choose payment for {0}', { 0: row.source.source_name || row.source.source_id }) : ui('Choose source for mana pip {0}', { 0: row.pip_id + 1 })} onClick={event => openSourceMenu(event, row)}><ChevronDown size={17} /></button>
+        </div>)}
       </div>
-      {payment.cost_context?.length > 0 && <div className="mana-plan-cost-context">{payment.cost_context.map(context => ui(context)).join(" · ")}</div>}
-      <div className="mana-plan-pools"><PoolSummary label={ui("Pool now")} pool={payment.pool_before} /><span className="mana-plan-arrow">→</span><PoolSummary label={ui("After sources")} pool={payment.pool_after_activations} /><span className="mana-plan-arrow">→</span><PoolSummary label={ui("After payment")} pool={payment.pool_after_payment} /></div>
-      <div className="mana-plan-section"><div className="mana-plan-section-title">{ui("Payment sources")}</div>{sourceList}</div>
-      {lifeChoices}
-      {payment.can_confirm === false && !dirty && <div className="mana-plan-warnings" role="status">{ui("These choices do not cover the cost. Add a source or remove a restriction.")}</div>}
-      {warnings.length > 0 && <div className="mana-plan-warnings"><AlertTriangle size={15} /><div>{warnings.map((warning, index) => <div key={index}>{ui(warning)}</div>)}</div></div>}
-      {payment.reserved_sources?.length > 0 && <div className="mana-plan-reservations">{payment.reserved_sources.map(source => <div key={source.source_id}>{source.source_name}: {ui(source.reason)}</div>)}</div>}
+      {additionalSources.length > 0 && <div className="mana-payment-additional-sources"><span>{ui('Additional mana sources')}</span>{additionalSources.map(source => <PaymentCardName key={`${source.choice_key}:${source.occurrence}`} objectId={source.source_id} onInspect={showAnchoredCardPreview}>{source.source_name}</PaymentCardName>)}</div>}
+      {poolEntries(payment.pool_before).length > 0 && <PoolSummary label="Floating mana" pool={payment.pool_before} />}
+      {poolEntries(payment.pool_after_payment).length > 0 && <PoolSummary label="After payment" pool={payment.pool_after_payment} />}
+      {payment.activation_options_error && <div role="status">{ui('Payment options could not be loaded.')}</div>}
+      {payment.activation_options_complete === false && <div role="status">{ui('Loading payment options…')}</div>}
       {editor.error && <div role="alert">{editor.error}</div>}
-      {controls}
-    </div></ScrollArea>
-    <div className="mana-plan-actions"><Button type="button" variant="ghost" size="sm" disabled={!canAct || confirming} onClick={cancel}>{ui("Cancel")}</Button>{resetControl}{inlineSubmit && <Button type="button" size="sm" disabled={payDisabled} onClick={editor.confirm}>{ui("Pay")}</Button>}</div>
-    {popover}
+    </div>
+    <div className="mana-plan-actions mana-payment-editor-footer">
+      {busyLabel && <span className="mana-payment-editor-busy" role="status"><LoaderCircle size={14} className="animate-spin" />{busyLabel}</span>}
+      {hasChoices && <Button type="button" variant="ghost" size="sm" className="mana-payment-reset-button" disabled={!canAct || confirming} onClick={editor.reset}><RotateCcw size={13} />{ui('Reset')}</Button>}
+      <div className="mana-payment-submit-row">
+      <Button type="button" variant="ghost" size="sm" className="decision-neon-button decision-neon-button--danger decision-cancel-button font-bold uppercase" disabled={!canAct || confirming} onClick={cancel}>{ui('Cancel')}</Button>
+      {inlineSubmit && <div className="mana-payment-pay-region">
+        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" disabled={payDisabled} onClick={editor.confirm}>{ui('Pay')}</Button>
+        {warnings.length > 0 && <Popover><PopoverTrigger asChild><button type="button" className="mana-payment-warning-trigger" aria-label={ui('Payment warnings')}><AlertTriangle size={17} /></button></PopoverTrigger><PopoverContent side="top" aria-label={ui('Payment warnings')} className="mana-payment-warning-details"><ul>{warnings.map((warning, index) => <li key={index}>{ui(warning)}</li>)}</ul></PopoverContent></Popover>}
+      </div>}
+      </div>
+    </div>
+    {menu?.anchor.isConnected && <ActionPopover anchorElement={menu.anchor} anchorRect={menu.anchor.getBoundingClientRect()} actions={menu.actions} onAction={pickAction} onClose={closeMenu} variant="game" collapseEquivalentActions={false} previewCards={false} highlightObjects fitViewport focusOnOpen disabled={!canAct || confirming} ariaLabel={ui(menu.mode === 'advanced' ? 'Advanced payment controls' : 'Choose payment source')} />}
   </div>;
 }

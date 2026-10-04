@@ -211,6 +211,26 @@ pub struct ManaAnalysisSession {
 }
 
 thread_local! {
+    static ASSUME_MANA_FOR_PRESENTATION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub(crate) fn mana_payment_is_assumed() -> bool {
+    ASSUME_MANA_FOR_PRESENTATION.with(|value| value.get())
+}
+
+/// Recompute current timing, targets and non-mana costs without an affordability
+/// search. Only presentation callers may intersect these candidates with a
+/// previously confirmed menu; dispatch never uses this assumption.
+pub(crate) fn with_assumed_mana_for_presentation<T>(compute: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) { ASSUME_MANA_FOR_PRESENTATION.with(|value| value.set(self.0)); }
+    }
+    let _restore = Restore(ASSUME_MANA_FOR_PRESENTATION.with(|value| value.replace(true)));
+    compute()
+}
+
+thread_local! {
     static SESSION: RefCell<Option<ManaAnalysisSession>> = const { RefCell::new(None) };
 }
 
@@ -302,6 +322,7 @@ pub(crate) fn with_checked_query<T>(root: &GameState, checked: &GameState, compu
 /// bound root. Pending remains provisional and prevents publishing a complete
 /// menu. Other games retain the synchronous oracle, never a cached root answer.
 pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::ManaPaymentRequest) -> bool {
+    if mana_payment_is_assumed() { return true; }
     let bound = SESSION.with(|slot| slot.borrow().as_ref().is_some_and(|session|
         session.active_root == Some(game as *const GameState as usize)));
     // Nested affordability checks inside one planner work unit must remain

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { anchorFloatingDock } from "../src/lib/floating-dock-position.js";
+import { anchorFloatingDock, anchorManaPaymentDock, handSideReserve } from "../src/lib/floating-dock-position.js";
 
 test("anchors the dock to the bottom-right corner above the hand", () => {
   const position = anchorFloatingDock({
@@ -12,6 +12,16 @@ test("anchors the dock to the bottom-right corner above the hand", () => {
   });
 
   assert.deepEqual(position, { left: 942, top: 600 });
+});
+
+test('payment stays between the hand and piles and below opponent cards even when very tall', () => {
+  const position = anchorManaPaymentDock({ viewportWidth: 1600, viewportHeight: 900, dockHeight: 1000,
+    protectedZones: [{ left: 1510, top: 250, right: 1590, bottom: 700 }], opponentCardBottom: 220 });
+  assert.ok(position.left >= 1600 - handSideReserve(1600) + 16);
+  assert.ok(position.left + position.maxWidth <= 1510 - 12);
+  assert.ok(position.top >= 220 + 12);
+  assert.equal(position.maxHeight, 900 - 16 - 232);
+  assert.deepEqual(anchorManaPaymentDock({ viewportWidth:1600, viewportHeight:900, dockHeight:30, protectedZones:[{left:1510}], opponentCardBottom:220 }), position, 'calculated contents cannot move or resize the payment panel');
 });
 
 test("stays anchored to the bottom even when cards sit in that corner", () => {

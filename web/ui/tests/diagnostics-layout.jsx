@@ -23,6 +23,8 @@ function Fixture(){
  const kind = new URLSearchParams(location.search).get('kind') || 'targets';
  const scenario = new URLSearchParams(location.search).get('scenario');
  const prevention = scenario === 'prevention';
+ const longPayment = scenario === 'long-payment';
+ if (longPayment) players[0].hand_cards = names.slice(0, 6).map((name, index) => ({ ...players[0].battlefield[index], id: 5000 + index, stable_id: 5000 + index, name }));
  const anyTarget = prevention || scenario === 'any-target';
  const decisions = {
  priority: {kind:'priority',player:0,actions:[{kind:'pass_priority',label:'Pass priority',index:0,action_ref:{kind:'pass_priority'}}]},
@@ -43,7 +45,7 @@ function Fixture(){
    };
  }
 
- const state={cancelable:scenario === 'optional-target',players,perspective:0,priority_player:0,active_player:0,decision: expanded ? decisions[kind] : null, mana_payment: kind === 'mana_payment' ? {source_name:'Grizzly Bears',planning_complete:true,request_hash:'test',plan_id:'test',pips:[['1'],['G']],pool_before:{green:2},pool_after_activations:{green:2},pool_after_payment:{},planned_sources:[],available_sources:[],allocations:[],warnings:[],life_to_pay:0} : null,stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
+ const state={cancelable:scenario === 'optional-target',players,perspective:0,priority_player:0,active_player:0,decision: expanded ? decisions[kind] : null, mana_payment: kind === 'mana_payment' ? {source_name:'Grizzly Bears',can_confirm:true,planning_complete:true,request_hash:'test',plan_id:'test',pips:longPayment ? [['14']] : [['1'],['G']],pool_before:{green:longPayment ? 14 : 2},pool_after_activations:{green:longPayment ? 14 : 2},pool_after_payment:{},planned_sources:[],available_sources:[],allocations:[],warnings:[],life_to_pay:0} : null,stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
  return <I18nProvider><GameContext.Provider value={{state,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer:{mode:"idle"},playerAccentOverrides:{},game:null,cancelDecision:async()=>{},holdRule,setHoldRule,autoResolveEnabled,setAutoResolveEnabled,dispatch:async(action)=>{window.__dispatched=action;},dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
  <main style={{height:"96vh"}}><button onClick={()=>setExpanded(value=>!value)}>Toggle decision</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore legalTargetObjectIds={targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} middleUtilityControls={<div className="topbar-minor-controls--utility" />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>;

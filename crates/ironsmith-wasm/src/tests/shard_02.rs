@@ -1056,6 +1056,7 @@ pub(super) fn viewed_card_snapshots_follow_stable_identity_when_object_id_is_sta
         .create_object_from_card(&revealed_card, bob, Zone::Hand);
     let stale_unrelated_id = ObjectId::from_raw(revealed_id.0.saturating_add(10_000));
     wasm.active_viewed_cards = Some(ActiveViewedCards {
+        acknowledged_by: Vec::new(),
         viewer: alice,
         subject: bob,
         zone: Zone::Hand,

@@ -75,6 +75,9 @@ macro_rules! runtime_savepoint {
 }
 runtime_savepoint! {
     game: GameState,
+    priority_affordability_cache: HashMap<PlayerId, Vec<LegalAction>>,
+    priority_affordability_seed_key: Option<SnapshotCacheKey>,
+    priority_affordability_completed_key: Option<SnapshotCacheKey>,
     trigger_queue: TriggerQueue,
     priority_state: PriorityLoopState,
     pregame: Option<PregameState>,

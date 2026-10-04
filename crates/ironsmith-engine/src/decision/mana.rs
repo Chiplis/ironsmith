@@ -10,7 +10,7 @@ mod analysis_probe;
 mod mechanics;
 mod resumable;
 pub use resumable::ManaAnalysisSession;
-pub(super) use resumable::with_checked_query;
+pub(super) use resumable::{with_checked_query, with_assumed_mana_for_presentation};
 
 pub use mechanics::*;
 
@@ -2757,6 +2757,7 @@ fn mana_cost_can_be_paid_with_view_at_x(
     x_value: u32,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    if resumable::mana_payment_is_assumed() { return true; }
     let has_restricted_mana = game.player(player).is_some_and(|player| !player.restricted_mana.is_empty())
         || game.battlefield.iter().any(|source| {
             view.abilities_rc(*source).is_some_and(|abilities| abilities.iter().any(|ability| {
@@ -6711,6 +6712,7 @@ pub(crate) fn can_pay_mana_cost_with_available_sources(
     allow_black_life: bool,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    if resumable::mana_payment_is_assumed() { return true; }
     let Some(player_obj) = game.player(player) else {
         return false;
     };

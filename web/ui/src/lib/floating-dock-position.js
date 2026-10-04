@@ -1,4 +1,5 @@
 const DOCK_EDGE_PADDING = 14;
+export const DECISION_DOCK_BOTTOM_INSET = 16;
 const DOCK_RIGHT_INSET = 18;
 const DOCK_MIN_TOP = 48;
 const ZONE_CLEARANCE = 12;
@@ -18,6 +19,21 @@ export function handSideReserve(viewportWidth) {
 /** Widest the decision dock may get without reaching the hand's reserve. */
 export function dockMaxWidth(viewportWidth) {
   return Math.max(220, handSideReserve(viewportWidth) - DOCK_RIGHT_INSET - HAND_DOCK_GAP);
+}
+
+/** Payment lives in the lane between the reserved hand edge and zone piles.
+ * Its top boundary is the bottom of the opponents' first card row; scrolling
+ * consumes excess content, never that protected battlefield space.
+ */
+export function anchorManaPaymentDock({ viewportWidth, viewportHeight, protectedZones = [], opponentCardBottom = 48 }) {
+  const bottom = viewportHeight - DECISION_DOCK_BOTTOM_INSET;
+  const topLimit = Math.max(DOCK_MIN_TOP, opponentCardBottom + ZONE_CLEARANCE);
+  const handRight = viewportWidth - handSideReserve(viewportWidth);
+  const zoneLeft = protectedZones.reduce((left, zone) => Math.min(left, zone.left), viewportWidth - DOCK_RIGHT_INSET);
+  const right = zoneLeft - ZONE_CLEARANCE;
+  const maxWidth = Math.max(1, Math.min(320, right - handRight - HAND_DOCK_GAP));
+  const maxHeight = Math.max(1, Math.floor(bottom - topLimit));
+  return { left: Math.round(right - maxWidth), top: bottom - maxHeight, maxWidth: Math.floor(maxWidth), maxHeight: Math.floor(maxHeight) };
 }
 
 function clamp(value, min, max) {
@@ -56,5 +72,5 @@ export function anchorFloatingDock({
   }
 
   const maxLeft = Math.max(DOCK_EDGE_PADDING, viewportWidth - dockWidth - DOCK_EDGE_PADDING);
-  return { left: Math.round(clamp(left, DOCK_EDGE_PADDING, maxLeft)), top: Math.round(top) };
+  return { left: Math.round(clamp(left, DOCK_EDGE_PADDING, maxLeft)), top };
 }

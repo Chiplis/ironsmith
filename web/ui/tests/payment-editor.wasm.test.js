@@ -57,5 +57,12 @@ test("real WASM exposes plain payment views and commits an exact-color proposal 
     assert.deepEqual(game.uiState().mana_payment, edited, "paying in the copy does not mutate the retained branch");
     assert.equal(game.exportPublicAuditCheckpoint().players[0].life, 20);
     assert.equal(game.releaseRuntimeSavepoint(originalPayment), true);
+    state = game.cancelDecision();
+    assert.equal(state.decision.kind, "priority", "Cancel returns to the pre-cast decision");
+    assert.equal(state.mana_payment, undefined);
+    assert.equal(state.stack_objects.some(object => object.name === "Sol Ring"), false);
+    const cancelled = game.exportPublicAuditCheckpoint();
+    assert.equal(cancelled.players[0].life, 20);
+    assert.equal(cancelled.objects.find(object => object.id === land).tapped, false);
   } finally { game.free(); }
 });

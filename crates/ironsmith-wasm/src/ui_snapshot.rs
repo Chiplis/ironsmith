@@ -2603,6 +2603,8 @@ pub(super) struct PlayerSnapshot {
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct ViewedCardsSnapshot {
+    pub(super) inspector_only: bool,
+    pub(super) acknowledged: bool,
     pub(super) viewer: u8,
     pub(super) subject: u8,
     pub(super) zone: String,
@@ -2743,6 +2745,9 @@ impl GameSnapshot {
         object_view_cache: &SnapshotObjectViewCache,
     ) -> Self {
         let stack_viewed_cards = super::stack_revealed_view(game);
+        // A source snapshot grants ongoing inspection while its entry is on
+        // the stack. It does not execute a new reveal or look instruction.
+        let inspector_only = viewed_cards.is_none() && stack_viewed_cards.is_some();
         let viewed_cards = viewed_cards.or(stack_viewed_cards.as_ref());
         let mut protected_ids = protected_object_ids_for_decision(decision);
         if cancelable && let Some(stable_id) = undo_land_stable_id {
@@ -3220,6 +3225,11 @@ impl GameSnapshot {
                             && game.controlling_player_for(view.viewer) == perspective)
                 })
                 .map(|view| ViewedCardsSnapshot {
+                    inspector_only,
+                    acknowledged: view
+                        .acknowledged_by
+                        .iter()
+                        .any(|player| game.controlling_player_for(*player) == perspective),
                     viewer: view.viewer.0,
                     subject: view.subject.0,
                     zone: view.zone.to_string(),
@@ -5379,6 +5389,7 @@ mod tests {
                 .all(|card| card.name == hidden_object_label())
         );
         let view = ActiveViewedCards {
+            acknowledged_by: Vec::new(),
             viewer: bob,
             subject: alice,
             zone: Zone::Exile,

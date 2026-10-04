@@ -1,5 +1,6 @@
 import useUiText from "@/i18n/useUiText";
 import { createPortal } from "react-dom";
+import { Check } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useHoverActions } from "@/context/HoverContext";
 import { SymbolText } from "@/lib/mana-symbols";
@@ -35,6 +36,7 @@ export default function ActionPopover({
   variant = "light",
   collapseEquivalentActions = true,
   previewCards = true,
+  highlightObjects = false,
   fitViewport = false,
   disabled = false,
   anchorElement = null,
@@ -47,7 +49,7 @@ export default function ActionPopover({
   const ref = useRef(null);
   const openedAtRef = useRef(0);
   const closeTimerRef = useRef(null);
-  const { hoverCard, clearHover } = useHoverActions();
+  const { hoverCard, clearHover, setHoverLinkedObjects } = useHoverActions();
   const [phase, setPhase] = useState("entering");
   const [hoveredIdx, setHoveredIdx] = useState(-1);
   const [measuredHeight, setMeasuredHeight] = useState(null);
@@ -68,8 +70,9 @@ export default function ActionPopover({
       cancelAnimationFrame(raf);
       clearTimeout(closeTimerRef.current);
       dispatchHandActionHover(null);
+      clearHover();
     };
-  }, []);
+  }, [clearHover]);
 
   // The lifted hand card and the frame preview are two answers to the same
   // question, so only one of them runs: the preview is for options whose card
@@ -274,11 +277,13 @@ export default function ActionPopover({
                 e.preventDefault();
                 e.stopPropagation();
                 dispatchHandActionHover(null);
+                clearHover();
                 onAction(action);
               }}
               onMouseEnter={() => {
                 setHoveredIdx(i);
-                if (previewCards) previewActionCard(objId);
+                if (highlightObjects) { dispatchHandActionHover(objId); setHoverLinkedObjects(objId ? [objId] : []); }
+                else if (previewCards) previewActionCard(objId);
               }}
               onMouseLeave={() => {
                 setHoveredIdx(-1);
@@ -287,7 +292,8 @@ export default function ActionPopover({
               }}
               onFocus={() => {
                 setHoveredIdx(i);
-                if (previewCards) previewActionCard(objId);
+                if (highlightObjects) { dispatchHandActionHover(objId); setHoverLinkedObjects(objId ? [objId] : []); }
+                else if (previewCards) previewActionCard(objId);
               }}
               onBlur={() => {
                 setHoveredIdx(-1);
@@ -312,11 +318,13 @@ export default function ActionPopover({
                   if (rowDisabled || (Date.now() - openedAtRef.current) < 160) return;
                   event.preventDefault();
                   dispatchHandActionHover(null);
+                  clearHover();
                   onAction(action);
                 }
               }}
               role="button"
               aria-disabled={rowDisabled || undefined}
+              aria-pressed={typeof action.selected === "boolean" ? action.selected : undefined}
               tabIndex={rowDisabled ? -1 : 0}
             >
               <div
@@ -325,7 +333,7 @@ export default function ActionPopover({
                   transition: "color 180ms ease",
                 }}
               >
-                <SymbolText text={stripActionPrefix(group.label || action.label)} />
+                <span className="flex items-center gap-2"><span className="min-w-0 flex-1"><SymbolText text={stripActionPrefix(group.label || action.label)} /></span>{action.selected && <Check size={15} aria-hidden="true" className="shrink-0" />}</span>
               </div>
             </div>
           );

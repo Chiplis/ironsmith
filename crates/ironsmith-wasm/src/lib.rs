@@ -400,6 +400,7 @@ struct ManaActivationOptionView {
     expected_mana: ManaPoolView,
     label: String,
     repeatable: bool,
+    max_activations: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -443,6 +444,9 @@ struct ManaPaymentView {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ActiveViewedCards {
+    /// Players who completed a prompt displaying this entire transient view.
+    /// Presentation only: the view still grants visibility and feeds auditing.
+    acknowledged_by: Vec<PlayerId>,
     viewer: PlayerId,
     subject: PlayerId,
     zone: Zone,
@@ -535,6 +539,18 @@ fn merge_carried_active_viewed_cards(
 ) -> Option<ActiveViewedCards> {
     match (carry, next) {
         (Some(mut carry), Some(next)) if active_viewed_cards_can_carry_over(&carry, &next) => {
+            // An answer for the replayed view only covers older carried cards
+            // if they are also part of that view.
+            let next_covers_carry = carry.cards.iter().enumerate().all(|(index, card)| {
+                next.card_stable_ids
+                    .contains(&carry.stable_id_at(index, *card))
+            });
+            carry.acknowledged_by = next
+                .acknowledged_by
+                .iter()
+                .copied()
+                .filter(|player| next_covers_carry || carry.acknowledged_by.contains(player))
+                .collect();
             for (index, card) in next.cards.iter().copied().enumerate() {
                 carry.push_unique_card_with_stable_id(card, next.stable_id_at(index, card));
             }
@@ -1024,6 +1040,7 @@ fn mana_activation_views_from_inventory(
             label: current_ability_action_text(game, option.source, option.ability_index)
                 .unwrap_or_else(|| "Mana ability".to_string()),
             repeatable: option.repeatable,
+            max_activations: option.max_activations,
         })
         .collect()
 }
@@ -1298,6 +1315,9 @@ fn merge_active_viewed_cards(
 
     if can_merge {
         if let Some(existing) = current.as_mut() {
+            // A new viewing event needs acknowledgement even when its cards
+            // and description happen to match the previous event.
+            existing.acknowledged_by.clear();
             for &card in cards {
                 existing.push_unique_card(game, card);
             }
@@ -1306,6 +1326,7 @@ fn merge_active_viewed_cards(
     }
 
     *current = Some(ActiveViewedCards {
+        acknowledged_by: Vec::new(),
         viewer,
         subject: ctx.subject,
         zone: ctx.zone,
@@ -1370,6 +1391,7 @@ fn merge_audit_viewed_cards(
     }
 
     current.push(ActiveViewedCards {
+        acknowledged_by: Vec::new(),
         viewer,
         subject: ctx.subject,
         zone: ctx.zone,
@@ -1462,6 +1484,7 @@ fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
             .filter(|snapshot| snapshot.zone.is_hidden())
         {
             return Some(ActiveViewedCards {
+                acknowledged_by: Vec::new(),
                 viewer: entry.controller,
                 subject: source_snapshot.owner,
                 zone: source_snapshot.zone,
@@ -1503,6 +1526,7 @@ fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
 
         if !cards.is_empty() {
             return Some(ActiveViewedCards {
+                acknowledged_by: Vec::new(),
                 viewer: entry.controller,
                 subject: first_owner,
                 zone: first_zone,
@@ -1605,6 +1629,7 @@ fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewed
         if let Some(&top_card) = player.library.last() {
             if library_top_revealed_by_static_ability(game, player.id) {
                 views.push(ActiveViewedCards {
+                    acknowledged_by: Vec::new(),
                     viewer: public_viewer,
                     subject: player.id,
                     zone: Zone::Library,
@@ -1617,6 +1642,7 @@ fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewed
             } else if can_view_own_library_top(game, player.id) {
                 for viewer in game.private_information_viewers_for(player.id, Zone::Library) {
                     views.push(ActiveViewedCards {
+                        acknowledged_by: Vec::new(),
                         viewer,
                         subject: player.id,
                         zone: Zone::Library,
@@ -1633,6 +1659,7 @@ fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewed
 
         if hand_revealed_by_static_ability(game, player.id) && !player.hand.is_empty() {
             views.push(ActiveViewedCards {
+                acknowledged_by: Vec::new(),
                 viewer: public_viewer,
                 subject: player.id,
                 zone: Zone::Hand,
@@ -4121,6 +4148,70 @@ impl WasmReplayDecisionMaker {
         self.capture_once(enriched);
     }
 
+    fn acknowledge_card_prompt(&mut self, game: &GameState, ctx: DecisionContext) {
+        if self.pending_context.is_some() {
+            return;
+        }
+        let cards: Vec<ObjectId> = match &ctx {
+            DecisionContext::SelectObjects(ctx) => {
+                ctx.candidates.iter().map(|item| item.id).collect()
+            }
+            DecisionContext::SelectOptions(ctx) => ctx
+                .options
+                .iter()
+                .filter_map(|item| item.object_id)
+                .collect(),
+            DecisionContext::Order(ctx) => ctx.items.iter().map(|(id, _)| *id).collect(),
+            DecisionContext::Partition(ctx) => ctx.cards.iter().map(|(id, _)| *id).collect(),
+            DecisionContext::Targets(ctx) => ctx
+                .requirements
+                .iter()
+                .flat_map(|requirement| {
+                    requirement
+                        .legal_targets
+                        .iter()
+                        .filter_map(|target| match target {
+                            Target::Object(id) => Some(*id),
+                            _ => None,
+                        })
+                })
+                .collect(),
+            _ => return,
+        };
+        // Candidate-only hidden views are synthesized while awaiting an
+        // answer. Reconstruct them on replay before acknowledging that answer.
+        if self.viewed_cards.is_none() {
+            let enriched = ironsmith::decisions::context::enrich_display_hints(game, ctx.clone());
+            merge_hidden_decision_views(
+                game,
+                &mut self.viewed_cards,
+                &mut self.audit_viewed_cards,
+                &enriched,
+            );
+        }
+        let Some(view) = self.viewed_cards.as_mut() else {
+            return;
+        };
+        let player = ctx.player();
+        if ctx.source().is_none()
+            || ctx.source() != view.source
+            || (!view.public
+                && game.controlling_player_for(player) != game.controlling_player_for(view.viewer))
+            || view.cards.is_empty()
+            || !view.cards.iter().enumerate().all(|(index, id)| {
+                let stable_id = view.stable_id_at(index, *id);
+                cards
+                    .iter()
+                    .any(|candidate| stable_id_for_viewed_card(game, *candidate) == stable_id)
+            })
+        {
+            return;
+        }
+        if !view.acknowledged_by.contains(&player) {
+            view.acknowledged_by.push(player);
+        }
+    }
+
     fn finish(
         self,
     ) -> (
@@ -4206,6 +4297,7 @@ impl DecisionMaker for WasmReplayDecisionMaker {
             Some(ReplayDecisionAnswer::Objects(ids)) => {
                 let ids = ids.clone();
                 self.answers.pop_front();
+                self.acknowledge_card_prompt(game, DecisionContext::SelectObjects(ctx.clone()));
                 ids
             }
             _ => {
@@ -4233,6 +4325,7 @@ impl DecisionMaker for WasmReplayDecisionMaker {
             Some(ReplayDecisionAnswer::Options(indices)) => {
                 let indices = indices.clone();
                 self.answers.pop_front();
+                self.acknowledge_card_prompt(game, DecisionContext::SelectOptions(ctx.clone()));
                 indices
             }
             _ => {
@@ -4322,6 +4415,7 @@ impl DecisionMaker for WasmReplayDecisionMaker {
             Some(ReplayDecisionAnswer::Targets(targets)) => {
                 let targets = targets.clone();
                 self.answers.pop_front();
+                self.acknowledge_card_prompt(game, DecisionContext::Targets(ctx.clone()));
                 targets
             }
             _ => {
@@ -4383,6 +4477,7 @@ impl DecisionMaker for WasmReplayDecisionMaker {
             Some(ReplayDecisionAnswer::Order(order)) => {
                 let order = order.clone();
                 self.answers.pop_front();
+                self.acknowledge_card_prompt(game, DecisionContext::Order(ctx.clone()));
                 order
             }
             _ => {
@@ -4455,6 +4550,7 @@ impl DecisionMaker for WasmReplayDecisionMaker {
             Some(ReplayDecisionAnswer::Partition(partition)) => {
                 let partition = partition.clone();
                 self.answers.pop_front();
+                self.acknowledge_card_prompt(game, DecisionContext::Partition(ctx.clone()));
                 partition
             }
             _ => {
@@ -4509,6 +4605,9 @@ pub struct WasmGame {
     runtime_savepoints: HashMap<u32, Box<wasm_game_impl::RuntimeSavepoint>>,
     next_runtime_savepoint: u32,
     priority_analysis_job: Option<Box<PriorityAnalysisJob>>,
+    priority_affordability_cache: HashMap<PlayerId, Vec<LegalAction>>,
+    priority_affordability_seed_key: Option<SnapshotCacheKey>,
+    priority_affordability_completed_key: Option<SnapshotCacheKey>,
     payment_analysis_job: Option<Box<PaymentAnalysisJob>>,
     inspector_analysis_job: Option<Box<InspectorAnalysisJob>>,
     /// Node pops the last analysis slice consumed. A slice that spends fewer
@@ -6335,6 +6434,7 @@ mod native_tests {
             library_card
         ));
         let library_view = ActiveViewedCards {
+            acknowledged_by: Vec::new(),
             viewer: alice,
             subject: alice,
             zone: Zone::Library,
@@ -6409,6 +6509,7 @@ mod native_tests {
             ),
         );
         let viewed_cards = ActiveViewedCards {
+            acknowledged_by: Vec::new(),
             viewer: alice,
             subject: alice,
             zone: Zone::Exile,
@@ -6444,6 +6545,7 @@ mod native_tests {
             .create_object_from_card(&revealed_card, bob, Zone::Hand);
         let stale_unrelated_id = ObjectId::from_raw(revealed_id.0.saturating_add(10_000));
         wasm.active_viewed_cards = Some(ActiveViewedCards {
+            acknowledged_by: Vec::new(),
             viewer: alice,
             subject: bob,
             zone: Zone::Hand,
@@ -6774,12 +6876,17 @@ mod native_tests {
     }
 }
 
+
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests;
 
 #[cfg(test)]
 #[path = "tests/blazing_shoal.rs"]
 mod blazing_shoal_tests;
+
+#[cfg(test)]
+#[path = "tests/viewed_card_acknowledgement.rs"]
+mod viewed_card_acknowledgement_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "tests/territorial_kavu.rs"]

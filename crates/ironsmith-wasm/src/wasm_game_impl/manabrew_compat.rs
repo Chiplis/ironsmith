@@ -3540,6 +3540,7 @@ mod manabrew_tests {
         ));
 
         game.active_viewed_cards = Some(ActiveViewedCards {
+            acknowledged_by: Vec::new(),
             viewer: bob,
             subject: bob,
             zone: Zone::Library,
@@ -3550,6 +3551,7 @@ mod manabrew_tests {
             description: "Look at a library card".to_string(),
         });
         game.active_audit_viewed_cards.push(ActiveViewedCards {
+            acknowledged_by: Vec::new(),
             viewer: bob,
             subject: bob,
             zone: Zone::Exile,

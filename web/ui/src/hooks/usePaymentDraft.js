@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clearSourcePreferences, excludePaymentSource, paymentPreferences, paymentTransactionKey, preferenceKey, removePaymentStep, selectPaymentSource } from "@/lib/payment-draft";
 import { manaActivationCommand } from "@/lib/mana-payment-actions";
+import { selectPaymentPipSource } from "@/lib/payment-pip-rows";
 
 export default function usePaymentDraft({ payment, dispatch, cancelBackgroundDispatch, enabled = true }) {
   const key = enabled ? paymentTransactionKey(payment) : null;
@@ -75,6 +76,7 @@ export default function usePaymentDraft({ payment, dispatch, cancelBackgroundDis
   return {
     draft: current.draft, dirty, confirming, error, edited: current.edited,
     select: (source, options) => edit(draft => selectPaymentSource(draft, source, options)),
+    selectPip: (source, row, rows) => edit(draft => selectPaymentPipSource(draft, source, row, rows)),
     remove: source => edit(draft => removePaymentStep(draft, source, source.occurrence)),
     exclude: sourceId => edit(draft => excludePaymentSource(draft, sourceId)),
     restore: sourceId => edit(draft => ({ ...draft, excluded_source_ids: draft.excluded_source_ids.filter(id => id !== String(sourceId)) })),

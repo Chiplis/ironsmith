@@ -445,7 +445,7 @@ export default function HandZone({
 }) {
   const ui = useUiText();
   const { state, multiplayer } = useGame();
-  const { hoveredObjectId, hoveredLinkedObjectIds, clearHover, clearAnchoredCardPreview } = useHover();
+  const { hoveredObjectId, hoveredLinkedObjectIds, activeHoveredLinkedObjectIds, clearHover, clearAnchoredCardPreview } = useHover();
   const { startDrag, updateDrag, endDrag } = useDragActions();
   const dragState = useDragSession();
   // A card being dragged out of the hand goes back to its tucked slot as a
@@ -797,7 +797,10 @@ export default function HandZone({
       window.removeEventListener(HAND_ACTION_HOVER_EVENT, handleHandActionHover);
     };
   }, [hoverableHandObjectIds]);
-  const activeMenuHoveredHandObjectId = (
+  const paymentOptionHandObjectId = state?.decision?.kind === "mana_payment"
+    ? [...activeHoveredLinkedObjectIds].find(id => hoverableHandObjectIds.has(id))
+    : null;
+  const activeMenuHoveredHandObjectId = paymentOptionHandObjectId || (
     menuHoveredHandObjectId && hoverableHandObjectIds.has(menuHoveredHandObjectId)
       ? menuHoveredHandObjectId
       : null

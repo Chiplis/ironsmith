@@ -1,4 +1,4 @@
-/** Merge cumulative, confirmed actions without accepting an obsolete snapshot. */
+/** Merge the current background menu without accepting an obsolete snapshot. */
 export function mergePriorityAnalysis(state, analysis) {
   if (!state || !analysis || state.__priority_revision !== analysis.revision
       || state.decision?.kind !== 'priority'

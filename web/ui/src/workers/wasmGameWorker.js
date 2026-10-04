@@ -137,7 +137,12 @@ const priorityAnalysis = createIsolatedPriorityAnalysis({
   createWorker: () => new Worker(new URL('./priorityAnalysisWorker.js', import.meta.url), { type: 'module' }),
   // Check results only after any temporary verification branch has exited.
   deliver: operation => enqueueCall(operation, { kind: 'priority_analysis_publish' }),
-  publish: analysis => self.postMessage({ type: 'priorityAnalysis', ...analysis }),
+  publish: analysis => {
+    if (analysis.decision?.analysis_complete) {
+      game.rememberPriorityAffordability(analysis.decision.actions.map(action => action.action_ref));
+    }
+    self.postMessage({ type: 'priorityAnalysis', ...analysis });
+  },
   fail: ({ revision, error }) => self.postMessage({ type: 'priorityAnalysisError', revision, error: serializeError(error) }),
 });
 

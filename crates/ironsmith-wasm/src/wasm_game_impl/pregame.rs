@@ -380,6 +380,9 @@ impl WasmGame {
         seed: u64,
     ) {
         self.runtime_identity_origin_available = false;
+        self.priority_affordability_cache.clear();
+        self.priority_affordability_seed_key = None;
+        self.priority_affordability_completed_key = None;
         let player_count = player_names.len();
         self.game = GameState::new_with_runtime_id_reset(player_names, starting_life);
         // Card definitions are a session-level catalog, not match state. In the

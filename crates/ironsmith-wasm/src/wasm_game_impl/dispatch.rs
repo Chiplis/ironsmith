@@ -95,6 +95,7 @@ enum SnapshotJsonError {
     HiddenLibraryEpoch(String),
     ContinuousDiscovery(ironsmith::static_ability_processor::StaticEffectDiscoveryError),
     JsonEncoding(serde_json::Error),
+    PriorityEligibility(ironsmith::effects::ExecutionError),
 }
 
 impl std::fmt::Display for SnapshotJsonError {
@@ -103,6 +104,7 @@ impl std::fmt::Display for SnapshotJsonError {
             Self::HiddenLibraryEpoch(error) => write!(f, "{error}"),
             Self::ContinuousDiscovery(error) => write!(f, "snapshot refresh failed: {error}"),
             Self::JsonEncoding(error) => write!(f, "json encode failed: {error}"),
+            Self::PriorityEligibility(error) => write!(f, "priority timing refresh failed: {error}"),
         }
     }
 }
@@ -219,6 +221,7 @@ impl WasmGame {
         }
         self.prepare_snapshot_continuous_state()
             .map_err(SnapshotJsonError::ContinuousDiscovery)?;
+        self.refresh_priority_affordability_display().map_err(SnapshotJsonError::PriorityEligibility)?;
         self.cached_snapshot = None;
         let pending_cast_stack_id = self
             .priority_state
@@ -1474,6 +1477,9 @@ impl WasmGame {
             runtime_savepoints: HashMap::new(),
             next_runtime_savepoint: 0,
             priority_analysis_job: None,
+            priority_affordability_cache: HashMap::new(),
+            priority_affordability_seed_key: None,
+            priority_affordability_completed_key: None,
             payment_analysis_job: None,
             inspector_analysis_job: None,
             last_analysis_slice_nodes: 0,
@@ -3454,6 +3460,7 @@ impl WasmGame {
         let snapshot_started_at = PerfTimer::start();
         self.prepare_snapshot_continuous_state()
             .map_err(|error| JsValue::from_str(&format!("snapshot refresh failed: {error}")))?;
+        self.refresh_priority_affordability_display().map_err(|error| JsValue::from_str(&format!("priority timing refresh failed: {error}")))?;
         let pending_cast_stack_id = self
             .priority_state
             .pending_cast

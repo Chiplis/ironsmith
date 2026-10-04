@@ -366,7 +366,8 @@ function LookPile({ player, onCardClick, legalTargetObjectIds }) {
   const [completedKey, setCompletedKey] = useState("");
   const [retained, setRetained] = useState(null);
   const [open, setOpen] = useState(false);
-  const active = Boolean(key) && key !== completedKey;
+  const acknowledged = state?.decision?.kind === "priority" && view?.acknowledged === true;
+  const active = Boolean(key) && !acknowledged && key !== completedKey;
   const persistent = persistentLookCards(state);
   useEffect(() => {
     const done = () => { setCompletedKey(key); setRetained(view); };

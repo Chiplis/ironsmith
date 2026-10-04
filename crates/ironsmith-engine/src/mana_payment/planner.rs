@@ -287,11 +287,11 @@ fn activation_inventory_observing<D: crate::decision::DecisionMaker>(
     collect_raw_activation_choices_with_view(game, &unconstrained, false, &analysis.view)
         .into_iter()
         .filter_map(|choice| {
-            let (expected_mana, repeatable) = if let Some(projected) = analysis.project(&choice) {
+            let (expected_mana, max_activations) = if let Some(projected) = analysis.project(&choice) {
                 if ready_only && projected.needs_choice {
                     return None;
                 }
-                (projected.output, false)
+                (projected.output, 1)
             } else {
                 let mut staged = game.clone();
                 let before = staged.player(unconstrained.payer)?.mana_pool.clone();
@@ -310,11 +310,28 @@ fn activation_inventory_observing<D: crate::decision::DecisionMaker>(
                 }
                 let after = staged.player(unconstrained.payer)?.mana_pool.clone();
                 resolved(&choice, &staged);
-                let mut repeat_decision_maker = chooser();
-                // The first output is retained above; the scratch branch can be
-                // reused for the repeatability probe without another game clone.
-                let repeatable =
-                    activate_with_mana_triggers(
+                // Probe the ordinary legality/cost path, including per-turn
+                // limits, life, counters, sacrifices and state-based actions.
+                // A successful second activation does not imply unlimited uses.
+                let probe_limit = expanded_pip_count(request)
+                    .saturating_add(MAX_EXTRA_ACTIVATIONS)
+                    .max(request.preferences.required_activations.len())
+                    .max(2);
+                let mut max_activations = 1;
+                while max_activations < probe_limit {
+                    let legal = {
+                        let view = DerivedGameView::new(&staged);
+                        view.abilities_rc(choice.source)
+                            .and_then(|abilities| abilities.get(choice.ability_index).cloned())
+                            .is_some_and(|ability| crate::special_actions::can_activate_mana_ability_check_with_view(
+                                &staged, unconstrained.payer, choice.source, choice.ability_index,
+                                &ability, &view, None,
+                            ).is_ok())
+                    };
+                    if !legal { break; }
+                    let previous_pool = staged.player(unconstrained.payer)?.mana_pool.clone();
+                    let mut repeat_decision_maker = chooser();
+                    if activate_with_mana_triggers(
                         &mut staged,
                         unconstrained.payer,
                         choice.source,
@@ -322,19 +339,24 @@ fn activation_inventory_observing<D: crate::decision::DecisionMaker>(
                         choice.color_restriction.clone(),
                         &mut repeat_decision_maker,
                     )
-                    .is_ok()
-                        && !repeat_decision_maker.awaiting_choice()
-                        && staged
-                            .player(unconstrained.payer)
-                            .is_some_and(|player| player.mana_pool != after);
-                (positive_pool_delta(&before, &after), repeatable)
+                    .is_err()
+                        || repeat_decision_maker.awaiting_choice()
+                        || staged.player(unconstrained.payer)
+                            .is_none_or(|player| player.mana_pool == previous_pool)
+                    {
+                        break;
+                    }
+                    max_activations += 1;
+                }
+                (positive_pool_delta(&before, &after), max_activations)
             };
             (expected_mana.total() > 0).then(|| ManaPaymentActivationOption {
                 source: choice.source,
                 ability_index: choice.ability_index,
                 color_restriction: choice.color_restriction,
                 expected_mana,
-                repeatable,
+                repeatable: max_activations > 1,
+                max_activations,
             })
         })
         .collect()
@@ -5345,6 +5367,49 @@ mod tests {
                 .iter()
                 .all(|step| step.source == mana_source && step.ability_index == 0)
         );
+    }
+
+    #[test]
+    fn activation_inventory_reports_finite_and_once_per_turn_capacity() {
+        let (mut game, alice) = game();
+        game.player_mut(alice).unwrap().life = 5;
+        let card = CardBuilder::new(CardId::new(), "Limited mana source")
+            .card_types(vec![CardType::Artifact]).build();
+        let finite = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(finite).unwrap().abilities_mut().push(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility::mana_with_costs(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::life(2)), vec![], vec![ManaSymbol::Green],
+            )),
+            functional_zones: vec![Zone::Battlefield],
+        });
+        let battery = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(battery).unwrap().add_counters(crate::CounterType::Charge, 3);
+        game.object_mut(battery).unwrap().abilities_mut().push(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility::mana_with_costs(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::remove_counters(crate::CounterType::Charge, 1)), vec![], vec![ManaSymbol::Green],
+            )),
+            functional_zones: vec![Zone::Battlefield],
+        });
+        let once = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(once).unwrap().abilities_mut().push(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(
+                crate::ability::ActivatedAbility::mana_with_costs(
+                    crate::cost::TotalCost::free(), vec![], vec![ManaSymbol::Green],
+                ).once_per_turn(),
+            ),
+            functional_zones: vec![Zone::Battlefield],
+        });
+        let source = game.new_object_id();
+        let request = request(&game, alice, source, ManaCost::new().add_generic(4));
+        let options = mana_payment_activation_inventory(&game, &request);
+        let finite_option = options.iter().find(|option| option.source == finite).unwrap();
+        assert!(finite_option.repeatable);
+        assert_eq!(finite_option.max_activations, 2);
+        let once_option = options.iter().find(|option| option.source == once).unwrap();
+        assert!(!once_option.repeatable);
+        assert_eq!(once_option.max_activations, 1);
+        assert_eq!(options.iter().find(|option| option.source == battery).unwrap().max_activations, 3);
+        assert_eq!(game.player(alice).unwrap().life, 5, "capacity probes must not pay real costs");
     }
 
     #[test]

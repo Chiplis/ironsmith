@@ -205,6 +205,9 @@ pub struct ManaPaymentActivationOption {
     pub color_restriction: Option<Vec<Color>>,
     pub expected_mana: ManaPool,
     pub repeatable: bool,
+    /// Sequential activations proven legal on a scratch branch, capped at
+    /// the number useful for this payment. This is not an unlimited-use flag.
+    pub max_activations: usize,
 }
 
 /// How a displayed pip is expected to be paid.

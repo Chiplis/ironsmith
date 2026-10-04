@@ -39,7 +39,7 @@ function isLocalZoneSurface(target) {
   ));
 }
 
-export default function LobbyChat({ showOffline = false }) {
+export default function LobbyChat({ showOffline = false, onOpenLobby = null }) {
   const { multiplayer, sendLobbyChat } = useGame();
   const ui = useUiText();
   const [draft, setDraft] = useState("");
@@ -98,10 +98,9 @@ export default function LobbyChat({ showOffline = false }) {
     }
   }, [messages, collapsed]);
   const online = Boolean(multiplayer?.role);
-  // Outside multiplayer the tab can still be shown (desktop HUD) so the
-  // layout is stable; it just explains that chat needs a multiplayer game.
+  const label = online ? "Lobby chat" : "Lobby";
   if (!online && !showOffline) return null;
-  return <section className="lobby-chat" data-collapsed={collapsed} data-offline={online ? undefined : "true"} aria-label={ui("Lobby chat")}
+  return <section className="lobby-chat" data-collapsed={collapsed} data-offline={online ? undefined : "true"} aria-label={ui(label)}
     ref={chatRef}
     onKeyDown={(event) => event.stopPropagation()}
     onPointerDown={(event) => { event.stopPropagation(); cancelCollapse(); }}
@@ -111,8 +110,12 @@ export default function LobbyChat({ showOffline = false }) {
     onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) scheduleCollapse();
     }}>
-    <button type="button" className="lobby-chat-header" aria-expanded={!collapsed}
+    <button type="button" className="lobby-chat-header" aria-expanded={online || !onOpenLobby ? !collapsed : undefined}
       onClick={() => {
+        if (!online && onOpenLobby) {
+          onOpenLobby();
+          return;
+        }
         const blocked = blockedOpenRef.current || hasOpenLocalZone();
         blockedOpenRef.current = false;
         if (blocked) return;
@@ -123,10 +126,10 @@ export default function LobbyChat({ showOffline = false }) {
           return next;
         });
       }}>
-      {ui("Lobby chat")}
+      {ui(label)}
       <span className="lobby-chat-header-actions">
         {hasUnread && <span className="lobby-chat-unread" aria-label={ui("Unread messages")} />}
-        <span aria-hidden="true">{collapsed ? "▴" : "▾"}</span>
+        {(online || !onOpenLobby) && <span aria-hidden="true">{collapsed ? "▴" : "▾"}</span>}
       </span>
     </button>
     <div className="lobby-chat-body" inert={collapsed}>
