@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Al-abara's Carpet",
+    "oracle_id": "0f5b0c77-1e3d-46a1-ae0e-03ed79196cd9",
+    "mana_cost": "{5}",
+    "type_line": "Artifact",
+    "oracle_text": "{5}, {T}: Prevent all damage that would be dealt to you this turn by attacking creatures without flying.",
+    "scryfall_uri": "https://scryfall.com/card/leg/271/al-abaras-carpet?utm_source=api"
+  },
+  {
+    "name": "Azorius Ploy",
+    "oracle_id": "b9b58c3a-5a76-4b6a-884b-74f54f0ca53c",
+    "mana_cost": "{1}{W}{W}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Prevent all combat damage target creature would deal this turn.\nPrevent all combat damage that would be dealt to target creature this turn.",
+    "scryfall_uri": "https://scryfall.com/card/dis/106/azorius-ploy?utm_source=api"
+  },
+  {
+    "name": "Energy Arc",
+    "oracle_id": "959bcf99-3c9a-4f99-98b2-13514d3dac16",
+    "mana_cost": "{W}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Untap any number of target creatures. Prevent all combat damage that would be dealt to and dealt by those creatures this turn.",
+    "scryfall_uri": "https://scryfall.com/card/all/106/energy-arc?utm_source=api"
+  },
+  {
+    "name": "Ethereal Haze",
+    "oracle_id": "0cdbd9e7-4941-46ac-99d8-ea227181bdf8",
+    "mana_cost": "{W}",
+    "type_line": "Instant — Arcane",
+    "oracle_text": "Prevent all damage that would be dealt by creatures this turn.",
+    "scryfall_uri": "https://scryfall.com/card/plst/CHK-9/ethereal-haze?utm_source=api"
+  },
+  {
+    "name": "Fleeting Flight",
+    "oracle_id": "6336401f-4e2d-4ebe-8c5b-24aa6f516abf",
+    "mana_cost": "{W}",
+    "type_line": "Instant",
+    "oracle_text": "Put a +1/+1 counter on target creature. It gains flying until end of turn. Prevent all combat damage that would be dealt to it this turn.",
+    "scryfall_uri": "https://scryfall.com/card/fdn/13/fleeting-flight?utm_source=api"
+  },
+  {
+    "name": "Hidden Retreat",
+    "oracle_id": "a116329a-343e-4f10-a122-38bf8b5ac2c8",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Put a card from your hand on top of your library: Prevent all damage that would be dealt by target instant or sorcery spell this turn.",
+    "scryfall_uri": "https://scryfall.com/card/sth/6/hidden-retreat?utm_source=api"
+  },
+  {
+    "name": "Pack Leader",
+    "oracle_id": "3701ed34-a97c-4d7b-a15a-4faec02ef24b",
+    "mana_cost": "{1}{W}",
+    "type_line": "Creature — Dog",
+    "oracle_text": "Other Dogs you control get +1/+1.\nWhenever this creature attacks, prevent all combat damage that would be dealt this turn to Dogs you control.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/plst/M21-29/pack-leader?utm_source=api"
+  },
+  {
+    "name": "Repel the Abominable",
+    "oracle_id": "ed198c68-c219-469f-b133-737b060cfbfc",
+    "mana_cost": "{1}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Prevent all damage that would be dealt this turn by non-Human sources.",
+    "scryfall_uri": "https://scryfall.com/card/emn/38/repel-the-abominable?utm_source=api"
+  },
+  {
+    "name": "Shieldmage Elder",
+    "oracle_id": "943bbe5b-76cd-478d-a1fe-d4e557df3469",
+    "mana_cost": "{5}{W}",
+    "type_line": "Creature — Human Cleric Wizard",
+    "oracle_text": "Tap two untapped Clerics you control: Prevent all damage target creature would deal this turn.\nTap two untapped Wizards you control: Prevent all damage target spell would deal this turn.",
+    "power": "2",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/ons/54/shieldmage-elder?utm_source=api"
+  },
+  {
+    "name": "Soul Parry",
+    "oracle_id": "8b36335b-119b-4f90-a5d7-b77d8f47f55f",
+    "mana_cost": "{1}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Prevent all damage one or two target creatures would deal this turn.",
+    "scryfall_uri": "https://scryfall.com/card/plst/DDO-24/soul-parry?utm_source=api"
+  }
+]

@@ -577,16 +577,23 @@ fn parse_conditional_draw_replacement_lexed<'a>(
     semantic_phrase(&["if", "you", "would", "draw"]).parse_next(input)?;
     opt(semantic_kw("a")).parse_next(input)?;
     semantic_phrase(&["card", "while"]).parse_next(input)?;
-    let condition_tokens = repeat_till(1.., any.void(), peek(semantic_kw("instead")))
+    let condition_tokens = repeat_till(1.., any.void(), peek(alt((primitives::comma().void(), semantic_kw("instead")))))
         .map(|((), ())| ())
         .take()
         .parse_next(input)?;
-    semantic_kw("instead").parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    let leading_instead = opt(semantic_kw("instead")).parse_next(input)?.is_some();
     opt(semantic_kw("you")).parse_next(input)?;
     semantic_kw("draw").parse_next(input)?;
     let draw_count = semantic_number_token.parse_next(input)?;
+    if i32::try_from(draw_count).is_err() {
+        return Err(primitives::backtrack_err("conditional draw replacement", "signed executable count"));
+    }
     alt((semantic_kw("card"), semantic_kw("cards"))).parse_next(input)?;
-    opt(semantic_kw("instead")).parse_next(input)?;
+    let trailing_instead = opt(semantic_kw("instead")).parse_next(input)?.is_some();
+    if leading_instead == trailing_instead {
+        return Err(primitives::backtrack_err("conditional draw replacement", "one instead marker"));
+    }
     let life_loss = opt((
         semantic_phrase(&["and", "you", "lose"]),
         semantic_number_token,

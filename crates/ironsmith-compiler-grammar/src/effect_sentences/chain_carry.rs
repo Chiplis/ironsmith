@@ -2836,10 +2836,10 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
         }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventAllDamageToTarget {
-                target, duration, ..
+                target, duration, combat_only, ..
             },
         ) => {
-            if sequence_grammar::parse_prevention_counter_followup_shape(sentence) {
+            if !*combat_only && sequence_grammar::parse_prevention_counter_followup_shape(sentence) {
                 let replacement = EffectAst::subject_verb_prevent_damage_to_target_put_counters(
                     None,
                     target.clone(),

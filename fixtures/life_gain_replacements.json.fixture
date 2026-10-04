@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Angel of Vitality",
+    "oracle_id": "635fe908-6f58-4c9e-ac55-0775a7c6f278",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flying\nIf you would gain life, you gain that much life plus 1 instead.\nThis creature gets +2/+2 as long as you have 25 or more life.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/fdc/13/angel-of-vitality?utm_source=api"
+  },
+  {
+    "name": "Bilbo, Birthday Celebrant",
+    "oracle_id": "5789520c-e4b2-44b2-b756-3f6b468dc55b",
+    "mana_cost": "{W}{B}{G}",
+    "type_line": "Legendary Creature — Halfling Rogue",
+    "oracle_text": "If you would gain life, you gain that much life plus 1 instead.\n{2}{W}{B}{G}, {T}, Exile Bilbo: Search your library for any number of creature cards, put them onto the battlefield, then shuffle. Activate only if you have 111 or more life.",
+    "power": "2",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/ltc/451/bilbo-birthday-celebrant?utm_source=api"
+  },
+  {
+    "name": "Cleric Class",
+    "oracle_id": "f0ead7f5-5c82-40fd-8e89-3e3c5d31fbad",
+    "mana_cost": "{W}",
+    "type_line": "Enchantment — Class",
+    "oracle_text": "(Gain the next level as a sorcery to add its ability.)\nIf you would gain life, you gain that much life plus 1 instead.\n{3}{W}: Level 2\nWhenever you gain life, put a +1/+1 counter on target creature you control.\n{4}{W}: Level 3\nWhen this Class becomes level 3, return target creature card from your graveyard to the battlefield. You gain life equal to that creature's toughness.",
+    "scryfall_uri": "https://scryfall.com/card/plst/AFR-6/cleric-class?utm_source=api"
+  },
+  {
+    "name": "Heron of Hope",
+    "oracle_id": "f297648b-0dda-4c58-a3eb-fdabdfb42177",
+    "mana_cost": "{3}{W}",
+    "type_line": "Creature — Bird",
+    "oracle_text": "Flying\nIf you would gain life, you gain that much life plus 1 instead.\n{1}{W}: This creature gains lifelink until end of turn.",
+    "power": "2",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/dbl/285/heron-of-hope?utm_source=api"
+  },
+  {
+    "name": "Honor Troll",
+    "oracle_id": "98c059ed-d749-4f66-bda1-6352976198f0",
+    "mana_cost": "{2}{G}",
+    "type_line": "Creature — Troll Druid",
+    "oracle_text": "Vigilance\nIf you would gain life, you gain that much life plus 1 instead.\nThis creature gets +2/+1 as long as you have 25 or more life.",
+    "power": "2",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/stx/134/honor-troll?utm_source=api"
+  },
+  {
+    "name": "Knight of Dawn's Light",
+    "oracle_id": "801e55c7-f8a1-4a90-81cb-3ad7022290ba",
+    "mana_cost": "{1}{W}",
+    "type_line": "Creature — Human Knight",
+    "oracle_text": "First strike\nIf you would gain life, you gain that much life plus 1 instead.\n{1}{W}: This creature gets +1/+1 until end of turn.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/dmu/23/knight-of-dawns-light?utm_source=api"
+  },
+  {
+    "name": "Leyline of Hope",
+    "oracle_id": "c7ee79c3-a273-45b4-b3a4-548d9b2b883c",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "If this card is in your opening hand, you may begin the game with it on the battlefield.\nIf you would gain life, you gain that much life plus 1 instead.\nAs long as you have at least 7 life more than your starting life total, creatures you control get +2/+2.",
+    "scryfall_uri": "https://scryfall.com/card/pdsk/18s/leyline-of-hope?utm_source=api"
+  },
+  {
+    "name": "Pest Rescuer",
+    "oracle_id": "02be0b99-d40b-4287-989b-12eb2701115c",
+    "mana_cost": "{2}{G}",
+    "type_line": "Creature — Dryad Druid",
+    "oracle_text": "At the beginning of each upkeep, if you don't control a Pest creature token, create a 1/1 black and green Pest creature token with \"When this token dies, you gain 1 life.\"\nIf you would gain life, you gain that much life plus 1 instead.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/soc/90/pest-rescuer?utm_source=api"
+  },
+  {
+    "name": "Phial of Galadriel",
+    "oracle_id": "08f17ebc-c0fd-493f-84b3-e9250694543e",
+    "mana_cost": "{3}",
+    "type_line": "Legendary Artifact",
+    "oracle_text": "If you would draw a card while you have no cards in hand, draw two cards instead.\nIf you would gain life while you have 5 or less life, you gain twice that much life instead.\n{T}: Add one mana of any color.",
+    "scryfall_uri": "https://scryfall.com/card/ltr/793/phial-of-galadriel?utm_source=api"
+  }
+]

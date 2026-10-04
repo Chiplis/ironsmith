@@ -191,6 +191,8 @@ pub(crate) fn shield_duration_is_active(
     use crate::game_state::{Phase, Step};
     use crate::zone::Zone;
     match &shield.duration {
+        Until::EndOfCombat => matches!(game.turn.phase, Phase::Combat)
+            && game.turn.turn_number == shield.created_turn,
         Until::YourNextTurn => {
             !(game.turn.turn_number > shield.created_turn
                 && game.is_active_player(shield.controller))
@@ -568,10 +570,21 @@ impl PreventionEffectManager {
         self.shields.retain(|s| !s.is_exhausted());
     }
 
+    /// Remove shields at the actual combat boundary, retaining metrics still
+    /// owned by later delayed effects. Pending additional actions are separate.
+    pub fn cleanup_end_of_combat_retaining_metrics(
+        &mut self,
+        retained_metrics: &std::collections::HashSet<PreventionShieldId>,
+    ) {
+        self.shields.retain(|shield| !matches!(shield.duration, Until::EndOfCombat));
+        let active = self.shields.iter().map(|shield| shield.id).collect::<Vec<_>>();
+        self.prevented_totals.retain(|id, _| active.contains(id) || retained_metrics.contains(id));
+    }
+
     /// Clean up shields at end of turn.
     pub fn cleanup_end_of_turn(&mut self) {
         self.shields
-            .retain(|s| !matches!(s.duration, Until::EndOfTurn));
+            .retain(|s| !matches!(s.duration, Until::EndOfTurn | Until::EndOfCombat));
         let active = self
             .shields
             .iter()
@@ -587,7 +600,7 @@ impl PreventionEffectManager {
         retained_metrics: &std::collections::HashSet<PreventionShieldId>,
     ) {
         self.shields
-            .retain(|s| !matches!(s.duration, Until::EndOfTurn));
+            .retain(|s| !matches!(s.duration, Until::EndOfTurn | Until::EndOfCombat));
         let active = self
             .shields
             .iter()
@@ -1363,5 +1376,34 @@ mod tests {
         // First shield exhausted (3), second shield used 2
         assert_eq!(manager.shields().len(), 1); // One exhausted and removed
         assert_eq!(manager.shields()[0].amount_remaining, Some(1));
+    }
+}
+
+#[cfg(test)]
+mod combat_expiry_tests {
+    use super::*;
+
+    #[test]
+    fn combat_expiry_preserves_only_owned_metrics_and_noncombat_durations() {
+        let mut manager = PreventionEffectManager::new();
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(1401);
+        let combat = manager.add_shield(PreventionShield::new(source, alice, PreventionTarget::You, None, Until::EndOfCombat));
+        let turn = manager.add_shield(PreventionShield::new(source, alice, PreventionTarget::You, None, Until::EndOfTurn));
+        manager.record_prevented(combat, 3);
+        let mut retained = std::collections::HashSet::new();
+        retained.insert(combat);
+        manager.cleanup_end_of_combat_retaining_metrics(&retained);
+        assert_eq!(manager.shields().len(), 1);
+        assert_eq!(manager.shields()[0].id, turn);
+        assert_eq!(manager.prevented_by_shield(combat), 3);
+        manager.cleanup_end_of_turn_retaining_metrics(&std::collections::HashSet::new());
+        assert_eq!(manager.prevented_by_shield(combat), 0);
+        assert!(manager.shields().is_empty());
+        // A combat duration restored outside normal combat advancement must
+        // still be removed by the turn cleanup backstop.
+        manager.add_shield(PreventionShield::new(source, alice, PreventionTarget::You, None, Until::EndOfCombat));
+        manager.cleanup_end_of_turn();
+        assert!(manager.shields().is_empty());
     }
 }

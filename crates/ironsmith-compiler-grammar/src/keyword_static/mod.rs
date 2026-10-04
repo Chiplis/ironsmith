@@ -8,6 +8,8 @@ pub use blocking_permissions::parse_blocking_capacity_static_line;
 mod costs_replacements_and_permissions;
 mod damage_prevention;
 mod prevention_follow_ups;
+mod life_change_replacements;
+pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
 pub use prevention_follow_ups::{parse_prevention_amount_follow_up_line, parse_prevention_proposed_amount_follow_up_line};
 pub use damage_prevention::parse_filtered_damage_prevention_line;
 mod leading_conditional_sentence_chain;
@@ -657,7 +659,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_prevent_all_damage_to_you_line" => {
             vec![StaticAbilityLineHeadHint::Pair("prevent", "all")]
         }
-        "parse_prevention_proposed_amount_follow_up_line"
+        "parse_if_you_would_gain_life_replacement_line"
+        | "parse_prevention_proposed_amount_follow_up_line"
         | "parse_prevention_amount_follow_up_line"
         | "parse_filtered_damage_prevention_line" => {
             vec![StaticAbilityLineHeadHint::Single("if")]
@@ -1441,6 +1444,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_redirect_would_enter_line),
         single_static_ability_ast_rule!(parse_if_source_tapped_for_mana_replacement_line),
         single_static_ability_ast_rule!(parse_if_you_tap_for_mana_multiplier_line),
+        single_static_ability_ast_rule!(parse_if_you_would_gain_life_replacement_line),
         single_static_ability_ast_rule!(parse_if_player_would_change_life_double_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_sacrifice_or_redirect_replacement_line),

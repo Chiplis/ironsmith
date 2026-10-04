@@ -1002,11 +1002,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
                 target,
                 duration,
+                combat_only,
                 source_of_your_choice,
                 source_choice_shares_activation_mana_color,
                 source_target,
             }) => f
                 .debug_struct("PreventAllDamageToTarget")
+                .field("combat_only", combat_only)
                 .field("target", target)
                 .field("duration", duration)
                 .field("source_of_your_choice", source_of_your_choice)

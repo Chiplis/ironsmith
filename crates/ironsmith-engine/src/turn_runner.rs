@@ -965,6 +965,13 @@ impl TurnRunner {
             };
             self.state = if ends_phase {
                 let phase = game.turn.phase;
+                if matches!(phase, Phase::Combat) {
+                    // Skipping the end-combat step does not postpone duration
+                    // expiry until another combat or another turn.
+                    crate::combat_state::end_combat(&mut self.combat);
+                    game.combat = Some(self.combat.clone());
+                    game.cleanup_effects_end_of_combat();
+                }
                 finish_step_and_phase(game, step, phase, normal_next)
             } else {
                 finish_step(game, step, normal_next)
@@ -6150,3 +6157,7 @@ mod replacement_turn_draw_expansion_contract_tests {
         assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "turn_runner_combat_prevention_tests.rs"]
+mod combat_prevention_lifecycle_tests;

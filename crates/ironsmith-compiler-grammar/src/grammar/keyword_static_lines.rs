@@ -57,3 +57,7 @@ pub use exile_replacement_shapes::*;
 #[path = "keyword_static_lines/companion.rs"]
 mod companion;
 pub use companion::*;
+
+#[path = "keyword_static_lines/life_change.rs"]
+mod life_change;
+pub use life_change::*;
