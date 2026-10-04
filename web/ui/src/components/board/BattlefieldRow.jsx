@@ -50,6 +50,11 @@ const DESKTOP_PORTRAIT_MAX_ZONE_WIDTH_RATIO = 0.1;
 // on desktop, so this logical gap still leaves a visible, compact gutter
 // after the scaled card edges meet.
 const BATTLEFIELD_GRID_GAP_PX = 18;
+// Mirrors --battlefield-card-scale in base-and-cards.css. Desktop portrait
+// cards are drawn larger than their grid track (anchored at the top), so the
+// row gap has to absorb that growth or stacked rows visually touch.
+const DESKTOP_PORTRAIT_VISUAL_SCALE = 1.15;
+const DESKTOP_PORTRAIT_VISUAL_SCALE_QUERY = "(min-width: 900px)";
 // Leave one card-width of breathing room on each side of a dense board. This
 // keeps the first/last card reachable instead of pinning it to an edge where
 // a pointer drag can be clipped by the viewport.
@@ -507,6 +512,7 @@ function readBattlefieldFitStyle(row) {
     cardWidth: row.style.getPropertyValue("--bf-card-width"),
     cardHeight: row.style.getPropertyValue("--bf-card-height"),
     cardOverlap: row.style.getPropertyValue("--bf-card-overlap"),
+    rowScaleGap: row.style.getPropertyValue("--bf-row-scale-gap"),
     mobileBottomOffset: row.style.getPropertyValue("--mobile-battle-bottom-inline-offset"),
     overflowX: row.style.overflowX,
     overflowY: row.style.overflowY,
@@ -529,6 +535,7 @@ function applyBattlefieldFitStyle(row, fitStyle) {
   setOrRemoveRowStyle(row, "--bf-card-width", fitStyle.cardWidth);
   setOrRemoveRowStyle(row, "--bf-card-height", fitStyle.cardHeight);
   setOrRemoveRowStyle(row, "--bf-card-overlap", fitStyle.cardOverlap);
+  setOrRemoveRowStyle(row, "--bf-row-scale-gap", fitStyle.rowScaleGap);
   setOrRemoveRowStyle(row, "--mobile-battle-bottom-inline-offset", fitStyle.mobileBottomOffset);
   row.style.overflowX = fitStyle.overflowX || "visible";
   row.style.overflowY = fitStyle.overflowY || "visible";
@@ -1186,8 +1193,10 @@ export default function BattlefieldRow({
     const styles = window.getComputedStyle(row);
     const cardWidth = Number.parseFloat(styles.getPropertyValue("--bf-card-width")) || 72;
     const cardHeight = Number.parseFloat(styles.getPropertyValue("--bf-card-height")) || 101;
-    const parsedGap = Number.parseFloat(styles.getPropertyValue("--bf-gap"));
+    const parsedGap = Number.parseFloat(styles.columnGap);
     const gap = Number.isFinite(parsedGap) ? parsedGap : BATTLEFIELD_GRID_GAP_PX;
+    const parsedRowGap = Number.parseFloat(styles.rowGap);
+    const rowGap = Number.isFinite(parsedRowGap) ? parsedRowGap : gap;
     const overlap = Number.parseFloat(styles.getPropertyValue("--bf-card-overlap")) || 0;
     const slot = battlefieldGridSlotAtPoint({
       x: x + row.scrollLeft,
@@ -1200,6 +1209,7 @@ export default function BattlefieldRow({
       cardWidth,
       cardHeight,
       gap,
+      rowGap,
       overlap,
     });
     if (!slot || (!options.allowOccupied && occupiedPaperSlots.has(`${slot.row}:${slot.column}`))) {
@@ -1656,6 +1666,16 @@ export default function BattlefieldRow({
     row.style.setProperty("--bf-rows", String(best.rows));
     row.style.setProperty("--bf-card-width", `${best.cardWidth}px`);
     row.style.setProperty("--bf-card-height", `${best.cardHeight}px`);
+    const usesScaledPortraitCards = useDesktopPortraitBattlefield
+      && window.matchMedia?.(DESKTOP_PORTRAIT_VISUAL_SCALE_QUERY)?.matches;
+    if (usesScaledPortraitCards) {
+      row.style.setProperty(
+        "--bf-row-scale-gap",
+        `${Math.ceil(best.cardHeight * (DESKTOP_PORTRAIT_VISUAL_SCALE - 1))}px`
+      );
+    } else {
+      row.style.removeProperty("--bf-row-scale-gap");
+    }
     const overlapPx = 0;
     row.style.setProperty("--bf-card-overlap", `${overlapPx}px`);
     if (isMobileBattleBottomLayout) {
@@ -2544,7 +2564,9 @@ export default function BattlefieldRow({
         "--bf-top-safe-inset": `${Math.max(0, Number(topSafeInset) || 0)}px`,
         "--bf-gap": `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
         gap: `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
-        rowGap: `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
+        rowGap: normalizedLayoutOverride
+          ? `${normalizedLayoutOverride.gap ?? BATTLEFIELD_GRID_GAP_PX}px`
+          : `calc(${BATTLEFIELD_GRID_GAP_PX}px + var(--bf-row-scale-gap, 0px))`,
         columnGap: `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
         gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, calc(var(--bf-card-width, 72px) - var(--bf-card-overlap, 0px))))`,
         gridTemplateRows: isPaperBattlefieldLayout

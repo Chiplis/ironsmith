@@ -44,7 +44,7 @@ export async function buildRandomStartingBoard(playerNames, startingLife, semant
     manaValue: { min: 0, max: Number.MAX_SAFE_INTEGER },
     zones: { ...defaults.zones, exile: { count: 2, basics: 0 } },
   };
-  const [{ cards }, guaranteedCards] = await Promise.all([
+  const [{ cards }, guaranteedCards, guaranteedHandCards] = await Promise.all([
     collectRandomGameCards({
       config,
       rng,
@@ -52,10 +52,18 @@ export async function buildRandomStartingBoard(playerNames, startingLife, semant
       fetchImpl,
     }),
     resolveNamedCards(config.alwaysOnMyBattlefield, { fetchImpl }),
+    resolveNamedCards(config.alwaysInMyHand, { fetchImpl }),
   ]);
-  const { payload, eligibleCount, shortfalls } = generateRandomGamePayload({
-    config, cards, guaranteedCards, rng,
+  const { payload, eligibleCount, shortfalls, unavailableGuaranteed, unavailableGuaranteedHand } = generateRandomGamePayload({
+    config, cards, guaranteedCards, guaranteedHandCards, rng,
   });
+  if (unavailableGuaranteed.length > 0 || unavailableGuaranteedHand.length > 0) {
+    const unavailable = [
+      ...unavailableGuaranteed.map((name) => `${name} (battlefield)`),
+      ...unavailableGuaranteedHand.map((name) => `${name} (hand)`),
+    ];
+    throw new Error(`Could not place required starting cards: ${unavailable.join(", ")}`);
+  }
   if (!eligibleCount || shortfalls.length > 0) {
     throw new Error("Could not find enough supported cards to generate a starting board");
   }

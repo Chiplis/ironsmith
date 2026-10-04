@@ -3,9 +3,11 @@ import { useCombatArrows } from "@/context/useCombatArrows";
 import { animate, cancelMotion } from "@/lib/motion/anime";
 import { getCardElement, getCardRect, getPlayerTargetRect, centerOf } from "@/hooks/useCardPositions";
 
-const ARROW_DASH_ARRAY = "8 4";
+const ARROW_DASH_ARRAY = "12 6";
 const STACK_ROUTE_GAP = 6;
-const TARGETING_ARROW_OPACITY = 0.7;
+const TARGETING_ARROW_OPACITY = 0.92;
+// Dark halo so arrows stay legible over busy battlefield art.
+const ARROW_HALO_FILTER = "drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 5px rgba(0, 0, 0, 0.45))";
 const PLAYER_TARGET_GAP = 16;
 // Keep persistent stack-target arrows unfiltered. SVG glow filters were causing
 // overlapped stack entries to render markedly darker in some browsers after
@@ -320,23 +322,35 @@ export default function ArrowOverlay() {
         </filter>
         <marker
           id="arrowhead-confirmed"
-          markerWidth="8"
-          markerHeight="6"
-          refX="7"
-          refY="3"
+          markerUnits="userSpaceOnUse"
+          markerWidth="16"
+          markerHeight="14"
+          refX="13"
+          refY="7"
           orient="auto"
         >
-          <polygon points="0 0, 8 3, 0 6" fill="context-stroke" opacity={TARGETING_ARROW_OPACITY} />
+          <polygon points="0 0, 16 7, 0 14, 4 7" fill="context-stroke" />
         </marker>
         <marker
           id="arrowhead-drag"
-          markerWidth="10"
-          markerHeight="7"
-          refX="9"
-          refY="3.5"
+          markerUnits="userSpaceOnUse"
+          markerWidth="18"
+          markerHeight="16"
+          refX="15"
+          refY="8"
           orient="auto"
         >
-          <polygon points="0 0, 10 3.5, 0 7" fill="context-stroke" opacity={TARGETING_ARROW_OPACITY} />
+          <polygon points="0 0, 18 8, 0 16, 5 8" fill="context-stroke" />
+        </marker>
+        <marker
+          id="arrow-origin"
+          markerUnits="userSpaceOnUse"
+          markerWidth="12"
+          markerHeight="12"
+          refX="6"
+          refY="6"
+        >
+          <circle cx="6" cy="6" r="4" fill="context-stroke" stroke="rgba(0, 0, 0, 0.6)" strokeWidth="1.5" />
         </marker>
       </defs>
 
@@ -354,10 +368,12 @@ export default function ArrowOverlay() {
           d={p.d}
           fill="none"
           stroke={p.color}
-          strokeWidth={2.5}
+          strokeWidth={3.5}
           strokeLinecap="round"
           strokeDasharray={p.key.startsWith("atk-") || p.key.startsWith("blk-") ? ARROW_DASH_ARRAY : undefined}
           opacity={TARGETING_ARROW_OPACITY}
+          style={{ filter: ARROW_HALO_FILTER }}
+          markerStart="url(#arrow-origin)"
           markerEnd="url(#arrowhead-confirmed)"
         />
       ))}
@@ -369,7 +385,7 @@ export default function ArrowOverlay() {
           d={dragPath.d}
           fill="none"
           stroke={dragPath.color}
-          strokeWidth={3}
+          strokeWidth={3.5}
           strokeLinecap="round"
           strokeDasharray={[
             "#ff6b5f",
@@ -379,6 +395,7 @@ export default function ArrowOverlay() {
           ].includes(String(dragPath.color || "").toLowerCase()) ? ARROW_DASH_ARRAY : undefined}
           filter="url(#arrow-glow)"
           opacity={TARGETING_ARROW_OPACITY}
+          markerStart="url(#arrow-origin)"
           markerEnd="url(#arrowhead-drag)"
         />
       )}

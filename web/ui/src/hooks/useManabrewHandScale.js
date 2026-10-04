@@ -55,3 +55,11 @@ export function useViewportHeight() {
     () => 0,
   );
 }
+
+export function useViewportWidth() {
+  return useSyncExternalStore(
+    subscribe,
+    () => (typeof window === "undefined" ? 0 : window.innerWidth),
+    () => 0,
+  );
+}

@@ -69,6 +69,7 @@ export default function TopbarMenuSheet({
   onAddCardNotice,
   triggerIcon = "settings",
   showQuickActions = false,
+  tableTools = null,
 }) {
   const ui = useUiText();
   const [open, setOpen] = useState(false);
@@ -207,6 +208,16 @@ export default function TopbarMenuSheet({
         </SheetHeader>
 
         <div className="settings-sheet-body grid px-4 pb-4">
+          {tableTools ? (
+            <MenuSection
+              className="settings-table-tools"
+              eyebrow={t("settings.tableTools.eyebrow")}
+              title={t("settings.tableTools.title")}
+              description={t("settings.tableTools.description")}
+            >
+              <div className="table-menu-tools-content">{tableTools}</div>
+            </MenuSection>
+          ) : null}
           {showQuickActions ? (
             <MenuSection
               className="settings-quick-actions"
@@ -309,33 +320,57 @@ export default function TopbarMenuSheet({
                   variant="secondary"
                   size="sm"
                   className="stone-pill justify-start"
-                  onClick={handleToggleLog}
-                >
-                  {t("settings.openLog")}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="stone-pill justify-start"
                   onClick={handleRefresh}
                 >
                   <RefreshCw className="size-3.5" />
                   {t("action.refreshView")}
                 </Button>
               </div>
-              <Button variant="secondary" size="sm" className="stone-pill justify-start" asChild>
-                <a
-                  href="https://github.com/Chiplis/ironsmith"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Github className="size-3.5" />
-                  {t("settings.repository")}
-                  <ExternalLink className="size-3" />
-                </a>
-              </Button>
             </MenuSection>
           ) : null}
+          <MenuSection
+            eyebrow={t("settings.live.eyebrow")}
+            title={t("settings.live.title")}
+            description={t("settings.live.description")}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className={labelClass}>
+                {t("settings.autoPassHold")}
+                <select
+                  className={inputClass}
+                  value={holdRule}
+                  onChange={(event) => setHoldRule(event.target.value)}
+                >
+                  <option value="never">{t("hold.never")}</option>
+                  <option value="if_actions">{t("hold.ifActions")}</option>
+                  <option value="stack">{t("hold.stack")}</option>
+                  <option value="main">{t("hold.main")}</option>
+                  <option value="combat">{t("hold.combat")}</option>
+                  <option value="ending">{t("hold.ending")}</option>
+                  <option value="always">{t("hold.always")}</option>
+                </select>
+              </label>
+              <div className="grid gap-2">
+                <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <Checkbox
+                    checked={autoPassEnabled}
+                    onCheckedChange={(value) => setAutoPassEnabled(Boolean(value))}
+                  />
+                  {t("action.autoPass")}
+                </label>
+                <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <Checkbox
+                    checked={inspectorDebug}
+                    onCheckedChange={(value) => setInspectorDebug(Boolean(value))}
+                  />
+                  {t("settings.debug")}
+                </label>
+              </div>
+            </div>
+            <Button variant="secondary" size="sm" className="stone-pill" onClick={handleToggleLog}>
+              {t("settings.openLog")}
+            </Button>
+          </MenuSection>
           <MenuSection
             eyebrow={t("settings.language.eyebrow")}
             title={t("settings.language.title")}
@@ -446,45 +481,15 @@ export default function TopbarMenuSheet({
                 {t("settings.fixedStartingBoard.description")}
               </p>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Button
-                variant="destructive"
-                size="sm"
-                className="settings-reset-button"
-                disabled={lobbyBusy}
-                onClick={onReset}
-              >
-                {t("action.resetMatch")}
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="stone-pill"
-                disabled={lobbyBusy}
-                onClick={handleToggleDeckLoading}
-              >
-                {deckLoadingMode ? t("action.cancelDeckLoad") : t("action.loadDecks")}
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="stone-pill"
-                disabled={lobbyBusy}
-                onClick={handleOpenPuzzleSetup}
-              >
-                {puzzleSetupMode ? t("action.closePuzzle") : t("action.puzzleSetup")}
-              </Button>
-              <Button variant="secondary" size="sm" className="stone-pill" onClick={handleShareCurrentTable}>
-                {t("action.shareTable")}
-              </Button>
-              <Button variant="secondary" size="sm" className="stone-pill" onClick={handleOpenLobby}>
-                {lobbyBusy ? t("action.openLobby") : t("action.createLobby")}
-              </Button>
-              <Button variant="secondary" size="sm" className="stone-pill" onClick={handleRefresh}>
-                <RefreshCw className="size-3.5" />
-                {t("action.refreshView")}
-              </Button>
-            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="settings-reset-button"
+              disabled={lobbyBusy}
+              onClick={onReset}
+            >
+              {t("action.resetMatch")}
+            </Button>
           </MenuSection>
 
           <MenuSection
@@ -543,49 +548,6 @@ export default function TopbarMenuSheet({
             </Button>
           </MenuSection>
 
-          <MenuSection
-            eyebrow={t("settings.live.eyebrow")}
-            title={t("settings.live.title")}
-            description={t("settings.live.description")}
-          >
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className={labelClass}>
-                {t("settings.autoPassHold")}
-                <select
-                  className={inputClass}
-                  value={holdRule}
-                  onChange={(event) => setHoldRule(event.target.value)}
-                >
-                  <option value="never">{t("hold.never")}</option>
-                  <option value="if_actions">{t("hold.ifActions")}</option>
-                  <option value="stack">{t("hold.stack")}</option>
-                  <option value="main">{t("hold.main")}</option>
-                  <option value="combat">{t("hold.combat")}</option>
-                  <option value="ending">{t("hold.ending")}</option>
-                  <option value="always">{t("hold.always")}</option>
-                </select>
-              </label>
-              <div className="grid gap-2">
-                <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
-                  <Checkbox
-                    checked={autoPassEnabled}
-                    onCheckedChange={(value) => setAutoPassEnabled(Boolean(value))}
-                  />
-                  {t("action.autoPass")}
-                </label>
-                <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
-                  <Checkbox
-                    checked={inspectorDebug}
-                    onCheckedChange={(value) => setInspectorDebug(Boolean(value))}
-                  />
-                  {t("settings.debug")}
-                </label>
-              </div>
-            </div>
-            <Button variant="secondary" size="sm" className="stone-pill" onClick={handleToggleLog}>
-              {t("settings.openLog")}
-            </Button>
-          </MenuSection>
         </div>
       </SheetContent>
     </Sheet>

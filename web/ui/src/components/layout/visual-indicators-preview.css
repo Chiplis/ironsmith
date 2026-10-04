@@ -1,0 +1,78 @@
+.visual-indicators-preview {
+  min-height: 100vh;
+  padding: clamp(24px, 5vw, 64px);
+  color: #eee9dc;
+  background: radial-gradient(circle at 50% 20%, #1d2432, #080b10 68%);
+}
+
+.visual-indicators-preview__header {
+  max-width: 880px;
+  margin: 0 auto 36px;
+}
+
+.visual-indicators-preview__header a {
+  color: #b9dfff;
+  font-size: 14px;
+}
+
+.visual-indicators-preview__header h1 {
+  margin: 14px 0 8px;
+  font-size: clamp(25px, 3vw, 38px);
+  font-weight: 700;
+}
+
+.visual-indicators-preview__header p,
+.visual-indicators-preview__note {
+  color: #b8beca;
+  line-height: 1.5;
+}
+
+.visual-indicators-preview__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 18px;
+  max-width: 1100px;
+  margin: auto;
+}
+
+.visual-indicators-preview__case {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #3c4859;
+  border-radius: 12px;
+  background: #101620;
+}
+
+.visual-indicators-preview__case h2 {
+  min-height: 42px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.visual-indicators-preview__card {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 244px;
+  padding: 24px 10px 12px;
+}
+
+.visual-indicators-preview__card .game-card.field-card {
+  --battlefield-card-scale: 1;
+  --battlefield-card-y: 0px;
+}
+
+.visual-indicators-preview__case p {
+  min-height: 60px;
+  margin-top: 12px;
+  color: #c5cbd5;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.visual-indicators-preview__note {
+  max-width: 1100px;
+  margin: 24px auto 0;
+  font-size: 12px;
+}

@@ -56,14 +56,18 @@ test("the real engine accepts a generated table and keeps every card where it wa
     fetchImpl: fileFetch,
   });
   const guaranteedCards = await resolveNamedCards(config.alwaysOnMyBattlefield, { fetchImpl: fileFetch });
-  const { payload, unavailableGuaranteed } = generateRandomGamePayload({
+  const guaranteedHandCards = await resolveNamedCards(config.alwaysInMyHand, { fetchImpl: fileFetch });
+  const { payload, unavailableGuaranteed, unavailableGuaranteedHand } = generateRandomGamePayload({
     config,
     cards,
     guaranteedCards,
+    guaranteedHandCards,
     rng: createSeededRng("engine-table"),
   });
   assert.deepEqual(unavailableGuaranteed, [], "the promised card was placed");
+  assert.deepEqual(unavailableGuaranteedHand, [], "the opening-hand card was placed");
   const normalized = normalizePuzzlePayload(payload);
+  assert.equal(normalized.players[0].zones.hand.filter((name) => name === "Sphinx of Foresight").length, 1);
 
   // The browser registers a card's compiled asset before naming it to the
   // engine; the worker does that automatically, so do it by hand here.
@@ -124,6 +128,9 @@ test("the real engine accepts a generated table and keeps every card where it wa
         index === 0,
         "the engine put the promised card on our battlefield and nowhere else",
       );
+      if (index === 0) {
+        assert.equal(player.hand_size ?? player.hand_cards?.length, expected.zones.hand.length, "the opening-hand size includes its promised card");
+      }
     }
   } finally {
     game.free();

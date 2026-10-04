@@ -89,7 +89,7 @@ export default function TableActionControls({
   };
 
   return (
-    <div className="table-zone-action-controls" aria-label={t("settings.quick.eyebrow")}>
+    <div className="table-zone-action-controls" aria-label={t("settings.tableTools.eyebrow")}>
       <VerifyMatchSheet />
       <AuditReplayControls />
       {canExportMatch ? (

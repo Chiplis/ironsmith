@@ -111,11 +111,13 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
       // The cards the local battlefield is promised are read by name, so they
       // are placed whatever the filters would have sampled.
       const guaranteedCards = await resolveNamedCards(config.alwaysOnMyBattlefield);
+      const guaranteedHandCards = await resolveNamedCards(config.alwaysInMyHand);
       if (controller.signal.aborted) return;
-      const { payload, shortfalls, eligibleCount, unavailableGuaranteed } = generateRandomGamePayload({
+      const { payload, shortfalls, eligibleCount, unavailableGuaranteed, unavailableGuaranteedHand } = generateRandomGamePayload({
         config,
         cards,
         guaranteedCards,
+        guaranteedHandCards,
         rng: createSeededRng(`${seed}:table`),
       });
       if (eligibleCount === 0) {
@@ -124,9 +126,13 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
       }
       const generated = await onGenerate?.(payload, `Random game generated (seed ${seed})`);
       if (generated === false) return;
-      if (unavailableGuaranteed.length > 0) {
+      if (unavailableGuaranteed.length > 0 || unavailableGuaranteedHand.length > 0) {
+        const unavailable = [
+          ...unavailableGuaranteed.map((name) => `${name} (battlefield)`),
+          ...unavailableGuaranteedHand.map((name) => `${name} (hand)`),
+        ];
         setStatus(
-          `Random game generated without ${unavailableGuaranteed.join(", ")}: not a card that can start on the battlefield`,
+          `Random game generated without required cards: ${unavailable.join(", ")}`,
           true,
         );
       } else if (shortfalls.length > 0) {
@@ -257,6 +263,20 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
               })}
             />
             <p className="text-[11px] leading-4 text-muted-foreground">{ui("These cards always start on your own battlefield, whatever the filters below allow. They take battlefield slots, so the count above still holds.")}</p>
+          </div>
+
+          <div className={sectionClass}>
+            <div className={sectionTitleClass}>{ui("Always in my hand")}</div>
+            <input
+              className={inputClass}
+              placeholder={ui("Sphinx of Foresight")}
+              value={config.alwaysInMyHand.join(", ")}
+              disabled={busy}
+              onChange={(event) => patch({
+                alwaysInMyHand: event.target.value.split(",").map((name) => name.trim()).filter(Boolean),
+              })}
+            />
+            <p className="text-[11px] leading-4 text-muted-foreground">{ui("These cards always start in your own hand, whatever the filters below allow. They count toward the hand size above.")}</p>
           </div>
 
           <div className={sectionClass}>

@@ -13,11 +13,22 @@ import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
 import { useChosenObjectIds } from "@/context/ObjectSelectionContext";
 import LobbyChat from "@/components/right-rail/LobbyChat";
 import SelectionCheckBadge from "@/components/cards/SelectionCheckBadge";
+import { customCardCounterOverrides } from "@/lib/scryfall";
+import {
+  aggregateCounterEntries,
+  buildCounterBadge,
+  resolveCardCounters,
+} from "@/components/cards/counter-badges";
 
 // How long a zone takes to grow when it starts holding something to pick.
 const ZONE_TARGET_GROW_MS = 220;
 const LOOK_STACK_GAP = 12;
 const STACK_MIN_VISIBLE_HEIGHT = 72;
+// Desktop HUD: the local Graveyard/Exile column rises toward the opponent
+// piles above it to leave the decision dock more height underneath.
+const LOCAL_PILES_MAX_LIFT = 120;
+const LOCAL_PILES_CLEARANCE = 20;
+export const ZONE_PILES_MOVED_EVENT = "ironsmith:zone-piles-moved";
 
 function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverride, fading = false, onOpenChange }) {
   const ui = useUiText();
@@ -186,17 +197,32 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     ? latestChosenCard || cards.find((card) => isObjectChosen(chosenObjectIds, card.id))
     : null;
 
+  const cardHoverLabel = (card) => {
+    const name = String(card?.name || ui("Face-down card"));
+    if (!isFaceUpZoneCard(card)) return name;
+    const counters = aggregateCounterEntries(
+      customCardCounterOverrides(card.name)
+        || resolveCardCounters(card?.counters, card?.counter_signature ?? card?.counterSignature)
+    )
+      .map(buildCounterBadge)
+      .filter(Boolean)
+      .map((counter) => counter.fullLabel);
+    return counters.length > 0 ? `${name}\n${ui("Counters")}:\n${counters.join("\n")}` : name;
+  };
+
   const renderCard = (card) => {
     const legal = canChoose && isLegal(card);
     const disabled = (choosingTarget || choosingObject) && !legal;
     const chosen = choosingObject && isObjectChosen(chosenObjectIds, card.id);
     const stackTargeted = isStackTargeted(card);
     const hoverSource = isHoverSource(card);
+    const hoverLabel = cardHoverLabel(card);
     // The check has to sit outside the row button to stay clickable, so the
     // row gets a wrapper of its own strip width.
     return <span key={card.id} className="zone-pile-card-slot" data-stack-target={stackTargeted ? "true" : undefined} data-hover-source={hoverSource ? "true" : undefined}>
       <button type="button" className={`zone-pile-card-row${chosen ? " is-chosen" : ""}`}
         aria-label={card.name || ui("Face-down card")}
+        title={hoverLabel}
         data-object-id={String(card.id).startsWith("look-top-") ? undefined : card.id} data-zone-card={zone}
         data-target-legal={legal ? "true" : undefined} data-stack-target={stackTargeted ? "true" : undefined}
         data-hover-source={hoverSource ? "true" : undefined} aria-disabled={disabled || undefined}
@@ -369,7 +395,7 @@ function LookPile({ player, onCardClick, legalTargetObjectIds }) {
   </>;
 }
 
-export default function PlayerZonePiles({ player, onCardClick, legalTargetObjectIds }) {
+export default function PlayerZonePiles({ player, onCardClick, legalTargetObjectIds, leadingRail = null }) {
   const { state } = useGame();
   const ref = useRef(null);
   useLayoutEffect(() => {
@@ -415,6 +441,23 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
         const pilesTop = Math.max(0, boardBounds.top + zoneTop - bounds.top - containerClientTop);
         const nextPilesTop = bounds.top + containerClientTop + pilesTop;
         piles.style.setProperty("--zone-piles-top", `${pilesTop}px`);
+        if (piles.dataset.localZonePiles === "true") {
+          let lift = 0;
+          const column = piles.querySelector(":scope > .zone-pile-slot")?.getBoundingClientRect();
+          if (column && piles.closest('.table-shell[data-focused-hud="true"]')) {
+            const ceiling = [...document.querySelectorAll('[data-opponent-zone-piles="true"] .zone-pile-slot')]
+              .map((slot) => slot.getBoundingClientRect())
+              .filter((rect) => rect.width > 0 && rect.left < column.right && rect.right > column.left
+                && rect.bottom <= nextPilesTop)
+              .reduce((bottom, rect) => Math.max(bottom, rect.bottom + LOCAL_PILES_CLEARANCE), -Infinity);
+            lift = Math.max(0, Math.min(LOCAL_PILES_MAX_LIFT, nextPilesTop - ceiling));
+          }
+          const nextLift = `${Math.round(lift)}px`;
+          if (piles.style.getPropertyValue("--local-piles-lift") !== nextLift) {
+            piles.style.setProperty("--local-piles-lift", nextLift);
+            window.dispatchEvent(new Event(ZONE_PILES_MOVED_EVENT));
+          }
+        }
         // Chat hangs 6px under Exile; give it whatever the board has left.
         piles.style.setProperty("--exile-chat-room", `${Math.max(0, boardBounds.bottom - nextPilesTop - pilesBounds.height - 12)}px`);
         // Keep Look in a separate row above the stack, with room for the
@@ -454,7 +497,10 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
   const isLocal = samePlayerId(player.id ?? player.index, state?.perspective);
   return <>
     <div ref={ref} className="player-zone-piles" data-player-zone-piles
-      data-local-zone-piles={isLocal ? "true" : undefined}>
+      data-local-zone-piles={isLocal ? "true" : undefined}
+      data-opponent-zone-piles={!isLocal ? "true" : undefined}>
+      {/* Spans the piles' own height, so anything here lines up with them. */}
+      {leadingRail}
       {PILE_ZONES.map((zone) => <ZonePile key={zone} player={player} zone={zone}
         onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
       {isLocal &&
