@@ -107,16 +107,6 @@ impl EffectExecutor for PhaseOutEffect {
             ObjectApplyResultPolicy::CountApplied
         };
 
-        // Simultaneous "all phased-out creatures phase in and all creatures
-        // with phasing phase out" (Time and Tide): what just phased in by an
-        // untargeted all-spec in this resolution doesn't phase back out.
-        let just_phased_in: Vec<ObjectId> = if matches!(self.spec.base(), ChooseSpec::All(_)) {
-            ctx.get_tagged_all(super::phase_in::PHASED_IN_THIS_RESOLUTION_TAG)
-                .map(|snapshots| snapshots.iter().map(|snapshot| snapshot.object_id).collect())
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
         let mut affected = Vec::new();
         let apply_result = apply_to_selected_objects(
             game,
@@ -130,7 +120,6 @@ impl EffectExecutor for PhaseOutEffect {
                     && !game.is_phased_out(object_id)
                     && game.can_phase_out(object_id)
                     && !affected.contains(&object_id)
-                    && !(just_phased_in.contains(&object_id))
                 {
                     affected.push(object_id);
                     Ok(true)

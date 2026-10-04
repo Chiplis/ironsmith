@@ -1858,8 +1858,9 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { target }) => {
                     maybe_tag_target(target, frame, id_gen, "phased_in")?;
                 }
-                SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter }) => {
+                SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out }) => {
                     track_player_from_object_filter(filter, frame);
+                    if let Some(out) = simultaneous_phase_out { track_player_from_object_filter(out, frame); }
                 }
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target }) => {
                     maybe_tag_target(target, frame, id_gen, "transformed")?;
@@ -2008,6 +2009,13 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "returned")?;
                     let refs = lowering_reference_frame(frame);
                     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
+                    let alias = TagKey::from(crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG);
+                    frame.snapshot_tag_aliases.retain(|(existing, _)| existing != &alias);
+                    if frame.auto_tag_object_targets && choose_spec_targets_object(&spec)
+                        && let Some(returned) = frame.last_object_tag.as_ref()
+                    {
+                        frame.snapshot_tag_aliases.push((alias, returned.clone()));
+                    }
                     // "Target opponent ... returns it to its owner's hand.
                     // Then they ...": an authored returning player stays the
                     // player antecedent; the owner is only a destination.
@@ -3364,6 +3372,7 @@ pub fn predicate_comparison_operands(
         PredicateAst::ValueComparison { left, right, .. } => (left.clone(), right.clone()),
         PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { player }) => {
             let player = match player {
+                PlayerAst::Opponent | PlayerAst::Any => return None,
                 PlayerAst::Target => PlayerFilter::target_player(),
                 PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
                 player => resolve_non_target_player_filter(*player, env).ok()?,
@@ -3735,6 +3744,7 @@ fn annotate_effect_sequence_with_env_internal(
             false
         } else {
             effects_reference_it_tag(remaining)
+                || effects_reference_tag(remaining, crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG)
                 || effects_reference_its_controller(remaining)
                 || effects_reference_tag(
                     remaining,
@@ -5176,7 +5186,6 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             filter,
             ..
         })
-        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll {
             filter,
             ..
@@ -5193,6 +5202,10 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             filter,
             ..
         }) => visit_filter_values(filter, visit),
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out }) => {
+            visit_filter_values(filter, visit);
+            if let Some(out) = simultaneous_phase_out { visit_filter_values(out, visit); }
+        }
         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             count,
             dynamic_power_toughness,
@@ -7415,12 +7428,13 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 filter,
                 ..
             })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll {
-                filter,
-            })
             | SubjectVerbActionAst::PermanentState(
                 PermanentStateActionAst::ScalePowerToughnessAll { filter, .. },
             ) => bind_unresolved_it_in_filter(filter, seed_tag),
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out }) => {
+                bind_unresolved_it_in_filter(filter, seed_tag)
+                    + simultaneous_phase_out.as_mut().map_or(0, |filter| bind_unresolved_it_in_filter(filter, seed_tag))
+            }
             SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll {
                 tap_filter,
                 untap_filter,

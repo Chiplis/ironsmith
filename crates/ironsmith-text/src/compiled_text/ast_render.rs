@@ -29766,6 +29766,22 @@ fn trigger_is_this_enters_battlefield(trigger: &crate::triggers::Trigger) -> boo
         })
 }
 
+fn describe_structural_increment_keyword(ability: &Ability) -> Option<String> {
+    let AbilityKind::Triggered(triggered) = &ability.kind else { return None; };
+    if ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !triggered.choices.is_empty()
+        || triggered.intervening_if.as_ref() != Some(&crate::ConditionExpr::increment())
+    { return None; }
+    let cast = triggered.trigger.downcast_ref::<crate::triggers::SpellCastTrigger>()?;
+    if cast != &crate::triggers::SpellCastTrigger::new(None, PlayerFilter::You) { return None; }
+    let [effect] = triggered.effects.flattened_default_effects() else { return None; };
+    let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.counter_type != CounterType::PlusOnePlusOne || put.amount != Value::Fixed(1)
+        || !matches!(put.target, ChooseSpec::Source) || put.target_count.is_some() || put.distributed
+    { return None; }
+    Some("Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)".to_string())
+}
+
 fn describe_structural_evolve_keyword(ability: &Ability) -> Option<String> {
     let AbilityKind::Triggered(triggered) = &ability.kind else {
         return None;
@@ -34344,6 +34360,11 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if let Some(keyword) = describe_structural_equipment_token_keyword(ability) {
+                output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
+            if let Some(keyword) = describe_structural_increment_keyword(ability) {
                 output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
                 ability_idx += 1;
                 continue;

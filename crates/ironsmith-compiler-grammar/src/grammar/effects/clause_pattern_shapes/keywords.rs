@@ -64,6 +64,10 @@ pub enum KeywordMechanicShape<'a> {
         direction: PhaseDirectionShape,
         subject: PhaseSubjectShape<'a>,
     },
+    PhaseExchange {
+        phase_in: &'a [OwnedLexToken],
+        phase_out: &'a [OwnedLexToken],
+    },
     OpenAttraction {
         reminder: bool,
     },
@@ -280,12 +284,8 @@ fn parse_all_phase_subject(
     direction: PhaseDirectionShape,
 ) -> Option<&[OwnedLexToken]> {
     let mut input = LexStream::new(tokens);
-    let simultaneously =
-        crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("simultaneously")))?
-            .is_some();
-    if simultaneously {
-        crate::grammar::primitives::take_leaf(&mut input, opt(primitives::comma()))?;
-    }
+    let simultaneous = crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("simultaneously")))?.is_some();
+    if simultaneous { crate::grammar::primitives::take_leaf(&mut input, opt(primitives::comma()))?; }
     crate::grammar::primitives::take_leaf(&mut input, primitives::kw("all"))?;
     if direction == PhaseDirectionShape::In {
         crate::grammar::primitives::take_leaf(&mut input, opt(phased_word))?;
@@ -299,12 +299,24 @@ fn parse_all_phase_subject(
 
 fn parse_target_phase_subject(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let mut input = LexStream::new(tokens);
-    crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("simultaneously")))?;
     let target_tokens = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
         tokens_before(input, 1, eof.void())
     })?;
     crate::grammar::primitives::take_leaf(&mut input, primitives::end_of_block())?;
     Some(target_tokens)
+}
+
+fn parse_simultaneous_phase_exchange<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::kw("simultaneously").parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("all").parse_next(input)?;
+    phased_word.parse_next(input)?;
+    let phase_in = tokens_before(input, 1, primitives::phrase(&["phase", "in"]).void())?;
+    primitives::phrase(&["phase", "in", "and", "all"]).parse_next(input)?;
+    let phase_out = tokens_before(input, 1, primitives::phrase(&["phase", "out"]).void())?;
+    primitives::phrase(&["phase", "out"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::PhaseExchange { phase_in, phase_out })
 }
 
 fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {

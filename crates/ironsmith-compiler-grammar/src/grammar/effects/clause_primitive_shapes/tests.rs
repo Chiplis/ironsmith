@@ -205,3 +205,13 @@ fn power_damage_both_word_orders_bind_itself_to_the_actor() {
     let shape = parse_power_damage_shape(&tokens).unwrap().unwrap();
     assert!(matches!(shape.target, PowerDamageTargetShape::Tokens(_)));
 }
+
+#[test]
+fn loyalty_damage_is_bound_to_its_explicit_source_subject() {
+    let tokens = crate::lexer::lex_line("Target planeswalker you control deals damage equal to its loyalty to target creature an opponent controls.", 0).unwrap();
+    let shape = super::parse_power_damage_shape(&tokens).unwrap().unwrap();
+    assert!(
+        matches!(shape.amount.unhinted(), crate::effect::Value::CountersOn(spec, Some(crate::object::CounterType::Loyalty))
+        if matches!(spec.base(), crate::target::ChooseSpec::Source))
+    );
+}

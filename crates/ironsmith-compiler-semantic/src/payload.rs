@@ -200,6 +200,8 @@ pub enum KeywordAction {
     TrampleOverPlaneswalkers,
     /// ETB token creation and Equipment attachment (CR 702.182).
     JobSelect,
+    /// Cast-triggered growth based on actual mana paid versus current P/T.
+    Increment,
 }
 
 pub fn describe_soulshift_value(value: &Value) -> String {
@@ -267,6 +269,7 @@ impl KeywordAction {
                 | Self::Afflict(_)
                 | Self::Dethrone
                 | Self::Evolve
+                | Self::Increment
                 | Self::Ingest
                 | Self::Mentor
                 | Self::Skulk
@@ -396,6 +399,7 @@ impl KeywordAction {
             Self::BattleCry => "Battle cry".to_string(),
             Self::Dethrone => "Dethrone".to_string(),
             Self::Evolve => "Evolve".to_string(),
+            Self::Increment => "Increment".to_string(),
             Self::Ingest => "Ingest".to_string(),
             Self::Mentor => "Mentor".to_string(),
             Self::Skulk => "Skulk".to_string(),

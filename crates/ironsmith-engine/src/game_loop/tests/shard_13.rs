@@ -832,6 +832,7 @@ pub(super) fn assist_uses_authoritative_plans_for_the_assistant_then_the_caster(
         .mana_spent_to_cast;
     assert_eq!(spent.blue, 1);
     assert_eq!(spent.colorless, 2);
+    assert_eq!(game.object(stack_id).unwrap().caster_mana_spent_to_cast, Some(1));
     let turn_spending = &game
         .turn_store
         .turn_history

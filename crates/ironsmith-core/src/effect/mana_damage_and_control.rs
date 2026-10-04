@@ -492,11 +492,17 @@ impl PhaseOutEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PhaseInEffect {
     pub target: ChooseSpec,
+    /// An explicitly simultaneous phase-out set, selected before either set changes.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub simultaneous_phase_out: Option<ObjectFilter>,
 }
 
 impl PhaseInEffect {
     pub fn with_spec(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, simultaneous_phase_out: None }
+    }
+    pub fn exchange(phase_in: ObjectFilter, phase_out: ObjectFilter) -> Self {
+        Self { target: ChooseSpec::all(phase_in), simultaneous_phase_out: Some(phase_out) }
     }
 }
 

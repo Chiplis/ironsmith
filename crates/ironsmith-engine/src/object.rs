@@ -1520,6 +1520,11 @@ pub struct RetainedCastPaymentState<M, K, C, G, S> {
     pub paid_branch_choices: Vec<(usize, usize)>,
     pub cast_at_sorcery_timing: bool,
     pub mana_spent_to_cast: ManaPool,
+    /// Actual mana spent by the caster, excluding Assist payments by others.
+    /// Older retained payloads did not capture this fact; absence means unknown,
+    /// never the Assist-inclusive `mana_spent_to_cast` total.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub caster_mana_spent_to_cast: Option<u32>,
     pub snow_mana_spent_to_cast: ManaPool,
     #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_temporary_payload"))]
     pub x_value: Option<u32>,
@@ -1543,6 +1548,7 @@ impl From<&Object> for NativeCastPaymentState {
             paid_branch_choices: value.optional_costs_paid.branch_choices.clone(),
             cast_at_sorcery_timing: value.optional_costs_paid.cast_at_sorcery_timing,
             mana_spent_to_cast: value.mana_spent_to_cast.clone(),
+            caster_mana_spent_to_cast: value.caster_mana_spent_to_cast,
             snow_mana_spent_to_cast: value.snow_mana_spent_to_cast.clone(),
             x_value: value.x_value,
             keyword_payment_contributions_to_cast: value.keyword_payment_contributions_to_cast.clone(),
@@ -1570,6 +1576,7 @@ impl<M, K, C, G, S> RetainedCastPaymentState<M, K, C, G, S> {
             paid_branch_choices,
             cast_at_sorcery_timing,
             mana_spent_to_cast,
+            caster_mana_spent_to_cast,
             snow_mana_spent_to_cast,
             x_value,
             keyword_payment_contributions_to_cast,
@@ -1591,6 +1598,7 @@ impl<M, K, C, G, S> RetainedCastPaymentState<M, K, C, G, S> {
             paid_branch_choices,
             cast_at_sorcery_timing,
             mana_spent_to_cast,
+            caster_mana_spent_to_cast,
             snow_mana_spent_to_cast,
             x_value,
             keyword_payment_contributions_to_cast,
@@ -1612,6 +1620,7 @@ impl NativeCastPaymentState {
             paid_branch_choices,
             cast_at_sorcery_timing,
             mana_spent_to_cast,
+            caster_mana_spent_to_cast,
             snow_mana_spent_to_cast,
             x_value,
             keyword_payment_contributions_to_cast,
@@ -1633,6 +1642,7 @@ impl NativeCastPaymentState {
             costs: paid_costs, branch_choices: paid_branch_choices, cast_at_sorcery_timing,
         };
         object.mana_spent_to_cast = mana_spent_to_cast;
+        object.caster_mana_spent_to_cast = caster_mana_spent_to_cast;
         object.snow_mana_spent_to_cast = snow_mana_spent_to_cast;
         object.x_value = x_value;
         object.keyword_payment_contributions_to_cast = keyword_payment_contributions_to_cast;
@@ -1757,6 +1767,8 @@ pub struct Object {
     /// Mana actually spent to cast this object while it was a spell.
     /// Used by conditional text like "if at least three blue mana was spent to cast this spell".
     pub mana_spent_to_cast: ManaPool,
+    /// Actual mana spent by the caster, excluding Assist payments by others.
+    pub caster_mana_spent_to_cast: Option<u32>,
     /// Mana spent from sources that were snow when they produced it, by actual color.
     pub snow_mana_spent_to_cast: ManaPool,
     /// Non-copiable static abilities granted until end of turn while this object is a spell or
@@ -2040,6 +2052,7 @@ impl From<Object> for NativeRetainedLiveObject {
             optional_costs: _,
             optional_costs_paid: _,
             mana_spent_to_cast: _,
+            caster_mana_spent_to_cast: _,
             snow_mana_spent_to_cast: _,
             temporary_static_ability_grants,
             x_value: _,
@@ -2273,6 +2286,7 @@ impl TryFrom<NativeRetainedLiveObject> for Object {
             paid_branch_choices,
             cast_at_sorcery_timing,
             mana_spent_to_cast,
+            caster_mana_spent_to_cast,
             snow_mana_spent_to_cast,
             x_value,
             keyword_payment_contributions_to_cast,
@@ -2340,6 +2354,7 @@ impl TryFrom<NativeRetainedLiveObject> for Object {
                 cast_at_sorcery_timing,
             },
             mana_spent_to_cast,
+            caster_mana_spent_to_cast,
             snow_mana_spent_to_cast,
             temporary_static_ability_grants,
             x_value,
@@ -2819,6 +2834,7 @@ impl Object {
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -2906,6 +2922,7 @@ impl Object {
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -3197,6 +3214,7 @@ impl Object {
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -3279,6 +3297,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             // Tokens are never cast.
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -3352,6 +3371,7 @@ impl Object {
             // CR 707.10: mana isn't an object, so a copy of a spell has no mana
             // spent to cast it (converge, adamant, "if {G} was spent" read 0).
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: source.temporary_static_ability_grants.clone(),
             x_value: source.x_value,
@@ -3426,6 +3446,7 @@ impl Object {
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -3499,6 +3520,7 @@ impl Object {
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -4487,6 +4509,7 @@ impl Object {
             optional_costs: handles.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            caster_mana_spent_to_cast: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: None,
@@ -5023,9 +5046,11 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let mut source = Object::from_card(ObjectId::from_raw(1), &card, alice, Zone::Stack);
         source.snow_mana_spent_to_cast.green = 2;
+        source.caster_mana_spent_to_cast = Some(2);
         source.x_value = Some(3);
         let copy = Object::spell_copy_of(&source, ObjectId::from_raw(2), alice);
         assert_eq!(copy.snow_mana_spent_to_cast.total(), 0);
+        assert_eq!(copy.caster_mana_spent_to_cast, None);
         assert_eq!(copy.x_value, Some(3));
         assert_eq!(source.snow_mana_spent_to_cast.green, 2);
     }
@@ -5758,6 +5783,7 @@ mod retained_cast_payment_state_tests {
         let mut object = Object::new_hidden_card(ObjectId::from_raw(44441), PlayerId::from_index(0), Zone::Stack);
         object.x_value = Some(7);
         object.mana_spent_to_cast.blue = 3;
+        object.caster_mana_spent_to_cast = Some(1);
         object.snow_mana_spent_to_cast.blue = 2;
         object.optional_costs_paid.costs.push((crate::cost::OptionalCostRef::from("Kicker"), 2));
         object.optional_costs_paid.branch_choices.push((0, 1));
@@ -5798,23 +5824,29 @@ mod retained_cast_payment_state_tests {
 
     #[cfg(feature = "serialization")]
     #[test]
-    fn retained_cast_payment_state_requires_all_fields_and_preserves_explicit_null() {
+    fn retained_cast_payment_state_requires_original_fields_and_preserves_explicit_null() {
         let mut state = NativeCastPaymentState::from(&fixture()).try_map_payloads(
             |_| Ok::<_, String>(0u32), |_| Ok(0u32), |_| Ok(0u32), |_| Ok(0u32), |_| Ok(0u32)).unwrap();
         state.cast_alternative_method = Some(9);
         state.alternative_casts = vec![3, 4];
         state.optional_costs = vec![5];
         let value = serde_json::to_value(&state).unwrap();
-        assert_eq!(value.as_object().unwrap().len(), 14);
+        assert_eq!(value.as_object().unwrap().len(), 15);
         for field in value.as_object().unwrap().keys() {
+            if field == "caster_mana_spent_to_cast" { continue; }
             let mut missing = value.clone(); missing.as_object_mut().unwrap().remove(field);
             assert!(serde_json::from_value::<RetainedCastPaymentState<u32, u32, u32, u32, u32>>(missing).is_err(), "missing {field} must reject");
         }
-        for field in ["cast_alternative_method", "cast_play_from_constraints", "cast_grant_usage_identity", "x_value"] {
+        for field in ["cast_alternative_method", "cast_play_from_constraints", "cast_grant_usage_identity", "x_value", "caster_mana_spent_to_cast"] {
             let mut absent = value.clone(); absent[field] = serde_json::Value::Null;
             let decoded: RetainedCastPaymentState<u32, u32, u32, u32, u32> = serde_json::from_value(absent.clone()).unwrap();
             assert_eq!(serde_json::to_value(decoded).unwrap(), absent);
         }
+        let mut legacy = value.clone();
+        legacy.as_object_mut().unwrap().remove("caster_mana_spent_to_cast");
+        let restored: RetainedCastPaymentState<u32, u32, u32, u32, u32> = serde_json::from_value(legacy).unwrap();
+        assert_eq!(restored.caster_mana_spent_to_cast, None, "legacy payer evidence stays unknown");
+        assert_eq!(restored.mana_spent_to_cast, state.mana_spent_to_cast, "retain the independent Assist-inclusive total");
         for field in ["permanent_id", "effect"] {
             let mut missing = value.clone(); missing["keyword_payment_contributions_to_cast"][0].as_object_mut().unwrap().remove(field);
             assert!(serde_json::from_value::<RetainedCastPaymentState<u32, u32, u32, u32, u32>>(missing).is_err());

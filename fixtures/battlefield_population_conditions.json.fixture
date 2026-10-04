@@ -1,0 +1,112 @@
+[
+  {
+    "name": "Goham Djinn",
+    "oracle_id": "e9db02fb-78e2-44b3-9e1b-ef0148234337",
+    "mana_cost": "{5}{B}",
+    "type_line": "Creature — Djinn",
+    "oracle_text": "{1}{B}: Regenerate this creature.\nThis creature gets -2/-2 as long as black is the most common color among all permanents or is tied for most common.",
+    "power": "5",
+    "toughness": "5",
+    "scryfall_uri": "https://scryfall.com/card/inv/107/goham-djinn?utm_source=api"
+  },
+  {
+    "name": "Halam Djinn",
+    "oracle_id": "fb85d8d1-6938-48bf-9a6d-d4616b05b4f6",
+    "mana_cost": "{5}{R}",
+    "type_line": "Creature — Djinn",
+    "oracle_text": "Haste\nThis creature gets -2/-2 as long as red is the most common color among all permanents or is tied for most common.",
+    "power": "6",
+    "toughness": "5",
+    "scryfall_uri": "https://scryfall.com/card/inv/146/halam-djinn?utm_source=api"
+  },
+  {
+    "name": "Ruham Djinn",
+    "oracle_id": "16ad3b64-a87f-47e8-8e7b-b97bf084a3d2",
+    "mana_cost": "{5}{W}",
+    "type_line": "Creature — Djinn",
+    "oracle_text": "First strike\nThis creature gets -2/-2 as long as white is the most common color among all permanents or is tied for most common.",
+    "power": "5",
+    "toughness": "5",
+    "scryfall_uri": "https://scryfall.com/card/inv/35/ruham-djinn?utm_source=api"
+  },
+  {
+    "name": "Sulam Djinn",
+    "oracle_id": "01e311d2-8fe6-4e64-9575-3ef266985f0b",
+    "mana_cost": "{5}{G}",
+    "type_line": "Creature — Djinn",
+    "oracle_text": "Trample\nThis creature gets -2/-2 as long as green is the most common color among all permanents or is tied for most common.",
+    "power": "6",
+    "toughness": "6",
+    "scryfall_uri": "https://scryfall.com/card/inv/212/sulam-djinn?utm_source=api"
+  },
+  {
+    "name": "Zanam Djinn",
+    "oracle_id": "049fc248-4e46-43de-986d-fa023a3e8792",
+    "mana_cost": "{5}{U}",
+    "type_line": "Creature — Djinn",
+    "oracle_text": "Flying\nThis creature gets -2/-2 as long as blue is the most common color among all permanents or is tied for most common.",
+    "power": "5",
+    "toughness": "6",
+    "scryfall_uri": "https://scryfall.com/card/inv/90/zanam-djinn?utm_source=api"
+  },
+  {
+    "name": "Knight of Grace",
+    "oracle_id": "7b51a979-47e0-4b98-8ec5-8064c83422e1",
+    "mana_cost": "{1}{W}",
+    "type_line": "Creature — Human Knight",
+    "oracle_text": "First strike (This creature deals combat damage before creatures without first strike.)\nHexproof from black (This creature can't be the target of black spells or abilities your opponents control.)\nThis creature gets +1/+0 as long as any player controls a black permanent.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/fdn/576/knight-of-grace?utm_source=api"
+  },
+  {
+    "name": "Knight of Malice",
+    "oracle_id": "b89d912a-65a0-4bc9-9e1d-ff8317458a72",
+    "mana_cost": "{1}{B}",
+    "type_line": "Creature — Human Knight",
+    "oracle_text": "First strike (This creature deals combat damage before creatures without first strike.)\nHexproof from white (This creature can't be the target of white spells or abilities your opponents control.)\nThis creature gets +1/+0 as long as any player controls a white permanent.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/fdn/608/knight-of-malice?utm_source=api"
+  },
+  {
+    "name": "Kavu Runner",
+    "oracle_id": "2c90b7fa-d5bf-4c46-92d5-3014ea1bec50",
+    "mana_cost": "{3}{R}",
+    "type_line": "Creature — Kavu",
+    "oracle_text": "This creature has haste as long as no opponent controls a white or blue creature.",
+    "power": "3",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/inv/150/kavu-runner?utm_source=api"
+  },
+  {
+    "name": "Skittish Kavu",
+    "oracle_id": "55722e42-a729-4289-895f-be913398c434",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Kavu",
+    "oracle_text": "This creature gets +1/+1 as long as no opponent controls a white or blue creature.",
+    "power": "1",
+    "toughness": "1",
+    "scryfall_uri": "https://scryfall.com/card/inv/168/skittish-kavu?utm_source=api"
+  },
+  {
+    "name": "Vexing Beetle",
+    "oracle_id": "30d3645f-307d-4164-a8f0-336d484b5020",
+    "mana_cost": "{4}{G}",
+    "type_line": "Creature — Insect",
+    "oracle_text": "This spell can't be countered.\nThis creature gets +3/+3 as long as no opponent controls a creature.",
+    "power": "3",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/lgn/143/vexing-beetle?utm_source=api"
+  },
+  {
+    "name": "Tenacious Hunter",
+    "oracle_id": "8c7436fa-4802-405b-ba45-4e14f14a3d8e",
+    "mana_cost": "{2}{G}{G}",
+    "type_line": "Creature — Crocodile",
+    "oracle_text": "As long as a creature has a -1/-1 counter on it, this creature has vigilance and deathtouch.",
+    "power": "4",
+    "toughness": "4",
+    "scryfall_uri": "https://scryfall.com/card/hou/136/tenacious-hunter?utm_source=api"
+  }
+]

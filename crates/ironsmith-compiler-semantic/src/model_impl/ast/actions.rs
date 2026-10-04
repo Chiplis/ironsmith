@@ -2101,8 +2101,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::PermanentState(PermanentStateActionAst::PhaseIn { target }) => {
                 f.debug_tuple("PhaseIn").field(target).finish()
             }
-            Self::PermanentState(PermanentStateActionAst::PhaseInAll { filter }) => {
-                f.debug_tuple("PhaseInAll").field(filter).finish()
+            Self::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out }) => {
+                f.debug_tuple("PhaseInAll").field(filter).field(simultaneous_phase_out).finish()
             }
             Self::PermanentState(PermanentStateActionAst::Transform { target }) => {
                 f.debug_tuple("Transform").field(target).finish()

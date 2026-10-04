@@ -41,6 +41,12 @@ use crate::registry::{
 
 #[path = "pair_procedure/kinds.rs"]
 mod kinds;
+#[path = "pair_procedure/life_gain.rs"]
+mod life_gain;
+
+pub(super) fn recognizes_life_gain_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
+    life_gain::recognizes_replacement_sentence(tokens)
+}
 #[path = "pair_procedure/shapes.rs"]
 mod shapes;
 use shapes::*;
@@ -683,6 +689,14 @@ const PAIR_SHAPES: &[Shape] = &[
                 sentence_idx,
                 kinds::open_copy_next_spell_retarget(sentences, sentence_idx),
             )
+        },
+    },
+    Shape {
+        id: RuleId::new("conditional-life-gain-self-replacement"),
+        head: HeadDiscriminator::words(&["you", "target"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, life_gain::read(sentences, sentence_idx))
         },
     },
     Shape {

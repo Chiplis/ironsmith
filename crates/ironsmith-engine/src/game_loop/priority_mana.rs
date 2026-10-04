@@ -3387,6 +3387,9 @@ pub(super) fn finalize_spell_cast(
     let mana_spent_total = mana_spent_to_cast.total();
     let new_id = stack_id;
     if let Some(spell_obj) = game.object_mut(new_id) {
+        spell_obj.caster_mana_spent_to_cast = Some(mana_spent_total.saturating_sub(
+            assist_mana_spent_to_cast.as_ref().map(|(_, spent)| spent.total()).unwrap_or(0),
+        ));
         spell_obj.mana_spent_to_cast = mana_spent_to_cast;
         spell_obj.x_value = x_value;
     }

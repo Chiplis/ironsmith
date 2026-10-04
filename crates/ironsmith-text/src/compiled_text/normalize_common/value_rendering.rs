@@ -6505,6 +6505,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 reference.text()
             )
         }
+        Value::CasterManaSpentToCastTriggeringObject => "the amount of mana you spent to cast that spell".to_string(),
         Value::ManaSpentToCastTriggeringObject => {
             "the amount of mana spent to cast that spell".to_string()
         }

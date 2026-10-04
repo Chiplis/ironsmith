@@ -66,6 +66,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("static-condition-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("battlefield-population-condition"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_battlefield_population_condition(input)),
+    },
+    Reading {
         id: RuleId::new("mana-from-source-spent-comparison"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -627,4 +633,63 @@ fn read_fixed_static_condition_kind(
         .map(Some);
     }
     Ok(None)
+}
+
+/// Count live battlefield objects in the source controller's context. The
+/// condition does not narrow the affected subject of the anthem/keyword grant.
+fn read_battlefield_population_condition(
+    input: &ConditionClause<'_>,
+) -> Result<Option<PredicateAst>, CardTextError> {
+    use anthem_grant_grammar::BattlefieldPopulationCondition;
+    use crate::color::{Color, ColorSet};
+    use crate::effect::{Value, ValueComparisonOperator};
+    let Some(shape) = anthem_grant_grammar::parse_battlefield_population_condition(input.tokens) else {
+        return Ok(None);
+    };
+    let count = |filter| Value::Count(filter);
+    let compare = |filter, operator, amount| PredicateAst::ValueComparison {
+        left: count(filter), operator, right: Value::Fixed(amount),
+    };
+    let condition = match shape {
+        BattlefieldPopulationCondition::MostCommonColorIncludingTies(color) => {
+            let color_count = |color| count(ObjectFilter::permanent().with_colors(ColorSet::from(color)));
+            // Each multicolored permanent contributes to each of its colors;
+            // colorless permanents contribute to none. Equality admits ties.
+            let present = PredicateAst::ValueComparison {
+                left: color_count(color),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            };
+            Color::ALL.into_iter().filter(|other| *other != color).map(|other| {
+                PredicateAst::ValueComparison {
+                    left: color_count(color),
+                    operator: ValueComparisonOperator::GreaterThanOrEqual,
+                    right: color_count(other),
+                }
+            }).fold(present, |left, right| PredicateAst::And(Box::new(left), Box::new(right)))
+        }
+        BattlefieldPopulationCondition::AnyPlayerControls(tokens)
+        | BattlefieldPopulationCondition::NoOpponentControls(tokens) => {
+            let mut filter = parse_object_filter_lexed(tokens, false)?;
+            // These clauses quantify permanents only. Never silently change an
+            // authored graveyard/hand/stack or narrower controller restriction.
+            if filter.zone.is_some_and(|zone| zone != Zone::Battlefield)
+                || filter.controller.is_some()
+            {
+                return Err(CardTextError::ParseError("conflicting scope in battlefield population condition".into()));
+            }
+            filter.zone = Some(Zone::Battlefield);
+            if matches!(shape, BattlefieldPopulationCondition::NoOpponentControls(_)) {
+                filter.controller = Some(PlayerFilter::Opponent);
+                compare(filter, ValueComparisonOperator::Equal, 0)
+            } else {
+                compare(filter, ValueComparisonOperator::GreaterThanOrEqual, 1)
+            }
+        }
+        BattlefieldPopulationCondition::CreatureHasCounter(counter) => compare(
+            ObjectFilter::creature().with_counter_type(counter),
+            ValueComparisonOperator::GreaterThanOrEqual, 1,
+        ),
+    };
+    Ok(Some(condition))
 }

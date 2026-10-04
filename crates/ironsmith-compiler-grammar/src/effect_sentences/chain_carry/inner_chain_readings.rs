@@ -493,6 +493,15 @@ fn read_keyword_mechanic_without_terminal_punctuation(
     input: &InnerChain<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    // Explicit simultaneity owns the full pair before ordinary and-splitting.
+    if tokens.first().is_some_and(|token| token.is_word("simultaneously"))
+        && tokens.iter().any(|token| token.is_any_word(&["phase", "phases"]))
+    {
+        return match parse_keyword_mechanic_without_terminal_punctuation(tokens)? {
+            Some(effect) => Ok(Some(vec![effect])),
+            None => Err(CardTextError::ParseError("unsupported simultaneous phasing clause".into())),
+        };
+    }
     // A keyword mechanic at the end of a coordinated chain must not consume
     // the earlier action as part of its target phrase (for example, "you
     // lose 1 life and this creature endures 1"). Let the semantic chain

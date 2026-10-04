@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Ancient Cellarspawn",
+    "mana_cost": "{1}{B}{B}",
+    "type_line": "Enchantment Creature — Horror",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "Each spell you cast that's a Demon, Horror, or Nightmare costs {1} less to cast.\nWhenever you cast a spell, if the amount of mana spent to cast it was less than its mana value, target opponent loses life equal to the difference."
+  },
+  {
+    "name": "Astarion, the Decadent",
+    "mana_cost": "{4}{W}{B}",
+    "type_line": "Legendary Creature — Vampire Elf Rogue",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Deathtouch, lifelink\nAt the beginning of your end step, choose one —\n• Feed — Target opponent loses life equal to the amount of life they lost this turn.\n• Friends — You gain life equal to the amount of life you gained this turn."
+  },
+  {
+    "name": "Children of Korlis",
+    "mana_cost": "{W}",
+    "type_line": "Creature — Human Rebel Cleric",
+    "power": "1",
+    "toughness": "1",
+    "oracle_text": "Sacrifice this creature: You gain life equal to the life you've lost this turn. (Damage causes loss of life.)"
+  },
+  {
+    "name": "Simulacrum",
+    "mana_cost": "{1}{B}",
+    "type_line": "Instant",
+    "oracle_text": "You gain life equal to the damage dealt to you this turn. Simulacrum deals damage to target creature you control equal to the damage dealt to you this turn."
+  },
+  {
+    "name": "Warlock Class",
+    "mana_cost": "{B}",
+    "type_line": "Enchantment — Class",
+    "oracle_text": "(Gain the next level as a sorcery to add its ability.)\nAt the beginning of your end step, if a creature died this turn, each opponent loses 1 life.\n{1}{B}: Level 2\nWhen this Class becomes level 2, look at the top three cards of your library. Put one of them into your hand and the rest into your graveyard.\n{6}{B}: Level 3\nAt the beginning of your end step, each opponent loses life equal to the life they lost this turn. (Damage causes loss of life.)"
+  },
+  {
+    "name": "Wound Reflection",
+    "mana_cost": "{5}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of each end step, each opponent loses life equal to the life they lost this turn. (Damage causes loss of life.)"
+  }
+]

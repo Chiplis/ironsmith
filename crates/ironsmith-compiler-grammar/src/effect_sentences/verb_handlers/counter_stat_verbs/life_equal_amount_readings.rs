@@ -92,7 +92,18 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("life-equal-surface"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        admits: |input| {
+            // Complete shared turn totals retain the participant pronoun.
+            // These two legacy aliases would otherwise compete with that
+            // same quantity (and "that player" must not declare a new target).
+            !matches!(
+                counter_grammar::parse_life_equal_surface(input.amount_words),
+                Some(
+                    counter_grammar::LifeEqualSurface::IteratedPlayerLifeLostThisTurn
+                        | counter_grammar::LifeEqualSurface::TargetPlayerDamageThisTurn
+                )
+            ) || !input.read_by("add-mana-equal-amount-value")
+        },
         read: |input| input.outcome(read_life_equal_surface(input)),
     },
     Reading {
@@ -223,4 +234,36 @@ fn read_dynamic_cost_modifier_value(
         return Ok(Some(value));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod turn_history_tests {
+    use super::*;
+    #[test]
+    fn complete_relative_history_has_one_reading_and_does_not_declare_another_player_target() {
+        for (text, expected) in [
+            (
+                "life equal to the life that player lost this turn",
+                Value::LifeLostThisTurn(PlayerFilter::IteratedPlayer),
+            ),
+            (
+                "life equal to the damage already dealt to that player this turn",
+                Value::DamageDealtToPlayersThisTurn(PlayerFilter::IteratedPlayer),
+            ),
+            (
+                "life equal to the life you've lost this turn",
+                Value::LifeLostThisTurn(PlayerFilter::You),
+            ),
+            (
+                "life equal to the difference",
+                Value::PendingComparisonDifference,
+            ),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let value = super::super::parse_life_equal_to_value(&tokens)
+                .unwrap()
+                .unwrap();
+            assert_eq!(value.unhinted(), &expected, "{text}");
+        }
+    }
 }

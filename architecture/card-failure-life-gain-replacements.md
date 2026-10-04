@@ -57,6 +57,7 @@ life-threshold/empty-hand boundaries for both players. Grammar scenarios retain
 conditions and reject omitted/duplicated replacement markers and truncated text.
 No claims of compilation or gameplay success are made until the deferred gate.
 
-One-shot conditional “gain N instead” clauses are separate work. They must use
-self-replacement resolution programs; removing “instead” at the life-gain leaf
-would incorrectly add the replacement gain to the original gain.
+The separate five-card one-shot conditional “gain N instead” extension is
+recorded in `card-failure-conditional-life-gain.md`. It uses self-replacement
+resolution programs; the life-gain leaf does not discard “instead” and accidentally
+add the replacement gain to the original gain.

@@ -5,12 +5,12 @@
     "King of the Oathbreakers",
     "Shimmering Efreet",
     "Teferi's Imp",
-    "Warping Wurm"
-  ],
-  "partial": [
+    "Warping Wurm",
     "The War Doctor"
   ],
-  "known_runtime_gaps": [
+  "partial": [],
+  "known_runtime_gaps": [],
+  "source_repaired_runtime_gaps": [
     {
       "card": "Time and Tide",
       "baseline": "strict_compiled; not evidence of runtime correctness",
@@ -18,8 +18,10 @@
       "affected_interaction": "A phased-out War Doctor phases in as other creatures phase out. It was absent from the pre-event state and must not receive a phase-out trigger.",
       "current_boundary": "Grammar currently emits separate PhaseInAll and PhaseOutAll AST actions. The runtime tag only prevents immediately phasing incoming permanents back out; it does not retain the single simultaneous event state.",
       "needed_closure": "An explicit simultaneous-exchange representation in typed grammar/lowering and artifact effects, calling the shared atomic phase_simultaneously producer with both original sets. Do not infer simultaneity for separate sequential instructions.",
-      "regression": "phasing_transition_triggers::known_gap_time_and_tide_does_not_enable_a_new_phase_out_observer",
-      "regression_status": "Authored, unrun, intentionally not ignored; expected to expose the remaining gap."
+      "regression": "phasing_transition_triggers::time_and_tide_does_not_enable_a_new_phase_out_observer",
+      "regression_status": "Authored, unrun, unignored; source-repair expectation is not a passing result.",
+      "status": "source_repaired_validation_deferred",
+      "source_repair": "Explicit typed simultaneous exchange preserves both pre-instruction sets through grammar, lowering and artifact materialization, then calls the shared atomic producer once."
     }
   ]
 }

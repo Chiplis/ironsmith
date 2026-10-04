@@ -1155,6 +1155,9 @@ pub(super) fn parse_player_cards_in_hand_predicate(
     // against seven, although its Boolean test is equivalent to at most six.
     // A consequent may consume the difference between those exact operands.
     if !at_turn_start
+        // Group scopes use existential player predicates, not the scalar
+        // hand size of whichever matching player happens to resolve first.
+        && !matches!(player, PlayerAst::Opponent | PlayerAst::Any)
         && matches!(
             condition.comparison,
             crate::effect::Comparison::LessThan(_) | crate::effect::Comparison::GreaterThan(_)
@@ -1701,6 +1704,7 @@ pub(super) fn parse_value_reference_comparison_predicate(
             left,
             Value::ManaSpentToCast(_)
                 | Value::ManaSpentToCastTriggeringObject
+        | Value::CasterManaSpentToCastTriggeringObject
                 | Value::ManaValueOf(_)
         ) && comparison_tokens
             .first()
@@ -1813,6 +1817,7 @@ pub(super) fn is_predicate_reference_value(value: &Value) -> bool {
             | Value::SourceToughness
             | Value::ManaSpentToCast(_)
             | Value::ManaSpentToCastTriggeringObject
+        | Value::CasterManaSpentToCastTriggeringObject
     )
 }
 
