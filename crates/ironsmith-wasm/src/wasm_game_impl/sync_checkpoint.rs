@@ -893,11 +893,18 @@ fn unsupported_checkpoint_replacement_payload<T, U>(_: T) -> Result<U, String> {
 fn retain_checkpoint_replacement_state(game: &GameState)
     -> Result<(SyncRegisteredReplacementState, SyncPreventionState), String>
 {
+    if game.players.iter().any(|player| player.has_runtime_mana_provenance()) {
+        return Err("runtime mana provenance and retention units require accepted-transcript replay or a runtime savepoint".into());
+    }
     if game.has_library_top_announcement() {
         return Err("pending native announcement visibility requires accepted-transcript replay or a runtime savepoint".into());
     }
     if !game.effect_store.restriction_effects.is_empty() {
         return Err("registered runtime restrictions require accepted-transcript replay or a runtime savepoint".into());
+    }
+    if game.effect_store.mana_spend_effects.permissions.iter().any(|permission|
+        !matches!(permission.source, ironsmith::game_state::ManaSpendPermissionSource::StaticAbility)) {
+        return Err("effect-granted mana-spend permissions require accepted-transcript replay or a runtime savepoint".into());
     }
     if game.effect_store.pending_replacement_choice.is_some() {
         return Err("pending replacement choice requires accepted-transcript replay or a runtime savepoint".into());
@@ -940,6 +947,14 @@ pub(crate) struct SyncCheckpoint {
     /// No unrepresented queued or stacked ability programs in any owner.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pending_ability_programs_empty: Option<bool>,
+    /// Effect-granted mana spending has no wire carrier. Static permissions
+    /// are regenerated; omitted runtime registrations require exact replay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mana_spend_effects_empty: Option<bool>,
+    /// Pool type counts cannot establish production-time source evidence or
+    /// per-unit retention. Missing legacy evidence is never assumed empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mana_provenance_empty: Option<bool>,
     /// Absent only in legacy checkpoints that did not preserve chronology.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     continuous_timestamps: Option<SyncContinuousTimestamps>,
@@ -3451,6 +3466,8 @@ impl WasmGame {
         Ok(SyncCheckpoint {
             version: SYNC_CHECKPOINT_VERSION,
             pending_ability_programs_empty: Some(true),
+            mana_spend_effects_empty: Some(true),
+            mana_provenance_empty: Some(true),
             continuous_timestamps: Some(SyncContinuousTimestamps::from_game(&self.game)),
             registered_continuous: Some(retain_scalar_registered_effects(
                 self.game.effect_store.continuous_effects.registered_state())
@@ -4856,6 +4873,14 @@ impl WasmGame {
         &mut self,
         checkpoint: SyncCheckpoint,
     ) -> Result<(), String> {
+        if checkpoint.mana_provenance_empty != Some(true)
+            || checkpoint.players.iter().any(|player| !player.restricted_mana.is_empty())
+        {
+            return Err("checkpoint has no valid empty-mana-provenance completeness carrier; replay accepted transcript".into());
+        }
+        if checkpoint.mana_spend_effects_empty != Some(true) {
+            return Err("checkpoint has no valid empty-mana-spend completeness carrier; replay accepted transcript".into());
+        }
         if checkpoint.pending_ability_programs_empty != Some(true) {
             return Err("checkpoint has no valid empty-ability-program completeness carrier; replay accepted transcript".into());
         }
@@ -5961,7 +5986,7 @@ mod sync_checkpoint_tests {
     }
 
     #[test]
-    fn sync_checkpoint_preserves_cavern_choice_and_restricted_mana_legality() {
+    fn sync_checkpoint_preserves_cavern_choice_and_native_savepoint_preserves_floated_units() {
         let _id_counter_guard = crate::test_id_counter_guard();
         use ironsmith::ability::{
             ManaUsageRestriction, ManaUsageSubtypeRequirement, RestrictedManaUnit,
@@ -6033,10 +6058,11 @@ mod sync_checkpoint_tests {
                         granted_abilities: vec![],
                     }],
                 });
-            let checkpoint = host.build_sync_checkpoint();
-            // Round-trip the wire representation too, rather than clone native state.
-            let checkpoint = serde_json::from_value(serde_json::to_value(checkpoint).unwrap()).unwrap();
-            peer.apply_sync_checkpoint(checkpoint).unwrap();
+            assert!(retain_checkpoint_replacement_state(&host.game).unwrap_err().contains("runtime mana provenance"));
+            assert!(host.try_build_sync_checkpoint().is_err());
+            // A same-runtime branch may retain the exact producer metadata;
+            // a peer must reconstruct it by accepted-transcript replay.
+            RuntimeSavepoint::capture(&host).restore(&mut peer);
             assert_eq!(
                 peer.game.player(owner).unwrap().restricted_mana,
                 host.game.player(owner).unwrap().restricted_mana
@@ -10485,6 +10511,68 @@ mod replacement_checkpoint_safety_tests {
             assert_eq!(wasm.game.effect_store.prevention_effects.shields(), shields);
             assert!(retain_checkpoint_replacement_state(&wasm.game).is_err());
         }
+    }
+
+    #[test]
+    fn floated_mana_guard_survives_history_reset_and_native_recovery() {
+        let _ids = crate::test_id_counter_guard();
+        let mut wasm = host(); let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(77);
+        ironsmith::effects::ManaRetainedEffect::until_end_of_combat(vec![
+            ironsmith::effect::Effect::new(ironsmith::effects::AddManaEffect::you(vec![ManaSymbol::Red]))
+        ]).execute(&mut wasm.game, &mut EffectContext::new_default(source, alice)).unwrap();
+        // Turn history is not the carrier for a unit retained across turns.
+        wasm.game.turn_store.turn_history.clear_for_new_turn();
+        assert!(wasm.game.player(alice).unwrap().has_runtime_mana_provenance());
+        assert!(retain_checkpoint_replacement_state(&wasm.game).unwrap_err().contains("runtime mana provenance"));
+        assert!(!wasm.is_replay_checkpoint_boundary());
+        let point = RuntimeSavepoint::capture(&wasm);
+        wasm.game.players[0] = ironsmith::Player::new(alice, "replacement", 20);
+        point.restore(&mut wasm);
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.red, 1);
+        assert!(wasm.game.player(alice).unwrap().has_runtime_mana_provenance());
+        assert!(wasm.try_build_sync_checkpoint().is_err());
+    }
+
+    #[test]
+    fn missing_or_false_mana_provenance_carrier_fails_before_mutation() {
+        let _ids = crate::test_id_counter_guard();
+        for carrier in [None, Some(false)] {
+            let source = host(); let mut checkpoint = source.try_build_sync_checkpoint().unwrap();
+            checkpoint.mana_provenance_empty = carrier;
+            let mut guest = host(); guest.game.player_mut(PlayerId::from_index(0)).unwrap().life = 13;
+            assert!(guest.apply_sync_checkpoint(checkpoint).unwrap_err().contains("empty-mana-provenance completeness"));
+            assert_eq!(guest.game.player(PlayerId::from_index(0)).unwrap().life, 13);
+        }
+    }
+
+    #[test]
+    fn missing_mana_spend_completeness_carrier_is_not_an_empty_permission_set() {
+        let _ids = crate::test_id_counter_guard();
+        let mut source = host(); let mut checkpoint = source.try_build_sync_checkpoint().unwrap();
+        checkpoint.mana_spend_effects_empty = None;
+        let mut guest = host();
+        assert!(guest.apply_sync_checkpoint(checkpoint).unwrap_err().contains("empty-mana-spend completeness"));
+    }
+
+    #[test]
+    fn independent_mana_spend_registration_refuses_export_and_survives_exact_savepoint() {
+        let _ids = crate::test_id_counter_guard();
+        let mut wasm = host(); let alice = PlayerId::from_index(0);
+        let mut permission = ironsmith::effect::ManaSpendPermission::mana_symbol_as_any_color_other_as_colorless(
+            PlayerFilter::You, ironsmith::mana::ManaSymbol::White);
+        permission.other_mana_only_as_colorless = false;
+        ironsmith::effects::RegisterManaSpendPermissionEffect { permission: permission.clone(),
+            until: ironsmith::effect::Until::EndOfTurn, display: "White mana may pay colored costs this turn".into(),
+        }.execute(&mut wasm.game, &mut EffectContext::new_default(ObjectId::from_raw(77), alice)).unwrap();
+        assert!(wasm.game.effect_store.replacement_effects.effects().is_empty(), "no other guard masks this registration");
+        assert!(retain_checkpoint_replacement_state(&wasm.game).unwrap_err().contains("mana-spend permissions"));
+        assert!(!wasm.is_replay_checkpoint_boundary());
+        let point = RuntimeSavepoint::capture(&wasm);
+        wasm.game.effect_store.mana_spend_effects.clear(); point.restore(&mut wasm);
+        assert_eq!(wasm.game.effect_store.mana_spend_effects.permissions[0].permission, permission);
+        wasm.game.cleanup_mana_spend_permissions_end_of_turn();
+        assert!(retain_checkpoint_replacement_state(&wasm.game).is_ok());
     }
 
     #[test]

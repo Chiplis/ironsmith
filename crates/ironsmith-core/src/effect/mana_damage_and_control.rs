@@ -1099,6 +1099,18 @@ pub struct RegisterManaReplacementEffect {
     pub mode: ReplacementApplyMode,
 }
 
+/// Register one typed mana-production rewrite. A target is announced with the
+/// activating/casting instruction and is locked to that exact incarnation.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterManaRewriteEffect {
+    pub rule: crate::mana::ManaOutputRewrite,
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "crate::mana::deserialize_required_mana_option"))]
+    pub target: Option<ChooseSpec>,
+    pub mode: ReplacementApplyMode,
+    pub display: String,
+}
+
 /// "Until end of turn, if you would put one or more +1/+1 counters on a
 /// creature you control, put that many plus one +1/+1 counters on it
 /// instead": a resolved replacement effect (CR 611.2a, 614.1a) that adds
@@ -5015,6 +5027,17 @@ pub struct DealDamageToRecipientsEffect {
     pub recipients: Vec<ChooseSpec>,
 }
 
+/// How an explicitly identified damage-source set survives state changes.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub enum DamageSourceSetBinding {
+    #[default]
+    LiveMembers,
+    /// Only exact captured battlefield incarnations. A departed member uses
+    /// its actual last-known receipt, never a later object of the same card.
+    CapturedIncarnations,
+}
+
 /// All sources deal their own evaluated amount in one simultaneous occurrence.
 /// The complete source set and each source's amount are captured before damage.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -5026,19 +5049,44 @@ pub struct DealDamageBySourcesEffect {
     pub source_declarations: Vec<ChooseSpec>,
     pub amount: Value,
     pub target: ChooseSpec,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_binding: DamageSourceSetBinding,
 }
 
 impl DealDamageBySourcesEffect {
     pub fn new(sources: Vec<ChooseSpec>, amount: Value, target: ChooseSpec) -> Self {
         Self {
             sources,
+            source_binding: DamageSourceSetBinding::LiveMembers,
             source_declarations: Vec::new(),
             amount,
             target,
         }
     }
+    pub fn with_source_binding(mut self, binding: DamageSourceSetBinding) -> Self {
+        self.source_binding = binding;
+        self
+    }
     pub fn with_source_declarations(mut self, declarations: Vec<ChooseSpec>) -> Self {
         self.source_declarations = declarations;
         self
     }
+}
+
+/// One source deals independently computed amounts to a captured object set.
+/// Each amount can refer to that recipient or its controller. Every amount is
+/// evaluated before any original damage result or added instruction executes.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct DealDamageEachEffect {
+    pub amount: Value,
+    pub filter: ObjectFilter,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterManaSpendPermissionEffect {
+    pub permission: crate::ManaSpendPermission,
+    pub until: Until,
+    pub display: String,
 }

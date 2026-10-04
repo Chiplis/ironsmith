@@ -152,6 +152,7 @@ pub(crate) fn queue_triggers_from_reported_events(
                     simultaneous.extend(later.take());
                 }
             }
+            crate::events::other::bind_die_roll_batch_results(&mut simultaneous);
             crate::events::damage::bind_received_damage_amounts(&mut simultaneous);
             queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
             if include_delayed {
@@ -193,6 +194,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
         .filter(|event| !event.triggers_captured())
         .map(|event| game.ensure_trigger_event_provenance(event))
         .collect::<Vec<_>>();
+    crate::events::other::bind_die_roll_batch_results(&mut events);
     crate::events::damage::bind_received_damage_amounts(&mut events);
     let previous_batch_start = game.turn_store.turn_history.begin_simultaneous_batch();
     for event in &events {
@@ -855,7 +857,8 @@ fn drain_pending_trigger_events_inner<E>(
                         simultaneous.extend(later.take());
                     }
                 }
-                crate::events::damage::bind_received_damage_amounts(&mut simultaneous);
+                crate::events::other::bind_die_roll_batch_results(&mut simultaneous);
+            crate::events::damage::bind_received_damage_amounts(&mut simultaneous);
                 queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
                 // CR 603.7b: a one-shot delayed trigger sees the whole group.
                 for trigger in crate::triggers::check_delayed_triggers_for_simultaneous_events(

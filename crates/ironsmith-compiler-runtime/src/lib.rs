@@ -196,6 +196,9 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
                 ironsmith::grant::Grantable::AlternativeCast(convert_alternative_cast(method)?)
             }
             compiler::grant::Grantable::PlayFrom => ironsmith::grant::Grantable::PlayFrom,
+            compiler::grant::Grantable::AlternativePrice { costs, origin } => ironsmith::grant::Grantable::AlternativePrice {
+                costs: costs.into_iter().map(runtime_cost_from_core_model).collect::<Result<_, _>>()?, origin,
+            },
             compiler::grant::Grantable::DerivedAlternativeCast(spec) => {
                 ironsmith::grant::Grantable::DerivedAlternativeCast(
                     convert_derived_alternative_cast(spec)?,
@@ -4829,7 +4832,14 @@ mod retained_cast_payment_codec_tests {
 
     #[test]
     fn retained_cast_payment_codec_restores_history_permissions_and_actual_life_payment() {
-        let (mut game, source, state, main, linked) = fixture();
+        let (mut game, source, mut state, main, linked) = fixture();
+        state.cast_price = Some(ironsmith::object::CastPriceReceipt {
+            identity: state.cast_grant_usage_identity.clone().unwrap(), source,
+            total_cost: ironsmith::cost::TotalCost::from_cost(ironsmith::costs::Cost::life(2)),
+            origin_mana_surcharge: ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::mana::ManaSymbol::Generic(1)]),
+            prototype: None,
+            constraints: ironsmith::grant_registry::PlayFromConstraints { instant_timing: true, ..Default::default() },
+        });
         let alice = ironsmith::PlayerId::from_index(0);
         let mut encoder = StaticAbilityOccurrenceEncoder::default();
         let wire = encoder.encode_cast_payment_state(state, |id| {
@@ -4845,6 +4855,10 @@ mod retained_cast_payment_codec_tests {
         }).unwrap();
         let mut object = ironsmith::object::Object::new_hidden_card(ironsmith::ObjectId::from_raw(99235), alice, ironsmith::Zone::Stack);
         restored.apply_to(&mut object).unwrap();
+        assert!(object.cast_price.as_ref().unwrap().constraints.instant_timing);
+        assert_eq!(object.cast_price.as_ref().unwrap().identity, *object.cast_grant_usage_identity.as_deref().unwrap());
+        assert_eq!(object.cast_price.as_ref().unwrap().total_cost.costs()[0].life_amount(), Some(2));
+        assert_eq!(object.cast_price.as_ref().unwrap().origin_mana_surcharge.mana_value(), 1);
         let historical = &object.cast_tagged_objects[&ironsmith::tag::TagKey::from("paid_card")][0];
         assert_eq!(historical.card, Some(peer_main));
         assert!(game.object(source).is_none());

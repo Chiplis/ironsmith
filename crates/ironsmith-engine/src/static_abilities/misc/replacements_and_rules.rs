@@ -4769,3 +4769,22 @@ impl StaticAbilityKind for RedirectMatchingDamage {
         ))
     }
 }
+
+/// Typed mana-production rewriting. Live static occurrence discovery owns the
+/// supplying host's zones, controller and phase-out; this matcher owns the
+/// distinct production source/controller and its recorded provenance.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaProductionRewrite {
+    pub rule: ironsmith_core::ManaOutputRewrite,
+    pub display: String,
+}
+impl StaticAbilityKind for ManaProductionRewrite {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::ManaProductionRewrite }
+    fn display(&self) -> String { self.display.clone() }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(source, controller,
+            crate::events::mana::matchers::ManaRewriteMatcher {rule: self.rule.clone()},
+            ReplacementAction::RewriteMana {input: self.rule.input, output: self.rule.output,
+                quantity: self.rule.quantity}))
+    }
+}

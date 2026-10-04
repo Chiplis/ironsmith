@@ -35,10 +35,12 @@ impl GameState {
         self.runtime_cache.library_top_announcements.remove(&owner);
     }
     pub(crate) fn capture_cast_grant_completion(&mut self, spell: ObjectId, completion: crate::grant_registry::GrantUseCompletion) {
-        self.runtime_cache.pending_grant_use_completions.insert(spell, completion);
+        self.runtime_cache.pending_grant_use_completions.entry(spell).or_default().push(completion);
     }
     pub(crate) fn complete_cast_grant(&mut self, spell: ObjectId) {
-        if let Some(completion) = self.runtime_cache.pending_grant_use_completions.remove(&spell) { completion.complete(self); }
+        if let Some(completions) = self.runtime_cache.pending_grant_use_completions.remove(&spell) {
+            for completion in completions { completion.complete(self); }
+        }
     }
     pub fn has_library_top_announcement(&self) -> bool {
         !self.runtime_cache.library_top_announcements.is_empty() || !self.runtime_cache.pending_grant_use_completions.is_empty()

@@ -39,42 +39,59 @@ impl EffectExecutor for RollDieEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player = resolve_player_filter(game, &self.player, ctx)?;
-        if self.sides == 0 {
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
+            let player = resolve_player_filter(game, &self.player, ctx)?;
+            if self.sides == 0 {
+                return Ok(EffectOutcome::count(0));
+            }
+            let Some(mut rolls) = roll_dice_with_modifiers(game, ctx, player, 1, self.sides)?
+            else {
+                return Ok(EffectOutcome::count(0));
+            };
+            let roll = rolls.remove(0);
+            let ordinal = game.turn_store.turn_history.record_completed_die_rolls(
+                player,
+                &[roll.result],
+                false,
+            )?;
+            // Die-roll history can end continuous effects (for example, "until
+            // any player rolls a 1") and can change other history-dependent
+            // characteristics. Make those derived characteristics observable
+            // immediately after the roll.
+            game.mark_continuous_state_dirty();
+            game.record_ui_effect_event(
+                "die_roll",
+                Some(player),
+                None,
+                Vec::new(),
+                Some(i64::from(roll.result)),
+                Some(format!("d{}", self.sides)),
+            );
+            Ok(EffectOutcome::count(roll.result as i32)
+                .with_event(crate::triggers::TriggerEvent::new_with_provenance(
+                    DieRolledEvent::new_with_natural_result(
+                        player,
+                        ctx.source,
+                        roll.natural_result,
+                        roll.result,
+                        self.sides,
+                    )
+                    .with_turn_ordinal(ordinal),
+                    ctx.provenance,
+                ))
+                .with_execution_fact(ExecutionFact::ChosenNumber(roll.result)))
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
+            context_checkpoint.restore(ctx);
+        }
+        if pending && result.is_ok() {
             return Ok(EffectOutcome::count(0));
         }
-        let Some(mut rolls) = roll_dice_with_modifiers(game, ctx, player, 1, self.sides)? else {
-            return Ok(EffectOutcome::count(0));
-        };
-        let roll = rolls.remove(0);
-        game.turn_store
-            .turn_history
-            .record_die_roll(player, roll.result);
-        // Die-roll history can end continuous effects (for example, "until
-        // any player rolls a 1") and can change other history-dependent
-        // characteristics. Make those derived characteristics observable
-        // immediately after the roll.
-        game.mark_continuous_state_dirty();
-        game.record_ui_effect_event(
-            "die_roll",
-            Some(player),
-            None,
-            Vec::new(),
-            Some(i64::from(roll.result)),
-            Some(format!("d{}", self.sides)),
-        );
-        Ok(EffectOutcome::count(roll.result as i32)
-            .with_event(crate::triggers::TriggerEvent::new_with_provenance(
-                DieRolledEvent::new_with_natural_result(
-                    player,
-                    ctx.source,
-                    roll.natural_result,
-                    roll.result,
-                    self.sides,
-                ),
-                ctx.provenance,
-            ))
-            .with_execution_fact(ExecutionFact::ChosenNumber(roll.result)))
+        result
     }
 }
 

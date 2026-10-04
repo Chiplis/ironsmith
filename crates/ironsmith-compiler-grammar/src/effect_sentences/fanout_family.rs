@@ -1,4 +1,5 @@
 mod multi_source_damage;
+mod reciprocal_power_damage;
 mod shared_amount_recipient_set;
 use super::super::grammar::effects::fanout_shapes as fanout_grammar;
 use super::super::grammar::effects::parse_serial_damage_fanout_tokens;
@@ -1016,6 +1017,9 @@ fn parse_conditional_damage_pair_sentence(
 pub fn parse_compound_damage_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = reciprocal_power_damage::parse(tokens)? {
+        return Ok(Some(effects));
+    }
     if let Some(effects) = multi_source_damage::parse(tokens)? {
         return Ok(Some(effects));
     }

@@ -252,6 +252,17 @@ pub enum Until {
     },
 }
 
+impl Until {
+    /// CR 611.2b / 702.26f: a for-as-long-as duration tracks the exact visible
+    /// source and ends permanently on departure or phasing. This is deliberately
+    /// different from the literal "until this leaves" event duration.
+    pub fn while_source_remains_on_battlefield() -> Self {
+        Self::ForAsLongAs(ContinuousDurationPredicate::ObjectOnBattlefield(
+            ContinuousDurationObject::Source,
+        ))
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
@@ -6124,3 +6135,8 @@ pub struct ChooseNumberEffect {
 impl ChooseNumberEffect {
     pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self { Self { chooser, min, max } }
 }
+
+/// One CR702.60 reveal/cast/remainder resolution transaction.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RippleEffect { pub amount: u32 }

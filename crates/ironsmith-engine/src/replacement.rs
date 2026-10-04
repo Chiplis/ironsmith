@@ -575,6 +575,8 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     PreventDamageThenFromProposedAmount(Vec<E>),
     /// Complete creation templates modify groups inside the same event.
     TokenCreationTemplates { templates: Vec<E>, mode: ironsmith_core::TokenCreationTemplateMode, choose_one: bool, choice_parent: Option<K> },
+    RewriteMana { input: ironsmith_core::ManaRewriteInput, output: ironsmith_core::ManaRewriteOutput,
+        quantity: ironsmith_core::ManaRewriteQuantity },
 }
 
 
@@ -634,6 +636,7 @@ impl<E, A, P, K> ReplacementAction<E, A, P, K> {
             Self::AddTokens { token, count } => ReplacementAction::AddTokens { token, count },
             Self::AddTokensPerCreated { token } => ReplacementAction::AddTokensPerCreated { token },
             Self::AddTokensOfOtherKinds { kinds } => ReplacementAction::AddTokensOfOtherKinds { kinds },
+            Self::RewriteMana { input, output, quantity } => ReplacementAction::RewriteMana { input, output, quantity },
             Self::ReplaceMana(value) => ReplacementAction::ReplaceMana(value),
             Self::ReplaceManaExact(value) => ReplacementAction::ReplaceManaExact(value),
             Self::Skip => ReplacementAction::Skip,
@@ -2162,9 +2165,22 @@ mod ability_origin_identity_tests {
 // Pure production rewrites are exposed independently of event matching. This
 // does not assert that a replacement matches, or that it is safe to reorder.
 impl<E, A, P, K> ReplacementAction<E, A, P, K> {
+    pub fn needs_mana_color_choice(&self) -> bool {
+        matches!(self, Self::RewriteMana { output: ironsmith_core::ManaRewriteOutput::ChooseColor | ironsmith_core::ManaRewriteOutput::ByBasicLandType(_), .. })
+    }
+    pub fn mana_transformation_with_color(&self, color: Option<crate::mana::ManaSymbol>)
+        -> Option<crate::events::mana::ManaTransformation<'_>> {
+        if let Self::RewriteMana { input, output: ironsmith_core::ManaRewriteOutput::ChooseColor | ironsmith_core::ManaRewriteOutput::ByBasicLandType(_), quantity } = self {
+            let symbol = color.filter(|symbol| ironsmith_core::ManaRewriteInput::Colored.matches(*symbol))?;
+            Some(crate::events::mana::ManaTransformation::Rewrite { input: *input, symbol, quantity: *quantity })
+        } else if color.is_none() { self.mana_transformation() } else { None }
+    }
+
     pub fn mana_transformation(&self) -> Option<crate::events::mana::ManaTransformation<'_>> {
         use crate::events::mana::ManaTransformation;
         match self {
+            Self::RewriteMana { input, output: ironsmith_core::ManaRewriteOutput::Symbol(symbol), quantity } =>
+                Some(ManaTransformation::Rewrite { input: *input, symbol: *symbol, quantity: *quantity }),
             Self::ReplaceMana(symbols) => Some(ManaTransformation::ReplaceTypes(symbols)),
             Self::ReplaceManaExact(symbols) => Some(ManaTransformation::ReplaceExact(symbols)),
             Self::Modify(EventModification::Multiply(factor)) => Some(ManaTransformation::Multiply(*factor)),

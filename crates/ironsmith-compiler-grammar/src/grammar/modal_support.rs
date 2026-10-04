@@ -923,6 +923,8 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
                 ..
             })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 ..
             })

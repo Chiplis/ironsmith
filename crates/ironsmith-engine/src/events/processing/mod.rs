@@ -932,7 +932,7 @@ fn process_event_direct_inner(
 
         // When multiple replacement effects are tied at the highest priority,
         // the affected player/controller chooses which one to apply next.
-        if at_highest.len() > 1 {
+        if at_highest.len() > 1 || at_highest[0].replacement.needs_mana_color_choice() {
             let affected_player = event.inner().affected_player(game);
             let effect_ids: Vec<_> = at_highest.iter().map(|e| e.id).collect();
 
@@ -4234,6 +4234,49 @@ fn process_with_dm_and_additional_effects_and_applied_state(
     result.map(|result| retain_additional_programs(result, state))
 }
 
+fn choose_mana_rewrite_color(
+    game: &GameState,
+    dm: &mut (impl DecisionMaker + ?Sized),
+    effect: &ReplacementEffect,
+    event: &Event,
+) -> Result<Option<crate::mana::ManaSymbol>, crate::effects::ExecutionError> {
+    let ReplacementAction::RewriteMana { output, .. } = &effect.replacement else {
+        return Err(crate::effects::ExecutionError::InternalError("non-mana replacement requested a color".into()));
+    };
+    let mana = crate::events::downcast_event::<crate::events::ManaAddedEvent>(event.inner()).ok_or_else(||
+        crate::effects::ExecutionError::InternalError("mana replacement received a non-production event".into()))?;
+    let chooser = if matches!(output, ironsmith_core::ManaRewriteOutput::ByBasicLandType(_)) { mana.controller } else { effect.controller };
+    let available = crate::events::mana::mana_rewrite_output_choices(*output, mana, game);
+    if let [symbol] = available.as_slice() { return Ok(Some(*symbol)); }
+    if available.is_empty() { return Err(crate::effects::ExecutionError::InternalError("mana replacement has no output color".into())); }
+    let choice = crate::mana_payment::ManaProductionChoice {
+        purpose: crate::mana_payment::ManaChoicePurpose::ReplacementColor,
+        source: effect.source, player: chooser,
+        available: available.clone(),
+        count: 1, same_type: true, distinct: false,
+    };
+    if let Some(output) = dm.planned_mana_output(game, &choice)
+        .map_err(crate::effects::ExecutionError::InternalError)? {
+        if !choice.accepts(&output) {
+            return Err(crate::effects::ExecutionError::InternalError("invalid prepared mana replacement color".into()));
+        }
+        return Ok(Some(output[0]));
+    }
+    let colors = crate::color::Color::ALL.into_iter().filter(|color|
+        available.contains(&crate::mana::ManaSymbol::from_color(*color))).collect();
+    let mut context = crate::decisions::context::ColorsContext::restricted(
+        chooser, Some(effect.source), 1, true, false, colors);
+    context.description = "Choose the replacement mana color".into();
+    let colors = dm.decide_colors(game, &context);
+    if dm.awaiting_choice() { return Ok(None); }
+    let [color] = colors.as_slice() else {
+        return Err(crate::effects::ExecutionError::InternalError("mana replacement requires one color".into()));
+    };
+    let symbol = crate::mana::ManaSymbol::from_color(*color);
+    if !available.contains(&symbol) { return Err(crate::effects::ExecutionError::InternalError("unavailable mana replacement color".into())); }
+    Ok(Some(symbol))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn process_with_dm_and_additional_effects_and_applied_state_inner(
     game: &mut GameState,
@@ -4275,7 +4318,11 @@ fn process_with_dm_and_additional_effects_and_applied_state_inner(
                 ..
             } => {
                 // Determine which effect to apply
-                let chosen_index = {
+                let chosen_index = if applicable_effects.len() == 1
+                    && find_effect_for_choice(game, additional_effects, applicable_effects[0])
+                        .is_some_and(|effect| effect.replacement.needs_mana_color_choice()) {
+                    vec![0]
+                } else {
                     // Build options for the decision
                     let options: Vec<ReplacementOption> = applicable_effects
                         .iter()
@@ -4322,7 +4369,7 @@ fn process_with_dm_and_additional_effects_and_applied_state_inner(
                     });
                 };
 
-                let Some(chosen_effect) =
+                let Some(mut chosen_effect) =
                     find_effect_for_choice(game, additional_effects, effect_id)
                 else {
                     // Effect disappeared (e.g., source left battlefield). Continue with event.
@@ -4331,7 +4378,23 @@ fn process_with_dm_and_additional_effects_and_applied_state_inner(
                     continue;
                 };
 
-                mark_applied_replacement_choice(state, &chosen_effect);
+                let original_effect = chosen_effect.clone();
+                if chosen_effect.replacement.needs_mana_color_choice() {
+                    let Some(color) = choose_mana_rewrite_color(game, dm, &chosen_effect, &boxed_event)? else {
+                        return Ok(TraitEventResult::NeedsChoice {
+                            player, applicable_effects, event: boxed_event,
+                            applied_effects: state.applied_effects.clone(),
+                            applied_effect_keys: state.applied_effect_keys.clone(),
+                            zone_change_context: state.zone_change_context.clone(),
+                        });
+                    };
+                    if let ReplacementAction::RewriteMana { output, .. } = &mut chosen_effect.replacement {
+                        *output = ironsmith_core::ManaRewriteOutput::Symbol(color);
+                    }
+                }
+                // Choosing an output is not a distinct replacement occurrence.
+                // Keep the original identity even for structural ephemeral keys.
+                mark_applied_replacement_choice(state, &original_effect);
 
                 let apply_result = apply_trait_replacement_retaining_damage_branches(
                     game,

@@ -139,6 +139,8 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::PlayerTapsForMana { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerRollsToVisitAttractions { .. }
         | TriggerSpec::PlayerRollsResult { .. }
+        | TriggerSpec::PlayerRollsResultMatching { .. }
+        | TriggerSpec::PlayerRollsNthDie { .. }
         | TriggerSpec::PlayerRollsHighestNaturalResult { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerRollsDie { .. } | TriggerSpec::PlayerCoinFlipResult { .. } => {
             Some(PlayerFilter::IteratedPlayer)

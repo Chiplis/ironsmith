@@ -391,7 +391,7 @@ fn this_spell_was_cast_from_zone(
     if is_uncast_spell_copy(game, source) {
         return false;
     }
-    match &ctx.casting_method {
+    match ctx.casting_method.origin_method() {
         crate::alternative_cast::CastingMethod::GrantedFlashback => zone == Zone::Graveyard,
         crate::alternative_cast::CastingMethod::GrantedEscape { .. } => zone == Zone::Graveyard,
         crate::alternative_cast::CastingMethod::PlayFrom {
@@ -410,6 +410,7 @@ fn this_spell_was_cast_from_zone(
                     .map(|method| method.cast_from_zone())
             })
             .is_some_and(|cast_zone| cast_zone == zone),
+        crate::alternative_cast::CastingMethod::AlternativePrice { .. } => false,
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf
@@ -425,7 +426,8 @@ fn this_spell_was_cast_from_non_hand(
     if is_uncast_spell_copy(game, source) {
         return false;
     }
-    match &ctx.casting_method {
+    match ctx.casting_method.origin_method() {
+        crate::alternative_cast::CastingMethod::AlternativePrice { .. } => false,
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf

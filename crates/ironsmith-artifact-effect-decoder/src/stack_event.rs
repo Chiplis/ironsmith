@@ -38,6 +38,8 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RegisterFutureZoneReplacementEffect" => {
             decode_as::<ironsmith_core::RegisterFutureZoneReplacementEffect>(payload).map(Some)
         }
+        "RegisterManaRewriteEffect" => decode_as::<ironsmith_core::RegisterManaRewriteEffect>(payload).map(Some),
+        "RegisterManaSpendPermissionEffect" => decode_as::<ironsmith_core::RegisterManaSpendPermissionEffect>(payload).map(Some),
         "RegisterManaReplacementEffect" => {
             decode_as::<ironsmith_core::RegisterManaReplacementEffect>(payload).map(Some)
         }
@@ -127,6 +129,8 @@ pub(super) fn map_card_ids(
             ironsmith_core::RegisterFutureZoneReplacementEffect,
         >(payload, context)
         .map(Some),
+        "RegisterManaRewriteEffect" => super::card_graph::map_payload_as::<ironsmith_core::RegisterManaRewriteEffect>(payload, context).map(Some),
+        "RegisterManaSpendPermissionEffect" => super::card_graph::map_payload_as::<ironsmith_core::RegisterManaSpendPermissionEffect>(payload, context).map(Some),
         "RegisterManaReplacementEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::RegisterManaReplacementEffect,
         >(payload, context)

@@ -180,7 +180,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 ReplacementActionAst::RegisterFutureZoneReplacement { .. }
             )
             | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterManaReplacement { .. }
+                ReplacementActionAst::RegisterManaReplacement { .. } | ReplacementActionAst::RegisterManaRewrite { .. } | ReplacementActionAst::RegisterManaSpendPermission { .. }
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterCounterPlacementReplacement { .. }
@@ -1861,6 +1861,19 @@ pub(super) fn compile_subject_verb_early(
                 *mode,
             ));
             Ok((vec![effect], Vec::new()))
+        }
+        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { permission, until, display }) =>
+            Ok((vec![Effect::new(crate::effects::RegisterManaSpendPermissionEffect {
+                permission: permission.clone(), until: until.clone(), display: display.clone(),
+            })], Vec::new())),
+        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { rule, target, mode, display }) => {
+            let (target, choices) = if let Some(target) = target {
+                let (target, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                (Some(target), choices)
+            } else { (None, Vec::new()) };
+            Ok((vec![Effect::new(crate::effects::RegisterManaRewriteEffect {
+                rule: rule.clone(), target, mode: *mode, display: display.clone(),
+            })], choices))
         }
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
             source_filter,

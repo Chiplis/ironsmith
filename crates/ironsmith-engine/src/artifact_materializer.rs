@@ -182,6 +182,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "CumulativeUpkeepEffect" => {
             decode_as::<T, ironsmith_core::CumulativeUpkeepEffect<wire::WireEffect>>(effect)
         }
+        "DealDamageEachEffect" => decode_as::<T, ironsmith_core::DealDamageEachEffect>(effect),
         "DealDamageBySourcesEffect" => {
             decode_as::<T, ironsmith_core::DealDamageBySourcesEffect>(effect)
         }
@@ -197,6 +198,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
             decode_as::<T, ironsmith_core::DestroyNoRegenerationEffect>(effect)
         }
         "DetainEffect" => decode_as::<T, ironsmith_core::DetainEffect>(effect),
+        "RippleEffect" => decode_as::<T, ironsmith_core::RippleEffect>(effect),
         "ChooseNumberEffect" => decode_as::<T, ironsmith_core::ChooseNumberEffect>(effect),
         "ChooseNumberAtRandomEffect" => {
             decode_as::<T, ironsmith_core::ChooseNumberAtRandomEffect>(effect)
@@ -463,6 +465,8 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "RegisterFutureZoneReplacementEffect" => {
             decode_as::<T, ironsmith_core::RegisterFutureZoneReplacementEffect>(effect)
         }
+        "RegisterManaRewriteEffect" => decode_as::<T, ironsmith_core::RegisterManaRewriteEffect>(effect),
+        "RegisterManaSpendPermissionEffect" => decode_as::<T, ironsmith_core::RegisterManaSpendPermissionEffect>(effect),
         "RegisterManaReplacementEffect" => {
             decode_as::<T, ironsmith_core::RegisterManaReplacementEffect>(effect)
         }
@@ -898,6 +902,9 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
                 crate::grant::Grantable::AlternativeCast(self.alternative_cast(method)?)
             }
             wire::WireGrantable::PlayFrom => crate::grant::Grantable::PlayFrom,
+            wire::WireGrantable::AlternativePrice { costs, origin } => crate::grant::Grantable::AlternativePrice {
+                costs: costs.into_iter().map(|cost| self.cost(cost)).collect::<Result<_, _>>()?, origin,
+            },
             wire::WireGrantable::DerivedAlternativeCast(spec) => {
                 crate::grant::Grantable::DerivedAlternativeCast(spec.try_map(|cost| self.cost(cost))?)
             }
@@ -1376,6 +1383,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::CastTaggedEffect,
             crate::effects::ChooseCardNameEffect,
             crate::effects::ChooseCardTypeEffect,
+            crate::effects::RippleEffect,
             crate::effects::ChooseNumberEffect,
             crate::effects::ChooseNewTargetsEffect,
             crate::effects::ChooseObjectsEffect,
@@ -1392,6 +1400,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::DealDamageEffect,
             crate::effects::DealDamageToRecipientsEffect,
             crate::effects::DealDamageBySourcesEffect,
+            crate::effects::DealDamageEachEffect,
             crate::effects::DevourEffect,
             crate::effects::DirectionalAdjacentPlayerControlEffect,
             crate::effects::DiscardHandEffect,
@@ -1461,6 +1470,8 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::RegisterEnterTappedReplacementEffect,
             crate::effects::RegisterFutureZoneReplacementEffect,
             crate::effects::RegisterManaReplacementEffect,
+            crate::effects::RegisterManaRewriteEffect,
+            crate::effects::RegisterManaSpendPermissionEffect,
             crate::effects::RegisterNextBatchEnterWithCountersEffect,
             crate::effects::RemoveAnyCountersAmongEffect,
             crate::effects::RemoveCountersEffect,

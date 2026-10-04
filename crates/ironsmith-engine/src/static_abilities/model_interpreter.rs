@@ -362,6 +362,9 @@ impl StaticAbilityModelInterpreter {
                 crate::grant::Grantable::DerivedAlternativeCast(spec.clone())
             }
             ironsmith_core::Grantable::PlayFrom => crate::grant::Grantable::PlayFrom,
+            ironsmith_core::Grantable::AlternativePrice { costs, origin } => crate::grant::Grantable::AlternativePrice {
+                costs: costs.clone(), origin: *origin,
+            },
         };
         crate::grant::GrantSpec {
             grantable,
@@ -2038,6 +2041,8 @@ impl StaticAbilityModelInterpreter {
                 *destination,
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::ManaProductionRewrite { rule, display } =>
+                StaticAbility::mana_production_rewrite(rule.clone(), display.clone()),
             ironsmith_core::StaticAbilityPayload::ManaProductionReplacement {
                 source_filter,
                 minimum_amount,

@@ -44,6 +44,7 @@ struct Scope {
     life_loss: Binding,
     life_controller: Binding,
     die_result: Binding,
+    die_batch: Binding,
     blockers: Binding,
     damaged_player: Binding,
     declared_outcomes: BTreeSet<u64>,
@@ -65,6 +66,7 @@ impl Scope {
             life_loss: Binding::Absent,
             life_controller: Binding::Absent,
             die_result: Binding::Absent,
+            die_batch: Binding::Absent,
             blockers: Binding::Absent,
             damaged_player: Binding::Absent,
             declared_outcomes: BTreeSet::new(),
@@ -86,6 +88,7 @@ impl Scope {
         scope.life_loss = Binding::Unknown;
         scope.life_controller = Binding::Unknown;
         scope.die_result = Binding::Unknown;
+        scope.die_batch = Binding::Unknown;
         scope.blockers = Binding::Unknown;
         scope.damaged_player = Binding::Unknown;
         scope.external_outcomes = true;
@@ -105,6 +108,7 @@ impl Scope {
             life_loss: self.life_loss.intersect(other.life_loss),
             life_controller: self.life_controller.intersect(other.life_controller),
             die_result: self.die_result.intersect(other.die_result),
+            die_batch: self.die_batch.intersect(other.die_batch),
             blockers: self.blockers.intersect(other.blockers),
             damaged_player: self.damaged_player.intersect(other.damaged_player),
             declared_outcomes: self
@@ -371,6 +375,7 @@ impl Auditor {
                     self.require(path, "EventValue(ControllerLifeChange)", scope.life_controller);
                 }
             }
+            Some("DieBatchTotal" | "DieResultsAtLeast") => self.require(path, "die batch results", scope.die_batch),
             Some("DieResult") => self.require(path, "EventValue(DieResult)", scope.die_result),
             Some("BlockersBeyondFirst") => {
                 self.require(path, "EventValue(BlockersBeyondFirst)", scope.blockers)
@@ -945,15 +950,17 @@ impl Auditor {
                     Binding::Present
                 } else { Binding::Unknown };
             }
-            "PlayerRollsResult"
+            "PlayerRollsResultMatching" | "PlayerRollsResult"
             | "PlayerRollsHighestNaturalResult"
             | "PlayerRollsToVisitAttractions" => {
                 scope.player = Binding::Present;
                 scope.die_result = Binding::Present;
                 scope.event_object = Binding::Present;
             }
+            "PlayerRollsNthDie" => { scope.player = Binding::Present; }
             "PlayerRollsDie" => {
                 scope.player = Binding::Present;
+                scope.die_batch = if payload.get("one_or_more").and_then(Value::as_bool) == Some(true) { Binding::Present } else { Binding::Absent };
                 // This trigger also sees planar dice; DieResult rejects those.
                 scope.die_result = Binding::Unknown;
             }
@@ -1392,6 +1399,7 @@ fn same_scope_effect(kind: &str) -> bool {
             | "FatesealEffect"
             | "DealDamageEffect"
             | "DealDamageBySourcesEffect"
+            | "DealDamageEachEffect"
             | "DealDistributedDamageEffect"
             | "HealDamageEffect"
             | "PreventDamageEffect"

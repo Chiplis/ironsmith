@@ -754,6 +754,8 @@ pub enum TriggerKind {
     PermanentMutates { filter: ObjectFilter },
     /// The actor need not control the permanent they turn face up.
     PlayerTurnsFaceUp { player: PlayerFilter, filter: ObjectFilter },
+    PlayerRollsResultMatching { player: PlayerFilter, result: Comparison, natural: bool },
+    PlayerRollsNthDie { player: PlayerFilter, ordinal: u32 },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -1642,6 +1644,12 @@ impl Trigger {
             "player_rolls_to_visit_attractions",
             TriggerKind::PlayerRollsToVisitAttractions { player },
         )
+    }
+    pub fn player_rolls_result_matching(player: PlayerFilter, result: Comparison, natural: bool) -> Self {
+        Self::typed("player_rolls_result_matching", TriggerKind::PlayerRollsResultMatching { player, result, natural })
+    }
+    pub fn player_rolls_nth_die(player: PlayerFilter, ordinal: u32) -> Self {
+        Self::typed("player_rolls_nth_die", TriggerKind::PlayerRollsNthDie { player, ordinal })
     }
     pub fn player_rolls_result(player: PlayerFilter, result: u32) -> Self {
         Self::typed(

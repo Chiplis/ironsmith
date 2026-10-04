@@ -559,6 +559,35 @@ impl NumericProperty {
             Self::ColorCount => Some(snapshot.colors.count() as i32),
         }
     }
+    fn is_power_or_toughness(self) -> bool {
+        matches!(self, Self::Power | Self::BasePower | Self::Toughness)
+    }
+    fn source_snapshot(self, snapshot: &ObjectSnapshot) -> Option<i32> {
+        // CR 208.3 / 107.2: a known noncreature permanent has no P/T;
+        // a required numeric read uses zero, not its printed creature stats.
+        // Keep absent LKI or a missing characteristic on a known creature
+        // distinguishable from this known-unavailable characteristic.
+        if self.is_power_or_toughness()
+            && snapshot.zone == Zone::Battlefield
+            && !snapshot.card_types.contains(&CardType::Creature)
+        {
+            Some(0)
+        } else {
+            self.snapshot(snapshot)
+        }
+    }
+    fn source_live(self, game: &GameState, object: &Object) -> Option<i32> {
+        if self.is_power_or_toughness()
+            && object.zone == Zone::Battlefield
+            && game
+                .current_card_types(object.id)
+                .is_some_and(|types| !types.contains(&CardType::Creature))
+        {
+            Some(0)
+        } else {
+            self.live(game, object)
+        }
+    }
     pub(crate) fn raw(self, object: &Object) -> Option<i32> {
         match self {
             Self::Power => object.power(),
@@ -606,14 +635,39 @@ impl EvaluationContext<'_, '_> {
         let missing = |tense| {
             ExecutionError::UnresolvableValue(format!("Source {tense} no {}", property.label()))
         };
+        if self.game.is_phased_out(self.source) {
+            let snapshot = self
+                .game
+                .turn_store
+                .turn_history
+                .source_last_known_snapshot(self.source)
+                .or_else(|| {
+                    ctx.source_snapshot
+                        .as_ref()
+                        .filter(|snapshot| snapshot.object_id == self.source)
+                })
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "phased damage/ability source has no exact last-known characteristics"
+                            .into(),
+                    )
+                })?;
+            return property
+                .source_snapshot(snapshot)
+                .ok_or_else(|| missing("had"));
+        }
         if let Some(snapshot) = source_lki_for_moved_current_object(self.game, ctx) {
-            property.snapshot(snapshot).ok_or_else(|| missing("had"))
+            property
+                .source_snapshot(snapshot)
+                .ok_or_else(|| missing("had"))
         } else if let Some(object) = self.game.object(self.source) {
             property
-                .live(self.game, object)
+                .source_live(self.game, object)
                 .ok_or_else(|| missing("has"))
         } else if let Some(snapshot) = &ctx.source_snapshot {
-            property.snapshot(snapshot).ok_or_else(|| missing("had"))
+            property
+                .source_snapshot(snapshot)
+                .ok_or_else(|| missing("had"))
         } else {
             Err(ExecutionError::ObjectNotFound(self.source))
         }
@@ -626,6 +680,9 @@ impl EvaluationContext<'_, '_> {
         let Some(ctx) = self.execution() else {
             return Ok(self.layer().object_number(spec, property));
         };
+        if matches!(spec.base(), ChooseSpec::Source) && property.is_power_or_toughness() {
+            return self.source_number(property);
+        }
         let missing = |tense| {
             ExecutionError::UnresolvableValue(format!("Target {tense} no {}", property.label()))
         };
@@ -848,5 +905,87 @@ mod aggregate_life_scope_tests {
             Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Opponent),
             2,
         );
+    }
+}
+
+#[cfg(test)]
+mod known_noncreature_source_tests {
+    use super::*;
+
+    #[test]
+    fn source_statistics_use_known_zero_after_type_loss_live_departed_or_phased() {
+        for mode in 0..3 {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let player = PlayerId::from_index(0);
+            let source = game.create_object_from_definition(
+                &crate::cards::CardDefinitionBuilder::new(crate::CardId::new(), "Printed creature")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(crate::card::PowerToughness::fixed(7, 9))
+                    .build(),
+                player,
+                Zone::Battlefield,
+            );
+            crate::effects::execute_effect(
+                &mut game,
+                &crate::effect::Effect::new(crate::effects::ApplyContinuousEffect::new(
+                    crate::continuous::EffectTarget::Specific(source),
+                    crate::continuous::Modification::SetCardTypes(vec![CardType::Artifact]),
+                    crate::effect::Until::EndOfTurn,
+                )),
+                &mut ExecutionContext::new_default(source, player),
+            )
+            .unwrap();
+            assert!(!game.current_is_creature(source));
+            if mode == 1 {
+                crate::effects::execute_effect(
+                    &mut game,
+                    &crate::effect::Effect::exile(ChooseSpec::SpecificObject(source)),
+                    &mut ExecutionContext::new_default(source, player),
+                )
+                .unwrap();
+            } else if mode == 2 {
+                game.phase_out(source);
+            }
+            let mut ctx = ExecutionContext::new_default(source, player);
+            if mode != 0 {
+                ctx.source_snapshot = game
+                    .turn_store
+                    .turn_history
+                    .source_last_known_snapshot(source)
+                    .cloned();
+                assert!(ctx.source_snapshot.is_some());
+            }
+            for value in [
+                Value::SourcePower,
+                Value::SourceToughness,
+                Value::PowerOf(Box::new(ChooseSpec::Source)),
+                Value::BasePowerOf(Box::new(ChooseSpec::Source)),
+                Value::ToughnessOf(Box::new(ChooseSpec::Source)),
+            ] {
+                assert_eq!(
+                    crate::effects::helpers::resolve_value(&game, &value, &ctx).unwrap(),
+                    0,
+                    "mode {mode}: {value:?} must not resurrect printed statistics"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn absent_source_evidence_and_missing_creature_statistics_remain_errors() {
+        let game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let player = PlayerId::from_index(0);
+        let source = ObjectId(997);
+        let mut ctx = ExecutionContext::new_default(source, player);
+        assert!(crate::effects::helpers::resolve_value(&game, &Value::SourcePower, &ctx).is_err());
+        let mut snapshot =
+            ObjectSnapshot::for_testing(source, player, "Missing creature statistic");
+        snapshot.card_types = vec![CardType::Creature];
+        snapshot.power = None;
+        ctx.source_snapshot = Some(snapshot);
+        assert!(matches!(
+            crate::effects::helpers::resolve_value(&game, &Value::SourcePower, &ctx),
+            Err(ExecutionError::UnresolvableValue(_))
+        ));
     }
 }

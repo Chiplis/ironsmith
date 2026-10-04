@@ -1,4 +1,7 @@
 use super::*;
+#[path = "effect_list/reciprocal_power_damage.rs"]
+mod reciprocal_power_damage;
+pub(in crate::compiled_text) use reciprocal_power_damage::describe_reciprocal_power_damage;
 
 #[path = "effect_list/activated_counter_removal_damage.rs"]
 mod activated_counter_removal_damage;

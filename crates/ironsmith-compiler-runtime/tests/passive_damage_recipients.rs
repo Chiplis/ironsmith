@@ -175,12 +175,11 @@ fn simultaneous(
 ) -> Vec<TriggerEvent> {
     let mut filter = ObjectFilter::creature();
     filter.controller = Some(PlayerFilter::Specific(source_controller));
-    DealDamageBySourcesEffect {
-        sources: vec![ChooseSpec::All(filter)],
-        source_declarations: Vec::new(),
-        amount: ironsmith::effect::Value::PowerOf(Box::new(ChooseSpec::Source)),
+    DealDamageBySourcesEffect::new(
+        vec![ChooseSpec::All(filter)],
+        ironsmith::effect::Value::PowerOf(Box::new(ChooseSpec::Source)),
         target,
-    }
+    )
     .execute(g, &mut ExecutionContext::new_default(observer, A))
     .unwrap()
     .events

@@ -2325,3 +2325,17 @@ fn entry_or_face_up_retains_the_same_complete_subject_and_object_reference() {
             ironsmith_compiler_semantic::trigger_references::default_trigger_last_object_tag(left));
     }
 }
+
+#[test]
+fn qualified_die_heads_retain_numeric_natural_and_ordinal_distinctions() {
+    use crate::model::ast::TriggerSpec;
+    for (text, natural) in [("you roll a natural 20", true), ("you roll a 3 or higher", false), ("you roll a 1 or 2", false)] {
+        let trigger = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokenize_line(text, 0)).unwrap();
+        assert!(matches!(trigger, TriggerSpec::PlayerRollsResultMatching { natural: actual, .. } if actual == natural), "{text}");
+    }
+    let trigger = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokenize_line("you roll your third die each turn", 0)).unwrap();
+    assert!(matches!(trigger, TriggerSpec::PlayerRollsNthDie { player: PlayerFilter::You, ordinal: 3 }));
+    for words in [vec!["natural", "twenty", "and", "draw"], vec!["3", "or", "higher", "this", "turn"], vec!["your", "third", "card", "each", "turn"]] {
+        assert!(parse_roll_result_words(&words).is_none());
+    }
+}

@@ -294,6 +294,10 @@ fn eight_exact_cards_keep_metadata_and_one_typed_multi_source_owner_through_arti
             assert_eq!(found.len(), 1, "{name}");
             assert_eq!(found[0].amount, ironsmith_core::Value::SourcePower);
             assert_eq!(
+                found[0].source_binding,
+                ironsmith_core::DamageSourceSetBinding::LiveMembers
+            );
+            assert_eq!(
                 found[0].sources.len(),
                 if matches!(name, "Friendly Rivalry" | "Graceful Takedown") {
                     2
@@ -714,5 +718,251 @@ fn explicit_source_to_all_recipients_uses_one_damage_occurrence_and_one_lifelink
                 .flat_map(|segment| &segment.default_effects)
                 .any(contains_serial_damage)
         );
+    }
+}
+
+#[test]
+fn alpha_brawl_captures_two_different_sets_and_keeps_both_damage_phases_complete() {
+    for definition in definitions("Alpha Brawl") {
+        assert!(
+            definition
+                .canonical_text
+                .contains("then each of those creatures"),
+            "{}",
+            definition.canonical_text
+        );
+        assert!(
+            !definition.canonical_text.contains("tagged"),
+            "{}",
+            definition.canonical_text
+        );
+        for mode in 0..6 {
+            let mut game = game();
+            let primary = game.create_object_from_definition(
+                &compile_to_runtime_definition(
+                    "Primary creature",
+                    "Type: Creature — Human\nPower/Toughness: 4/50\nLifelink",
+                    false,
+                )
+                .unwrap(),
+                B,
+                Zone::Battlefield,
+            );
+            let first = creature(&mut game, B, "First other", 2, 50);
+            let second = creature(&mut game, B, "Second other", 5, 50);
+            let outsider = creature(&mut game, C, "Unrelated controller", 17, 50);
+            if mode == 1 {
+                apply(
+                    &mut game,
+                    primary,
+                    Effect::exile(ChooseSpec::SpecificObject(first)),
+                );
+                apply(
+                    &mut game,
+                    primary,
+                    Effect::exile(ChooseSpec::SpecificObject(second)),
+                );
+            }
+            if mode >= 2 {
+                let changed = if mode == 3 { primary } else { first };
+                let mut additions = Vec::new();
+                if mode == 2 {
+                    additions.push(Effect::pump(
+                        3,
+                        0,
+                        ChooseSpec::SpecificObject(changed),
+                        Until::EndOfTurn,
+                    ));
+                }
+                if mode >= 4 {
+                    additions.push(Effect::new(ironsmith::effects::ApplyContinuousEffect::new(
+                        ironsmith::continuous::EffectTarget::Specific(changed),
+                        ironsmith::continuous::Modification::SetCardTypes(vec![
+                            ironsmith::CardType::Artifact,
+                        ]),
+                        Until::EndOfTurn,
+                    )));
+                }
+                if mode != 4 {
+                    additions.push(
+                        Effect::exile(ChooseSpec::SpecificObject(changed)).tag("reciprocal_move"),
+                    );
+                    // Mode 5 departs while already a noncreature. Its actual
+                    // departure receipt, rather than capture-time P/T, applies.
+                    if mode != 5 {
+                        additions.push(Effect::new(
+                            ironsmith::effects::MoveToZoneEffect::new(
+                                ChooseSpec::Tagged("reciprocal_move".into()),
+                                Zone::Battlefield,
+                                false,
+                            )
+                            .under_owner_control(),
+                        ));
+                    }
+                }
+                game.effect_store.replacement_effects.add_one_shot_effect(
+                    ironsmith::replacement::ReplacementEffect::with_matcher(
+                        primary,
+                        B,
+                        ironsmith::events::damage::matchers::DamageToObjectMatcher::new(
+                            ironsmith::target::ObjectFilter::specific(first),
+                        ),
+                        ironsmith::replacement::ReplacementAction::Additionally(additions),
+                    ),
+                );
+            }
+            let mut dm = Choices {
+                targets: vec![Target::Object(primary)],
+                ..Default::default()
+            };
+            cast(&mut game, &definition, CastingMethod::Normal, &mut dm);
+            resolve_all(&mut game, &mut dm);
+            assert_eq!(
+                dm.bounds,
+                vec![(1, Some(1))],
+                "only the original creature is a target"
+            );
+            assert_eq!(game.damage_on(outsider), 0);
+            let history = game
+                .turn_store
+                .turn_history
+                .event_records
+                .iter()
+                .chain(game.turn_store.turn_history.staged_event_records.iter())
+                .filter(|record| {
+                    record
+                        .event
+                        .downcast::<ironsmith::events::DamageEvent>()
+                        .is_some()
+                })
+                .collect::<Vec<_>>();
+            if mode == 1 {
+                assert!(history.is_empty());
+                assert_eq!(game.damage_on(primary), 0);
+                continue;
+            }
+            let first_phase = history
+                .iter()
+                .filter(|record| {
+                    record
+                        .event
+                        .downcast::<ironsmith::events::DamageEvent>()
+                        .unwrap()
+                        .source
+                        == primary
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(first_phase.len(), 2);
+            assert!(first_phase.iter().all(|record| {
+                record
+                    .event
+                    .downcast::<ironsmith::events::DamageEvent>()
+                    .unwrap()
+                    .amount
+                    == 4
+            }));
+            assert_eq!(
+                first_phase[0].event.simultaneous_batch(),
+                first_phase[1].event.simultaneous_batch()
+            );
+            assert_eq!(
+                game.player(B).unwrap().life,
+                28,
+                "first source gains life once from its complete outgoing set"
+            );
+            if mode == 3 {
+                let returned = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .find(|id| {
+                        game.object(*id)
+                            .is_some_and(|object| object.name == "Primary creature")
+                    })
+                    .unwrap();
+                assert_ne!(returned, primary);
+                assert_eq!(
+                    game.damage_on(returned),
+                    0,
+                    "the second phase cannot hit the new incarnation"
+                );
+                assert_eq!(history.len(), 2);
+                continue;
+            }
+            assert_eq!(
+                game.damage_on(primary),
+                match mode {
+                    2 => 10,
+                    4 | 5 => 5,
+                    _ => 7,
+                }
+            );
+            let second_phase = history
+                .iter()
+                .filter(|record| {
+                    record
+                        .event
+                        .downcast::<ironsmith::events::DamageEvent>()
+                        .unwrap()
+                        .source
+                        != primary
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(second_phase.len(), if mode >= 4 { 1 } else { 2 });
+            if mode >= 4 {
+                assert!(
+                    second_phase.iter().all(|record| record
+                        .event
+                        .downcast::<ironsmith::events::DamageEvent>()
+                        .is_some_and(|event| event.source == second && event.amount == 5)),
+                    "a known noncreature source has zero power, whether present or departed"
+                );
+            } else {
+                assert_eq!(
+                    second_phase[0].event.simultaneous_batch(),
+                    second_phase[1].event.simultaneous_batch()
+                );
+            }
+            assert_ne!(
+                first_phase[0].event.simultaneous_batch(),
+                second_phase[0].event.simultaneous_batch()
+            );
+            assert!(second_phase.iter().all(|record| {
+                record
+                    .event
+                    .downcast::<ironsmith::events::DamageEvent>()
+                    .unwrap()
+                    .target
+                    == ironsmith::events::DamageTarget::Object(primary)
+            }));
+            if mode == 2 {
+                let returned = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .find(|id| {
+                        game.object(*id)
+                            .is_some_and(|object| object.name == "First other")
+                    })
+                    .unwrap();
+                assert_ne!(returned, first);
+                assert_eq!(game.calculated_power(returned), Some(2));
+                assert!(
+                    second_phase.iter().any(|record| record
+                        .event
+                        .downcast::<ironsmith::events::DamageEvent>()
+                        .is_some_and(|event| event.source == first && event.amount == 5)),
+                    "the old source uses actual departure power, not earlier2 or the returned creature"
+                );
+                assert!(second_phase.iter().all(|record| {
+                    record
+                        .event
+                        .downcast::<ironsmith::events::DamageEvent>()
+                        .unwrap()
+                        .source
+                        != returned
+                }));
+            }
+        }
     }
 }

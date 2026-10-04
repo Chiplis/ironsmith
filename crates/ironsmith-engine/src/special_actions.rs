@@ -1210,13 +1210,18 @@ fn can_roll_planar_die(game: &GameState, player: PlayerId) -> Result<(), ActionE
     }
     game.planar_die_roll_cost(player)
         .ok_or(ActionError::InvalidTiming)?;
+    game.turn_store.turn_history.check_completed_die_roll_capacity(player, 1)
+        .map_err(|error|ActionError::ExecutionFailure { source: ObjectId::from_raw(0), error })?;
     Ok(())
 }
 
 fn perform_roll_planar_die(game: &mut GameState, player: PlayerId) -> Result<(), ActionError> {
     game.roll_planar_die(player, true)
         .map(|_| ())
-        .map_err(|_| ActionError::InvalidTiming)
+        .map_err(|error|match error {
+            crate::effects::ExecutionError::Impossible(_) => ActionError::InvalidTiming,
+            error => ActionError::ExecutionFailure { source: ObjectId::from_raw(0), error },
+        })
 }
 
 // === Play Land ===

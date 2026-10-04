@@ -234,7 +234,8 @@ fn stack_spell_cast_origin_zone(
     if entry.is_ability || object.kind == ObjectKind::SpellCopy {
         return None;
     }
-    Some(match &entry.casting_method {
+    Some(match entry.casting_method.origin_method() {
+        crate::alternative_cast::CastingMethod::AlternativePrice { .. } => return None,
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf

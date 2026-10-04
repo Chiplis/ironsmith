@@ -697,6 +697,8 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerRollsToVisitAttractions { player } => {
             Trigger::player_rolls_to_visit_attractions(player)
         }
+        TriggerSpec::PlayerRollsResultMatching { player, result, natural } => Trigger::player_rolls_result_matching(player, result, natural),
+        TriggerSpec::PlayerRollsNthDie { player, ordinal } => Trigger::player_rolls_nth_die(player, ordinal),
         TriggerSpec::PlayerRollsResult { player, result } => {
             Trigger::player_rolls_result(player, result)
         }
@@ -1456,6 +1458,8 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerTapsForMana { .. }
         | TriggerSpec::PlayerRollsToVisitAttractions { .. }
         | TriggerSpec::PlayerRollsResult { .. }
+        | TriggerSpec::PlayerRollsResultMatching { .. }
+        | TriggerSpec::PlayerRollsNthDie { .. }
         | TriggerSpec::PlayerRollsHighestNaturalResult { .. }
         | TriggerSpec::PlayerRollsDie { .. }
         | TriggerSpec::PlayerCoinFlipResult { .. }
@@ -1524,10 +1528,14 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
                 .is_some_and(|event| event.metric == metric
                     && (!*for_controller || event.player == PlayerFilter::You))
         }
+        EventValueSpec::DieBatchTotal | EventValueSpec::DieResultsAtLeast(_) => {
+            ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(trigger) == Some(true)
+        }
         EventValueSpec::DieResult => match trigger {
             TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::PlayerRollsToVisitAttractions { .. }
             | TriggerSpec::PlayerRollsResult { .. }
+        | TriggerSpec::PlayerRollsResultMatching { .. }
             | TriggerSpec::PlayerRollsHighestNaturalResult { .. }
             | TriggerSpec::PlayerRollsDie { .. } => true,
             TriggerSpec::Either(left, right) => {

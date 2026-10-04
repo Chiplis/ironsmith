@@ -71,6 +71,8 @@ pub enum SimultaneousTriggerKey {
     DamageTarget(DamageTarget),
     /// A single damaging source and a single recipient, independently of other assignments.
     DamageSourceTarget(ObjectId, DamageTarget),
+    /// A player's grouped dice remain distinct from another player's rolls.
+    PlayerDieRollBatch(PlayerId),
 }
 
 /// Context provided to trigger matchers for determining if they match an event.

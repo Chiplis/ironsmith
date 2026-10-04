@@ -1502,6 +1502,21 @@ impl SplitCombinedCharacteristics {
     }
 }
 
+/// The independent price selected at announcement. Its entire cost and
+/// constraints survive provider departure and occurrence-safe checkpointing.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub struct CastPriceReceipt<C, G> {
+    pub identity: G,
+    pub source: ObjectId,
+    pub total_cost: C,
+    /// Mana that the independent origin requires in addition to any price.
+    pub origin_mana_surcharge: ManaCost,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_temporary_payload"))]
+    pub prototype: Option<usize>,
+    pub constraints: crate::grant_registry::PlayFromConstraints,
+}
+
 /// Complete captured casting/payment facts, separate from displayed spell state.
 /// All executable and historical payloads require explicit fallible conversion.
 #[derive(Debug, Clone, PartialEq)]
@@ -1515,6 +1530,8 @@ pub struct RetainedCastPaymentState<M, K, C, G, S> {
     pub cast_play_from_constraints: Option<(ObjectId, Zone, crate::grant_registry::PlayFromConstraints)>,
     #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_temporary_payload"))]
     pub cast_grant_usage_identity: Option<G>,
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub cast_price: Option<CastPriceReceipt<C, G>>,
     pub optional_costs: Vec<K>,
     pub paid_costs: Vec<(crate::cost::OptionalCostRef, u32)>,
     pub paid_branch_choices: Vec<(usize, usize)>,
@@ -1543,6 +1560,7 @@ impl From<&Object> for NativeCastPaymentState {
             cast_alternative_method: value.cast_alternative_method.as_deref().cloned(),
             cast_play_from_constraints: value.cast_play_from_constraints.as_deref().cloned(),
             cast_grant_usage_identity: value.cast_grant_usage_identity.as_deref().cloned(),
+            cast_price: value.cast_price.as_deref().cloned(),
             optional_costs: value.optional_costs.to_vec(),
             paid_costs: value.optional_costs_paid.costs.clone(),
             paid_branch_choices: value.optional_costs_paid.branch_choices.clone(),
@@ -1571,6 +1589,7 @@ impl<M, K, C, G, S> RetainedCastPaymentState<M, K, C, G, S> {
             cast_alternative_method,
             cast_play_from_constraints,
             cast_grant_usage_identity,
+            cast_price,
             optional_costs,
             paid_costs,
             paid_branch_choices,
@@ -1593,6 +1612,10 @@ impl<M, K, C, G, S> RetainedCastPaymentState<M, K, C, G, S> {
             cast_alternative_method: cast_alternative_method.map(&mut alternative).transpose()?,
             cast_play_from_constraints,
             cast_grant_usage_identity: cast_grant_usage_identity.map(&mut permission).transpose()?,
+            cast_price: cast_price.map(|price| Ok::<_, E>(CastPriceReceipt {
+                identity: permission(price.identity)?, source: price.source,
+                total_cost: cost(price.total_cost)?, origin_mana_surcharge: price.origin_mana_surcharge, prototype: price.prototype, constraints: price.constraints,
+            })).transpose()?,
             optional_costs: optional_costs.into_iter().map(&mut optional).collect::<Result<_, _>>()?,
             paid_costs,
             paid_branch_choices,
@@ -1615,6 +1638,7 @@ impl NativeCastPaymentState {
             cast_alternative_method,
             cast_play_from_constraints,
             cast_grant_usage_identity,
+            cast_price,
             optional_costs,
             paid_costs,
             paid_branch_choices,
@@ -1627,6 +1651,9 @@ impl NativeCastPaymentState {
             cast_tagged_objects,
             additional_cost,
         } = self;
+        if cast_price.as_ref().is_some_and(|price| price.total_cost.as_all().is_none()) {
+            return Err("captured alternative price has an unresolved branch".into());
+        }
         let mut tags = HashMap::new();
         for (tag, snapshots) in cast_tagged_objects {
             if tags.insert(tag, snapshots).is_some() {
@@ -1637,6 +1664,7 @@ impl NativeCastPaymentState {
         object.cast_alternative_method = cast_alternative_method.map(Box::new);
         object.cast_play_from_constraints = cast_play_from_constraints.map(Box::new);
         object.cast_grant_usage_identity = cast_grant_usage_identity.map(Box::new);
+        object.cast_price = cast_price.map(Box::new);
         object.optional_costs = optional_costs.into();
         object.optional_costs_paid = OptionalCostsPaid {
             costs: paid_costs, branch_choices: paid_branch_choices, cast_at_sorcery_timing,
@@ -1758,6 +1786,7 @@ pub struct Object {
         Option<Box<(ObjectId, Zone, crate::grant_registry::PlayFromConstraints)>>,
     /// Once-turn permission captured before movement and retained through payment.
     pub cast_grant_usage_identity: Option<Box<crate::grant_registry::GrantPermissionIdentity>>,
+    pub cast_price: Option<Box<CastPriceReceipt<TotalCost, crate::grant_registry::GrantPermissionIdentity>>>,
     /// True if this split card can be cast fused from hand.
     pub has_fuse: bool,
     /// Optional costs (kicker, buyback, etc.)
@@ -2048,6 +2077,7 @@ impl From<Object> for NativeRetainedLiveObject {
             cast_alternative_method: _,
             cast_play_from_constraints: _,
             cast_grant_usage_identity: _,
+            cast_price: _,
             has_fuse,
             optional_costs: _,
             optional_costs_paid: _,
@@ -2281,6 +2311,7 @@ impl TryFrom<NativeRetainedLiveObject> for Object {
             cast_alternative_method,
             cast_play_from_constraints,
             cast_grant_usage_identity,
+            cast_price,
             optional_costs,
             paid_costs,
             paid_branch_choices,
@@ -2293,6 +2324,9 @@ impl TryFrom<NativeRetainedLiveObject> for Object {
             cast_tagged_objects,
             additional_cost,
         } = cast_payment_state;
+        if cast_price.as_ref().is_some_and(|price| price.total_cost.as_all().is_none()) {
+            return Err("captured alternative price has an unresolved branch".into());
+        }
         let mut tags = HashMap::new();
         for (tag, snapshots) in cast_tagged_objects {
             if tags.insert(tag, snapshots).is_some() {
@@ -2346,6 +2380,7 @@ impl TryFrom<NativeRetainedLiveObject> for Object {
             cast_alternative_method: cast_alternative_method.map(Box::new),
             cast_play_from_constraints: cast_play_from_constraints.map(Box::new),
             cast_grant_usage_identity: cast_grant_usage_identity.map(Box::new),
+            cast_price: cast_price.map(Box::new),
             has_fuse,
             optional_costs: optional_costs.into(),
             optional_costs_paid: OptionalCostsPaid {
@@ -2830,6 +2865,7 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -2918,6 +2954,7 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -3210,6 +3247,7 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -3290,6 +3328,7 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: source.has_fuse,
             // Optional costs are copiable
             optional_costs: source.optional_costs.clone(),
@@ -3365,6 +3404,7 @@ impl Object {
             cast_alternative_method: source.cast_alternative_method.clone(),
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: source.has_fuse,
             optional_costs: source.optional_costs.clone(),
             optional_costs_paid: source.optional_costs_paid.clone(),
@@ -3442,6 +3482,7 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -3516,6 +3557,7 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -4505,6 +4547,7 @@ impl Object {
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
+            cast_price: None,
             has_fuse: def.has_fuse,
             optional_costs: handles.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -5852,6 +5895,26 @@ mod retained_cast_payment_state_tests {
             assert!(serde_json::from_value::<RetainedCastPaymentState<u32, u32, u32, u32, u32>>(missing).is_err());
         }
     }
+    #[cfg(feature = "serialization")]
+    #[test]
+    fn independent_price_receipt_is_optional_for_legacy_but_complete_when_present() {
+        type Wire = RetainedCastPaymentState<u32, u32, u32, u32, u32>;
+        let mut state = NativeCastPaymentState::from(&fixture()).try_map_payloads(
+            |_| Ok::<_, String>(0u32), |_| Ok(0u32), |_| Ok(0u32), |_| Ok(0u32), |_| Ok(0u32)).unwrap();
+        let legacy = serde_json::to_value(&state).unwrap();
+        assert!(legacy.get("cast_price").is_none());
+        assert!(serde_json::from_value::<Wire>(legacy).unwrap().cast_price.is_none());
+        state.cast_price = Some(CastPriceReceipt {identity: 9, source: ObjectId::from_raw(44), total_cost: 17,
+            origin_mana_surcharge: ManaCost::new(), prototype: None,
+            constraints: crate::grant_registry::PlayFromConstraints {instant_timing: true, ..Default::default()}});
+        let encoded = serde_json::to_value(&state).unwrap();
+        assert_eq!(serde_json::from_value::<Wire>(encoded.clone()).unwrap(), state);
+        for field in ["identity", "source", "total_cost", "origin_mana_surcharge", "prototype", "constraints"] {
+            let mut missing = encoded.clone(); missing["cast_price"].as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<Wire>(missing).is_err(), "missing price {field}");
+        }
+    }
+
 }
 
 #[cfg(test)]

@@ -2550,6 +2550,10 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
         } => {
             if let Some(obj) = game.object(*spell_id) {
                 match casting_method {
+                    crate::alternative_cast::CastingMethod::AlternativePrice { price, prototype, .. } => {
+                        let provider = game.object(price.source).map(|source| source.name.to_string()).unwrap_or_else(|| "alternative price".into());
+                        format!("{} [using {}{}]", obj.name, provider, if prototype.is_some() { ", prototyped" } else { "" })
+                    }
                     crate::alternative_cast::CastingMethod::Normal => {
                         format!("{} ({})", obj.name, format_mana_cost(obj))
                     }

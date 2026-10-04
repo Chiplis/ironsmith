@@ -4753,6 +4753,10 @@ impl StaticAbility {
 
     /// "If a land is tapped for two or more mana, it produces {C} instead of
     /// any other type and amount." (Damping Sphere)
+    pub fn mana_production_rewrite(rule: ironsmith_core::ManaOutputRewrite, display: impl Into<String>) -> Self {
+        Self::new(ManaProductionRewrite { rule, display: display.into() })
+    }
+
     pub fn mana_production_replacement(
         source_filter: crate::target::ObjectFilter,
         minimum_amount: u32,

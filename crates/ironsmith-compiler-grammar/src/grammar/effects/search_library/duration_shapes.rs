@@ -71,9 +71,8 @@ fn as_long_as_source_remains_tapped(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn as_long_as_source_remains_on_battlefield(tokens: &[OwnedLexToken]) -> bool {
-    marker_present(tokens, "remains")
-        && marker_present(tokens, "battlefield")
-        && source_reference_present(tokens)
+    crate::grammar::effects::control_copy_attach_shapes::parse_permanent_control_duration_shape(tokens)
+        .is_some_and(|shape| shape.until == Until::while_source_remains_on_battlefield())
 }
 
 fn comma_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -158,7 +157,7 @@ pub fn parse_search_restriction_duration_shape_lexed(
         let duration = if as_long_as_source_remains_tapped(suffix) {
             Some(Until::SourceUntaps)
         } else if as_long_as_source_remains_on_battlefield(suffix) {
-            Some(Until::ThisLeavesTheBattlefield)
+            Some(Until::while_source_remains_on_battlefield())
         } else if as_long_as_you_control_source(suffix) {
             Some(Until::YouStopControllingThis)
         } else {

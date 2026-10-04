@@ -717,7 +717,7 @@ fn apply_priority_response_with_dm_inner(
                 && may_have_multiple_casting_methods(game, player, *spell_id, *from_zone)
             {
                 let available_methods =
-                    collect_available_casting_methods(game, player, *spell_id, *from_zone);
+                    collect_available_casting_methods(game, player, *spell_id, *from_zone)?;
                 if available_methods.len() > 1 {
                     // Store the pending selection and prompt user
                     state.pending_method_selection = Some(PendingMethodSelection {

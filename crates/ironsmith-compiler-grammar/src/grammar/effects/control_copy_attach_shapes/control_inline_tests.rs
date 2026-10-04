@@ -111,3 +111,23 @@ fn parses_typed_latched_control_duration_predicates() {
         ]))
     );
 }
+
+#[test]
+fn complete_source_battlefield_lifetime_uses_exact_visible_latched_predicate() {
+    use ironsmith_core::{ContinuousDurationObject as Object, ContinuousDurationPredicate as Predicate};
+    for source in ["this creature", "this aura", "this saga", "this permanent"] {
+        let tokens = lex_line(&format!("for as long as {source} remains on the battlefield"), 0).unwrap();
+        let shape = parse_permanent_control_duration_shape(&tokens).unwrap();
+        assert_eq!(shape.until, Until::ForAsLongAs(Predicate::ObjectOnBattlefield(Object::Source)));
+        assert!(shape.source_surface.is_some());
+    }
+    for text in [
+        "for as long as target creature remains on the battlefield",
+        "for as long as that aura remains on the battlefield",
+        "for as long as this creature remains on the battlefield and is tapped",
+        "for as long as this creature remains on the battlefield until end of turn",
+        "for as long as this creature remains on the battlefield nonsense",
+    ] {
+        assert!(parse_permanent_control_duration_shape(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+    }
+}

@@ -1807,7 +1807,8 @@ fn resolve_stack_entry_full_inner(
                 }) || resolving_spell_has_granted_rebound);
 
             // Only methods which explicitly replace leaving the stack exile the spell.
-            let should_exile = match &entry.casting_method {
+            let should_exile = match entry.casting_method.origin_method() {
+                CastingMethod::AlternativePrice { .. } => false,
                 CastingMethod::Normal => false,
                 CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => false,
                 CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => {
@@ -1859,7 +1860,7 @@ fn resolve_stack_entry_full_inner(
             // A permission whose alternative cost exiles the spell (granted
             // flashback, CR 702.34a: "exile it instead of putting it anywhere
             // else") overrides the Omen shuffle.
-            let omen_alternative_exiles = match &entry.casting_method {
+            let omen_alternative_exiles = match entry.casting_method.origin_method() {
                 CastingMethod::SplitOtherHalfPlayFrom {
                     zone,
                     use_alternative: Some(use_alternative),
@@ -1875,7 +1876,7 @@ fn resolve_stack_entry_full_inner(
                 _ => false,
             };
             let resolving_as_omen = matches!(
-                entry.casting_method,
+                entry.casting_method.origin_method(),
                 CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. }
             ) && !omen_alternative_exiles
                 && obj.subtypes.contains(&crate::types::Subtype::Omen);

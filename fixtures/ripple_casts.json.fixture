@@ -1,0 +1,64 @@
+[
+  {
+    "name": "Surging Aether",
+    "oracle_id": "060b1a76-22a4-48a5-a353-4d0501367956",
+    "mana_cost": "{3}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Ripple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)\nReturn target permanent to its owner's hand.",
+    "source": "https://scryfall.com/card/csp/47/surging-aether?utm_source=api",
+    "baseline_content_hash": "1641793ae3704cc6c395a311843fea8226cafbff80840a0abdfcc5759d1d19c9",
+    "baseline_diagnostic": "parser does not yet support line family: 'Ripple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Ripple 4' [rule-path=unsupported-line-family]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: bounded source review clear through343b4d052; all scenarios unrun."
+  },
+  {
+    "name": "Surging Dementia",
+    "oracle_id": "dd7f46c2-98f7-46e6-92ce-51fa95d2f0c8",
+    "mana_cost": "{1}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Ripple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)\nTarget player discards a card.",
+    "source": "https://scryfall.com/card/csp/72/surging-dementia?utm_source=api",
+    "baseline_content_hash": "3272d5e6f1853566b51d8be40d058c2d4b7df0ae63cc71d01e346fbb1a966715",
+    "baseline_diagnostic": "parser does not yet support line family: 'Ripple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Ripple 4' [rule-path=unsupported-line-family]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: bounded source review clear through343b4d052; all scenarios unrun."
+  },
+  {
+    "name": "Surging Flame",
+    "oracle_id": "3c51b991-f6fa-44d2-81a3-0894939f3c22",
+    "mana_cost": "{1}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Ripple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)\nSurging Flame deals 2 damage to any target.",
+    "source": "https://scryfall.com/card/csp/99/surging-flame?utm_source=api",
+    "baseline_content_hash": "61b5409dd873d0e8803211d3d387862c65c6d154111f2bf9bd72d17820eb4fce",
+    "baseline_diagnostic": "parser does not yet support line family: 'Ripple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Ripple 4' [rule-path=unsupported-line-family]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: bounded source review clear through343b4d052; all scenarios unrun."
+  },
+  {
+    "name": "Surging Might",
+    "oracle_id": "04647861-0023-432b-9b24-77264f11e470",
+    "mana_cost": "{2}{G}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +2/+2.\nRipple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)",
+    "source": "https://scryfall.com/card/csp/125/surging-might?utm_source=api",
+    "baseline_content_hash": "1109b4411952ce900720d920d30ccd8bded48dabc068326bdbd11ec9bbd711e8",
+    "baseline_diagnostic": "parser does not yet support line family: 'Ripple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Ripple 4' [rule-path=unsupported-line-family]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: bounded source review clear through343b4d052; all scenarios unrun."
+  },
+  {
+    "name": "Surging Sentinels",
+    "oracle_id": "0b98ae2a-56ac-485d-b064-a06e1e8d4055",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Human Soldier",
+    "oracle_text": "First strike\nRipple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)",
+    "power": "2",
+    "toughness": "1",
+    "source": "https://scryfall.com/card/csp/20/surging-sentinels?utm_source=api",
+    "baseline_content_hash": "8fb2325e9056b5b8c0a61832d5fb9933246cbed6a6341ba7131e734994a891f4",
+    "baseline_diagnostic": "parser does not yet support line family: 'Ripple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Ripple 4' [rule-path=unsupported-line-family]",
+    "proposed_complete": true,
+    "validation_status": "UNVALIDATED: bounded source review clear through343b4d052; all scenarios unrun."
+  }
+]

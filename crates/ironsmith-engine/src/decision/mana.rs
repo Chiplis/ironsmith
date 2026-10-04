@@ -906,7 +906,11 @@ pub(crate) fn casting_method_matches_alternative_kind(
     casting_method: &CastingMethod,
     kind: crate::filter::AlternativeCastKind,
 ) -> bool {
-    match casting_method {
+    if matches!(casting_method, CastingMethod::AlternativePrice { .. }) {
+        return crate::alternative_cast::price_routes::origin_alternative(game, caster, spell, casting_method)
+            .as_ref().is_some_and(|method| alternative_cast_method_matches_kind(method, kind));
+    }
+    match casting_method.origin_method() {
         CastingMethod::Alternative(idx) => spell
             .alternative_casts
             .get(*idx)
@@ -939,6 +943,7 @@ pub(crate) fn casting_method_matches_alternative_kind(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => false,
+        CastingMethod::AlternativePrice { .. } => false,
     }
 }
 
@@ -1004,7 +1009,7 @@ fn inferred_cast_origin_zone_for_cost_filter(
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
 ) -> Zone {
-    match casting_method {
+    match casting_method.origin_method() {
         CastingMethod::Normal => {
             if spell.zone == Zone::Stack {
                 Zone::Hand
@@ -1030,6 +1035,7 @@ fn inferred_cast_origin_zone_for_cost_filter(
         CastingMethod::PlayFrom { zone, .. }
         | CastingMethod::SplitOtherHalfPlayFrom { zone, .. }
         | CastingMethod::FaceDownPlayFrom { zone, .. } => *zone,
+        CastingMethod::AlternativePrice { .. } => spell.zone,
     }
 }
 
@@ -1040,8 +1046,13 @@ fn spell_view_for_cost_filter_match(
     casting_method: &CastingMethod,
     cast_from_zone: Option<Zone>,
 ) -> Option<crate::object::Object> {
-    let mut view = spell.clone();
-    let mut changed = false;
+    let selected_price_face = match casting_method {
+        CastingMethod::AlternativePrice { origin, prototype: Some(index), .. } =>
+            crate::alternative_cast::price_routes::proposed_face(game, spell, origin, Some(*index)),
+        _ => None,
+    };
+    let mut changed = selected_price_face.is_some();
+    let mut view = selected_price_face.unwrap_or_else(|| spell.clone());
 
     if casting_method_is_bestow(game, caster, spell, casting_method) {
         view.apply_bestow_cast_overlay();
@@ -1560,7 +1571,7 @@ fn without_combined_split_characteristics(
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
 ) -> Option<crate::object::Object> {
-    if matches!(casting_method, CastingMethod::Fuse) {
+    if matches!(casting_method.origin_method(), CastingMethod::Fuse) {
         return view;
     }
     match view {
@@ -2016,14 +2027,19 @@ fn casting_method_grants_flash_timing(
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
 ) -> bool {
+    if crate::alternative_cast::price_routes::receipt_or_latch(game, player, spell, casting_method)
+        .is_some_and(|price| price.constraints.instant_timing) { return true; }
+    let origin = casting_method.origin_method();
     if let CastingMethod::PlayFrom { source, zone, use_alternative: None }
         | CastingMethod::SplitOtherHalfPlayFrom { source, zone, use_alternative: None }
-        | CastingMethod::FaceDownPlayFrom { source, zone } = casting_method
+        | CastingMethod::FaceDownPlayFrom { source, zone } = origin
     {
         let constraints = if spell.zone == Zone::Stack {
             spell.cast_play_from_constraints.as_deref()
                 .filter(|(captured_source, captured_zone, _)| captured_source == source && captured_zone == zone)
                 .map(|(_, _, constraints)| constraints.clone())
+        } else if matches!(casting_method, CastingMethod::AlternativePrice { .. }) {
+            crate::alternative_cast::price_routes::origin_constraints_or_latch(game, player, spell, casting_method)
         } else {
             game.effect_store.grant_registry.selected_play_from_grant_for_card_view(
                 game, spell.id, Some(spell), *zone, player, *source,
@@ -2031,7 +2047,7 @@ fn casting_method_grants_flash_timing(
         };
         if constraints.is_some_and(|constraints| constraints.instant_timing) { return true; }
     }
-    let method = match casting_method {
+    let method = match origin {
         CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             zone,
@@ -2105,7 +2121,7 @@ fn casting_method_grants_library_search_timing(
     casting_method: &CastingMethod,
 ) -> bool {
     matches!(
-        casting_method,
+        casting_method.origin_method(),
         CastingMethod::PlayFrom {
             zone: Zone::Library,
             ..
@@ -2253,6 +2269,10 @@ pub fn spell_mana_cost_for_cast(
     from_zone: Zone,
 ) -> Option<crate::mana::ManaCost> {
     let base_cost = match casting_method {
+        CastingMethod::AlternativePrice { .. } => {
+            let price = crate::alternative_cast::price_routes::receipt_or_latch(game, player, spell, casting_method)?;
+            Some(crate::alternative_cast::price_routes::mana_cost(&price))
+        },
         CastingMethod::Normal => spell.mana_cost_owned(),
         CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => Some(face_down_cast_mana_cost()),
         CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => {
@@ -2350,6 +2370,7 @@ pub(crate) fn alternative_method_for_casting_method(
     casting_method: &CastingMethod,
 ) -> Option<crate::alternative_cast::AlternativeCastingMethod> {
     match casting_method {
+        CastingMethod::AlternativePrice { .. } => crate::alternative_cast::price_routes::origin_alternative(game, player, spell, casting_method),
         CastingMethod::Alternative(idx) => spell
             .alternative_casts
             .get(*idx)
@@ -2539,6 +2560,9 @@ fn completed_cast_proposal_is_legal_with_timing_permission(
     timing_permission_from_effect: bool,
     targets: &[crate::Target],
 ) -> bool {
+    if matches!(casting_method, CastingMethod::AlternativePrice { .. })
+        && crate::alternative_cast::price_routes::receipt_or_latch(game, player, spell, casting_method).is_none()
+    { return false; }
     if !plotted_cast_method_allows(game, player, spell, casting_method)
         || !foretold_cast_method_allows(game, player, spell, casting_method)
     {
@@ -3122,6 +3146,9 @@ pub(crate) fn can_cast_spell_with_context(
     let game = ctx.game;
     let player = ctx.player;
     let view = ctx.view;
+    if matches!(casting_method, CastingMethod::AlternativePrice { .. })
+        && crate::alternative_cast::price_routes::receipt_or_latch(game, player, spell, casting_method).is_none()
+    { return false; }
     if game.is_planar_card(spell.id) {
         return false;
     }
@@ -3149,7 +3176,7 @@ pub(crate) fn can_cast_spell_with_context(
     {
         return false;
     }
-    let cast_view = match casting_method {
+    let cast_view = match casting_method.origin_method() {
         CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => {
             if !spell_can_be_cast_face_down(game, spell) {
                 return false;
@@ -3173,10 +3200,18 @@ pub(crate) fn can_cast_spell_with_context(
         }
         _ => None,
     };
+    let cast_view = match casting_method {
+        CastingMethod::AlternativePrice { origin, prototype: Some(index), .. } => {
+            let Some(face) = crate::alternative_cast::price_routes::proposed_face(game, spell, origin, Some(*index)) else { return false; };
+            Some(face)
+        }
+        _ => cast_view,
+    };
     let cast_view = without_combined_split_characteristics(cast_view, spell, casting_method);
     let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
 
     if let Some(method) = match casting_method {
+        CastingMethod::AlternativePrice { .. } => crate::alternative_cast::price_routes::origin_alternative(game, player, spell, casting_method),
         CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -3294,7 +3329,16 @@ pub(crate) fn can_cast_spell_with_context(
     }
 
     let commander_tax_life = commander_tax_life_payment_amount(game, spell, spell.zone);
-    let additional_costs = spell_for_checks.additional_non_mana_costs();
+    let mut additional_costs = spell_for_checks.additional_non_mana_costs();
+    if matches!(casting_method, CastingMethod::AlternativePrice { .. }) {
+        let Some(price) = crate::alternative_cast::price_routes::receipt_or_latch(game, player, spell, casting_method) else { return false; };
+        additional_costs.extend(price.total_cost.non_mana_costs().cloned());
+        if let Some(origin) = crate::alternative_cast::price_routes::origin_alternative(game, player, spell, casting_method) {
+            additional_costs.extend(origin.non_mana_costs());
+            if matches!(origin, crate::alternative_cast::AlternativeCastingMethod::JumpStart { .. })
+                && !spell_for_checks.card_types.contains(&crate::types::CardType::Instant) && !spell_for_checks.card_types.contains(&crate::types::CardType::Sorcery) { return false; }
+        }
+    }
     let has_modal_mana_cost = additional_costs.iter()
         .any(|cost| crate::costs::simple_modal_mana_cost_branches(cost).is_some());
     if !has_modal_mana_cost && !can_pay_non_mana_cost_sequence_for_cast(
@@ -3321,7 +3365,7 @@ pub(crate) fn can_cast_spell_with_context(
             || !spell_granted_cost_static_abilities(game, spell_for_checks).is_empty()
             || matches!(
                 casting_method,
-                CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { .. } | CastingMethod::FaceDownPlayFrom { .. }
+                CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { .. } | CastingMethod::FaceDownPlayFrom { .. } | CastingMethod::AlternativePrice { .. }
             );
         let effective_cost = if ctx.can_use_printed_cost_directly(has_cost_adjustments) {
             base_cost.clone()
@@ -5260,7 +5304,7 @@ pub(crate) fn collect_spell_cost_modifiers(
     let mut spilling_reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     if let CastingMethod::PlayFrom { source, zone, .. }
     | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
-    | CastingMethod::FaceDownPlayFrom { source, zone } = casting_method
+    | CastingMethod::FaceDownPlayFrom { source, zone } = casting_method.origin_method()
     {
         let constraints = spell
             .cast_play_from_constraints
@@ -5273,6 +5317,9 @@ pub(crate) fn collect_spell_cost_modifiers(
             })
             .map(|(_, _, constraints)| constraints.clone())
             .unwrap_or_else(|| {
+                if matches!(casting_method, CastingMethod::AlternativePrice { .. }) {
+                    return crate::alternative_cast::price_routes::origin_constraints_or_latch(game, player, spell, casting_method).unwrap_or_default();
+                }
                 game.effect_store
                     .grant_registry
                     .play_from_constraints_for_card(game, spell.id, *zone, player, *source)
@@ -5283,6 +5330,10 @@ pub(crate) fn collect_spell_cost_modifiers(
         if let Some(increase) = constraints.spell_cost_increase {
             increase_pips.extend(increase.pips().iter().cloned());
         }
+    }
+    if let Some(price) = crate::alternative_cast::price_routes::receipt_or_latch(game, player, spell, casting_method) {
+        if let Some(reduction) = price.constraints.spell_cost_reduction { reduction_pips.extend(reduction.pips().iter().cloned()); }
+        if let Some(increase) = price.constraints.spell_cost_increase { increase_pips.extend(increase.pips().iter().cloned()); }
     }
     let ctx = with_source_exiled_tagged_objects(
         game,

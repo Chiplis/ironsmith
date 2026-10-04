@@ -4297,6 +4297,12 @@
             "The next time {player} would draw a card{duration}, instead {replacement}"
         );
     }
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaSpendPermissionEffect>() {
+        return register.display.clone();
+    }
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaRewriteEffect>() {
+        return register.display.clone();
+    }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaReplacementEffect>() {
         let source = register.source_filter.description();
         let mana = register

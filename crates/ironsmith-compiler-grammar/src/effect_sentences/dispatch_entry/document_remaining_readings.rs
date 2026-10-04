@@ -630,6 +630,7 @@ fn read_tapped_land_mana_replacement(
     input: &RemainingDocument<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(effect) = read_typed_mana_output_sentence(tokens)? { return Ok(Some(vec![effect])); }
     if let Some(effect) = parse_tapped_land_mana_replacement(tokens) {
         return Ok(Some(vec![effect]));
     }

@@ -2263,6 +2263,13 @@ impl CardDefinitionBuilder {
         })
     }
 
+    pub fn ripple(self, amount: u32) -> Self {
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::you_cast_this_spell(),
+            vec![crate::effect::Effect::new(crate::effects::RippleEffect { amount })],
+        ).in_zones(vec![crate::zone::Zone::Stack]))
+    }
+
     pub fn graft(self, amount: u32) -> Self {
         let entered_tag = crate::tag::CompilerReferenceTag::GraftEnteredCreature.bind();
 

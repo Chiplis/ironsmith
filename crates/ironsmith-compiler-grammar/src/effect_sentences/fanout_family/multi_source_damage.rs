@@ -46,6 +46,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         PlayerAst::Implicit,
         SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
             sources,
+            source_binding: ironsmith_core::DamageSourceSetBinding::LiveMembers,
             amount: Value::SourcePower,
             target,
         }),

@@ -264,6 +264,16 @@ pub enum Grantable<SA, E, C, Cond> {
     DerivedAlternativeCast(DerivedAlternativeCast<C>),
     /// Grant the ability to play a card from a non-hand zone as if it were in hand.
     PlayFrom,
+    /// An optional replacement for a spell's mana cost. This grants no zone
+    /// permission. `origin` restricts eligible independently authorized casts;
+    /// None applies to every otherwise legal origin (including command).
+    /// Appended to preserve the ordinals of all existing grant payloads.
+    AlternativePrice {
+        /// A conjunction of paid components. Alternative branches require a
+        /// separate announced price, rather than an unresolved nested choice.
+        costs: Vec<C>,
+        origin: Option<Zone>,
+    },
 }
 
 impl<SA, E, C, Cond> Grantable<SA, E, C, Cond> {
@@ -297,6 +307,9 @@ impl<SA, E, C, Cond> Grantable<SA, E, C, Cond> {
                 Grantable::DerivedAlternativeCast(spec.try_map(&mut map_cost)?)
             }
             Self::PlayFrom => Grantable::PlayFrom,
+            Self::AlternativePrice { costs, origin } => Grantable::AlternativePrice {
+                costs: costs.into_iter().map(&mut map_cost).collect::<Result<_, _>>()?, origin,
+            },
         })
     }
 }
@@ -420,6 +433,7 @@ where
             Self::AlternativeCast(m) => m.name().to_string(),
             Self::DerivedAlternativeCast(spec) => spec.display_name().to_string(),
             Self::PlayFrom => "play from zone".to_string(),
+            Self::AlternativePrice { .. } => "alternative spell price".to_string(),
         }
     }
 }
@@ -462,7 +476,7 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub instant_timing: bool,
     /// A resolving permission also lets its fixed beneficiary privately inspect each current top.
     pub may_look_at_top: bool,
-    /// Complete surface retained only by the strict filtered-zone production.
+    /// Complete surface retained only by strict filtered-zone or price productions.
     /// Execution uses the typed filter, origin, timing and use-limit fields.
     #[cfg_attr(feature = "serde", serde(default))]
     pub filtered_zone_surface: Option<String>,

@@ -2855,6 +2855,13 @@ fn propose_spell_cast_with_origin(
     game: &mut GameState, spell_id: ObjectId, _from_zone: Zone,
     caster: PlayerId, casting_method: &CastingMethod, effect_authorized: bool,
 ) -> Result<ObjectId, GameLoopError> {
+    let price_route = if matches!(casting_method, CastingMethod::AlternativePrice { .. }) {
+        let object = game.object(spell_id).ok_or_else(|| GameLoopError::InvalidState("Price-route spell does not exist".into()))?;
+        if object.zone != _from_zone { return Err(GameLoopError::InvalidState("Price route origin has changed".into())); }
+        Some(crate::alternative_cast::price_routes::resolve_announcement_with_effect_authority(game, caster, object, casting_method, effect_authorized)?
+            .ok_or_else(|| GameLoopError::InvalidState("Selected origin or alternative price does not authorize this exact spell face".into()))?)
+    } else { None };
+    let casting_method = casting_method.origin_method();
     let visibility_boundary = game.capture_library_top_visibility_boundary();
     let cast_during_main_phase = game.is_active_player(caster)
         && matches!(
@@ -2866,7 +2873,7 @@ fn propose_spell_cast_with_origin(
     // a nonempty stack means a sorcery still could not have been cast.
     let cast_at_sorcery_timing =
         game.is_active_player(caster) && crate::turn::is_sorcery_timing(game);
-    let selected_method = game.object(spell_id).and_then(|obj| match casting_method {
+    let selected_method = price_route.as_ref().and_then(|route| route.origin_alternative.clone()).or_else(|| game.object(spell_id).and_then(|obj| match casting_method {
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -2884,13 +2891,21 @@ fn propose_spell_cast_with_origin(
             },
         ),
         _ => None,
-    });
-    let selected_grant = game.object(spell_id).and_then(|obj| match casting_method {
+    }));
+    let selected_grant = price_route.as_ref().and_then(|route| route.origin.as_ref())
+        .filter(|grant| !matches!(grant.grantable, crate::grant::Grantable::PlayFrom))
+        .map(|grant| crate::grant_registry::GrantedAlternativeCast {
+            permission_identity: grant.permission_identity.clone(), constraints: grant.play_from_constraints.clone(),
+            method: selected_method.clone().expect("validated priced origin has its additional-cost method"),
+            source_id: grant.source.source_id(), zone: grant.zone, usage_limit: grant.usage_limit,
+            cast_this_way_grants: grant.cast_this_way_grants.clone(), cast_this_way_filter: grant.cast_this_way_filter.clone(),
+            on_use_effects: grant.on_use_effects.clone(),
+        }).or_else(|| game.object(spell_id).and_then(|obj| match casting_method {
         CastingMethod::PlayFrom {use_alternative: Some(idx), zone, ..}
         | CastingMethod::SplitOtherHalfPlayFrom {use_alternative: Some(idx), zone, ..} =>
             crate::decision::resolve_play_from_alternative_grant(game, caster, obj, *zone, *idx),
         _ => None,
-    });
+    }));
     if let Some(grant) = &selected_grant {
         let source = match casting_method {
             CastingMethod::PlayFrom {source, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, ..} => *source,
@@ -2936,7 +2951,11 @@ fn propose_spell_cast_with_origin(
     let proposed_query = proposed_face.as_ref()
         .map(|face| crate::grant_registry::proposed_card_face_query(game, face)).transpose()?;
     let permission_game = proposed_query.as_ref().unwrap_or(game);
-    let selected_plain_grant = if selected_grant.is_none() {
+    let selected_plain_grant = if let Some(origin) = price_route.as_ref().and_then(|route| route.origin.as_ref())
+        .filter(|grant| matches!(grant.grantable, crate::grant::Grantable::PlayFrom)) {
+        Some(origin.clone())
+    } else if price_route.is_some() && effect_authorized { None }
+    else if selected_grant.is_none() {
         match casting_method {
             CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..}
             | CastingMethod::FaceDownPlayFrom {source, zone} =>
@@ -2950,6 +2969,9 @@ fn propose_spell_cast_with_origin(
             | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. }
             | CastingMethod::FaceDownPlayFrom { .. })
         && selected_plain_grant.is_none() && !effect_authorized
+        // A priced additional-cost origin projects to PlayFrom(None), but
+        // its exact derived permission has already been validated and frozen.
+        && !price_route.as_ref().is_some_and(|route| route.origin.is_some())
     {
         let native_search_permission = matches!(casting_method,
             CastingMethod::PlayFrom { source, zone: Zone::Library, use_alternative: None }
@@ -2977,7 +2999,7 @@ fn propose_spell_cast_with_origin(
     // cost") still uses the play permission from the same source; a
     // permission with a shared budget ("you may cast a creature spell from
     // among them", Idol of Endurance) spends it either way.
-    let shared_usage_to_consume = match &selected_plain_grant {
+    let shared_usage_to_consume = price_route.as_ref().and_then(|route| route.origin.as_ref()).and_then(|grant| grant.shared_usage_id).or_else(|| match &selected_plain_grant {
         Some(grant) => grant.shared_usage_id,
         None if selected_grant.is_some() => match casting_method {
             CastingMethod::PlayFrom {source, zone, ..} | CastingMethod::SplitOtherHalfPlayFrom {source, zone, ..}
@@ -2988,13 +3010,20 @@ fn propose_spell_cast_with_origin(
             _ => None,
         },
         None => None,
-    };
+    });
 
-    let use_completion = selected_grant.as_ref().and_then(|grant|
+    let use_completion = if let Some(route) = &price_route {
+        route.origin.as_ref().and_then(|grant| crate::grant_registry::GrantUseCompletion::capture_with_snapshot(
+            grant.source.source_id(), caster, grant.on_use_effects.clone(), route.origin_snapshot.clone()))
+    } else { selected_grant.as_ref().and_then(|grant|
         crate::grant_registry::GrantUseCompletion::capture(game, grant.source_id, caster, grant.on_use_effects.clone()))
         .or_else(|| selected_plain_grant.as_ref().and_then(|grant|
-            crate::grant_registry::GrantUseCompletion::capture(game, grant.source.source_id(), caster, grant.on_use_effects.clone())));
+            crate::grant_registry::GrantUseCompletion::capture(game, grant.source.source_id(), caster, grant.on_use_effects.clone()))) };
 
+    let price_completion = price_route.as_ref().and_then(|route|
+        crate::grant_registry::GrantUseCompletion::capture_with_snapshot(route.price.source.source_id(), caster, route.price.on_use_effects.clone(), route.price_snapshot.clone()));
+    let price_provider_snapshot = price_route.as_ref().and_then(|route| route.price_snapshot.clone());
+    let price_receipt = price_route.as_ref().and_then(|route| crate::alternative_cast::price_routes::receipt_from_route(route));
     let new_id = game
         .move_object_by_effect(spell_id, Zone::Stack)
         .ok_or_else(|| {
@@ -3003,9 +3032,14 @@ fn propose_spell_cast_with_origin(
     game.register_library_top_announcement(
         crate::game_state::LibraryTopAnnouncement::Cast(new_id), visibility_boundary);
     if let Some(completion) = use_completion { game.capture_cast_grant_completion(new_id, completion); }
+    if let Some(completion) = price_completion { game.capture_cast_grant_completion(new_id, completion); }
     if let Some(spell) = game.object_mut(new_id) {
         spell.cast_play_from_constraints = play_from_constraints;
         spell.cast_grant_usage_identity = usage_identity.map(Box::new);
+        spell.cast_price = price_receipt.map(Box::new);
+        if let Some(snapshot) = price_provider_snapshot {
+            spell.cast_tagged_objects.insert("__cast_price_provider".into(), vec![snapshot]);
+        }
     }
     if let Some(kind) = face_down_kind {
         // A peer that holds only a placeholder must later check that the
@@ -3032,6 +3066,10 @@ fn propose_spell_cast_with_origin(
             "selected shared play permission should be available"
         );
     }
+    if let Some(shared) = price_route.as_ref().and_then(|route| route.price.shared_usage_id)
+        && Some(shared) != shared_usage_to_consume
+        && !game.effect_store.grant_registry.consume_shared_usage(shared)
+    { return Err(GameLoopError::InvalidState("Selected alternative price budget is unavailable".into())); }
     if let Some(snapshot) = cast_origin_snapshot {
         game.set_cast_origin_snapshot(new_id, snapshot);
     }
@@ -3196,6 +3234,13 @@ fn propose_spell_cast_with_origin(
             _ => {}
         }
 
+        if let Some(index) = price_route.as_ref().and_then(|route| route.prototype) {
+            let method = obj.alternative_casts.get(index).ok_or_else(|| GameLoopError::InvalidState("Selected prototype disappeared from this face".into()))?;
+            let cost = method.mana_cost().cloned().ok_or_else(|| GameLoopError::InvalidState("Selected prototype has no mana characteristic".into()))?;
+            let power_toughness = method.prototype_power_toughness().ok_or_else(|| GameLoopError::InvalidState("Selected price characteristic is not prototype".into()))?;
+            obj.apply_prototype_cast_overlay(cost, power_toughness);
+        }
+
         obj.ensure_aura_cast_spell_effect();
 
         // Initialize announcement metadata while the proposal object is
@@ -3204,6 +3249,9 @@ fn propose_spell_cast_with_origin(
         // rebuilt state in each caller, and keeps method-selection casts in
         // sync with direct casts.
         let mut optional_costs_paid = OptionalCostsPaid::from_costs(&obj.optional_costs);
+        if price_route.as_ref().is_some_and(|route| route.prototype.is_some()) {
+            optional_costs_paid.mark_label_paid(super::priority_cast::PROTOTYPE_CHOICE_LABEL);
+        }
         if cast_during_main_phase {
             optional_costs_paid.mark_label_paid("CastDuringYourMainPhase");
         }
@@ -3218,6 +3266,12 @@ fn propose_spell_cast_with_origin(
     }
 
     apply_play_from_cast_this_way_grants(game, new_id, caster, casting_method, selected_grant, selected_plain_grant);
+
+    if let Some(route) = price_route {
+        for ability in route.price_riders {
+            game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(new_id, ability.id(), Some(ability));
+        }
+    }
 
     // CR 601.2a / 610.5: one-shot effects that make the next matching spell
     // gain an ability apply while the spell is being put on the stack.  The
@@ -3311,6 +3365,7 @@ fn casting_method_matches_alternative_name(
     expected_name: &str,
 ) -> bool {
     let method = match casting_method {
+        CastingMethod::AlternativePrice { .. } => crate::alternative_cast::price_routes::origin_alternative(game, caster, obj, casting_method),
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -3330,6 +3385,7 @@ fn alternative_cast_label(
 ) -> Option<String> {
     let obj = game.object(obj_id)?;
     let method = match casting_method {
+        CastingMethod::AlternativePrice { .. } => crate::alternative_cast::price_routes::origin_alternative(game, caster, obj, casting_method),
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -3356,6 +3412,7 @@ fn selected_alternative_cost_reference(
 ) -> Option<crate::cost::OptionalCostRef> {
     let obj = game.object(obj_id)?;
     let method = match casting_method {
+        CastingMethod::AlternativePrice { .. } => crate::alternative_cast::price_routes::origin_alternative(game, caster, obj, casting_method),
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -3527,6 +3584,10 @@ pub(super) fn finalize_spell_cast(
     if warped {
         game.turn_store.turn_history.spell_warped_this_turn = true;
     }
+    if game.object(new_id).is_some_and(|object| object.cast_price.as_ref().is_some_and(|price| price.prototype.is_some())) {
+        optional_costs_paid.mark_label_paid(super::priority_cast::PROTOTYPE_CHOICE_LABEL);
+        if let Some(object) = game.object_mut(new_id) { object.optional_costs_paid.mark_label_paid(super::priority_cast::PROTOTYPE_CHOICE_LABEL); }
+    }
     let selected_alternative_label = alternative_cast_label(game, caster, new_id, &casting_method);
     if let Some(reference) =
         selected_alternative_cost_reference(game, caster, new_id, &casting_method)
@@ -3550,6 +3611,10 @@ pub(super) fn finalize_spell_cast(
     }
 
     if let Some(identity) = game.object(new_id).and_then(|spell| spell.cast_grant_usage_identity.as_deref()).cloned() {
+        game.turn_store.grant_cast_uses_this_turn.insert((caster, identity));
+    }
+
+    if let Some(identity) = game.object(new_id).and_then(|spell| spell.cast_price.as_deref()).map(|price| price.identity.clone()) {
         game.turn_store.grant_cast_uses_this_turn.insert((caster, identity));
     }
 

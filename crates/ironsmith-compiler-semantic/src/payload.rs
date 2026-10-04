@@ -64,6 +64,7 @@ pub enum KeywordAction {
     Modular(u32),
     ModularSunburst,
     Graft(u32),
+    Ripple(u32),
     Soulbond,
     Soulshift(u32),
     SoulshiftValue(Value),
@@ -279,6 +280,7 @@ impl KeywordAction {
                 | Self::Renown(_)
                 | Self::Modular(_)
                 | Self::Graft(_)
+                | Self::Ripple(_)
                 | Self::Soulbond
                 | Self::Soulshift(_)
                 | Self::SoulshiftValue(_)
@@ -411,6 +413,7 @@ impl KeywordAction {
             Self::Modular(amount) => format!("Modular {amount}"),
             Self::ModularSunburst => "Modular-Sunburst".to_string(),
             Self::Graft(amount) => format!("Graft {amount}"),
+            Self::Ripple(amount) => format!("Ripple {amount}"),
             Self::Soulbond => "Soulbond".to_string(),
             Self::Soulshift(amount) => format!("Soulshift {amount}"),
             Self::SoulshiftValue(value) => format!(

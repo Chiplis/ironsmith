@@ -605,6 +605,7 @@ pub(super) fn compile_subject_verb_late(
         }
         SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
             sources,
+            source_binding,
             amount,
             target,
         }) => {
@@ -655,6 +656,7 @@ pub(super) fn compile_subject_verb_late(
             }
             let damage = Effect::new(crate::effects::DealDamageBySourcesEffect {
                 sources: specs,
+                source_binding: *source_binding,
                 source_declarations: declarations,
                 amount,
                 target: recipient.clone(),
@@ -713,10 +715,11 @@ pub(super) fn compile_subject_verb_late(
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let tag = ctx.next_tag("damaged");
             ctx.last_object_tag = Some(tag.clone());
-            let effect = Effect::for_each(
-                resolved_filter,
-                vec![Effect::deal_damage(resolved_amount, ChooseSpec::Iterated).tag(tag)],
-            );
+            let effect = Effect::new(crate::effects::DealDamageEachEffect {
+                amount: resolved_amount,
+                filter: resolved_filter,
+            })
+            .tag(tag);
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {

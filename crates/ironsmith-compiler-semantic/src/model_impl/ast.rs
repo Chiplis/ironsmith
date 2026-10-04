@@ -717,4 +717,6 @@ pub enum TriggerSpec {
     /// Dethrone: qualify the attacked player at declaration, not resolution.
     ThisAttacksPlayerWithMostLife,
     DamageReceived { target: ChooseSpec, combat: Option<bool>, minimum: Option<u32>, single_source: bool },
+    PlayerRollsResultMatching { player: PlayerFilter, result: Comparison, natural: bool },
+    PlayerRollsNthDie { player: PlayerFilter, ordinal: u32 },
 }

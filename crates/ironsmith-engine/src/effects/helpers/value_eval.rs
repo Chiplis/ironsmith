@@ -1350,6 +1350,20 @@ fn resolve_event_value(
             }
             i32::try_from(amount).map_err(|_| ExecutionError::UnresolvableValue("life quantity exceeds supported range".into()))
         }
+        EventValueSpec::DieBatchTotal | EventValueSpec::DieResultsAtLeast(_) => {
+            let roll = ctx.triggering_event.as_ref()
+                .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
+                .ok_or_else(||ExecutionError::UnresolvableValue("die batch value requires its completed roll event".into()))?;
+            let amount: u128 = match spec {
+                EventValueSpec::DieBatchTotal => roll.numeric_batch_results().map(u128::from).sum(),
+                EventValueSpec::DieResultsAtLeast(minimum) => roll.numeric_batch_results()
+                    .filter(|result| i64::from(*result) >= i64::from(*minimum)).count() as u128,
+                _ => unreachable!(),
+            };
+            i32::try_from(amount).map_err(|_|ExecutionError::ResourceLimitExceeded {
+                resource: "die-roll batch quantity", requested: amount, maximum: i32::MAX as u128,
+            })
+        }
         EventValueSpec::DieResult => {
             let roll = ctx
                 .triggering_event

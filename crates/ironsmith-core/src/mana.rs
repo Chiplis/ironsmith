@@ -666,3 +666,84 @@ mod tests {
         assert_eq!(twobrid, vec!["{2}", "{U}"]);
     }
 }
+
+/// Which symbols in a pending production event a replacement rewrites. This
+/// is independent of the source filter: colored mana is not colorless mana,
+/// and a white-only rewrite must preserve the other symbols in the same event.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaRewriteInput {
+    Any,
+    Colored,
+    Symbol(ManaSymbol),
+}
+impl ManaRewriteInput {
+    pub fn matches(self, symbol: ManaSymbol) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Colored => matches!(symbol, ManaSymbol::White | ManaSymbol::Blue |
+                ManaSymbol::Black | ManaSymbol::Red | ManaSymbol::Green),
+            Self::Symbol(required) => symbol == required,
+        }
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaRewriteOutput {
+    Symbol(ManaSymbol),
+    /// Materialized when a resolving instruction registers its replacement.
+    ChosenColor,
+    /// A fresh decision when the replacement applies, owned by its controller.
+    ChooseColor,
+    /// One occurrence selects one matching basic-land rewrite for the entire
+    /// production, in Plains/Island/Swamp/Mountain/Forest order. Multiple land
+    /// types do not create multiple independently applicable effects.
+    ByBasicLandType([Option<ManaSymbol>; 5]),
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaRewriteQuantity {
+    Preserve,
+    Exact(u32),
+}
+
+/// Authoritative typed production rewrite, shared by static and registered
+/// replacement owners. None of these semantic fields defaults during decoding.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ManaOutputRewrite {
+    pub source_filter: crate::filter_model::ObjectFilter,
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "crate::mana::deserialize_required_mana_option"))]
+    pub controller: Option<crate::filter_model::PlayerFilter>,
+    pub tapped_for_mana: bool,
+    pub input: ManaRewriteInput,
+    pub output: ManaRewriteOutput,
+    pub quantity: ManaRewriteQuantity,
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod mana_output_rewrite_wire_contract {
+    use super::*;
+    #[test]
+    fn new_rewrite_semantics_are_authoritative_and_never_defaulted_from_a_label() {
+        let rule = ManaOutputRewrite {source_filter: crate::filter_model::ObjectFilter::land(), controller: None,
+            tapped_for_mana: true, input: ManaRewriteInput::Any, output: ManaRewriteOutput::ChooseColor,
+            quantity: ManaRewriteQuantity::Exact(1)};
+        let wire = serde_json::to_value(&rule).unwrap();
+        assert_eq!(serde_json::from_value::<ManaOutputRewrite>(wire.clone()).unwrap(), rule);
+        for field in ["source_filter", "controller", "tapped_for_mana", "input", "output", "quantity"] {
+            let mut missing = wire.clone(); missing.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<ManaOutputRewrite>(missing).is_err(), "missing {field}");
+        }
+    }
+}
+
+/// Require the field itself while permitting an explicit null value. Serde's
+/// ordinary Option handling would otherwise erase a missing scope silently.
+#[cfg(feature = "serde")]
+pub(crate) fn deserialize_required_mana_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where D: serde::Deserializer<'de>, T: serde::Deserialize<'de> {
+    <Option<T> as serde::Deserialize>::deserialize(deserializer)
+}

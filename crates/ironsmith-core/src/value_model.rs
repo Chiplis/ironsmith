@@ -106,6 +106,8 @@ pub enum PriorEffectAction {
     Tapped,
     /// A numeric decision, distinct from selecting objects or colors.
     ChosenNumber,
+    /// A completed local die instruction, distinct from an ambient roll event.
+    Rolled,
 }
 
 /// A metric over the last-known-information memory emitted by one exact
