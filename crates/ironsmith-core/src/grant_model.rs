@@ -672,6 +672,21 @@ where
         }
     }
 
+    /// Timing of matching spells from any independently authorized origin.
+    /// Stack is the proposed spell domain, not a permission to cast from it.
+    /// Real zone-limited card grants keep using flash_to_spells_matching.
+    pub fn flash_timing_for_spells_matching(mut filter: ObjectFilter) -> Self {
+        fn spell_domain(filter: &mut ObjectFilter) {
+            if matches!(filter.zone, Some(Zone::Battlefield | Zone::Stack)) { filter.zone = None; }
+            filter.stack_kind = None;
+            for branch in &mut filter.any_of { spell_domain(branch); }
+        }
+        spell_domain(&mut filter);
+        let mut spec = Self::flash_to_spells_matching(filter);
+        spec.zone = Zone::Stack;
+        spec
+    }
+
     /// Create a grant spec for flash to noncreature spells in hand.
     pub fn flash_to_noncreature_spells() -> Self {
         Self::flash_to_spells_matching(ObjectFilter::noncreature_spell())
@@ -1975,7 +1990,7 @@ where
         }
         if let Grantable::Ability(ability) = &self.grantable
             && ability.grant_has_flash()
-            && self.zone == Zone::Hand
+            && matches!(self.zone, Zone::Hand | Zone::Stack)
         {
             if self.filter == ObjectFilter::nonland() {
                 return format!("{may_prefix} cast spells as though they had flash");

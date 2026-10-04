@@ -1911,6 +1911,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 describe_player_filter(player)
             )
         }
+        Condition::PlayerWasMonarchAtTurnStart {player} => format!("{} {} the monarch as the turn began",describe_player_filter(player),if *player==PlayerFilter::You {"were"}else{"was"}),
         Condition::PlayerIsMonarch { player } => {
             format!("{} is the monarch", describe_player_filter(player))
         }

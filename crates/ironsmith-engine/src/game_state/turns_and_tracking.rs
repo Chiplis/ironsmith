@@ -738,23 +738,75 @@ impl GameState {
     /// the departing player are exiled. Runtime effects, queued choices, combat
     /// state, and future turns that can no longer involve that player are also
     /// pruned in the same atomic procedure.
-    pub fn leave_game(&mut self, player: PlayerId) -> bool {
-        // The departure procedure performs its own CR 800.4a/c sweep once the
-        // control effects it ends are gone; suppress the refresh-time sweep
-        // until then.
-        let was_in_progress =
-            std::mem::replace(&mut self.turn_store.leave_game_in_progress, true);
-        let left = self.leave_game_procedure(player);
-        self.turn_store.leave_game_in_progress = was_in_progress;
-        left
+    pub fn leave_game(&mut self, player: PlayerId) -> Result<bool,crate::effects::ExecutionError> {
+        self.leave_game_group(&[player]).map(|left|left.contains(&player))
+    }
+    pub(crate) fn leave_game_group(
+        &mut self,
+        players: &[PlayerId],
+    ) -> Result<Vec<PlayerId>, crate::effects::ExecutionError> {
+        if players.is_empty() {
+            return Ok(Vec::new());
+        }
+        let checkpoint = self.clone();
+        let result = (|| {
+            let was_in_progress = std::mem::replace(&mut self.turn_store.leave_game_in_progress, true);
+            self.refresh_continuous_state()
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            let previous_monarch = self.monarch;
+            // Departure can advance a lane or its active team representative.
+            // CR 725.4 uses the original turn's anchor, not that later mutation.
+            let active_player = self.turn.active_player;
+            let turn_order = self.turn_store.turn_order.clone();
+            let pinned_lookback = crate::effects::helpers::begin_simultaneous_zone_change_lookback(self);
+            let opened_batch = self.open_simultaneous_action();
+            let mut left = Vec::new();
+            for player in players {
+                if self.leave_game_procedure(*player)? {
+                    left.push(*player);
+                }
+            }
+            if previous_monarch.is_some_and(|holder| left.contains(&holder)) {
+                // Every original departure must finish before eligibility is
+                // queried: another departing player's static restriction may
+                // have prevented the eventual successor in an intermediate frame.
+                self.set_monarch_designation_unpublished(None);
+                self.refresh_continuous_state()
+                    .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+                let eligible = |candidate: PlayerId| {
+                    self.player(candidate).is_some_and(|player| player.is_in_game())
+                        && self.can_become_monarch(candidate)
+                };
+                let successor = if eligible(active_player) {
+                    Some(active_player)
+                } else {
+                    let len = turn_order.len();
+                    let start = turn_order.iter().position(|candidate| *candidate == active_player)
+                        .or_else(|| previous_monarch.and_then(|holder| turn_order.iter().position(|candidate| *candidate == holder)))
+                        .unwrap_or(0);
+                    (1..=len).map(|offset| turn_order[(start + offset) % len]).find(|candidate| eligible(*candidate))
+                };
+                self.set_monarch_designation_unpublished(successor);
+            }
+            self.turn_store.leave_game_in_progress = was_in_progress;
+            self.close_simultaneous_action(opened_batch);
+            crate::effects::helpers::end_simultaneous_zone_change_lookback(self, pinned_lookback);
+            self.publish_monarch_change(previous_monarch)?;
+            self.synchronize_focused_grand_melee_lane();
+            Ok(left)
+        })();
+        if result.is_err() {
+            self.restore_execution_checkpoint(checkpoint, false);
+        }
+        result
     }
 
-    fn leave_game_procedure(&mut self, player: PlayerId) -> bool {
+    fn leave_game_procedure(&mut self, player: PlayerId) -> Result<bool,crate::effects::ExecutionError> {
         if self
             .player(player)
             .is_none_or(|candidate| candidate.has_left_game)
         {
-            return false;
+            return Ok(false);
         }
 
         let departing_turn_boundary = self.next_turn_number_if_player_stayed(player);
@@ -763,7 +815,7 @@ impl GameState {
         let had_priority = self.turn.priority_player == Some(player);
         let priority_team = had_priority.then(|| self.priority_team_index()).flatten();
         let Some(mut player_lki) = self.players.get(player.index()).cloned() else {
-            return false;
+            return Ok(false);
         };
         player_lki.has_left_game = true;
         let last_turn_history = if was_active_player {
@@ -865,8 +917,9 @@ impl GameState {
         for (object_id, _) in &owned_objects {
             self.remove_object(*object_id);
         }
-        let departure_batch = (!departing_permanents.is_empty()).then(||
-            self.provenance_graph_mut().alloc_root_event(crate::events::EventKind::ObjectLeavesGame));
+        let departure_batch = if departing_permanents.is_empty(){None}else{
+            Some(self.simultaneous_action_batch().unwrap_or_else(||self.provenance_graph_mut().alloc_root_event(crate::events::EventKind::ObjectLeavesGame)))
+        };
         for (object_id, snapshot) in departing_permanents {
             let event = crate::events::zones::ObjectLeavesGameEvent::new(
                 object_id, snapshot, crate::events::cause::EventCause::from_game_rule(),
@@ -1047,7 +1100,7 @@ impl GameState {
         // end, before checking which remaining objects are still controlled by
         // a player outside the game.
         self.mark_continuous_state_dirty();
-        self.refresh_continuous_state();
+        self.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
 
         // Ability copies and other noncard stack objects controlled by the
         // departing player cease to exist. A remaining card spell they control
@@ -1205,34 +1258,6 @@ impl GameState {
             .player(self.turn.active_player)
             .filter(|candidate| candidate.is_in_game())
             .map(|candidate| candidate.id);
-        if self.monarch == Some(player) {
-            // CR 724.4: the active player becomes the monarch. When there's
-            // no active player still in the game, or it can't become the
-            // monarch, the next player in turn order who can does; if no one
-            // can, the game continues with no monarch.
-            let successor = if let Some(active) = active_player_still_in_game
-                && self.can_become_monarch(active)
-            {
-                Some(active)
-            } else {
-                let len = self.turn_store.turn_order.len();
-                let anchor = active_player_still_in_game.unwrap_or(player);
-                let start = self
-                    .turn_store
-                    .turn_order
-                    .iter()
-                    .position(|candidate| *candidate == anchor)
-                    .unwrap_or(0);
-                (1..=len)
-                    .map(|offset| self.turn_store.turn_order[(start + offset) % len])
-                    .find(|candidate| {
-                        self.player(*candidate)
-                            .is_some_and(|candidate| candidate.is_in_game())
-                            && self.can_become_monarch(*candidate)
-                    })
-            };
-            self.set_monarch(successor);
-        }
         if self.initiative == Some(player) {
             let successor =
                 active_player_still_in_game.or_else(|| self.next_player_in_game_after(player));
@@ -1259,9 +1284,9 @@ impl GameState {
         }
 
         self.mark_continuous_state_dirty();
-        self.refresh_continuous_state();
+        self.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         self.synchronize_focused_grand_melee_lane();
-        true
+        Ok(true)
     }
 
     /// Keep a Forecast source publicly revealed while it remains in hand and
@@ -1546,6 +1571,7 @@ impl GameState {
                 .insert(player, completed_turn_history.clone());
         }
         self.turn_store.previous_turn_history = completed_turn_history;
+        self.turn_store.turn_history.monarch_at_turn_start=self.monarch;
         // CR 730.2a-b: both transitions look only at the previous turn's
         // active player (or team, for shared turns), not every player.
         if self.has_day_night && self.is_night {
@@ -1624,6 +1650,7 @@ impl GameState {
             return;
         }
         self.turn_store.continuous_control_turn_started = Some(self.turn.turn_number);
+        self.turn_store.turn_history.monarch_at_turn_start=self.monarch;
         let active = self.turn_players();
         let ids: Vec<_> = self.battlefield.iter().copied().filter(|id| {
             self.current_controller(*id).is_some_and(|player| active.contains(&player))

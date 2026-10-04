@@ -1,3 +1,5 @@
+#[path = "dispatch_entry/temporary_damage_addition.rs"]
+mod temporary_damage_addition;
 mod temporary_damage_multiplier;
 use self::subject_verb_followups::{
     PostParseFollowupResult, PreParseFollowupResult, is_conditional_token_entry_followup_sentence,
@@ -2446,7 +2448,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
-        if let Some(effect) = temporary_damage_multiplier::parse(authored_sentence)? {
+        if let Some(effect) = temporary_damage_addition::parse(authored_sentence)?.or(temporary_damage_multiplier::parse(authored_sentence)?) {
             effects.push(effect);
             carried_context = None;
             sentence_idx += 1;
@@ -6073,7 +6075,7 @@ pub fn parse_effect_sentences_lexed(
     if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
         return Ok(effects);
     }
-    if let Some(effect) = temporary_damage_multiplier::parse(tokens)? {
+    if let Some(effect) = temporary_damage_addition::parse(tokens)?.or(temporary_damage_multiplier::parse(tokens)?) {
         return Ok(vec![effect]);
     }
     if let Some(effect) = parse_temporary_counter_placement_replacement(tokens) {
@@ -12825,6 +12827,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     clause,
                     false,
                 )?;
+            }
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => {
+                replace_value(&mut spec.delta, replacement, clause)?;
             }
             SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterEnterWithCountersReplacement { count, .. },

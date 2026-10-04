@@ -759,6 +759,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::OpponentsEachLoseExactLife { amount } => {
             Trigger::opponents_each_lose_exact_life(amount)
         }
+        TriggerSpec::PlayerBecomesMonarch(player) => Trigger::player_becomes_monarch(player),
         TriggerSpec::PlayerLosesGame(player) => Trigger::player_loses_game(player),
         TriggerSpec::PlayerLosesLifeDuringTurn {
             player,
@@ -1446,6 +1447,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayersLoseLifeOneOrMore(_)
         | TriggerSpec::OpponentsEachLoseExactLife { .. }
         | TriggerSpec::PlayerLosesGame(_)
+        | TriggerSpec::PlayerBecomesMonarch(_)
         | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
         | TriggerSpec::PlayerDrawsCardDuringTurn { .. }
         | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(_)

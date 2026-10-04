@@ -1544,7 +1544,7 @@ fn target_requirements_from_explicit_choices(
         .into_iter()
         .map(|target_spec| {
             let count = target_spec.count();
-            let resolved_target_spec = super::targeting::choose_spec_with_damaged_player_from_event(
+            let resolved_target_spec = super::targeting::choose_spec_with_recorded_players_from_event(
                 target_spec,
                 entry.triggering_event.as_ref(),
             );
@@ -1637,7 +1637,7 @@ fn refresh_trigger_program_target_requirements(
         .map(|attacker| game.controller_of(attacker));
 
     for requirement in requirements {
-        let spec = super::targeting::choose_spec_with_damaged_player_from_event(
+        let spec = super::targeting::choose_spec_with_recorded_players_from_event(
             &requirement.spec,
             entry.triggering_event.as_ref(),
         );
@@ -2764,7 +2764,7 @@ mod tests {
         ))
         .build();
         game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
-        assert!(game.mark_player_lost(bob));
+        assert!(game.mark_player_lost(bob).expect("checked designation/departure fixture"));
         let event = game
             .take_pending_trigger_events()
             .into_iter()
@@ -2775,7 +2775,7 @@ mod tests {
             trigger_queue.add(trigger);
         }
         assert_eq!(trigger_queue.entries.len(), 1);
-        assert!(game.leave_game(alice));
+        assert!(game.leave_game(alice).expect("checked designation/departure fixture"));
         let mut dm = crate::decision::AutoPassDecisionMaker;
 
         put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)

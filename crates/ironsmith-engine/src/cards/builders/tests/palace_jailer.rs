@@ -47,7 +47,7 @@ fn palace_jailer_parser_backed_exile_ends_only_when_an_opponent_becomes_monarch(
     }));
 
     game.move_object_by_effect(jailer, Zone::Graveyard);
-    game.set_monarch(Some(alice));
+    game.set_monarch(Some(alice)).expect("checked designation/departure fixture");
     assert!(
         game.exile.iter().any(|id| game
             .object(*id)
@@ -55,7 +55,7 @@ fn palace_jailer_parser_backed_exile_ends_only_when_an_opponent_becomes_monarch(
         "neither Palace Jailer leaving nor its controller becoming monarch ends the duration"
     );
 
-    game.set_monarch(Some(bob));
+    game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
     assert!(game.exile.is_empty());
     let returned = game
         .battlefield

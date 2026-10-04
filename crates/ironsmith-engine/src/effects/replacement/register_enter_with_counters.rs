@@ -164,7 +164,7 @@ mod tests {
                 &mut ExecutionContext::new(source, alice, &mut dm),
             )
             .unwrap();
-        assert!(game.leave_game(alice));
+        assert!(game.leave_game(alice).expect("checked designation/departure fixture"));
         for _ in 0..6 {
             game.next_turn();
             let object = game.create_object_from_card(&card, bob, Zone::Hand);

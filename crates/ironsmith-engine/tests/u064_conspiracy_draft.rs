@@ -402,7 +402,7 @@ fn u064_restart_returns_agendas_face_down_and_departure_removes_owned_conspiraci
         game.agenda_names_for(alice, restarted).unwrap(),
         ["Serra Angel"]
     );
-    assert!(game.leave_game(alice));
+    assert!(game.leave_game(alice).expect("checked designation/departure fixture"));
     assert!(game.conspiracy_cards().is_empty());
     assert!(game.object(restarted).is_none());
 }

@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "50b3221327f7a15c018e9072c3522507ee5cdaba",
+  "source_implementation_commit": "99400a9f68cdc1e424fa9676d69358bad4d3e0a0",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 924,
-    "additional_proposed_compile_entries": 926,
+    "additional_proposed_unique_cards": 942,
+    "additional_proposed_compile_entries": 944,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 924,
+    "source_proposals_excluding_identified_runtime_gaps": 942,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -2372,10 +2372,6 @@
       ],
       "partial_entries": [
         {
-          "card_name": "Tidal Barracuda",
-          "remaining_blocker": "Global flash permission cannot reuse an existing hand-only grant."
-        },
-        {
           "card_name": "Phyrexian Censor",
           "remaining_blocker": "Independent negative-subtype ETB static clause remains unsupported."
         }
@@ -2386,6 +2382,13 @@
         "Separate land-play/cast/activated and loyalty-only owners retain zone/player scopes, live source context and linked names.",
         "Chosen MDFC uses isolated actual-face query; independent source review corrected typed discovery error erasure across all land enumeration owners.",
         "Full original bodies, timing, lifetime, alternate faces and exceptional failures have unrun scenarios; replay guard for runtime restrictions remains included."
+      ],
+      "subsequent_closures": [
+        {
+          "card_name": "Tidal Barracuda",
+          "family": "flash-timing-permissions",
+          "stage": 54
+        }
       ]
     },
     {
@@ -3521,6 +3524,91 @@
         "Single-payment and prepared single-life replacement paths are source-reviewed, including whole-operation resource scope, inherited context and APNAP ordering.",
         "Nominal fulfilled payment receipts remain separate from actual loss; the unresolved generic simultaneous composition is explicit and uncounted."
       ]
+    },
+    {
+      "id": "flash-timing-permissions",
+      "stage": 54,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/flash_timing_permissions.json.fixture",
+      "baseline_entries": [
+        "Bard's Company",
+        "Fated Clash",
+        "Illusion Spinners",
+        "Quick Sliver",
+        "Scarring Memories",
+        "Tidal Barracuda",
+        "Timely Ward",
+        "Vernal Equinox"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "9f503efd5",
+      "source_review_commit": "ecc75e284",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Global and conditional spell timing preserve independent origin authority, selected face, current checked board predicates and final Aura target constraints."
+      ]
+    },
+    {
+      "id": "monarch-attack-participants",
+      "stage": 54,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/monarch_attack_participants.json.fixture",
+      "baseline_entries": [
+        "Emberwilde Captain",
+        "The Spear of Bashenga"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "5e00e1617",
+      "source_review_commit": "e0f609af7",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Exact declared attack actor and directly attacked monarch remain captured independently of later designation and attachment changes; both full bodies are represented."
+      ]
+    },
+    {
+      "id": "monarch-holder-changes",
+      "stage": 54,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/monarch_holder_changes.json.fixture",
+      "baseline_entries": [
+        "Custodi Lich",
+        "Garland, Royal Kidnapper",
+        "Knights of the Black Rose"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "deeb923e4",
+      "source_review_commit": "d80feb7a8",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Checked completed designation/departure ownership retains retry scope and chooses the successor against the final simultaneous group.",
+        "Captured event player binds before target announcement; explicit turn-begin holder evidence survives main/inactive lane recovery. Three whole bodies have authored direct/artifact/native/wire scenarios."
+      ]
+    },
+    {
+      "id": "additive-damage-replacements",
+      "stage": 54,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/additive_damage_replacements.json.fixture",
+      "baseline_entries": [
+        "Aether Revolt",
+        "Fated Firepower",
+        "Hawkeye, Young Avenger",
+        "Rankle and Torbran",
+        "The Flame of Keld"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Taii Wakeen, Perfect Shot",
+          "remaining_blocker": "Exact noncombat damage equal to recipient toughness needs the completed recipient trigger owner; paid timed-X registration is only a prerequisite."
+        }
+      ],
+      "implementation_commit": "26dceaa1c",
+      "source_review_commit": "093130e1d",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Captured resolving amount/controller and live static source quantities stay distinct through complete grammar, AST, codec and checked damage owner.",
+        "Five whole bodies retain Fated entry-X/live counters, Hawkeye power, all Rankle modes and Flame chapters, and Aether actual energy receipt/Revolt."
+      ]
     }
   ],
   "cards": [
@@ -3728,8 +3816,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "additive-damage-replacements"
+      ],
+      "source_review_commit": "093130e1d"
     },
     {
       "card_name": "Aether Searcher",
@@ -5784,8 +5875,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "flash-timing-permissions"
+      ],
+      "source_review_commit": "ecc75e284"
     },
     {
       "card_name": "Bark of Doran",
@@ -9674,8 +9768,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "monarch-holder-changes"
+      ],
+      "source_review_commit": "d80feb7a8"
     },
     {
       "card_name": "Custodi Peacekeeper",
@@ -11947,8 +12044,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "monarch-attack-participants"
+      ],
+      "source_review_commit": "e0f609af7"
     },
     {
       "card_name": "Embiggen",
@@ -13212,8 +13312,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "flash-timing-permissions"
+      ],
+      "source_review_commit": "ecc75e284"
     },
     {
       "card_name": "Fated Firepower",
@@ -13222,8 +13325,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "additive-damage-replacements"
+      ],
+      "source_review_commit": "093130e1d"
     },
     {
       "card_name": "Fateful Tempest",
@@ -14517,8 +14623,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "monarch-holder-changes"
+      ],
+      "source_review_commit": "d80feb7a8"
     },
     {
       "card_name": "Garth One-Eye",
@@ -16309,8 +16418,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "additive-damage-replacements"
+      ],
+      "source_review_commit": "093130e1d"
     },
     {
       "card_name": "Hazduhr the Abbot",
@@ -17336,8 +17448,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "flash-timing-permissions"
+      ],
+      "source_review_commit": "ecc75e284"
     },
     {
       "card_name": "Illusion of Choice",
@@ -19506,8 +19621,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "monarch-holder-changes"
+      ],
+      "source_review_commit": "d80feb7a8"
     },
     {
       "card_name": "Knollspine Dragon",
@@ -26169,8 +26287,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "flash-timing-permissions"
+      ],
+      "source_review_commit": "ecc75e284"
     },
     {
       "card_name": "Quicken",
@@ -26513,8 +26634,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "additive-damage-replacements"
+      ],
+      "source_review_commit": "093130e1d"
     },
     {
       "card_name": "Raphael, Most Attitude",
@@ -28388,8 +28512,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "flash-timing-permissions"
+      ],
+      "source_review_commit": "ecc75e284"
     },
     {
       "card_name": "Scarwood Bandits",
@@ -31896,8 +32023,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "additive-damage-replacements"
+      ]
     },
     {
       "card_name": "Tainted Indulgence",
@@ -32911,8 +33041,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "additive-damage-replacements"
+      ],
+      "source_review_commit": "093130e1d"
     },
     {
       "card_name": "The Foretold Soldier",
@@ -33355,8 +33488,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "monarch-attack-participants"
+      ],
+      "source_review_commit": "e0f609af7"
     },
     {
       "card_name": "The Super Hero Civil War",
@@ -33850,11 +33986,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "flash-timing-permissions"
+      ],
       "partial_source_families": [
         "scoped-action-prohibitions"
-      ]
+      ],
+      "source_review_commit": "ecc75e284"
     },
     {
       "card_name": "Tidebinder Mage",
@@ -33987,8 +34126,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "flash-timing-permissions"
+      ],
+      "source_review_commit": "ecc75e284"
     },
     {
       "card_name": "Timesifter",
@@ -35514,8 +35656,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "flash-timing-permissions"
+      ],
+      "source_review_commit": "ecc75e284"
     },
     {
       "card_name": "Veronica, Dissident Scribe",

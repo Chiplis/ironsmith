@@ -311,7 +311,7 @@ fn u063_restart_rebuilds_face_down_deck_and_departure_removes_owned_schemes() {
 
     let departing_top = *game.scheme_deck(alice).unwrap().last().unwrap();
     game.set_scheme_in_motion(alice).unwrap();
-    assert!(game.leave_game(alice));
+    assert!(game.leave_game(alice).expect("checked designation/departure fixture"));
     assert!(game.archenemy.as_ref().unwrap().archenemies.is_empty());
     assert!(game.scheme_deck(alice).is_none());
     assert!(game.face_up_schemes().is_empty());

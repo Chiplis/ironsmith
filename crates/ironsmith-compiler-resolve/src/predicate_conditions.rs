@@ -361,6 +361,10 @@ pub fn resolve_condition_from_predicate(
             even: *even,
             display: display.clone(),
         },
+        PredicateAst::Player(PlayerPredicateAst::PlayerWasMonarchAtTurnStart { player }) => {
+            let player = resolve_non_target_player_filter(*player,&refs)?;
+            Condition::PlayerWasMonarchAtTurnStart {player}
+        }
         PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerIsMonarch { player }

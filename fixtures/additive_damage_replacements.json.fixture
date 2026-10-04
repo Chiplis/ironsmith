@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Aether Revolt",
+    "oracle_id": "b73661a6-d136-4c65-804c-461e83484f4b",
+    "mana_cost": "{2}{R}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "Revolt \u2014 As long as a permanent left the battlefield under your control this turn, if a source you control would deal noncombat damage to an opponent or a permanent an opponent controls, it deals that much damage plus 2 instead.\nWhenever you get one or more {E}, this enchantment deals that much damage to any target.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; bounded five-body/native-owner review clear through093130e1d"
+  },
+  {
+    "name": "Fated Firepower",
+    "oracle_id": "13daa21c-278d-45bd-9a6e-a77d6a558453",
+    "mana_cost": "{X}{R}{R}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "Flash\nThis enchantment enters with X fire counters on it.\nIf a source you control would deal damage to an opponent or a permanent an opponent controls, it deals that much damage plus an amount of damage equal to the number of fire counters on this enchantment instead.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; bounded five-body/native-owner review clear through093130e1d"
+  },
+  {
+    "name": "Hawkeye, Young Avenger",
+    "oracle_id": "c8f8b4ed-8455-45cd-a24c-e2f42cd5e5b1",
+    "mana_cost": "{3}{R}",
+    "type_line": "Legendary Creature \u2014 Human Archer Hero",
+    "oracle_text": "Reach\nIf a source you control would deal noncombat damage to an opponent or a permanent an opponent controls, instead it deals that much damage plus X, where X is Hawkeye's power.",
+    "power": "2",
+    "toughness": "4",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; bounded five-body/native-owner review clear through093130e1d"
+  },
+  {
+    "name": "Rankle and Torbran",
+    "oracle_id": "80d918b2-3a28-49ad-a485-496658bd7ac3",
+    "mana_cost": "{1}{B}{B}{R}{R}",
+    "type_line": "Legendary Creature \u2014 Faerie Dwarf",
+    "oracle_text": "Flying, first strike, haste\nWhenever Rankle and Torbran deals combat damage to a player or battle, choose any number \u2014\n\u2022 Each player creates a Treasure token.\n\u2022 Each player sacrifices a creature of their choice.\n\u2022 If a source would deal damage to a player or battle this turn, it deals that much damage plus 2 instead.",
+    "power": "3",
+    "toughness": "4",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; bounded five-body/native-owner review clear through093130e1d"
+  },
+  {
+    "name": "Taii Wakeen, Perfect Shot",
+    "oracle_id": "17327d50-be12-423d-9d37-d6bae519f50c",
+    "mana_cost": "{R}{W}",
+    "type_line": "Legendary Creature \u2014 Human Mercenary",
+    "oracle_text": "Whenever a source you control deals noncombat damage to a creature equal to that creature's toughness, draw a card.\n{X}, {T}: If a source you control would deal noncombat damage to a permanent or player this turn, it deals that much damage plus X instead.",
+    "power": "2",
+    "toughness": "3",
+    "proposed_complete": false,
+    "status": "Partial: exact noncombat damage equal to recipient toughness trigger remains unrepresented; timed X registration prerequisite only"
+  },
+  {
+    "name": "The Flame of Keld",
+    "oracle_id": "26b41c78-c5ee-4c50-93be-e3acc35ab355",
+    "mana_cost": "{1}{R}",
+    "type_line": "Enchantment \u2014 Saga",
+    "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI \u2014 Discard your hand.\nII \u2014 Draw two cards.\nIII \u2014 If a red source you control would deal damage to a permanent or player this turn, it deals that much damage plus 2 to that permanent or player instead.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; bounded five-body/native-owner review clear through093130e1d"
+  }
+]

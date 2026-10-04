@@ -230,6 +230,12 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::Instead(effects) => TraitApplyResult::Replaced(effects.clone()),
 
+        ReplacementAction::Modify(EventModification::AddDynamic(value)) => {
+            let delta = resolve_signed_value_for_replacement(value, game, effect)?;
+            let mut resolved = effect.clone();
+            resolved.replacement = ReplacementAction::Modify(EventModification::Add(delta));
+            return apply_trait_replacement(game, event, &resolved);
+        }
         ReplacementAction::Modify(modification) => {
             if let Some(tokens) = crate::events::downcast_event::<crate::events::CreateTokensEvent>(event.inner()) {
                 let modified = modify_token_groups_checked(game, effect, tokens, modification)?;
@@ -1294,6 +1300,7 @@ fn modify_token_groups_checked(
             tokens.adjusted_token_total(covers, |total| u128::from(total.max(floor)))
         }
         EventModification::ReduceToZero => tokens.adjusted_token_total(covers, |_| 0),
+        EventModification::AddDynamic(_) => unreachable!("dynamic modifier normalized before dispatch"),
     }
 }
 
@@ -1321,6 +1328,7 @@ fn apply_trait_modification(
                     removal.count.max(resolve_value_for_replacement(value, game, effect.source))
                 }
                 EventModification::ReduceToZero => 0,
+                EventModification::AddDynamic(_) => unreachable!("dynamic modifier normalized before dispatch"),
             };
             Some(event.rewrap(removal.with_count(count)))
         }
@@ -1353,6 +1361,7 @@ fn apply_trait_modification(
                     draw.with_count(draw.count.max(floor))
                 }
                 EventModification::ReduceToZero => draw.with_count(0),
+                EventModification::AddDynamic(_) => unreachable!("dynamic modifier normalized before dispatch"),
             };
             Some(event.rewrap(modified))
         }
@@ -1878,6 +1887,26 @@ pub(super) fn resolve_value_for_etb_for_choice(
     source: crate::ids::ObjectId,
 ) -> u32 {
     resolve_value_for_etb(count, game, source)
+}
+
+/// Dynamic additions keep the replacement controller, even when its source has
+/// changed control since a resolving registration. Missing/oversized values
+/// propagate to the enclosing replacement transaction instead of becoming zero.
+fn resolve_signed_value_for_replacement(
+    value: &crate::effect::Value,
+    game: &GameState,
+    effect: &ReplacementEffect,
+) -> Result<i32, crate::effects::ExecutionError> {
+    game.try_all_continuous_effects_arc()
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(effect.source, effect.controller, &mut dm);
+    if let Some(object) = game.object(effect.source) {
+        ctx.x_value = object.own_entry_x_value();
+        ctx.optional_costs_paid = object.optional_costs_paid.clone();
+        ctx = ctx.with_tagged_objects(object.cast_tagged_objects.clone());
+    }
+    crate::effects::helpers::resolve_value(game, value, &ctx)
 }
 
 fn resolve_value_for_replacement(

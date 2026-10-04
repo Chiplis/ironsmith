@@ -352,7 +352,7 @@ fn u065_child_preserves_sparse_player_ids_and_short_deck_loss_state() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let cara = PlayerId::from_index(2);
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
     add_libraries(&mut game, &[alice, cara], 5);
 
     game.begin_subgame(None, cara, Vec::new()).unwrap();

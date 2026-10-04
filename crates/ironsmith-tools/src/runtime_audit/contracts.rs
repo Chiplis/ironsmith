@@ -999,6 +999,7 @@ impl Auditor {
                 scope.player = Binding::Present;
                 scope.event_object = Binding::Present;
             }
+            "PlayerBecomesMonarch" => {scope.player=Binding::Present;scope.event_object=Binding::Absent;}
             "PlayerBecomesTargeted" => {
                 // BecomesTargetedEvent::player is the captured source controller;
                 // the player target does not invent an event object.

@@ -308,3 +308,4 @@ EmpowerJaceEffect	ironsmith_core::EmpowerJaceEffect	permanent
 RegisterDamageMultiplierEffect	ironsmith_core::RegisterDamageMultiplierEffect	stack-event
 SkipScheduledEffect	ironsmith_core::SkipScheduledEffect	player
 RippleEffect	ironsmith_core::RippleEffect	player
+RegisterDamageAdditionEffect	ironsmith_core::RegisterDamageAdditionEffect	stack-event

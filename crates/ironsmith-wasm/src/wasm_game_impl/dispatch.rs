@@ -3820,7 +3820,7 @@ impl WasmGame {
             ));
         }
 
-        self.game.mark_player_lost(player_id);
+        self.game.mark_player_lost(player_id).map_err(|error| JsValue::from_str(&format!("player departure execution incomplete: {error}")))?;
         self.priority_state.player_left_game(&self.game);
 
         let remaining: Vec<_> = self

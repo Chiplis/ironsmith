@@ -801,7 +801,7 @@ mod ninjutsu {
         game.combat = Some(CombatState::default());
         let ninja = game.create_object_from_definition(&def("Ninja of the Deep Hours"), ALICE, Zone::Hand);
         game.record_ninjutsu_attack_target(ninja, AttackTarget::Player(carol));
-        game.mark_player_lost(carol);
+        game.mark_player_lost(carol).expect("checked designation/departure fixture");
         game.push_to_stack(StackEntry::ability(
             ninja,
             ALICE,

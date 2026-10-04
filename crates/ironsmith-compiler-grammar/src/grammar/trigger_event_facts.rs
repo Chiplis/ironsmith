@@ -291,6 +291,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PlayerPaysLife(player)
         | TriggerSpec::PlayersLoseLifeOneOrMore(player)
         | TriggerSpec::PlayerLosesGame(player)
+        | TriggerSpec::PlayerBecomesMonarch(player)
         | TriggerSpec::PlayerDrawsCardDuringTurn { player, .. }
         | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(player)
         | TriggerSpec::PlayerDrawsCard(player)
@@ -406,6 +407,7 @@ fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
         | TriggerSpec::BeginningOfPostcombatMain { .. }
         | TriggerSpec::YouGainLife
         | TriggerSpec::PlayerPaysLife(_)
+        | TriggerSpec::PlayerBecomesMonarch(_)
         | TriggerSpec::YouDrawCard
         | TriggerSpec::DayNightChanged
         | TriggerSpec::StateBased { .. } => None,

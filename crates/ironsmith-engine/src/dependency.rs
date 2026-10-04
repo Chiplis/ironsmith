@@ -2096,6 +2096,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::PlayerHasNoOpponentWithMoreLifeThan { .. }
         | C::PlayerHasMoreLifeThanEachOtherPlayer { .. }
         | C::PlayerIsMonarch { .. }
+        | C::PlayerWasMonarchAtTurnStart { .. }
         | C::PlayerHasInitiative { .. }
         | C::PlayerHasCitysBlessing { .. }
         | C::PlayerHasEnduringStory { .. }

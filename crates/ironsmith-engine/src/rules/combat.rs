@@ -1482,13 +1482,13 @@ mod tests {
         );
 
         game.add_object(attacker.clone());
-        game.set_monarch(None);
+        game.set_monarch(None).expect("checked designation/departure fixture");
         assert!(!can_attack_defending_player(&attacker, bob, &game));
 
-        game.set_monarch(Some(alice));
+        game.set_monarch(Some(alice)).expect("checked designation/departure fixture");
         assert!(!can_attack_defending_player(&attacker, bob, &game));
 
-        game.set_monarch(Some(bob));
+        game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
         assert!(can_attack_defending_player(&attacker, bob, &game));
     }
 

@@ -2983,7 +2983,7 @@ mod tests {
             ability.can_attack_specific_defender(&game, ObjectId::new(), alice, bob),
             Some(false)
         );
-        game.set_monarch(Some(bob));
+        game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
         assert_eq!(
             ability.can_attack_specific_defender(&game, ObjectId::new(), alice, bob),
             Some(true)

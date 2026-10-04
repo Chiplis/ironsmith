@@ -484,7 +484,7 @@ fn source_conditional_counts_and_monarch_gate_change_prices_before_real_payment(
             let before = price(&game, source, 0, &[Target::Object(target)]).mana_value();
             let payment = match name {
                 "Crown of Gondor" => {
-                    game.set_monarch(Some(A));
+                    game.set_monarch(Some(A)).expect("checked designation/departure fixture");
                     vec![ManaSymbol::Colorless]
                 }
                 "Esquire of the King" => {

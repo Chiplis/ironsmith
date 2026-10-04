@@ -397,7 +397,7 @@ mod dethrone {
         let mut game = game_with(3);
         game.player_mut(bob()).unwrap().life = 25;
         game.player_mut(carol()).unwrap().life = 40;
-        game.concede_game(carol());
+        game.concede_game(carol()).expect("checked designation/departure fixture");
         assert!(!game.player(carol()).unwrap().is_in_game());
         let revolutionary = put(&mut game, &real("Enraged Revolutionary"), alice());
         attack_and_resolve(&mut game, &[(revolutionary, AttackTarget::Player(bob()))]);

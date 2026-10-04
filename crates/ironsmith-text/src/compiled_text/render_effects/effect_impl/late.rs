@@ -4391,6 +4391,34 @@
         let prefix = if matches!(register.mode, crate::effects::ReplacementApplyMode::OneShot) { "The next time" } else { "If" };
         return format!("{prefix} {source} would deal {damage} to {recipient}{duration}, it deals {multiplier} that damage instead");
     }
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterDamageAdditionEffect>() {
+        let mut base = register.source_filter.clone();
+        base.controller = None;
+        let source = if base == ObjectFilter::default() {
+            match &register.source_filter.controller {
+                None => "a source".to_string(),
+                Some(PlayerFilter::You) => "a source you control".to_string(),
+                Some(PlayerFilter::Opponent) => "a source an opponent controls".to_string(),
+                Some(player) => format!("a source controlled by {}", describe_player_filter(player)),
+            }
+        } else { with_indefinite_article(strip_leading_article(&register.source_filter.description())) };
+        let recipient = match (&register.target_player_filter, &register.target_object_filter) {
+            (Some(PlayerFilter::Any), Some(object)) if *object == ObjectFilter::permanent() => "a permanent or player".to_string(),
+            (Some(player), None) => describe_player_filter(player),
+            (None, Some(object)) => with_indefinite_article(strip_leading_article(&object.description())),
+            (Some(player), Some(object)) => format!("{} or {}", object.description(), describe_player_filter(player)),
+            (None, None) => "no recipients".to_string(),
+        };
+        let damage = if register.noncombat_only { "noncombat damage" } else { "damage" };
+        let bonus = describe_value(&register.delta);
+        let duration = match register.mode {
+            crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => " until your next turn",
+            _ => "",
+        };
+        let prefix = if matches!(register.mode, crate::effects::ReplacementApplyMode::OneShot) { "The next time" } else { "If" };
+        return format!("{prefix} {source} would deal {damage} to {recipient}{duration}, it deals that much damage plus {bonus} instead");
+    }
     if let Some(register) =
         effect.downcast_ref::<crate::effects::RegisterCounterPlacementReplacementEffect>()
     {
@@ -5182,7 +5210,7 @@
             return "That card's owner may play it for as long as it remains exiled".to_string();
         }
         if grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
-            && grant.spec.zone == Zone::Hand
+            && matches!(grant.spec.zone, Zone::Hand | Zone::Stack)
             && matches!(
                 &grant.spec.grantable,
                 crate::grant::Grantable::Ability(ability) if ability.has_flash()

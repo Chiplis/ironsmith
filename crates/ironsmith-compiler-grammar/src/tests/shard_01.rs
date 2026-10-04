@@ -2814,7 +2814,7 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants(
             player: crate::cards::builders::PlayerAst::You,
             spec,
             lifetime: crate::permission_helpers::PermissionLifetime::Static,
-        })) if spec == crate::model::CompilerGrantSpecCore::flash_to_spells_matching(
+        })) if spec == crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(
             crate::target::ObjectFilter {
                 card_types: vec![CardType::Creature],
                 ..crate::target::ObjectFilter::default()
@@ -3072,7 +3072,7 @@ pub(super) fn rewrite_lexed_permission_helpers_route_subject_filters_through_gra
             player: crate::cards::builders::PlayerAst::You,
             spec,
             lifetime: crate::permission_helpers::PermissionLifetime::Static,
-        })) if spec == crate::model::CompilerGrantSpecCore::flash_to_spells_matching(
+        })) if spec == crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(
             crate::target::ObjectFilter {
                 card_types: vec![CardType::Creature],
                 ..crate::target::ObjectFilter::default()

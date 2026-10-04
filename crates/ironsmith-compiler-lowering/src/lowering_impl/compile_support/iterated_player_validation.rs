@@ -484,6 +484,7 @@ pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
         | PlayerHasNoOpponentWithMoreLifeThan { player }
         | PlayerHasMoreLifeThanEachOtherPlayer { player }
         | PlayerIsMonarch { player }
+        | PlayerWasMonarchAtTurnStart {player}
         | PlayerHasInitiative { player }
         | PlayerHasCitysBlessing { player }
         | PlayerHasEnduringStory { player }

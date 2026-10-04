@@ -3962,15 +3962,20 @@ fn replace_damaged_player_object_filter(
     }
 }
 
-pub(super) fn choose_spec_with_damaged_player_from_event(
+pub(super) fn choose_spec_with_recorded_players_from_event(
     spec: &crate::target::ChooseSpec,
     event: Option<&TriggerEvent>,
 ) -> crate::target::ChooseSpec {
-    let Some(player) = damaged_player_from_event(event) else {
-        return spec.clone();
-    };
     let mut spec = spec.clone();
-    replace_damaged_player_choose_spec(&mut spec, player);
+    if let Some(player) = damaged_player_from_event(event) {
+        replace_damaged_player_choose_spec(&mut spec, player);
+    }
+    // This trigger's inferred participant is the holder in the completed
+    // receipt. Target announcement and later validation must bind that same
+    // player before any live player-filter query, just as resolution does.
+    if let Some(change) = event.and_then(|event| event.downcast::<crate::events::MonarchChangedEvent>()) {
+        spec = specialize_iterated_player_choose_spec(&spec, change.monarch);
+    }
     spec
 }
 
@@ -4189,7 +4194,7 @@ pub(crate) fn stack_entry_assignment_legal_targets(
         });
     }
     let assignment = &entry.target_assignments[assignment_index];
-    let resolved_spec = choose_spec_with_damaged_player_from_event(
+    let resolved_spec = choose_spec_with_recorded_players_from_event(
         &assignment.spec,
         entry.triggering_event.as_ref(),
     );
@@ -4430,7 +4435,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
         .iter()
         .map(|spec| {
             let resolved_spec =
-                choose_spec_with_damaged_player_from_event(spec, entry.triggering_event.as_ref());
+                choose_spec_with_recorded_players_from_event(spec, entry.triggering_event.as_ref());
             let resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
             if entry.defending_player.is_some() {
                 return compute_legal_targets_with_tagged_objects_combat_context_and_view(

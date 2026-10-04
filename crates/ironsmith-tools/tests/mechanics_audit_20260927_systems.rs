@@ -30,7 +30,7 @@ fn s1_monarch_uses_live_controller_or_departure_lki_not_a_new_incarnation() {
     for depart in [false, true] {
         let mut g = game();
         let attacker = permanent(&mut g, BOB, CardType::Creature);
-        g.set_monarch(Some(A));
+        g.set_monarch(Some(A)).expect("checked designation/departure fixture");
         let event = TriggerEvent::new_with_provenance(
             DamageEvent::with_cause(
                 attacker,

@@ -1712,6 +1712,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_play_from_permission_with_enter_tapped_this_way_line),
         multi_static_ability_ast_rule!(parse_you_may_static_grant_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
+        single_static_ability_ast_rule!(parse_conditional_self_flash_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_during_your_turn_prevent_all_damage_to_source_line),
         single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
@@ -4731,9 +4732,24 @@ pub fn parse_damage_amount_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
-    let Some(spec) = keyword_static_lines::parse_additive_damage_amount_tokens(&tokens) else {
+    let Some(shape) = keyword_static_lines::parse_additive_damage_amount_tokens(&tokens) else {
         return Ok(None);
     };
+    if shape.this_turn { return Ok(None); }
+    let Some(spec) = damage_addition_parts_from_shape(shape)? else { return Ok(None); };
+    let mut display = render_token_slice(&tokens).trim().to_string();
+    if !crate::string_primitives::ends_with_char(&display, '.') { display.push('.'); }
+    let fixed = match spec.delta.unhinted() { Value::Fixed(n) => Some(*n), _ => None };
+    let ability = StaticAbility::modify_damage_amount_replacement_with_noncombat_only(
+        spec.source_filter, spec.target_player_filter, spec.target_object_filter,
+        fixed.unwrap_or(0), spec.noncombat_only, display,
+    );
+    Ok(Some(if fixed.is_some() { ability } else { ability.with_dynamic_damage_delta(spec.delta) }))
+}
+
+pub(crate) fn damage_addition_parts_from_shape(
+    spec: keyword_static_lines::AdditiveDamageAmountSpec<'_>,
+) -> Result<Option<ironsmith_core::RegisterDamageAdditionEffect>, CardTextError> {
     let damaged_words = parser_token_word_refs(spec.damaged_tokens);
     let (target_player_filter, target_object_filter) =
         parse_damage_amount_replacement_target_filters(&damaged_words)?;
@@ -4742,44 +4758,45 @@ pub fn parse_damage_amount_replacement_line(
     }
     if let Some(repeated_target_tokens) = spec.repeated_target_tokens {
         let repeated_words = parser_token_word_refs(repeated_target_tokens);
-        // "to that permanent or player" (Torbran, Thane of Red Fell) only
-        // points back at the damaged object; it repeats no filter of its own.
-        let demonstrative_only = matches!(
-            repeated_words.as_slice(),
-            ["permanent", "or", "player"]
-                | ["player", "or", "permanent"]
-                | ["permanent"]
-                | ["player"]
-                | ["creature"]
-                | ["creature", "or", "player"]
-                | ["player", "or", "creature"]
-        );
+        let demonstrative_only = match repeated_words.as_slice() {
+            ["permanent", "or", "player"] | ["player", "or", "permanent"] =>
+                target_player_filter.is_some() && target_object_filter.is_some(),
+            ["permanent"] => target_object_filter.is_some() && target_player_filter.is_none(),
+            ["player"] => target_player_filter.is_some() && target_object_filter.is_none(),
+            ["creature"] => target_player_filter.is_none()
+                && target_object_filter.as_ref().is_some_and(|filter| filter.card_types == [CardType::Creature]),
+            ["creature", "or", "player"] | ["player", "or", "creature"] =>
+                target_player_filter.is_some()
+                && target_object_filter.as_ref().is_some_and(|filter| filter.card_types == [CardType::Creature]),
+            _ => false,
+        };
         if !demonstrative_only {
             let (repeated_player_filter, repeated_object_filter) =
                 parse_damage_amount_replacement_target_filters(&repeated_words)?;
             if repeated_player_filter.as_ref() != target_player_filter.as_ref()
-                || repeated_object_filter.as_ref() != target_object_filter.as_ref()
-            {
+                || repeated_object_filter.as_ref() != target_object_filter.as_ref() {
                 return Ok(None);
             }
         }
     }
     let source_filter = damage_source_filter_from_shape(spec.source)?;
+    let delta = if let Some(definition) = spec.definition_tokens {
+        let Some(value) = parse_value_binding_clause(definition) else { return Ok(None); };
+        value
+    } else {
+        let words = parser_token_word_refs(spec.delta_tokens);
+        let words = words.strip_prefix(&["an", "amount", "of", "damage", "equal", "to"])
+            .unwrap_or(&words);
+        let Some((value, used)) = parse_value_expr_words(words) else { return Ok(None); };
+        if used != words.len() { return Ok(None); }
+        value
+    };
+    Ok(Some(ironsmith_core::RegisterDamageAdditionEffect {
+        source_filter, target_player_filter, target_object_filter,
+        delta, noncombat_only: spec.noncombat_only,
+        mode: ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,
+    }))
 
-    let mut display = render_token_slice(&tokens).trim().to_string();
-    if !crate::string_primitives::ends_with_char(&display, '.') {
-        display.push('.');
-    }
-    Ok(Some(
-        StaticAbility::modify_damage_amount_replacement_with_noncombat_only(
-            source_filter,
-            target_player_filter,
-            target_object_filter,
-            spec.delta,
-            spec.noncombat_only,
-            display,
-        ),
-    ))
 }
 
 pub fn parse_prevent_half_damage_replacement_line(
@@ -5000,6 +5017,9 @@ fn parse_damage_amount_replacement_target_filters(
     words: &[&str],
 ) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
     let simple = strip_leading_word_refs_any(words, &["a", "an"]);
+    if matches!(simple, ["player", "or", "battle"] | ["player", "or", "a", "battle"]) {
+        return Ok((Some(PlayerFilter::Any), Some(ObjectFilter::permanent().with_type(CardType::Battle))));
+    }
     let object = match simple {
         ["creature"] => Some(ObjectFilter::creature()),
         ["this", "creature"] | ["this", "permanent"] => Some(ObjectFilter::source()),

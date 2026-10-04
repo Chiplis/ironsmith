@@ -1713,6 +1713,11 @@ where
         return Ok(converted);
     }
     if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterDamageAdditionEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RegisterCounterPlacementReplacementEffect>(&effect)
     {
         return Ok(converted);

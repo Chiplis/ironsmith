@@ -1614,18 +1614,21 @@ pub(crate) fn spell_has_active_flash_with_view(
             }
         }
         false
-    }) || view.card_has_granted_static_ability_id(
-        spell_id,
-        Zone::Hand,
-        player,
-        crate::static_abilities::StaticAbilityId::Flash,
-    ) || view.card_view_has_granted_static_ability_id(
-        spell_id,
-        spell,
-        Zone::Hand,
-        player,
-        crate::static_abilities::StaticAbilityId::Flash,
-    )
+    }) || {
+        // A zone-limited card grant checks the captured origin. A spell-wide
+        // timing grant checks the chosen prospective face on the stack. Neither
+        // grants permission to cast from that origin, and a front face cannot
+        // lend its characteristics to a different face being cast.
+        let origin = if spell.zone == Zone::Stack {
+            game.cast_origin_snapshot(spell_id).map_or(Zone::Stack, |snapshot| snapshot.zone)
+        } else { spell.zone };
+        let mut origin_card = spell.clone(); origin_card.zone = origin;
+        let mut prospective_spell = spell.clone(); prospective_spell.zone = Zone::Stack;
+        view.card_view_has_granted_static_ability_id(spell_id, &origin_card, origin, player,
+            crate::static_abilities::StaticAbilityId::Flash)
+            || view.card_view_has_granted_static_ability_id(spell_id, &prospective_spell, Zone::Stack, player,
+                crate::static_abilities::StaticAbilityId::Flash)
+    }
 }
 
 pub(crate) fn player_was_attacked_this_step(game: &GameState, player: PlayerId) -> bool {
@@ -1969,15 +1972,15 @@ fn target_dependent_flash_can_begin(
             matches!(model.payload, ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_))))) {
         return false;
     }
-    let Some(program) = spell.spell_effect.as_deref() else {
-        return false;
-    };
+    let aura_program;
+    let program = if let Some(program) = spell.spell_effect.as_deref() { program }
+        else if spell.subtypes.contains(&crate::types::Subtype::Aura) {
+            let Some(filter) = &spell.aura_attach_filter else { return false; };
+            aura_program = crate::resolution::ResolutionProgram::from_effects(vec![crate::effect::Effect::attach_to(filter.target_spec())]);
+            &aura_program
+        } else { return false; };
     let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
-        game,
-        program,
-        player,
-        Some(spell.id),
-        None,
+        game, program, player, Some(spell.id), None,
     );
     requirements.iter().any(|requirement| {
         target_dependent_flash_matches(game, player, spell, &requirement.legal_targets)

@@ -191,9 +191,9 @@ fn u074_emperor_loss_or_draw_propagates_to_the_team_and_the_other_team_wins() {
             vec![1, 2, 1, 1, 2, 1],
         )
         .unwrap();
-    assert!(loss_game.mark_player_lost(seats[0]));
+    assert!(loss_game.mark_player_lost(seats[0]).expect("checked designation/departure fixture"));
     assert!(loss_game.player(seats[1]).unwrap().is_in_game());
-    assert!(loss_game.mark_player_lost(seats[1]));
+    assert!(loss_game.mark_player_lost(seats[1]).expect("checked designation/departure fixture"));
     assert!(
         seats[0..3]
             .iter()
@@ -215,7 +215,7 @@ fn u074_emperor_loss_or_draw_propagates_to_the_team_and_the_other_team_wins() {
             vec![1, 2, 1, 1, 2, 1],
         )
         .unwrap();
-    let drawn = draw_game.draw_game_for_players([draw_seats[1]]);
+    let drawn = draw_game.draw_game_for_players([draw_seats[1]]).expect("checked designation/departure fixture");
     assert_eq!(drawn, draw_seats[0..3]);
     assert!(draw_seats[0..3].iter().all(|player| {
         let player = draw_game.player(*player).unwrap();

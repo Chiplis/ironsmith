@@ -5215,3 +5215,16 @@ pub struct RegisterManaSpendPermissionEffect {
     pub until: Until,
     pub display: String,
 }
+
+/// A resolving instruction captures its additive replacement amount once.
+/// The registered modifier keeps this controller and duration after source exit.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterDamageAdditionEffect {
+    pub source_filter: crate::filter_model::ObjectFilter,
+    pub target_player_filter: Option<crate::filter_model::PlayerFilter>,
+    pub target_object_filter: Option<crate::filter_model::ObjectFilter>,
+    pub delta: Value,
+    pub noncombat_only: bool,
+    pub mode: ReplacementApplyMode,
+}

@@ -932,7 +932,7 @@ fn replace_modal_header_x_in_effect_ast(
                 ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
             )
             | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterDamageMultiplier { .. },
+                ReplacementActionAst::RegisterDamageMultiplier { .. } | ReplacementActionAst::RegisterDamageAddition { .. },
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },

@@ -110,6 +110,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 crate::tag::CompilerReferenceTag::LinkedTriggerPlayer.bind().into(),
             ))
         }
+        TriggerSpec::PlayerBecomesMonarch(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesGame(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerPaysLife(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLifeDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),

@@ -761,6 +761,7 @@ pub enum TriggerKind {
     BecomesBlockedOneOrMore { filter: ObjectFilter },
     KeywordActionMatchingObjectOneOrMore { action: KeywordActionKind, player: PlayerFilter, filter: ObjectFilter },
     PlayerPaysLife { player: PlayerFilter },
+    PlayerBecomesMonarch { player: PlayerFilter },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -807,6 +808,8 @@ pub struct Trigger {
 }
 
 impl Trigger {
+    pub fn player_becomes_monarch(player:PlayerFilter)->Self{Self::typed("player_becomes_monarch",TriggerKind::PlayerBecomesMonarch{player})}
+
     pub fn new<T: CompilerTriggerMatcher>(matcher: T) -> Self {
         matcher.into_trigger()
     }

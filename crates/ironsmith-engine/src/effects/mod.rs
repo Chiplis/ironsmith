@@ -237,6 +237,7 @@ pub use zones::{
 };
 
 pub use replacement::RegisterDamageMultiplierEffect;
+pub use replacement::RegisterDamageAdditionEffect;
 pub use damage::DealDamageToRecipientsEffect;
 
 pub(crate) use composition::{prepare_conditional_branch, resolve_source_binding,

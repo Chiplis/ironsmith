@@ -252,6 +252,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "RegisterManaSpendPermissionEffect" => Some(EffectFamily::StackEvent),
         "RegisterCounterPlacementReplacementEffect" => Some(EffectFamily::StackEvent),
         "RegisterDamageMultiplierEffect" => Some(EffectFamily::StackEvent),
+        "RegisterDamageAdditionEffect" => Some(EffectFamily::StackEvent),
         "RegisterEnterWithCountersReplacementEffect" => Some(EffectFamily::StackEvent),
         "RegisterNextBatchEnterWithCountersEffect" => Some(EffectFamily::StackEvent),
         "RegisterZoneReplacementEffect" => Some(EffectFamily::StackEvent),

@@ -36335,7 +36335,8 @@ fn describe_source_line_first_spell_cost_reduction_and_flash_group(
         return None;
     };
     let flash = flash_static.grant_spec()?;
-    if flash != crate::grant::GrantSpec::flash_to_spells_matching(reduction.filter.clone()) {
+    if flash != crate::grant::GrantSpec::flash_timing_for_spells_matching(reduction.filter.clone())
+        && flash != crate::grant::GrantSpec::flash_to_spells_matching(reduction.filter.clone()) {
         return None;
     }
     Some(format!(

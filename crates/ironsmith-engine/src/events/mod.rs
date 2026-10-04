@@ -542,3 +542,5 @@ mod tests {
         assert_eq!(event.kind(), cloned.kind());
     }
 }
+
+pub use other::MonarchChangedEvent;

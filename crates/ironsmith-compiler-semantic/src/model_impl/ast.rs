@@ -723,4 +723,5 @@ pub enum TriggerSpec {
     BecomesBlockedOneOrMore(ObjectFilter),
     KeywordActionOneOrMore { action: crate::events::KeywordActionKind, player: PlayerFilter, source_filter: ObjectFilter },
     PlayerPaysLife(PlayerFilter),
+    PlayerBecomesMonarch(PlayerFilter),
 }

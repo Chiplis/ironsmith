@@ -111,7 +111,7 @@ pub fn parse_first_spell_cost_reduction_and_flash_line(
         return Ok(None);
     }
     let flash = StaticAbility::grants(
-        crate::model::CompilerGrantSpecCore::flash_to_spells_matching(
+        crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(
             reduction_spec.filter.clone(),
         ),
     );
@@ -4113,10 +4113,12 @@ pub fn parse_grant_flash_to_noncreature_spells_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     match parse_permission_clause_spec(tokens)? {
         Some(crate::cards::builders::PermissionClauseSpec::GrantBySpec {
-            player: crate::cards::builders::PlayerAst::You,
-            spec,
+            player, mut spec,
             lifetime: crate::cards::builders::PermissionLifetime::Static,
-        }) if spec == crate::model::CompilerGrantSpecCore::flash_to_noncreature_spells() => {
+        }) if spec.zone == Zone::Stack && matches!(&spec.grantable,
+            crate::model::CompilerGrantableCore::Ability(ability) if ability.id() == crate::static_abilities::StaticAbilityId::Flash) => {
+            let Some(beneficiary) = static_grant_beneficiary(player) else { return Ok(None); };
+            spec.beneficiary = beneficiary;
             Ok(Some(StaticAbility::grants(spec)))
         }
         _ => Ok(None),
@@ -4647,6 +4649,52 @@ pub fn parse_cast_this_card_from_library_while_searching_line(
     Ok(None)
 }
 
+/// Trailing ordinary state predicates share the leading-condition owner.
+/// Target-dependent, paid and X-dependent timing keep their specialized rules.
+pub fn parse_conditional_self_flash_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let Some(index) = tokens.iter().position(|token| token.is_word("if")) else { return Ok(None); };
+    if !is_cast_this_spell_as_though_it_had_flash_line_lexed(&tokens[..index]) { return Ok(None); }
+    let tail = trim_edge_punctuation(&tokens[index + 1..]);
+    if tail.first().is_some_and(|token| token.is_word("x"))
+        || (tail.first().is_some_and(|token| token.is_word("it")) && tail.get(1).is_some_and(|token| token.is_word("targets")))
+    { return Ok(None); }
+    // A conjunction of complete existential combat-state clauses keeps each
+    // witness independent; it does not require one creature to do both.
+    let combat_states: Option<Vec<bool>> = {
+        use winnow::prelude::*;
+        crate::grammar::primitives::probe_all(&tail, winnow::combinator::separated(1..,
+            (crate::grammar::primitives::phrase(&["a", "creature", "is"]),
+                winnow::combinator::alt((crate::grammar::primitives::kw("attacking").value(true),
+                    crate::grammar::primitives::kw("blocking").value(false))))
+                .map(|(_, attacking)| attacking),
+            crate::grammar::primitives::kw("and")), "existential-combat-state-flash")
+    };
+    let condition = if let Some(states) = combat_states {
+        states.into_iter().map(|attacking| {
+            let mut filter = ObjectFilter::creature(); filter.attacking = attacking; filter.blocking = !attacking;
+            PredicateAst::CountComparison { count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
+                comparison: crate::effect::Comparison::GreaterThanOrEqual(1), display: None }
+        }).reduce(|left, right| PredicateAst::And(Box::new(left), Box::new(right))).expect("nonempty grammar")
+    } else {
+        let Ok(condition) = parse_static_condition_clause(&tail) else { return Ok(None); }; condition
+    };
+    fn board_state(predicate: &PredicateAst) -> bool {
+        match predicate {
+            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => board_state(left) && board_state(right),
+            PredicateAst::Not(inner) => board_state(inner),
+            PredicateAst::CountComparison {count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter), ..}
+            | PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControls {filter, ..}) =>
+                matches!(filter.zone, None | Some(Zone::Battlefield)),
+            _ => false,
+        }
+    }
+    if !board_state(&condition) || static_condition_references_source_outside_battlefield(&condition) { return Ok(None); }
+    Ok(Some(StaticAbilityAst::LabeledConditionalStaticAbility {
+        ability: Box::new(StaticAbilityAst::from(StaticAbility::flash())), condition,
+        label: crate::lexer::render_token_slice(&trim_edge_punctuation(tokens)),
+    }))
+}
+
 pub fn parse_cast_this_spell_as_though_it_had_flash_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -4893,7 +4941,7 @@ pub fn parse_player_may_cast_spells_free_and_flash_line(
     free.beneficiary = beneficiary.clone();
     let mut abilities = vec![StaticAbility::grants(free)];
     if with_flash {
-        let mut flash = crate::model::CompilerGrantSpecCore::flash_to_spells_matching(filter);
+        let mut flash = crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(filter);
         flash.beneficiary = beneficiary;
         abilities.push(StaticAbility::grants(flash));
     }
@@ -7723,4 +7771,38 @@ pub fn parse_mana_output_rewrite_static_line(tokens: &[OwnedLexToken]) -> Result
         return Err(CardTextError::ParseError("static chosen-color mana rewriting requires a live choice owner; this reader only captures chosen colors in resolving registrations".into()));
     }
     Ok(Some(StaticAbility::mana_production_rewrite(parsed.rule, parsed.display)))
+}
+
+#[cfg(test)]
+mod generic_flash_permission_tests {
+    use super::*;
+    #[test]
+    fn any_player_type_union_is_spell_timing_and_self_state_is_labeled() {
+        for text in ["Any player may cast Sliver spells as though they had flash.",
+            "Any player may cast spells as though they had flash.",
+            "Any player may cast creature and enchantment spells as though they had flash."] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let parsed = parse_grant_flash_to_noncreature_spells_line(&tokens).unwrap().unwrap();
+            let ironsmith_core::StaticAbilityPayload::Grants(spec) = parsed.payload else { panic!(); };
+            assert_eq!(spec.zone, Zone::Stack); assert_eq!(spec.beneficiary, PlayerFilter::Any);
+            assert!(matches!(spec.grantable, crate::model::CompilerGrantableCore::Ability(_)));
+        }
+        for text in ["You may cast this spell as though it had flash if you control a Human.",
+            "You may cast this spell as though it had flash if you control an attacking legendary creature.",
+            "You may cast this spell as though it had flash if a creature is attacking and a creature is blocking."] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let parsed = parse_conditional_self_flash_line(&tokens).unwrap().unwrap();
+            assert!(matches!(parsed, StaticAbilityAst::LabeledConditionalStaticAbility { .. }));
+        }
+    }
+    #[test]
+    fn specialized_and_unknown_self_flash_tails_remain_outside_the_state_reader() {
+        for text in ["You may cast this spell as though it had flash if X is 3 or less.",
+            "You may cast this spell as though it had flash if it targets a commander.",
+            "You may cast this spell as though it had flash if you pay {2}.",
+            "You may cast this spell as though it had flash if a creature is attacking and draw a card."] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_conditional_self_flash_line(&tokens).unwrap().is_none(), "{text}");
+        }
+    }
 }

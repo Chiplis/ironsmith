@@ -51,7 +51,10 @@ pub struct AdditiveDamageAmountSpec<'a> {
     pub source: DamageSourceShape<'a>,
     pub damaged_tokens: &'a [OwnedLexToken],
     pub repeated_target_tokens: Option<&'a [OwnedLexToken]>,
-    pub delta: i32,
+    pub delta_tokens: &'a [OwnedLexToken],
+    /// The complete "where X is ..." clause, when X is locally defined.
+    pub definition_tokens: Option<&'a [OwnedLexToken]>,
+    pub this_turn: bool,
     pub noncombat_only: bool,
 }
 
@@ -316,34 +319,40 @@ fn parse_additive_damage_amount_lexed<'a>(
     let noncombat_only = alt((
         primitives::phrase(&["would", "deal", "noncombat", "damage", "to"]).value(true),
         primitives::phrase(&["would", "deal", "damage", "to"]).value(false),
-    ))
-    .parse_next(input)?;
+    )).parse_next(input)?;
     let damaged_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        1..,
-        any.void(),
-        peek((
-            opt(primitives::comma()),
-            primitives::phrase(&["it", "deals", "that", "much", "damage", "plus"]),
-        )),
-    )
-    .map(|((), _)| ())
-    .take()
-    .parse_next(input)?;
+        1.., any.void(), peek(alt((
+            primitives::phrase(&["this", "turn"]).void(),
+            (opt(primitives::comma()), opt(primitives::kw("instead")),
+                primitives::phrase(&["it", "deals", "that", "much", "damage", "plus"])).void(),
+        ))),
+    ).map(|((), _)| ()).take().parse_next(input)?;
+    let this_turn = opt(primitives::phrase(&["this", "turn"])).parse_next(input)?.is_some();
     opt(primitives::comma()).parse_next(input)?;
+    let leading_instead = opt(primitives::kw("instead")).parse_next(input)?.is_some();
     primitives::phrase(&["it", "deals", "that", "much", "damage", "plus"]).parse_next(input)?;
-    let delta = leaf::parse_leaf_number_prefix_lexed
-        .try_map(i32::try_from)
-        .parse_next(input)?;
-    let repeated_target_tokens = match parse_damage_amount_tail_lexed(input)? {
-        DamageAmountTail::Instead => None,
-        DamageAmountTail::ToThatTarget(tokens) => Some(tokens),
+    let (delta_tokens, definition_tokens, repeated_target_tokens) = if leading_instead {
+        let delta = primitives::kw("x").take().parse_next(input)?;
+        primitives::comma().parse_next(input)?;
+        let definition = (primitives::phrase(&["where", "x", "is"]),
+            repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
+                .map(|((), _)| ())).take().parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        (delta, Some(definition), None)
+    } else {
+        let delta = repeat_till::<_, _, (), _, _, _, _>(
+            1.., any.void(), peek(alt((primitives::kw("instead").void(),
+                primitives::phrase(&["to", "that"]).void()))),
+        ).map(|((), _)| ()).take().parse_next(input)?;
+        let repeated = match parse_damage_amount_tail_lexed(input)? {
+            DamageAmountTail::Instead => None,
+            DamageAmountTail::ToThatTarget(tokens) => Some(tokens),
+        };
+        (delta, None, repeated)
     };
     Ok(AdditiveDamageAmountSpec {
-        source,
-        damaged_tokens: trim_lexed_commas(damaged_tokens),
-        repeated_target_tokens,
-        delta,
-        noncombat_only,
+        source, damaged_tokens: trim_lexed_commas(damaged_tokens), repeated_target_tokens,
+        delta_tokens, definition_tokens, this_turn, noncombat_only,
     })
 }
 
@@ -633,7 +642,7 @@ mod tests {
         )
         .unwrap();
         let spec = parse_additive_damage_amount_tokens(&tokens).unwrap();
-        assert_eq!(spec.delta, 2);
+        assert_eq!(crate::lexer::parser_token_word_refs(spec.delta_tokens), ["2"]);
         assert_eq!(spec.source.controller, DamageSourceControllerKind::You);
         assert!(spec.repeated_target_tokens.is_some());
 

@@ -3193,9 +3193,9 @@ pub fn evaluate_condition_with_mode(
     ctx: Option<&ExecutionContext>,
 ) -> Result<bool, ExecutionError> {
     match mode {
-        ConditionEvaluationMode::CastTime { controller, source } => Ok(evaluate_condition_simple(
+        ConditionEvaluationMode::CastTime { controller, source } => evaluate_condition_cast_time_checked(
             game, condition, controller, source,
-        )),
+        ),
         ConditionEvaluationMode::Resolution => {
             let ctx = ctx.ok_or_else(|| {
                 ExecutionError::UnresolvableValue(
@@ -3214,13 +3214,24 @@ pub fn evaluate_condition_cast_time(
     controller: PlayerId,
     source: ObjectId,
 ) -> bool {
-    evaluate_condition_with_mode(
-        game,
-        condition,
-        ConditionEvaluationMode::CastTime { controller, source },
-        None,
-    )
-    .unwrap_or(false)
+    match evaluate_condition_cast_time_checked(game, condition, controller, source) {
+        Ok(value) => value,
+        Err(error) => {
+            // Legacy bool callers run inside the checked legality / real cast
+            // transaction. Preserve unknown until that Result-bearing owner.
+            game.record_token_resource_failure(&error);
+            false
+        }
+    }
+}
+
+/// Checked cast-time state predicates. Standalone callers must not turn an
+/// incomplete continuous world into a completed negative permission answer.
+pub fn evaluate_condition_cast_time_checked(
+    game: &GameState, condition: &Condition, controller: PlayerId, source: ObjectId,
+) -> Result<bool, ExecutionError> {
+    let checked = game.continuous_query_snapshot().map_err(ExecutionError::ContinuousDiscovery)?;
+    evaluate_condition_in_context(&checked, condition, &ConditionContext::cast_time(controller, source))
 }
 
 /// Evaluate a condition during effect resolution.
@@ -3346,20 +3357,6 @@ fn player_has_full_party(game: &GameState, player_id: PlayerId) -> bool {
 /// This simplified version is used during spell casting to evaluate conditions
 /// like `YouControlCommander` before targets are chosen. It handles common
 /// conditions that don't require targets or other context-dependent information.
-fn evaluate_condition_simple(
-    game: &GameState,
-    condition: &Condition,
-    controller: PlayerId,
-    source: ObjectId,
-) -> bool {
-    evaluate_condition_in_context(
-        game,
-        condition,
-        &ConditionContext::cast_time(controller, source),
-    )
-    .unwrap_or(false)
-}
-
 fn resolve_condition_player_simple(
     game: &GameState,
     controller: PlayerId,
@@ -3908,6 +3905,8 @@ fn evaluate_condition_in_context(
             .matching_players(game, player)?
             .into_iter()
             .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))),
+        Condition::PlayerWasMonarchAtTurnStart {player} => Ok(ctx.matching_players(game,player)?.into_iter()
+            .any(|player|game.turn_store.turn_history.monarch_at_turn_start==Some(player))),
         Condition::PlayerIsMonarch { player } => Ok(ctx
             .matching_players(game, player)?
             .into_iter()
@@ -5290,7 +5289,14 @@ fn evaluate_condition_in_context(
             count, comparison, ..
         } => {
             if ctx.is_cast_time() {
-                return Ok(false);
+                let crate::static_abilities::AnthemCountExpression::MatchingFilter(filter) = count else { return Ok(false); };
+                if !matches!(filter.zone, None | Some(Zone::Battlefield)) { return Ok(false); }
+                let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+                let exact = game.battlefield.iter().filter(|id| !game.is_phased_out(**id))
+                    .filter_map(|id| game.object(*id))
+                    .filter(|object| filter.matches(object, &filter_ctx, game)).count();
+                let value = crate::events::damage::checked_damage_count(exact as u128, "cast-time battlefield count")?;
+                return Ok(comparison.evaluate(value));
             }
             Ok(
                 comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression_checked(

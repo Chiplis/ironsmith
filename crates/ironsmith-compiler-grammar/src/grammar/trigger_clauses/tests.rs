@@ -2387,3 +2387,14 @@ fn life_payment_trigger_has_a_complete_player_subject_and_does_not_accept_loss_o
         assert!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).is_err(),"{text}");
     }
 }
+
+#[test]
+fn monarch_change_trigger_retains_exact_player_and_complete_event_boundary(){
+    use crate::model::ast::TriggerSpec;
+    for (text,player) in [("you become the monarch",PlayerFilter::You),("an opponent becomes the monarch",PlayerFilter::Opponent),("a player becomes the monarch",PlayerFilter::Any)] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();assert_eq!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap(),TriggerSpec::PlayerBecomesMonarch(player));
+    }
+    for text in ["unknown subjects become the monarch","you become the monarch and draw a card"]{
+        let tokens=crate::lexer::lex_line(text,0).unwrap();assert!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).is_err());
+    }
+}

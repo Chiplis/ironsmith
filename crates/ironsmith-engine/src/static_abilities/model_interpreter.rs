@@ -1766,20 +1766,18 @@ impl StaticAbilityModelInterpreter {
                 }
             }
             ironsmith_core::StaticAbilityPayload::ModifyDamageAmountReplacement {
-                source_filter,
-                target_player_filter,
-                target_object_filter,
-                delta,
-                noncombat_only,
-                display,
-            } => StaticAbility::modify_damage_amount_replacement_with_noncombat_only(
-                source_filter.clone(),
-                target_player_filter.clone(),
-                target_object_filter.clone(),
-                *delta,
-                *noncombat_only,
-                display.clone(),
-            ),
+                source_filter, target_player_filter, target_object_filter,
+                delta, dynamic_delta, noncombat_only, display,
+            } => {
+                let mut native = super::ModifyDamageAmountReplacement::new(
+                    source_filter.clone(), target_player_filter.clone(),
+                    target_object_filter.clone(), *delta, display.clone(),
+                ).with_noncombat_only(*noncombat_only);
+                if let Some(value) = dynamic_delta {
+                    native = native.with_dynamic_delta(value.clone());
+                }
+                StaticAbility::new(native)
+            },
             ironsmith_core::StaticAbilityPayload::MinimumDamageAmountReplacement {
                 source_filter,
                 target_player_filter,

@@ -1998,7 +1998,7 @@ mod tests {
         let mut monarch_game = setup_game();
         let source = create_creature(&mut monarch_game, "Monarch Source", alice);
         let target = create_creature(&mut monarch_game, "Monarch Target", bob);
-        monarch_game.set_monarch(Some(bob));
+        monarch_game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
         execute_latched_control(
             &mut monarch_game,
             source,
@@ -2007,9 +2007,9 @@ mod tests {
             Predicate::PlayerIsMonarch(PlayerRef::ControllerOf(ObjectRef::AffectedObject)),
         );
         assert_eq!(monarch_game.current_controller(target), Some(alice));
-        monarch_game.set_monarch(Some(alice));
+        monarch_game.set_monarch(Some(alice)).expect("checked designation/departure fixture");
         assert_eq!(monarch_game.current_controller(target), Some(bob));
-        monarch_game.set_monarch(Some(bob));
+        monarch_game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
         assert_eq!(monarch_game.current_controller(target), Some(bob));
     }
 
