@@ -7,6 +7,8 @@
 //! - `TotalCost`: A complete cost (conjunction of Cost components)
 //! - `Cost` (in the `costs` module): Individual cost components (trait objects)
 
+pub(crate) mod prospective_references;
+
 use crate::costs::Cost;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};

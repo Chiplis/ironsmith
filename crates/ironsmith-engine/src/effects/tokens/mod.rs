@@ -21,3 +21,8 @@ pub use create_token_copy::{
 };
 pub use incubate::IncubateEffect;
 pub use investigate::InvestigateEffect;
+
+pub(crate) mod resources;
+pub use resources::TokenCreationLimits;
+
+pub(crate) use lifecycle::{execute_token_instruction_atomically, execute_resource_transaction_atomically};

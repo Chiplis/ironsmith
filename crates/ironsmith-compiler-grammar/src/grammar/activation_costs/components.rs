@@ -155,7 +155,8 @@ fn parse_activation_cost_segment_tokens(
         ActivationCostSegmentKind::Return => Some(parse_return_segment_tokens(tokens)),
         ActivationCostSegmentKind::Exert => Some(parse_exert_segment_tokens(tokens)),
         ActivationCostSegmentKind::PutCounter => {
-            parse_move_source_to_library_bottom_cost_tokens(tokens)
+            super::zone_segments::parse_move_chosen_to_graveyard_cost_tokens(tokens)
+                .or_else(|| parse_move_source_to_library_bottom_cost_tokens(tokens))
                 .or_else(|| parse_move_to_library_top_cost_tokens(tokens))
                 .or_else(|| {
                     Some(parse_put_counter_segment_tokens(tokens, &|words| {

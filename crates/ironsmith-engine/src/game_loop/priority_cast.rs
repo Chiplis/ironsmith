@@ -1712,6 +1712,8 @@ pub(super) fn activation_stage_after_modes(pending: &PendingActivation) -> Activ
         ActivationStage::ChoosingAlternativeCost
     } else if pending.activation_cost_has_x && pending.x_value.is_none() {
         ActivationStage::ChoosingX
+    } else if !pending.cost_references_ready {
+        ActivationStage::ChoosingCostReferences
     } else if pending.hybrid_choices.is_empty() && !pending.pending_hybrid_pips.is_empty() {
         ActivationStage::AnnouncingCost
     } else {
@@ -1748,6 +1750,13 @@ pub(super) fn activation_cost_with_locked_x(
                 .collect(),
         ),
     }
+}
+
+/// Preserve the captured printed branch separately from menu display prices.
+pub(super) fn captured_activation_reference_branch(pending: &PendingActivation, index: usize) -> Result<Option<crate::cost::TotalCost>, GameLoopError> {
+    let Some(base) = pending.cost_reference_base.as_ref() else { return Ok(None); };
+    base.as_one_of().and_then(|branches| branches.get(index)).cloned().map(Some)
+        .ok_or_else(|| GameLoopError::InvalidState("captured raw activation branch is absent".into()))
 }
 
 /// The selected branch of an activation cost (or the cost itself).
@@ -1831,6 +1840,7 @@ pub(super) fn assign_pending_activation_cost(
 
     for component in components {
         if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
+            if !pending.cost_references_ready && dynamic_mana.mana_cost_of.is_some() { continue; }
             let mut execution_ctx =
                 ExecutionContext::new(pending.source, pending.activator, &mut *decision_maker)
                     .with_provenance(pending.provenance);
@@ -1859,7 +1869,7 @@ pub(super) fn assign_pending_activation_cost(
     }
 
     pending.activation_cost_has_tap = components.iter().any(|cost| cost.requires_tap());
-    pending.activation_cost_has_x = pending
+    pending.activation_cost_has_x = pending.x_value.is_some() || pending
         .mana_cost_to_pay
         .as_ref()
         .is_some_and(crate::mana::ManaCost::has_x)
@@ -5871,6 +5881,7 @@ pub(super) fn build_next_cost_context(
 }
 
 pub(super) fn activation_stage_after_announcements(pending: &PendingActivation) -> ActivationStage {
+    if !pending.cost_references_ready { return ActivationStage::ChoosingCostReferences; }
     if !pending.remaining_requirements.is_empty() {
         ActivationStage::ChoosingTargets
     } else {
@@ -6443,7 +6454,57 @@ pub(super) fn continue_activation(
     // the player selects which remaining cost to satisfy next.
 
     loop {
+        if pending.cost_reference_base.is_some() {
+            crate::cost::prospective_references::refresh_source_exiled_reference(game, pending.source, &mut pending.tagged_objects);
+        }
+
         match pending.stage {
+            ActivationStage::ChoosingCostReferences => {
+                if let Some(choice) = pending.cost_reference_choices.first() {
+                    let candidates = crate::cost::prospective_references::public_reference_candidates(
+                        game, pending.source, pending.activator, choice, &pending.tagged_objects,
+                        pending.x_value.map(|x| x as u32),
+                    );
+                    if candidates.is_empty() { return Err(GameLoopError::InvalidState("no eligible public cost reference".into())); }
+                    if candidates.len() == 1 {
+                        let selected = candidates[0];
+                        state.pending_activation = Some(pending);
+                        return apply_sacrifice_target_response(game, trigger_queue, state, selected, decision_maker);
+                    }
+                    let context = crate::decisions::context::SelectObjectsContext::new(
+                        pending.activator, Some(pending.source), "Choose the object used to determine this activation's cost",
+                        candidates.into_iter().map(|id| crate::decisions::context::SelectableObject::new(id, game.current_name(id).unwrap_or_default())).collect(),
+                        1, Some(1),
+                    ).with_selection_identity(crate::decisions::context::SelectionIdentity::ObjectId);
+                    state.pending_activation = Some(pending);
+                    return Ok(GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectObjects(context)));
+                }
+                let base = pending.cost_reference_base.as_ref().ok_or_else(|| GameLoopError::InvalidState("cost reference has no captured total cost".into()))?;
+                let base = selected_activation_cost_branch(base, pending.selected_alternative_cost)
+                    .ok_or_else(|| GameLoopError::InvalidState("cost reference has no selected branch".into()))?;
+                let base = pending.x_value.map_or_else(|| base.clone(), |x| activation_cost_with_locked_x(&base, x as u32));
+                let base = crate::cost::prospective_references::lock_activation_reference_cost(
+                    game, pending.source, pending.activator, &base, &pending.tagged_objects,
+                    &pending.announced_cost_objects, pending.x_value.map(|x| x as u32),
+                ).map_err(|error| GameLoopError::InvalidState(format!("referenced activation cost: {error:?}")))?;
+                let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
+                    game, pending.activator, pending.source, &base, &pending.chosen_targets,
+                    crate::decision::ActivationCostAbility::at(game, pending.activator, pending.source, pending.ability_index),
+                );
+                pending.cost_references_ready = true;
+                assign_pending_activation_cost(game, &mut pending, &cost, decision_maker)?;
+                pending.remaining_requirements = extract_target_requirements_with_modes_and_references(
+                    game, pending.effects.flattened_default_effects(), pending.activator, Some(pending.source),
+                    pending.chosen_modes.as_deref(), Some(&pending.tagged_objects),
+                );
+                let view = crate::derived_view::DerivedGameView::new(game).with_target_reference_bindings(pending.tagged_objects.clone());
+                if !view.spell_has_legal_targets(pending.effects.flattened_default_effects(), pending.activator, Some(pending.source), pending.chosen_modes.as_deref()) {
+                    return Err(GameLoopError::InvalidState("announced cost object leaves no legal target selection".into()));
+                }
+                pending.stage = activation_stage_after_modes(&pending);
+                continue;
+            }
+
             ActivationStage::ChoosingModes => {
                 return check_activation_modes_or_continue(
                     game,
@@ -6454,27 +6515,26 @@ pub(super) fn continue_activation(
                 );
             }
             ActivationStage::ChoosingAlternativeCost => {
-                let view = crate::derived_view::DerivedGameView::new(game);
-                let options = pending
+                let options_result = pending
                     .alternative_cost_branches
                     .iter()
                     .enumerate()
                     .map(|(index, branch)| {
-                        let legal =
-                            crate::decision::activation_total_cost_branch_is_payable_with_view(
-                                game,
-                                pending.activator,
-                                pending.source,
-                                branch,
-                                &view,
-                            );
-                        crate::decisions::context::SelectableOption::with_legality(
+                        let raw = captured_activation_reference_branch(&pending, index)?;
+                        let legal = crate::cost::prospective_references::activation_branch_preflight_checked(
+                            game, pending.source, pending.ability_index, pending.activator, raw.as_ref(), branch,
+                        ).map_err(GameLoopError::ExecutionFailed)?;
+                        Ok(crate::decisions::context::SelectableOption::with_legality(
                             index,
                             branch.display(),
                             legal,
-                        )
+                        ))
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, GameLoopError>>();
+                let options = match options_result {
+                    Ok(options) => options,
+                    Err(error) => { state.pending_activation = Some(pending); return Err(error); }
+                };
                 let ability_name = game
                     .object(pending.source)
                     .map(|object| format!("{}'s ability", object.name))

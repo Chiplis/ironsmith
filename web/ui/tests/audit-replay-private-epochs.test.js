@@ -25,6 +25,7 @@ async function fixture({ disclose = true, inputOverride = null, fairRandomFirst 
   const game = {
     startMatch: async () => {}, setPerspective: async () => {},
     exportSyncCheckpoint: async () => ({ objects: [] }),
+    getHiddenCardState: async () => ({ objects: [] }),
     exportPublicAuditCheckpoint: async () => ({}),
     previewCryptoRequirements: async () => {
       calls.push(['preview', queued.length, openings.length]);

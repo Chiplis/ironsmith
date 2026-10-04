@@ -289,6 +289,26 @@ pub fn execute_effect(
     effect: &Effect,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
+    let (root, meter) = game.begin_token_resource_scope();
+    let checkpoint = root.then(|| game.clone());
+    let context_checkpoint = root.then(|| crate::effects::context::ExecutionContextCheckpoint::capture(ctx));
+    let mut result = match game.token_resource_failure() {
+        Some(error) => Err(error),
+        None => execute_effect_with_resource_scope(game, effect, ctx),
+    };
+    if let Err(error) = &result { game.record_token_resource_failure(error); }
+    if let Some(error) = game.token_resource_failure() { result = Err(error); }
+    if matches!(&result, Err(ExecutionError::ResourceLimitExceeded { .. } | ExecutionError::ResourceAllocationFailed { .. })) {
+        if let Some(checkpoint) = checkpoint { game.restore_execution_checkpoint(checkpoint, false); }
+        if let Some(checkpoint) = context_checkpoint { checkpoint.restore(ctx); }
+    }
+    game.end_token_resource_scope(root, &meter);
+    result
+}
+
+fn execute_effect_with_resource_scope(
+    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
     // CR 724.1b/724.2b stop the resolving spell or ability immediately. Composite
     // executors route child effects through this function, so this guard also
     // suppresses later instructions inside a sequence, modal branch, loop, or

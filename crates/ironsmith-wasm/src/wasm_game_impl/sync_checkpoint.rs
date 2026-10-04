@@ -850,6 +850,53 @@ fn restore_scalar_registered_effects(
         unsupported_checkpoint_effect_payload, unsupported_checkpoint_effect_payload))
 }
 
+// Until executable replacement matchers/actions have a complete wire model,
+// a checkpoint may carry only their empty registration state. Keep allocator
+// gaps and prevention metrics: zero active shields is not a fresh manager.
+type SyncRegisteredReplacementState = ironsmith::replacement::RegisteredReplacementEffectState<()>;
+type SyncPreventionState = ironsmith::prevention::PreventionEffectState<(), (), ()>;
+
+fn unsupported_checkpoint_replacement_payload<T, U>(_: T) -> Result<U, String> {
+    Err("runtime replacement/prevention state requires accepted-transcript replay or a runtime savepoint".into())
+}
+
+fn retain_checkpoint_replacement_state(game: &GameState)
+    -> Result<(SyncRegisteredReplacementState, SyncPreventionState), String>
+{
+    if game.effect_store.pending_replacement_choice.is_some() {
+        return Err("pending replacement choice requires accepted-transcript replay or a runtime savepoint".into());
+    }
+    let replacement = game.effect_store.replacement_effects.registered_state()?
+        .try_map_effects(unsupported_checkpoint_replacement_payload)?;
+    let prevention = game.effect_store.prevention_effects.retained_state()?;
+    if prevention.follow_up_deferral_depth != 0 {
+        return Err("pending prevention deferral requires accepted-transcript replay or a runtime savepoint".into());
+    }
+    let prevention = prevention.try_map_payloads(
+        unsupported_checkpoint_replacement_payload,
+        unsupported_checkpoint_replacement_payload,
+        unsupported_checkpoint_replacement_payload,
+    )?;
+    Ok((replacement, prevention))
+}
+
+fn restore_checkpoint_replacement_state(
+    replacement: SyncRegisteredReplacementState, prevention: SyncPreventionState,
+) -> Result<(ironsmith::replacement::RegisteredReplacementEffectState, ironsmith::prevention::PreventionEffectState), String> {
+    if prevention.follow_up_deferral_depth != 0 {
+        return Err("checkpoint contains an unencoded prevention continuation".into());
+    }
+    let replacement = replacement.try_map_effects(unsupported_checkpoint_replacement_payload)?;
+    let prevention = prevention.try_map_payloads(
+        unsupported_checkpoint_replacement_payload,
+        unsupported_checkpoint_replacement_payload,
+        unsupported_checkpoint_replacement_payload,
+    )?;
+    ironsmith::replacement::ReplacementEffectManager::new().restore_registered_state(replacement.clone())?;
+    ironsmith::prevention::PreventionEffectManager::new().restore_retained_state(prevention.clone())?;
+    Ok((replacement, prevention))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SyncCheckpoint {
@@ -860,6 +907,12 @@ pub(crate) struct SyncCheckpoint {
     /// Missing only in legacy checkpoints; never infer descriptors from final colors/control.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     registered_continuous: Option<SyncRegisteredContinuousState>,
+    /// Required for import. Older exporters silently omitted runtime shields;
+    /// those checkpoints must be recovered through the accepted transcript.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    registered_replacements: Option<SyncRegisteredReplacementState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    prevention: Option<SyncPreventionState>,
     format: MatchFormatInput,
     perspective: u8,
     snapshot_serial: u64,
@@ -929,9 +982,10 @@ pub(crate) struct SyncCheckpoint {
 ///
 /// Every field is public information (designations, combat declarations and
 /// the extra-turn queue), so the same value is exported to every perspective.
-/// State built from runtime programs (continuous effects, delayed triggers,
-/// replacement/prevention shields, pending triggers) has no wire encoding; a
-/// same-engine rollback must use a runtime savepoint instead of a checkpoint.
+/// State built from runtime programs needs an explicit owning wire encoding;
+/// active replacement/prevention registrations and deferred work fail export
+/// until such an encoding exists. Use accepted-transcript replay for cross-peer
+/// recovery and a native runtime savepoint for same-engine rollback.
 /// One deferred restart battlefield entry (plain card ids of the new game).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1752,6 +1806,8 @@ struct SyncGrandMeleeMarker {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncGrandMeleeCombat {
+    #[serde(default)]
+    block_declaration_complete: Option<bool>,
     attackers: Vec<(u64, SyncGrandMeleeAttackTarget)>,
     blockers: Vec<(u64, Vec<u64>)>,
     #[serde(default)]
@@ -2300,6 +2356,7 @@ fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> Syn
         .collect::<Vec<_>>();
     had_to_attack_this_combat.sort_unstable();
     SyncGrandMeleeCombat {
+        block_declaration_complete: Some(combat.block_declaration_complete),
         attackers: combat
             .attackers
             .iter()
@@ -2350,8 +2407,14 @@ fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> Syn
 
 fn grand_melee_combat_from_sync(
     combat: &SyncGrandMeleeCombat,
+    runner_state: Option<&str>,
 ) -> ironsmith::combat_state::CombatState {
     ironsmith::combat_state::CombatState {
+        block_declaration_complete: combat.block_declaration_complete.unwrap_or_else(|| matches!(runner_state,
+            Some("declare_blockers_priority" | "combat_damage_first_strike" | "combat_damage_first_strike_assign"
+                | "combat_damage_first_strike_sbas" | "combat_damage_first_strike_priority" | "combat_damage_regular"
+                | "combat_damage_regular_assign" | "combat_damage_regular_sbas" | "combat_damage_regular_priority"
+                | "end_combat" | "end_combat_priority"))),
         attacked_permanent_types: combat
             .attacked_permanent_types
             .iter()
@@ -2581,7 +2644,7 @@ fn grand_melee_restore_from_sync(
                     },
                     turn_store,
                     stack: marker.stack.iter().map(stack_entry_from_sync).collect(),
-                    combat: marker.combat.as_ref().map(grand_melee_combat_from_sync),
+                    combat: marker.combat.as_ref().map(|combat| grand_melee_combat_from_sync(combat, marker.runner_state.as_deref())),
                     range_of_influence: if marker.range_turn_snapshot.is_empty() {
                         None
                     } else {
@@ -3122,6 +3185,8 @@ impl WasmGame {
     /// ledger holds an entry without a lossless encoding (it is never
     /// silently dropped).
     pub(crate) fn try_build_sync_checkpoint(&self) -> Result<SyncCheckpoint, JsValue> {
+        let (registered_replacements, prevention) = retain_checkpoint_replacement_state(&self.game)
+            .map_err(|error| JsValue::from_str(&error))?;
         let players = self
             .game
             .players
@@ -3259,6 +3324,8 @@ impl WasmGame {
             registered_continuous: Some(retain_scalar_registered_effects(
                 self.game.effect_store.continuous_effects.registered_state())
                 .map_err(|error| JsValue::from_str(&error))?),
+            registered_replacements: Some(registered_replacements),
+            prevention: Some(prevention),
             format: self.match_format,
             perspective: self.perspective.0,
             snapshot_serial: self.snapshot_serial,
@@ -3851,7 +3918,7 @@ impl WasmGame {
             self.game.turn_store.continuous_control_turn_started = Some(self.game.turn.turn_number);
         }
         if !grand_melee {
-            self.game.combat = rules.combat.as_ref().map(grand_melee_combat_from_sync);
+            self.game.combat = rules.combat.as_ref().map(|combat| grand_melee_combat_from_sync(combat, self.runner.as_ref().map(|runner| runner.state().sync_name())));
             self.game.turn_store.extra_turns = rules
                 .extra_turns
                 .iter()
@@ -4652,6 +4719,12 @@ impl WasmGame {
         if checkpoint.players.is_empty() {
             return Err("checkpoint has no players".to_string());
         }
+        let (replacement_state, prevention_state) = restore_checkpoint_replacement_state(
+            checkpoint.registered_replacements.clone().ok_or_else(||
+                "legacy checkpoint has no replacement-state completeness carrier; replay accepted transcript".to_string())?,
+            checkpoint.prevention.clone().ok_or_else(||
+                "legacy checkpoint has no prevention-state completeness carrier; replay accepted transcript".to_string())?,
+        )?;
 
         // Runtime construction assigns consecutive IDs in this exact order.
         // Validate that the wire refers to those same seats, before any reset.
@@ -4671,6 +4744,8 @@ impl WasmGame {
             }
         }
         self.reset_runtime_for_sync_checkpoint(&checkpoint);
+        self.game.effect_store.replacement_effects.restore_registered_state(replacement_state)?;
+        self.game.effect_store.prevention_effects.restore_retained_state(prevention_state)?;
 
         for object in checkpoint.objects.iter() {
             let restored = self.sync_object_from_checkpoint(object)?;
@@ -5546,6 +5621,26 @@ mod sync_checkpoint_tests {
     }
 
     #[test]
+    fn combat_checkpoint_retains_zero_blocker_completion_and_migrates_runner_boundary() {
+        let attacker = ObjectId::from_raw(81);
+        for complete in [false, true] {
+            let combat = ironsmith::combat_state::CombatState {
+                block_declaration_complete: complete,
+                attackers: vec![ironsmith::combat_state::AttackerInfo { creature: attacker, target: AttackTarget::Player(PlayerId::from_index(1)) }],
+                ..Default::default()
+            };
+            let mut encoded = serde_json::to_value(sync_grand_melee_combat(&combat)).unwrap();
+            let current: SyncGrandMeleeCombat = serde_json::from_value(encoded.clone()).unwrap();
+            assert_eq!(ironsmith::combat_state::is_unblocked(&grand_melee_combat_from_sync(&current, None), attacker), complete);
+            encoded.as_object_mut().unwrap().remove("blockDeclarationComplete");
+            let legacy: SyncGrandMeleeCombat = serde_json::from_value(encoded).unwrap();
+            for (state, expected) in [("declare_attackers_priority", false), ("declare_blockers_apply", false), ("declare_blockers_priority", true), ("combat_damage_regular", true)] {
+                assert_eq!(ironsmith::combat_state::is_unblocked(&grand_melee_combat_from_sync(&legacy, Some(state)), attacker), expected);
+            }
+        }
+    }
+
+    #[test]
     fn combat_checkpoint_preserves_blocked_status_after_the_last_blocker_leaves() {
         let attacker = ObjectId::from_raw(71);
         let combat = ironsmith::combat_state::CombatState {
@@ -5558,7 +5653,7 @@ mod sync_checkpoint_tests {
         };
         let encoded = serde_json::to_value(sync_grand_melee_combat(&combat)).unwrap();
         let decoded: SyncGrandMeleeCombat = serde_json::from_value(encoded.clone()).unwrap();
-        let restored = grand_melee_combat_from_sync(&decoded);
+        let restored = grand_melee_combat_from_sync(&decoded, None);
         assert!(ironsmith::combat_state::is_blocked(&restored, attacker));
         assert!(restored.blockers.is_empty());
 
@@ -5567,7 +5662,7 @@ mod sync_checkpoint_tests {
         legacy.as_object_mut().unwrap().remove("blockedAttackers");
         legacy["blockers"] = serde_json::json!([[71, [72]]]);
         let decoded: SyncGrandMeleeCombat = serde_json::from_value(legacy).unwrap();
-        assert!(ironsmith::combat_state::is_blocked(&grand_melee_combat_from_sync(&decoded), attacker));
+        assert!(ironsmith::combat_state::is_blocked(&grand_melee_combat_from_sync(&decoded, None), attacker));
     }
 
     #[test]
@@ -10153,5 +10248,90 @@ mod draw_step_ordinal_transport_tests {
         assert!(restore_draw_step_counts(&mut peer, Some(&wire), &seats, Phase::FirstMain, None).is_err());
         restore_draw_step_counts(&mut peer, None, &seats, Phase::FirstMain, None).unwrap();
         assert!(peer.cards_drawn_this_draw_step.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod replacement_checkpoint_safety_tests {
+    use super::*;
+    use ironsmith::effects::{EffectContext, EffectExecutor, PreventAllDamageEffect, RedirectAllDamageThisTurnToTargetEffect};
+    use ironsmith::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+
+    fn host() -> WasmGame {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        wasm
+    }
+
+    #[test]
+    fn active_redirects_and_prevention_refuse_wire_capture_but_survive_runtime_savepoints() {
+        let _ids = crate::test_id_counter_guard();
+        for prevention in [false, true] {
+            let mut wasm = host(); let alice = PlayerId::from_index(0);
+            let definition = CardDefinition::new(ironsmith::CardBuilder::new(CardId::new(), "Shield destination")
+                .card_types(vec![CardType::Creature]).build());
+            let source = wasm.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let mut ctx = EffectContext::new_default(source, alice);
+            if prevention {
+                PreventAllDamageEffect::all().execute(&mut wasm.game, &mut ctx).unwrap();
+            } else {
+                RedirectAllDamageThisTurnToTargetEffect::new(PlayerFilter::You, ObjectFilter::default(),
+                    ChooseSpec::SpecificObject(source)).execute(&mut wasm.game, &mut ctx).unwrap();
+            }
+            assert!(retain_checkpoint_replacement_state(&wasm.game).unwrap_err().contains("accepted-transcript replay"));
+            assert!(!wasm.is_replay_checkpoint_boundary());
+            let savepoint = RuntimeSavepoint::capture(&wasm);
+            let replacements = wasm.game.effect_store.replacement_effects.effects().len();
+            let shields = wasm.game.effect_store.prevention_effects.shields().to_vec();
+            wasm.game.effect_store.replacement_effects = Default::default();
+            wasm.game.effect_store.prevention_effects = Default::default();
+            savepoint.restore(&mut wasm);
+            assert_eq!(wasm.game.effect_store.replacement_effects.effects().len(), replacements);
+            assert_eq!(wasm.game.effect_store.prevention_effects.shields(), shields);
+            assert!(retain_checkpoint_replacement_state(&wasm.game).is_err());
+        }
+    }
+
+    #[test]
+    fn empty_carriers_retain_allocator_gaps_and_exhausted_prevention_metrics() {
+        let _ids = crate::test_id_counter_guard();
+        let mut wasm = host(); let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(87);
+        let replacement = ironsmith::replacement::ReplacementEffect::with_matcher(source, alice,
+            ironsmith::events::damage::matchers::DamageToPlayerMatcher::to_you(),
+            ironsmith::replacement::ReplacementAction::PreventDamage);
+        let id = wasm.game.effect_store.replacement_effects.add_until_end_of_turn_effect(replacement);
+        wasm.game.effect_store.replacement_effects.remove_effect(id);
+        let id = wasm.game.effect_store.prevention_effects.add_shield(ironsmith::prevention::PreventionShield::new(
+            source, alice, ironsmith::prevention::PreventionTarget::Player(alice), Some(3), ironsmith::effect::Until::EndOfTurn));
+        wasm.game.effect_store.prevention_effects.remove_shield(id);
+        let (replacement, prevention) = retain_checkpoint_replacement_state(&wasm.game).unwrap();
+        assert!(replacement.next_id > 0); assert!(prevention.next_id > 0);
+        assert_eq!(prevention.prevented_totals, vec![(id, 0)]);
+        let expected = serde_json::to_value((&replacement, &prevention)).unwrap();
+        let checkpoint = wasm.build_sync_checkpoint();
+        let mut peer = host(); peer.apply_sync_checkpoint(checkpoint).unwrap();
+        let restored = retain_checkpoint_replacement_state(&peer.game).unwrap();
+        assert_eq!(serde_json::to_value(restored).unwrap(), expected);
+    }
+
+    #[test]
+    fn legacy_and_forged_carriers_are_rejected_before_replacing_the_live_game() {
+        let _ids = crate::test_id_counter_guard();
+        let source = host(); let checkpoint = source.build_sync_checkpoint();
+        for field in ["registeredReplacements", "prevention"] {
+            let mut legacy = serde_json::to_value(&checkpoint).unwrap();
+            legacy.as_object_mut().unwrap().remove(field);
+            let mut peer = host(); peer.game.player_mut(PlayerId::from_index(0)).unwrap().life = 31;
+            assert!(peer.apply_sync_checkpoint(serde_json::from_value(legacy).unwrap()).unwrap_err().contains("completeness carrier"));
+            assert_eq!(peer.game.player(PlayerId::from_index(0)).unwrap().life, 31);
+        }
+        let (replacement, mut prevention) = retain_checkpoint_replacement_state(&source.game).unwrap();
+        prevention.follow_up_deferral_depth = 1;
+        assert!(restore_checkpoint_replacement_state(replacement.clone(), prevention).is_err());
+        let (_, prevention) = retain_checkpoint_replacement_state(&source.game).unwrap();
+        let mut forged = replacement; forged.effects.push(());
+        assert!(restore_checkpoint_replacement_state(forged, prevention).is_err(), "unit payload is not an executable replacement");
+
     }
 }

@@ -4980,6 +4980,12 @@ fn evaluate_condition_in_context(
                     crate::ability::ActivationTiming::DuringOpponentsTurn => {
                         !game.is_active_player(ctx.controller)
                     }
+                    crate::ability::ActivationTiming::AnyTimeByEnchantedCreatureController => {
+                        game.object(ctx.source).and_then(|object| object.attached_to).and_then(|target| target.object_id())
+                            .is_some_and(|host| game.object(host).is_some_and(|object| object.zone == crate::Zone::Battlefield)
+                                && game.current_has_card_type(host, crate::CardType::Creature)
+                                && game.current_controller(host) == Some(ctx.controller))
+                    }
                     crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
                         game.is_active_player(ctx.controller)
                             && game.turn.phase != crate::game_state::Phase::Ending

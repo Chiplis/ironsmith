@@ -243,3 +243,5 @@ pub(crate) use composition::{prepare_conditional_branch, resolve_source_binding,
     is_object_selection, apply_outcome_tags, TaggedRuntimeState, capture_tagged_runtime_state};
 
 pub(crate) use composition::{PreparedIfBranch, prepare_if_branches, execute_if_branches};
+
+pub(crate) use composition::{ForPlayersDrawContinuation, ForPlayersDrawProgress};

@@ -30,9 +30,15 @@ export async function captureEngineRestorePoint(game, { keepCheckpoint = false }
     }
   }
   const needsCheckpoint = runtimeHandle == null || keepCheckpoint;
-  const checkpoint = needsCheckpoint && typeof game?.exportSyncCheckpoint === "function"
-    ? await game.exportSyncCheckpoint()
-    : null;
+  let checkpoint = null;
+  if (needsCheckpoint && typeof game?.exportSyncCheckpoint === "function") {
+    try { checkpoint = await game.exportSyncCheckpoint(); }
+    catch (error) {
+      // A live native savepoint is sufficient. An optional cross-instance
+      // backup must never force a lossy export or leak the retained handle.
+      if (runtimeHandle == null) throw error;
+    }
+  }
   if (runtimeHandle == null && !checkpoint) {
     throw new Error("Game engine cannot capture a restore point");
   }

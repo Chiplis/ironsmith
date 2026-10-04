@@ -1093,6 +1093,7 @@ pub(crate) fn describe_apply_continuous_target(
         matches!(
             modification,
             crate::effects::continuous::RuntimeModification::CopyOf { .. }
+                | crate::effects::continuous::RuntimeModification::CopyOfWithAbilities { .. }
         )
     }) && let Some(filter) = chosen_complement_filter
         && let Some(chosen) = filter
@@ -1593,6 +1594,7 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
         matches!(
             runtime,
             crate::effects::continuous::RuntimeModification::CopyOf { .. }
+                | crate::effects::continuous::RuntimeModification::CopyOfWithAbilities { .. }
         )
     });
 
@@ -2040,7 +2042,10 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
     }
     for runtime in &effect.runtime_modifications {
         match runtime {
-            crate::effects::continuous::RuntimeModification::CopyOf { source, .. } => {
+            crate::effects::continuous::RuntimeModification::CopyOf { source, .. }
+            | crate::effects::continuous::RuntimeModification::CopyOfWithAbilities {
+                source, ..
+            } => {
                 let verb = if plural_target { "become" } else { "becomes" };
                 let copy_source = source_linked_exiled_creature_copy_surface(effect, source)
                     .unwrap_or_else(|| describe_choose_spec(source));
@@ -2307,14 +2312,37 @@ pub(crate) fn describe_apply_continuous_tail(
             add_supertypes,
             copy_exception_surface,
             ..
+        }
+        | crate::effects::continuous::RuntimeModification::CopyOfWithAbilities {
+            preserve_source_abilities,
+            name_override,
+            name_override_surface,
+            add_supertypes,
+            copy_exception_surface,
+            ..
         } = runtime
             && let Some(exception_tail) = copy_exception_surface.clone().or_else(|| {
+                let mut display_modifications = effect.additional_modifications.clone();
+                if let crate::effects::continuous::RuntimeModification::CopyOfWithAbilities {
+                    abilities,
+                    ..
+                } = runtime
+                {
+                    display_modifications.extend(abilities.iter().cloned().map(|ability| {
+                        match ability.kind {
+                            crate::ability::AbilityKind::Static(ability) => {
+                                crate::continuous::Modification::AddAbility(ability)
+                            }
+                            _ => crate::continuous::Modification::AddAbilityGeneric(ability),
+                        }
+                    }));
+                }
                 describe_copy_exception_tail(
                     name_override,
                     name_override_surface,
                     add_supertypes,
                     *preserve_source_abilities,
-                    &effect.additional_modifications,
+                    &display_modifications,
                 )
             })
         {
@@ -2335,6 +2363,9 @@ pub(crate) fn apply_continuous_preserves_source_abilities(
         matches!(
             runtime,
             crate::effects::continuous::RuntimeModification::CopyOf {
+                preserve_source_abilities: true,
+                ..
+            } | crate::effects::continuous::RuntimeModification::CopyOfWithAbilities {
                 preserve_source_abilities: true,
                 ..
             }
@@ -3516,7 +3547,7 @@ pub(crate) fn describe_apply_continuous_effect(
         && effect.runtime_modifications.iter().any(|runtime| {
             matches!(
                 runtime,
-                crate::effects::continuous::RuntimeModification::CopyOf { source, preserve_source_abilities, .. }
+                crate::effects::continuous::RuntimeModification::CopyOf { source, preserve_source_abilities, .. } | crate::effects::continuous::RuntimeModification::CopyOfWithAbilities { source, preserve_source_abilities, .. }
                     if source_linked_exiled_creature_copy_surface(effect, source).is_some()
                         || (*preserve_source_abilities && matches!(source.base(), ChooseSpec::Tagged(_)))
             )

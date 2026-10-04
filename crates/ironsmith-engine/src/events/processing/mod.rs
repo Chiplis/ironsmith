@@ -1124,7 +1124,7 @@ fn continue_interactive_replacement(
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> Result<InteractiveReplacementResult, crate::effects::ExecutionError> {
     if let (Some(filter), Some(count)) = (filter, sacrifice_count) {
-        return Ok(handle_sacrifice_or_redirect(
+        return handle_sacrifice_or_redirect(
             game,
             response,
             object_id,
@@ -1134,7 +1134,7 @@ fn continue_interactive_replacement(
             redirect_zone,
             provenance,
             decision_maker,
-        ));
+        );
     }
 
     // Handle reveal-or-enter-tapped (shadow land / snarl pattern). Its
@@ -1195,42 +1195,49 @@ fn handle_sacrifice_or_redirect(
     redirect_zone: Zone,
     provenance: crate::provenance::ProvNodeId,
     decision_maker: &mut dyn DecisionMaker,
-) -> InteractiveReplacementResult {
+) -> Result<InteractiveReplacementResult, crate::effects::ExecutionError> {
     let InteractiveReplacementResponse::Objects(objects) = response else {
-        return InteractiveReplacementResult::redirected(redirect_zone);
+        return Ok(InteractiveReplacementResult::redirected(redirect_zone));
     };
     if objects.len() != count as usize {
-        return InteractiveReplacementResult::redirected(redirect_zone);
+        return Ok(InteractiveReplacementResult::redirected(redirect_zone));
     }
     let distinct = objects
         .iter()
         .copied()
         .collect::<std::collections::HashSet<_>>();
     if distinct.len() != objects.len() {
-        return InteractiveReplacementResult::redirected(redirect_zone);
+        return Ok(InteractiveReplacementResult::redirected(redirect_zone));
     }
     let candidates = find_matching_sacrificable_permanents(game, controller, object_id, filter);
     if !objects.iter().all(|object| candidates.contains(object)) {
-        return InteractiveReplacementResult::redirected(redirect_zone);
+        return Ok(InteractiveReplacementResult::redirected(redirect_zone));
     }
 
+    let checkpoint = game.clone();
     let mut ctx = crate::effects::ExecutionContext::new(object_id, controller, decision_maker);
+    let result = (|| {
     ctx.provenance = provenance;
     for permanent in objects {
         let effect = crate::effect::Effect::new(crate::effects::SacrificeTargetEffect::new(
             crate::target::ChooseSpec::SpecificObject(*permanent),
         ));
-        let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx) else {
-            return InteractiveReplacementResult::redirected(redirect_zone);
-        };
+        let outcome = crate::effects::execute_effect(game, &effect, &mut ctx)?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(InteractiveReplacementResult::redirected(redirect_zone)); }
         if !matches!(outcome.value, crate::effect::OutcomeValue::Count(value) if value >= 1) {
-            return InteractiveReplacementResult::redirected(redirect_zone);
+            return Ok(InteractiveReplacementResult::redirected(redirect_zone));
         }
         for event in outcome.events {
             game.queue_trigger_event(event.provenance(), event);
         }
     }
-    InteractiveReplacementResult::enters_battlefield()
+    Ok(InteractiveReplacementResult::enters_battlefield())
+    })();
+    let pending = ctx.decision_maker.awaiting_choice();
+    if pending || result.as_ref().map_or(true, |outcome| !outcome.enters) {
+        game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
+    }
+    result
 }
 
 /// Handle a discard-or-redirect interactive replacement.
@@ -10330,5 +10337,32 @@ mod retained_prevention_owner_tests {
         assert_eq!(guest.player(alice).unwrap().life, 23);
         assert_eq!(guest.player(bob).unwrap().life, 24);
         assert!(guest.take_pending_trigger_events().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod sacrifice_gate_resource_failure_tests {
+    use super::*;
+    #[test]
+    fn later_sacrifice_exhaustion_restores_earlier_payment_and_surfaces_error() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let player = PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Sacrifice gate resource fixture")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, player, Zone::Stack);
+        let first = game.create_object_from_card(&card, player, Zone::Battlefield);
+        let second = game.create_object_from_card(&card, player, Zone::Battlefield);
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+            source, player, crate::events::zones::matchers::WouldChangeZoneMatcher::new(crate::target::ObjectFilter::specific(second), Some(Zone::Battlefield), Some(Zone::Graveyard)),
+            ReplacementAction::Additionally(vec![crate::effect::Effect::new(crate::effects::CreateTokenEffect::you(crate::cards::tokens::treasure_token_definition(), 2))]),
+        ));
+        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        game.take_pending_trigger_events(); let next = game.next_object_id_counter();
+        let result = handle_sacrifice_or_redirect(&mut game, &InteractiveReplacementResponse::Objects(vec![first, second]), source, player,
+            &crate::target::ObjectFilter::default(), 2, Zone::Graveyard, crate::provenance::ProvNodeId::default(), &mut crate::decision::SelectFirstDecisionMaker);
+        assert!(matches!(result, Err(crate::effects::ExecutionError::ResourceLimitExceeded { .. })));
+        assert!(game.battlefield.contains(&first)); assert!(game.battlefield.contains(&second));
+        assert_eq!(game.object(source).unwrap().zone, Zone::Stack); assert_eq!(game.next_object_id_counter(), next);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty());
     }
 }

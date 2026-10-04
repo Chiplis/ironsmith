@@ -682,6 +682,7 @@ pub(crate) fn execute_resolution_program_with_trigger_matching_typed(
     match_triggers_per_instruction: bool,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
     if !ctx.decision_maker.awaiting_choice() { game.clear_pending_decision_controllers(); }
+    let (resource_root, resource_meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let result = crate::effects::with_per_event_trigger_matching(
@@ -705,8 +706,10 @@ pub(crate) fn execute_resolution_program_with_trigger_matching_typed(
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
         game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
         context_checkpoint.restore(ctx);
+        game.end_token_resource_scope(resource_root, &resource_meter);
         return result.map(|_| Vec::new());
     }
+    game.end_token_resource_scope(resource_root, &resource_meter);
     result
 }
 
@@ -1034,6 +1037,7 @@ pub(super) fn resolve_stack_entry_full(
     mut trigger_queue: Option<&mut TriggerQueue>,
 ) -> Result<(), GameLoopError> {
     if !decision_maker.awaiting_choice() { game.clear_pending_decision_controllers(); }
+    let (resource_root, resource_meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.as_deref().cloned();
     let result = resolve_stack_entry_full_inner(game, decision_maker, trigger_queue.as_deref_mut());
@@ -1043,6 +1047,7 @@ pub(super) fn resolve_stack_entry_full(
             *queue = checkpoint;
         }
     }
+    game.end_token_resource_scope(resource_root, &resource_meter);
     result
 }
 

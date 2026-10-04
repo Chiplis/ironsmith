@@ -2923,6 +2923,9 @@ impl TurnRunner {
     /// CR 509.1: queue every defending player's block events as the one
     /// declare-blockers batch, against the completed blocking configuration.
     fn queue_declared_block_events(&mut self, game: &mut GameState, tq: &mut TriggerQueue) {
+        self.combat.block_declaration_complete = true;
+        game.combat = Some(self.combat.clone());
+        game.mark_continuous_state_dirty();
         let pairs = std::mem::take(&mut self.declared_block_pairs);
         queue_block_declaration_events(game, &self.combat, tq, &pairs, None);
     }

@@ -264,6 +264,7 @@ fn value_measures_source_object(value: &Value) -> bool {
         Value::CountersOnSource(_) | Value::SourcePower | Value::SourceToughness => true,
         Value::CountersOn(spec, _)
         | Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec) => matches!(spec.base(), ChooseSpec::Source),
         _ => false,

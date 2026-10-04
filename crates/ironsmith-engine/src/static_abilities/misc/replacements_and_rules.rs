@@ -203,15 +203,15 @@ impl MinimumDamageAmountReplacement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct DamageAmountReplacementMatcher {
-    source_filter: ObjectFilter,
-    target_player_filter: Option<PlayerFilter>,
-    target_object_filter: Option<ObjectFilter>,
-    condition: Option<crate::ConditionExpr>,
-    combat_only: bool,
-    noncombat_only: bool,
-    amount_less_than: Option<Value>,
-    maximum_damage: Option<u32>,
+pub(crate) struct DamageAmountReplacementMatcher {
+    pub(crate) source_filter: ObjectFilter,
+    pub(crate) target_player_filter: Option<PlayerFilter>,
+    pub(crate) target_object_filter: Option<ObjectFilter>,
+    pub(crate) condition: Option<crate::ConditionExpr>,
+    pub(crate) combat_only: bool,
+    pub(crate) noncombat_only: bool,
+    pub(crate) amount_less_than: Option<Value>,
+    pub(crate) maximum_damage: Option<u32>,
 }
 
 impl DamageAmountReplacementMatcher {
@@ -220,6 +220,13 @@ impl DamageAmountReplacementMatcher {
         damage: &DamageEvent,
         ctx: &crate::events::context::EventContext<'_>,
     ) -> bool {
+        // A resolved source target retains its exact identity rather than
+        // requiring that object to remain in its old zone or combat role.
+        if self.source_filter == ObjectFilter::specific(damage.source) { return true; }
+        // Unblocked is current combat status, not a characteristic whose
+        // absent snapshot predicate may be silently ignored.
+        if self.source_filter.unblocked && !ctx.game.combat.as_ref().is_some_and(|combat|
+            crate::combat_state::is_unblocked(combat, damage.source)) { return false; }
         // An unconstrained source predicate requires no characteristics or LKI.
         // The source of damage may already have left its former zone.
         if self.source_filter == ObjectFilter::default() {
@@ -228,7 +235,7 @@ impl DamageAmountReplacementMatcher {
         // Use LKI only when the source no longer exists. A still-live source
         // may have changed controller or types since its ability was put on
         // the stack; an older snapshot cannot make it match again.
-        if let Some(source) = ctx.game.object(damage.source) {
+        if let Some(source) = ctx.game.object(damage.source).filter(|_| !ctx.game.is_phased_out(damage.source)) {
             let filter_ctx = if source.zone == Zone::Stack {
                 ctx.filter_ctx
                     .clone()
@@ -4695,5 +4702,48 @@ impl StaticAbilityKind for TokenCreationTemplates {
                 .with_token_filter(self.token_filter.clone()).with_condition(self.condition.clone()),
             ReplacementAction::TokenCreationTemplates { templates: self.templates.clone(), mode: self.mode, choose_one: self.choose_one, choice_parent: None });
         Some(if self.optional { effect.optional() } else { effect })
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RedirectMatchingDamage {
+    pub spec: ironsmith_core::StaticDamageRedirectionSpec,
+    pub condition: Option<crate::ConditionExpr>,
+}
+impl StaticAbilityKind for RedirectMatchingDamage {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::RedirectMatchingDamage }
+    fn display(&self) -> String { self.spec.display.clone() }
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let mut next = self.clone();
+        next.condition = Some(match next.condition.take() {
+            Some(old) => crate::ConditionExpr::And(Box::new(old), Box::new(condition)),
+            None => condition,
+        });
+        Some(StaticAbility::new(next))
+    }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        let mut condition = self.condition.clone();
+        if self.spec.source_must_be_untapped {
+            condition = Some(match condition {
+                Some(old) => crate::ConditionExpr::And(Box::new(old), Box::new(crate::ConditionExpr::SourceIsUntapped)),
+                None => crate::ConditionExpr::SourceIsUntapped,
+            });
+        }
+        let target = match self.spec.destination {
+            ironsmith_core::StaticDamageRedirectDestination::Source => RedirectTarget::ToObject(source),
+            ironsmith_core::StaticDamageRedirectDestination::AttachedPermanent => RedirectTarget::ToAttachedPermanent(source),
+            ironsmith_core::StaticDamageRedirectDestination::DamagedPermanentController => RedirectTarget::ToRecipientController,
+        };
+        Some(ReplacementEffect::with_matcher(source, controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.spec.source_filter.clone(),
+                target_player_filter: self.spec.target_player_filter.clone(),
+                target_object_filter: self.spec.target_object_filter.clone(),
+                condition, combat_only: self.spec.combat_only, noncombat_only: false,
+                amount_less_than: None, maximum_damage: None,
+            },
+            ReplacementAction::Redirect { target, which: RedirectWhich::First },
+        ))
     }
 }

@@ -283,7 +283,7 @@ fn effect_preserves_that_card_surface(effect: &Effect) -> bool {
             apply.runtime_modifications.iter().any(|modification| {
                 matches!(
                     modification,
-                    crate::effects::continuous::RuntimeModification::CopyOf { source, .. }
+                    crate::effects::continuous::RuntimeModification::CopyOf { source, .. } | crate::effects::continuous::RuntimeModification::CopyOfWithAbilities { source, .. }
                         if choose_spec_preserves_that_card_surface(source)
                 )
             })

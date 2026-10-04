@@ -63,7 +63,7 @@ test('inspector work is isolated, deduplicated and cancelled without holding the
 test('analysis errors do not mark unchecked cards illegal or strand inspector callers', async () => {
   const h = harness(); const request = h.scheduler.inspector(1n, 0); await h.tick();
   h.workers[0].reply({ type: 'error', error: 'bad checkpoint' });
-  assert.equal(h.events.length, 0); assert.equal(h.errors.length, 1); assert.deepEqual(await request, []);
+  assert.equal(h.events.length, 0); assert.equal(h.errors.length, 1); await assert.rejects(request, /bad checkpoint/);
 });
 test('partial actions merge monotonically and stale revisions and players are rejected', () => {
   const state = { __priority_revision: 3, decision: { kind: 'priority', player: 0, analysis_complete: false } };

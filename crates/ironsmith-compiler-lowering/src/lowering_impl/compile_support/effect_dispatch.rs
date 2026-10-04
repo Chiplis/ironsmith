@@ -2567,13 +2567,12 @@ fn compile_become_copy(
         }
         (spec, _) => spec,
     };
-    let granted_modifications = lower_granted_ability_grant_modifications(granted_abilities)?;
+    let copiable_abilities = lower_granted_abilities_ast_to_object_abilities(granted_abilities)?;
     let apply_target_spec = declared_copy_target
         .as_ref()
         .map(|tag| ChooseSpec::Tagged(tag.as_str().into()))
         .unwrap_or_else(|| target_spec.clone());
-    let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
-        apply_target_spec,
+    let runtime_copy = if copiable_abilities.is_empty() {
         crate::effects::continuous::RuntimeModification::CopyOf {
             source: source_spec,
             preserve_source_abilities: *preserve_source_abilities,
@@ -2581,7 +2580,21 @@ fn compile_become_copy(
             name_override_surface: name_override_surface.clone(),
             add_supertypes: add_supertypes.clone(),
             copy_exception_surface: copy_exception_surface.clone(),
-        },
+        }
+    } else {
+        crate::effects::continuous::RuntimeModification::CopyOfWithAbilities {
+            source: source_spec,
+            preserve_source_abilities: *preserve_source_abilities,
+            name_override: name_override.clone(),
+            name_override_surface: name_override_surface.clone(),
+            add_supertypes: add_supertypes.clone(),
+            copy_exception_surface: copy_exception_surface.clone(),
+            abilities: copiable_abilities,
+        }
+    };
+    let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
+        apply_target_spec,
+        runtime_copy,
         duration.clone(),
     )
     .lock_filter_at_resolution();
@@ -2627,9 +2640,6 @@ fn compile_become_copy(
                 sublayer: crate::continuous::PtSublayer::Setting,
             })
             .resolve_set_pt_values_at_resolution();
-    }
-    for modification in granted_modifications {
-        apply = apply.with_additional_modification(modification);
     }
     let effect = Effect::new(apply);
     let effect = if let Some(tag) = declared_copy_target {
@@ -3067,6 +3077,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
             collect_player_filter_target_choice(owner, choices);
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
@@ -3154,6 +3165,7 @@ fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {
             value_object_target_spec(left).or_else(|| value_object_target_spec(right))
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)

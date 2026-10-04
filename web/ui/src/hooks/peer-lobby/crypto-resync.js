@@ -130,16 +130,9 @@ import { markActionStage, recordDiagnosticEvent } from "../../lib/action-diagnos
 import { createSequencedActionRecovery } from "../../lib/sequenced-action-recovery.js";
 import { auditMatchInstanceId } from "../../lib/multiplayer-audit.js";
 
-// Checkpoint-based Verified resync. The host keeps, per seat, a redacted
-// engine export taken right after every INTERVAL-th accepted action and
-// answers a resync with the newest one at least REPLAY_MARGIN actions behind
-// the head. The resyncing seat imports it and replays the remaining signed
-// actions normally, which rebuilds the per-sequence audit bookkeeping kept for
-// the last 64 actions (crypto requirements, action shuffle locks, private-view
-// disclosures) exactly as a replay from genesis would.
-export const VERIFIED_RESYNC_CHECKPOINT_INTERVAL = 32;
-export const VERIFIED_RESYNC_CHECKPOINT_REPLAY_MARGIN = 64;
-const VERIFIED_RESYNC_CHECKPOINT_RING_SIZE = 4;
+// Verified recovery replays every accepted action. Public board hashes do not
+// commit to complete runtime replacement/prevention state, so a host-signed
+// wire checkpoint cannot prove that omitted executable state was absent.
 
 export function usePeerLobbyCryptoResync(base, servicesRef) {
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditKeyPairRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, drainingPendingSequencedActionsRef, gameRef, hostConnectionRef, ignoredActionIntentKeysRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, liveZiffleCeremoniesRef, localDisconnectObservationsRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, localZiffleRevealInFlightRef, matchClockConfigRef, matchClockObservationExemptSequenceRef, matchClockRef, matchStartPayloadRef, multiplayerRef, outboundCryptoMaterialRequestsRef, peerConnectionsRef, peerRef, pendingSequencedActionsRef, privateViewDisclosuresRef, reconnectChallengesRef, relayedActionIdsRef, resyncWaitersRef, resyncingPeerIdsRef, setState, setStatus, signedActionQuorumVotesRef, stateRef, timeoutClaimInFlightRef, verifiedAuditOpeningsRef, verifiedShuffleProofsRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef } = base;
@@ -152,7 +145,6 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       genesis: matchStartPayloadRef.current?.genesis,
     });
   }
-  const resyncReplayCheckpointsRef = useRef([]);
   const sequencedRecoveryRef = useRef(null);
   if (!sequencedRecoveryRef.current) {
     sequencedRecoveryRef.current = createSequencedActionRecovery({
@@ -236,75 +228,6 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   // Host only: queue every export synchronously, before any await, so the
   // worker serializes them against the engine exactly at `seq`; the entry is
   // kept only when that state hashes to the action's signed public checkpoint.
-  function captureResyncReplayCheckpointIfDue(seq) {
-    const sequence = Number(seq);
-    if (!Number.isSafeInteger(sequence) || sequence <= 0
-      || sequence % VERIFIED_RESYNC_CHECKPOINT_INTERVAL !== 0) return;
-    const session = multiplayerRef.current;
-    if (session.role !== "host" || !session.matchStarted || isMatchDisputed(session)) return;
-    if (!isVerifiedMultiplayerSecurityMode(sessionSecurityMode(session))) return;
-    const currentGame = gameRef.current;
-    if (typeof currentGame?.exportRedactedSyncCheckpoint !== "function"
-      || typeof currentGame?.exportPublicAuditCheckpoint !== "function"
-      || typeof currentGame?.isReplayCheckpointBoundary !== "function") return;
-    const expectedPublicCheckpointHash = String(
-      actionHistoryEntryForSequence(sequence)?.audit?.publicCheckpointHash || ""
-    );
-    if (!expectedPublicCheckpointHash) return;
-    const localSeat = resolveLocalPlayerIndex(session);
-    const seats = [...new Set(
-      (matchStartPayloadRef.current?.players || session.players || [])
-        .map((player) => normalizePlayerIndex(player?.index))
-        .filter((seat) => seat != null && seat !== localSeat)
-    )];
-    if (seats.length === 0) return;
-    const matchInstanceId = voteMatchInstanceId();
-    const exports = [
-      currentGame.isReplayCheckpointBoundary(),
-      currentGame.exportPublicAuditCheckpoint(),
-      ...seats.map((seat) => currentGame.exportRedactedSyncCheckpoint(seat)),
-    ];
-    void (async () => {
-      const [replayBoundary, publicCheckpoint, ...redacted] = await Promise.all(exports);
-      if (!replayBoundary) {
-        recordDiagnosticEvent("resync_checkpoint:skip_pending_resolution", { seq: sequence });
-        return;
-      }
-      if (await hashPublicAuditCheckpoint(publicCheckpoint) !== expectedPublicCheckpointHash) {
-        recordDiagnosticEvent("resync_checkpoint:capture_hash_mismatch", { seq: sequence });
-        return;
-      }
-      // Drop the worker's sampled perf decoration; it is not engine state.
-      const bySeat = new Map(seats.map((seat, index) => {
-        const { __perf: _perf, ...checkpoint } = redacted[index] || {};
-        return [seat, wireStablePayload(checkpoint)];
-      }));
-      const ring = resyncReplayCheckpointsRef.current
-        .filter((entry) => entry.matchInstanceId === matchInstanceId && entry.seq !== sequence);
-      ring.push({ matchInstanceId, seq: sequence, publicCheckpointHash: expectedPublicCheckpointHash, bySeat });
-      ring.sort((left, right) => left.seq - right.seq);
-      resyncReplayCheckpointsRef.current = ring.slice(-VERIFIED_RESYNC_CHECKPOINT_RING_SIZE);
-    })().catch((err) => {
-      recordDiagnosticEvent("resync_checkpoint:capture_failed", { seq: sequence, error: toErrorMessage(err) });
-    });
-  }
-
-  function selectResyncReplayCheckpoint(peerIndex) {
-    const headSequence = Number(actionHistoryRef.current.at(-1)?.seq ?? 0);
-    const matchInstanceId = voteMatchInstanceId();
-    const ring = resyncReplayCheckpointsRef.current;
-    for (let index = ring.length - 1; index >= 0; index -= 1) {
-      const entry = ring[index];
-      if (entry.matchInstanceId !== matchInstanceId) continue;
-      if (entry.seq > headSequence - VERIFIED_RESYNC_CHECKPOINT_REPLAY_MARGIN) continue;
-      // Still the accepted transcript's state at that sequence.
-      if (String(actionHistoryEntryForSequence(entry.seq)?.audit?.publicCheckpointHash || "")
-        !== entry.publicCheckpointHash) continue;
-      const checkpoint = entry.bySeat.get(Number(peerIndex));
-      if (checkpoint) return { seq: entry.seq, checkpoint };
-    }
-    return null;
-  }
   const applySequencedActionMessage = useCallback((...args) => servicesRef.current.applySequencedActionMessage(...args), [servicesRef]);
   const auditEncryptionPublicKeyForPlayer = useCallback((...args) => servicesRef.current.auditEncryptionPublicKeyForPlayer(...args), [servicesRef]);
   const buildLocalOpeningFromRequirement = useCallback((...args) => servicesRef.current.buildLocalOpeningFromRequirement(...args), [servicesRef]);
@@ -435,12 +358,16 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     return false;
   }
 
-  function filterOpeningsForCommandHiddenRefs(openings = [], command = null) {
+  function filterOpeningsForCommandHiddenRefs(openings = [], command = null, requirements = []) {
     if (command?.type !== "select_objects") return openings;
     const hiddenRefs = commandObjectHiddenRefs(command).filter(Boolean);
     if (hiddenRefs.length === 0) return openings;
     return (openings || []).filter((opening) =>
       hiddenRefs.some((hiddenRef) => openingMatchesCommandHiddenRef(opening, hiddenRef))
+      // A required public disclosure must survive selection filtering even
+      // when the command's reference predates private identity hydration.
+      || requirements.some(requirement => String(requirement?.type || "") === "public_open"
+        && openingMatchesRequirement(opening, requirement))
     );
   }
 
@@ -448,12 +375,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const normalized = Number(stableId);
     if (!Number.isSafeInteger(normalized) || normalized <= 0) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }
@@ -468,12 +395,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const normalized = Number(objectId);
     if (!Number.isSafeInteger(normalized) || normalized <= 0) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }
@@ -516,12 +443,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   async function currentObjectIdForHiddenRef(hiddenRef) {
     if (!normalizeSelectObjectHiddenRef(hiddenRef)) return null;
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return null;
     }
     let checkpoint = null;
     try {
-      checkpoint = await currentGame.exportSyncCheckpoint();
+      checkpoint = await currentGame.getHiddenCardState();
     } catch {
       return null;
     }
@@ -1018,7 +945,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	          );
 	          let candidateDebug = [];
 	          try {
-	            const checkpoint = await currentGame.exportSyncCheckpoint?.();
+	            const checkpoint = await currentGame.getHiddenCardState?.();
 	            const objectsById = new Map((checkpoint?.objects || []).map((object) => [
 	              Number(object.id),
 	              object,
@@ -2263,27 +2190,24 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       }
       const peerIndex = normalizePlayerIndex(peerPlayer?.index);
       const currentGame = gameRef.current;
-	      if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
-	        throw new Error("Game engine cannot export a resync checkpoint");
-	      }
-	      const securityMode = sessionSecurityMode(
-	        session,
-	        matchPayloadSecurityMode(payload.match, MULTIPLAYER_SECURITY_VERIFIED)
-	      );
-	      const trusted = isTrustedMultiplayerSecurityMode(securityMode);
+      if (!currentGame) {
+        throw new Error("Game engine is not available for resync");
+      }
+      const securityMode = sessionSecurityMode(
+        session,
+        matchPayloadSecurityMode(payload.match, MULTIPLAYER_SECURITY_VERIFIED)
+      );
+      const trusted = isTrustedMultiplayerSecurityMode(securityMode);
+      const verified = isVerifiedMultiplayerSecurityMode(securityMode);
       const baseSequence = Number(payload.requesterSequence);
       const suffix = trusted && !payload.forceCheckpoint
         && payload.requestMatchId === relayMatchId(payload.match)
         && matchingActionPrefix(actionHistoryRef.current, baseSequence, payload.requestPrefixHash);
-      // Verified: prefer a stored per-seat checkpoint the requester can import
-      // (its sequence is signed below); otherwise the head export keeps the
-      // message shape and the requester replays from genesis.
-      const replayCheckpoint = !trusted && peerIndex != null
-        && isVerifiedMultiplayerSecurityMode(securityMode)
-        ? selectResyncReplayCheckpoint(peerIndex)
-        : null;
-      const checkpoint = trusted ? null
-        : replayCheckpoint ? replayCheckpoint.checkpoint
+      // A host signature authenticates the sender, not the absence of runtime
+      // shields/programs missing from the public-board hash. Verified recovery
+      // always executes the complete signed log from its accepted genesis.
+      const replayOnly = trusted || verified;
+      const checkpoint = replayOnly ? null
         : peerIndex != null && typeof currentGame.exportRedactedSyncCheckpoint === "function"
           ? await currentGame.exportRedactedSyncCheckpoint(peerIndex)
           : await currentGame.exportSyncCheckpoint();
@@ -2303,9 +2227,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
             lastSequence,
             finalStateHash: auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH,
             checkpoint: serializedCheckpoint,
-            checkpointSequence: replayCheckpoint && replayCheckpoint.seq <= lastSequence
-              ? replayCheckpoint.seq
-              : null,
+            checkpointSequence: null,
             actions,
           })
         : null;
@@ -2320,7 +2242,12 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           conn.peer,
           peerIndex
         ),
-        ...(trusted ? { replayOnly: true, ...(suffix ? { suffix: true, baseSequence, basePrefix: payload.requestPrefixHash } : {}) }
+        ...(replayOnly
+          ? {
+              replayOnly: true,
+              ...(verified ? { checkpoint: serializedCheckpoint } : {}),
+              ...(suffix ? { suffix: true, baseSequence, basePrefix: payload.requestPrefixHash } : {}),
+            }
           : { checkpoint: serializedCheckpoint }),
         actions,
         ...(resyncEnvelope ? { resyncEnvelope } : {}),
@@ -4634,7 +4561,6 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     }));
     servicesRef.current.acceptPaymentDisclosure?.(message.audit?.matchId || currentAuditMatchId(), nextSequence);
     servicesRef.current.notifyProtocolActionHead?.();
-    captureResyncReplayCheckpointIfDue(nextSequence);
     if (isMatchDisputed(multiplayerRef.current)) {
       const acceptedClockRuntime = frozenAcceptedMatchClockRuntime();
       matchClockRef.current = cloneMultiplayerPayload(acceptedClockRuntime);

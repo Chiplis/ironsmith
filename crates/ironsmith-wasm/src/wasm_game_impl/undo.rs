@@ -144,7 +144,7 @@ impl WasmGame {
             .is_some_and(|pending| {
                 matches!(
                     pending.stage,
-                    ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost
+                    ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost | ActivationStage::ChoosingCostReferences
                 )
             })
             || self

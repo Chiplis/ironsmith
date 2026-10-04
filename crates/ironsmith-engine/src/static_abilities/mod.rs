@@ -68,6 +68,7 @@ pub use cost_modifiers::*;
 pub use ironsmith_core::ThisSpellCastTiming;
 pub use keywords::*;
 pub use misc::*;
+pub(crate) use misc::DamageAmountReplacementMatcher;
 pub use model_interpreter::{CompiledStaticAbility, StaticAbilityModelInterpreter};
 pub use protection::*;
 pub use restrictions::*;
@@ -3981,6 +3982,10 @@ impl StaticAbility {
 
     pub fn double_damage_from_sources_you_control_of_chosen_type(display: String) -> Self {
         Self::new(DoubleDamageFromSourcesYouControlOfChosenType::new(display))
+    }
+
+    pub fn redirect_matching_damage(spec: ironsmith_core::StaticDamageRedirectionSpec) -> Self {
+        Self::new(RedirectMatchingDamage { spec, condition: None })
     }
 
     pub fn redirect_damage_to_source_controller(

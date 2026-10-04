@@ -59,6 +59,7 @@ use ironsmith_core::{DamagedBySource, TagKey, ValueSurfaceHint};
 
 mod replacements_and_rules;
 pub use replacements_and_rules::*;
+pub(crate) use replacements_and_rules::DamageAmountReplacementMatcher;
 
 /// Counters on this object survive zone changes except when the destination
 /// is explicitly excluded by the ability.

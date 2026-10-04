@@ -16,7 +16,7 @@ use super::create_token_copy::{
 };
 use super::lifecycle::{
     TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry,
-    create_replacement_additional_tokens, remaining_token_slots, schedule_token_cleanup,
+    create_replacement_additional_tokens, schedule_token_cleanup,
 };
 
 /// Effect that creates token creatures or other token permanents.
@@ -210,7 +210,8 @@ fn execute_token_instruction(
             ctx.provenance = provenance;
     let controller_id = replacement.controller;
     let token_preview = replacement.token.clone().unwrap_or(token_preview);
-    let count = (replacement.count as usize).min(remaining_token_slots(game, controller_id));
+    game.reserve_token_creation(replacement.total_count())?;
+    let count = replacement.count as usize;
     let cleanup_options = TokenCleanupOptions::new(
         effect.exile_at_end_of_combat,
         effect.sacrifice_at_end_of_combat,
@@ -242,8 +243,8 @@ fn execute_token_instruction(
             .and_then(|ids| ids.first().copied()),
         None => None,
     };
-    let mut created_ids = Vec::with_capacity(count);
-    let mut events = Vec::with_capacity(count);
+    let mut created_ids = super::resources::buffer(count)?;
+    let mut events = super::resources::buffer(count)?;
     let mut entry_receipts = Vec::new();
     let pending_start = game.effect_store.pending_trigger_events.len();
     let cost_exiled = cost_exiled_objects(game, ctx);
@@ -275,6 +276,7 @@ fn execute_token_instruction(
         }
         let token_is_creature = token_obj.is_creature();
 
+        game.commit_token_resource_slot()?;
         game.add_object(token_obj);
         let entry_result = game.move_object_with_etb_processing_with_cause_and_entry_options(
             id,
@@ -1082,7 +1084,7 @@ mod tests {
     }
 
     #[test]
-    fn create_token_caps_tokens_per_controller_at_500() {
+    fn create_token_preserves_exact_counts_above_500() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
@@ -1095,7 +1097,7 @@ mod tests {
         let crate::effect::OutcomeValue::Objects(ids) = result.value else {
             panic!("Expected Objects result");
         };
-        assert_eq!(ids.len(), 500);
+        assert_eq!(ids.len(), 501);
 
         let result = CreateTokenEffect::you(soldier_token(), 2)
             .execute(&mut game, &mut ctx)
@@ -1103,7 +1105,8 @@ mod tests {
         let crate::effect::OutcomeValue::Objects(ids) = result.value else {
             panic!("Expected Objects result");
         };
-        assert!(ids.is_empty());
+        assert_eq!(ids.len(), 2);
+        assert_eq!(game.battlefield.len(), 503);
     }
 
     #[test]
@@ -1713,8 +1716,8 @@ mod surviving_added_token_group_tests {
         let event = crate::events::CreateTokensEvent::with_token_cause(alice, 0,
             crate::events::tokens::additional_token_object(ironsmith_core::AdditionalTokenKind::Squirrel, alice),
             crate::events::cause::EventCause::effect())
-            .with_additional_tokens(ironsmith_core::AdditionalTokenKind::Treasure, 1);
-        let modified = event.adjusted_covered_total(|_| true, |count| count + 1);
+            .with_additional_tokens(ironsmith_core::AdditionalTokenKind::Treasure, 1).unwrap();
+        let modified = event.adjusted_covered_total(|_| true, |count| u128::from(count) + 1).unwrap();
         assert_eq!(modified.count, 0, "a removed primary group is not a destination for additional tokens");
         assert_eq!(modified.additional_tokens, vec![(ironsmith_core::AdditionalTokenKind::Treasure, 2)]);
     }
@@ -1727,7 +1730,7 @@ mod surviving_added_token_group_tests {
         let event = crate::events::CreateTokensEvent::with_token_cause(alice, 0,
             crate::events::tokens::additional_token_object(ironsmith_core::AdditionalTokenKind::Squirrel, alice),
             crate::events::cause::EventCause::effect())
-            .with_additional_tokens(ironsmith_core::AdditionalTokenKind::Treasure, 1);
+            .with_additional_tokens(ironsmith_core::AdditionalTokenKind::Treasure, 1).unwrap();
         let creature = WouldCreateTokensUnderControlMatcher::new(PlayerFilter::Any).with_token_filter(ObjectFilter::creature());
         let treasure = WouldCreateTokensUnderControlMatcher::new(PlayerFilter::Any)
             .with_token_filter(ObjectFilter::default().with_subtype(crate::types::Subtype::Treasure));

@@ -3150,6 +3150,13 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_scoped_damage_redirection(target: TargetAst, scope: TimedDamageRedirectionAst) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget {
+                player_filter: PlayerFilter::You, object_filter: ObjectFilter::default(), target, scope: Some(scope),
+            }))
+    }
+
     pub fn subject_verb_redirect_all_damage_this_turn_to_target(
         player_filter: PlayerFilter,
         object_filter: ObjectFilter,
@@ -3163,6 +3170,7 @@ impl EffectAst {
                     player_filter,
                     object_filter,
                     target,
+                    scope: None,
                 },
             ),
         )

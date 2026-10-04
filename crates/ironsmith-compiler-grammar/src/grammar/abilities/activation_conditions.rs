@@ -148,6 +148,9 @@ struct ControlledCreaturePowerShape<'a> {
 }
 
 pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<ActivationTiming> {
+    if matches_exact_tokens(tokens, &["only", "the", "controller", "of", "the", "enchanted", "creature", "may", "activate", "this", "ability"]) {
+        return Some(ActivationTiming::AnyTimeByEnchantedCreatureController);
+    }
     if matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP) {
         return Some(ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep);
     }
@@ -640,3 +643,15 @@ mod condition_programs;
 use condition_programs::{
     parse_activate_count_each_turn_condition, parse_activate_only_count_per_turn_condition,
 };
+
+#[cfg(test)]
+mod enchanted_controller_activation_tests {
+    use super::*;
+    #[test]
+    fn only_the_live_enchanted_creature_controller_receives_activation_permission() {
+        let tokens = crate::lexer::lex_line("Only the controller of the enchanted creature may activate this ability", 0).unwrap();
+        assert_eq!(parse_activate_only_timing_lexed(&tokens), Some(ActivationTiming::AnyTimeByEnchantedCreatureController));
+        let tokens = crate::lexer::lex_line("Only the controller of the enchanted creature may activate this ability during combat banana", 0).unwrap();
+        assert!(parse_activate_only_timing_lexed(&tokens).is_none());
+    }
+}

@@ -698,7 +698,7 @@ fn mana_payment_view_from_pending_cast(
     game: &GameState,
     pending: &ironsmith::game_loop::PendingCast,
     activation_options: &[ManaActivationOptionView],
-    defer_options: bool,
+    manual_abilities: &[ManualManaAbilityView],
 ) -> Option<ManaPaymentView> {
     if !matches!(
         pending.stage,
@@ -741,7 +741,7 @@ fn mana_payment_view_from_pending_cast(
             .collect(),
         planned_sources: planned_mana_source_views(game, payment),
         available_sources: available_mana_source_views(game, payment),
-        mana_abilities: if defer_options { Vec::new() } else { manual_mana_ability_views(game, &payment.request) },
+        mana_abilities: manual_abilities.to_vec(),
         allocations: planned_pip_allocation_views(payment),
         pool_before: (&payment.plan.pool_before).into(),
         pool_after_activations: (&payment.plan.expected_pool_after_activations).into(),
@@ -783,7 +783,7 @@ fn mana_payment_view_from_pending_activation(
     game: &GameState,
     pending: &ironsmith::game_loop::PendingActivation,
     activation_options: &[ManaActivationOptionView],
-    defer_options: bool,
+    manual_abilities: &[ManualManaAbilityView],
 ) -> Option<ManaPaymentView> {
     if !matches!(pending.stage, ActivationStage::PayingMana) {
         return None;
@@ -815,7 +815,7 @@ fn mana_payment_view_from_pending_activation(
             .collect(),
         planned_sources: planned_mana_source_views(game, payment),
         available_sources: available_mana_source_views(game, payment),
-        mana_abilities: if defer_options { Vec::new() } else { manual_mana_ability_views(game, &payment.request) },
+        mana_abilities: manual_abilities.to_vec(),
         allocations: planned_pip_allocation_views(payment),
         pool_before: (&payment.plan.pool_before).into(),
         pool_after_activations: (&payment.plan.expected_pool_after_activations).into(),
@@ -857,7 +857,7 @@ fn mana_payment_view_from_context(
     game: &GameState,
     context: &ironsmith::decisions::context::ManaPaymentContext,
     activation_options: &[ManaActivationOptionView],
-    defer_options: bool,
+    manual_abilities: &[ManualManaAbilityView],
 ) -> ManaPaymentView {
     let payment = ironsmith::mana_payment::PendingManaPayment::new(
         context.request.clone(),
@@ -883,7 +883,7 @@ fn mana_payment_view_from_context(
             .collect(),
         planned_sources: planned_mana_source_views(game, &payment),
         available_sources: available_mana_source_views(game, &payment),
-        mana_abilities: if defer_options { Vec::new() } else { manual_mana_ability_views(game, &payment.request) },
+        mana_abilities: manual_abilities.to_vec(),
         allocations: planned_pip_allocation_views(&payment),
         pool_before: (&context.plan.pool_before).into(),
         pool_after_activations: (&context.plan.expected_pool_after_activations).into(),
@@ -969,16 +969,12 @@ fn cast_payment_cost_context(
 fn mana_activation_option_views(
     game: &GameState,
     request: &ironsmith::mana_payment::ManaPaymentRequest,
-) -> Vec<ManaActivationOptionView> {
+) -> Result<Vec<ManaActivationOptionView>, ironsmith::effects::ExecutionError> {
     let counters = snapshot_id_counters();
-    let options = ironsmith::mana_payment::mana_payment_ready_activation_inventory(
-        game,
-        request,
-        || WasmReplayDecisionMaker::new(&[]),
-    );
-    let views = mana_activation_views_from_inventory(game, request, &options);
+    let options = ironsmith::mana_payment::mana_payment_ready_activation_inventory_checked(
+        game, request, || WasmReplayDecisionMaker::new(&[]));
     restore_id_counters(counters);
-    views
+    options.map(|options| mana_activation_views_from_inventory(game, request, &options))
 }
 
 fn mana_activation_views_from_inventory(
@@ -6856,8 +6852,11 @@ struct ManualManaAbilityView {
 fn manual_mana_ability_views(
     game: &GameState,
     request: &ironsmith::mana_payment::ManaPaymentRequest,
-) -> Vec<ManualManaAbilityView> {
-    manual_mana_views_from_inventory(game, ironsmith::mana_payment::manual_mana_abilities(game, request))
+) -> Result<Vec<ManualManaAbilityView>, ironsmith::effects::ExecutionError> {
+    let counters = snapshot_id_counters();
+    let inventory = ironsmith::mana_payment::manual_mana_abilities_checked(game, request);
+    restore_id_counters(counters);
+    inventory.map(|inventory| manual_mana_views_from_inventory(game, inventory))
 }
 
 fn manual_mana_views_from_inventory(
@@ -6881,15 +6880,16 @@ fn manual_mana_views_from_inventory(
 fn mana_payment_options_view(
     game: &GameState,
     request: &mut ironsmith::mana_payment::ManaPaymentRequest,
-) -> ManaPaymentOptionsView {
+) -> Result<ManaPaymentOptionsView, ironsmith::effects::ExecutionError> {
     let counters = snapshot_id_counters();
-    let (ready, manual) = ironsmith::mana_payment::mana_payment_ready_and_manual_inventory(
+    let inventory = ironsmith::mana_payment::mana_payment_ready_and_manual_inventory_checked(
         game, request, || WasmReplayDecisionMaker::new(&[]));
+    restore_id_counters(counters);
+    let (ready, manual) = inventory?;
     let mana_abilities = manual_mana_views_from_inventory(game, manual);
     request.preferences = Default::default();
     let activation_options = mana_activation_views_from_inventory(game, request, &ready);
-    restore_id_counters(counters);
-    ManaPaymentOptionsView { activation_options, mana_abilities }
+    Ok(ManaPaymentOptionsView { activation_options, mana_abilities })
 }
 
 #[cfg(test)]
@@ -6925,9 +6925,9 @@ mod shared_payment_inventory_tests {
         let spell_id = game.create_object_from_definition(&spell, alice, ironsmith::Zone::Hand);
         let mut request = ironsmith::mana_payment::ManaPaymentRequest::new(alice, spell_id,
             ironsmith::costs::PaymentReason::CastSpell, cost);
-        let manual = manual_mana_ability_views(&game, &request);
-        let ready = mana_activation_option_views(&game, &request);
-        let combined = mana_payment_options_view(&game, &mut request);
+        let manual = manual_mana_ability_views(&game, &request).unwrap();
+        let ready = mana_activation_option_views(&game, &request).unwrap();
+        let combined = mana_payment_options_view(&game, &mut request).unwrap();
         assert_eq!(serde_json::to_value(&combined.mana_abilities).unwrap(), serde_json::to_value(&manual).unwrap());
         assert_eq!(serde_json::to_value(&combined.activation_options).unwrap(), serde_json::to_value(&ready).unwrap());
         assert!(!combined.mana_abilities.is_empty(), "ready={:?}, manual={:?}", serde_json::to_value(&ready), serde_json::to_value(&manual));
@@ -6996,5 +6996,65 @@ mod revealed_hand_crypto_scope_tests {
             let before = wasm.capture_crypto_audit_state(); wasm.game.move_object_by_effect(host, Zone::Graveyard).unwrap();
             wasm.update_crypto_requirements_from(before); verify(&wasm, bob, false);
         }
+    }
+}
+
+#[cfg(test)]
+fn resource_payment_test_fixture() -> (GameState, PlayerId, ObjectId, ironsmith::mana_payment::ManaPaymentRequest) {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let player = PlayerId::from_index(0);
+    game.turn.active_player = player; game.turn.priority_player = Some(player);
+    game.turn.phase = ironsmith::game_state::Phase::FirstMain; game.turn.step = None;
+    let card = ironsmith::CardBuilder::new(ironsmith::CardId::new(), "Resource UI source")
+        .card_types(vec![ironsmith::CardType::Land]).build();
+    let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+    game.object_mut(source).unwrap().abilities_mut().push(ironsmith::Ability::mana(
+        ironsmith::cost::TotalCost::from_cost(ironsmith::costs::Cost::tap()), vec![ManaSymbol::Green]));
+    game.effect_store.replacement_effects.add_resolution_effect(ironsmith::replacement::ReplacementEffect::with_matcher(
+        source, player, ironsmith::events::mana::matchers::ManaProducedBySourceMatcher::new(ironsmith::target::ObjectFilter::specific(source)),
+        ironsmith::replacement::ReplacementAction::Additionally(vec![ironsmith::effect::Effect::new(ironsmith::effects::CreateTokenEffect::you(ironsmith::cards::tokens::treasure_token_definition(), 2))]),
+    ));
+    let request = ironsmith::mana_payment::ManaPaymentRequest::new(player, source,
+        ironsmith::costs::PaymentReason::Effect, ironsmith::mana::ManaCost::from_symbols(vec![ManaSymbol::Green]));
+    (game, player, source, request)
+}
+
+#[cfg(test)]
+mod resource_payment_view_tests {
+    use super::*;
+    #[test]
+    fn inventory_failure_is_explicit_and_does_not_change_preferences_or_game() {
+        let _ids = crate::test_id_counter_guard();
+        let (mut game, _, source, mut request) = resource_payment_test_fixture();
+        game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        request.preferences.preserve_sources.push(source);
+        let before = request.clone();
+        let ids = snapshot_id_counters();
+        assert!(matches!(mana_activation_option_views(&game, &request), Err(ironsmith::effects::ExecutionError::ResourceLimitExceeded { .. })));
+        assert!(matches!(manual_mana_ability_views(&game, &request), Err(ironsmith::effects::ExecutionError::ResourceLimitExceeded { .. })));
+        assert!(matches!(mana_payment_options_view(&game, &mut request), Err(ironsmith::effects::ExecutionError::ResourceLimitExceeded { .. })));
+        assert_eq!(request, before);
+        let after = snapshot_id_counters();
+        assert_eq!((after.player, after.object, after.card), (ids.player, ids.object, ids.card));
+        assert!(!game.is_tapped(source)); assert_eq!(game.battlefield.len(), 1);
+    }
+    #[test]
+    fn eager_snapshot_and_manabrew_prompt_never_publish_a_failed_payment_inventory() {
+        let _ids = crate::test_id_counter_guard();
+        let (game, player, source, request) = resource_payment_test_fixture();
+        let plan = ironsmith::mana_payment::plan_first_mana_payment(&game, &request).unwrap();
+        let context = DecisionContext::ManaPayment(ironsmith::decisions::context::ManaPaymentContext::new(
+            player, source, "Resource payment", request, plan));
+        let mut wasm = WasmGame::new(); wasm.game = game;
+        wasm.pending_decision = Some(context.clone());
+        wasm.defer_mana_options = false;
+        wasm.game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        assert!(matches!(wasm.current_mana_payment_view_checked(), Err(ironsmith::effects::ExecutionError::ResourceLimitExceeded { .. })));
+        assert!(wasm.mana_activation_inventory_cache.borrow().is_none());
+        assert!(wasm.snapshot_json_for_host().is_err());
+        assert!(wasm.build_manabrew_prompt(&context).is_err());
+        assert!(!wasm.game.is_tapped(source)); assert_eq!(wasm.game.battlefield.len(), 1);
+        wasm.game.set_token_creation_limits(Default::default());
+        assert!(wasm.current_mana_payment_view_checked().unwrap().is_some());
     }
 }

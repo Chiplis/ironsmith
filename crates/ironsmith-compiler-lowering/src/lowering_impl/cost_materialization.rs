@@ -88,6 +88,7 @@ enum MaterializationCost {
         count: u32,
         filter: ObjectFilter,
     },
+    MoveChosenToZone { filter: ObjectFilter, destination: crate::zone::Zone },
     MoveChosenToLibraryTop {
         filter: ObjectFilter,
     },
@@ -392,6 +393,7 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
                 filter: filter.clone(),
             }
         }
+        CompilerCost::MoveChosenToZone { filter, destination } => MaterializationCost::MoveChosenToZone { filter: filter.clone(), destination: *destination },
         CompilerCost::MoveChosenToLibraryTop { filter } => {
             MaterializationCost::MoveChosenToLibraryTop {
                 filter: filter.clone(),
@@ -520,7 +522,18 @@ fn lower_materialization_costs(
             }
             MaterializationCost::DynamicMana(cost) => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                costs.push(Cost::dynamic_mana(cost.clone()));
+                let mut cost = cost.clone();
+                if matches!(cost.mana_cost_of.as_deref().map(crate::target::ChooseSpec::base),
+                    Some(crate::target::ChooseSpec::Tagged(tag)) if *tag == ironsmith_compiler_semantic::tag::CompilerReferenceTag::It.key()) {
+                    // "Exile a card and pay its mana cost": bind the preceding
+                    // declaration, not a source-name or a guessed graveyard card.
+                    let tag = costs.iter().rev().filter_map(|component| component.effect_ref())
+                        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+                        .map(|choose| choose.tag.clone())
+                        .ok_or_else(|| CardTextError::ParseError("referenced mana cost has no preceding cost-object choice".into()))?;
+                    cost.mana_cost_of = Some(Box::new(crate::target::ChooseSpec::tagged(tag)));
+                }
+                costs.push(Cost::dynamic_mana(cost));
             }
             MaterializationCost::Tap => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
@@ -984,6 +997,13 @@ fn lower_materialization_costs(
                 costs.push(Cost::validated_effect(Effect::return_to_hand(
                     ObjectFilter::tagged(tag),
                 )));
+            }
+            MaterializationCost::MoveChosenToZone { filter, destination } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("zone_cost_{return_tag_id}"));
+                return_tag_id += 1;
+                costs.push(Cost::validated_effect(Effect::choose_objects(filter.clone(), ChoiceCount::exactly(1), PlayerFilter::You, tag.clone())));
+                costs.push(Cost::validated_effect(Effect::move_to_zone(crate::target::ChooseSpec::tagged(tag), *destination, false)));
             }
             MaterializationCost::MoveChosenToLibraryTop { filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

@@ -168,6 +168,10 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
                 add_supertypes,
                 copy_exception_surface,
             },
+            compiler::effects::continuous::RuntimeModification::CopyOfWithAbilities { source, preserve_source_abilities, name_override, name_override_surface, add_supertypes, copy_exception_surface, abilities } =>
+                ironsmith::effects::continuous::RuntimeModification::CopyOfWithAbilities { source, preserve_source_abilities, name_override, name_override_surface, add_supertypes, copy_exception_surface,
+                    abilities: abilities.into_iter().map(|ability| runtime_ability_from_core_model(ability)).collect::<Result<Vec<_>, _>>()?,
+                },
             compiler::effects::continuous::RuntimeModification::RemoveAllAbilities => {
                 ironsmith::effects::continuous::RuntimeModification::RemoveAllAbilities
             }

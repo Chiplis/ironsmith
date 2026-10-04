@@ -166,22 +166,23 @@ fn payment_can_complete(
     count: usize,
     game: &GameState,
     ctx: &ExecutionContext,
-) -> bool {
+) -> Result<bool, ExecutionError> {
     let mut simulated_game = game.clone();
+    let query = crate::effects::tokens::resources::TokenQueryScope::new(game.token_creation_limits());
+    simulated_game.bind_token_query_meter(query.meter());
     let mut simulated_dm = SelectFirstDecisionMaker;
     let mut simulated_ctx = ExecutionContext::new_default(ctx.source, ctx.controller)
         .with_decision_maker(&mut simulated_dm);
+    crate::effects::ExecutionContextCheckpoint::capture(ctx).restore(&mut simulated_ctx);
     simulated_ctx.mana.payment_reason = Some(crate::costs::PaymentReason::CumulativeUpkeep);
 
     for _ in 0..count {
-        let Ok(outcome) = execute_sequence(&mut simulated_game, &mut simulated_ctx, effects) else {
-            return false;
-        };
+        let outcome = execute_sequence(&mut simulated_game, &mut simulated_ctx, effects)?;
         if outcome.status.is_failure() {
-            return false;
+            return Ok(false);
         }
     }
-    true
+    Ok(true)
 }
 
 fn execute_payment_atomically(
@@ -245,6 +246,7 @@ impl EffectExecutor for CumulativeUpkeepEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
         let player = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(
             game,
@@ -253,7 +255,7 @@ impl EffectExecutor for CumulativeUpkeepEffect {
         )?
         .max(0) as usize;
         // A cost of zero still offers a choice (CR 118.5, 702.24a).
-        let can_attempt = payment_can_complete(&self.payment, count, game, ctx);
+        let can_attempt = payment_can_complete(&self.payment, count, game, ctx)?;
         let wants_to_pay = can_attempt
             && make_boolean_decision(
                 game,
@@ -275,6 +277,7 @@ impl EffectExecutor for CumulativeUpkeepEffect {
             return execute_unpaid_failure(game, ctx, player, &self.failure);
         };
         Ok(outcome)
+        })
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
@@ -510,5 +513,33 @@ mod tests {
             "partial cumulative upkeep payments must not be kept"
         );
         assert!(!game.battlefield.contains(&source));
+    }
+}
+
+#[cfg(test)]
+mod resource_failure_tests {
+    use super::*;
+    #[test]
+    fn simulated_payment_exhaustion_does_not_sacrifice_or_report_nonpayment() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let player = crate::ids::PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Upkeep resource fixture")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, player, crate::zone::Zone::Battlefield);
+        let hand = game.create_object_from_card(&card, player, crate::zone::Zone::Hand);
+        game.object_mut(source).unwrap().add_counters(CounterType::Age, 1);
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(
+            source, player, crate::events::cards::matchers::WouldDiscardMatcher::you(),
+            crate::replacement::ReplacementAction::Additionally(vec![Effect::gain_life(3), Effect::new(crate::effects::CreateTokenEffect::you(crate::cards::tokens::treasure_token_definition(), 2))]),
+        ));
+        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        game.take_pending_trigger_events(); let next = game.next_object_id_counter();
+        let effect = CumulativeUpkeepEffect::new(crate::target::PlayerFilter::You, vec![Effect::discard(1)], vec![Effect::sacrifice_source()]);
+        let mut ctx = ExecutionContext::new_default(source, player);
+        assert!(matches!(effect.execute(&mut game, &mut ctx), Err(ExecutionError::ResourceLimitExceeded { .. })));
+        assert!(game.battlefield.contains(&source)); assert_eq!(game.object(hand).unwrap().zone, crate::zone::Zone::Hand);
+        assert_eq!(game.player(player).unwrap().life, 20); assert_eq!(game.next_object_id_counter(), next);
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+        assert!(game.take_pending_trigger_events().is_empty());
     }
 }

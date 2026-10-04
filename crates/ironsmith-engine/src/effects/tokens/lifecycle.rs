@@ -17,6 +17,18 @@ use crate::zone::Zone;
 pub(crate) fn execute_token_instruction_atomically<'a>(
     game: &mut GameState,
     ctx: &mut ExecutionContext<'a>,
+    execute: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>) -> Result<crate::effect::EffectOutcome, ExecutionError>,
+) -> Result<crate::effect::EffectOutcome, ExecutionError> {
+    execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+        let (_, meter) = game.begin_token_resource_scope();
+        let _guard = super::resources::TokenInstructionGuard::enter(meter)?;
+        execute(game, ctx)
+    })
+}
+
+pub(crate) fn execute_resource_transaction_atomically<'a>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
     execute: impl FnOnce(
         &mut GameState,
         &mut ExecutionContext<'a>,
@@ -26,22 +38,26 @@ pub(crate) fn execute_token_instruction_atomically<'a>(
         return Ok(crate::effect::EffectOutcome::with_objects(Vec::new()));
     }
     game.clear_pending_decision_controllers();
+    let (root, meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::context::ExecutionContextCheckpoint::capture(ctx);
-    let result = execute(game, ctx);
+    let mut result = match game.token_resource_failure() {
+        Some(error) => Err(error),
+        None => execute(game, ctx),
+    };
+    if let Err(error) = &result { game.record_token_resource_failure(error); }
+    if let Some(error) = game.token_resource_failure() { result = Err(error); }
     let pending = ctx.decision_maker.awaiting_choice();
     if pending || result.is_err() {
         game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
         context_checkpoint.restore(ctx);
     }
+    game.end_token_resource_scope(root, &meter);
     if pending && result.is_ok() {
         return Ok(crate::effect::EffectOutcome::with_objects(Vec::new()));
     }
     result
 }
-
-/// Ported MAGE scenarios assume a per-player cap on token permanents.
-pub(crate) const TOKEN_PER_PLAYER_LIMIT: usize = 500;
 
 /// Entry-processing options for newly created tokens.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -55,20 +71,6 @@ impl TokenEntryOptions {
             enters_attacking,
         }
     }
-}
-
-pub(crate) fn remaining_token_slots(game: &GameState, controller: PlayerId) -> usize {
-    let existing = game
-        .battlefield
-        .iter()
-        .filter(|object_id| {
-            game.object(**object_id).is_some_and(|object| {
-                object.kind == crate::object::ObjectKind::Token
-                    && game.current_controller(**object_id) == Some(controller)
-            })
-        })
-        .count();
-    TOKEN_PER_PLAYER_LIMIT.saturating_sub(existing)
 }
 
 /// Keep the complete entry receipt while exposing only its original arrival
@@ -135,14 +137,15 @@ pub(crate) fn create_replacement_additional_tokens(
             TokenGroupKey::Named(index) => crate::events::tokens::additional_token_definition(creation.additional_tokens[index].0),
             TokenGroupKey::Template(index) => creation.additional_templates[index].definition.clone(),
         };
-        let count = (creation.group_count(key) as usize).min(remaining_token_slots(game, controller_id));
+        let count = creation.group_count(key) as usize;
         let mut actual = 0u32;
         for _ in 0..count {
             let id = game.new_object_id();
             let mut token = game.object_from_token_definition(id, &definition, controller_id);
             token.zone = Zone::Command;
             let is_creature = token.is_creature();
-            game.add_object(token);
+            game.commit_token_resource_slot()?;
+        game.add_object(token);
             let entry = game.move_created_token_with_entry_instructions(
                 id, ctx.cause.clone(), &mut ctx.decision_maker, instructions.enters_tapped,
                 !instructions.suppress_aura_attachment_choice, instructions.initial_counters.clone(),

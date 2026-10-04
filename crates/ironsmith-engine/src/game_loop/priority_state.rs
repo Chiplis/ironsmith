@@ -354,6 +354,8 @@ pub enum ActivationStage {
     PayingMana,
     /// Ready to finalize (costs paid, ability goes on stack).
     ReadyToFinalize,
+    /// Bind a public cost object needed for pricing or target legality. No cost is paid.
+    ChoosingCostReferences,
 }
 
 impl ActivationStage {
@@ -372,6 +374,7 @@ impl ActivationStage {
             ActivationStage::ChoosingCardCost => "choosing card costs",
             ActivationStage::PayingMana => "paying mana",
             ActivationStage::ReadyToFinalize => "ready to finalize",
+            ActivationStage::ChoosingCostReferences => "choosing cost references",
         }
     }
 }
@@ -705,6 +708,7 @@ pub(crate) fn append_activation_cost_steps_from_components(
         if let Some(choose) = components[idx]
             .effect_ref()
             .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && choose.filter.tagged_constraints.is_empty()
             && let Some(next) = components.get(idx + 1)
             && let Some(step) = choose_tagged_cost_step(choose, next)
         {
@@ -935,6 +939,12 @@ pub struct PendingActivation {
     pub pending_hybrid_pips: Vec<(usize, Vec<crate::mana::ManaSymbol>)>,
     /// Live state for staged "remove counters from among ..." cost payment.
     pub pending_remove_counters_among: Option<PendingRemoveCountersAmongChoice>,
+    /// Printed total cost retained until its public references are announced.
+    pub cost_reference_base: Option<crate::cost::TotalCost>,
+    pub cost_reference_choices: Vec<crate::effects::ChooseObjectsEffect>,
+    pub announced_cost_objects: crate::cost::prospective_references::CostReferenceBindings,
+    pub cost_references_ready: bool,
+
 }
 
 impl PendingActivation {
@@ -968,6 +978,11 @@ impl PendingActivation {
         pending_hybrid_pips: Vec<(usize, Vec<crate::mana::ManaSymbol>)>,
     ) -> Self {
         Self {
+            cost_reference_base: None,
+            cost_reference_choices: Vec::new(),
+            announced_cost_objects: Default::default(),
+            cost_references_ready: true,
+
             source,
             ability_index,
             ability_origin,

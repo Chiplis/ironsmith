@@ -90,14 +90,13 @@ copy-selection semantics remain separate work. Counter replacement cards found
 by broad token wording searches (Doc Samson, Lae'zel and Zabaz) are a different
 root and are not counted. No additional measured recovery is claimed.
 
-## Required inherited runtime correctness closure
+## Required runtime correctness closure
 
-The native `TOKEN_PER_PLAYER_LIMIT` is500 per player and silently truncates
-larger creation results. This is an unresolved correctness gap, not an accepted
-exception to the user's completion condition. These proposals cover the new
-token-replacement mechanics only. The final runtime gate must repair the silent
-truncation or continue to report unresolved behavior; compilation is insufficient.
-The limit can affect other token producers/keywords beyond this exact cohort.
+The later source-only token-resource patch removes the silent 500-token clamp
+and introduces exact affordable creation plus typed atomic incomplete-execution
+errors. See [token resource boundaries](card-failure-token-resource-limits.md).
+All affected token proposals still require deferred exact-count validation;
+this is not a verified recovery or a claim of unbounded rules support.
 
 The frozen reversible-card Jinnie alias is included with its exact effective
 face metadata. It adds a compile entry, not another Oracle identity.

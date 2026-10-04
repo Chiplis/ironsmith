@@ -3931,7 +3931,39 @@ pub(crate) fn resolve_dynamic_mana_cost(
         execution_ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
     }
 
-    let base = if dynamic_mana.source_mana_cost {
+    let referenced_mana = if let Some(spec) = dynamic_mana.mana_cost_of.as_deref() {
+        if dynamic_mana.source_mana_cost {
+            return Err(CostPaymentError::Other("ambiguous referenced mana cost".into()));
+        }
+        let objects = match spec.base() {
+            crate::target::ChooseSpec::Object(filter) | crate::target::ChooseSpec::All(filter) => {
+                let context = execution_ctx.filter_context(game);
+                let zone = filter.zone.unwrap_or(Zone::Battlefield);
+                game.objects_in_zone(zone).into_iter().filter(|id| game.object(*id)
+                    .is_some_and(|object| filter.matches(object, &context, game))).collect()
+            }
+            _ => crate::effects::helpers::resolve_objects_from_spec(game, spec, execution_ctx)
+                .map_err(|error| CostPaymentError::Other(format!("unresolved mana-cost object: {error:?}")))?,
+        };
+        let [id] = objects.as_slice() else {
+            return Err(CostPaymentError::Other("mana cost needs one exact referenced object".into()));
+        };
+        let object = game.object(*id).ok_or_else(|| CostPaymentError::Other("mana-cost object has departed".into()))?;
+        if let crate::target::ChooseSpec::Tagged(tag) = spec.base() {
+            if execution_ctx.tagged_objects.get(tag).is_none_or(|snapshots|
+                snapshots.len() != 1 || snapshots[0].object_id != *id) {
+                return Err(CostPaymentError::Other("mana-cost reference changed incarnation".into()));
+            }
+        }
+        let cost = crate::filter::object_current_mana_cost(game, *id)
+            .ok_or_else(|| CostPaymentError::Other("referenced object has no payable mana cost".into()))?;
+        // CR 107.3g: X on an object outside the stack is zero. It is not
+        // a new variable announced for this ability.
+        Some((cost, if object.zone == Zone::Stack { object.x_value.unwrap_or(0) } else { 0 }))
+    } else { None };
+    let base = if let Some((cost, _)) = &referenced_mana {
+        cost.clone()
+    } else if dynamic_mana.source_mana_cost {
         game.object(execution_ctx.source)
             .and_then(|object| object.mana_cost_owned())
             .or_else(|| {
@@ -3949,7 +3981,9 @@ pub(crate) fn resolve_dynamic_mana_cost(
         dynamic_mana.base.clone()
     };
 
-    let x_value = if let Some(value) = dynamic_mana.x_value.as_ref() {
+    let x_value = if let Some((_, x)) = referenced_mana {
+        x
+    } else if let Some(value) = dynamic_mana.x_value.as_ref() {
         resolve_dynamic_u32(game, value, execution_ctx)?
     } else if base.has_x() {
         execution_ctx.x_value.ok_or_else(|| {

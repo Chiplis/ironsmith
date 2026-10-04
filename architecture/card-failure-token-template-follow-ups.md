@@ -48,10 +48,10 @@ levels, land versus nonland library top, accepting versus declining the reveal,
 actual token type/power, and a draw on every branch. This scenario is unrun and
 the source proposal must not be reported as measured semantic closure.
 
-## Inherited limit
+## Resource correctness gate
 
-The engine retains `TOKEN_PER_PLAYER_LIMIT = 500`. This pre-existing resource
-cap is unchanged, and the authored bounded scenarios do not establish unbounded
-Magic token-creation semantics. Resource-budget policy needs separate explicit
-review; a silently truncated count must not be used as evidence of exact rules
-behavior for larger creations.
+The later source-only token-resource patch removes the silent 500-token clamp
+and supplies checked totals and atomic resource-exhaustion errors. See
+[token resource boundaries](card-failure-token-resource-limits.md). The Case and
+Fisher's Talent proposals still require deferred validation; authored 501+
+scenarios do not by themselves prove complete or unbounded execution support.

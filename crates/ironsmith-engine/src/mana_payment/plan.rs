@@ -277,6 +277,18 @@ pub enum ManaPaymentFailure {
     ConflictingPreferences,
     StalePlan,
     ExecutionFailed,
+    /// An otherwise legal payment's effect/program could not be completed.
+    EffectExecutionFailed(crate::effects::ExecutionError),
+}
+
+impl ManaPaymentFailure {
+    pub(crate) fn from_execution(error: crate::game_loop::GameLoopError) -> Self {
+        match error {
+            crate::game_loop::GameLoopError::ExecutionFailed(error)
+            | crate::game_loop::GameLoopError::ActionError(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => Self::EffectExecutionFailed(error),
+            _ => Self::ExecutionFailed,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

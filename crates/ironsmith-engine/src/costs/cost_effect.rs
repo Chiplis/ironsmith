@@ -184,6 +184,7 @@ fn tagged_selection_tag(filter: &crate::filter::ObjectFilter) -> Option<&crate::
 
 fn tagged_move_to_zone_cost_precheck(
     effect: &Effect,
+    game: &GameState,
     ctx: &CostContext,
 ) -> Option<Result<(), CostPaymentError>> {
     let effect = transparent_cost_effect(effect);
@@ -194,10 +195,12 @@ fn tagged_move_to_zone_cost_precheck(
         _ => return None,
     };
 
-    let chosen = ctx.tagged_objects.get(tag.as_str())?;
-    if chosen.is_empty() {
+    let Some(chosen) = ctx.tagged_objects.get(tag.as_str()) else {
+        return Some(Err(CostPaymentError::Other("move-to-zone cost has no bound choice".into())));
+    };
+    if chosen.is_empty() || chosen.iter().any(|snapshot| game.object(snapshot.object_id).is_none_or(|object| object.zone != snapshot.zone)) {
         Some(Err(CostPaymentError::Other(
-            "move-to-zone cost has no chosen object".to_string(),
+            "move-to-zone cost has no current chosen object".to_string(),
         )))
     } else {
         Some(Ok(()))
@@ -227,9 +230,7 @@ fn tagged_exile_cost_precheck(
     // choice may legitimately publish an empty tag, while a required choice
     // cannot do so because its own cost validation/execution enforces `min`.
     if chosen.iter().all(|snapshot| {
-        game.find_object_by_stable_id(snapshot.stable_id)
-            .and_then(|id| game.object(id))
-            .is_some()
+        game.object(snapshot.object_id).is_some_and(|object| object.zone == snapshot.zone)
     }) {
         Some(Ok(()))
     } else {
@@ -289,11 +290,11 @@ fn tagged_choice_consumer_cost_precheck(
     ctx: &CostContext,
 ) -> Option<Result<(), CostPaymentError>> {
     let tag = crate::cost::effect_consumed_choice_tag(effect)?;
-    let chosen = ctx.tagged_objects.get(tag.as_str())?;
+    let Some(chosen) = ctx.tagged_objects.get(tag.as_str()) else {
+        return Some(Err(CostPaymentError::Other("cost consumer has no bound choice".into())));
+    };
     if chosen.iter().all(|snapshot| {
-        game.find_object_by_stable_id(snapshot.stable_id)
-            .and_then(|id| game.object(id))
-            .is_some()
+        game.object(snapshot.object_id).is_some_and(|object| object.zone == snapshot.zone)
     }) {
         Some(Ok(()))
     } else {
@@ -423,6 +424,18 @@ fn discard_cost_precheck(
 
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
+        if !ctx.tagged_objects.is_empty()
+            && let Some(choose) = transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && choose.chooser == crate::target::PlayerFilter::You
+            && choose.count == crate::ChoiceCount::exactly(1) && choose.count_value.is_none()
+            && choose.aggregate_constraint.is_none() && !choose.top_only && !choose.bottom_only && !choose.is_search
+            && choose.additional_zones.is_empty()
+            && !crate::effects::composition::selection_relations::has_relations(&choose.filter)
+            && matches!(choose.filter.zone.or(choose.zone), Some(crate::zone::Zone::Battlefield | crate::zone::Zone::Graveyard | crate::zone::Zone::Exile)) {
+            let candidates = crate::cost::prospective_references::public_reference_candidates(
+                game, ctx.source, ctx.payer, choose, &ctx.tagged_objects, ctx.x_value);
+            return if candidates.iter().all(|id| ctx.replacement.entry_reserved_objects.contains(id)) { Err(CostPaymentError::Other("no eligible referenced cost object".into())) } else { Ok(()) };
+        }
         if let Some(choose) = transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && crate::effects::composition::selection_relations::has_relations(&choose.filter) {
             let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer).with_tagged_objects(ctx.tagged_objects.clone());
@@ -523,7 +536,7 @@ impl CostPayer for CostEffect {
         if let Some(result) = sacrifice_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
-        if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
+        if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
         if let Some(result) = tagged_exile_cost_precheck(&self.effect, game, ctx) {
@@ -576,7 +589,7 @@ impl CostPayer for CostEffect {
         if let Some(result) = discard_cost_precheck(&self.effect, game, ctx, false) { result?; }
         if let Some(result) = sacrifice_cost_precheck(&self.effect, game, ctx) {
             result?;
-        } else if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
+        } else if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else if let Some(result) = tagged_exile_cost_precheck(&self.effect, game, ctx) {
             result?;

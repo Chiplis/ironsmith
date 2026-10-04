@@ -1271,6 +1271,7 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_source_snapshot_with_vie
     >,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
+    let tagged_objects = tagged_objects.or_else(|| view.target_reference_bindings());
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. } => {
             compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
@@ -2472,6 +2473,7 @@ mod tests {
         game.add_object(not_attacking);
         game.add_object(alice_walker);
         game.combat = Some(crate::combat_state::CombatState {
+            block_declaration_complete: true,
             attacked_permanent_types: Default::default(),
             attackers: vec![
                 crate::combat_state::AttackerInfo {
@@ -2522,6 +2524,7 @@ mod tests {
         game.add_object(defending_creature);
         game.add_object(attacking_creature);
         game.combat = Some(crate::combat_state::CombatState {
+            block_declaration_complete: true,
             attacked_permanent_types: Default::default(),
             attackers: vec![crate::combat_state::AttackerInfo {
                 creature: source_id,
@@ -2556,6 +2559,7 @@ mod tests {
         game.add_object(source);
         game.add_object(bob_walker);
         game.combat = Some(crate::combat_state::CombatState {
+            block_declaration_complete: true,
             attacked_permanent_types: Default::default(),
             attackers: vec![crate::combat_state::AttackerInfo {
                 creature: source_id,

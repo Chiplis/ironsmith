@@ -69,3 +69,7 @@ pub use token_templates::*;
 #[path = "keyword_static_lines/draw_programs.rs"]
 mod draw_programs;
 pub use draw_programs::*;
+
+#[path = "keyword_static_lines/damage_redirection.rs"]
+mod damage_redirection;
+pub use damage_redirection::*;

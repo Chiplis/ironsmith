@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Back from the Brink",
+    "oracle_id": "704aaf92-590f-46d3-8b39-4ab84e1c766d",
+    "text": "Mana cost: {4}{U}{U}\nType: Enchantment\nExile a creature card from your graveyard and pay its mana cost: Create a token that's a copy of that card. Activate only as a sorcery.",
+    "status": "UNVALIDATED source implementation; full-card regression authored",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Merseine",
+    "oracle_id": "b6b6e085-eef8-486d-9d66-1b7f1ee7d0dc",
+    "text": "Mana cost: {2}{U}{U}\nType: Enchantment — Aura\nEnchant creature\nThis Aura enters with three net counters on it.\nEnchanted creature doesn't untap during its controller's untap step if this Aura has a net counter on it.\nPay enchanted creature's mana cost: Remove a net counter from this Aura. Only the controller of the enchanted creature may activate this ability.",
+    "status": "UNVALIDATED source implementation; full-card regression authored",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Shelob, Dread Weaver",
+    "oracle_id": "7eade76f-92e4-4d26-9eb8-d3d954845c04",
+    "text": "Mana cost: {3}{B}\nType: Legendary Creature — Spider Demon\nPower/Toughness: 3/3\nWhenever a nontoken creature an opponent controls dies, exile it.\n{2}{B}, Put a creature card exiled with Shelob into its owner's graveyard: Put two +1/+1 counters on Shelob. Draw a card.\n{X}{1}{B}: Put target creature card with mana value X exiled with Shelob onto the battlefield tapped under your control.",
+    "status": "UNVALIDATED source implementation; full-card regression authored",
+    "proposed_coverage": "complete"
+  },
+  {
+    "name": "Veteran's Voice",
+    "oracle_id": "68d25ba4-d710-4090-bceb-5cfbd6bb63a1",
+    "text": "Mana cost: {R}\nType: Enchantment — Aura\nEnchant creature you control\nTap enchanted creature: Target creature other than the creature tapped this way gets +2/+1 until end of turn. Activate only if enchanted creature is untapped.",
+    "proposed_coverage": "complete",
+    "status": "UNVALIDATED prospective-reference closure"
+  },
+  {
+    "name": "Fishing Pole",
+    "oracle_id": "2c1d3e9e-213e-492a-ad5a-91139d70bc0f",
+    "text": "Mana cost: {1}\nType: Artifact — Equipment\nEquipped creature has \"{1}, {T}, Tap Fishing Pole: Put a bait counter on Fishing Pole.\"\nWhenever equipped creature becomes untapped, remove a bait counter from this Equipment. If you do, create a 1/1 blue Fish creature token.\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+    "proposed_coverage": "complete",
+    "status": "UNVALIDATED prospective-reference closure"
+  }
+]

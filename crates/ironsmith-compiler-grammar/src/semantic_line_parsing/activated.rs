@@ -437,7 +437,8 @@ fn finalize_rewrite_activated_effect_sentences(
             x_cant_be_zero = true;
         } else if is_standalone_x_definition_sentence(&tokens) {
             continue;
-        } else if is_any_player_may_activate_sentence_lexed(&tokens) {
+        } else if is_any_player_may_activate_sentence_lexed(&tokens)
+            || crate::grammar::abilities::parse_activate_only_timing_lexed(&tokens) == Some(ActivationTiming::AnyTimeByEnchantedCreatureController) {
             restrictions
                 .activation
                 .push(parse_activation_restriction_surface_tokens(&tokens));

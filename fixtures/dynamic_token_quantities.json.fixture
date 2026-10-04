@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Emissary Green",
+    "oracle_id": "c43e7fa5-ff93-42d9-af79-ee417a8e41a7",
+    "mana_cost": "{4}{G}",
+    "type_line": "Legendary Creature — Human Advisor",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "Whenever Emissary Green attacks, starting with you, each player votes for profit or security. You create a number of Treasure tokens equal to twice the number of profit votes. Put a number of +1/+1 counters on each creature you control equal to the number of security votes."
+  },
+  {
+    "name": "Lacerate Flesh",
+    "oracle_id": "201c8de7-9675-475b-8f9e-7b1935234488",
+    "mana_cost": "{4}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Lacerate Flesh deals 4 damage to target creature. Create a number of Blood tokens equal to the amount of excess damage dealt to that creature this way. (They're artifacts with \"{1}, {T}, Discard a card, Sacrifice this token: Draw a card.\")"
+  },
+  {
+    "name": "Shilgengar, Sire of Famine",
+    "oracle_id": "71ac4d8c-5b58-4ea8-996b-f0289717c4bb",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Legendary Creature — Elder Demon",
+    "power": "6",
+    "toughness": "6",
+    "oracle_text": "Flying\nSacrifice another creature: Create a Blood token. If you sacrificed an Angel this way, create a number of Blood tokens equal to its toughness instead.\n{W/B}{W/B}{W/B}, Sacrifice six Blood tokens: Return each creature card from your graveyard to the battlefield with a finality counter on it. Those creatures are Vampires in addition to their other types."
+  },
+  {
+    "name": "Sorin, Grim Nemesis",
+    "oracle_id": "0a01dd05-e289-489f-b3ad-88e15e157bd0",
+    "mana_cost": "{4}{W}{B}",
+    "type_line": "Legendary Planeswalker — Sorin",
+    "loyalty": "6",
+    "oracle_text": "+1: Reveal the top card of your library and put that card into your hand. Each opponent loses life equal to its mana value.\n−X: Sorin deals X damage to target creature or planeswalker and you gain X life.\n−9: Create a number of 1/1 black Vampire Knight creature tokens with lifelink equal to the highest life total among all players."
+  },
+  {
+    "name": "Waking the Trolls",
+    "oracle_id": "c8cdabc4-e147-491b-9c44-96e57f6ec3b4",
+    "mana_cost": "{4}{R}{G}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — Destroy target land.\nII — Put target land card from a graveyard onto the battlefield under your control.\nIII — Choose target opponent. If they control fewer lands than you, create a number of 4/4 green Troll Warrior creature tokens with trample equal to the difference."
+  }
+]

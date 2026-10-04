@@ -947,3 +947,68 @@ fn inline_mill_then_return_from_among_them_keeps_one_milled_collection() {
     assert!(debug.contains("IsTaggedObject"), "{debug}");
     assert!(debug.contains("zone: Hand"), "{debug}");
 }
+
+#[test]
+fn sacrifice_qualified_token_self_replacement_keeps_its_prior_action_gate() {
+    use ironsmith_core::{
+        EffectMetric, EffectMetricSource, PriorEffectAction, ValueComparisonOperator,
+    };
+    let tokens = lex_line(
+        "Create a Blood token. If you sacrificed an Angel this way, create a number of Blood tokens equal to its toughness instead.", 0,
+    ).unwrap();
+    let effects =
+        parse_typed_effect_bundle_lexed(&tokens).expect("typed sacrifice self-replacement");
+    let [
+        EffectAst::SelfReplacement {
+            predicate,
+            if_true,
+            if_false,
+            ..
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("the default creation must be one mutually exclusive branch: {effects:#?}");
+    };
+    let PredicateAst::ValueComparison {
+        left: Value::PendingPriorEffectMetric(query),
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    } = predicate
+    else {
+        panic!("expected action-qualified existence gate: {predicate:#?}");
+    };
+    assert_eq!(query.source, EffectMetricSource::AffectedObjects);
+    assert_eq!(query.metric, EffectMetric::Count);
+    assert_eq!(query.action, Some(PriorEffectAction::Sacrificed));
+    assert_eq!(query.player, Some(PlayerFilter::You));
+    assert!(
+        query
+            .filter
+            .as_ref()
+            .unwrap()
+            .subtypes
+            .contains(&ironsmith_core::Subtype::Angel)
+    );
+    assert_eq!(if_true.len(), 1);
+    assert_eq!(if_false.len(), 1);
+}
+
+#[test]
+fn unsupported_prior_result_replacements_cannot_become_additive_conditionals() {
+    for condition in [
+        "that player sacrificed an Angel this way",
+        "an opponent sacrificed an Angel this way",
+        "you discarded a creature card this way",
+        "you sacrificed two creatures that share a color this way",
+    ] {
+        let tokens = lex_line(
+            &format!("Create a Blood token. If {condition}, create two Blood tokens instead."),
+            0,
+        )
+        .unwrap();
+        assert!(
+            parse_typed_effect_bundle_lexed(&tokens).is_err(),
+            "an unsupported replacement must not create one token and then two more: {condition}"
+        );
+    }
+}

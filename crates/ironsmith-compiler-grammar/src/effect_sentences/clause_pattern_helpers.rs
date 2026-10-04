@@ -1579,6 +1579,34 @@ pub fn parse_redirect_next_damage_sentence(
     };
     let clause_text = LexedClause::new(tokens).text();
     let effect = match shape {
+        clause_shapes::RedirectNextDamageShape::ScopedAll(shape) => {
+            let recipient_words = crate::lexer::TokenWordView::new(&shape.recipient).word_refs();
+            let destination_words = crate::lexer::TokenWordView::new(&shape.destination).word_refs();
+            let (destination, target) = if crate::util::is_source_reference_words(&destination_words) {
+                (ironsmith_core::TimedDamageRedirectDestination::Source, TargetAst::Source(None))
+            } else if destination_words == ["you"] {
+                (ironsmith_core::TimedDamageRedirectDestination::Controller, TargetAst::Source(None))
+            } else if destination_words == ["its", "controller"] {
+                (ironsmith_core::TimedDamageRedirectDestination::DamageSourceController, TargetAst::Source(None))
+            } else {
+                (ironsmith_core::TimedDamageRedirectDestination::Target, parse_target_phrase(&shape.destination)?)
+            };
+            let dynamic_set = !shape.recipient.iter().any(|token| token.is_word("target"))
+                && (recipient_words == ["you"] || recipient_words.iter().any(|word| matches!(*word, "creatures" | "permanents")));
+            let (player_filter, object_filter, protected_target) = if dynamic_set {
+                let (players, objects) = crate::keyword_static::redirection_recipient_filters(&shape.recipient)?;
+                (players, objects, None)
+            } else { (None, None, Some(parse_target_phrase(&shape.recipient)?)) };
+            let (source_filter, source_target) = match &shape.source {
+                Some(source) if source.iter().any(|token| token.is_word("target")) => (ObjectFilter::default(), Some(parse_target_phrase(source)?)),
+                Some(source) => (crate::object_filters::parse_object_filter_lexed(source, false)?, None),
+                None => (ObjectFilter::default(), None),
+            };
+            EffectAst::subject_verb_scoped_damage_redirection(target, crate::cards::builders::TimedDamageRedirectionAst {
+                source_filter, source_target, protected_target, player_filter, object_filter,
+                combat_only: shape.combat_only, destination, mode: shape.mode, display: clause_text.to_string(),
+            })
+        }
         clause_shapes::RedirectNextDamageShape::AllToYouAndPermanents {
             other,
             destination_tokens,

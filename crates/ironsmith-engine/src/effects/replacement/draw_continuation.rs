@@ -10,7 +10,7 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 
-trait Resume: Send {
+pub(crate) trait ReplacementResume: Send {
     /// Return the completed subtree, including its prefix exactly once. The
     /// leaf restores the captured execution state and enclosing scopes unwind.
     fn resume(
@@ -19,11 +19,11 @@ trait Resume: Send {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError>;
 }
-struct Prepared {
-    prefix: EffectOutcome,
-    resume: Option<Box<dyn Resume>>,
+pub(crate) struct PreparedReplacementChild {
+    pub(crate) prefix: EffectOutcome,
+    pub(crate) resume: Option<Box<dyn ReplacementResume>>,
 }
-impl Prepared {
+impl PreparedReplacementChild {
     fn finished(prefix: EffectOutcome) -> Self {
         Self {
             prefix,
@@ -97,6 +97,12 @@ fn supported(effect: &Effect) -> bool {
     {
         return true;
     }
+    if let Some(players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        return players.effects.iter().all(supported);
+    }
+    if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
+        return repeat.effects.iter().all(supported);
+    }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         return sequence.effects.iter().all(supported);
     }
@@ -128,11 +134,22 @@ fn supported(effect: &Effect) -> bool {
     false
 }
 
+struct PlayerActionFrame(crate::effects::ForPlayersDrawContinuation);
+impl ReplacementResume for PlayerActionFrame {
+    fn resume(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.0.resume(game, ctx)
+    }
+}
+
 struct DrawLeaf {
     context: ExecutionContextCheckpoint,
     effect: Effect,
 }
-impl Resume for DrawLeaf {
+impl ReplacementResume for DrawLeaf {
     fn resume(
         self: Box<Self>,
         game: &mut GameState,
@@ -144,12 +161,12 @@ impl Resume for DrawLeaf {
 }
 struct ProgramFrame {
     before: Vec<EffectOutcome>,
-    first: Box<dyn Resume>,
+    first: Box<dyn ReplacementResume>,
     first_effect: Effect,
     tail: Vec<Effect>,
     mode: Mode,
 }
-impl Resume for ProgramFrame {
+impl ReplacementResume for ProgramFrame {
     fn resume(
         self: Box<Self>,
         game: &mut GameState,
@@ -205,6 +222,7 @@ impl Resume for ProgramFrame {
 enum Scope {
     Result(EffectId),
     Player(Option<PlayerId>),
+    SharedOperations(std::collections::HashSet<(usize, usize, &'static str)>),
     Optional {
         player: Option<PlayerId>,
         optional_action: bool,
@@ -223,6 +241,7 @@ impl Scope {
     fn leave(self, game: &mut GameState, ctx: &mut ExecutionContext, outcome: &EffectOutcome) {
         match self {
             Self::Player(player) => ctx.iteration.iterated_player = player,
+            Self::SharedOperations(operations) => ctx.shared_team_structure_operations = operations,
             Self::Result(id) => {
                 ctx.effect_outcomes
                     .entry(id)
@@ -248,9 +267,9 @@ impl Scope {
 }
 struct ScopeFrame {
     scope: Scope,
-    inner: Box<dyn Resume>,
+    inner: Box<dyn ReplacementResume>,
 }
-impl Resume for ScopeFrame {
+impl ReplacementResume for ScopeFrame {
     fn resume(
         self: Box<Self>,
         game: &mut GameState,
@@ -262,11 +281,11 @@ impl Resume for ScopeFrame {
     }
 }
 fn scope_result(
-    mut prepared: Prepared,
+    mut prepared: PreparedReplacementChild,
     scope: Scope,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Prepared {
+) -> PreparedReplacementChild {
     if let Some(inner) = prepared.resume.take() {
         prepared.resume = Some(Box::new(ScopeFrame { scope, inner }));
     } else {
@@ -275,12 +294,128 @@ fn scope_result(
     prepared
 }
 
+fn finish_repetitions(outcomes: Vec<EffectOutcome>) -> EffectOutcome {
+    let mut objects = Vec::new();
+    for outcome in &outcomes {
+        for object in outcome.objects().into_iter().flatten() {
+            if !objects.contains(object) {
+                objects.push(*object);
+            }
+        }
+    }
+    let failed = outcomes.iter().find(|outcome| outcome.status.is_failure());
+    let status = failed.map_or(crate::effect::OutcomeStatus::Succeeded, |outcome| {
+        outcome.status
+    });
+    let value = if objects.is_empty() {
+        failed.map_or(OutcomeValue::None, |outcome| outcome.value.clone())
+    } else {
+        OutcomeValue::Objects(objects)
+    };
+    EffectOutcome::with_details(
+        status,
+        value,
+        outcomes
+            .iter()
+            .flat_map(|outcome| outcome.events.iter().cloned())
+            .collect(),
+        outcomes
+            .iter()
+            .flat_map(|outcome| outcome.execution_facts.iter().cloned())
+            .collect(),
+    )
+}
+struct RepetitionFrame {
+    before: Vec<EffectOutcome>,
+    first: Box<dyn ReplacementResume>,
+    effects: Vec<Effect>,
+    remaining: usize,
+}
+impl ReplacementResume for RepetitionFrame {
+    fn resume(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let mut outcomes = self.before;
+        let current = self.first.resume(game, ctx)?;
+        let stop = current.status.is_failure();
+        outcomes.push(current);
+        if stop || ctx.decision_maker.awaiting_choice() {
+            return Ok(finish_repetitions(outcomes));
+        }
+        crate::effects::runtime::capture_triggers_before_added_program(
+            game,
+            ctx,
+            None,
+            outcomes
+                .iter_mut()
+                .flat_map(|outcome| outcome.events.iter_mut()),
+        );
+        if self.remaining > 0 {
+            use crate::effects::EffectExecutor;
+            let repeated =
+                crate::effects::RepeatEffectsEffect::new(self.remaining as i32, self.effects);
+            outcomes.push(repeated.execute(game, ctx)?);
+        }
+        Ok(finish_repetitions(outcomes))
+    }
+}
+fn prepare_repetitions(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effect: &crate::effects::RepeatEffectsEffect,
+) -> Result<PreparedReplacementChild, ExecutionError> {
+    let count = crate::effects::resolve_value(game, &effect.count, ctx)?.max(0) as usize;
+    let mut outcomes = Vec::new();
+    for index in 0..count {
+        let operations = std::mem::take(&mut ctx.shared_team_structure_operations);
+        let prepared = prepare_program(
+            game,
+            ctx,
+            &effect.effects,
+            Mode::Sequence { coordinated: false },
+            None,
+        )?;
+        let prepared = scope_result(prepared, Scope::SharedOperations(operations), game, ctx);
+        if let Some(first) = prepared.resume {
+            let mut prefix = outcomes.clone();
+            prefix.push(prepared.prefix);
+            return Ok(PreparedReplacementChild {
+                prefix: finish_repetitions(prefix),
+                resume: Some(Box::new(RepetitionFrame {
+                    before: outcomes,
+                    first,
+                    effects: effect.effects.clone(),
+                    remaining: count - index - 1,
+                })),
+            });
+        }
+        let stop = prepared.prefix.status.is_failure();
+        outcomes.push(prepared.prefix);
+        if stop || ctx.decision_maker.awaiting_choice() {
+            break;
+        }
+        crate::effects::runtime::capture_triggers_before_added_program(
+            game,
+            ctx,
+            None,
+            outcomes
+                .iter_mut()
+                .flat_map(|outcome| outcome.events.iter_mut()),
+        );
+    }
+    Ok(PreparedReplacementChild::finished(finish_repetitions(
+        outcomes,
+    )))
+}
+
 struct BranchesFrame {
     before: Vec<EffectOutcome>,
-    first: Box<dyn Resume>,
+    first: Box<dyn ReplacementResume>,
     rest: Vec<crate::effects::PreparedIfBranch>,
 }
-impl Resume for BranchesFrame {
+impl ReplacementResume for BranchesFrame {
     fn resume(
         self: Box<Self>,
         game: &mut GameState,
@@ -307,7 +442,7 @@ fn prepare_branches(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     branches: Vec<crate::effects::PreparedIfBranch>,
-) -> Result<Prepared, ExecutionError> {
+) -> Result<PreparedReplacementChild, ExecutionError> {
     let mut outcomes = Vec::new();
     for (index, branch) in branches.iter().enumerate() {
         for repetition in 0..branch.repetitions {
@@ -327,7 +462,7 @@ fn prepare_branches(
                     rest.push(remaining);
                 }
                 rest.extend_from_slice(&branches[index + 1..]);
-                return Ok(Prepared {
+                return Ok(PreparedReplacementChild {
                     prefix: EffectOutcome::aggregate(prefix),
                     resume: Some(Box::new(BranchesFrame {
                         before: outcomes,
@@ -338,11 +473,11 @@ fn prepare_branches(
             }
             outcomes.push(prepared.prefix);
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(Prepared::finished(EffectOutcome::count(0)));
+                return Ok(PreparedReplacementChild::finished(EffectOutcome::count(0)));
             }
         }
     }
-    Ok(Prepared::finished(if outcomes.is_empty() {
+    Ok(PreparedReplacementChild::finished(if outcomes.is_empty() {
         EffectOutcome::count(0)
     } else {
         EffectOutcome::aggregate(outcomes)
@@ -355,7 +490,7 @@ fn prepare_program(
     effects: &[Effect],
     mode: Mode,
     first_guard: Option<crate::effects::context::OptionalIdentityGuard>,
-) -> Result<Prepared, ExecutionError> {
+) -> Result<PreparedReplacementChild, ExecutionError> {
     let mut outcomes = Vec::new();
     for (index, effect) in effects.iter().enumerate() {
         let guard_scope = if index == 0 && first_guard.is_some() {
@@ -371,7 +506,7 @@ fn prepare_program(
             Err(ExecutionError::InvalidTarget)
                 if matches!(mode, Mode::Sequence { coordinated: true }) =>
             {
-                Prepared::finished(EffectOutcome::target_invalid())
+                PreparedReplacementChild::finished(EffectOutcome::target_invalid())
             }
             other => other?,
         };
@@ -382,7 +517,7 @@ fn prepare_program(
             let mut prefix = outcomes.clone();
             mode.adjust(effect, &mut prepared.prefix);
             prefix.push(prepared.prefix);
-            return Ok(Prepared {
+            return Ok(PreparedReplacementChild {
                 prefix: mode.finish(prefix),
                 resume: Some(Box::new(ProgramFrame {
                     before: outcomes,
@@ -408,26 +543,28 @@ fn prepare_program(
                 .flat_map(|outcome| outcome.events.iter_mut()),
         );
     }
-    Ok(Prepared::finished(mode.finish(outcomes)))
+    Ok(PreparedReplacementChild::finished(mode.finish(outcomes)))
 }
 fn prepare_effect(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     effect: &Effect,
-) -> Result<Prepared, ExecutionError> {
+) -> Result<PreparedReplacementChild, ExecutionError> {
     if game.turn_store.end_turn_procedure_pending
         || game.turn_store.end_combat_phase_procedure_pending
     {
-        return crate::effects::execute_effect(game, effect, ctx).map(Prepared::finished);
+        return crate::effects::execute_effect(game, effect, ctx)
+            .map(PreparedReplacementChild::finished);
     }
     if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
         // A zero instruction has no draw boundary. In particular its suffix
         // must not be delayed past another original merely because the AST
         // contains a draw-shaped node.
-        if crate::effects::resolve_value(game, &draw.count, ctx)? <= 0 {
-            return crate::effects::execute_effect(game, effect, ctx).map(Prepared::finished);
+        if matches!(draw.count.unhinted(), crate::effect::Value::Fixed(amount) if *amount <= 0) {
+            return crate::effects::execute_effect(game, effect, ctx)
+                .map(PreparedReplacementChild::finished);
         }
-        return Ok(Prepared {
+        return Ok(PreparedReplacementChild {
             prefix: EffectOutcome::count(0),
             resume: Some(Box::new(DrawLeaf {
                 context: ExecutionContextCheckpoint::capture(ctx),
@@ -436,7 +573,20 @@ fn prepare_effect(
         });
     }
     if !contains_draw(effect) {
-        return crate::effects::execute_effect(game, effect, ctx).map(Prepared::finished);
+        return crate::effects::execute_effect(game, effect, ctx)
+            .map(PreparedReplacementChild::finished);
+    }
+    if let Some(players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        let progress = players.prepare_draw_continuation(game, ctx)?;
+        return Ok(PreparedReplacementChild {
+            prefix: progress.prefix,
+            resume: progress
+                .resume
+                .map(|resume| Box::new(PlayerActionFrame(resume)) as Box<dyn ReplacementResume>),
+        });
+    }
+    if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
+        return prepare_repetitions(game, ctx, repeat);
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         return prepare_program(
@@ -451,7 +601,7 @@ fn prepare_effect(
     }
     if let Some(optional) = effect.downcast_ref::<crate::effects::MayEffect>() {
         let Some(branch) = optional.prepare_optional_execution(game, ctx)? else {
-            return Ok(Prepared::finished(EffectOutcome::declined()));
+            return Ok(PreparedReplacementChild::finished(EffectOutcome::declined()));
         };
         let previous_optional = std::mem::replace(&mut ctx.optional_action, true);
         let prepared = prepare_program(
@@ -510,7 +660,9 @@ fn prepare_effect(
     if let Some(rebound) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
         let Some((source, snapshot)) = crate::effects::resolve_source_binding(rebound, game, ctx)
         else {
-            return Ok(Prepared::finished(EffectOutcome::target_invalid()));
+            return Ok(PreparedReplacementChild::finished(
+                EffectOutcome::target_invalid(),
+            ));
         };
         let scope = Scope::Source {
             source: ctx.source,
@@ -527,7 +679,7 @@ fn prepare_effect(
 }
 
 struct DrawContinuation {
-    resume: Box<dyn Resume>,
+    resume: Box<dyn ReplacementResume>,
     source: ObjectId,
     controller: PlayerId,
 }
@@ -573,6 +725,32 @@ pub(crate) fn prepare_draw_continuation(
     controller: PlayerId,
     context: &ReplacementEventContext,
 ) -> Result<Option<SimultaneousEffectCommit>, ExecutionError> {
+    prepare_draw_continuation_with_bindings(
+        game,
+        parent,
+        effects,
+        source,
+        controller,
+        context,
+        None,
+        super::ReplacementProgramBindings {
+            targets: None,
+            object_tags: Vec::new(),
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_draw_continuation_with_bindings(
+    game: &mut GameState,
+    parent: &mut ExecutionContext,
+    effects: &[Effect],
+    source: ObjectId,
+    controller: PlayerId,
+    context: &ReplacementEventContext,
+    captured_source_snapshot: Option<ObjectSnapshot>,
+    bindings: super::ReplacementProgramBindings,
+) -> Result<Option<SimultaneousEffectCommit>, ExecutionError> {
     if !effects.iter().any(contains_draw) || !effects.iter().all(supported) {
         return Ok(None);
     }
@@ -582,9 +760,9 @@ pub(crate) fn prepare_draw_continuation(
         source,
         controller,
         context,
-        None,
-        None,
-        Vec::new(),
+        bindings.targets,
+        captured_source_snapshot,
+        bindings.object_tags,
         |game, child| {
             if !child.target_assignments.is_empty() {
                 return Ok(None);
@@ -607,4 +785,15 @@ pub(crate) fn prepare_draw_continuation(
             }))
         },
     )
+}
+
+pub(crate) fn prepare_replacement_child(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effect: &Effect,
+) -> Result<PreparedReplacementChild, ExecutionError> {
+    prepare_effect(game, ctx, effect)
+}
+pub(crate) fn replacement_effect_contains_draw(effect: &Effect) -> bool {
+    contains_draw(effect)
 }

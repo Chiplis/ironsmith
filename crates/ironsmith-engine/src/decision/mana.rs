@@ -10,7 +10,7 @@ mod analysis_probe;
 mod mechanics;
 mod resumable;
 pub use resumable::ManaAnalysisSession;
-pub(super) use resumable::with_checked_query;
+pub(super) use resumable::{analysis_failure, with_checked_query};
 
 pub use mechanics::*;
 

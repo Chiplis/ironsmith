@@ -14,6 +14,7 @@ fn total_cost_contains_tap(cost: &crate::cost::TotalCost) -> bool {
 }
 
 pub(super) fn stage_after_activation_announcements(pending: &PendingActivation) -> ActivationStage {
+    if !pending.cost_references_ready { return ActivationStage::ChoosingCostReferences; }
     if !pending.remaining_requirements.is_empty() {
         ActivationStage::ChoosingTargets
     } else if !pending.pending_target_distributions.is_empty() {
@@ -912,6 +913,7 @@ fn apply_priority_response_with_dm_inner(
                 .turn
                 .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
+            let needs_cost_references = crate::cost::prospective_references::needs_activation_reference_context(&base_cost, effects.flattened_default_effects());
             let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
                 game,
                 player,
@@ -945,6 +947,7 @@ fn apply_priority_response_with_dm_inner(
             );
             for cost_component in flat_components {
                 if let Some(dynamic_mana) = cost_component.dynamic_mana_cost_ref() {
+                    if needs_cost_references && dynamic_mana.mana_cost_of.is_some() { continue; }
                     let mut execution_ctx =
                         ExecutionContext::new(*source, player, &mut *decision_maker)
                             .with_provenance(activation_provenance);
@@ -995,7 +998,8 @@ fn apply_priority_response_with_dm_inner(
             let has_hybrid_pips = !pips_to_announce.is_empty();
 
             // Create pending activation if there are choices to make
-            if has_x
+            if needs_cost_references
+                || has_x
                 || has_modal
                 || !alternative_cost_branches.is_empty()
                 || !remaining_cost_steps.is_empty()
@@ -1012,6 +1016,8 @@ fn apply_priority_response_with_dm_inner(
                     ActivationStage::ChoosingAlternativeCost
                 } else if has_x {
                     ActivationStage::ChoosingX
+                } else if needs_cost_references {
+                    ActivationStage::ChoosingCostReferences
                 } else if has_hybrid_pips {
                     ActivationStage::AnnouncingCost
                 } else if !target_requirements.is_empty() {
@@ -1028,7 +1034,7 @@ fn apply_priority_response_with_dm_inner(
                     *ability_index,
                     &mut granting_source_tags,
                 );
-                let pending = PendingActivation::new(
+                let mut pending = PendingActivation::new(
                     *source,
                     *ability_index,
                     game.current_characteristics(*source)
@@ -1058,6 +1064,13 @@ fn apply_priority_response_with_dm_inner(
                     pips_to_announce,
                 );
 
+                if needs_cost_references {
+                    pending.cost_reference_base = Some(base_cost.clone());
+                    pending.cost_references_ready = false;
+                    pending.tagged_objects = crate::cost::prospective_references::activation_reference_context(game, *source, *ability_index);
+                    pending.cost_reference_choices = crate::cost::prospective_references::activation_reference_choices(&base_cost, pending.effects.flattened_default_effects())
+                        .map_err(|error| GameLoopError::InvalidState(format!("cost reference announcement: {error:?}")))?;
+                }
                 continue_activation(game, trigger_queue, state, pending, &mut *decision_maker)
             } else {
                 // No choices needed - put ability on stack directly
@@ -1268,6 +1281,17 @@ pub(super) fn apply_targets_response(
                 ),
                 None => activated.mana_cost.clone(),
             };
+            let base_cost = if pending.cost_reference_base.is_some() {
+                match base_cost.as_one_of() {
+                    Some(branches) => branches.get(pending.selected_alternative_cost.ok_or_else(|| GameLoopError::InvalidState("reference price has no announced branch".into()))?)
+                        .cloned().ok_or_else(|| GameLoopError::InvalidState("announced reference branch is absent".into()))?,
+                    None => base_cost,
+                }
+            } else { base_cost };
+            let base_cost = crate::cost::prospective_references::lock_activation_reference_cost(
+                game, pending.source, pending.activator, &base_cost, &pending.tagged_objects,
+                &pending.announced_cost_objects, pending.x_value.map(|x| x as u32),
+            ).map_err(|error| GameLoopError::InvalidState(format!("activation reference pricing: {error:?}")))?;
             let repriced = crate::decision::calculate_effective_activation_total_cost_for_ability(
                 game,
                 pending.activator,

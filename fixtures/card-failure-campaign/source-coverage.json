@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "75a77c721f68508e5b2aaceb31412a759b299c81",
+  "source_implementation_commit": "909991200635453c82f34a3b26f066fd3491d9aa",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 563,
-    "additional_proposed_compile_entries": 564,
+    "additional_proposed_unique_cards": 590,
+    "additional_proposed_compile_entries": 591,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
-    "identified_source_proposals_with_known_runtime_gaps": 29,
-    "source_proposals_excluding_identified_runtime_gaps": 534,
+    "identified_source_proposals_with_known_runtime_gaps": 8,
+    "source_proposals_excluding_identified_runtime_gaps": 582,
     "runtime_gap_inventory_is_not_exhaustive": true
   },
   "workflow": {
@@ -628,7 +628,12 @@
         "Tourach's Gate",
         "Krovikan Plague"
       ],
-      "partial_entries": [
+      "implementation_commit": "49303ebd24458d524389514061ef2cca73a204bd",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed chosen untap and anchored tap costs, exact state/identity validation, distinct tags and source reservations for T/Q."
+      ],
+      "resolved_partial_entries": [
         {
           "card_name": "Veteran's Voice",
           "remaining_blocker": "Target announcement precedes payment, so exclusion of the creature tapped for this cost still needs prospective deterministic cost-object identity binding."
@@ -638,11 +643,7 @@
           "remaining_blocker": "Grantor identity is typed in the cost; activation legality still needs granted-ability tag context for chosen-object preflight."
         }
       ],
-      "implementation_commit": "49303ebd24458d524389514061ef2cca73a204bd",
-      "tests": "authored_not_run",
-      "semantic_scope": [
-        "Typed chosen untap and anchored tap costs, exact state/identity validation, distinct tags and source reservations for T/Q."
-      ]
+      "partial_closure_family": "prospective-public-cost-references"
     },
     {
       "id": "actor-and-untap-step-triggers",
@@ -769,7 +770,7 @@
         },
         {
           "card_name": "Kylox's Voltstrider",
-          "remaining_blocker": "Its attack permission additionally replaces the cast spell\u2019s graveyard move with owner-library-bottom; that linked cast-destination rider is outside the typed evidence action."
+          "remaining_blocker": "Its attack permission additionally replaces the cast spell’s graveyard move with owner-library-bottom; that linked cast-destination rider is outside the typed evidence action."
         }
       ],
       "implementation_commit": "0a205e390e05ab76f124378518f2278698dc2dcf",
@@ -910,9 +911,73 @@
       "tests": "authored_not_run",
       "semantic_scope": [
         "Typed combat-recipient and active/passive source filters; every selected source retains an unlimited identity-bound shield.",
-        "Actual combat/end-turn and skipped combat-step expiry; delayed-owned prevention metrics retained."
+        "Actual combat/end-turn and skipped combat-step expiry; delayed-owned prevention metrics retained.",
+        "Known checkpoint omission source-addressed by fail-closed complete carriers, exact native analysis branches and authenticated full-genesis replay. Independent integrated source review completed; all execution still deferred."
       ],
-      "partial_entries": []
+      "partial_entries": [],
+      "resolved_partial_entries": [
+        {
+          "card_name": "Al-abara's Carpet",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Azorius Ploy",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Energy Arc",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Ethereal Haze",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Fleeting Flight",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Hidden Retreat",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Pack Leader",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Repel the Abominable",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Shieldmage Elder",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Soul Parry",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        }
+      ],
+      "partial_closure_commit": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "id": "persistent-life-gain-replacements",
@@ -1527,7 +1592,7 @@
         "Cradle of Vitality",
         "Lich's Tomb",
         "Lich's Mastery",
-        "Oath of Lim-D\u00fbl",
+        "Oath of Lim-Dûl",
         "Transcendence"
       ],
       "implementation_commit": "3b31b3231dd4575b52d24bdc272c728dcbaaf1bf",
@@ -1540,7 +1605,7 @@
     {
       "id": "damage-multiplier-scopes",
       "stage": 39,
-      "status": "mechanic_source_implemented_runtime_limit_unresolved",
+      "status": "source_implemented_all_validation_deferred",
       "fixture": "fixtures/damage_multiplier_scopes.json.fixture",
       "baseline_entries": [
         "Blind Fury",
@@ -1556,8 +1621,31 @@
       "tests": "authored_not_run",
       "semantic_scope": [
         "Typed recipients, live conditions, exact attachment and chosen-player filters, and duration-bound captured controller registration.",
-        "Eight complete mechanic source proposals; inherited u32 saturation remains an explicit final runtime arithmetic gap."
-      ]
+        "Eight complete mechanic source proposals; inherited u32 saturation remains an explicit final runtime arithmetic gap.",
+        "Known checkpoint omission source-addressed by fail-closed complete carriers, exact native analysis branches and authenticated full-genesis replay. Independent integrated source review completed; all execution still deferred."
+      ],
+      "partial_entries": [],
+      "resolved_partial_entries": [
+        {
+          "card_name": "Blind Fury",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Goblin Goliath",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        },
+        {
+          "card_name": "Quest for Pure Flame",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation.",
+          "discovered_stage": 43,
+          "previously_proposed": true
+        }
+      ],
+      "partial_closure_commit": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "id": "draw-replacement-programs",
@@ -1865,6 +1953,177 @@
       "semantic_scope": [
         "Local body-tap reference precedes imported tap-cost aliases; each opponent retains a separate tap result and reflexive target scope.",
         "Whole attack/owner-antecedent body and actual source-bound control remain covered by authored direct/artifact scenarios."
+      ]
+    },
+    {
+      "id": "scoped-damage-redirection",
+      "stage": 43,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/scoped_damage_redirection.json.fixture",
+      "baseline_entries": [
+        "Empyrial Archangel",
+        "Harsh Judgment",
+        "Martyrs of Korlis",
+        "Pariah",
+        "Pariah's Shield",
+        "Protector of the Crown",
+        "Treacherous Link",
+        "Veteran Bodyguard",
+        "Weathered Bodyguards",
+        "Ascent of the Worthy",
+        "Karona's Zealot",
+        "Kjeldoran Royal Guard",
+        "Mirror Strike",
+        "Shimian Night Stalker",
+        "Sivvi's Valor",
+        "Turn the Tables"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "c25cedafe378317b7c608ef9da68d69755d4e63a",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Live source/attachment/recipient-controller redirection, legal damage recipients, source LKI and replacement identity preserved.",
+        "Unblocked means the actual completed blocker declaration, including costs and zero blockers; native turn/reset and checkpoint migration retain this boundary.",
+        "Known checkpoint omission source-addressed by fail-closed complete carriers, exact native analysis branches and authenticated full-genesis replay. Independent integrated source review completed; all execution still deferred."
+      ],
+      "resolved_partial_entries": [
+        {
+          "card_name": "Ascent of the Worthy",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation."
+        },
+        {
+          "card_name": "Karona's Zealot",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation."
+        },
+        {
+          "card_name": "Kjeldoran Royal Guard",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation."
+        },
+        {
+          "card_name": "Mirror Strike",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation."
+        },
+        {
+          "card_name": "Shimian Night Stalker",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation."
+        },
+        {
+          "card_name": "Sivvi's Valor",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation."
+        },
+        {
+          "card_name": "Turn the Tables",
+          "remaining_blocker": "Runtime replacement/prevention registrations are not encoded in sync checkpoints; exact safe checkpoint-or-verified-replay recovery remains under source implementation."
+        }
+      ],
+      "partial_closure_commit": "909991200635453c82f34a3b26f066fd3491d9aa"
+    },
+    {
+      "id": "copied-base-power-draw",
+      "stage": 43,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/copied_base_power_draw.json.fixture",
+      "baseline_entries": [
+        "Curie, Emergent Intelligence"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Sovereign Okinec Ahau",
+          "remaining_blocker": "Per-object counter amounts and cross-object counter replacements require a true precomputed simultaneous transaction."
+        }
+      ],
+      "implementation_commit": "9f418aad6f96f43c7542ec034189c4a0e4335260",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Layer7b base power survives direct/batch/legacy calculation and exact departure LKI; BasePowerOf is explicit.",
+        "Authored copy-exception abilities are retained in layer1 copiable values, unlike ordinary grants; actual exile payment, source/paid-card blink and copy-of-copy scenarios authored."
+      ]
+    },
+    {
+      "id": "dynamic-token-quantities",
+      "stage": 43,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/dynamic_token_quantities.json.fixture",
+      "baseline_entries": [
+        "Emissary Green",
+        "Lacerate Flesh",
+        "Shilgengar, Sire of Famine",
+        "Sorin, Grim Nemesis",
+        "Waking the Trolls"
+      ],
+      "implementation_commit": "7acf25cbe2a9035d8e195f2b7411e95a7ca95686",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Named vote arithmetic and maximum player life read typed scalars; exact paid-object sacrifice LKI and mutually exclusive bounded self-replacement retain full five-card bodies.",
+        "Unrepresentable result self-replacements now fail closed instead of becoming additive fallback. Authored full runtime/artifact negatives remain unrun."
+      ]
+    },
+    {
+      "id": "prospective-public-cost-references",
+      "stage": 43,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/prospective_cost_references.json.fixture",
+      "baseline_entries": [
+        "Back from the Brink",
+        "Merseine",
+        "Shelob, Dread Weaver",
+        "Veteran's Voice",
+        "Fishing Pole"
+      ],
+      "implementation_commit": "47d5a67b",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Public exact-incarnation references bind before cost pricing and target announcement; grantor context, mana symbol identity, absent costs and source-linked exile membership remain explicit.",
+        "Mandatory staging, raw alternative branch pricing and typed resource-query errors received independent bounded source review through614c6d2b; all runtime tests unrun."
+      ]
+    },
+    {
+      "id": "nested-event-completion-ownership",
+      "stage": 43,
+      "status": "parser_and_native_prerequisites_partial_not_counted",
+      "baseline_entries": [],
+      "partial_entries": [
+        {
+          "card_name": "Archangel's Light",
+          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
+        },
+        {
+          "card_name": "Mnemonic Nexus",
+          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
+        },
+        {
+          "card_name": "Molten Psyche",
+          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
+        },
+        {
+          "card_name": "Rite of Renewal",
+          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
+        },
+        {
+          "card_name": "Stream of Thought",
+          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
+        },
+        {
+          "card_name": "Visions",
+          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
+        },
+        {
+          "card_name": "Whirlpool Warrior",
+          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
+        },
+        {
+          "card_name": "Winds of Change",
+          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
+        },
+        {
+          "card_name": "Wedding Ring",
+          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
+        }
+      ],
+      "implementation_commit": "4121a105",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete shuffle zone selectors and owner references; draw event receipts and continuation scopes/iterations integrated. Shared dynamic nested completion remains unresolved."
       ]
     }
   ],
@@ -2255,7 +2514,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "temporary-filtered-damage-prevention"
-      ]
+      ],
+      "runtime_correctness_gaps": [],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Aladdin's Lamp",
@@ -2422,7 +2685,7 @@
       "source_families": []
     },
     {
-      "card_name": "Alta\u00efr Ibn-La'Ahad",
+      "card_name": "Altaïr Ibn-La'Ahad",
       "oracle_ids": [
         "43dc4b0c-e437-4abc-a3fb-48bd3098de88"
       ],
@@ -2628,7 +2891,7 @@
       "source_families": []
     },
     {
-      "card_name": "And\u00faril, Flame of the West",
+      "card_name": "Andúril, Flame of the West",
       "oracle_ids": [
         "e6521404-8474-4727-b2d0-537d15d8a63f"
       ],
@@ -3022,8 +3285,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "nested-event-completion-ownership"
+      ]
     },
     {
       "card_name": "Archdemon of Paliano",
@@ -3148,7 +3414,7 @@
       "source_families": []
     },
     {
-      "card_name": "Arna Kenner\u00fcd, Skycaptain",
+      "card_name": "Arna Kennerüd, Skycaptain",
       "oracle_ids": [
         "436e7548-f8d5-43af-947d-b382da0d19b3"
       ],
@@ -3226,8 +3492,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ],
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Ashes of the Abhorrent",
@@ -3717,7 +3987,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "temporary-filtered-damage-prevention"
-      ]
+      ],
+      "runtime_correctness_gaps": [],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Azula, Cunning Usurper",
@@ -3766,8 +4040,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "prospective-public-cost-references"
+      ]
     },
     {
       "card_name": "Backslide",
@@ -4429,12 +4705,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -4656,7 +4932,10 @@
       ],
       "runtime_correctness_gaps": [
         "damage-amount-saturation"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Blinding Angel",
@@ -5381,7 +5660,7 @@
       "source_families": []
     },
     {
-      "card_name": "B\u00f6sium Strip",
+      "card_name": "Bösium Strip",
       "oracle_ids": [
         "2fa6f1b1-00af-433f-b8e1-36db99cd9bba"
       ],
@@ -5773,12 +6052,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-follow-ups"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -6310,12 +6589,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "spell-copy-prohibitions"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -7651,8 +7930,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "copied-base-power-draw"
+      ]
     },
     {
       "card_name": "Curse of Bloodletting",
@@ -7910,7 +8191,7 @@
       "source_families": []
     },
     {
-      "card_name": "C\u00edrdan the Shipwright",
+      "card_name": "Círdan the Shipwright",
       "oracle_ids": [
         "063e05b0-554f-4b55-9feb-e11f3927f3a6"
       ],
@@ -7986,12 +8267,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "complete-anthem-tails"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -8884,12 +9165,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -9047,12 +9328,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -9176,12 +9457,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -9639,7 +9920,7 @@
       "source_families": []
     },
     {
-      "card_name": "D\u00fanedain Rangers",
+      "card_name": "Dúnedain Rangers",
       "oracle_ids": [
         "7de2a364-4383-437a-b6d6-55e4721a0141"
       ],
@@ -10057,8 +10338,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "dynamic-token-quantities"
+      ]
     },
     {
       "card_name": "Emissary of Grudges",
@@ -10087,8 +10370,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ]
     },
     {
       "card_name": "Emrakul, the Exigent Doom",
@@ -10162,7 +10447,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "temporary-filtered-damage-prevention"
-      ]
+      ],
+      "runtime_correctness_gaps": [],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Energy Field",
@@ -10544,7 +10833,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "temporary-filtered-damage-prevention"
-      ]
+      ],
+      "runtime_correctness_gaps": [],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Ethereal Valkyrie",
@@ -11677,12 +11970,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-follow-ups"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -11692,10 +11985,9 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "chosen-tap-untap-cost-selectors"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "prospective-public-cost-references"
       ]
     },
     {
@@ -11758,7 +12050,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "temporary-filtered-damage-prevention"
-      ]
+      ],
+      "runtime_correctness_gaps": [],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Flood of Tears",
@@ -12349,7 +12645,7 @@
       "source_families": []
     },
     {
-      "card_name": "Galadriel of Lothl\u00f3rien",
+      "card_name": "Galadriel of Lothlórien",
       "oracle_ids": [
         "8d3c9646-2b6b-4315-939d-5a920efc0a60"
       ],
@@ -13225,7 +13521,10 @@
       ],
       "runtime_correctness_gaps": [
         "damage-amount-saturation"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Goblin Heelcutter",
@@ -14121,8 +14420,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ]
     },
     {
       "card_name": "Harvest Mage",
@@ -14614,7 +14915,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "temporary-filtered-damage-prevention"
-      ]
+      ],
+      "runtime_correctness_gaps": [],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Hidetsugu's Second Rite",
@@ -16410,12 +16715,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -16425,12 +16730,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -16460,13 +16765,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements",
         "player-attack-declarations"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -16544,7 +16849,7 @@
       "source_families": []
     },
     {
-      "card_name": "J\u00f6tun Grunt",
+      "card_name": "Jötun Grunt",
       "oracle_ids": [
         "43fbfeec-bcaf-48b8-befe-b7346fec5a3a"
       ],
@@ -16756,8 +17061,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ],
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Karplusan Minotaur",
@@ -17072,7 +17381,7 @@
       "source_families": []
     },
     {
-      "card_name": "Kh\u00e2rn the Betrayer",
+      "card_name": "Khârn the Betrayer",
       "oracle_ids": [
         "3246eff5-8739-469f-a401-e5de927dd6bb"
       ],
@@ -17248,8 +17557,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ],
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Klaw, Master of Sound",
@@ -17686,8 +17999,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "dynamic-token-quantities"
+      ]
     },
     {
       "card_name": "Lady Loki, Agent of Chaos",
@@ -18272,7 +18587,7 @@
       "source_families": []
     },
     {
-      "card_name": "Lim-D\u00fbl's Vault",
+      "card_name": "Lim-Dûl's Vault",
       "oracle_ids": [
         "3f8e7a45-4c6e-4ee6-93d0-b7de9715ec97"
       ],
@@ -18524,7 +18839,7 @@
       "source_families": []
     },
     {
-      "card_name": "Lord of the Nazg\u00fbl",
+      "card_name": "Lord of the Nazgûl",
       "oracle_ids": [
         "2e94bfb2-9f7d-43af-8995-6cd5ffb15b21"
       ],
@@ -19196,8 +19511,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ]
     },
     {
       "card_name": "Masako the Humorless",
@@ -19513,8 +19830,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "prospective-public-cost-references"
+      ]
     },
     {
       "card_name": "Mesmeric Orb",
@@ -19837,8 +20156,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ],
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Mirrormind Crown",
@@ -20029,8 +20352,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "nested-event-completion-ownership"
+      ]
     },
     {
       "card_name": "Mobile Fort",
@@ -20091,8 +20417,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "nested-event-completion-ownership"
+      ]
     },
     {
       "card_name": "Molten Sentry",
@@ -20747,7 +21076,7 @@
       "source_families": []
     },
     {
-      "card_name": "Nazg\u00fbl",
+      "card_name": "Nazgûl",
       "oracle_ids": [
         "48a62778-7c11-486f-a0e1-020c283a7ef9"
       ],
@@ -21149,12 +21478,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "complete-anthem-tails"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -21450,7 +21779,7 @@
       "source_families": []
     },
     {
-      "card_name": "Oath of Lim-D\u00fbl",
+      "card_name": "Oath of Lim-Dûl",
       "oracle_ids": [
         "64e163c2-2378-4e4c-aefe-5e0d2fd19988"
       ],
@@ -22067,7 +22396,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "temporary-filtered-damage-prevention"
-      ]
+      ],
+      "runtime_correctness_gaps": [],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Pain Distributor",
@@ -22314,8 +22647,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ]
     },
     {
       "card_name": "Pariah's Shield",
@@ -22324,8 +22659,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ]
     },
     {
       "card_name": "Park Heights Maverick",
@@ -23408,8 +23745,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ]
     },
     {
       "card_name": "Protege's Awakening",
@@ -23752,12 +24091,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -23773,7 +24112,10 @@
       ],
       "runtime_correctness_gaps": [
         "damage-amount-saturation"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Questing Beast",
@@ -23854,12 +24196,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -24033,13 +24375,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "snc-exiled-land-mana-grants",
         "payment-disclosure-transactions"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -24199,7 +24541,7 @@
       "source_families": []
     },
     {
-      "card_name": "Ratonhnhak\u00e9\ua789ton",
+      "card_name": "Ratonhnhaké꞉ton",
       "oracle_ids": [
         "a37f8381-83a4-4b6b-8176-c90f6a61da74"
       ],
@@ -24598,7 +24940,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "temporary-filtered-damage-prevention"
-      ]
+      ],
+      "runtime_correctness_gaps": [],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Replicating Ring",
@@ -24953,7 +25299,7 @@
       "source_families": []
     },
     {
-      "card_name": "Ring of Ma'r\u00fbf",
+      "card_name": "Ring of Ma'rûf",
       "oracle_ids": [
         "c79b9187-cbfe-43a0-bdc8-4f7e0d215607"
       ],
@@ -25001,8 +25347,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "nested-event-completion-ownership"
+      ]
     },
     {
       "card_name": "Rite of Ruin",
@@ -26239,12 +26588,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "spell-copy-prohibitions"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -26711,8 +27060,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "prospective-public-cost-references"
+      ]
     },
     {
       "card_name": "Shield Dancer",
@@ -26768,7 +27119,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "temporary-filtered-damage-prevention"
-      ]
+      ],
+      "runtime_correctness_gaps": [],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Shifting Sky",
@@ -26787,8 +27142,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "dynamic-token-quantities"
+      ]
     },
     {
       "card_name": "Shimian Night Stalker",
@@ -26797,8 +27154,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ],
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Shimmering Efreet",
@@ -27263,8 +27624,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ],
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Six-Sided Die",
@@ -27777,8 +28142,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "dynamic-token-quantities"
+      ]
     },
     {
       "card_name": "Sorrow's Path",
@@ -27840,7 +28207,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "temporary-filtered-damage-prevention"
-      ]
+      ],
+      "runtime_correctness_gaps": [],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 43,
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Soul Ransom",
@@ -28328,12 +28699,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "complete-anthem-tails"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -28661,8 +29032,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "nested-event-completion-ownership"
+      ]
     },
     {
       "card_name": "Street Savvy",
@@ -28713,12 +29087,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -30893,12 +31267,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "qualified-player-draws"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -31413,12 +31787,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -31770,8 +32144,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ]
     },
     {
       "card_name": "Treefolk Umbra",
@@ -32040,8 +32416,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ],
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
     },
     {
       "card_name": "Turn to Frog",
@@ -32920,8 +33300,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ]
     },
     {
       "card_name": "Veteran Dungeoneer",
@@ -32942,10 +33324,9 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "chosen-tap-untap-cost-selectors"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "prospective-public-cost-references"
       ]
     },
     {
@@ -33196,8 +33577,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "nested-event-completion-ownership"
+      ]
     },
     {
       "card_name": "Visions of Beyond",
@@ -33504,8 +33888,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "dynamic-token-quantities"
+      ]
     },
     {
       "card_name": "Walk the Aeons",
@@ -33556,12 +33942,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "complete-anthem-tails"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -34116,8 +34502,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-damage-redirection"
+      ]
     },
     {
       "card_name": "Weatherlight Compleated",
@@ -34146,8 +34534,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "nested-event-completion-ownership"
+      ]
     },
     {
       "card_name": "Wee Champion",
@@ -34298,8 +34689,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "nested-event-completion-ownership"
+      ]
     },
     {
       "card_name": "Whirlwind, Killer Cyclone",
@@ -34514,8 +34908,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "nested-event-completion-ownership"
+      ]
     },
     {
       "card_name": "Windshaper Planetar",
@@ -34844,12 +35241,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "token-template-replacements"
       ],
-      "runtime_correctness_gaps": [
-        "token-creation-silent-cap"
+      "source_runtime_prerequisites": [
+        "token-resources-source-reviewed-validation-deferred"
       ]
     },
     {
@@ -35493,7 +35890,7 @@
       "source_families": []
     },
     {
-      "card_name": "\u00c9owyn, Lady of Rohan",
+      "card_name": "Éowyn, Lady of Rohan",
       "oracle_ids": [
         "1ee3753c-3b6e-4182-9305-2ab757f485f0"
       ],
@@ -35527,7 +35924,7 @@
     },
     {
       "id": "token-creation-silent-cap",
-      "status": "unresolved_runtime_correctness_gap",
+      "status": "source_reviewed_remediation_integrated_validation_deferred",
       "scope": "Global native token producers; current exact source cohort below is a concrete subset, not an exhaustive impacted-card list.",
       "affected_source_family": "token-template-replacements",
       "affected_card_names": [
@@ -35554,9 +35951,11 @@
         "Choreographed Sparks",
         "See Double"
       ],
-      "source_location": "crates/ironsmith-engine/src/effects/tokens/lifecycle.rs::TOKEN_PER_PLAYER_LIMIT",
-      "behavior": "Native token creation silently truncates at500 token permanents per player. Mechanic source proposals do not establish correct larger outcomes.",
-      "completion_gate": "Fix silent truncation or retain it as explicitly unresolved; no final all-cards-correct claim while it remains."
+      "source_location": "crates/ironsmith-engine/src/effects/tokens/resources.rs and checked payment/query owners",
+      "behavior": "Silent 500-token truncation removed. Exact affordable creation and shared checked work/live-object limits report typed incomplete execution with atomic rollback; independent query budgets and typed UI errors retain unknown rather than false/unpayable.",
+      "completion_gate": "Authored greater-than-500 exact-count, rollback/retry, native and UI scenarios remain unrun. No final correct-runtime claim until executed validation.",
+      "source_review_commit": "c8232347ad9d8b26c1a2282244fe1befd4f0a4dc",
+      "source_closure_stage": 43
     },
     {
       "id": "damage-amount-saturation",
@@ -35576,6 +35975,41 @@
       "source_location": "Native u32 damage amounts and saturating replacement multiplication",
       "behavior": "Damage exceeding representable u32 amounts silently saturates. This stage retains the existing bound and cannot establish arbitrary larger-outcome correctness.",
       "completion_gate": "Replace silent saturation with correct supported representation or explicit transactional resource/representation failure; no final all-cards-correct claim while unresolved."
+    },
+    {
+      "id": "runtime-replacement-checkpoint-recovery",
+      "status": "source_reviewed_remediation_integrated_validation_deferred",
+      "scope": "Exact known cohort only, not an exhaustive inventory of manager-backed temporary effects.",
+      "affected_previously_proposed_complete": [
+        "Al-abara's Carpet",
+        "Azorius Ploy",
+        "Energy Arc",
+        "Ethereal Haze",
+        "Fleeting Flight",
+        "Hidden Retreat",
+        "Pack Leader",
+        "Repel the Abominable",
+        "Shieldmage Elder",
+        "Soul Parry",
+        "Blind Fury",
+        "Goblin Goliath",
+        "Quest for Pure Flame"
+      ],
+      "held_new_cards": [
+        "Ascent of the Worthy",
+        "Karona's Zealot",
+        "Kjeldoran Royal Guard",
+        "Mirror Strike",
+        "Shimian Night Stalker",
+        "Sivvi's Valor",
+        "Turn the Tables"
+      ],
+      "source_location": "SyncRulesState omits runtime ReplacementEffectManager and PreventionEffectManager; reset_runtime_for_sync_checkpoint creates a fresh GameState.",
+      "behavior": "Incomplete executable replacement/prevention checkpoints fail closed; signed cross-peer recovery replays every action from accepted genesis; native local analysis uses exact runtime branches and checked query APIs.",
+      "completion_gate": "Authored manager retention, signed replay, UI analysis, disclosure, cancellation and rollback scenarios must pass during deferred validation. No exhaustive runtime correctness claim.",
+      "discovered_stage": 43,
+      "source_review_commit": "909991200635453c82f34a3b26f066fd3491d9aa",
+      "source_proposal_promotion_stage": 43
     }
   ]
 }

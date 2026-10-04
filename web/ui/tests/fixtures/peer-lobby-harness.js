@@ -32,8 +32,60 @@ function createFakeGame() {
   let latePublicOpenDispatched = false;
   let omitOwnerOpenedLandPosition = false;
   let failOpenedLandExport = false;
+  let failCheckpointExport = false;
   let includeOpenedLandInCheckpointHand = false;
   const syncEvents = [];
+  const readCommittedFixtureState = () => {
+      const openedLandVisibleToLocal = Number(perspective) === 0 || ziffleOpenedLandRevealed;
+      const openedLandHiddenCard = openedLandVisibleToLocal
+        ? {
+            owner: 0,
+            slot: ZIFFLE_OPENED_LAND_ORIGINAL_SLOT,
+            commitment: privateCommitmentForSlot(0, ZIFFLE_OPENED_LAND_ORIGINAL_SLOT),
+            ...(!omitOwnerOpenedLandPosition
+              ? {
+                  publicSlot: ZIFFLE_OPENED_LAND_POSITION,
+                  publicCommitment: ziffleCommitmentForPosition(ZIFFLE_OPENED_LAND_POSITION),
+                }
+              : {}),
+          }
+        : {
+            owner: 0,
+            slot: ZIFFLE_OPENED_LAND_POSITION,
+            commitment: ziffleCommitmentForPosition(ZIFFLE_OPENED_LAND_POSITION),
+          };
+      return {
+        matchConfig: JSON.parse(JSON.stringify(matchConfig || {})),
+        perspective,
+        actionSequence,
+        players: (matchConfig?.playerNames || ["Host", "Guest"]).map((_, index) => ({
+          id: index,
+          hand: includeOpenedLandInCheckpointHand && index === 0
+            ? [ZIFFLE_OPENED_LAND_OBJECT_ID]
+            : [],
+          library: index === 0 ? [ZIFFLE_PUBLIC_OPEN_OBJECT_ID, ZIFFLE_OPENED_LAND_OBJECT_ID] : [],
+        })),
+        objects: [
+          {
+            id: ZIFFLE_PUBLIC_OPEN_OBJECT_ID,
+            owner: 0,
+            zone: "library",
+            hiddenCard: {
+              owner: 0,
+              slot: ZIFFLE_PUBLIC_OPEN_POSITION,
+              commitment: zifflePublicOpenCommitment(),
+            },
+          },
+          {
+            id: ZIFFLE_OPENED_LAND_OBJECT_ID,
+            owner: 0,
+            zone: "hand",
+            hiddenCard: openedLandHiddenCard,
+          },
+        ],
+        battlefield: JSON.parse(JSON.stringify(battlefield)),
+      };
+  };
   const instrumentation = {
     exportPublicAuditCheckpoint: 0,
     exportSyncCheckpoint: 0,
@@ -476,62 +528,19 @@ function createFakeGame() {
     cancelDecision: async () => buildState(),
     exportSyncCheckpoint: async () => {
       instrumentation.exportSyncCheckpoint += 1;
-      const openedLandVisibleToLocal = Number(perspective) === 0 || ziffleOpenedLandRevealed;
-      const openedLandHiddenCard = openedLandVisibleToLocal
-        ? {
-            owner: 0,
-            slot: ZIFFLE_OPENED_LAND_ORIGINAL_SLOT,
-            commitment: privateCommitmentForSlot(0, ZIFFLE_OPENED_LAND_ORIGINAL_SLOT),
-            ...(!omitOwnerOpenedLandPosition
-              ? {
-                  publicSlot: ZIFFLE_OPENED_LAND_POSITION,
-                  publicCommitment: ziffleCommitmentForPosition(ZIFFLE_OPENED_LAND_POSITION),
-                }
-              : {}),
-          }
-        : {
-            owner: 0,
-            slot: ZIFFLE_OPENED_LAND_POSITION,
-            commitment: ziffleCommitmentForPosition(ZIFFLE_OPENED_LAND_POSITION),
-          };
-      return {
-        matchConfig: JSON.parse(JSON.stringify(matchConfig || {})),
-        perspective,
-        actionSequence,
-        players: (matchConfig?.playerNames || ["Host", "Guest"]).map((_, index) => ({
-          id: index,
-          hand: includeOpenedLandInCheckpointHand && index === 0
-            ? [ZIFFLE_OPENED_LAND_OBJECT_ID]
-            : [],
-          library: index === 0 ? [ZIFFLE_PUBLIC_OPEN_OBJECT_ID, ZIFFLE_OPENED_LAND_OBJECT_ID] : [],
-        })),
-        objects: [
-          {
-            id: ZIFFLE_PUBLIC_OPEN_OBJECT_ID,
-            owner: 0,
-            zone: "library",
-            hiddenCard: {
-              owner: 0,
-              slot: ZIFFLE_PUBLIC_OPEN_POSITION,
-              commitment: zifflePublicOpenCommitment(),
-            },
-          },
-          {
-            id: ZIFFLE_OPENED_LAND_OBJECT_ID,
-            owner: 0,
-            zone: "hand",
-            hiddenCard: openedLandHiddenCard,
-          },
-        ],
-        battlefield: JSON.parse(JSON.stringify(battlefield)),
-      };
+      if (failCheckpointExport) {
+        throw new Error("runtime replacement/prevention state requires accepted-transcript replay or a runtime savepoint");
+      }
+      return readCommittedFixtureState();
     },
-    exportRedactedSyncCheckpoint: async () => ({
-      matchConfig: JSON.parse(JSON.stringify(matchConfig || {})),
-      perspective,
-      actionSequence,
-      battlefield: JSON.parse(JSON.stringify(battlefield)),
-    }),
+    getHiddenCardState: async () => readCommittedFixtureState(),
+    // A fake native savepoint reads fixture state independently of wire export.
+    captureFixtureRuntimeState: async () => readCommittedFixtureState(),
+    exportRedactedSyncCheckpoint: async () => {
+      if (failCheckpointExport) throw new Error("runtime replacement/prevention state requires accepted-transcript replay");
+      return { matchConfig: JSON.parse(JSON.stringify(matchConfig || {})), perspective,
+        actionSequence, battlefield: JSON.parse(JSON.stringify(battlefield)) };
+    },
     exportPublicAuditCheckpoint: async () => {
       instrumentation.exportPublicAuditCheckpoint += 1;
       return {
@@ -575,6 +584,9 @@ function createFakeGame() {
     setOmitOwnerOpenedLandPosition: (enabled) => {
       omitOwnerOpenedLandPosition = Boolean(enabled);
     },
+    setFailCheckpointExport: (enabled) => {
+      failCheckpointExport = Boolean(enabled);
+    },
     setFailOpenedLandExport: (enabled) => {
       failOpenedLandExport = Boolean(enabled);
     },
@@ -591,7 +603,7 @@ function enableFakeRuntimeBranches(game) {
   game.supportsRuntimeBranches = true;
   game.createRuntimeSavepoint = async () => {
     const handle = ++nextHandle;
-    points.set(handle, { checkpoint: await game.exportSyncCheckpoint(), perspective: (await game.uiState()).perspective });
+    points.set(handle, { checkpoint: await game.captureFixtureRuntimeState(), perspective: (await game.uiState()).perspective });
     return handle;
   };
   game.restoreRuntimeSavepoint = async handle => {
@@ -604,8 +616,8 @@ function enableFakeRuntimeBranches(game) {
   game.forkRuntimeBranch = async () => {
     const branch = createFakeGame();
     enableFakeRuntimeBranches(branch);
-    await branch.importSyncCheckpoint(await game.exportSyncCheckpoint(), (await game.uiState()).perspective);
-    branch.copyToVisible = async () => game.importSyncCheckpoint(await branch.exportSyncCheckpoint(), (await branch.uiState()).perspective);
+    await branch.importSyncCheckpoint(await game.captureFixtureRuntimeState(), (await game.uiState()).perspective);
+    branch.copyToVisible = async () => game.importSyncCheckpoint(await branch.captureFixtureRuntimeState(), (await branch.uiState()).perspective);
     branch.release = async () => {};
     return branch;
   };
@@ -738,6 +750,9 @@ function Harness() {
       rejectNextVerifiedDispatch: () => { rejectNextVerifiedDispatchRef.current = true; },
       setOmitOwnerOpenedLandPosition: (enabled) => {
         game.setOmitOwnerOpenedLandPosition(enabled);
+      },
+      setFailCheckpointExport: (enabled) => {
+        game.setFailCheckpointExport(enabled);
       },
       setFailOpenedLandExport: (enabled) => {
         game.setFailOpenedLandExport(enabled);

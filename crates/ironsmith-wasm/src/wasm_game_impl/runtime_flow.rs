@@ -1786,7 +1786,7 @@ impl WasmGame {
                         ActivationStage::ChoosingSacrifice => Ok(
                             PriorityResponse::SacrificeTarget(ObjectId::from_raw(chosen)),
                         ),
-                        ActivationStage::ChoosingCardCost => {
+                        ActivationStage::ChoosingCardCost | ActivationStage::ChoosingCostReferences => {
                             Ok(PriorityResponse::CardCostChoice(ObjectId::from_raw(chosen)))
                         }
                         _ => Err(JsValue::from_str(
@@ -2581,7 +2581,7 @@ mod live_action_rollback_tests {
             .mana_cost(ManaCost::new().add_generic(1))
             .build());
         isolated.apply_sync_checkpoint(checkpoint).unwrap();
-        let options = mana_activation_option_views(&isolated.game, &request);
+        let options = mana_activation_option_views(&isolated.game, &request).unwrap();
         assert_eq!(serde_json::to_value(options).unwrap(), serde_json::to_value(eager.editor.activation_options).unwrap());
         assert_eq!(wasm.export_mana_payment_options_request("stale", &immediate.plan_id).unwrap(), "null");
         confirm_pending_mana_payment(&mut wasm);

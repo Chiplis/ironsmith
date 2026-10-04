@@ -499,6 +499,7 @@ mod tests {
         game.turn.phase = Phase::Combat;
         game.turn.step = Some(Step::DeclareBlockers);
         game.combat = Some(CombatState {
+            block_declaration_complete: true,
             attackers: vec![AttackerInfo {
                 creature: attacker,
                 target: AttackTarget::Player(bob),
@@ -589,6 +590,7 @@ mod tests {
         game.turn.phase = Phase::Combat;
         game.turn.step = Some(Step::DeclareAttackers);
         game.combat = Some(CombatState {
+            block_declaration_complete: true,
             attackers: vec![AttackerInfo {
                 creature: attacker,
                 target: AttackTarget::Player(bob),
@@ -625,6 +627,7 @@ mod replacement_cost_owner_contract_tests {
         let replacement_source = game.create_object_from_card(&card, bob, Zone::Battlefield);
         game.turn.phase = Phase::Combat; game.turn.step = Some(Step::DeclareBlockers);
         game.combat = Some(crate::combat_state::CombatState {
+            block_declaration_complete: true,
             attackers: vec![AttackerInfo { creature: attacker, target: AttackTarget::Player(bob) }],
             ..Default::default()
         });

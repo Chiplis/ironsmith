@@ -1352,10 +1352,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
   async function authorizedZiffleRevealPositionsForOwner(owner, deckHash, requester = owner) {
     const requesterIsOwner = Number(requester) === Number(owner);
     const currentGame = gameRef.current;
-    if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+    if (!currentGame || typeof currentGame.getHiddenCardState !== "function") {
       return new Set();
     }
-    const checkpoint = await currentGame.exportSyncCheckpoint();
+    const checkpoint = await currentGame.getHiddenCardState();
     const positions = new Set();
     const expectedDeckHash = String(deckHash || "");
     const addMetadataPosition = (metadata) => {
@@ -1647,8 +1647,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
           || value === String(metadata.publicCommitment || ""));
       let objectId = requirement.objectId ?? requirement.object_id;
       let metadata = objectId == null ? null : await currentHiddenCardMetadataForObject(Number(objectId));
-      if (!matchesRequirement(metadata) && typeof currentGame?.exportSyncCheckpoint === "function") {
-        checkpoint ||= await currentGame.exportSyncCheckpoint();
+      if (!matchesRequirement(metadata) && typeof currentGame?.getHiddenCardState === "function") {
+        checkpoint ||= await currentGame.getHiddenCardState();
         // Runtime IDs can differ between peers. Resolve the locally trusted
         // requirement's committed identity before consulting its position.
         objectId = hiddenObjectIdForOpeningFromCheckpoint(checkpoint, {
@@ -4168,7 +4168,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
     const currentGame = gameRef.current;
     if (
       !currentGame
-      || typeof currentGame.exportSyncCheckpoint !== "function"
+      || typeof currentGame.getHiddenCardState !== "function"
       || typeof currentGame.exportHiddenCardOpening !== "function"
       || typeof currentGame.ziffleRevealCard !== "function"
       || typeof currentGame.ziffleRevealCards !== "function"
@@ -4205,7 +4205,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      }
 	    }
 
-	    const checkpoint = await currentGame.exportSyncCheckpoint();
+	    const checkpoint = await currentGame.getHiddenCardState();
 	    const localPlayer = (checkpoint.players || []).find(
 	      (player) => Number(player.id) === Number(localIndex)
 	    );
@@ -4542,7 +4542,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 		            ].map((id) => Number(id)).filter((id, index, list) =>
 		              Number.isSafeInteger(id) && id >= 0 && list.indexOf(id) === index
 		            );
-		            const checkpoint = await currentGame.exportSyncCheckpoint?.();
+		            const checkpoint = await currentGame.getHiddenCardState?.();
 		            const objectsById = new Map((checkpoint?.objects || []).map((object) => [
 		              Number(object.id),
 		              object,

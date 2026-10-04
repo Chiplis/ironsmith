@@ -770,7 +770,7 @@ fn evaluate_value(
             }
             ValueEval::Scalar(total)
         }
-        Value::PowerOf(target) | Value::ToughnessOf(target) => {
+        Value::PowerOf(target) | Value::BasePowerOf(target) | Value::ToughnessOf(target) => {
             use crate::target::ChooseSpec;
             let mut values = Vec::new();
             match target.as_ref() {
@@ -780,6 +780,7 @@ fn evaluate_value(
                     {
                         let v = match value {
                             Value::PowerOf(_) => chars.power,
+                            Value::BasePowerOf(_) => chars.base_power,
                             Value::ToughnessOf(_) => chars.toughness,
                             _ => {
                                 unreachable!("Value::PowerOf/ToughnessOf arm received non-PT value")
@@ -794,6 +795,7 @@ fn evaluate_value(
                     if let Some(chars) = baseline.get(&source) {
                         let v = match value {
                             Value::PowerOf(_) => chars.power,
+                            Value::BasePowerOf(_) => chars.base_power,
                             Value::ToughnessOf(_) => chars.toughness,
                             _ => {
                                 unreachable!("Value::PowerOf/ToughnessOf arm received non-PT value")
@@ -820,6 +822,7 @@ fn evaluate_value(
                         }
                         let v = match value {
                             Value::PowerOf(_) => chars.power,
+                            Value::BasePowerOf(_) => chars.base_power,
                             Value::ToughnessOf(_) => chars.toughness,
                             _ => {
                                 unreachable!("Value::PowerOf/ToughnessOf arm received non-PT value")
@@ -1545,7 +1548,7 @@ fn value_references_pt(value: &Value) -> bool {
         Value::SurfaceHinted { value, .. } => value_references_pt(value),
         // These directly reference P/T of objects
         Value::SourcePower | Value::SourceToughness => true,
-        Value::PowerOf(_) | Value::ToughnessOf(_) => true,
+        Value::PowerOf(_) | Value::BasePowerOf(_) | Value::ToughnessOf(_) => true,
         Value::TotalPower(_)
         | Value::TotalToughness(_)
         | Value::GreatestPower(_)
@@ -2402,7 +2405,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
             matches!(modification.layer(), Layer::Color | Layer::Copy)
                 || modification_can_affect_filter(modification, filter)
         }
-        Value::PowerOf(_) | Value::ToughnessOf(_) => pt_affected,
+        Value::PowerOf(_) | Value::BasePowerOf(_) | Value::ToughnessOf(_) => pt_affected,
         Value::ManaValueOf(_) | Value::ManaSymbolsInManaCostOf { .. } => {
             matches!(modification.layer(), Layer::Copy)
         }
@@ -3406,6 +3409,8 @@ mod tests {
                 linked_face_mana_value: object.linked_face_mana_value(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 ability_labels: object.ability_labels.clone(),
+                base_power: object.base_power.as_ref().map(|p| p.base_value()),
+                base_toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
                 power: object.base_power.as_ref().map(|p| p.base_value()),
                 toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: object.card_types.clone(),
@@ -3465,6 +3470,8 @@ mod tests {
                 linked_face_mana_value: land.linked_face_mana_value(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 ability_labels: land.ability_labels.clone(),
+                base_power: land.base_power.as_ref().map(|p| p.base_value()),
+                base_toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
@@ -3589,6 +3596,8 @@ mod tests {
                 linked_face_mana_value: land.linked_face_mana_value(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 ability_labels: land.ability_labels.clone(),
+                base_power: land.base_power.as_ref().map(|p| p.base_value()),
+                base_toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
@@ -3767,6 +3776,11 @@ mod tests {
                 linked_face_mana_value: object.linked_face_mana_value(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 ability_labels: object.ability_labels.clone(),
+                base_power: object.base_power.as_ref().map(|power| power.base_value()),
+                base_toughness: object
+                    .base_toughness
+                    .as_ref()
+                    .map(|toughness| toughness.base_value()),
                 power: object.base_power.as_ref().map(|power| power.base_value()),
                 toughness: object
                     .base_toughness
@@ -3992,6 +4006,11 @@ mod tests {
             linked_face_mana_value: object.linked_face_mana_value(),
             compiled_card_text: object.compiled_card_text.clone(),
             ability_labels: object.ability_labels.clone(),
+            base_power: object.base_power.as_ref().map(|power| power.base_value()),
+            base_toughness: object
+                .base_toughness
+                .as_ref()
+                .map(|toughness| toughness.base_value()),
             power: object.base_power.as_ref().map(|power| power.base_value()),
             toughness: object
                 .base_toughness

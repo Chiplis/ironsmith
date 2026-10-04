@@ -37,7 +37,7 @@ test('audit replay hydrates a public land before preview and resolves its stable
       pending.set(++id, { resolve, reject }); worker.postMessage({ type: 'call', id, method, args });
     });
     const game = Object.fromEntries(['uiState', 'dispatch', 'previewCryptoRequirements', 'revealHiddenPosition',
-      'revealHiddenSlot', 'revealHiddenObject', 'exportSyncCheckpoint', 'exportPublicAuditCheckpoint']
+      'revealHiddenSlot', 'revealHiddenObject', 'exportSyncCheckpoint', 'getHiddenCardState', 'exportPublicAuditCheckpoint']
       .map(method => [method, (...args) => call(method, ...args)]));
     worker.postMessage({ type: 'init', assetBaseUrl: `${location.origin}/` });
     try {

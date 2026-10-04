@@ -1,0 +1,60 @@
+[
+  {
+    "name": "Archangel's Light",
+    "oracle_id": "fc734a75-93bf-448b-b347-810ae835fe49",
+    "mana_cost": "{7}{W}",
+    "type_line": "Sorcery",
+    "oracle_text": "You gain 2 life for each card in your graveyard, then shuffle your graveyard into your library."
+  },
+  {
+    "name": "Mnemonic Nexus",
+    "oracle_id": "6fe302f2-5594-478c-a66b-89b4b96e3611",
+    "mana_cost": "{3}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Each player shuffles their graveyard into their library."
+  },
+  {
+    "name": "Molten Psyche",
+    "oracle_id": "6f98c1eb-0f52-4d21-a266-e8d52f98c1b3",
+    "mana_cost": "{1}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Each player shuffles the cards from their hand into their library, then draws that many cards.\nMetalcraft \u2014 If you control three or more artifacts, Molten Psyche deals damage to each opponent equal to the number of cards that player has drawn this turn."
+  },
+  {
+    "name": "Rite of Renewal",
+    "oracle_id": "6512ddb8-0868-4d32-ab32-8a5250fc571b",
+    "mana_cost": "{3}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Return up to two target permanent cards from your graveyard to your hand. Target player shuffles up to four target cards from their graveyard into their library. Exile Rite of Renewal."
+  },
+  {
+    "name": "Stream of Thought",
+    "oracle_id": "e5b29094-0bb4-4c18-ad47-dce4d4379a4f",
+    "mana_cost": "{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target player mills four cards. You shuffle up to four cards from your graveyard into your library.\nReplicate {2}{U}{U} (When you cast this spell, copy it for each time you paid its replicate cost. You may choose new targets for the copies.)"
+  },
+  {
+    "name": "Visions",
+    "oracle_id": "448fa4e3-7269-446b-8089-675bc1bff5f9",
+    "mana_cost": "{W}",
+    "type_line": "Sorcery",
+    "oracle_text": "Look at the top five cards of target player's library. You may then have that player shuffle that library."
+  },
+  {
+    "name": "Whirlpool Warrior",
+    "oracle_id": "b7a1c54b-bb2f-4423-865a-ad114cd18c76",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature \u2014 Merfolk Warrior",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "When this creature enters, shuffle the cards from your hand into your library, then draw that many cards.\n{R}, Sacrifice this creature: Each player shuffles the cards from their hand into their library, then draws that many cards."
+  },
+  {
+    "name": "Winds of Change",
+    "oracle_id": "f525cf10-e24c-4c46-9a13-6f8579d09d50",
+    "mana_cost": "{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Each player shuffles the cards from their hand into their library, then draws that many cards."
+  }
+]

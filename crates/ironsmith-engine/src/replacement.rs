@@ -687,6 +687,10 @@ pub enum RedirectTarget {
 
     /// Redirect to the controller of the event source.
     ToSourceController,
+    /// Current object attached to the permanent bearing the replacement.
+    ToAttachedPermanent(ObjectId),
+    /// Current controller of the selected original recipient.
+    ToRecipientController,
 }
 
 /// Which target to redirect in a multi-target event.

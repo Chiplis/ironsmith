@@ -196,6 +196,10 @@ pub enum ActivationCostSegmentCst {
         subtype: Subtype,
         count: u32,
     },
+    MoveChosenToZone {
+        filter: ObjectFilter,
+        destination: crate::zone::Zone,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

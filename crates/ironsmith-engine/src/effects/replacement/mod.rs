@@ -37,3 +37,7 @@ pub use register_damage_multiplier::RegisterDamageMultiplierEffect;
 
 mod draw_continuation;
 pub(crate) use draw_continuation::prepare_draw_continuation;
+
+pub(crate) use draw_continuation::{PreparedReplacementChild, ReplacementResume, prepare_replacement_child, replacement_effect_contains_draw};
+
+pub(crate) use draw_continuation::prepare_draw_continuation_with_bindings;

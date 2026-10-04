@@ -203,6 +203,8 @@ pub struct ManaAnalysisSession {
     active_context: PaymentQueryContext,
     remaining: usize,
     pending: bool,
+    /// An incomplete calculation is not evidence that a payment is illegal.
+    failure: Option<crate::effects::ExecutionError>,
     /// Incremented whenever a query suspends, so a caller can tell whether the
     /// work it just ran was complete or provisional.
     suspensions: u64,
@@ -251,12 +253,16 @@ impl ManaAnalysisSession {
             let mut slot = slot.borrow_mut();
             let session = slot.as_mut().unwrap();
             session.last_slice_nodes = budget.saturating_sub(session.remaining);
-            !session.pending
+            !session.pending && session.failure.is_none()
         });
         drop(restore);
         self.active_root = None;
         (result, complete)
     }
+
+    /// A terminal calculation failure for this immutable analysis job. Callers
+    /// must surface it instead of publishing a complete or negative menu.
+    pub fn failure(&self) -> Option<&crate::effects::ExecutionError> { self.failure.as_ref() }
 
     /// Node pops the last slice actually consumed. A slice that returns fewer
     /// nodes than its budget was limited by the fixed cost of re-enumerating
@@ -298,6 +304,32 @@ pub(crate) fn with_checked_query<T>(root: &GameState, checked: &GameState, compu
     compute()
 }
 
+/// Capture the first failed calculation, including while a nested planner has
+/// temporarily removed the thread-local session to avoid recursive caching.
+fn payment_result<T>(
+    game: &GameState,
+    result: Result<T, crate::mana_payment::ManaPaymentFailure>,
+    session: Option<&mut ManaAnalysisSession>,
+) -> bool {
+    match result {
+        Ok(_) => true,
+        Err(crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)) => {
+            game.record_token_resource_failure(&error);
+            if let Some(session) = session {
+                if session.failure.is_none() { session.failure = Some(error); }
+                session.pending = true;
+                session.suspensions = session.suspensions.saturating_add(1);
+            }
+            false
+        }
+        Err(_) => false,
+    }
+}
+
+pub(super) fn analysis_failure() -> Option<crate::effects::ExecutionError> {
+    SESSION.with(|slot| slot.borrow().as_ref().and_then(|session| session.failure.clone()))
+}
+
 /// Use the authoritative planner's resumable search for a query against the
 /// bound root. Pending remains provisional and prevents publishing a complete
 /// menu. Other games retain the synchronous oracle, never a cached root answer.
@@ -311,7 +343,9 @@ pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::Man
         fn drop(&mut self) { SESSION.with(|slot| *slot.borrow_mut() = self.0.take()); }
     }
     let mut restore = Restore(SESSION.with(|slot| slot.borrow_mut().take()));
-    if !bound { return crate::mana_payment::check_mana_payment(game, request).is_ok(); }
+    if !bound {
+        return payment_result(game, crate::mana_payment::check_mana_payment(game, request), restore.0.as_mut());
+    }
     let session = restore.0.as_mut().unwrap();
     let context = session.active_context;
     let index = session.payment_searches.iter().position(|(kind, key, _)| *kind == context && key == request)
@@ -328,7 +362,7 @@ pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::Man
     let result = search.step(session.remaining);
     session.remaining = session.remaining.saturating_sub(search.last_slice_units());
     match result {
-        Some(result) => result.is_ok(),
+        Some(result) => payment_result(game, result, Some(session)),
         None => {
             session.pending = true;
             session.suspensions = session.suspensions.saturating_add(1);
@@ -369,7 +403,7 @@ pub(crate) fn memo_snapshot_fact(
         let Some(session) = slot.as_mut() else {
             return;
         };
-        if suspensions_before == Some(session.suspensions) {
+        if session.failure.is_none() && suspensions_before == Some(session.suspensions) {
             session
                 .facts
                 .entry(key)
@@ -578,6 +612,68 @@ fn advance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn resource_fixture() -> (GameState, PlayerId, ObjectId, crate::mana_payment::ManaPaymentRequest) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let player = PlayerId::from_index(0);
+        game.turn.active_player = player; game.turn.priority_player = Some(player);
+        game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
+        let card = crate::CardBuilder::new(crate::CardId::new(), "Query source")
+            .card_types(vec![crate::CardType::Land]).build();
+        let source = game.create_object_from_card(&card, player, crate::Zone::Battlefield);
+        game.object_mut(source).unwrap().abilities_mut().push(crate::Ability::mana(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()), vec![ManaSymbol::Green]));
+        game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+            source, player, crate::events::mana::matchers::ManaProducedBySourceMatcher::new(crate::target::ObjectFilter::specific(source)),
+            crate::replacement::ReplacementAction::Additionally(vec![crate::effect::Effect::new(crate::effects::CreateTokenEffect::you(crate::cards::tokens::treasure_token_definition(), 2))]),
+        ));
+        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        let request = crate::mana_payment::ManaPaymentRequest::new(player, source, crate::costs::PaymentReason::Effect,
+            crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Green]));
+        (game, player, source, request)
+    }
+
+    #[test]
+    fn resource_failed_payment_is_neither_complete_nor_a_cached_negative_fact() {
+        let (game, player, source, request) = resource_fixture();
+        for bind_root in [false, true] {
+            let mut session = ManaAnalysisSession::default();
+            let key = SnapshotFactKey { kind: SnapshotFactKind::CastTargetLegality, object: source, player };
+            let context = SnapshotFactContext { casting_method: crate::alternative_cast::CastingMethod::Normal, mana_cost: Some(request.cost.clone()) };
+            let mut failure_seen = false;
+            for _ in 0..256 {
+                let compute = || memo_snapshot_fact(key, &context, || check_payment(&game, &request));
+                let (payable, complete) = if bind_root { session.run_for_game(&game, 1, compute) }
+                    else { session.run(1, compute) };
+                if session.failure().is_some() {
+                    assert!(!payable); assert!(!complete);
+                    assert!(matches!(session.failure(), Some(crate::effects::ExecutionError::ResourceLimitExceeded { .. })));
+                    assert!(!session.facts.contains_key(&key));
+                    failure_seen = true; break;
+                }
+                assert!(!complete, "resource-limited payment cannot finish as unavailable");
+            }
+            assert!(failure_seen);
+        }
+        assert!(!game.is_tapped(source)); assert_eq!(game.battlefield.len(), 1);
+    }
+
+    #[test]
+    fn legal_action_root_surfaces_resource_unknown_and_new_job_can_recover() {
+        let (mut game, player, source, _) = resource_fixture();
+        let spell = crate::CardBuilder::new(crate::CardId::new(), "Green spell")
+            .card_types(vec![crate::CardType::Creature])
+            .mana_cost(crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Green])).build();
+        let card = game.create_object_from_card(&spell, player, crate::Zone::Hand);
+        assert!(matches!(crate::decision::compute_legal_actions(&game, player),
+            Err(crate::effects::ExecutionError::ResourceLimitExceeded { .. })));
+        assert!(!game.is_tapped(source)); assert_eq!(game.battlefield.len(), 1);
+        assert!(game.player(player).unwrap().hand.contains(&card));
+        game.set_token_creation_limits(Default::default());
+        let actions = crate::decision::compute_legal_actions(&game, player).unwrap();
+        assert!(actions.iter().any(|action| matches!(action, crate::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == card)));
+        assert!(!game.is_tapped(source)); assert_eq!(game.battlefield.len(), 1);
+    }
 
     #[test]
     fn full_payment_queries_resume_without_publishing_pending_as_unpayable() {

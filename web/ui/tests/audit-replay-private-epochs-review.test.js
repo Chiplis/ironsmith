@@ -19,6 +19,7 @@ async function fixture({ omitAllProofs = false } = {}) {
   const game = {
     startMatch: async () => {},
     exportSyncCheckpoint: async () => ({ objects: [] }),
+    getHiddenCardState: async () => ({ objects: [] }),
     exportPublicAuditCheckpoint: async () => ({}),
     previewCryptoRequirements: async () => [firstRequirement,
       ...(queued ? [{ type: 'public_open', owner: 0, publicSlot: 1,

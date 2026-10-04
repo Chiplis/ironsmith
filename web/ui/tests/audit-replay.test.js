@@ -44,6 +44,8 @@ class FakeReplayGame {
     });
   }
 
+  async getHiddenCardState() { return { objects: [] }; }
+
   async exportSyncCheckpoint() {
     return {
       checkpoint: clone(this.checkpoint),

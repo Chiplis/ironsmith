@@ -1920,7 +1920,8 @@ pub fn target_context_prelude_for_filter(filter: &ObjectFilter) -> (Vec<Effect>,
                 | Comparison::GreaterThanOrEqualExpr(value) => value,
                 _ => continue,
             };
-            if let Value::PowerOf(spec) | Value::ToughnessOf(spec) = value.unhinted()
+            if let Value::PowerOf(spec) | Value::BasePowerOf(spec) | Value::ToughnessOf(spec) =
+                value.unhinted()
                 && spec.is_target()
             {
                 push_choice(choices, (**spec).clone());

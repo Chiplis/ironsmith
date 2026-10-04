@@ -1,3 +1,5 @@
+import { createLocalPriorityWorker, createLocalQueryWorker, collectLocalTargetPreviews } from "../lib/local-runtime-analysis.js";
+import { castingMethodChoiceForAction } from "../lib/casting-method-choice.js";
 import { createPaymentOptionsAnalysis } from "../lib/payment-options-analysis.js";
 import { hiddenCardMetadataForObjectFromCheckpoint, hiddenCardMetadataAtPositionFromCheckpoint } from "../lib/hidden-card-metadata.js";
 import { createAsyncLimiter } from "../lib/bounded-async.js";
@@ -36,6 +38,7 @@ const DEMO_CARD_NAMES = [
 
 const snapshotEncoder = createSnapshotEncoder();
 let game = null;
+let runtimeEpoch = 0;
 let callQueue = Promise.resolve();
 let pendingCallCount = 0;
 let backgroundCompileDone = false;
@@ -139,13 +142,13 @@ const priorityAnalysis = createIsolatedPriorityAnalysis({
   pending: () => game?.priorityAnalysisPending?.() === true,
   eligible: () => game?.hasPriorityDecision?.() === true,
   capture: () => enqueueCall(() => ({
-    checkpoint: game.exportSyncCheckpoint(),
+    ...captureAnalysisState(),
     module: engineModule,
     registrations: analysisRegistrations.slice(),
     sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route]))]
       .map(([source, route]) => [route, source]),
   }), { kind: 'priority_analysis_capture' }),
-  createWorker: () => new Worker(new URL('./priorityAnalysisWorker.js', import.meta.url), { type: 'module' }),
+  createWorker: input => input.runtimeFallback ? createLocalPriorityAnalysisWorker() : new Worker(new URL('./priorityAnalysisWorker.js', import.meta.url), { type: 'module' }),
   // Check results only after any temporary verification branch has exited.
   deliver: operation => enqueueCall(operation, { kind: 'priority_analysis_publish' }),
   publish: analysis => self.postMessage({ type: 'priorityAnalysis', ...analysis }),
@@ -158,15 +161,61 @@ const paymentOptionsAnalysis = createPaymentOptionsAnalysis({
     if (request === 'null') return null;
     return {
       request,
-      checkpoint: game.exportSyncCheckpoint(),
+      ...captureAnalysisState(),
       module: engineModule,
       registrations: analysisRegistrations.slice(),
       sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route]))]
         .map(([source, route]) => [route, source]),
     };
   }, { kind: 'payment_options_capture' }),
-  createWorker: () => new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
+  createWorker: input => input.runtimeFallback ? createLocalQueryWorker((input, cancelled) => enqueueCall(async () => {
+    if (cancelled() || runtimeEpoch !== input.runtimeEpoch || game.priorityAnalysisIdentity() !== input.runtimeIdentity) return null;
+    const handle = captureExactAnalysisBranch(input);
+    try { return await inRuntimeBranch(game, handle, () => game.getPaymentActivationOptions(input.request)); }
+    finally { game.releaseRuntimeSavepoint(handle); }
+  }, { kind: 'payment_options_runtime' }))
+    : new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
 });
+
+function captureAnalysisState() {
+  try { return { checkpoint: game.exportSyncCheckpoint() }; }
+  catch (error) {
+    if (typeof game.createRuntimeSavepoint !== 'function' || typeof game.exchangeRuntimeSavepoint !== 'function') throw error;
+    return { runtimeFallback: true, runtimeEpoch, runtimeIdentity: game.priorityAnalysisIdentity() };
+  }
+}
+
+function captureExactAnalysisBranch(input) {
+  if (runtimeEpoch !== input.runtimeEpoch || game.priorityAnalysisIdentity() !== input.runtimeIdentity) throw new Error('Analysis runtime changed before capture');
+  return game.createRuntimeSavepoint();
+}
+
+function createLocalPriorityAnalysisWorker() {
+  const owner = game;
+  return createLocalPriorityWorker({
+    capture: input => enqueueCall(() => captureExactAnalysisBranch(input), { kind: 'priority_runtime_capture' }),
+    call: (handle, method, args) => enqueueCall(() => inRuntimeBranch(owner, handle, () => owner[method](...args)), { kind: 'priority_runtime_slice' }),
+    release: handle => enqueueCall(() => owner.releaseRuntimeSavepoint(handle), { kind: 'priority_runtime_release' }),
+  });
+}
+
+async function localTargetPreview(id, args, input) {
+  const isCurrent = () => id === latestTargetPreview && runtimeEpoch === input.runtimeEpoch
+    && game.priorityAnalysisIdentity() === input.runtimeIdentity;
+  return collectLocalTargetPreviews(args[0], args[1], action => enqueueCall(async () => {
+    if (!isCurrent()) return null;
+    const handle = captureExactAnalysisBranch(input);
+    try {
+      return await inRuntimeBranch(game, handle, () => {
+        game.setPerspective(args[1]);
+        let state = game.dispatch({ type: 'priority_action', action_index: action.index, action_ref: action.action_ref });
+        const method = castingMethodChoiceForAction(state?.decision, action);
+        if (method) state = game.dispatch(method);
+        return state?.decision?.kind === 'targets' ? state.decision.requirements : [];
+      });
+    } finally { game.releaseRuntimeSavepoint(handle); }
+  }, { kind: 'target_runtime_preview' }), isCurrent);
+}
 
 function nowMs() {
   return performance.now();
@@ -791,6 +840,7 @@ async function handleInit(msg = {}) {
     paymentOptionsAnalysis.cancel();
     previewWorker?.terminate(); previewWorker = null; targetPreviews.clear();
     game = null;
+    runtimeEpoch++;
     pendingCallCount = 0;
     backgroundCompileDone = false;
     lastRegistryLoaded = -1;
@@ -881,9 +931,14 @@ function handleTargetPreview(id, args) {
   enqueueCall(() => {
     workerTasks.phase(task, 'target_checkpoint');
     if (!game) throw new Error("Game is not initialized yet");
-    return { checkpoint: game.exportSyncCheckpoint(), identity: game.priorityAnalysisIdentity(), sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route])).entries()].map(([source, route]) => [route, source]) };
-  }, {}, task).then(input => {
+    return { ...captureAnalysisState(), identity: game.priorityAnalysisIdentity(), sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route])).entries()].map(([source, route]) => [route, source]) };
+  }, {}, task).then(async input => {
     if (id !== latestTargetPreview) { respond(task, { type: "result", id, ok: true, result: null }); return; }
+    if (input.runtimeFallback) {
+      const result = await localTargetPreview(id, args, input);
+      respond(task, { type: "result", id, ok: true, result });
+      return;
+    }
     if (!previewWorker) {
       previewWorker = new Worker(new URL("./targetPreviewWorker.js", import.meta.url), { type: "module" });
       previewWorker.onmessage = ({ data }) => {
@@ -925,7 +980,7 @@ function handleCall(msg) {
     }
   }
   // A preview promise must never occupy the authoritative command queue.
-  // Its analysis runs on a separate worker against the captured state.
+  // Its analysis runs in an isolated worker or yields between exact native-branch slices.
   if (msg.runtimeBranch == null && method === "inspectorActions" && game) {
     const task = workerTasks.create({ kind: 'inspector_request', requestId: id, method });
     workerTasks.phase(task, 'analysis_wait');
@@ -1028,8 +1083,8 @@ function handleCall(msg) {
     const fn = method === "replayTrustedMatch" ? (config, actions, perspective) => replayTrustedMatch(game, config, actions, perspective, replayOptions)
       : method === "replayTrustedActions" ? (actions, sequence) => replayTrustedActions(game, actions, sequence, replayOptions)
       : method === "previewCryptoRequirementsWithMaterial" ? (command, material) => previewCryptoRequirementsWithMaterial(game, command, material)
-      : method === "getHiddenCardMetadata" && typeof game.getHiddenCardMetadata !== "function" ? objectId => hiddenCardMetadataForObjectFromCheckpoint(game.exportSyncCheckpoint(), objectId)
-      : method === "getHiddenCardMetadataAtPosition" && typeof game.getHiddenCardMetadataAtPosition !== "function" ? (owner, position, commitment) => hiddenCardMetadataAtPositionFromCheckpoint(game.exportSyncCheckpoint(), owner, position, commitment)
+      : method === "getHiddenCardMetadata" && typeof game.getHiddenCardMetadata !== "function" ? objectId => hiddenCardMetadataForObjectFromCheckpoint(game.getHiddenCardState(), objectId)
+      : method === "getHiddenCardMetadataAtPosition" && typeof game.getHiddenCardMetadataAtPosition !== "function" ? (owner, position, commitment) => hiddenCardMetadataAtPositionFromCheckpoint(game.getHiddenCardState(), owner, position, commitment)
       : game[method];
     if (typeof fn !== "function") {
       throw new Error(`Unknown game method: ${method}`);

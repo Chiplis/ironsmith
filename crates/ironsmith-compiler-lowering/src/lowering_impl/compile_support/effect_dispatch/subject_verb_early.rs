@@ -3186,8 +3186,37 @@ pub(super) fn compile_subject_verb_early(
                 player_filter,
                 object_filter,
                 target,
+                scope,
             },
         ) => {
+            if let Some(scope) = scope {
+                let refs = current_reference_env(ctx);
+                let mut choices = Vec::new();
+                let mut compile_optional = |target: &Option<TargetAst>| -> Result<Option<ChooseSpec>, CardTextError> {
+                    let Some(target) = target else { return Ok(None); };
+                    let (spec, added) = resolve_target_spec_with_choices(target, &refs)?;
+                    for choice in added { push_choice(&mut choices, choice); }
+                    Ok(Some(spec))
+                };
+                let source_target = compile_optional(&scope.source_target)?;
+                let protected_target = compile_optional(&scope.protected_target)?;
+                let (destination, added) = resolve_target_spec_with_choices(target, &refs)?;
+                for choice in added { push_choice(&mut choices, choice); }
+                let targeting_count = source_target.iter().chain(protected_target.iter()).filter(|spec| spec.is_target()).count()
+                    + usize::from(scope.destination == ironsmith_core::TimedDamageRedirectDestination::Target && destination.is_target());
+                if targeting_count > 1 {
+                    return Err(CardTextError::ParseError("scoped damage redirection with multiple independent target slots is not yet represented".into()));
+                }
+                let mut effect = crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(player_filter.clone(), object_filter.clone(), destination);
+                effect.scope = Some(ironsmith_core::TimedDamageRedirectionScope {
+                    source_filter: resolve_it_tag(&scope.source_filter, &refs)?, source_target, protected_target,
+                    player_filter: scope.player_filter.clone(),
+                    object_filter: scope.object_filter.as_ref().map(|filter| resolve_it_tag(filter, &refs)).transpose()?,
+                    combat_only: scope.combat_only, destination: scope.destination, mode: scope.mode,
+                    display: scope.display.clone(),
+                });
+                return Ok(Some((vec![Effect::new(effect)], choices)));
+            }
             let object_filter = resolve_it_tag(object_filter, &current_reference_env(ctx))?;
             compile_effect_for_target(target, ctx, |spec| {
                 Effect::new(

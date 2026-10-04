@@ -330,7 +330,7 @@ impl MandatoryLoopTracker {
             for game in windows {
                 for player in game.priority_team_players() {
                     if crate::decision::compute_legal_actions(game, player)?
-                        .into_iter().chain(crate::decision::compute_commander_actions(game, player))
+                        .into_iter().chain(crate::decision::compute_commander_actions(game, player)?)
                         .any(|action| !matches!(action, crate::decision::LegalAction::PassPriority)) {
                         optional = true;
                         break;

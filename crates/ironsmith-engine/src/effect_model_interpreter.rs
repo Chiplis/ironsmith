@@ -1424,13 +1424,7 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RedirectAllDamageThisTurnToTargetEffect>(&effect)
     {
-        return Ok(Effect::new(
-            crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(
-                payload.player_filter.clone(),
-                payload.object_filter.clone(),
-                payload.target.clone(),
-            ),
-        ));
+        return Ok(Effect::new(payload.clone()));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ExecuteWithSourceEffect<M::Effect>>(&effect)

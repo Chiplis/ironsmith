@@ -1176,6 +1176,8 @@ struct EnterAsCopySourceCache {
 
 #[derive(Debug)]
 struct RuntimeCacheState {
+    token_creation_limits: crate::effects::tokens::TokenCreationLimits,
+    token_creation_meter: Option<crate::effects::tokens::resources::SharedTokenCreationMeter>,
     observed_players: RefCell<Option<crate::incremental::ChangeCursor>>,
     observed_stack: RefCell<Option<crate::incremental::ChangeCursor>>,
     random_state: Cell<u64>,
@@ -1220,6 +1222,9 @@ struct RuntimeCacheState {
 impl Clone for RuntimeCacheState {
     fn clone(&self) -> Self {
         Self {
+            token_creation_limits: self.token_creation_limits,
+            // All speculative/nested work belongs to one host computation.
+            token_creation_meter: self.token_creation_meter.clone(),
             observed_players: RefCell::new(self.observed_players.borrow().clone()),
             observed_stack: RefCell::new(self.observed_stack.borrow().clone()),
             random_state: Cell::new(self.random_state.get()),
@@ -1263,6 +1268,8 @@ impl Clone for RuntimeCacheState {
 impl RuntimeCacheState {
     fn new(active_player: PlayerId) -> Self {
         Self {
+            token_creation_limits: Default::default(),
+            token_creation_meter: None,
             observed_players: RefCell::new(None),
             observed_stack: RefCell::new(None),
             random_state: Cell::new(GameState::normalize_random_seed(0)),
@@ -8250,5 +8257,65 @@ impl TurnStore {
         self.skipped_steps = other.skipped_steps.clone();
         self.pending_combat_phase_skips = other.pending_combat_phase_skips.clone();
         self.skip_all_combat_phases_next_turn = other.skip_all_combat_phases_next_turn.clone();
+    }
+}
+
+impl GameState {
+    /// Set host computation limits. They are not serialized game rules and an
+    /// exhausted operation reports incomplete execution without committing.
+    pub fn set_token_creation_limits(&mut self, limits: crate::effects::tokens::TokenCreationLimits) {
+        self.runtime_cache.token_creation_limits = limits;
+    }
+    pub(crate) fn token_creation_limits(&self) -> crate::effects::tokens::TokenCreationLimits {
+        self.runtime_cache.token_creation_limits
+    }
+    pub(crate) fn bind_token_query_meter(&mut self, meter: crate::effects::tokens::resources::SharedTokenCreationMeter) {
+        self.runtime_cache.token_creation_meter = Some(meter);
+    }
+    pub(crate) fn record_token_resource_failure(&self, error: &crate::effects::ExecutionError) {
+        if let Some(meter) = &self.runtime_cache.token_creation_meter {
+            crate::effects::tokens::resources::record_failure(meter, error);
+        }
+    }
+    pub(crate) fn token_resource_failure(&self) -> Option<crate::effects::ExecutionError> {
+        self.runtime_cache.token_creation_meter.as_ref().and_then(|meter| {
+            crate::effects::tokens::resources::failure(meter)
+        })
+    }
+    pub(crate) fn begin_token_resource_scope(&mut self) -> (bool, crate::effects::tokens::resources::SharedTokenCreationMeter) {
+        if let Some(meter) = &self.runtime_cache.token_creation_meter
+            && crate::effects::tokens::resources::meter_is_active(meter) {
+            return (false, meter.clone());
+        }
+        let meter = crate::effects::tokens::resources::new_meter(self.runtime_cache.token_creation_limits);
+        self.runtime_cache.token_creation_meter = Some(meter.clone()); (true, meter)
+    }
+    pub(crate) fn end_token_resource_scope(&mut self, root: bool, meter: &crate::effects::tokens::resources::SharedTokenCreationMeter) {
+        if root {
+            // Checkpoints can outlive this attempt. They share work while it is
+            // active, but must open a fresh allowance when replayed later.
+            crate::effects::tokens::resources::close_meter(meter);
+            if self.runtime_cache.token_creation_meter.as_ref().is_some_and(|active| std::sync::Arc::ptr_eq(active, meter)) {
+                self.runtime_cache.token_creation_meter = None;
+            }
+        }
+    }
+    pub(crate) fn reserve_token_creation(&mut self, requested: u128) -> Result<(), crate::effects::ExecutionError> {
+        let Some(meter) = &self.runtime_cache.token_creation_meter else {
+            return Err(crate::effects::ExecutionError::InternalError("token creation has no resource scope".into()));
+        };
+        crate::effects::tokens::resources::reserve_creation(meter, requested, self.object_store.objects.len())
+    }
+    pub(crate) fn commit_token_resource_slot(&mut self) -> Result<(), crate::effects::ExecutionError> {
+        let Some(meter) = &self.runtime_cache.token_creation_meter else {
+            return Err(crate::effects::ExecutionError::InternalError("token insertion has no resource scope".into()));
+        };
+        crate::effects::tokens::resources::commit_materialization(meter, self.object_store.objects.len())
+    }
+    pub(crate) fn reserve_token_repetition_work(&self, count: usize) -> Result<(), crate::effects::ExecutionError> {
+        let Some(meter) = &self.runtime_cache.token_creation_meter else {
+            return Err(crate::effects::ExecutionError::InternalError("token repetitions have no resource scope".into()));
+        };
+        crate::effects::tokens::resources::reserve_repetition_work(meter, count)
     }
 }

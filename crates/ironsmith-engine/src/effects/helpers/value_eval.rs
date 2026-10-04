@@ -365,6 +365,9 @@ pub(crate) fn resolve(
         Value::SourcePower => context.source_number(NumericProperty::Power),
         Value::SourceToughness => context.source_number(NumericProperty::Toughness),
         Value::PowerOf(target_spec) => context.object_number(target_spec, NumericProperty::Power),
+        Value::BasePowerOf(target_spec) => {
+            context.object_number(target_spec, NumericProperty::BasePower)
+        }
         Value::ToughnessOf(target_spec) => {
             context.object_number(target_spec, NumericProperty::Toughness)
         }
