@@ -49,7 +49,7 @@ fn opposition_agent_replay_exposes_both_replacements_to_search_controller() {
     wasm.game.turn.active_player = alice;
     wasm.game.turn.phase = Phase::FirstMain;
     wasm.game.turn.priority_player = Some(charlie);
-    wasm.priority_state.restore_priority_tracker_for_sync(2, 3);
+    wasm.priority_state.seed_priority_tracker_for_test(2, 3);
     let checkpoint = wasm.capture_replay_checkpoint();
     let root = ReplayRoot::Response(PriorityResponse::PriorityAction(LegalAction::PassPriority));
     let outcome = wasm.execute_with_replay(&checkpoint, &root, &[]).unwrap();

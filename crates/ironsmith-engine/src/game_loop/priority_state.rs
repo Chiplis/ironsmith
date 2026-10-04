@@ -1146,8 +1146,9 @@ impl PriorityLoopState {
         )
     }
 
-    /// Restore pass tracking after importing a sync checkpoint.
-    pub fn restore_priority_tracker_for_sync(
+    /// Set up a specific priority window in gameplay tests.
+    #[doc(hidden)]
+    pub fn seed_priority_tracker_for_test(
         &mut self,
         consecutive_passes: usize,
         players_in_game: usize,
