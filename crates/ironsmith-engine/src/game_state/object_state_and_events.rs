@@ -3396,6 +3396,27 @@ impl GameState {
         }
     }
 
+    /// Freeze public milling characteristics at the outer instruction boundary,
+    /// after all players' prepared moves commit. Later instructions never update
+    /// the already completed batch, and exact IDs cannot follow a new incarnation.
+    pub(crate) fn finalize_milling_event_snapshots(&mut self) {
+        let Some(batch) = self.auxiliary_tracking.simultaneous_action_scope.and_then(|scope| scope.batch) else { return; };
+        let updates: Vec<_> = self.effect_store.pending_trigger_events.iter().enumerate()
+            .filter(|(_, event)| event.simultaneous_batch() == Some(batch))
+            .filter_map(|(index, event)| {
+                let mut milled = event.downcast::<crate::events::CardMilledEvent>()?.clone();
+                // Absence denotes a hidden destination; never reveal it here.
+                let previous = milled.snapshot.as_ref()?;
+                if let Some(object) = self.object(milled.card).filter(|object| object.zone == previous.zone)
+                    && !self.is_face_down(object.id)
+                {
+                    milled.snapshot = Some(ObjectSnapshot::from_object_with_calculated_characteristics(object, self));
+                }
+                Some((index, event.with_inner_event(milled)))
+            }).collect();
+        for (index, event) in updates { self.effect_store.pending_trigger_events[index] = event; }
+    }
+
     pub fn queue_trigger_event(
         &mut self,
         parent: ProvNodeId,

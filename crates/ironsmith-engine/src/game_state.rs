@@ -1899,6 +1899,62 @@ pub struct ObjectCantBeTargetedFrom {
     pub controller: PlayerId,
 }
 
+/// A typed stack-kind filter describes the targeting spell/ability, even
+/// before stack insertion or after removal for resolution. Untyped filters
+/// describe its source's current/LKI characteristics instead. In particular,
+/// the ability's controller need not still control its source (CR 113.7a).
+fn targeting_source_matches_restriction(
+    filter: &crate::target::ObjectFilter,
+    source: Option<crate::filter::ObjectSubject<'_>>,
+    context: &crate::filter::FilterContext,
+    game: &GameState,
+    with_ability: bool,
+    controller: PlayerId,
+    inherited_stack_subject: bool,
+) -> bool {
+    use crate::filter::StackObjectKind;
+    let stack_subject = inherited_stack_subject || filter.stack_kind.is_some();
+    match filter.stack_kind {
+        Some(StackObjectKind::Spell) if with_ability => return false,
+        Some(StackObjectKind::Ability) if !with_ability => return false,
+        // Exact subkinds are not supplied by this API. Do not widen one into
+        // the other; retain the existing stack-entry matcher for those cases.
+        Some(StackObjectKind::ActivatedAbility | StackObjectKind::TriggeredAbility) => {
+            return source.is_some_and(|source| source.matches(filter, context, game));
+        }
+        _ => {}
+    }
+    let mut qualities = filter.clone();
+    qualities.any_of.clear();
+    if filter.stack_kind.is_some() {
+        qualities.stack_kind = None;
+        // The ordinary stack matcher deliberately ignores the generic spell
+        // noun's implied mana-cost flag. Costless/copied spells are still spells.
+        if filter.stack_kind == Some(StackObjectKind::Spell) {
+            qualities.has_mana_cost = false;
+        }
+        if qualities.zone == Some(Zone::Stack) { qualities.zone = None; }
+    }
+    if stack_subject {
+        if let Some(required) = &qualities.controller
+            && !crate::filter::player_filter_matches_game(required, controller, game, context)
+        { return false; }
+        qualities.controller = None;
+    }
+    // Surface ordering is not a characteristic and must not require a live
+    // source for an otherwise fully known (role + controller) prohibition.
+    qualities.union_surface = Default::default();
+    let matches = source.map_or_else(
+        || qualities == crate::target::ObjectFilter::default(),
+        |source| source.matches(&qualities, context, game),
+    );
+    matches && (filter.any_of.is_empty() || filter.any_of.iter().any(|branch| {
+        targeting_source_matches_restriction(
+            branch, source, context, game, with_ability, controller, stack_subject,
+        )
+    }))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockingAsThoughLandwalkOverride {
     pub spec: ironsmith_core::static_ability_model::BlockingAsThoughNoLandwalkSpec,
@@ -2792,7 +2848,7 @@ impl CantEffectTracker {
                 .contains(&(permanent, counter_type))
     }
 
-    /// Check if a permanent is untargetable by the rules tracker.
+    /// Check if an object is untargetable by an independent rule prohibition.
     pub fn is_untargetable(&self, permanent: ObjectId) -> bool {
         self.cant_be_targeted.contains(&permanent)
     }
@@ -2804,13 +2860,15 @@ impl CantEffectTracker {
         source_id: ObjectId,
     ) -> bool {
         let Some(source) = game.object(source_id) else {
-            return true;
+            return !self.is_untargetable(object);
         };
 
         self.can_target_object_from_subject(
             game,
             object,
-            crate::filter::ObjectSubject::Live(source),
+            Some(crate::filter::ObjectSubject::Live(source)),
+            source.zone != Zone::Stack,
+            game.controller_of(source),
         )
     }
 
@@ -2818,15 +2876,19 @@ impl CantEffectTracker {
         &self,
         game: &GameState,
         object: ObjectId,
-        source: crate::filter::ObjectSubject<'_>,
+        source: Option<crate::filter::ObjectSubject<'_>>,
+        targeting_with_ability: bool,
+        targeting_controller: PlayerId,
     ) -> bool {
-        !self.cant_be_targeted_from.iter().any(|restriction| {
-            if restriction.object != object {
-                return false;
-            }
-            let filter_ctx =
-                game.filter_context_for(restriction.controller, Some(source.object_id()));
-            source.matches(&restriction.source_filter, &filter_ctx, game)
+        !self.is_untargetable(object) && !self.cant_be_targeted_from.iter().any(|restriction| {
+            if restriction.object != object { return false; }
+            let filter_ctx = game.filter_context_for(
+                restriction.controller, source.map(|source| source.object_id()),
+            );
+            targeting_source_matches_restriction(
+                &restriction.source_filter, source, &filter_ctx, game,
+                targeting_with_ability, targeting_controller, false,
+            )
         })
     }
 
@@ -4040,6 +4102,11 @@ impl GameState {
         {
             return;
         }
+        if lookback.is_none()
+            && self.auxiliary_tracking.simultaneous_action_scope.is_some_and(|scope| scope.opened_by_lookback)
+        {
+            self.finalize_milling_event_snapshots();
+        }
         // Pinning a look-back opens one simultaneous action; the events it
         // queues share one batch identity until the pin is released.
         let pinning = lookback.is_some();
@@ -4147,6 +4214,7 @@ impl GameState {
 
     pub(crate) fn close_simultaneous_action(&mut self, opened: bool) {
         if opened {
+            self.finalize_milling_event_snapshots();
             self.auxiliary_tracking_mut().simultaneous_action_scope = None;
         }
     }
@@ -7424,7 +7492,7 @@ impl GameState {
             .can_have_counter_type_placed(permanent, counter_type)
     }
 
-    /// Is this permanent untargetable (by shroud/hexproof-style effects)?
+    /// Is this object untargetable by an independent rule prohibition?
     pub fn is_untargetable(&self, permanent: ObjectId) -> bool {
         self.effect_store.cant_effects.is_untargetable(permanent)
     }

@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Pox",
+    "mana_cost": "{B}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Each player loses a third of their life, then discards a third of the cards in their hand, then sacrifices a third of the creatures they control of their choice, then sacrifices a third of the lands they control of their choice. Round up each time."
+  },
+  {
+    "name": "Dire Fleet Ravager",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Creature — Orc Pirate Wizard",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Menace, deathtouch\nWhen this creature enters, each player loses a third of their life, rounded up."
+  }
+]

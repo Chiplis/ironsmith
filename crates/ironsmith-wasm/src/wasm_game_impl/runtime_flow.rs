@@ -1058,6 +1058,7 @@ impl WasmGame {
             priority_state: self.priority_state.clone(),
             game_over: self.game_over.clone(),
             id_counters: snapshot_id_counters(),
+            public_hand_disclosures: self.public_hand_disclosure_identities(),
             diag_tag: tag,
         }
     }
@@ -4266,4 +4267,7 @@ mod live_action_rollback_tests {
         assert_eq!(wasm.game.stack.len(), 1, "no copy trigger without the casualty cost");
         assert_eq!(resolve_stack_and_count_ogres(&mut wasm), 1);
     }
+
+    include!("payment_disclosure_undo_tests.rs");
+
 }

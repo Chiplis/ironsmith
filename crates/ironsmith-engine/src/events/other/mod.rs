@@ -20,6 +20,8 @@ mod object_became_unattached;
 mod object_became_attached;
 pub use object_became_attached::ObjectBecameAttachedEvent;
 mod permanent_phased_out;
+mod card_milled;
+pub use card_milled::CardMilledEvent;
 mod permanent_phased_in;
 pub use permanent_phased_in::PermanentPhasedInEvent;
 mod permanent_tapped;

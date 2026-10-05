@@ -300,6 +300,7 @@ pub(crate) fn interpret_trigger_model(
             })
         }
         TriggerKind::AttachmentChanged { attachment, recipient, attached } => crate::triggers::Trigger::new(crate::triggers::AttachmentChangedTrigger { attachment, recipient, attached }),
+        TriggerKind::CardsMilled { player, filter, one_or_more, per_player } => crate::triggers::Trigger::new(crate::triggers::CardsMilledTrigger { player, filter, one_or_more, per_player }),
         TriggerKind::PhasingChanged { filter, phased_in, one_or_more } => crate::triggers::Trigger::new(crate::triggers::PhasingChangedTrigger { filter, phased_in, one_or_more }),
         TriggerKind::BecomesTapped => crate::triggers::Trigger::becomes_tapped(),
         TriggerKind::PermanentBecomesTapped { filter, one_or_more } => {

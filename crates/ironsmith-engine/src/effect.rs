@@ -1692,19 +1692,17 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::BeTargeted(filter) => {
-                for &obj_id in &game.battlefield {
-                    if let Some(obj) = game.object(obj_id)
-                        && filter.matches(obj, &ctx, game)
-                    {
+                for obj in game.objects_in_deterministic_order() {
+                    let obj_id = obj.id;
+                    if filter.matches(obj, &ctx, game) {
                         tracker.cant_be_targeted.insert(obj_id);
                     }
                 }
             }
             Restriction::BeTargetedFrom(filter, source_filter) => {
-                for &obj_id in &game.battlefield {
-                    if let Some(obj) = game.object(obj_id)
-                        && filter.matches(obj, &ctx, game)
-                    {
+                for obj in game.objects_in_deterministic_order() {
+                    let obj_id = obj.id;
+                    if filter.matches(obj, &ctx, game) {
                         tracker.cant_be_targeted_from.push(
                             crate::game_state::ObjectCantBeTargetedFrom {
                                 object: obj_id,

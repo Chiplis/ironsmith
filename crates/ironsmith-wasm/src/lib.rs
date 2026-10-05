@@ -3999,6 +3999,9 @@ struct ReplayCheckpoint {
     priority_state: PriorityLoopState,
     game_over: Option<GameResult>,
     id_counters: ironsmith::ids::IdCountersSnapshot,
+    /// Public hand identities already disclosed at this Undo boundary. This is
+    /// knowledge, including audit views, rather than a reversible zone count.
+    public_hand_disclosures: HashSet<(PlayerId, ObjectId)>,
     /// Diagnostic tag identifying where this checkpoint was captured.
     diag_tag: &'static str,
 }

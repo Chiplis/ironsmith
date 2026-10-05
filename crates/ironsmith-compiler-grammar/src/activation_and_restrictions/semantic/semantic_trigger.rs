@@ -9,6 +9,8 @@ mod permanent_tap_state;
 mod attachment_transitions;
 #[path = "phasing_transitions.rs"]
 mod phasing_transitions;
+#[path = "milling_transitions.rs"]
+mod milling_transitions;
 
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
@@ -1029,6 +1031,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             &[&["attack", "attacks"]],
         ) {
             trigger_atom_token(left_tokens, TriggerClauseAtom::Block)
+        } else if right_words.first().is_some_and(|word| matches!(*word, "mill" | "mills")) {
+            // An explicit player shared by discard/mill alternatives remains
+            // the actor of both complete arms (not the effect controller).
+            trigger_atom_token(left_tokens, TriggerClauseAtom::Discard)
         } else if right_words
             .first()
             .is_some_and(|word| matches!(*word, "copy" | "copies"))
@@ -3355,6 +3361,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    if let Some(trigger) = milling_transitions::parse_milling_trigger(tokens)? {
+        return Ok(trigger);
+    }
     if let Some(trigger) = phasing_transitions::parse_phasing_transition_trigger(tokens)? {
         return Ok(trigger);
     }

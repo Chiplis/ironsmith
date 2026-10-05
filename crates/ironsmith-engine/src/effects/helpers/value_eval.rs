@@ -12,6 +12,34 @@ pub(crate) fn resolve_continuous(value: &Value, layer: LayerValueContext<'_, '_>
         .unwrap_or_else(|error| panic!("unsupported continuous-effect value {value:?}: {error:?}"))
 }
 
+/// Fraction encodings may add the rounding offset before dividing. Widen
+/// that intermediate so a representable quotient of a valid i32 quantity
+/// does not overflow (for example ceil(i32::MAX / 3)). This is deliberately
+/// not a wider model for arbitrary arithmetic or unbounded effect counts.
+fn resolve_fraction(
+    value: &Value,
+    divisor: i32,
+    context: &EvaluationContext<'_, '_>,
+) -> Result<i32, ExecutionError> {
+    if divisor == 0 {
+        return context.division_by_zero(value);
+    }
+    let numerator = match value.unhinted() {
+        Value::Add(base, offset)
+            if matches!(offset.unhinted(), Value::Fixed(n)
+            if *n >= 0 && i64::from(*n) < i64::from(divisor).abs()) =>
+        {
+            i64::from(resolve(base, context)?) + i64::from(resolve(offset, context)?)
+        }
+        _ => i64::from(resolve(value, context)?),
+    };
+    i32::try_from(numerator.div_euclid(i64::from(divisor))).map_err(|_| {
+        ExecutionError::UnresolvableValue(
+            "fraction result is outside the supported integer range".into(),
+        )
+    })
+}
+
 pub(crate) fn resolve(
     value: &Value,
     context: &EvaluationContext<'_, '_>,
@@ -24,12 +52,7 @@ pub(crate) fn resolve(
         Value::X => context.x(),
         Value::XTimes(multiplier) => Ok(context.x()? * *multiplier),
         Value::Scaled(value, multiplier) => Ok(resolve(value, context)? * *multiplier),
-        Value::DividedRoundedDown(value, divisor) => {
-            if *divisor == 0 {
-                return context.division_by_zero(value);
-            }
-            Ok(resolve(value, context)?.div_euclid(*divisor))
-        }
+        Value::DividedRoundedDown(value, divisor) => resolve_fraction(value, *divisor, context),
         Value::Min(left, right) => Ok(resolve(left, context)?.min(resolve(right, context)?)),
         Value::Count(filter) if filter_reads_source_devoured(filter) => {
             Ok(count_source_devoured(filter, context))
@@ -471,7 +494,7 @@ pub(crate) fn resolve(
         }
         Value::HalfLifeTotalRoundedUp(player_spec) => {
             let player = context.single_player(value, player_spec)?;
-            Ok((player.life + 1).div_euclid(2))
+            Ok(((i64::from(player.life) + 1).div_euclid(2)) as i32)
         }
         Value::HalfLifeTotalRoundedDown(player_spec) => {
             let player = context.single_player(value, player_spec)?;
@@ -479,7 +502,7 @@ pub(crate) fn resolve(
         }
         Value::HalfStartingLifeTotalRoundedUp(player_spec) => {
             let player = context.single_player(value, player_spec)?;
-            Ok((player.starting_life + 1).div_euclid(2))
+            Ok(((i64::from(player.starting_life) + 1).div_euclid(2)) as i32)
         }
         Value::HalfStartingLifeTotalRoundedDown(player_spec) => {
             let player = context.single_player(value, player_spec)?;
@@ -970,7 +993,7 @@ pub(crate) fn resolve(
                 "pending effect metric was not bound to a prior effect".to_string(),
             ))
         }
-        Value::HalfRoundedDown(inner) => Ok(resolve(inner, context)?.div_euclid(2)),
+        Value::HalfRoundedDown(inner) => resolve_fraction(inner, 2, context),
         Value::EventValue(spec) => resolve_event_value(
             game,
             context.require_execution(value, RESOLUTION_ONLY),

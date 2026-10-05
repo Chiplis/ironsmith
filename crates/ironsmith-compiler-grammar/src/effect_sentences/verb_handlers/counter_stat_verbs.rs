@@ -1221,6 +1221,23 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
 
 pub(super) fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
     let clause_words = crate::lexer::token_word_refs(tokens);
+    if let Some((denominator, used)) =
+        crate::grammar::shared_util::fraction_shapes::unit_fraction_prefix(&clause_words)
+        && used > 1
+    {
+        let (body, up) =
+            crate::grammar::shared_util::fraction_shapes::without_rounding_suffix(&clause_words);
+        let reference_player = match body.get(used..)? {
+            ["your", "life"] => PlayerAst::You,
+            ["their" | "his" | "her", "life"] => player,
+            _ => return None,
+        };
+        let mut basis = Value::LifeTotal(player_filter_for_life_reference(reference_player)?);
+        if up {
+            basis = Value::Add(Box::new(basis), Box::new(Value::Fixed(denominator - 1)));
+        }
+        return Some(Value::DividedRoundedDown(Box::new(basis), denominator));
+    }
     let shape = counter_grammar::parse_half_life(&clause_words)?;
     let reference_player = match shape.owner {
         counter_grammar::HalfLifeOwnerShape::You => PlayerAst::You,
@@ -1500,5 +1517,32 @@ mod reveal_hand_count_tests {
             arm.stack_kind == Some(crate::filter::StackObjectKind::Ability)
                 && arm.controller == Some(PlayerFilter::Opponent)
         }));
+    }
+}
+
+#[cfg(test)]
+mod ordinal_life_tests {
+    use super::*;
+    #[test]
+    fn life_fraction_preserves_denominator_rounding_and_subject() {
+        let tokens = crate::lexer::lex_line("a third of their life, rounded up", 0).unwrap();
+        assert_eq!(
+            parse_half_life_value(&tokens, PlayerAst::That),
+            Some(Value::DividedRoundedDown(
+                Box::new(Value::Add(
+                    Box::new(Value::LifeTotal(PlayerFilter::IteratedPlayer)),
+                    Box::new(Value::Fixed(2))
+                )),
+                3
+            ))
+        );
+        let tokens = crate::lexer::lex_line("one fourth of your life, rounded down", 0).unwrap();
+        assert_eq!(
+            parse_half_life_value(&tokens, PlayerAst::Target),
+            Some(Value::DividedRoundedDown(
+                Box::new(Value::LifeTotal(PlayerFilter::You)),
+                4
+            ))
+        );
     }
 }
