@@ -14281,7 +14281,7 @@ fn parse_coin_batch_and_counted_turn_skip(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind: ironsmith_core::CoinFlipKind::FaceOnly, repeat_until_loss: false }),
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind: ironsmith_core::CoinFlipKind::FaceOnly, repeat_until_loss: false, opponent_results: None, count_value: None }),
         ),
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: Value::PendingEffectMetric {

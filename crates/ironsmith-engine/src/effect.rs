@@ -349,6 +349,8 @@ pub struct CoinFlipResult {
     pub loser: Option<PlayerId>,
     pub turn_ordinal: u32,
     pub instruction_ordinal: u32,
+    /// Opponent paired with this original retained coin, independent of who flips it.
+    pub associated_player: Option<PlayerId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

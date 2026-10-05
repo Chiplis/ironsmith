@@ -1095,6 +1095,11 @@ fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<Object
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // A complete as-entry characteristic replacement is not a keyword grant
+    // to the descriptor at its tail (for example a Dinosaur creature).
+    if matches!(parse_as_enters_becomes_characteristics_for_filter_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     // A complete comma-separated predicate list owns every clause and every
     // local condition; this family cannot suffix-match one of its `has` verbs.
     if complete_composed_anthem_owns_line(tokens) {

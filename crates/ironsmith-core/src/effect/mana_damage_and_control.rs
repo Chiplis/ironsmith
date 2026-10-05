@@ -1828,6 +1828,14 @@ pub enum CoinFlipKind {
     FaceOnly,
 }
 
+/// The retained result groups of one coin associated with each opponent.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct CoinFlipOpponentTags {
+    pub won: TagKey,
+    pub lost: TagKey,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct FlipCoinEffect {
@@ -1841,6 +1849,10 @@ pub struct FlipCoinEffect {
     /// Each retained flip is a fresh batch until an actual loss ends the process.
     #[cfg_attr(feature = "serde", serde(default))]
     pub repeat_until_loss: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub opponent_results: Option<CoinFlipOpponentTags>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub count_value: Option<Value>,
 }
 
 fn single_coin_count() -> u32 {
@@ -1851,6 +1863,8 @@ impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
             repeat_until_loss: false,
+            opponent_results: None,
+            count_value: None,
             count: 1,
             player,
             kind: CoinFlipKind::Called,
@@ -1863,6 +1877,8 @@ impl FlipCoinEffect {
     pub fn face_only(player: PlayerFilter) -> Self {
         Self {
             repeat_until_loss: false,
+            opponent_results: None,
+            count_value: None,
             count: 1,
             player,
             kind: CoinFlipKind::FaceOnly,
@@ -5100,6 +5116,8 @@ pub struct ForEachControllerOfTaggedEffect<E> {
 pub struct ForEachTaggedPlayerEffect<E> {
     pub tag: crate::tag::TagKey,
     pub effects: Vec<E>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub require_evidence: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

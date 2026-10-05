@@ -1071,6 +1071,24 @@ fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
     })
 }
 
+/// A complete resolving free-cast rule for the hand, with its duration
+/// between the origin and price. Reuse the static hand permission's filter
+/// and alternative-cost model; only the grant lifetime changes.
+fn parse_this_turn_hand_free_cast(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    let words = crate::lexer::TokenWordView::new(tokens).word_refs();
+    if words != ["you", "may", "cast", "spells", "from", "your", "hand", "this", "turn", "without", "paying", "their", "mana", "costs"] {
+        return Ok(None);
+    }
+    if tokens.len() != words.len() || !tokens.iter().zip(&words).all(|(token, word)| token.is_word(word)) {
+        return Err(CardTextError::ParseError("unexpected symbol or punctuation in temporary hand permission".into()));
+    }
+    let mut rest = tokens[3..7].to_vec();
+    rest.extend_from_slice(&tokens[9..]);
+    let spec = parse_hand_free_cast_grant_spec_from_rest(&rest, false)?.ok_or_else(||
+        CardTextError::ParseError("temporary hand permission has no complete alternative cost".into()))?;
+    Ok(Some(PermissionClauseSpec::GrantBySpec { player: PlayerAst::You, spec, lifetime: PermissionLifetime::ThisTurn }))
+}
+
 pub fn parse_permission_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
@@ -1087,6 +1105,7 @@ pub fn parse_permission_clause_spec_lexed(
     if clause_refs.is_empty() {
         return Ok(None);
     }
+    if let Some(spec) = parse_this_turn_hand_free_cast(tokens)? { return Ok(Some(spec)); }
 
     if let Some(spec) = graveyard_turn_permissions::parse_permanent_permission_rider(tokens)? {
         return Ok(Some(spec));

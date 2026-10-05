@@ -83,3 +83,37 @@ fn a_shared_condition_guards_the_stat_and_type_addition_layers() {
     };
     assert_eq!(anthem.condition.as_ref(), Some(condition));
 }
+
+#[test]
+fn chosen_type_damage_uses_one_canonical_multiplier_with_source_scope() {
+    let text = "Double all damage that sources you control of the chosen type would deal.";
+    let tokens = crate::lexer::lex_line(text, 0).unwrap();
+    assert_eq!(parse_double_damage_from_sources_you_control_of_chosen_type_line(&tokens).unwrap(),
+        parse_double_damage_amount_replacement_line(&tokens).unwrap());
+    let parsed = parse(text);
+    let [StaticAbilityAst::Static(ability)] = parsed.as_slice() else { panic!("one multiplier"); };
+    let ironsmith_core::StaticAbilityPayload::DoubleDamageAmountReplacement { source_filter, factor, .. } = &ability.payload else {
+        panic!("common typed multiplier: {ability:#?}");
+    };
+    assert_eq!(*factor, 2);
+    assert!(source_filter.chosen_creature_type);
+    assert_eq!(source_filter.controller, Some(PlayerFilter::You));
+    assert!(source_filter.card_types.is_empty());
+    assert!(source_filter.zone.is_none());
+}
+
+#[test]
+fn complete_entry_characteristics_do_not_become_a_granted_keyword() {
+    let text = "As a historic permanent you control enters, it becomes a 7/7 Dinosaur creature in addition to its other types.";
+    let tokens = crate::lexer::lex_line(text, 0).unwrap();
+    assert!(parse_granted_keyword_static_line(&tokens).unwrap().is_none());
+    let parsed = parse(text);
+    let [StaticAbilityAst::Static(ability)] = parsed.as_slice() else { panic!("one complete replacement"); };
+    let ironsmith_core::StaticAbilityPayload::EntersWithCharacteristicsForFilter {
+        filter, card_types, subtypes, power, toughness,
+    } = &ability.payload else { panic!("typed entry replacement: {ability:#?}"); };
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+    assert_eq!(card_types, &[CardType::Creature]);
+    assert_eq!(subtypes, &[crate::Subtype::Dinosaur]);
+    assert_eq!((*power, *toughness), (7, 7));
+}

@@ -1102,6 +1102,7 @@ fn pre_rule_damage_this_way_player_followup(
     {
         Some(followup_shapes::DamagedPlayerFollowupShape::CantCastNoncreatureSpellsThisTurn) => {
             vec![EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                require_evidence: false,
                 tag: crate::tag::CompilerReferenceTag::Damaged0.bind(),
                 effects: vec![EffectAst::subject_verb_cant(
                     crate::effect::Restriction::cast_spells_matching(

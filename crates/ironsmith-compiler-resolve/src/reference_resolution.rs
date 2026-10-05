@@ -5481,6 +5481,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         return;
     }
     match action {
+        SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value: Some(value), .. }) => visit(value),
         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count })
         | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count })
         | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, .. })
@@ -6607,6 +6608,9 @@ fn resolve_effect_result_values_in_fields(
     }
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value, .. }) => {
+                if let Some(value) = count_value { resolve_effect_result_value(value, state)?; }
+            }
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
             | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 count: amount,
@@ -6778,7 +6782,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
-            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })

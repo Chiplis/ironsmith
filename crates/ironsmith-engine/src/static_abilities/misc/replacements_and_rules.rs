@@ -256,19 +256,23 @@ impl DamageAmountReplacementMatcher {
             };
             return self.source_filter.matches(source, &filter_ctx, ctx.game);
         }
-        ctx.event_source_snapshot
+        let Some(snapshot) = ctx.event_source_snapshot
             .filter(|snapshot| snapshot.object_id == damage.source)
-            .is_some_and(|snapshot| {
-                let filter_ctx = if snapshot.zone == Zone::Stack {
-                    ctx.filter_ctx
-                        .clone()
-                        .with_caster(Some(snapshot.controller))
-                } else {
-                    ctx.filter_ctx.clone()
-                };
-                self.source_filter
-                    .matches_snapshot(snapshot, &filter_ctx, ctx.game)
-            })
+        else {
+            // A filtered replacement cannot treat absent source evidence as
+            // a known nonmatch. The checked execution scope rolls back the
+            // entire operation when this shared failure latch is set.
+            ctx.game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                "filtered damage replacement requires the exact live source or its last-known snapshot".into(),
+            ));
+            return false;
+        };
+        let filter_ctx = if snapshot.zone == Zone::Stack {
+            ctx.filter_ctx.clone().with_caster(Some(snapshot.controller))
+        } else {
+            ctx.filter_ctx.clone()
+        };
+        self.source_filter.matches_snapshot(snapshot, &filter_ctx, ctx.game)
     }
 
     fn target_matches(
@@ -365,9 +369,9 @@ impl ReplacementMatcher for DamageAmountReplacementMatcher {
         };
 
         self.condition_matches(ctx)
-            && self.source_matches(damage, ctx)
             && self.target_matches(damage, ctx)
             && self.amount_matches(damage, ctx)
+            && self.source_matches(damage, ctx)
     }
 
     fn priority(&self) -> ReplacementPriority {

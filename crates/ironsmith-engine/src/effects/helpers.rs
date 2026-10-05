@@ -975,6 +975,27 @@ fn resolve_prior_effect_metric(
     {
         return Err(ExecutionError::UnresolvableValue("coin receipts do not accept object or player-memory filters".into()));
     }
+    if query.action == Some(ironsmith_core::PriorEffectAction::ChosenNumber) {
+        if query.source != EffectMetricSource::Outcome || query.metric != EffectMetric::Count
+            || query.filter.is_some() || query.player.is_some() || query.counter_type.is_some()
+        {
+            return Err(ExecutionError::UnresolvableValue("a chosen-number query requires its exact numeric decision".into()));
+        }
+        let outcome = ctx.get_outcome(effect_id).ok_or_else(|| ExecutionError::IncompleteEvidence(
+            "numeric decision has no completed receipt".into(),
+        ))?;
+        let mut choices = outcome.execution_facts.iter().filter_map(|fact| match fact {
+            crate::effect::ExecutionFact::ChosenNumber(number) => Some(*number),
+            _ => None,
+        });
+        let number = choices.next().ok_or_else(|| ExecutionError::IncompleteEvidence(
+            "numeric decision outcome has no chosen-number fact".into(),
+        ))?;
+        if choices.next().is_some() || outcome.as_count() != Some(i64::from(number)) {
+            return Err(ExecutionError::IncompleteEvidence("numeric decision receipt is ambiguous or inconsistent".into()));
+        }
+        return Ok(i64::from(number));
+    }
     if query.filter.is_none() && query.player.is_none() {
         return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);
     }

@@ -467,6 +467,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 tag: second_creatures_tag.clone(),
             }),
             EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                require_evidence: false,
                 tag: second_player_tag,
                 effects: vec![EffectAst::subject_verb_gain_control(
                     PlayerAst::That,
@@ -475,6 +476,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 )],
             }),
             EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                require_evidence: false,
                 tag: first_player_tag,
                 effects: vec![EffectAst::subject_verb_gain_control(
                     PlayerAst::That,

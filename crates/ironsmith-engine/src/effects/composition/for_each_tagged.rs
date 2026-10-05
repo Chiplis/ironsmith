@@ -495,6 +495,8 @@ pub struct ForEachTaggedPlayerEffect {
     pub tag: TagKey,
     /// Effects to execute for each tagged player.
     pub effects: Vec<Effect>,
+    /// Missing evidence is an execution error; a present empty roster is valid.
+    pub require_evidence: bool,
 }
 
 impl ForEachTaggedPlayerEffect {
@@ -503,6 +505,7 @@ impl ForEachTaggedPlayerEffect {
         Self {
             tag: tag.into(),
             effects,
+            require_evidence: false,
         }
     }
 }
@@ -523,29 +526,27 @@ impl EffectExecutor for ForEachTaggedPlayerEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // Get all tagged players
-        let players = match ctx.get_tagged_players(&self.tag) {
-            Some(players) => players.clone(), // Clone to avoid borrow issues
-            None => return Ok(EffectOutcome::count(0)),
-        };
-
-        if players.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        let mut outcomes = Vec::new();
-
-        for player_id in &players {
-            ctx.with_temp_iterated_player(Some(*player_id), |ctx| {
-                // Execute all inner effects for this player
-                for effect in &self.effects {
-                    outcomes.push(execute_effect(game, effect, ctx)?);
-                }
-                Ok::<(), ExecutionError>(())
-            })?;
-        }
-
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+            let players = match ctx.get_tagged_players(&self.tag) {
+                Some(players) => players.clone(),
+                None if self.require_evidence => return Err(ExecutionError::IncompleteEvidence(
+                    "required player-result roster is absent".into(),
+                )),
+                None => return Ok(EffectOutcome::count(0)),
+            };
+            let mut outcomes = Vec::new();
+            for player_id in players {
+                ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+                    for effect in &self.effects {
+                        outcomes.push(execute_effect(game, effect, ctx)?);
+                        if ctx.decision_maker.awaiting_choice() { break; }
+                    }
+                    Ok::<(), ExecutionError>(())
+                })?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            }
+            Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+        })
     }
 }
 

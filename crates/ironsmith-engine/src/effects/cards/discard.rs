@@ -230,7 +230,7 @@ fn format_discard_card_type_phrase(card_types: &[CardType]) -> String {
 
 fn collect_selected_object_tags(filter: &ObjectFilter, tags: &mut Vec<TagKey>) {
     for constraint in &filter.tagged_constraints {
-        if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        if crate::effects::helpers::tagged_relation_names_members(constraint.relation)
             && !tags.contains(&constraint.tag)
         {
             tags.push(constraint.tag.clone());

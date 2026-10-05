@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Collective Inferno",
+    "id": "e4239b32-6a34-4353-846a-0c6c1b1e9d35",
+    "oracle_id": "649e4969-71d4-434f-85b0-205ec2c6b24f",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "Convoke (Your creatures can help cast this spell. Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.)\nAs this enchantment enters, choose a creature type.\nDouble all damage that sources you control of the chosen type would deal."
+  },
+  {
+    "name": "Displaced Dinosaurs",
+    "id": "7f46c447-23e6-4d6d-88d0-f5322734bc82",
+    "oracle_id": "bc0daba2-c51c-44b0-a4a3-806f2acd9aa6",
+    "mana_cost": "{5}{G}{G}",
+    "type_line": "Creature — Dinosaur",
+    "power": "7",
+    "toughness": "7",
+    "oracle_text": "As a historic permanent you control enters, it becomes a 7/7 Dinosaur creature in addition to its other types. (Artifacts, legendaries, and Sagas are historic.)"
+  }
+]

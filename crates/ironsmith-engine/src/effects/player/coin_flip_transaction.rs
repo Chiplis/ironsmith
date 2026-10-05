@@ -78,7 +78,7 @@ pub(super) fn flip_batch(
         } else { None };
         flips.push(CoinFlipResult {
             player, face: CoinFace::Heads, call, winner: None, loser: None,
-            turn_ordinal: 0, instruction_ordinal: 0,
+            turn_ordinal: 0, instruction_ordinal: 0, associated_player: None,
         });
     }
     let forced_winner = effect.forced_winner.as_ref()

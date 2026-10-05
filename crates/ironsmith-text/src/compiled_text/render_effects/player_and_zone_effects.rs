@@ -2305,13 +2305,16 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         return selection;
     }
     // A max-one choice keeps its singular noun ("up to one creature").
+    let mut count_without_method = choose.count;
+    count_without_method.random = false;
+    let count_text = describe_choice_count(&count_without_method);
     let mut selection = if choose.count.max == Some(1) {
-        format!("{} {}", describe_choice_count(&choose.count), card_desc)
+        format!("{count_text} {card_desc}")
     } else {
         let count_prefix = if choose.count.is_any_number() {
-            format!("{} of", describe_choice_count(&choose.count))
+            format!("{count_text} of")
         } else {
-            describe_choice_count(&choose.count)
+            count_text
         };
         describe_plural_selection(count_prefix, &card_desc)
     };
@@ -2342,6 +2345,9 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
                 " with total {metric} less than or equal to {maximum}"
             ));
         }
+    }
+    if choose.count.is_random() {
+        selection.push_str(" at random");
     }
     selection.push_str(&where_x_suffix);
     selection

@@ -1471,10 +1471,12 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
             (Vec::new(), Vec::new())
         }
-        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer { tag, effects }) => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer { tag, effects, require_evidence }) => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
-            let effect = Effect::for_each_tagged_player(tag.clone(), inner_effects);
+            let effect = Effect::new(crate::effects::ForEachTaggedPlayerEffect {
+                tag: tag.key().clone(), effects: inner_effects, require_evidence: *require_evidence,
+            });
             (vec![effect], inner_choices)
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatProcess {

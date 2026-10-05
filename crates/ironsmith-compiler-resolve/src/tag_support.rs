@@ -1423,6 +1423,7 @@ fn target_references_event_derived_amount(target: &TargetAst) -> bool {
 
 fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
     match action {
+        SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value, .. }) => count_value.as_ref(),
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition {
             spec,
         }) => Some(&spec.delta),
@@ -1564,7 +1565,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
-        | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })

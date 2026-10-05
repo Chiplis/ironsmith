@@ -1142,13 +1142,18 @@ pub(super) fn compile_subject_verb_early(
                 Effect::flip_coin(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind, repeat_until_loss }) => {
+        SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind, repeat_until_loss, opponent_results, count_value }) => {
+            let count_value = count_value.as_ref().map(|value| resolve_value_it_tag(value, &current_reference_env(ctx))).transpose()?;
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 let mut effect =
                     crate::effects::FlipCoinEffect::face_only(subject.into_player_filter());
                 effect.count = *count;
                 effect.kind = *kind;
                 effect.repeat_until_loss = *repeat_until_loss;
+                effect.count_value = count_value.clone();
+                effect.opponent_results = opponent_results.as_ref().map(|(won, lost)| ironsmith_core::CoinFlipOpponentTags {
+                    won: won.key().clone(), lost: lost.key().clone(),
+                });
                 Effect::new(effect)
             })
         }

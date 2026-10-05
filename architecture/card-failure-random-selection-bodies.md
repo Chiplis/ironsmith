@@ -7,6 +7,15 @@ Frozen inputs: `fixtures/card-failure-campaign/cards-20261003.json.xz` and
 card objects and complete Oracle bodies, including every body retained for further owner work.
 No coverage matrix or frozen baseline is changed.
 
+## Current source disposition
+
+Bounded source review has cleared Moldgraf Monstrosity, Tomb Tyrant, Singe-Mind
+Ogre (including its public-opening correction), Kheru Lich Lord, Sinister Waltz,
+and Nebuchadnezzar. These are source-proposed full bodies, not executed or
+validated corpus results. Goblin Test Pilot and Witch Hunt remain held for
+announcement-time random target commitment/replay ownership. The sections below
+retain the individual checkpoint traces and superseded holds.
+
 ## Completed source work (not execution-validated)
 
 - **Moldgraf Monstrosity**: preserve the recognized random selection on a
@@ -155,3 +164,73 @@ initial hold. The exact complement is lowered as `ChooseSpec::All` so zero
 surviving members complete without error. Sinister is source-proposed with
 execution and strict quality validation still deferred. No runtime or corpus
 success is claimed.
+
+## Tagged public opening correction (unrun, awaiting review)
+
+Ogre's earlier source clearance is temporarily held for a newly traced hidden
+peer seam. The random generic-hand choice is identity-free, so it does not open
+cards through `settle_hidden_hand_random_pool`. The common execute-effect
+preflight settles `All` filters/TagMatchingObjects, not RevealTagged; the latter
+previously issued only view callbacks and carried pre-opening snapshots.
+
+RevealTagged now uses the existing mandatory owner-answered Public opening for
+exactly its selected private IDs, suspends before publishing callbacks/receipts,
+rejects an unopened peer placeholder, refreshes both its original tag and
+PUBLIC_REVEALED_TAG, and rolls back context/state on pending/error. Each revealed
+card receives a distinct event provenance. It no longer claims to be a read-only
+simultaneous preparation because public disclosure changes the information state.
+
+Native owner/peer tests cover a pending opening, exact-set privacy, snapshot
+refresh and a missing peer opening. A full Ogre direct/artifact real-entry test
+covers the owner's mandatory opening on owner and peer engines, random authority
+rollback/retry and mana-value evaluation only after the selected identity opens.
+This adds no protocol, RNG authority or model/wire variant.
+
+## Counted random hand reveal and named subset checkpoint (unrun, awaiting review)
+
+The random hand-reveal grammar previously required an article and always
+constructed a one-card count. It now retains fixed/X counts, requires a complete
+unqualified card descriptor rather than silently dropping qualifiers/symbols,
+and passes the actual count to the existing random ChooseObjects operation.
+
+The named `random-hand-reveal-named-subset-discard` pair rule preserves the
+following all-discard as `Value::Count` of exactly the same filter used by
+Discard: original revealed ObjectIds in the hand plus the independently stored
+ChosenName relationship. The generic selected-discard owner now recognizes the
+shared membership relations (including SameObjectId), preserving the existing
+no-second-choice path for complete selected sets. Source-persistent names never
+replace the resolution's current name tag.
+
+A structural renderer checks both identity relations and matching count/player
+before compacting the named reveal/discard. The generic random hand renderer
+retains fixed and X counts, placing the random modifier after the card noun.
+Full Nebuchadnezzar independent direct/artifact cases author real X payment and
+tap costs, own-turn restrictions, distinct random samples, 0/1/2/oversized X,
+empty hands, source departure, repeated activations with different names,
+matching versus unmatching revealed names, and hidden owner/peer Public-opening
+suspension/retry using the same transcript random seed. This checkpoint is
+source work only and does not itself promote Nebuchadnezzar from its hold.
+
+RevealTagged's simultaneous support is retained through an immutable proposal:
+preparation captures each already-selected set without opening or publishing it;
+commit runs the normal opening/reveal transaction only after the outer owner has
+collected all proposals. No read-only preparation bypass remains. A native
+proposal contract asserts the fixed per-player sets, no preparation disclosure,
+correct resulting memories and the combined public tag.
+
+The new mandatory Public selection retains the existing cost-payment disclosure
+classification: `payment_disclosure_transaction.rs` uses the active payment
+subject plus SelectObjects/Public and actual hand candidates for its commit and
+retry journal. The opening uses that same Public decision route and source;
+no separate disclosure journal, cancellation exception or WASM route is added.
+
+Bounded review cleared the RevealTagged correction through `25a269046` (with
+source-neutral test baseline follow-up `7e5b67a45`). This supersedes Ogre's
+information-opening hold and restores its source-proposed disposition after
+additive integration. Full execution remains deferred. The native owner now
+preserves simultaneous capability and the existing payment-disclosure path.
+
+Bounded source review cleared Nebuchadnezzar `88e48751e` together with the
+reviewed RevealTagged correction. This supersedes its initial hold. Its random
+subset, independent chosen name, original Hand/ObjectId membership, complete
+discard and paid-X body are source-proposed; execution remains deferred.

@@ -913,6 +913,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/831"
+    },
+    {
+      "stage": 66,
+      "branch": "fix/card-failures-66-compound-statics-and-groups",
+      "base": "fix/card-failures-65-grouped-coin-bodies",
+      "source_integration_commit": "64897460c9ab3bf685165156fe560536bfc5cf1a",
+      "remote_commit": "d079f917d299c9d189c3088a01a14eb8eefce08d",
+      "tree": "16d9f7234a83ff63a88610d0eeacf0dfec422e43",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 832,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/832"
     }
   ]
 }

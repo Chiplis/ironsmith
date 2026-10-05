@@ -12,6 +12,8 @@ use crate::target::PlayerFilter;
 pub struct FlipCoinEffect {
     /// Each retained flip is a fresh batch until an actual loss ends the process.
     pub repeat_until_loss: bool,
+    pub opponent_results: Option<ironsmith_core::CoinFlipOpponentTags>,
+    pub count_value: Option<ironsmith_core::Value>,
     pub count: u32,
     pub player: PlayerFilter,
     pub kind: ironsmith_core::CoinFlipKind,
@@ -24,6 +26,8 @@ impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
             repeat_until_loss: false,
+            opponent_results: None,
+            count_value: None,
             count: 1,
             player,
             kind: ironsmith_core::CoinFlipKind::Called,
@@ -36,6 +40,8 @@ impl FlipCoinEffect {
     pub fn face_only(player: PlayerFilter) -> Self {
         Self {
             repeat_until_loss: false,
+            opponent_results: None,
+            count_value: None,
             count: 1,
             player,
             kind: ironsmith_core::CoinFlipKind::FaceOnly,
@@ -83,16 +89,43 @@ impl EffectExecutor for FlipCoinEffect {
                 return Err(ExecutionError::UnresolvableValue("repeat until loss requires called flips".into()));
             }
             let player = resolve_player_filter(game, &self.player, ctx)?;
+            if self.repeat_until_loss && self.opponent_results.is_some() {
+                return Err(ExecutionError::UnresolvableValue("a repeated flip cannot also be an opponent batch".into()));
+            }
+            let associated = if self.opponent_results.is_some() {
+                let players_in_range = ctx.filter_context(game).players_in_range;
+                let mut opponents = Vec::new();
+                opponents.try_reserve(game.players.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
+                    resource: "opponent coin associations", requested: game.players.len(),
+                })?;
+                for participant in &game.players {
+                    if participant.is_in_game() && game.are_opponents(player, participant.id)
+                        && players_in_range.as_ref().is_none_or(|range| range.contains(&participant.id)) {
+                        opponents.push(participant.id);
+                    }
+                }
+                Some(opponents)
+            } else { None };
+            if self.count_value.is_some() && (self.repeat_until_loss || self.opponent_results.is_some()) {
+                return Err(ExecutionError::UnresolvableValue("a chosen coin count cannot also be a repeat or opponent count".into()));
+            }
+            let authored_count = if let Some(value) = &self.count_value {
+                crate::effects::helpers::resolve_nonnegative_u32(game, value, ctx)?
+            } else if let Some(players) = &associated {
+                u32::try_from(players.len()).map_err(|_| ExecutionError::ResourceLimitExceeded {
+                    resource: "opponent coin count", requested: players.len() as u128, maximum: u32::MAX as u128,
+                })?
+            } else { self.count };
             let mut results = Vec::new();
             let mut events = Vec::new();
             let mut facts = Vec::new();
             loop {
-                let count = if self.repeat_until_loss { 1 } else { self.count };
+                let count = if self.repeat_until_loss { 1 } else { authored_count };
                 let start = u32::try_from(results.len()).map_err(|_| ExecutionError::ResourceLimitExceeded {
                     resource: "instruction coin-flip ordinal", requested: results.len() as u128,
                     maximum: i32::MAX as u128,
                 })? + 1;
-                let Some(batch) = coin_flip_transaction::flip_batch(game, ctx, self, player, count, start)? else {
+                let Some(mut batch) = coin_flip_transaction::flip_batch(game, ctx, self, player, count, start)? else {
                     return Ok(EffectOutcome::count(0));
                 };
                 events.try_reserve(batch.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
@@ -104,6 +137,9 @@ impl EffectExecutor for FlipCoinEffect {
                 facts.try_reserve(batch.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
                     resource: "coin-flip result facts", requested: batch.len(),
                 })?;
+                if let Some(players) = &associated {
+                    for (flip, opponent) in batch.iter_mut().zip(players) { flip.associated_player = Some(*opponent); }
+                }
                 let lost = batch.iter().any(|flip| flip.loser == Some(player));
                 let batch_provenance = game.alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::CoinFlipped);
                 for flip in &batch {
@@ -127,6 +163,23 @@ impl EffectExecutor for FlipCoinEffect {
                 }
                 results.extend(batch);
                 if !self.repeat_until_loss || lost { break; }
+            }
+            if let Some(tags) = &self.opponent_results {
+                let mut won = Vec::new();
+                let mut lost = Vec::new();
+                for players in [&mut won, &mut lost] {
+                    players.try_reserve(results.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
+                        resource: "opponent coin-result roster", requested: results.len(),
+                    })?;
+                }
+                for flip in &results {
+                    if let Some(opponent) = flip.associated_player {
+                        if flip.winner == Some(player) { won.push(opponent); }
+                        if flip.loser == Some(player) { lost.push(opponent); }
+                    }
+                }
+                ctx.set_tagged_players(tags.won.clone(), won);
+                ctx.set_tagged_players(tags.lost.clone(), lost);
             }
             let positive = results.iter().filter(|flip| match self.kind {
                 ironsmith_core::CoinFlipKind::Called => flip.winner == Some(player),

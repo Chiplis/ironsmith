@@ -3166,6 +3166,7 @@ pub fn parse_vote_affinity_subject_verb(
         let effect_tokens = trim_commas(shape.effect_tokens);
         let effects = parse_effect_chain_lexed(&effect_tokens)?;
         return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                require_evidence: false,
             tag: crate::tag::CompilerReferenceTag::VotedAgainstYou.bind(),
             effects,
         })]));

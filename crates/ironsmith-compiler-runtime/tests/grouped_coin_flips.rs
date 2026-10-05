@@ -81,6 +81,8 @@ struct Choices {
     accept: bool,
     option_players: Vec<PlayerId>,
     pause_on_option: Option<usize>,
+    number: Option<u32>,
+    pause_on_number: bool,
     pending: bool,
 }
 
@@ -110,6 +112,11 @@ impl DecisionMaker for Choices {
         self.option_players.push(context.player);
         self.pending = self.pause_on_option == Some(self.option_players.len());
         vec![self.option]
+    }
+
+    fn decide_number(&mut self, _: &GameState, context: &ironsmith::decisions::context::NumberContext) -> u32 {
+        self.pending = self.pause_on_number;
+        self.number.unwrap_or(context.min)
     }
 
     fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool {
@@ -731,6 +738,7 @@ fn optional_group_decline_has_no_coin_outcome_and_cannot_reuse_an_earlier_receip
 #[test]
 fn unbound_grouped_coin_consumers_fail_closed() {
     for text in [
+        "Type: Sorcery\nFlip that many coins.",
         "Type: Sorcery\nFor each flip you win, draw a card.",
         "Type: Sorcery\nFor each coin that comes up heads, you gain 1 life.",
         "Type: Sorcery\nIf both coins come up heads, draw a card.",
@@ -894,6 +902,71 @@ fn mirror_march_copies_exact_entry_lki_grants_noncopiable_haste_and_exiles_only_
     }
 }
 
+fn multiplayer_game() -> GameState {
+    let mut g = GameState::new(vec!["Alice".into(), "Bob".into(), "Cara".into(), "Dan".into()], 30);
+    g.turn.phase = ironsmith::Phase::FirstMain;
+    g.turn.priority_player = Some(A);
+    for symbol in [ironsmith::ManaSymbol::Red, ironsmith::ManaSymbol::Blue, ironsmith::ManaSymbol::Colorless] {
+        g.player_mut(A).unwrap().mana_pool.add(symbol, 30);
+    }
+    g
+}
+
+#[test]
+fn mutalith_retains_each_opponents_coin_and_damages_only_the_losing_associations() {
+    for definition in followup_definitions("Mutalith Vortex Beast") {
+        for departed in [false, true] {
+            let mut g = multiplayer_game();
+            let spell = g.create_object_from_definition(&definition, A, Zone::Hand);
+            let stable = g.object(spell).unwrap().stable_id;
+            library(&mut g, A, 5);
+            let mut dm = Choices::default();
+            cast(&mut g, spell, &mut dm);
+            resolve_stack_entry_with(&mut g, &mut dm).unwrap();
+            assert_eq!(stack(&mut g, vec![], &mut dm), 1);
+            let source = g.find_object_by_stable_id(stable).unwrap();
+            assert!(g.current_has_static_ability_id(source, StaticAbilityId::Trample));
+            if departed { g.move_object_by_effect(source, Zone::Graveyard).unwrap(); }
+            force(&mut g, &[H, T, H]);
+            settle(&mut g, &mut dm);
+            assert_eq!(g.player(A).unwrap().hand.len(), 2);
+            assert_eq!(g.player(A).unwrap().life, 30);
+            assert_eq!(g.player(B).unwrap().life, 30);
+            assert_eq!(g.player(PlayerId(2)).unwrap().life, 27);
+            assert_eq!(g.player(PlayerId(3)).unwrap().life, 30);
+            assert_eq!(dm.option_players, [A, A, A], "the controller calls every coin; the associated opponents do not");
+        }
+    }
+}
+
+#[test]
+fn opponent_batch_uses_actual_flipper_and_publishes_empty_or_exact_rosters_atomically() {
+    let mut g = multiplayer_game();
+    let source = object(&mut g, B, Zone::Battlefield, "Foreign opponent batch", "Type: Artifact");
+    let tags = ironsmith_core::CoinFlipOpponentTags { won: "won_opponents".into(), lost: "lost_opponents".into() };
+    let mut effect = FlipCoinEffect::new(PlayerFilter::Specific(A));
+    effect.opponent_results = Some(tags.clone());
+    force(&mut g, &[H, T, H]);
+    let mut dm = Choices { pause_on_option: Some(2), ..Default::default() };
+    let mut ctx = ExecutionContext::new(source, B, &mut dm);
+    let pending = effect.execute(&mut g, &mut ctx).unwrap();
+    assert!(pending.coin_flip_results().is_none());
+    assert!(ctx.get_tagged_players(tags.won.as_str()).is_none());
+    assert!(ctx.get_tagged_players(tags.lost.as_str()).is_none());
+    drop(ctx);
+    dm.pending = false;
+    dm.pause_on_option = None;
+    let mut ctx = ExecutionContext::new(source, B, &mut dm);
+    let out = effect.execute(&mut g, &mut ctx).unwrap();
+    assert_eq!(out.coin_flip_results().unwrap().iter().map(|flip| (flip.player, flip.associated_player)).collect::<Vec<_>>(),
+        [(A, Some(B)), (A, Some(PlayerId(2))), (A, Some(PlayerId(3)))]);
+    assert_eq!(ctx.get_tagged_players(tags.won.as_str()).unwrap(), &[B, PlayerId(3)]);
+    assert_eq!(ctx.get_tagged_players(tags.lost.as_str()).unwrap(), &[PlayerId(2)]);
+    force(&mut g, &[H, H, H]);
+    effect.execute(&mut g, &mut ctx).unwrap();
+    assert!(ctx.get_tagged_players(tags.lost.as_str()).unwrap().is_empty(), "a later all-win instruction replaces the losing roster");
+}
+
 #[test]
 fn mirror_haste_occurs_after_entry_observation_for_original_and_replacement_added_tokens() {
     for definition in followup_definitions("Mirror March") {
@@ -932,4 +1005,298 @@ fn mirror_haste_occurs_after_entry_observation_for_original_and_replacement_adde
         let copied = out.result_objects().unwrap()[0];
         assert!(g.current_has_static_ability_id(copied, StaticAbilityId::Haste), "inline haste survives a subsequent copy");
     }
+}
+
+fn free_hand_action(g: &GameState, player: PlayerId, spell: ObjectId) -> Option<LegalAction> {
+    ironsmith::decision::compute_legal_actions(g, player).unwrap().into_iter().find(|action| matches!(action,
+        LegalAction::CastSpell { spell_id, from_zone: Zone::Hand,
+            casting_method: ironsmith::alternative_cast::CastingMethod::PlayFrom { use_alternative: Some(_), .. } }
+            if *spell_id == spell))
+}
+
+#[test]
+fn yusri_chosen_count_owns_wins_losses_and_only_five_wins_grant_temporary_free_hand_casts() {
+    for definition in followup_definitions("Yusri, Fortune's Flame") {
+        for faces in [vec![H], vec![H, T, H], vec![H, H, H, H, T], vec![H; 5]] {
+            let mut g = game();
+            let spell = g.create_object_from_definition(&definition, A, Zone::Hand);
+            let stable = g.object(spell).unwrap().stable_id;
+            library(&mut g, A, 8);
+            let mut dm = Choices { number: Some(faces.len() as u32), ..Default::default() };
+            cast(&mut g, spell, &mut dm);
+            settle(&mut g, &mut dm);
+            let source = g.find_object_by_stable_id(stable).unwrap();
+            assert!(g.current_has_static_ability_id(source, StaticAbilityId::Flying));
+            force(&mut g, &faces);
+            attack(&mut g, source, &mut dm);
+            assert_eq!(g.stack.len(), 1);
+            settle(&mut g, &mut dm);
+            let wins = faces.iter().filter(|face| **face == H).count();
+            let losses = faces.len() - wins;
+            assert_eq!(dm.option_players.len(), faces.len());
+            assert_eq!(g.player(A).unwrap().hand.len(), wins);
+            assert_eq!(g.player(A).unwrap().life, 30 - losses as i32 * 2);
+            g.player_mut(A).unwrap().mana_pool = Default::default();
+            let expensive = object(&mut g, A, Zone::Hand, "Later free instant", "Mana cost: {6}{B}\nType: Instant\nYou gain 1 life.");
+            assert_eq!(free_hand_action(&g, A, expensive).is_some(), wins == 5);
+            let sorcery = object(&mut g, A, Zone::Hand, "Timing still applies", "Mana cost: {6}{B}\nType: Sorcery\nYou gain 1 life.");
+            assert!(free_hand_action(&g, A, sorcery).is_none(), "Yusri does not grant flash during combat");
+            if wins == 5 {
+                g.move_object_by_effect(source, Zone::Graveyard).unwrap();
+                let free = free_hand_action(&g, A, expensive).unwrap();
+                action(&mut g, A, free, &mut dm);
+                settle(&mut g, &mut dm);
+                assert_eq!(g.player(A).unwrap().life, 31);
+                let additional = object(&mut g, A, Zone::Hand, "Required additional payment", "Mana cost: {6}{B}\nType: Instant\nAs an additional cost to cast this spell, pay 2 life.\nYou gain 1 life.");
+                let free = free_hand_action(&g, A, additional).unwrap();
+                action(&mut g, A, free, &mut dm);
+                settle(&mut g, &mut dm);
+                assert_eq!(g.player(A).unwrap().life, 30, "the free alternative does not waive an additional cost");
+                let other = object(&mut g, B, Zone::Hand, "Opponent has no grant", "Mana cost: {6}{B}\nType: Instant\nYou gain 1 life.");
+                assert!(free_hand_action(&g, B, other).is_none());
+                g.turn.phase = ironsmith::Phase::SecondMain;
+                g.turn.step = None;
+                assert!(free_hand_action(&g, A, sorcery).is_some());
+                ironsmith::turn::execute_cleanup_step(&mut g);
+                g.turn.phase = ironsmith::Phase::FirstMain;
+                g.turn.step = None;
+                assert!(free_hand_action(&g, A, sorcery).is_none(), "the resolving permission expires at cleanup");
+            }
+        }
+    }
+}
+
+#[test]
+fn yusri_pending_numeric_choice_publishes_no_flip_or_permission_and_can_resume() {
+    for definition in followup_definitions("Yusri, Fortune's Flame") {
+        let mut g = game();
+        let source = g.create_object_from_definition(&definition, A, Zone::Battlefield);
+        library(&mut g, A, 8);
+        let mut dm = Choices { number: Some(5), pause_on_number: true, ..Default::default() };
+        force(&mut g, &[H; 5]);
+        attack(&mut g, source, &mut dm);
+        let before = g.irreversible_random_count();
+        resolve_stack_entry_with(&mut g, &mut dm).unwrap();
+        assert!(dm.pending);
+        assert_eq!(g.stack.len(), 1);
+        assert_eq!(g.irreversible_random_count(), before);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), 0);
+        assert!(g.player(A).unwrap().hand.is_empty());
+        assert!(g.effect_store.grant_registry.grants.is_empty());
+        dm.pending = false;
+        dm.pause_on_number = false;
+        settle(&mut g, &mut dm);
+        assert_eq!(g.player(A).unwrap().hand.len(), 5);
+        assert_eq!(dm.option_players.len(), 5);
+    }
+}
+
+fn modifier_definitions(name: &str) -> [CardDefinition; 2] {
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../fixtures/grouped_coin_modifiers.json.fixture")).unwrap();
+    let row = rows.into_iter().find(|row| row["name"] == name).unwrap();
+    program_definitions(name, row["text"].as_str().unwrap())
+}
+
+#[test]
+fn both_frozen_thumb_entries_are_paid_artifacts_whose_ignored_coins_never_complete() {
+    for name in ["Krark's Thumb", "Krark's Thumb // Krark's Thumb"] {
+        for definition in modifier_definitions(name) {
+            let mut g = game();
+            let spell = g.create_object_from_definition(&definition, A, Zone::Hand);
+            let stable = g.object(spell).unwrap().stable_id;
+            let mut dm = Choices::default();
+            cast(&mut g, spell, &mut dm);
+            settle(&mut g, &mut dm);
+            let source = g.find_object_by_stable_id(stable).unwrap();
+            force(&mut g, &[H, T, T, H]);
+            let out = flip(&mut g, source, A, 2, false, false, &mut dm);
+            assert_eq!(out.coin_flip_results().unwrap().iter().map(|result| result.face).collect::<Vec<_>>(), [H, T]);
+            assert_eq!(out.as_count(), Some(1));
+            assert_eq!(out.events.len(), 2);
+            assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), 2);
+            g.move_object_by_effect(source, Zone::Graveyard).unwrap();
+            let before = g.irreversible_random_count();
+            force(&mut g, &[T]);
+            let out = flip(&mut g, source, A, 1, false, false, &mut dm);
+            assert_eq!(out.coin_flip_results().unwrap().len(), 1);
+            assert_eq!(g.irreversible_random_count(), before + 1);
+        }
+    }
+}
+
+#[test]
+fn frozen_edgar_draws_for_current_controlled_artifacts_and_its_batch_rule_needs_the_live_source() {
+    for definition in modifier_definitions("Edgar, King of Figaro") {
+        for departed in [false, true] {
+            let mut g = game();
+            object(&mut g, A, Zone::Battlefield, "Controlled artifact one", "Type: Artifact");
+            object(&mut g, A, Zone::Battlefield, "Controlled artifact two", "Type: Artifact Creature\nPower/Toughness: 1/1");
+            object(&mut g, B, Zone::Battlefield, "Opponent artifact", "Type: Artifact");
+            object(&mut g, A, Zone::Battlefield, "Not an artifact", "Type: Enchantment");
+            library(&mut g, A, 7);
+            let spell = g.create_object_from_definition(&definition, A, Zone::Hand);
+            let stable = g.object(spell).unwrap().stable_id;
+            let mut dm = Choices::default();
+            cast(&mut g, spell, &mut dm);
+            resolve_stack_entry_with(&mut g, &mut dm).unwrap();
+            assert_eq!(stack(&mut g, vec![], &mut dm), 1);
+            let source = g.find_object_by_stable_id(stable).unwrap();
+            object(&mut g, A, Zone::Battlefield, "Artifact before resolution", "Type: Artifact");
+            if departed { g.move_object_by_effect(source, Zone::Graveyard).unwrap(); }
+            settle(&mut g, &mut dm);
+            assert_eq!(g.player(A).unwrap().hand.len(), 3, "the ETB counts artifacts at resolution and excludes opponents");
+            force(&mut g, &[T, T]);
+            let out = flip(&mut g, source, A, 2, true, false, &mut dm);
+            assert_eq!(out.coin_flip_results().unwrap().iter().map(|coin| (coin.face, coin.winner)).collect::<Vec<_>>(),
+                if departed { vec![(T, None); 2] } else { vec![(H, Some(A)); 2] });
+            assert!(dm.option_players.is_empty(), "Edgar gives face-only flips winners without requiring a call");
+        }
+    }
+}
+
+#[test]
+fn required_coin_opponent_roster_distinguishes_missing_from_empty_and_rolls_back_partial_work() {
+    use ironsmith::effect::Effect;
+    use ironsmith::effects::{ExecutionError, ForEachTaggedPlayerEffect};
+    let mut g = multiplayer_game();
+    let source = g.new_object_id();
+    let mut required = ForEachTaggedPlayerEffect::new("required_losses", vec![Effect::lose_life_player(2, PlayerFilter::IteratedPlayer)]);
+    required.require_evidence = true;
+    let mut dm = Choices::default();
+    let mut ctx = ExecutionContext::new(source, A, &mut dm);
+    assert!(matches!(required.execute(&mut g, &mut ctx), Err(ExecutionError::IncompleteEvidence(_))));
+    ctx.set_tagged_players("required_losses", vec![]);
+    assert_eq!(required.execute(&mut g, &mut ctx).unwrap().as_count(), Some(0));
+    ctx.set_tagged_players("required_losses", vec![B, PlayerId(2)]);
+    required.effects.push(Effect::new(ironsmith::effects::ChooseNumberEffect::new(PlayerFilter::You, 5, 1)));
+    assert!(matches!(required.execute(&mut g, &mut ctx), Err(ExecutionError::Impossible(_))));
+    assert_eq!(g.player(B).unwrap().life, 30);
+    assert_eq!(g.player(PlayerId(2)).unwrap().life, 30);
+    assert_eq!(ctx.iteration.iterated_player, None);
+    assert_eq!(ctx.get_tagged_players("required_losses").unwrap(), &[B, PlayerId(2)]);
+    drop(ctx);
+    required.effects.pop();
+    required.effects.push(Effect::flip_coin(PlayerFilter::IteratedPlayer));
+    force(&mut g, &[H, T]);
+    dm.pause_on_option = Some(2);
+    let random = g.irreversible_random_count();
+    let mut ctx = ExecutionContext::new(source, A, &mut dm);
+    ctx.set_tagged_players("required_losses", vec![B, PlayerId(2)]);
+    let pending = required.execute(&mut g, &mut ctx).unwrap();
+    assert!(ctx.decision_maker.awaiting_choice());
+    assert!(pending.events.is_empty());
+    assert_eq!(g.player(B).unwrap().life, 30);
+    assert_eq!(g.player(PlayerId(2)).unwrap().life, 30);
+    assert_eq!(g.irreversible_random_count(), random);
+    assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(B), 0);
+    assert_eq!(ctx.get_tagged_players("required_losses").unwrap(), &[B, PlayerId(2)]);
+    drop(ctx);
+    dm.pending = false;
+    dm.pause_on_option = None;
+    let mut ctx = ExecutionContext::new(source, A, &mut dm);
+    let optional = ForEachTaggedPlayerEffect::new("unbound_optional_roster", vec![Effect::gain_life(9)]);
+    assert_eq!(optional.execute(&mut g, &mut ctx).unwrap().as_count(), Some(0));
+    assert_eq!(g.player(A).unwrap().life, 30);
+}
+
+#[test]
+fn mutalith_counts_only_opponents_in_its_abilitys_range_of_influence() {
+    for definition in followup_definitions("Mutalith Vortex Beast") {
+        let mut g = multiplayer_game();
+        g.enable_limited_range_of_influence(vec![A, B, PlayerId(2), PlayerId(3)], vec![1; 4]).unwrap();
+        let spell = g.create_object_from_definition(&definition, A, Zone::Hand);
+        library(&mut g, A, 4);
+        let mut dm = Choices::default();
+        force(&mut g, &[H, T]);
+        cast(&mut g, spell, &mut dm);
+        settle(&mut g, &mut dm);
+        assert_eq!(dm.option_players, [A, A]);
+        assert_eq!(g.player(A).unwrap().hand.len(), 1);
+        assert_eq!(g.player(B).unwrap().life, 30);
+        assert_eq!(g.player(PlayerId(2)).unwrap().life, 30, "the distant opponent supplies no coin");
+        assert_eq!(g.player(PlayerId(3)).unwrap().life, 27);
+    }
+    let mut g = multiplayer_game();
+    g.enable_limited_range_of_influence(vec![A, B, PlayerId(2), PlayerId(3)], vec![1; 4]).unwrap();
+    let source = object(&mut g, B, Zone::Battlefield, "Different range controller", "Type: Artifact");
+    let mut effect = FlipCoinEffect::new(PlayerFilter::Specific(A));
+    effect.opponent_results = Some(ironsmith_core::CoinFlipOpponentTags { won: "range_wins".into(), lost: "range_losses".into() });
+    force(&mut g, &[H, H]);
+    let mut dm = Choices::default();
+    let out = effect.execute(&mut g, &mut ExecutionContext::new(source, B, &mut dm)).unwrap();
+    assert_eq!(out.coin_flip_results().unwrap().iter().map(|flip| flip.associated_player).collect::<Vec<_>>(),
+        [Some(B), Some(PlayerId(2))], "opponent relation follows A while range follows the resolving controller B");
+}
+
+#[test]
+fn chosen_coin_count_requires_exact_numeric_evidence_and_outer_failure_runs_no_followups() {
+    use ironsmith::effect::{Effect, EffectId, ExecutionFact};
+    use ironsmith::effects::{ExecutionError, SequenceEffect, execute_effect};
+    let value = ironsmith_core::Value::PriorEffectMetric {
+        effect_id: EffectId(19),
+        query: ironsmith_core::PriorEffectMetricQuery::new(ironsmith_core::EffectMetricSource::Outcome, ironsmith_core::EffectMetric::Count)
+            .with_action(ironsmith_core::PriorEffectAction::ChosenNumber),
+    };
+    let mut g = game();
+    let source = object(&mut g, A, Zone::Battlefield, "Count receipt source", "Type: Artifact");
+    library(&mut g, A, 5);
+    let mut flip = FlipCoinEffect::new(PlayerFilter::You);
+    flip.count_value = Some(value);
+    let mut dm = Choices::default();
+    let mut ctx = ExecutionContext::new(source, A, &mut dm);
+    let random = g.irreversible_random_count();
+    for outcome in [None, Some(EffectOutcome::count(5)), Some(EffectOutcome::count(5).with_execution_fact(ExecutionFact::ChosenNumber(4)))] {
+        ctx.effect_outcomes.remove(&EffectId(19));
+        if let Some(outcome) = outcome { ctx.store_outcome(EffectId(19), outcome); }
+        assert!(matches!(flip.execute(&mut g, &mut ctx), Err(ExecutionError::IncompleteEvidence(_))));
+        let sequence = Effect::new(SequenceEffect::new(vec![Effect::gain_life(2), Effect::new(flip.clone()), Effect::draw(3)]));
+        assert!(matches!(execute_effect(&mut g, &sequence, &mut ctx), Err(ExecutionError::IncompleteEvidence(_))));
+        assert_eq!(g.player(A).unwrap().life, 30);
+        assert!(g.player(A).unwrap().hand.is_empty());
+        assert_eq!(g.irreversible_random_count(), random);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), 0);
+    }
+    ctx.store_outcome(EffectId(19), EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0)));
+    let empty = flip.execute(&mut g, &mut ctx).unwrap();
+    assert!(empty.coin_flip_results().unwrap().is_empty(), "an authored completed choice of zero is valid evidence");
+    ctx.store_outcome(EffectId(19), EffectOutcome::count(2).with_execution_fact(ExecutionFact::ChosenNumber(2)));
+    force(&mut g, &[H, T]);
+    let two = flip.execute(&mut g, &mut ctx).unwrap();
+    assert_eq!(two.coin_flip_results().unwrap().len(), 2);
+    assert_eq!(two.as_count(), Some(1), "the flip receipt does not mistake the chosen count for wins");
+}
+
+#[test]
+fn required_player_iteration_shares_one_token_resource_transaction_across_participants() {
+    use ironsmith::effect::Effect;
+    use ironsmith::effects::{CreateTokenCopyEffect, ExecutionError, ForEachTaggedPlayerEffect};
+    use ironsmith::effects::tokens::TokenCreationLimits;
+    let mut g = multiplayer_game();
+    let source = object(&mut g, A, Zone::Battlefield, "Roster transaction", "Type: Artifact");
+    let model = object(&mut g, A, Zone::Battlefield, "Roster token model", "Type: Creature\nPower/Toughness: 1/1");
+    let mut copy = CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(model));
+    copy.controller = PlayerFilter::IteratedPlayer;
+    let mut iteration = ForEachTaggedPlayerEffect::new("recipients", vec![Effect::new(copy)]);
+    iteration.require_evidence = true;
+    let before = g.battlefield.len();
+    let mut dm = Choices::default();
+    let mut ctx = ExecutionContext::new(source, A, &mut dm);
+    ctx.set_tagged_players("recipients", vec![B, PlayerId(2)]);
+    g.set_token_creation_limits(TokenCreationLimits { max_instructions: 1, ..Default::default() });
+    let error = iteration.execute(&mut g, &mut ctx).unwrap_err();
+    assert!(matches!(error, ExecutionError::ResourceLimitExceeded { resource: "token instruction work", .. }));
+    assert_eq!(g.battlefield.len(), before, "the first participant's token is rolled back with the second failure");
+    assert!(g.take_pending_trigger_events().is_empty());
+    assert_eq!(ctx.iteration.iterated_player, None);
+    g.set_token_creation_limits(TokenCreationLimits { max_instructions: 2, ..Default::default() });
+    iteration.execute(&mut g, &mut ctx).unwrap();
+    assert_eq!(g.battlefield.len(), before + 2);
+    for recipient in [B, PlayerId(2)] {
+        assert_eq!(g.battlefield.iter().filter(|id| g.object(**id).is_some_and(|object|
+            object.kind == ironsmith::object::ObjectKind::Token && game_controller(&g, object.id) == recipient)).count(), 1);
+    }
+}
+
+fn game_controller(g: &GameState, id: ObjectId) -> PlayerId {
+    g.controller_of(g.object(id).unwrap())
 }

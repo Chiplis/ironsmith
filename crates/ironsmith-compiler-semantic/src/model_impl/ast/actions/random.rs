@@ -11,6 +11,8 @@ pub enum RandomActionAst {
         count: u32,
         kind: ironsmith_core::CoinFlipKind,
         repeat_until_loss: bool,
+        opponent_results: Option<(ironsmith_compiler_ast::TagRef, ironsmith_compiler_ast::TagRef)>,
+        count_value: Option<Value>,
     },
     RollDie {
         sides: u32,

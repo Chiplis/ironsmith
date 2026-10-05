@@ -1046,10 +1046,11 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachTaggedPlayerEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(crate::effects::ForEachTaggedPlayerEffect::new(
-            payload.tag.clone(),
-            convert_effects(payload.effects.iter().cloned(), hooks)?,
-        )));
+        let mut runtime = crate::effects::ForEachTaggedPlayerEffect::new(
+            payload.tag.clone(), convert_effects(payload.effects.iter().cloned(), hooks)?,
+        );
+        runtime.require_evidence = payload.require_evidence;
+        return Ok(Effect::new(runtime));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::VoteEffect<M::Effect>>(&effect) {
         let converted = match &payload.choice {
@@ -1926,6 +1927,8 @@ where
         };
         runtime.count = payload.count;
         runtime.repeat_until_loss = payload.repeat_until_loss;
+        runtime.opponent_results = payload.opponent_results.clone();
+        runtime.count_value = payload.count_value.clone();
         runtime.forced_face = payload.forced_face;
         runtime.forced_winner = payload.forced_winner.clone();
         runtime.forced_loser = payload.forced_loser.clone();

@@ -6544,9 +6544,16 @@
     }
     if let Some(flip_coin) = effect.downcast_ref::<crate::effects::FlipCoinEffect>() {
         let player = describe_player_filter(&flip_coin.player);
+        if flip_coin.opponent_results.is_some() {
+            return if player == "you" { "Flip a coin for each opponent you have".into() }
+                else { format!("{player} flips a coin for each opponent they have") };
+        }
         if flip_coin.repeat_until_loss {
             return if player == "you" { "Flip a coin until you lose a flip".into() }
                 else { format!("{player} flips a coin until they lose a flip") };
+        }
+        if let Some(count) = &flip_coin.count_value {
+            return format!("{} {} coins", if player == "you" { "Flip".to_string() } else { format!("{player} flips") }, describe_value(count));
         }
         if flip_coin.count != 1 {
             return format!("{} {} coins", if player == "you" { "Flip".to_string() } else { format!("{player} flips") }, flip_coin.count);

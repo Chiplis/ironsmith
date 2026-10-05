@@ -31,6 +31,8 @@ mod forced_block_patterns;
 mod graveyard_copy_cast;
 #[path = "effect_list/graveyard_return_compaction.rs"]
 mod graveyard_return_compaction;
+#[path = "effect_list/named_random_discard.rs"]
+mod named_random_discard;
 #[path = "effect_list/helpers_00.rs"]
 mod helpers_00;
 #[path = "effect_list/helpers_01.rs"]
@@ -100,6 +102,7 @@ pub(in crate::compiled_text) use graveyard_copy_cast::{
     render_conditional_graveyard_exile_copy_cast_pair, render_graveyard_exile_copy_cast_pair,
 };
 pub(super) use graveyard_return_compaction::*;
+pub(super) use named_random_discard::*;
 pub(super) use helpers_00::describe_each_player_choose_creature_destroy_others;
 pub(in crate::compiled_text) use helpers_00::describe_target_only_then_exchange_control;
 pub(super) use helpers_00::player_is_controller_of_produced_target;
@@ -8962,6 +8965,9 @@ pub(in crate::compiled_text) fn describe_nested_search_for_each_conditional_shuf
 }
 
 pub(crate) fn describe_pre_clause_structural_effect_list(effects: &[Effect]) -> Option<String> {
+    if let Some(text) = describe_named_random_reveal_discard(effects) {
+        return Some(text);
+    }
     if let Some(text) = describe_declared_graveyard_random_partition(effects) {
         return Some(text);
     }
@@ -13348,6 +13354,9 @@ fn describe_may_cast_from_owned_exile_pool(effects: &[Effect]) -> Option<String>
 }
 
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(text) = describe_named_random_reveal_discard(effects) {
+        return text;
+    }
     if let Some(text) = describe_declared_graveyard_random_partition(effects) {
         return text;
     }
@@ -16565,6 +16574,9 @@ fn describe_shared_duration_permission_and_entry_rule(effects: &[Effect]) -> Opt
 }
 
 pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
+    if let Some(text) = describe_named_random_reveal_discard(effects) {
+        return Some(lowercase_first(&text));
+    }
     if let Some(text) = describe_declared_graveyard_random_partition(effects) {
         return Some(lowercase_first(&text));
     }

@@ -92,7 +92,7 @@ pub use effect::{
     ChooseLandTypeEffect, ChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
     RippleEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClashOpponentMode, ClearGoadEffect,
-    ClearSuspectedEffect, CoinFace, CoinFlipKind, CombatDamagePreventionTarget, ConditionalEffect,
+    ClearSuspectedEffect, CoinFace, CoinFlipKind, CoinFlipOpponentTags, CombatDamagePreventionTarget, ConditionalEffect,
     ConditionalModeRange, ConditionalSurface, ConniveEffect, ConspireCostEffect,
     ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule, ContinuousDurationObject,
     ContinuousDurationPlayer, ContinuousDurationPredicate, ControlCombatChoicesThisTurnEffect,

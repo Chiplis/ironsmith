@@ -934,6 +934,7 @@ impl Effect {
         Self::new(crate::effects::ForEachTaggedPlayerEffect {
             tag: tag.into(),
             effects,
+            require_evidence: false,
         })
     }
 

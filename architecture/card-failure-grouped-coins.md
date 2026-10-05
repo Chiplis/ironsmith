@@ -19,9 +19,8 @@ three Ral loyalty abilities are part of the claimed full body. The prior source
 already owns partner-with search, power/toughness doubling, tokens attacking,
 and extra turns; this patch composes those owners with grouped coin evidence.
 
-Mutalith's secondary body; Yusri's chosen count and casting permission; and Ral Zarek, Guest Lecturer's
-skip-turn body remain outside this claimed cohort. Krark's Thumb and Edgar are
-modifier interaction scenarios, not additional claimed frozen recoveries here.
+Ral Zarek, Guest Lecturer's skip-turn body remains outside this claimed cohort. Modifier fixtures and full-body closure are recorded separately below;
+the original eight-entry cohort is unchanged.
 
 ## Semantic boundaries
 
@@ -97,3 +96,62 @@ and replacement-added tokens, so copying one again does not inherit haste.
 Authored native scenarios cover zero and multiple wins, both source departures,
 recopy semantics, a control change before cleanup, and delayed exile limited to
 the actual created group. No added scenario has run.
+
+## Mutalith continuation
+
+The separate followup fixture adds Mutalith Vortex Beast as an UNVALIDATED
+full-body proposal. One simultaneous coin batch captures the actual flipper's
+opponents before calls, intersected with the resolving source controller's
+range of influence, and records each opponent on its original retained coin.
+The shared typed player-tag owner exports exact won/lost rosters; the existing
+ForEachTaggedPlayer owner applies loss consequences to those saved players.
+Its typed required-roster mode distinguishes missing evidence from a known-empty
+result and shares one atomic resource transaction across every participant.
+Ignored replacement coins keep their parent association and do not add players.
+Native full-body scenarios include trample, actual casting and ETB, three
+opponents with mixed results, departed-source damage, a foreign controller,
+pending replay, and replacement of a previous losing roster with known-empty
+results. The flipper alone receives draws; opponents never become callers.
+
+## Yusri continuation
+
+The followup fixture adds Yusri, Fortune's Flame as an UNVALIDATED full-body
+proposal. The existing bounded-number decision provides the exact dynamic coin
+count, using a typed ChosenNumber query rather than announced X or a payment.
+The later draw, loss-damage, and five-win predicate all retain the coin receipt
+independently of the numeric decision and intervening consequences. The shared
+value owner validates the exact ChosenNumber execution fact and its consistency;
+an absent or unrelated numeric outcome cannot turn into a completed zero flip.
+
+The duration inside “cast spells from your hand this turn without paying their
+mana costs” lowers through the shared filtered hand alternative-cast grant,
+expiring at cleanup. It includes later hand arrivals, retains normal timing and
+mandatory additional costs, belongs to the ability controller, and survives
+the creature leaving. Authored full-body direct/artifact/native scenarios cover
+flying, real casting/attack, chosen counts one/three/five, mixed losses, five-win
+reward, multiple real free casts, additional life cost, opponent/timing scope,
+cleanup, and suspension at the numeric decision. No executable validation ran.
+
+## Modifier full-body closure
+
+`fixtures/grouped_coin_modifiers.json.fixture` separately proposes the exact
+frozen Krark's Thumb, its reversible-card alias, and Edgar, King of Figaro
+entries, all UNVALIDATED. Both Thumb entries have real paid-artifact cast
+scenarios before replacement use and removal. Edgar's independent direct and
+artifact full bodies exercise real casting, the ETB draw at resolution from
+current controlled artifacts (including an artifact creature and a later
+arrival), exclusion of an opponent's artifact, the queued ETB surviving source
+departure, and the static modifier disappearing with its source. Earlier
+scenarios supply nested replacements, ignored coins, choice suspension, turn
+reset, actual flipper/controller distinction, and fixed/repeated batch rules.
+The complete modifier pass received independent source review, separately from
+the original grouped/repeated cohort; no scenario was executed.
+
+## Final source-review disposition
+
+The original eight entries, the three continuation bodies, and the three
+modifier entries have each completed independent bounded source review: fourteen
+frozen entries representing eleven Oracle identities. All remain UNVALIDATED
+until the campaign's deferred executable phase. The worktree contains source,
+fixtures, authored scenarios and this note only; it does not update the central
+coverage matrix or publish externally. Diff checks were clean.

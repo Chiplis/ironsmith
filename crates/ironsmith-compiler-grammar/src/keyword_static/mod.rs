@@ -4855,11 +4855,19 @@ pub fn parse_double_damage_from_sources_you_control_of_chosen_type_line(
         return Ok(None);
     }
 
-    Ok(Some(
-        StaticAbility::double_damage_from_sources_you_control_of_chosen_type(
-            "Double all damage that sources you control of the chosen type would deal.".to_string(),
-        ),
-    ))
+    // Use the common typed multiplier owner, including source LKI support.
+    // No permanent/creature domain is implied by "sources": Kindred spells
+    // with the chosen subtype can deal damage too.
+    let mut source_filter = ObjectFilter::default().controlled_by(PlayerFilter::You);
+    source_filter.chosen_creature_type = true;
+    Ok(Some(StaticAbility::multiply_damage_amount_replacement(
+        source_filter,
+        Some(PlayerFilter::Any),
+        Some(ObjectFilter::default()),
+        2,
+        false,
+        "Double all damage that sources you control of the chosen type would deal.".to_string(),
+    )))
 }
 
 pub fn parse_damage_amount_replacement_line(
@@ -4998,6 +5006,9 @@ pub fn parse_prevent_half_damage_replacement_line(
 pub fn parse_double_damage_amount_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some(ability) = parse_double_damage_from_sources_you_control_of_chosen_type_line(tokens)? {
+        return Ok(Some(ability));
+    }
     let tokens = trim_edge_punctuation(tokens);
     let Some(spec) = keyword_static_lines::parse_damage_multiplier_tokens(&tokens) else {
         return Ok(None);

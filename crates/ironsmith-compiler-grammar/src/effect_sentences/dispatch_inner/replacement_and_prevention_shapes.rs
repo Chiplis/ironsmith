@@ -472,6 +472,7 @@ pub fn parse_you_and_each_opponent_voted_with_you_sentence(
     });
 
     let opponent_effect = EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                require_evidence: false,
         tag: crate::tag::CompilerReferenceTag::VotedWithYou.bind(),
         effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::subject_verb(
