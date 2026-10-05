@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "8d3d56d25b27eb3cf2444fa787419b836617d335",
+  "source_implementation_commit": "af75ea04a396fe8cf944c7e4b67d862da4739580",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 229,
-    "additional_proposed_compile_entries": 229,
+    "additional_proposed_unique_cards": 238,
+    "additional_proposed_compile_entries": 238,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -499,6 +499,32 @@
       ],
       "excluded_semantics": [
         "Cover of Winter requires shared X allocation across simultaneous recipients; and/or and one-or-more recipient shapes stay rejected."
+      ]
+    },
+    {
+      "id": "signed-controller-state-dynamic-anthems",
+      "stage": 23,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/dynamic_anthem_values.json.fixture",
+      "baseline_entries": [
+        "Carrion Grub",
+        "Coram, the Undertaker",
+        "Death's Shadow",
+        "Greven, Predator Captain",
+        "Kagemaro's Clutch",
+        "Kinbinding",
+        "Knowledge Is Power",
+        "Meishin, the Mind Cage",
+        "The Last Ride"
+      ],
+      "implementation_commit": "af75ea04a396fe8cf944c7e4b67d862da4739580",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "typed game-state where-X bindings and one negative scale",
+        "shared compiler/runtime context capability guard",
+        "layer-evaluated controller scalars and source-independent aggregate filters",
+        "history-publication and turn-context cache invalidation",
+        "legacy object-relative/event/tagged Dynamic paths preserved"
       ]
     }
   ],
@@ -4268,8 +4294,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "signed-controller-state-dynamic-anthems"
+      ]
     },
     {
       "card_name": "Carth the Lion",
@@ -5668,8 +5696,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "signed-controller-state-dynamic-anthems"
+      ]
     },
     {
       "card_name": "Cornered Market",
@@ -6707,8 +6737,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "signed-controller-state-dynamic-anthems"
+      ]
     },
     {
       "card_name": "Death-Greeter's Champion",
@@ -11973,8 +12005,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "signed-controller-state-dynamic-anthems"
+      ]
     },
     {
       "card_name": "Greymond, Avacyn's Stalwart",
@@ -14867,8 +14901,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "signed-controller-state-dynamic-anthems"
+      ]
     },
     {
       "card_name": "Kagha, Shadow Archdruid",
@@ -15387,8 +15423,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "signed-controller-state-dynamic-anthems"
+      ]
     },
     {
       "card_name": "King Darien XLVIII",
@@ -15611,8 +15649,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "signed-controller-state-dynamic-anthems"
+      ]
     },
     {
       "card_name": "Knowledge Pool",
@@ -17625,8 +17665,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "signed-controller-state-dynamic-anthems"
+      ]
     },
     {
       "card_name": "Meletis Charlatan",
@@ -28458,8 +28500,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "signed-controller-state-dynamic-anthems"
+      ]
     },
     {
       "card_name": "The Last Ronin",

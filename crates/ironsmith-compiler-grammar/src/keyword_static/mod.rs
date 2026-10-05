@@ -2,6 +2,7 @@ use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::PredicateAst;
 use crate::cards::builders::SourcePredicateAst;
 use crate::cards::builders::TurnEventPredicateAst;
+mod dynamic_anthem_values;
 mod blocking_permissions;
 pub use blocking_permissions::parse_blocking_capacity_static_line;
 mod costs_replacements_and_permissions;

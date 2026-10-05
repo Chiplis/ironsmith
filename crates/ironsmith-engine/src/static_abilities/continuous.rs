@@ -1076,6 +1076,11 @@ impl AnthemValueRuntimeExt for AnthemValue {
 fn anthem_value_as_layer_value(value: &AnthemValue) -> Option<Value> {
     match value {
         AnthemValue::Fixed(value) => Some(Value::Fixed(*value)),
+        AnthemValue::Dynamic(value)
+            if ironsmith_core::anthem_model::supports_controller_state_anthem_value(value) => Some(value.clone()),
+        // Legacy object-/resolution-relative Dynamic values retain their
+        // original discovery path until their source/affected context is
+        // explicitly supported by the layer adapter.
         AnthemValue::Dynamic(_) => None,
         AnthemValue::PerCount {
             multiplier,
@@ -3045,6 +3050,15 @@ impl Anthem {
     }
 }
 
+/// Preserve a negative X component without negating its binding a second time.
+/// Count-specific/for-each surfaces retain their existing rendering paths.
+fn signed_dynamic_anthem_basis(value: &Value) -> (&'static str, &Value) {
+    match value.unhinted() {
+        Value::Scaled(inner, -1) => ("-", inner.as_ref()),
+        _ => ("+", value),
+    }
+}
+
 impl StaticAbilityKind for Anthem {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Anthem
@@ -3224,31 +3238,24 @@ impl StaticAbilityKind for Anthem {
             (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness))
                 if power == toughness =>
             {
-                format!(
-                    "{subject} {verb} +X/+X, where X is {}",
-                    crate::runtime_display::describe_value(power),
-                )
+                let (sign, basis) = signed_dynamic_anthem_basis(power);
+                format!("{subject} {verb} {sign}X/{sign}X, where X is {}", crate::runtime_display::describe_value(basis))
             }
             (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness)) => {
-                format!(
-                    "{subject} {verb} +X/+Y, where X is {}, and Y is {}",
-                    crate::runtime_display::describe_value(power),
-                    crate::runtime_display::describe_value(toughness),
-                )
+                let (power_sign, power_basis) = signed_dynamic_anthem_basis(power);
+                let (toughness_sign, toughness_basis) = signed_dynamic_anthem_basis(toughness);
+                format!("{subject} {verb} {power_sign}X/{toughness_sign}Y, where X is {}, and Y is {}",
+                    crate::runtime_display::describe_value(power_basis),
+                    crate::runtime_display::describe_value(toughness_basis))
             }
             (AnthemValue::Dynamic(power), AnthemValue::Fixed(toughness)) => {
-                format!(
-                    "{subject} {verb} +X/{}, where X is {}",
-                    signed(*toughness),
-                    crate::runtime_display::describe_value(power),
-                )
+                let (sign, basis) = signed_dynamic_anthem_basis(power);
+                let toughness = signed_toughness(if sign == "-" { -1 } else { 1 }, *toughness);
+                format!("{subject} {verb} {sign}X/{toughness}, where X is {}", crate::runtime_display::describe_value(basis))
             }
             (AnthemValue::Fixed(power), AnthemValue::Dynamic(toughness)) => {
-                format!(
-                    "{subject} {verb} {}/+X, where X is {}",
-                    signed(*power),
-                    crate::runtime_display::describe_value(toughness),
-                )
+                let (sign, basis) = signed_dynamic_anthem_basis(toughness);
+                format!("{subject} {verb} {}/{sign}X, where X is {}", signed(*power), crate::runtime_display::describe_value(basis))
             }
             (
                 AnthemValue::CappedPerCount {

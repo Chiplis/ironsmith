@@ -3953,32 +3953,29 @@ pub fn parse_anthem_clause(
                         crate::lexer::token_word_refs(tokens).join(" ")
                     ))
                 })?;
-                if matches!(x_value.unhinted(), Value::PartySize(_)) {
+                let count = match &x_value {
+                    Value::GreatestManaValue(filter) => Some(AnthemCountExpression::GreatestManaValueAmong(filter.clone())),
+                    Value::BasicLandTypesAmong(filter) => Some(AnthemCountExpression::BasicLandTypesAmong(filter.clone())),
+                    Value::CreatureTypesAmong(filter) => Some(AnthemCountExpression::CreatureTypesAmong(filter.clone())),
+                    Value::Speed(player) => Some(AnthemCountExpression::PlayerSpeed(player.clone())),
+                    _ => anthem_count_expression_from_value(x_value.clone()),
+                };
+                if let Some(count) = count {
+                    // Keep established count-specific execution and rendering.
+                    scale = Some(count);
+                } else if matches!(x_value.unhinted(), Value::PartySize(_))
+                    || dynamic_anthem_values::supports_game_state_binding(&x_value)
+                {
+                    // The shared binding is already typed. Retain its complete
+                    // expression rather than forcing it into the narrower
+                    // count enum; component signs are applied exactly once by
+                    // resolve_anthem_value below.
                     value_scale = Some(x_value);
                 } else {
-                    scale = Some(match x_value {
-                        Value::Count(filter) => AnthemCountExpression::MatchingFilter(filter),
-                        Value::GreatestManaValue(filter) => {
-                            AnthemCountExpression::GreatestManaValueAmong(filter)
-                        }
-                        value if anthem_count_expression_from_value(value.clone()).is_some() => {
-                            anthem_count_expression_from_value(value)
-                                .expect("checked anthem count expression")
-                        }
-                        Value::BasicLandTypesAmong(filter) => {
-                            AnthemCountExpression::BasicLandTypesAmong(filter)
-                        }
-                        Value::CreatureTypesAmong(filter) => {
-                            AnthemCountExpression::CreatureTypesAmong(filter)
-                        }
-                        Value::Speed(player) => AnthemCountExpression::PlayerSpeed(player),
-                        _ => {
-                            return Err(CardTextError::ParseError(format!(
-                                "unsupported where-x anthem value (clause: '{}')",
-                                crate::lexer::token_word_refs(tokens).join(" ")
-                            )));
-                        }
-                    });
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported where-x anthem value (clause: '{}')",
+                        crate::lexer::token_word_refs(tokens).join(" ")
+                    )));
                 }
             }
             Some(anthem_grant_grammar::AnthemTailShape::AsLongAs { condition_tokens }) => {
