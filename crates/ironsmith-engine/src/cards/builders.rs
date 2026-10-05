@@ -640,6 +640,7 @@ pub(crate) enum KeywordAction {
     },
     Marker(&'static str),
     MarkerText(String),
+    JobSelect,
 }
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
@@ -938,6 +939,7 @@ impl KeywordAction {
             Self::Annihilator(amount) => format!("Annihilator {amount}"),
             Self::ForMirrodin => "For Mirrodin!".to_string(),
             Self::LivingWeapon => "Living weapon".to_string(),
+            Self::JobSelect => "Job select".to_string(),
             Self::Crew { amount, .. } => format!("Crew {amount}"),
             Self::Saddle { amount, .. } => format!("Saddle {amount}"),
             Self::Marker(name) => (*name).to_string(),
@@ -1935,6 +1937,7 @@ impl CardDefinitionBuilder {
             }),
             KeywordAction::ForMirrodin => self.for_mirrodin(),
             KeywordAction::LivingWeapon => self.living_weapon(),
+            KeywordAction::JobSelect => self.job_select(),
             KeywordAction::Crew {
                 amount,
                 timing,
@@ -3992,6 +3995,18 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    /// Add job select: create a 1/1 colorless Hero on entry, then attach this to it.
+    pub fn job_select(self) -> Self {
+        let created_tag = TagKey::from("job_select_created");
+        self.with_ability(Ability::triggered(
+            Trigger::this_enters_battlefield(),
+            vec![
+                Effect::create_tokens(Self::job_select_hero_token(), 1).tag(created_tag.clone()),
+                Effect::attach_to(ChooseSpec::Tagged(created_tag)),
+            ],
+        ))
+    }
+
     /// Add living weapon.
     ///
     /// "When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it."
@@ -4747,6 +4762,15 @@ impl CardDefinitionBuilder {
             .subtypes(vec![Subtype::Rebel])
             .color_indicator(ColorSet::RED)
             .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    fn job_select_hero_token() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Hero")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Hero])
+            .power_toughness(PowerToughness::fixed(1, 1))
             .build()
     }
 

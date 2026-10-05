@@ -384,6 +384,7 @@ pub enum CompilerReferenceTag {
     /// latest coordinated creation ("create a Cat, a Bird, and an Ox"), so a
     /// plural "those tokens" can name every member's result.
     CoordinatedCreatedResult,
+    JobSelectCreated,
 }
 
 impl CompilerReferenceTag {
@@ -455,6 +456,7 @@ impl CompilerReferenceTag {
             Self::OathCreature => "oath_creature",
             Self::MultiZoneSearchChosen => "multi_zone_search_chosen",
             Self::LivingWeaponCreated => "living_weapon_created",
+            Self::JobSelectCreated => "job_select_created",
             Self::JunkExiledCard => "junk_exiled_card",
             Self::JointDiscardOrSacrifice => "joint_discard_or_sacrifice",
             Self::IterativeLibraryExiled => "iterative_library_exiled",
@@ -607,7 +609,9 @@ impl CompilerReferenceTag {
             | Self::IterativeLibraryExiled
             | Self::CostExiledTop
             | Self::ManifestDreadGraveyard => (R::Exiled, D::Card),
-            Self::LivingWeaponCreated | Self::ForMirrodinCreated => (R::Created, D::Object),
+            Self::LivingWeaponCreated | Self::ForMirrodinCreated | Self::JobSelectCreated => {
+                (R::Created, D::Object)
+            }
             Self::CopiedStackObject => (R::Copied, D::Spell),
             Self::PreviousIteratedObjects | Self::IterativeLibraryCurrent => {
                 (R::Iteration, D::Object)

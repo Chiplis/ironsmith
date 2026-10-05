@@ -198,6 +198,8 @@ pub enum KeywordAction {
     MarkerText(String),
     /// Trample over planeswalkers (CR 702.19c).
     TrampleOverPlaneswalkers,
+    /// ETB token creation and Equipment attachment (CR 702.182).
+    JobSelect,
 }
 
 pub fn describe_soulshift_value(value: &Value) -> String {
@@ -555,6 +557,7 @@ impl KeywordAction {
             Self::Annihilator(amount) => format!("Annihilator {amount}"),
             Self::ForMirrodin => "For Mirrodin!".to_string(),
             Self::LivingWeapon => "Living weapon".to_string(),
+            Self::JobSelect => "Job select".to_string(),
             Self::Fuse => "Fuse".to_string(),
             Self::Prototype {
                 cost,

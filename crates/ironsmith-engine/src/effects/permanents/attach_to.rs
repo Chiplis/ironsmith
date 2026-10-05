@@ -1,9 +1,12 @@
 //! Attach to effect implementation.
 
-use super::{attach_battlefield_object_to_target, choose_color_as_becomes_attached};
+use super::{
+    attach_battlefield_object_to_target, attachment_can_attach_to_target,
+    choose_color_as_becomes_attached,
+};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_single_target_from_spec;
+use crate::effects::helpers::{resolve_objects_from_spec, resolve_single_target_from_spec};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::AttachmentTarget;
@@ -33,14 +36,62 @@ impl EffectExecutor for AttachToEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target = resolve_single_target_from_spec(game, &self.target, ctx)?;
-
         // If this is a spell on the stack (Aura resolving), defer attachment
         if let Some(source) = game.object(ctx.source)
             && source.zone == Zone::Stack
         {
             return Ok(EffectOutcome::resolved());
         }
+
+        // A token replacement can make "attach this to it" name several
+        // tokens. CR 301.5c: the Equipment's current controller chooses one,
+        // even if another player controls the resolving ability.
+        let target = if matches!(self.target.base(), ChooseSpec::Tagged(_)) {
+            let candidates = resolve_objects_from_spec(game, &self.target, ctx)?
+                .into_iter()
+                .filter(|id| {
+                    attachment_can_attach_to_target(game, ctx.source, AttachmentTarget::Object(*id))
+                        && !crate::targeting::has_protection_from_source(game, *id, ctx.source)
+                })
+                .collect::<Vec<_>>();
+            let id = match candidates.as_slice() {
+                [] => return Ok(EffectOutcome::resolved()),
+                [id] => *id,
+                _ => {
+                    let chooser = game.controller_of_id(ctx.source).unwrap_or(ctx.controller);
+                    let choice = crate::decisions::context::SelectObjectsContext::new(
+                        chooser,
+                        Some(ctx.source),
+                        "Choose which permanent to attach this to",
+                        candidates
+                            .iter()
+                            .filter_map(|id| {
+                                game.object(*id).map(|object| {
+                                    crate::decisions::context::SelectableObject::new(
+                                        *id,
+                                        object.name.clone(),
+                                    )
+                                })
+                            })
+                            .collect(),
+                        1,
+                        Some(1),
+                    )
+                    .require_explicit_choice();
+                    let chosen = ctx.decision_maker.decide_objects(game, &choice);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::resolved());
+                    }
+                    let Some(id) = chosen.first().filter(|id| candidates.contains(id)) else {
+                        return Ok(EffectOutcome::resolved());
+                    };
+                    *id
+                }
+            };
+            crate::effects::ResolvedTarget::Object(id)
+        } else {
+            resolve_single_target_from_spec(game, &self.target, ctx)?
+        };
 
         match target {
             crate::effects::ResolvedTarget::Object(id) => {

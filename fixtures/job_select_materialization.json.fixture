@@ -1,0 +1,74 @@
+[
+  {
+    "name": "Astrologian's Planisphere",
+    "oracle_id": "4dcd0583-cee0-46a6-ba43-93bca5eb0428",
+    "source": "https://scryfall.com/card/pfin/46s/astrologians-planisphere?utm_source=api",
+    "text": "Mana cost: {1}{U}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature is a Wizard in addition to its other types and has \"Whenever you cast a noncreature spell and whenever you draw your third card each turn, put a +1/+1 counter on this creature.\"\nDiana — Equip {2}"
+  },
+  {
+    "name": "Bard's Bow",
+    "oracle_id": "4aceb786-960d-4719-9de8-79dffd491a51",
+    "source": "https://scryfall.com/card/fin/174/bards-bow?utm_source=api",
+    "text": "Mana cost: {2}{G}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+2, has reach, and is a Bard in addition to its other types.\nPerseus's Bow — Equip {6} ({6}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Black Mage's Rod",
+    "oracle_id": "909b3d90-5762-461b-b49a-004a9e72733d",
+    "source": "https://scryfall.com/card/fin/90/black-mages-rod?utm_source=api",
+    "text": "Mana cost: {1}{B}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+0, has \"Whenever you cast a noncreature spell, this creature deals 1 damage to each opponent,\" and is a Wizard in addition to its other types.\nEquip {3}"
+  },
+  {
+    "name": "Dragoon's Lance",
+    "oracle_id": "a66c35fc-d5db-4cfd-9b85-d70b001d83d3",
+    "source": "https://scryfall.com/card/fin/17/dragoons-lance?utm_source=api",
+    "text": "Mana cost: {1}{W}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+0 and is a Knight in addition to its other types.\nDuring your turn, equipped creature has flying.\nGae Bolg — Equip {4}"
+  },
+  {
+    "name": "Monk's Fist",
+    "oracle_id": "1b524149-340e-4f94-9520-6a5258fabb00",
+    "source": "https://scryfall.com/card/fin/265/monks-fist?utm_source=api",
+    "text": "Mana cost: {2}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+0 and is a Monk in addition to its other types.\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Paladin's Arms",
+    "oracle_id": "22076484-e9d5-4f33-8cf3-b9b427436b05",
+    "source": "https://scryfall.com/card/fin/28/paladins-arms?utm_source=api",
+    "text": "Mana cost: {2}{W}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+1, has ward {1}, and is a Knight in addition to its other types.\nLightbringer and Hero's Shield — Equip {4} ({4}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Red Mage's Rapier",
+    "oracle_id": "35ad9e15-3e00-4bd2-96cf-36a6ef49059f",
+    "source": "https://scryfall.com/card/fin/152/red-mages-rapier?utm_source=api",
+    "text": "Mana cost: {1}{R}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature has \"Whenever you cast a noncreature spell, this creature gets +2/+0 until end of turn\" and is a Wizard in addition to its other types.\nEquip {3}"
+  },
+  {
+    "name": "Sage's Nouliths",
+    "oracle_id": "97248734-6e99-42a2-8f11-f3337b25f8ab",
+    "source": "https://scryfall.com/card/fin/70/sages-nouliths?utm_source=api",
+    "text": "Mana cost: {1}{U}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+0, has \"Whenever this creature attacks, untap target attacking creature,\" and is a Cleric in addition to its other types.\nHagneia — Equip {3}"
+  },
+  {
+    "name": "Samurai's Katana",
+    "oracle_id": "9b8b5812-73bd-453e-bdff-aad1fafa9226",
+    "source": "https://scryfall.com/card/fin/154/samurais-katana?utm_source=api",
+    "text": "Mana cost: {2}{R}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+2, has trample and haste, and is a Samurai in addition to its other types.\nMurasame — Equip {5}"
+  },
+  {
+    "name": "Thief's Knife",
+    "oracle_id": "4bf589ed-58f8-40ad-bcee-50cb99da02ca",
+    "source": "https://scryfall.com/card/fin/81/thiefs-knife?utm_source=api",
+    "text": "Mana cost: {2}{U}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+1, has \"Whenever this creature deals combat damage to a player, draw a card,\" and is a Rogue in addition to its other types.\nEquip {4}"
+  },
+  {
+    "name": "Warrior's Sword",
+    "oracle_id": "a339961e-3555-467f-a4f8-c5eaac7e7ed1",
+    "source": "https://scryfall.com/card/fin/169/warriors-sword?utm_source=api",
+    "text": "Mana cost: {3}{R}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +3/+2 and is a Warrior in addition to its other types.\nEquip {5} ({5}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "White Mage's Staff",
+    "oracle_id": "af1acf07-39e2-441e-a1e0-1db535535e2e",
+    "source": "https://scryfall.com/card/fin/42/white-mages-staff?utm_source=api",
+    "text": "Mana cost: {1}{W}\nType: Artifact — Equipment\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+1, has \"Whenever this creature attacks, you gain 1 life,\" and is a Cleric in addition to its other types.\nEquip {3} ({3}: Attach to target creature you control. Equip only as a sorcery.)"
+  }
+]

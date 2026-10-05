@@ -40,6 +40,7 @@ const TWO_WORD_KEYWORD_ACTIONS: &[(&[&str], KeywordAction)] = &[
     (&["read", "ahead"], KeywordAction::ReadAhead),
     (&["for", "mirrodin"], KeywordAction::ForMirrodin),
     (&["living", "weapon"], KeywordAction::LivingWeapon),
+    (&["job", "select"], KeywordAction::JobSelect),
     (&["umbra", "armor"], KeywordAction::UmbraArmor),
     (
         &["doctor", "companion"],
