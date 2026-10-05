@@ -5105,3 +5105,23 @@ impl StaticAbilityKind for DamagePreventionWithFollowUp {
         ))
     }
 }
+
+/// A live controller-scoped exception to the zero-loyalty state-based action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PlaneswalkersYouControlDontDieAtZeroLoyalty;
+
+impl StaticAbilityKind for PlaneswalkersYouControlDontDieAtZeroLoyalty {
+    fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
+        static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
+            std::sync::LazyLock::new(
+                super::CompiledStaticAbility::planeswalkers_you_control_dont_die_at_zero_loyalty,
+            );
+        Some(&MODEL)
+    }
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty
+    }
+    fn display(&self) -> String {
+        "Planeswalkers you control aren't put into their owners' graveyards for having 0 loyalty".into()
+    }
+}

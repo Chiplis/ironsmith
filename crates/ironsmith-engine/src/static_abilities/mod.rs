@@ -3391,6 +3391,10 @@ impl StaticAbility {
         Self::new(CreaturesYouControlAssignCombatDamageUsingToughness)
     }
 
+    pub fn planeswalkers_you_control_dont_die_at_zero_loyalty() -> Self {
+        Self::new(PlaneswalkersYouControlDontDieAtZeroLoyalty)
+    }
+
     pub fn lethal_damage_to_creatures_you_control_uses_power() -> Self {
         Self::new(LethalDamageToCreaturesYouControlUsesPower)
     }

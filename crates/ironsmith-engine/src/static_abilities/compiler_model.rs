@@ -173,6 +173,9 @@ impl StaticAbility {
             Some(StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness) => {
                 Self::this_creature_assigns_combat_damage_using_toughness()
             }
+            Some(StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty) => {
+                Self::planeswalkers_you_control_dont_die_at_zero_loyalty()
+            }
             Some(StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower) => {
                 Self::lethal_damage_to_creatures_you_control_uses_power()
             }

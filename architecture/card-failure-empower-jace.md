@@ -24,18 +24,17 @@ never executes this instruction.
 
 `fixtures/empower_jace.json.fixture` retains full frozen source inputs and Oracle
 IDs for all **35** unsupported records containing Empower in `stack07-bc9e56e2`.
-Thirty are complete-card candidates with the shared missing action as their
-identified blocker. Five remain explicitly partial and are not counted as full
+Thirty-one are complete-card candidates with the shared missing action as their
+identified blocker. Four remain explicitly partial and are not counted as full
 coverage:
 
 - Jace's Machinations: independent temporary loyalty timing permission wording.
 - Theorist's Sanctum: optional behold entry replacement is the frozen first error.
 - Violent Echoes: independent excess-damage predicate/where-X binding is the first error.
-- Sanctum Lurker: no typed static exception to the zero-loyalty state-based action.
 - Way of the Mind Sculptor: independent predicate inspecting loyalty-counter
   payment on the activating ability.
 
-Complex later clauses on the thirty candidates still need the deferred replay;
+Complex later clauses on the thirty-one candidates still need the deferred replay;
 no successful whole-card compilation is claimed at this stage.
 
 ## Typed implementation and source review
@@ -68,8 +67,8 @@ no successful whole-card compilation is claimed at this stage.
 
 ## Authored deferred regressions
 
-Public compiler/runtime tests cover thirty complete-card candidates with typed
-JSON artifact transport; the five known independent blockers are retained in the
+Public compiler/runtime tests cover thirty-one complete-card candidates with typed
+JSON artifact transport; the four known independent blockers are retained in the
 fixture without being counted as complete. Focused real cast/stack scenarios cover
 new token characteristics, loyalty payment and abilities, repeated empower using
 the existing token, opponent/nontoken exclusion, a real token-copy candidate,
@@ -84,3 +83,13 @@ Deferred commands:
 `cargo test -p ironsmith-compiler-grammar --lib empower_jace`
 
 `cargo test -p ironsmith-compiler-runtime --test empower_jace`
+
+## Sanctum Lurker tail
+
+A typed, controller-scoped static rule suppresses only the zero-loyalty SBA,
+without granting an ability to protected planeswalkers. The SBA cache tracks
+planeswalkers and rule sources separately, revisiting protected objects when a
+source leaves, phases, changes control, or loses its ability. Other death rules
+remain in place. Authored full-card tests cover actual +2 loyalty payment at zero,
+damage/life-gain resolution, once-per-turn limits, ownership/control distinction,
+phasing, and removal of the last rule source. UNVALIDATED.
