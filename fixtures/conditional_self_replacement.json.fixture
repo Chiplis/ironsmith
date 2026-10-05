@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Bog Down",
+    "oracle_id": "8574f57a-768d-42a0-ac8c-cc0a1de181e0",
+    "mana_cost": "{2}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Kicker—Sacrifice two lands. (You may sacrifice two lands in addition to any other costs as you cast this spell.)\nTarget player discards two cards. If this spell was kicked, that player discards three cards instead."
+  },
+  {
+    "name": "Haunting Hymn",
+    "oracle_id": "b9a0977a-6364-4358-bab1-112898a1b942",
+    "mana_cost": "{4}{B}{B}",
+    "type_line": "Instant",
+    "oracle_text": "Target player discards two cards. If you cast this spell during your main phase, that player discards four cards instead."
+  },
+  {
+    "name": "Hypnotic Cloud",
+    "oracle_id": "277757c6-4c4c-4a4c-84f6-4a64fe3b3bfe",
+    "mana_cost": "{1}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Kicker {4} (You may pay an additional {4} as you cast this spell.)\nTarget player discards a card. If this spell was kicked, that player discards three cards instead."
+  },
+  {
+    "name": "Whispers of Emrakul",
+    "oracle_id": "cf8bc2e3-2f22-45d3-9810-bc039202f41c",
+    "mana_cost": "{1}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target opponent discards a card at random.\nDelirium — If there are four or more card types among cards in your graveyard, that player discards two cards at random instead."
+  },
+  {
+    "name": "Epicenter",
+    "oracle_id": "264cb7f6-6d36-4e58-87f4-83ccaa998a32",
+    "mana_cost": "{4}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target player sacrifices a land of their choice.\nThreshold — Each player sacrifices all lands they control instead if there are seven or more cards in your graveyard."
+  },
+  {
+    "name": "Bring the Ending",
+    "oracle_id": "57b37690-0fb6-4e78-9210-4a529a6ade7c",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Counter target spell unless its controller pays {2}.\nCorrupted — Counter that spell instead if its controller has three or more poison counters."
+  }
+]

@@ -112,7 +112,7 @@ fn summary_judgment_addendum_damages_the_original_creature_target() {
 
     let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
     let mut cast_facts = crate::cost::OptionalCostsPaid::default();
-    cast_facts.mark_label_paid("CastDuringYourMainPhase");
+    cast_facts.record_main_phase_cast(alice);
     game.object_mut(spell)
         .expect("Summary Judgment should be on the stack")
         .optional_costs_paid = cast_facts.clone();

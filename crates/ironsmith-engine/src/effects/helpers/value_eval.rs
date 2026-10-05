@@ -1260,7 +1260,7 @@ pub(crate) fn resolve_wide(
                 return Err(ExecutionError::IncompleteEvidence("payment source and receipt are unavailable".into()));
             }
             Ok(i64::from(crate::condition_eval::evaluate_paid_cost_receipt(
-                paid, label, game.turn.turn_number)?))
+                paid, label, game.turn.turn_number, context.controller)?))
         }
         Value::TimesPaid(index) => {
             // Get the number of times the optional cost was paid

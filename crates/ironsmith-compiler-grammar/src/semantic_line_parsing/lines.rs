@@ -2240,7 +2240,7 @@ fn returned_object_static_followup_effects<S: AsRef<[OwnedLexToken]>>(
 }
 
 fn sentence_is_conditional_self_replacement_effect(sentence: &[OwnedLexToken]) -> bool {
-    if crate::effect_sentences::recognizes_life_gain_replacement_sentence(sentence) {
+    if crate::effect_sentences::recognizes_scalar_self_replacement_sentence(sentence) {
         return true;
     }
     let instead_semantics =

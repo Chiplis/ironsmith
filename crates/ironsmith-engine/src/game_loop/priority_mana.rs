@@ -3915,7 +3915,7 @@ fn propose_spell_cast_with_origin(
             optional_costs_paid.mark_label_paid(super::priority_cast::PROTOTYPE_CHOICE_LABEL);
         }
         if cast_during_main_phase {
-            optional_costs_paid.mark_label_paid("CastDuringYourMainPhase");
+            optional_costs_paid.record_main_phase_cast(caster);
         }
         if cast_at_sorcery_timing {
             optional_costs_paid.mark_cast_at_sorcery_timing();

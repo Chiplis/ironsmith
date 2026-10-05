@@ -85,7 +85,7 @@ fn nonmana_unless_payment_fixture(name: &str, failing: std::sync::Arc<std::sync:
     }
     let Some(DecisionContext::Boolean(offer)) = wasm.pending_decision.as_ref() else { panic!("payment offer") };
     assert_eq!(offer.player, PlayerId(1));
-    disclosure_command(&mut wasm, UiCommand::SelectOptions { option_indices: vec![0] }).unwrap();
+    disclosure_command(&mut wasm, UiCommand::SelectOptions { option_indices: vec![1] }).unwrap();
     let Some(DecisionContext::SelectObjects(objects)) = wasm.pending_decision.as_ref() else { panic!("public payment choice") };
     assert_eq!(objects.player, PlayerId(1));
     assert_eq!(objects.cost_payment, Some(ironsmith::decisions::context::CostPaymentIdentity { source, payer: PlayerId(1) }));

@@ -1375,9 +1375,13 @@ fn parse_player_counter_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         return None;
     }
     let count = comparison_to_at_least_threshold(&condition.comparison)?;
+    let player = if condition.player == PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(
+        crate::tag::CompilerReferenceTag::It.bind())) {
+        PlayerAst::ItsController
+    } else { player_ast_from_status_player_filter(condition.player)? };
     Some(PredicateAst::Player(
         PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
-            player: player_ast_from_status_player_filter(condition.player)?,
+            player,
             count,
         },
     ))
@@ -1397,6 +1401,14 @@ fn parse_world_status_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
 mod tests {
     use super::*;
     use crate::lexer::lex_line;
+
+    #[test]
+    fn controller_poison_is_an_antecedent_until_the_program_proves_a_target() {
+        let predicate = parse("its controller has three or more poison counters");
+        assert!(matches!(predicate, PredicateAst::Player(PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
+            player: PlayerAst::ItsController, count: 3,
+        })));
+    }
 
     fn parse(text: &str) -> PredicateAst {
         let tokens = lex_line(text, 0).expect("lex predicate");

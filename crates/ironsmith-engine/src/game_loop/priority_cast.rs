@@ -3587,7 +3587,7 @@ pub(super) fn finalize_pending_spell_cast(
     {
         pending
             .optional_costs_paid
-            .mark_label_paid("CastDuringYourMainPhase");
+            .record_main_phase_cast(pending.caster);
     }
     let captured_targeting = match pending.targeting_announcement.take() {
         Some(queue) => queue,

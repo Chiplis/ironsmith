@@ -1412,6 +1412,10 @@ pub struct OptionalCostsPaid {
     /// cannot establish the date of a known paid alternative cost.
     #[cfg_attr(feature = "serde", serde(default))]
     pub cast_payment_turn: Option<u32>,
+    /// The player whose main phase contained this cast. A copied spell has
+    /// no cast event even though it retains kicker and other copied choices.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub main_phase_caster: Option<crate::PlayerId>,
 }
 
 impl OptionalCostsPaid {
@@ -1422,6 +1426,7 @@ impl OptionalCostsPaid {
             branch_choices: Vec::new(),
             cast_was_foretold: None,
             cast_payment_turn: None,
+            main_phase_caster: None,
         }
     }
 
@@ -1432,6 +1437,7 @@ impl OptionalCostsPaid {
             branch_choices: Vec::new(),
             cast_was_foretold: None,
             cast_payment_turn: None,
+            main_phase_caster: None,
         }
     }
 
@@ -1527,6 +1533,20 @@ impl OptionalCostsPaid {
 
     pub fn mark_cast_at_sorcery_timing(&mut self) {
         self.cast_at_sorcery_timing = true;
+    }
+
+    pub fn record_main_phase_cast(&mut self, caster: crate::PlayerId) {
+        self.main_phase_caster = Some(caster);
+        let label = OptionalCostRef::new(OptionalCostKind::CastDuringYourMainPhase);
+        if !self.was_paid_label(&label) { self.mark_label_paid(label); }
+    }
+
+    /// CR 707.10 copies decisions and costs, but does not cast the copy.
+    pub fn clear_uncopied_cast_facts(&mut self) {
+        self.costs.retain(|(reference, _)| reference.kind != OptionalCostKind::CastDuringYourMainPhase);
+        self.main_phase_caster = None;
+        self.cast_at_sorcery_timing = false;
+        self.cast_was_foretold = Some(false);
     }
 
     pub fn was_cast_at_sorcery_timing(&self) -> bool {

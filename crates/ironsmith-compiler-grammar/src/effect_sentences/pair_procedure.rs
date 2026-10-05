@@ -43,13 +43,19 @@ use crate::registry::{
 mod kinds;
 #[path = "pair_procedure/life_gain.rs"]
 mod life_gain;
+#[path = "pair_procedure/discard_replacement.rs"]
+mod discard_replacement;
 #[path = "pair_procedure/targeted_random_partition.rs"]
 mod targeted_random_partition;
 #[path = "pair_procedure/named_random_reveal.rs"]
 mod named_random_reveal;
 
-pub(super) fn recognizes_life_gain_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
+pub(super) fn recognizes_scalar_self_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
     life_gain::recognizes_replacement_sentence(tokens)
+        || discard_replacement::recognizes_replacement_sentence(tokens)
+}
+pub(super) fn validate_discard_replacements(tokens: &[crate::lexer::OwnedLexToken]) -> Result<(), CardTextError> {
+    discard_replacement::validate(tokens)
 }
 #[path = "pair_procedure/shapes.rs"]
 mod shapes;
@@ -146,6 +152,12 @@ struct Shape {
 /// document's, as the registry kept the rule consuming the longest program,
 /// and equal readings are one; two readings that disagree are an ambiguity.
 const PAIR_SHAPES: &[Shape] = &[
+    Shape {
+        id: RuleId::new("conditional-discard-self-replacement"),
+        head: HeadDiscriminator::words(&["target"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, discard_replacement::read(sentences, index)),
+    },
     Shape {
         id: RuleId::new("random-hand-reveal-named-subset-discard"),
         head: HeadDiscriminator::words(&["target", "you", "opponent", "that"]),

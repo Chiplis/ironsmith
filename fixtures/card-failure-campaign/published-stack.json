@@ -1025,6 +1025,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/839"
+    },
+    {
+      "stage": 74,
+      "branch": "fix/card-failures-74-counter-payments-and-miracle",
+      "base": "fix/card-failures-73-dice-and-pile-programs",
+      "source_integration_commit": "37dc7cf0102fdf003d7e7bbfda007dd7b909bcf0",
+      "remote_commit": "f46872352aa5fc333184ac1a4c682a1fc1ca8e57",
+      "tree": "f468eaab80ca7b0954a8d37d93986bbe509949c6",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 840,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/840"
     }
   ]
 }

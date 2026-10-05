@@ -538,7 +538,7 @@ pub(super) fn return_to_dust_main_phase_paid_label_condition_branches() {
     );
 
     ctx.optional_costs_paid
-        .mark_label_paid("CastDuringYourMainPhase");
+        .record_main_phase_cast(alice);
     let with_label = crate::condition_eval::evaluate_condition_resolution(&game, &cond, &ctx)
         .expect("condition evaluation should succeed");
     assert!(

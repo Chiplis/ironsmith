@@ -115,3 +115,15 @@ Seven die-table bodies and nine finite-pile bodies are source-clear through `b1b
 ## Reviewed nonmana payments and independent Miracle instances (2026-10-05 19:30 UTC)
 
 Blood Funnel, Grip of Amnesia, Hope-Ender Coatl, Perplex and Reality Smasher are source-clear through `a83459b11`. Actual payer/source disclosure retains the existing signed transaction, and native whole-hand opening rolls back with a later discard pause/error. Aminatou is restored after the independent-instance correction `60a2bd565`: any eligible subset may be revealed, each accepted instance has its own exact trigger/price, and counter/decline/copy cases preserve the remaining instances. Additive review at `f96ea2ed0` retains pile/Consult authentication, privacy facts and native cancellation owners. Current safe proposals are **1,110 unique / 1,115 entries**. Bishop remains held. No builds/tests or measured recovery occurred.
+
+## Conditional discard replacement checkpoint (2026-10-05 19:38 UTC)
+
+Bog Down, Hypnotic Cloud, Haunting Hymn and Whispers of Emrakul are source-clear through `09925cfb6`, with the additive union checked at `0c06b123d`. Complete replacement branches retain the original target once; paid kicker choices remain copied while actual cast timing retains the original caster and is cleared on spell copies. Whispers' current-controller delirium has an authored actual-paid-cast/controller-change scenario. Current safe proposals are **1,114 unique / 1,119 entries**. Epicenter and Bring the Ending remain held pending their separate complete-program review. No validation execution occurred.
+
+## Simultaneous sacrifice owner hold (2026-10-05 19:45 UTC)
+
+Epicenter's review exposed a one-phase native sacrifice proposal: earlier participants complete replacement additions before later originals, and later replacement matching can see prior mutations. Exact source tracing confirms the same owner for By Invitation Only, which is now temporarily partial. Its existing number/availability scenarios do not prove replacement ordering. Expel the Interlopers is not on that path. Before adding the separately reviewed Bring the Ending, current safe proposals are **1,113 unique / 1,118 entries**. The shared correction must preserve all prepared choices, completed originals, event capture and later additions, beyond mere rollback. No execution occurred.
+
+## Scoped counter replacement review (2026-10-05 19:46 UTC)
+
+Bring the Ending is separately source-clear through `d048a98f0`, integrated and checked at `c761acef4`. Its complete replacement alone binds current target-controller poison; generic `its controller` retains its normal antecedent. The five conditional bodies bring current safe coverage back to **1,114 unique / 1,119 entries**, with Epicenter and By Invitation Only held on their shared simultaneous sacrifice owner. A source-only scenario correction also changes the earlier unless-payment Boolean answer to index 1, matching the existing dispatcher contract; no production behavior or execution claim changed.

@@ -275,6 +275,11 @@ pub(super) fn pre_rule_token_followups(
 fn parse_instead_replacement_sentence(
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<(Vec<EffectAst>, PredicateAst)>, CardTextError> {
+    if let Some(effects) = crate::effect_sentences::local_self_replacement::read(sentence_tokens)?
+        && let [EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })] = effects.as_slice()
+    {
+        return Ok(Some((effects.clone(), predicate.clone())));
+    }
     let tokens = crate::grammar::effects::split_labeled_effect_prefix_lexed(sentence_tokens)
         .unwrap_or(sentence_tokens);
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);

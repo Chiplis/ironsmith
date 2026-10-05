@@ -3320,7 +3320,7 @@ pub fn evaluate_condition_external_checked(
             || evaluate_condition_external_checked(game, right, ctx, paid)?),
         Condition::ThisSpellWasKicked if paid.is_some() => Ok(paid.unwrap().was_kicked()),
         Condition::ThisSpellPaidLabel(label) if paid.is_some() =>
-            evaluate_paid_cost_receipt(paid.unwrap(), label, game.turn.turn_number),
+            evaluate_paid_cost_receipt(paid.unwrap(), label, game.turn.turn_number, ctx.controller),
         Condition::ThisSpellWasForetold if paid.is_some() => paid.unwrap().cast_was_foretold
             .ok_or_else(|| ExecutionError::IncompleteEvidence("missing pre-cast foretell designation".into())),
         _ => evaluate_condition_in_context(game, condition, &ConditionContext::external_context(ctx)),
@@ -3335,7 +3335,13 @@ pub(crate) fn evaluate_paid_cost_receipt(
     paid: &crate::cost::OptionalCostsPaid,
     label: &crate::cost::OptionalCostRef,
     current_turn: u32,
+    controller: PlayerId,
 ) -> Result<bool, ExecutionError> {
+    if label.kind == crate::cost::OptionalCostKind::CastDuringYourMainPhase {
+        if !paid.was_paid_label(label) { return Ok(false); }
+        return paid.main_phase_caster.map(|caster| caster == controller).ok_or_else(||
+            ExecutionError::IncompleteEvidence("main-phase cast has no recorded caster".into()));
+    }
     paid.paid_label_at_turn(label, current_turn).ok_or_else(||
         ExecutionError::IncompleteEvidence("paid cost has no recorded payment turn".into()))
 }
@@ -4500,7 +4506,7 @@ fn evaluate_condition_in_context(
                         Err(ExecutionError::IncompleteEvidence("payment source is unavailable".into()))
                     } else { Ok(false) };
                 };
-                evaluate_paid_cost_receipt(&source.optional_costs_paid, label, game.turn.turn_number)
+                evaluate_paid_cost_receipt(&source.optional_costs_paid, label, game.turn.turn_number, shared.controller)
             }
         }
         Condition::YouHaveFullParty => Ok(player_has_full_party(game, shared.controller)),

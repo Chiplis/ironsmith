@@ -212,9 +212,8 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.casting_method = original_entry.casting_method.clone();
     copy_entry.optional_costs_paid = original_entry.optional_costs_paid.clone();
     if !copy_entry.is_ability {
-        // CR 702.143c/707.10: a spell copy was never a foretold card before
-        // casting. Ability copies continue to retain their source receipt.
-        copy_entry.optional_costs_paid.cast_was_foretold = Some(false);
+        // Ability copies continue to retain their source's casting receipt.
+        copy_entry.optional_costs_paid.clear_uncopied_cast_facts();
     }
     copy_entry.defending_player = original_entry.defending_player;
     copy_entry.defending_player_reference = original_entry.defending_player_reference;

@@ -1930,7 +1930,7 @@ impl Object {
         if let Some(loyalty) = source.base_loyalty {
             copy.add_counters(CounterType::Loyalty, loyalty);
         }
-        copy.optional_costs_paid.cast_was_foretold = Some(false);
+        copy.optional_costs_paid.clear_uncopied_cast_facts();
         copy
     }
 

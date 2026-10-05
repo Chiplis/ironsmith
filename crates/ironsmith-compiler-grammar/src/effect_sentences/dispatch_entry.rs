@@ -6092,6 +6092,8 @@ pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     crate::grammar::shared_util::value_expr::validate_result_quantity_bindings(tokens)?;
+    super::pair_procedure::validate_discard_replacements(tokens)?;
+    super::local_self_replacement::validate(tokens)?;
     // A leading payment condition owns the complete consequence. Broad
     // document readings must not claim only the payment verb inside it.
     let leading = trim_edge_punctuation(tokens);
