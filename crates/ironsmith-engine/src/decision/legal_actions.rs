@@ -893,7 +893,7 @@ fn add_hand_special_actions(
     actions: &mut Vec<LegalAction>,
     player: PlayerId,
     hand_summaries: &[HandCardSummary<'_>],
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     for summary in hand_summaries {
         if !summary.has_any_hand_special_action() {
             continue;
@@ -905,14 +905,18 @@ fn add_hand_special_actions(
             else {
                 continue;
             };
-            if !offered.contains(&action)
-                && crate::special_actions::can_perform_check(&action, game, player).is_ok()
-            {
-                offered.push(action.clone());
-                actions.push(LegalAction::SpecialAction(action));
+            if offered.contains(&action) { continue; }
+            match crate::special_actions::can_perform_check(&action, game, player) {
+                Ok(()) => {
+                    offered.push(action.clone());
+                    actions.push(LegalAction::SpecialAction(action));
+                }
+                Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => return Err(error),
+                Err(_) => {}
             }
         }
     }
+    Ok(())
 }
 
 fn add_graveyard_cast_actions(
@@ -1543,7 +1547,7 @@ fn compute_legal_actions_checked(
     perf.hand_casts_ms = hand_casts_started_at.elapsed_ms();
 
     let hand_special_actions_started_at = PerfTimer::start();
-    add_hand_special_actions(game, &mut actions, player, &hand_summaries);
+    add_hand_special_actions(game, &mut actions, player, &hand_summaries)?;
     perf.hand_special_actions_ms = hand_special_actions_started_at.elapsed_ms();
 
     let graveyard_casts_started_at = PerfTimer::start();

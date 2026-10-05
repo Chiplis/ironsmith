@@ -3164,6 +3164,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
+    fn foretell_special_action_modifier(&self) -> Option<(u32, bool)> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn } => {
+                Some((*generic_reduction, *any_players_turn))
+            }
+            _ => None,
+        }
+    }
+
     fn buyback_cost_reduction_amount(&self) -> Option<u32> {
         match self.payload() {
             ironsmith_core::StaticAbilityPayload::BuybackCostReduction(amount) => Some(*amount),
@@ -3428,6 +3437,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             || self.additional_life_cost_per_target().is_some()
             || self.minimum_total_spell_mana().is_some()
             || self.buyback_cost_reduction_amount().is_some()
+            || self.foretell_special_action_modifier().is_some()
     }
 
     fn this_spell_cost_reduction(&self) -> Option<&super::ThisSpellCostReduction> {

@@ -1371,42 +1371,36 @@ impl EffectExecutor for BolsterEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let mut candidates = game
-            .battlefield
-            .iter()
-            .copied()
-            // CR 702.26b: phased-out creatures are treated as though they
-            // don't exist (they neither count for "least toughness" nor get
-            // the counters).
-            .filter(|&id| !game.is_phased_out(id))
-            .filter(|&id| {
-                game.object(id).is_some_and(|obj| {
-                    game.controller_of(obj) == ctx.controller
-                        && game.object_has_card_type(id, crate::types::CardType::Creature)
-                })
-            })
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+        game.establish_control_transition_boundary()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
+        let amount = match &self.amount_value {
+            Some(value) => crate::effects::helpers::resolve_nonnegative_u32(game, value, ctx)?,
+            None => self.amount,
+        };
+        let ids = game.battlefield.iter().copied()
+            .filter(|id| !game.is_phased_out(*id))
             .collect::<Vec<_>>();
-        if candidates.is_empty() {
-            return Ok(EffectOutcome::count(0));
+        let frame = game.try_current_characteristics_batch(&ids)
+            .map_err(ExecutionError::ContinuousDiscovery)?;
+        let mut candidates = Vec::new();
+        for id in ids {
+            let chars = frame.get(&id).ok_or_else(|| ExecutionError::IncompleteEvidence(
+                format!("bolster has no current characteristics for battlefield object {id:?}")))?;
+            if chars.controller == ctx.controller
+                && chars.card_types.contains(&crate::types::CardType::Creature)
+            {
+                let toughness = chars.toughness.ok_or_else(|| ExecutionError::UnresolvableValue(
+                    "bolster creature has no calculated toughness".into()))?;
+                candidates.push((id, toughness));
+            }
         }
-
-        let least_toughness = candidates
-            .iter()
-            .filter_map(|&id| {
-                game.calculated_toughness(id)
-                    .or_else(|| game.object(id).and_then(|obj| obj.toughness()))
-            })
-            .min()
-            .unwrap_or(0);
-        candidates.retain(|&id| {
-            game.calculated_toughness(id)
-                .or_else(|| game.object(id).and_then(|obj| obj.toughness()))
-                == Some(least_toughness)
-        });
-        if candidates.is_empty() {
+        let Some(least) = candidates.iter().map(|(_, toughness)| *toughness).min() else {
             return Ok(EffectOutcome::count(0));
-        }
-
+        };
+        let candidates = candidates.into_iter()
+            .filter_map(|(id, toughness)| (toughness == least).then_some(id))
+            .collect::<Vec<_>>();
         let chosen = if candidates.len() == 1 {
             candidates[0]
         } else {
@@ -1427,21 +1421,22 @@ impl EffectExecutor for BolsterEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            let normalized = normalize_object_selection(selection, &candidates, 1);
-            normalized.first().copied().unwrap_or(candidates[0])
+            if selection.len() != 1 || !candidates.contains(&selection[0]) {
+                return Err(ExecutionError::InvalidTarget);
+            }
+            selection[0]
         };
 
-        let outcome = crate::effects::PutCountersEffect::new(
-            CounterType::PlusOnePlusOne,
-            self.amount,
-            ChooseSpec::SpecificObject(chosen),
-        )
-        .execute(game, ctx)?;
+        let effect = Effect::put_counters(
+            CounterType::PlusOnePlusOne, amount, ChooseSpec::SpecificObject(chosen),
+        );
+        let outcome = crate::effects::execute_effect(game, &effect, ctx)?;
 
         Ok(outcome.with_event(TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(KeywordActionKind::Bolster, ctx.controller, ctx.source, 1),
             ctx.provenance,
         )))
+        })
     }
 }
 
@@ -3678,6 +3673,140 @@ mod tests {
             .downcast_ref::<KeywordActionEvent>()
             .expect("expected keyword action event");
         assert_eq!(keyword.action, KeywordActionKind::Bolster);
+    }
+
+    #[test]
+    fn dynamic_bolster_uses_one_quantity_and_rejects_malformed_tie_answers() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let first = create_creature(&mut game, alice, 1, "First", 1, 1);
+        let second = create_creature(&mut game, alice, 2, "Second", 1, 1);
+        let _largest = create_creature(&mut game, alice, 3, "Largest", 4, 4);
+        let effect = BolsterEffect::with_value(crate::effect::Value::Count(
+            crate::target::ObjectFilter::creature().you_control()));
+        let mut malformed = SelectIdsDecisionMaker {
+            choices: VecDeque::from([vec![first, second]]),
+        };
+        let result = effect.execute(&mut game,
+            &mut ExecutionContext::new_default(source, alice).with_decision_maker(&mut malformed));
+        assert!(matches!(result, Err(ExecutionError::InvalidTarget)));
+        for id in [first, second] {
+            assert_eq!(game.counter_count(id, CounterType::PlusOnePlusOne), 0);
+        }
+        let mut dm = SelectIdsDecisionMaker { choices: VecDeque::from([vec![second]]) };
+        effect.execute(&mut game,
+            &mut ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm)).unwrap();
+        assert_eq!(game.counter_count(second, CounterType::PlusOnePlusOne), 3);
+        assert_eq!(game.counter_count(first, CounterType::PlusOnePlusOne), 0);
+    }
+
+    #[test]
+    fn dynamic_bolster_zero_pending_and_unsigned_overflow_preserve_the_attempt() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let first = create_creature(&mut game, alice, 1, "First", 1, 1);
+        let second = create_creature(&mut game, alice, 2, "Second", 1, 1);
+        let mut dm = PromptingDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let pending = BolsterEffect::with_value(crate::effect::Value::Fixed(3))
+            .execute(&mut game, &mut ctx).unwrap();
+        assert!(ctx.decision_maker.awaiting_choice());
+        assert!(pending.events.is_empty());
+        let mut dm = SelectIdsDecisionMaker { choices: VecDeque::from([vec![second]]) };
+        let zero = BolsterEffect::with_value(crate::effect::Value::Fixed(0)).execute(&mut game,
+            &mut ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm)).unwrap();
+        assert_eq!(zero.count_or_zero(), 0);
+        let too_large = crate::effect::Value::Add(
+            Box::new(crate::effect::Value::from(u32::MAX)),
+            Box::new(crate::effect::Value::Fixed(1)));
+        assert!(BolsterEffect::with_value(too_large)
+            .execute(&mut game, &mut ExecutionContext::new_default(source, alice)).is_err());
+        for id in [first, second] {
+            assert_eq!(game.counter_count(id, CounterType::PlusOnePlusOne), 0);
+        }
+        // Preserve main's unsigned event domain instead of imposing an i32 cap.
+        assert_eq!(crate::effects::helpers::resolve_nonnegative_u32(&game,
+            &crate::effect::Value::from(u32::MAX),
+            &ExecutionContext::new_default(source, alice)).unwrap(), u32::MAX);
+    }
+
+    #[test]
+    fn dynamic_bolster_counter_additions_share_original_receipts_and_pending_rollback() {
+        use crate::effect::{EffectId, Value};
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        struct Answers { pause: bool, pending: bool, target: ObjectId, calls: usize }
+        impl DecisionMaker for Answers {
+            fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+                self.calls += 1;
+                assert_eq!(game.counter_count(self.target, CounterType::PlusOnePlusOne), 3);
+                self.pending = self.pause;
+                !self.pending
+            }
+            fn awaiting_choice(&self) -> bool { self.pending }
+        }
+        for mode in 0..3 {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let source = create_creature(&mut game, alice, 1, "Bolster recipient", 1, 1);
+            let replacement_source = create_creature(&mut game, bob, 2, "Counter addition owner", 4, 4);
+            let continuation = if mode == 1 { Effect::lose_life(Value::X) }
+                else { Effect::may(vec![Effect::gain_life(4)]) };
+            let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+                ReplacementEffect::with_matcher(replacement_source, bob,
+                    crate::events::counters::matchers::WouldPutCountersMatcher::new(
+                        crate::target::ObjectFilter::specific(source), Some(CounterType::PlusOnePlusOne)),
+                    ReplacementAction::Additionally(vec![Effect::gain_life(3), continuation])));
+            game.take_pending_trigger_events();
+            let next_id = game.next_object_id_counter();
+            let mut dm = Answers { pause: mode == 2, pending: false, target: source, calls: 0 };
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            ctx.set_tagged_players("retained", vec![alice]);
+            ctx.store_outcome(EffectId(57), EffectOutcome::count(9));
+            let effect = Effect::with_id(57, Effect::bolster_value(Value::Fixed(3)));
+            let result = crate::effects::execute_effect(&mut game, &effect, &mut ctx);
+            if mode == 0 {
+                let outcome = result.unwrap();
+                assert_eq!(outcome.as_count(), Some(3));
+                assert_eq!(ctx.get_outcome(EffectId(57)).unwrap().as_count(), Some(3));
+                assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 3);
+                assert_eq!(game.player(bob).unwrap().life, 27);
+                assert_eq!(outcome.events_of_type::<KeywordActionEvent>().count(), 1);
+                assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            } else {
+                if mode == 1 {
+                    assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_))));
+                } else {
+                    assert!(ctx.decision_maker.awaiting_choice());
+                    assert!(result.unwrap().events.is_empty());
+                }
+                assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 0);
+                assert_eq!(game.player(bob).unwrap().life, 20);
+                assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+                assert!(game.take_pending_trigger_events().is_empty());
+                assert_eq!(game.next_object_id_counter(), next_id);
+                assert_eq!(ctx.get_outcome(EffectId(57)).unwrap().as_count(), Some(9));
+            }
+            assert_eq!(ctx.source, source);
+            assert_eq!(ctx.controller, alice);
+            assert_eq!(ctx.get_tagged_players("retained"), Some(&vec![alice]));
+            if mode == 2 {
+                let checkpoint = crate::effects::ExecutionContextCheckpoint::capture(&ctx);
+                drop(ctx);
+                dm.pause = false;
+                dm.pending = false;
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                checkpoint.restore(&mut ctx);
+                let outcome = crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+                assert_eq!(outcome.as_count(), Some(3));
+                assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 3);
+                assert_eq!(game.player(bob).unwrap().life, 27);
+                assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+                assert!(!ctx.decision_maker.awaiting_choice());
+            }
+        }
     }
 
     #[test]

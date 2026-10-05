@@ -2179,6 +2179,8 @@ pub enum Condition {
     PlayerWasMonarchAtTurnStart {
         player: PlayerFilter,
     },
+    /// Pre-cast exile designation; appended to preserve published wire ordinals.
+    ThisSpellWasForetold,
 }
 
 #[cfg(test)]

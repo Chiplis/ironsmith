@@ -250,6 +250,7 @@ const READINGS: &[Reading] = &[
         admits: |input| {
             // Readings ranked above this one that read the input read it.
             !input.read_by("counters-on-reference")
+                && !input.read_by("where-x-is-number-of-differently-named-filter-value")
                 && !input.read_by("same-name-as-triggering-spell-graveyard-count")
                 && !input.read_by("your-hand-count")
                 // "the number of cards you removed from the draft with cards

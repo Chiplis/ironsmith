@@ -4401,3 +4401,14 @@ fn monarch_at_turn_begin_is_a_historical_predicate_not_current_designation() {
     let tokens = crate::lexer::lex_line("you were the monarch during an unknown time", 0).unwrap();
     assert!(parse_predicate(&tokens).is_err());
 }
+
+#[test]
+fn foretold_spell_predicate_is_distinct_from_exile_and_payment() -> Result<(), CardTextError> {
+    let tokens = lex_line("If this spell was foretold", 0)?;
+    assert_eq!(parse_predicate(&predicate_tokens_after_if(&tokens))?, PredicateAst::ThisSpellWasForetold);
+    for text in ["If this spell was cast from exile", "If this spell was kicked"] {
+        let tokens = lex_line(text, 0)?;
+        assert!(!matches!(parse_predicate(&predicate_tokens_after_if(&tokens))?, PredicateAst::ThisSpellWasForetold));
+    }
+    Ok(())
+}

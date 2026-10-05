@@ -1095,6 +1095,15 @@
         return format!("Backup {}", backup.amount);
     }
     if let Some(bolster) = effect.downcast_ref::<crate::effects::BolsterEffect>() {
+        if let Some(value) = &bolster.amount_value {
+            return if value_prefers_where_x(value) {
+                let basis = describe_where_x_basis(value)
+                    .map(|basis| format!(", where X is {basis}")).unwrap_or_default();
+                format!("Bolster X{basis}")
+            } else {
+                format!("Bolster {}", describe_value(value))
+            };
+        }
         return format!("Bolster {}", bolster.amount);
     }
     if let Some(support) = effect.downcast_ref::<crate::effects::SupportEffect>() {

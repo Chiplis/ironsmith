@@ -2045,6 +2045,10 @@ impl CardDefinitionBuilder {
     }
 
     pub fn mobilize(self, amount: u32) -> Self {
+        self.mobilize_value(amount.into())
+    }
+
+    pub fn mobilize_value(self, amount: crate::effect::Value) -> Self {
         let effect = crate::effects::CreateTokenEffect::new(
             Self::mobilize_warrior_token(),
             amount,

@@ -1297,6 +1297,10 @@ impl Effect {
         Self::new(crate::effects::ManifestDreadEffect::new())
     }
 
+    pub fn bolster_value(amount: Value) -> Self {
+        Self::new(crate::effects::BolsterEffect::with_value(amount))
+    }
+
     pub fn bolster(amount: u32) -> Self {
         Self::new(crate::effects::BolsterEffect::new(amount))
     }

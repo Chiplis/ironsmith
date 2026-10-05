@@ -1381,6 +1381,10 @@ pub struct OptionalCostsPaid {
     /// index. Unlisted one-of costs pay their first branch.
     #[cfg_attr(feature = "serde", serde(default))]
     pub branch_choices: Vec<(usize, usize)>,
+    /// Exact pre-cast exile designation (CR 702.143c), independent of the
+    /// selected casting price. Missing recovered evidence is unknown.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub cast_was_foretold: Option<bool>,
 }
 
 impl OptionalCostsPaid {
@@ -1389,6 +1393,7 @@ impl OptionalCostsPaid {
             costs: vec![(OptionalCostRef::from(""), 0); num_optional_costs],
             cast_at_sorcery_timing: false,
             branch_choices: Vec::new(),
+            cast_was_foretold: None,
         }
     }
 
@@ -1397,6 +1402,7 @@ impl OptionalCostsPaid {
             costs: costs.iter().map(|c| (c.cost_ref(), 0)).collect(),
             cast_at_sorcery_timing: false,
             branch_choices: Vec::new(),
+            cast_was_foretold: None,
         }
     }
 
@@ -1412,6 +1418,12 @@ impl OptionalCostsPaid {
     pub fn set_branch_choice(&mut self, index: usize, branch: usize) {
         self.branch_choices.retain(|(cost, _)| *cost != index);
         self.branch_choices.push((index, branch));
+    }
+
+    /// Rebuild optional-cost slots without discarding captured casting facts.
+    pub fn reset_costs<C>(&mut self, costs: &[OptionalCost<C>]) {
+        self.costs = costs.iter().map(|cost| (cost.cost_ref(), 0)).collect();
+        self.branch_choices.clear();
     }
 
     pub fn any_paid(&self) -> bool {

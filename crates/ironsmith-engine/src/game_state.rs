@@ -5462,7 +5462,8 @@ impl GameState {
             | ConditionExpr::SourceWasCast
             | ConditionExpr::ThisSpellEscaped
             | ConditionExpr::ThisSpellWasCastFromZone(_)
-            | ConditionExpr::ThisSpellWasCastFromNonHand => false,
+            | ConditionExpr::ThisSpellWasCastFromNonHand
+            | ConditionExpr::ThisSpellWasForetold => false,
             _ => true,
         }
     }

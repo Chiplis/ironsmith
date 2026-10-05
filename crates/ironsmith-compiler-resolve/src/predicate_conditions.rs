@@ -903,6 +903,7 @@ pub fn resolve_condition_from_predicate(
         }
         PredicateAst::ThisSpellWasCastFromZone(zone) => Condition::ThisSpellWasCastFromZone(*zone),
         PredicateAst::ThisSpellWasCastFromNonHand => Condition::ThisSpellWasCastFromNonHand,
+        PredicateAst::ThisSpellWasForetold => Condition::ThisSpellWasForetold,
         PredicateAst::TurnHistory(predicate) => Condition::TurnHistory(match predicate {
             TurnHistoryPredicateAst::SpellsCastLastTurnAtLeast(count) => {
                 ironsmith_core::TurnHistoryCondition::SpellsCastLastTurnAtLeast(*count)

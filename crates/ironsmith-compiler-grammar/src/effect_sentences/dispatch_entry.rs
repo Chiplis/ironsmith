@@ -1,3 +1,5 @@
+#[path = "dispatch_entry/dynamic_keyword_instructions.rs"]
+mod dynamic_keyword_instructions;
 #[path = "dispatch_entry/temporary_damage_addition.rs"]
 mod temporary_damage_addition;
 mod temporary_damage_multiplier;
@@ -2447,6 +2449,12 @@ fn parse_effect_sentences_from_sentence_inputs(
             || super::chain_carry::bind_return_exiled_to_owners_hands(&mut effects, sentence)
         {
             parser_trace("parse_effect_sentences:rider:bound-followup", sentence);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+        if let Some(effect) = dynamic_keyword_instructions::parse(authored_sentence) {
+            effects.push(effect);
             carried_context = None;
             sentence_idx += 1;
             continue;
@@ -6101,6 +6109,7 @@ pub fn parse_effect_sentences_lexed(
     if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
         return Ok(effects);
     }
+    if let Some(effect) = dynamic_keyword_instructions::parse(tokens) { return Ok(vec![effect]); }
     if let Some(effect) =
         temporary_damage_addition::parse(tokens)?.or(temporary_damage_multiplier::parse(tokens)?)
     {
@@ -12516,7 +12525,6 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
@@ -12965,6 +12973,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     clause,
                     false,
                 )?;
+            }
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { amount }) => {
+                replace_value(amount, replacement, clause)?;
             }
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition {
                 spec,

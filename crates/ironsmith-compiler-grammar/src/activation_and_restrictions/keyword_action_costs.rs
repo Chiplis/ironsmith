@@ -958,6 +958,7 @@ pub fn is_known_keyword_action_head(word: &str) -> bool {
                 | "dredge"
                 | "devour"
                 | "frenzy"
+                | "mobilize"
                 | "poisonous"
                 | "rampage"
                 | "saddle"
@@ -1208,7 +1209,60 @@ const COST_KEYWORDS: &[(&str, KeywordCostFallback, fn(ManaCost) -> KeywordAction
     ),
 ];
 
+pub fn parse_dynamic_keyword_amount(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    use crate::grammar::keyword_action_costs::DynamicAmountKeyword;
+    let shape = crate::grammar::keyword_action_costs::parse_dynamic_keyword_amount_tokens(tokens)?;
+    let amount = match shape.definition {
+        // In a granted keyword, "its power" names the recipient creature.
+        Some(definition) if shape.kind == DynamicAmountKeyword::Mobilize
+            && crate::lexer::parser_token_word_refs(definition) == ["where", "x", "is", "its", "power"] => {
+                // Word matching only admits this reading. The complete token
+                // parser must also consume symbols and punctuation correctly.
+                crate::grammar::keyword_action_costs::parse_recipient_power_definition_tokens(definition)
+                    .then_some(crate::effect::Value::SourcePower)?
+            }
+        Some(definition) => crate::keyword_static::parse_value_binding_clause(definition)?,
+        None => crate::effect::Value::X,
+    };
+    let display = crate::lexer::render_token_slice(tokens);
+    Some(match shape.kind {
+        DynamicAmountKeyword::Bolster => KeywordAction::BolsterValue { amount, display },
+        DynamicAmountKeyword::Mobilize => KeywordAction::MobilizeValue { amount, display },
+    })
+}
+
+pub fn parse_dynamic_keyword_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    let start = crate::grammar::keyword_action_costs::dynamic_keyword_tail_start(tokens)?;
+    let action = parse_dynamic_keyword_amount(&tokens[start..])?;
+    let mut prefix = &tokens[..start];
+    while prefix.last().is_some_and(|token| token.is_word("and") || token.is_comma()
+        || token.kind == crate::lexer::TokenKind::Semicolon)
+    {
+        prefix = &prefix[..prefix.len() - 1];
+    }
+    let mut actions = if prefix.is_empty() {
+        Vec::new()
+    } else {
+        crate::clause_support::parse_ability_line_lexed(prefix)?
+    };
+    actions.push(action);
+    Some(actions)
+}
+
 pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    if let Some(action) = parse_dynamic_keyword_amount(tokens) { return Some(action); }
+    // A failed complete amount reading must not become a marker or a literal
+    // prefix that drops the local definition or an unrecognized trailing clause.
+    let amount_words = crate::lexer::parser_token_word_refs(tokens);
+    let amount_words = amount_words.strip_prefix(&["and"]).unwrap_or(&amount_words);
+    if matches!(amount_words.first().copied(), Some("bolster" | "mobilize")) {
+        use crate::grammar::keyword_action_costs::DynamicAmountKeyword;
+        let (kind, amount) = crate::grammar::keyword_action_costs::parse_literal_keyword_amount_tokens(tokens)?;
+        return Some(match kind {
+            DynamicAmountKeyword::Bolster => KeywordAction::Bolster(amount),
+            DynamicAmountKeyword::Mobilize => KeywordAction::Mobilize(amount),
+        });
+    }
     // "can't be blocked by more than N creature(s)" — a grantable blocking
     // restriction that rides in keyword lists ("trample and can't be blocked
     // by more than one creature").

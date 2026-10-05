@@ -586,11 +586,17 @@ mod keyword_line_readings;
 
 pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+        if let Some(action) = crate::activation_and_restrictions::keyword_action_costs::parse_dynamic_keyword_amount(tokens) {
+            return Some(action);
+        }
         let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
         let words = strip_leading_word_refs_any(&words, &["and"]);
         if words.is_empty() {
             return None;
+        }
+        if matches!(words.first().copied(), Some("bolster" | "mobilize")) {
+            return parse_ability_phrase(tokens);
         }
 
         if clause_grammar::parse_casualty_planeswalker_copy_prefix_words(words) {
@@ -732,6 +738,9 @@ pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordA
         crate::recognition::ParseOutcome::Match(matched) => return Some(matched.value.value),
         crate::recognition::ParseOutcome::NoMatch => {}
         crate::recognition::ParseOutcome::Error(_) => return None,
+    }
+    if crate::grammar::keyword_action_costs::dynamic_keyword_tail_start(tokens).is_some() {
+        return None;
     }
     let segments = clause_grammar::parse_ability_segments_tokens(tokens);
     let mut actions = Vec::new();

@@ -2775,9 +2775,16 @@ pub(super) fn parse_spell_lifecycle_predicate(tokens: &[OwnedLexToken]) -> Optio
         .or_else(|| parse_you_cast_source_shape(tokens))
         .or_else(|| parse_tagged_was_cast_shape(tokens))
         .or_else(|| parse_this_spell_was_cast_from_shape(tokens))
+        .or_else(|| parse_this_spell_was_foretold_shape(tokens))
         .or_else(|| parse_no_spells_cast_last_turn_shape(tokens))
         .or_else(|| parse_this_spell_paid_named_label_shape(tokens))
         .or_else(|| parse_target_was_kicked_shape(tokens))
+}
+
+/// A prior foretell designation is distinct from exile origin and paid cost.
+fn parse_this_spell_was_foretold_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    surface::exact(LexedClause::new(tokens), &["this", "spell", "was", "foretold"])
+        .then_some(PredicateAst::ThisSpellWasForetold)
 }
 
 pub(super) fn parse_you_cast_source_from_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {

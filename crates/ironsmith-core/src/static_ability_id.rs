@@ -391,6 +391,8 @@ pub enum StaticAbilityId {
     ExtraDieIgnoreLowest,
     /// Conversion of mana that would be lost, preserving the existing units.
     ConvertUnspentMana,
+    /// Appended to preserve existing published enum discriminants.
+    ForetellSpecialActionModifier,
 }
 
 impl StaticAbilityId {
@@ -754,6 +756,7 @@ impl StaticAbilityId {
             | EntersUnderChosenControl
             | Toxic
             | TrampleOverPlaneswalkers
+            | ForetellSpecialActionModifier
             | NativeAlternativeCastFromZone => {}
         }
     }

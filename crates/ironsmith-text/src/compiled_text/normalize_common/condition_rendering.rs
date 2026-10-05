@@ -2223,6 +2223,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             };
             format!("this spell was cast from {zone_text}")
         }
+        Condition::ThisSpellWasForetold => "this spell was foretold".to_string(),
         Condition::ThisSpellWasCastFromNonHand => {
             "this spell was cast from anywhere other than your hand".to_string()
         }

@@ -1510,10 +1510,27 @@ pub fn parse_foretelling_cards_cost_modifier_line(
         return Ok(None);
     }
 
-    Err(CardTextError::ParseError(format!(
-        "unsupported foretelling cost modifier clause (clause: '{}')",
-        clause_words.join(" ")
-    )))
+    let Some(costs_index) = tokens.iter().position(|token| token_word_is(token, "costs")) else {
+        return Ok(None);
+    };
+    let Some((Value::Fixed(amount), consumed)) = parse_cost_modifier_amount(&tokens[costs_index + 1..]) else {
+        return Err(CardTextError::ParseError("foretell special-action reduction needs a fixed generic cost".into()));
+    };
+    let prefix = &tokens[..=costs_index];
+    let mut tail = &tokens[costs_index + 1 + consumed..];
+    if tail.last().is_some_and(|token| token.is_period()) { tail = &tail[..tail.len() - 1]; }
+    let tail_words = crate::lexer::parser_token_word_refs(tail);
+    let exact_tail = matches!(tail_words.as_slice(),
+        ["less", "and", "can", "be", "done", "on", "any", "players", "turn"]
+        | ["less", "and", "can", "be", "done", "on", "any", "player", "s", "turn"]
+        | ["less", "and", "can", "be", "done", "on", "any", "player", "turn"]);
+    if amount < 0 || !prefix.iter().all(|token| token.kind == TokenKind::Word)
+        || !tail.iter().all(|token| matches!(token.kind, TokenKind::Word | TokenKind::Apostrophe))
+        || !exact_tail
+    {
+        return Err(CardTextError::ParseError("unsupported trailing or non-generic foretell special-action modifier syntax".into()));
+    }
+    Ok(Some(StaticAbility::foretell_special_action_modifier(amount as u32, true)))
 }
 
 pub fn parse_cost_modifier_amount(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
@@ -8105,6 +8122,31 @@ mod generic_flash_permission_tests {
                     .is_none(),
                 "{text}"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod foretell_special_action_modifier_tests {
+    use super::*;
+    #[test]
+    fn complete_modifier_shape_keeps_amount_and_rejects_unconsumed_syntax() {
+        for amount in [0, 1, 3] {
+            let tokens = crate::lexer::lex_line(&format!("Foretelling cards from your hand costs {{{amount}}} less and can be done on any player's turn."), 0).unwrap();
+            let parsed = parse_foretelling_cards_cost_modifier_line(&tokens).unwrap().unwrap();
+            assert!(matches!(parsed.payload, ironsmith_core::StaticAbilityPayload::ForetellSpecialActionModifier {
+                generic_reduction, any_players_turn: true,
+            } if generic_reduction == amount));
+        }
+        for line in [
+            "Foretelling cards from your hand costs {R} less and can be done on any player's turn.",
+            "Foretelling cards from your hand costs {1}{R} less and can be done on any player's turn.",
+            "Foretelling cards from your hand costs {1}{1} less and can be done on any player's turn.",
+            "Foretelling cards from your hand costs {1} less and can be done on any player's turn if you control an Island.",
+            "Foretelling cards from your hand costs {1} less and can be done on any player's turn {R}.",
+        ] {
+            let tokens = crate::lexer::lex_line(line, 0).unwrap();
+            assert!(parse_foretelling_cards_cost_modifier_line(&tokens).is_err(), "{line}");
         }
     }
 }

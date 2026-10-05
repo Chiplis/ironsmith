@@ -3300,6 +3300,10 @@ fn propose_spell_cast_with_origin(
             game.active_face_down_cast_permission(source, spell.owner, spell.zone)
                 .cloned()
         });
+    // Capture before the precise exile identity and designation are retired.
+    // Another permission may authorize a different price for the same card.
+    let cast_was_foretold = game.object(spell_id)
+        .is_some_and(|object| object.zone == Zone::Exile && game.is_foretold(spell_id));
     let cast_origin_snapshot = game.object(spell_id).map(|obj| {
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
@@ -3754,6 +3758,7 @@ fn propose_spell_cast_with_origin(
         // rebuilt state in each caller, and keeps method-selection casts in
         // sync with direct casts.
         let mut optional_costs_paid = OptionalCostsPaid::from_costs(&obj.optional_costs);
+        optional_costs_paid.cast_was_foretold = Some(cast_was_foretold);
         if price_route
             .as_ref()
             .is_some_and(|route| route.prototype.is_some())

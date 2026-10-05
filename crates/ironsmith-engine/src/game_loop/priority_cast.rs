@@ -181,7 +181,7 @@ fn ensure_granted_conspire_optional_costs(game: &mut GameState, pending: &mut Pe
             )),
         ));
     }
-    pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+    pending.optional_costs_paid.reset_costs(&spell.optional_costs);
     true
 }
 
@@ -277,7 +277,7 @@ fn ensure_granted_casualty_optional_costs(game: &mut GameState, pending: &mut Pe
             crate::cost::TotalCost::from_cost(crate::costs::Cost::sacrifice(creature_filter)),
         ));
     }
-    pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+    pending.optional_costs_paid.reset_costs(&spell.optional_costs);
     true
 }
 
@@ -397,7 +397,7 @@ fn ensure_prototype_choice_optional_cost(game: &mut GameState, pending: &mut Pen
         PROTOTYPE_CHOICE_LABEL,
         crate::cost::TotalCost::free(),
     ));
-    pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+    pending.optional_costs_paid.reset_costs(&spell.optional_costs);
     true
 }
 
@@ -438,7 +438,7 @@ fn ensure_optional_life_cost_reduction_costs(
             crate::cost::TotalCost::from_cost(crate::costs::Cost::life(optional.life_cost)),
         ));
     }
-    pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+    pending.optional_costs_paid.reset_costs(&spell.optional_costs);
     true
 }
 

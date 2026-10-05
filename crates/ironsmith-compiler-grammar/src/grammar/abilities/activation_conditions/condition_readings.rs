@@ -360,6 +360,7 @@ fn activation_gate_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
         | PredicateAst::ThisSpellPaidLabel(_)
         | PredicateAst::ThisSpellWasCastFromZone(_)
         | PredicateAst::ThisSpellWasCastFromNonHand
+        | PredicateAst::ThisSpellWasForetold
         | PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
         | PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(_)
         | PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell

@@ -1310,10 +1310,12 @@ pub(super) fn run_keyword_line_family(
         return ParseOutcome::NoMatch;
     }
 
-    if let Some(action) = crate::keyword_static::parse_dynamic_firebending_with_source(
+    if let Some(action) = crate::activation_and_restrictions::keyword_action_costs::parse_dynamic_keyword_amount(
+        &ctx.line.tokens,
+    ).or_else(|| crate::keyword_static::parse_dynamic_firebending_with_source(
         &ctx.line.tokens,
         Some(ctx.parse.source().card_name.as_str()),
-    ) {
+    )) {
         return line_family_match(
             ctx,
             LineDispatchResult::single(

@@ -2818,6 +2818,7 @@ pub(super) fn test_rix_maadi_reveler_etb_uses_spectacle_branch_when_paid() {
         costs: vec![("Spectacle".into(), 1)],
         cast_at_sorcery_timing: false,
         branch_choices: Vec::new(),
+        cast_was_foretold: None,
     };
     game.object_mut(source)
         .expect("source object exists")

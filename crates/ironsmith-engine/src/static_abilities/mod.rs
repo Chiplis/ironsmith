@@ -1061,6 +1061,9 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// "Buyback costs cost {N} less": the generic mana a paid buyback cost
     /// is reduced by (CR 702.27).
+    /// Generic reduction and timing permission for the Foretell special action.
+    fn foretell_special_action_modifier(&self) -> Option<(u32, bool)> { None }
+
     fn buyback_cost_reduction_amount(&self) -> Option<u32> {
         None
     }
@@ -2309,6 +2312,10 @@ impl StaticAbility {
 
     pub fn minimum_total_spell_mana(&self) -> Option<u32> {
         self.0.minimum_total_spell_mana()
+    }
+
+    pub fn foretell_special_action_modifier(&self) -> Option<(u32, bool)> {
+        self.0.foretell_special_action_modifier()
     }
 
     pub fn buyback_cost_reduction_amount(&self) -> Option<u32> {

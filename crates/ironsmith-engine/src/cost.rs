@@ -582,6 +582,7 @@ mod tests {
             costs: vec![("Gift a tapped Fish".into(), 1)],
             cast_at_sorcery_timing: false,
             branch_choices: Vec::new(),
+            cast_was_foretold: None,
         };
 
         assert!(paid.was_paid_label("Gift"));

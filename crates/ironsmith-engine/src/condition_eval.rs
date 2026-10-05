@@ -3204,8 +3204,10 @@ pub fn evaluate_condition_external(
     condition: &Condition,
     ctx: &ExternalEvaluationContext<'_>,
 ) -> bool {
-    evaluate_condition_in_context(game, condition, &ConditionContext::external_context(ctx))
-        .unwrap_or(false)
+    match evaluate_condition_in_context(game, condition, &ConditionContext::external_context(ctx)) {
+        Ok(value) => value,
+        Err(error) => { game.record_token_resource_failure(&error); false }
+    }
 }
 
 /// Shared dispatcher for condition evaluation.
@@ -4280,6 +4282,18 @@ fn evaluate_condition_in_context(
             }
         }
         Condition::ThisSpellEscaped => Ok(source_escaped(game, shared.source)),
+        Condition::ThisSpellWasForetold => {
+            // Retained evidence, including an unknown value, is authoritative.
+            // Never substitute a paid label, live exile flag or new incarnation.
+            let paid = if let Some(exec) = ctx.execution() {
+                &exec.optional_costs_paid
+            } else {
+                &game.object(shared.source).ok_or_else(|| ExecutionError::IncompleteEvidence(
+                    "foretell predicate source is unavailable".into()))?.optional_costs_paid
+            };
+            paid.cast_was_foretold.ok_or_else(|| ExecutionError::IncompleteEvidence(
+                "missing pre-cast foretell designation".into()))
+        }
         Condition::ThisSpellWasCastFromZone(zone) => {
             if let Some(ctx) = ctx.execution()
                 && this_spell_was_cast_from_zone(game, ctx.source, ctx, *zone)
@@ -6191,5 +6205,31 @@ mod tagged_current_and_departure_condition_tests {
                 None
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod foretold_receipt_tests {
+    use super::*;
+
+    #[test]
+    fn retained_foretell_fact_survives_source_loss_and_unknown_remains_unknown_under_negation() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let source = ObjectId::from_raw(99_010);
+        let mut context = ExecutionContext::new_default(source, PlayerId(0));
+        let condition = Condition::ThisSpellWasForetold;
+        let negated = Condition::Not(Box::new(condition.clone()));
+        for predicate in [&condition, &negated] {
+            assert!(matches!(evaluate_condition_resolution(&game, predicate, &context),
+                Err(ExecutionError::IncompleteEvidence(_))));
+        }
+        context.optional_costs_paid.cast_was_foretold = Some(true);
+        assert_eq!(evaluate_condition_resolution(&game, &condition, &context), Ok(true));
+        game.turn_store.turn_history.clear_for_new_turn();
+        assert_eq!(evaluate_condition_resolution(&game, &condition, &context), Ok(true));
+        context.optional_costs_paid.cast_was_foretold = Some(false);
+        context.optional_costs_paid.mark_label_paid("Foretell");
+        assert_eq!(evaluate_condition_resolution(&game, &condition, &context), Ok(false));
+        assert_eq!(evaluate_condition_resolution(&game, &negated, &context), Ok(true));
     }
 }

@@ -41,7 +41,7 @@ pub enum KeywordActionAst {
         amount: Value,
     },
     Bolster {
-        amount: u32,
+        amount: Value,
     },
     Support {
         amount: u32,

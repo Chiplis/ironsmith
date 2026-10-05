@@ -2228,9 +2228,43 @@ fn perform_suspend(
 
 // === Foretell ===
 
+/// One checked quote for live special-action pricing and timing. Current
+/// control and layer-applied abilities matter; phased-out objects do not exist
+/// for this query. Ordinary spell reductions do not affect this special action.
+fn foretell_special_action_quote(
+    game: &GameState, player: PlayerId, card_id: ObjectId,
+) -> Result<(crate::mana::ManaCost, bool), ActionError> {
+    let checked = game.continuous_query_snapshot().map_err(|error| ActionError::ExecutionFailure {
+        source: card_id, error: crate::effects::ExecutionError::ContinuousDiscovery(error),
+    })?;
+    let mut reduction = 0u32;
+    let mut any_turn = false;
+    for source in checked.battlefield.iter().copied() {
+        if checked.is_phased_out(source) { continue; }
+        let Some(object) = checked.object(source) else {
+            return Err(ActionError::ExecutionFailure { source, error: crate::effects::ExecutionError::IncompleteEvidence(
+                "battlefield foretell provider is unavailable".into()) });
+        };
+        if checked.controller_of(object) != player { continue; }
+        let abilities = checked.current_abilities(source).ok_or_else(|| ActionError::ExecutionFailure {
+            source, error: crate::effects::ExecutionError::IncompleteEvidence("foretell provider abilities are unavailable".into()),
+        })?;
+        for ability in abilities {
+            if !ability.functions_in(&Zone::Battlefield) { continue; }
+            if let crate::ability::AbilityKind::Static(rule) = &ability.kind
+                && let Some((amount, timing)) = rule.foretell_special_action_modifier()
+            {
+                reduction = reduction.saturating_add(amount);
+                any_turn |= timing;
+            }
+        }
+    }
+    Ok((crate::mana::ManaCost::new().add_generic(2).reduce_generic(reduction), any_turn))
+}
+
 fn can_foretell(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(), ActionError> {
-    // Must be during your turn
-    if !game.is_active_player(player) {
+    // A live special-action modifier can expand the ordinary turn restriction.
+    if !game.is_active_player(player) && !foretell_special_action_quote(game, player, card_id)?.1 {
         return Err(ActionError::NotActivePlayer);
     }
 

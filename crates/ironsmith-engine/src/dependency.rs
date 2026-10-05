@@ -2141,6 +2141,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::ThisSpellEscaped
         | C::ThisSpellWasCastFromZone(_)
         | C::ThisSpellWasCastFromNonHand
+        | C::ThisSpellWasForetold
         | C::PlayerTappedLandForManaThisTurn { .. }
         | C::PlayerGainedLifeThisTurnOrMore { .. }
         | C::PlayerHadLandEnterBattlefieldThisTurn { .. }

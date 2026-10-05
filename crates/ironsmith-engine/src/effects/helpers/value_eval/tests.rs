@@ -232,6 +232,37 @@ fn tagged_aggregates_retain_snapshot_numbers() {
 }
 
 #[test]
+fn distinct_names_separates_current_names_from_historical_tags_and_layer_frames() {
+    let (mut game, source, alice) = fixture();
+    let card = CardBuilder::new(CardId::new(), "Other name")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1)).build();
+    let other = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let snapshots = [source, other].into_iter().map(|id|
+        ObjectSnapshot::from_object_with_calculated_characteristics(game.object(id).unwrap(), &game)
+    ).collect();
+    let mut exec = ExecutionContext::new_default(source, alice);
+    exec.set_tagged_objects("historical names", snapshots);
+    let current = Value::DistinctNames(ObjectFilter::creature().you_control());
+    let historical = Value::DistinctNames(ObjectFilter::tagged("historical names"));
+    let name = game.object(source).unwrap().name.to_string();
+    let effect = ContinuousEffect::new(source, alice, EffectTarget::Specific(other),
+        Modification::SetName(name));
+    let mut effects = ContinuousEffectManager::new();
+    effects.add_effect(effect.clone());
+    let calculation = CalculationContext {
+        objects: game.objects_map(), effects: &effects, battlefield: &game.battlefield,
+        game: &game, current_object: source,
+    };
+    assert_eq!(resolve_continuous(&current, LayerValueContext::new(&calculation, source, alice)), 1);
+    game.effect_store.continuous_effects.add_effect(effect);
+    assert_eq!(resolve(&current, &EvaluationContext::execution_context(&game, &exec)).unwrap(), 1);
+    assert_eq!(resolve(&historical, &EvaluationContext::execution_context(&game, &exec)).unwrap(), 2);
+    game.remove_object(other);
+    assert_eq!(resolve(&historical, &EvaluationContext::execution_context(&game, &exec)).unwrap(), 2);
+}
+
+#[test]
 fn event_amount_and_life_amount_offsets_share_numeric_lookup() {
     let (game, source, alice) = fixture();
     let mut exec = ExecutionContext::new_default(source, alice);

@@ -1496,6 +1496,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         player: PlayerFilter,
         symbol: crate::mana::ManaSymbol,
     },
+    /// Changes the hand-to-exile action, not the later spell's foretell cost.
+    /// Appended to preserve published payload discriminants.
+    ForetellSpecialActionModifier { generic_reduction: u32, any_players_turn: bool },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3176,6 +3179,9 @@ where
                     map_intervening,
                 )?))
             }
+            StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn } => {
+                StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn }
+            }
             StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method } => {
                 StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method }
             }
@@ -3408,6 +3414,15 @@ impl<
             id: None,
             label: format!("{label:?}"),
             payload: StaticAbilityPayload::None,
+        }
+    }
+
+    pub fn foretell_special_action_modifier(generic_reduction: u32, any_players_turn: bool) -> Self {
+        let timing = if any_players_turn { " and can be done on any player's turn" } else { "" };
+        Self {
+            id: Some(StaticAbilityId::ForetellSpecialActionModifier),
+            label: format!("Foretelling cards from your hand costs {{{generic_reduction}}} less{timing}."),
+            payload: StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn },
         }
     }
 

@@ -181,6 +181,7 @@ pub enum PredicateAst {
     SameColorManaSpentToCastThisSpellAtLeast(u32),
     ThisSpellWasCastFromZone(Zone),
     ThisSpellWasCastFromNonHand,
+    ThisSpellWasForetold,
     TurnHistory(TurnHistoryPredicateAst),
     ValueComparison {
         left: Value,
@@ -336,6 +337,7 @@ impl PredicateAst {
             | PredicateAst::ThisSpellPaidLabel(_)
             | PredicateAst::ThisSpellWasCastFromZone(_)
             | PredicateAst::ThisSpellWasCastFromNonHand
+            | PredicateAst::ThisSpellWasForetold
             | PredicateAst::TurnHistory(
                 TurnHistoryPredicateAst::SourceCrewedByAtLeast { .. }
                 | TurnHistoryPredicateAst::SourceWasCast { .. }

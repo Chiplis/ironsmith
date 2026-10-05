@@ -1,0 +1,53 @@
+[
+  {
+    "name": "Dragonscale General",
+    "oracle_id": "9fc6e1db-cf09-4b8c-be4f-bb02ffe7a188",
+    "mana_cost": "{3}{W}",
+    "type_line": "Creature \u2014 Human Warrior",
+    "oracle_text": "At the beginning of your end step, bolster X, where X is the number of tapped creatures you control. (Choose a creature with the least toughness among creatures you control and put X +1/+1 counters on it.)",
+    "power": "2",
+    "toughness": "3",
+    "proposed_complete": true,
+    "status": "Source-proposed after fresh isolated and integrated review; execution UNVALIDATED"
+  },
+  {
+    "name": "Sandsteppe War Riders",
+    "oracle_id": "461c0c37-7213-4ece-91f7-934e6a1a8d64",
+    "mana_cost": "{3}{G}",
+    "type_line": "Creature \u2014 Human Warrior",
+    "oracle_text": "Trample\nAt the beginning of combat on your turn, bolster X, where X is the number of differently named artifact tokens you control. (Choose a creature with the least toughness among creatures you control and put X +1/+1 counters on it.)",
+    "power": "4",
+    "toughness": "4",
+    "proposed_complete": true,
+    "status": "Source-proposed after fresh isolated and integrated review; execution UNVALIDATED"
+  },
+  {
+    "name": "Sunbringer's Touch",
+    "oracle_id": "bbfced8f-0f83-4cc9-9143-aa2473828b48",
+    "mana_cost": "{2}{G}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Bolster X, where X is the number of cards in your hand. Each creature you control with a +1/+1 counter on it gains trample until end of turn. (To bolster X, choose a creature with the least toughness among creatures you control and put X +1/+1 counters on it.)",
+    "proposed_complete": true,
+    "status": "Source-proposed after fresh isolated and integrated review; execution UNVALIDATED"
+  },
+  {
+    "name": "Avenger of the Fallen",
+    "oracle_id": "158d0272-a850-4399-8afa-d0caa143c3cb",
+    "mana_cost": "{2}{B}",
+    "type_line": "Creature \u2014 Human Warrior",
+    "oracle_text": "Deathtouch\nMobilize X, where X is the number of creature cards in your graveyard. (Whenever this creature attacks, create X tapped and attacking 1/1 red Warrior creature tokens. Sacrifice them at the beginning of the next end step.)",
+    "power": "2",
+    "toughness": "4",
+    "proposed_complete": true,
+    "status": "Source-proposed after fresh isolated and integrated review; execution UNVALIDATED"
+  },
+  {
+    "name": "Infantry Shield",
+    "oracle_id": "71c68002-1489-4858-a8fb-1f575641983e",
+    "mana_cost": "{2}{R}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Equipped creature has menace and mobilize X, where X is its power. (Whenever it attacks, create X tapped and attacking 1/1 red Warrior creature tokens. Sacrifice them at the beginning of the next end step.)\nEquip {2}",
+    "proposed_complete": true,
+    "status": "Source-proposed after fresh isolated and integrated review; execution UNVALIDATED"
+  }
+]

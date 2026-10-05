@@ -1122,7 +1122,15 @@ pub fn parse_granted_keyword_static_line(
         }
         !inside_quotes && token.is_word("where")
     });
-    if let Some(where_index) = unquoted_where {
+    // A keyword owns its complete local X definition. Only the earlier
+    // grant threshold may consume this binding at the outer grant level.
+    let keyword_owned_definition = tokens.iter().enumerate().any(|(index, token)| {
+        token.is_any_word(&["bolster", "mobilize"])
+            && !tokens[..index].iter().any(|token| token.is_word("x"))
+            && crate::grammar::keyword_action_costs::parse_dynamic_keyword_amount_tokens(&tokens[index..])
+                .is_some_and(|shape| shape.definition.is_some())
+    });
+    if let Some(where_index) = unquoted_where.filter(|_| !keyword_owned_definition) {
         let binding_tokens = trim_edge_punctuation(&tokens[where_index..]);
         let Some(value) = parse_value_binding_clause(&binding_tokens) else {
             return Ok(None);

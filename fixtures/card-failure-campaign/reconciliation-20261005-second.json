@@ -1,0 +1,33 @@
+{
+  "checked_at": "2026-10-05T11:09:00Z",
+  "working_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
+  "prior_working_base": "ced8df84fa9e2103c04dfdf54e98e3332ad9a6d0",
+  "main_repair_commit": "492c077394eaf416d41c19c9a1c11c58a7579c3e",
+  "original_baseline": "e8740178a7f7367ffa3147e7642607042079237c",
+  "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "published_source_proposals": 942,
+  "safe_current_proposals_after_confirmed_holds": 937,
+  "reheld_cards": [
+    "Auton Soldier",
+    "Barret Wallace",
+    "Blue Mage's Cane",
+    "Lord Xander, the Collector",
+    "Memory Vampire"
+  ],
+  "sigil_original_hold_fixed_upstream": true,
+  "historical_local_stage61": {
+    "commit": "c6c3978f31132d92b8f8fab5fce3d31b5483e859",
+    "tree": "036a9bfa16a6a1b3add739d6c0b230d4ac270f12",
+    "proposals": 1014,
+    "available_locally": false,
+    "reconstruction_requires_new_review": true
+  },
+  "published_stages_in_main": 54,
+  "published_prs_through": 820,
+  "working_tree_replaced": true,
+  "historical_local_manifests_and_bundle_unavailable": true,
+  "unpublished_proposals_above_main_requiring_recovery": 72,
+  "remote_source_checkpoint": "91fd9889dbc81e416d336adfbf428381a592441a",
+  "remote_recovery_archive_branch": "checkpoint/card-campaign-20261005-recovery-bundles",
+  "execution": "all builds/tests/probes/formatters/corpus deferred; no recovery credit claimed"
+}

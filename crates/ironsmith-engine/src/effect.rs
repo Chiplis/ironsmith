@@ -2547,6 +2547,10 @@ impl Effect {
     }
 
     /// Create a "bolster N" effect.
+    pub fn bolster_value(amount: Value) -> Self {
+        Self::new(crate::effects::BolsterEffect::with_value(amount))
+    }
+
     pub fn bolster(amount: u32) -> Self {
         use crate::effects::BolsterEffect;
         Self::new(BolsterEffect::new(amount))

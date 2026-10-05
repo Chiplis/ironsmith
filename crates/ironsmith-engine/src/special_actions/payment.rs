@@ -23,7 +23,7 @@ impl SpecialAction {
             | Self::ActivateManaAbility { .. } => return Ok(None),
             Self::Plot { card_id } => (card_id, TotalCost::mana(plot_cost(game.object(card_id).ok_or(ActionError::ObjectNotFound)?).ok_or(ActionError::NoSuchAbility)?), PaymentReason::Other),
             Self::Suspend { card_id } => (card_id, TotalCost::mana(suspend_spec(game.object(card_id).ok_or(ActionError::ObjectNotFound)?).ok_or(ActionError::NoSuchAbility)?.1), PaymentReason::Other),
-            Self::Foretell { card_id } => (card_id, TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)])), PaymentReason::Other),
+            Self::Foretell { card_id } => (card_id, TotalCost::mana(foretell_special_action_quote(game, player, card_id)?.0), PaymentReason::Other),
             Self::Companion { card_id } => (card_id, TotalCost::mana(companion_action_cost()), PaymentReason::Other),
             Self::TurnFaceUp { permanent_id, method } => {
                 let object = game.object(permanent_id).ok_or(ActionError::ObjectNotFound)?;
