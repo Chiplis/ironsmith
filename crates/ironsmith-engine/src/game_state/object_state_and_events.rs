@@ -396,15 +396,16 @@ impl GameState {
     }
 
     /// Mark a permanent as suspected.
-    pub fn set_suspected(&mut self, id: ObjectId) {
+    pub fn set_suspected(&mut self, id: ObjectId) -> bool {
+        self.update_cant_effects();
         let Some(object) = self
             .object(id)
             .filter(|object| object.zone == Zone::Battlefield)
         else {
-            return;
+            return false;
         };
-        if self.is_phased_out(id) {
-            return;
+        if self.is_phased_out(id) || self.effect_store.cant_effects.cant_become_suspected.contains(&id) {
+            return false;
         }
         let controller = self.current_controller(id).unwrap_or(object.owner);
         if self.battlefield_flags_mut().suspected.insert(id) {
@@ -428,11 +429,14 @@ impl GameState {
                 self.effect_store.continuous_effects.add_effect(effect);
             }
             self.mark_source_designation_changed(id, Self::condition_reads_suspected_state);
+            return true;
         }
+        false
     }
 
     /// Clear the suspected designation from a permanent.
     pub fn clear_suspected(&mut self, id: ObjectId) -> bool {
+        if self.is_phased_out(id) || !self.object(id).is_some_and(|object| object.zone == Zone::Battlefield) { return false; }
         let removed = self.battlefield_flags_mut().suspected.remove(&id);
         if removed {
             self.mark_source_designation_changed(id, Self::condition_reads_suspected_state);
@@ -1493,6 +1497,7 @@ impl GameState {
     ) {
         let attacked_permanent = target.attacked_permanent();
         let as_battle = matches!(target, crate::combat_state::AttackTarget::Battle(_));
+        self.retain_attacking_role(creature, &target);
         self.combat
             .get_or_insert_with(Default::default)
             .attackers
@@ -1521,34 +1526,8 @@ impl GameState {
     /// Remove an attacking or blocking permanent from combat (CR 506.4).
     /// Creatures it blocked stay blocked (CR 509.1h).
     pub(crate) fn remove_object_from_combat(&mut self, id: ObjectId) {
-        let Some(combat) = self.combat.as_mut() else {
-            return;
-        };
-        let was_participating = combat
-            .attackers
-            .iter()
-            .any(|attacker| attacker.creature == id)
-            || combat
-                .blockers
-                .values()
-                .any(|blockers| blockers.contains(&id));
-        combat.remember_blocked_attackers();
-        combat.attackers.retain(|attacker| attacker.creature != id);
-        combat.blockers.remove(&id);
-        combat.blocked_attackers.remove(&id);
-        combat.damage_assignment_order.remove(&id);
-        combat
-            .attacking_bands
-            .iter_mut()
-            .for_each(|band| band.retain(|member| *member != id));
-        combat.attacking_bands.retain(|band| !band.is_empty());
-        combat.had_to_attack_this_combat.remove(&id);
-        for blockers in combat.blockers.values_mut() {
-            blockers.retain(|blocker| *blocker != id);
-        }
-        for order in combat.damage_assignment_order.values_mut() {
-            order.retain(|object| *object != id);
-        }
+        self.retire_attacking_role(id);
+        let was_participating = self.mutate_combat_lanes(|combat| combat.remove_combatant(id));
         self.clear_ninjutsu_attack_targets_for(id);
         if was_participating {
             // Combat roles can condition abilities and replacement matchers.
@@ -1567,40 +1546,11 @@ impl GameState {
         permanent: ObjectId,
         defending_player: Option<PlayerId>,
     ) {
-        let Some(combat) = self.combat.as_ref() else {
-            return;
-        };
-        if !combat
-            .attackers
-            .iter()
-            .any(|info| info.target.attacked_permanent() == Some(permanent))
-        {
-            return;
-        }
         let planeswalker_defender = defending_player.or_else(|| self.controller_of_id(permanent));
         let battle_defender = defending_player.or_else(|| self.battle_protector(permanent));
-        let Some(combat) = self.combat.as_mut() else {
-            return;
-        };
-        combat.attacked_permanent_types.remove(&permanent);
-        for info in &mut combat.attackers {
-            info.target = match info.target {
-                crate::combat_state::AttackTarget::Planeswalker(id) if id == permanent => {
-                    crate::combat_state::AttackTarget::Nothing {
-                        defending_player: planeswalker_defender,
-                        was_planeswalker: true,
-                    }
-                }
-                crate::combat_state::AttackTarget::Battle(id) if id == permanent => {
-                    crate::combat_state::AttackTarget::Nothing {
-                        defending_player: battle_defender,
-                        was_planeswalker: false,
-                    }
-                }
-                ref other => other.clone(),
-            };
-        }
-        self.mark_continuous_state_dirty();
+        if self.mutate_combat_lanes(|combat|
+            combat.remove_attacked_permanent(permanent, planeswalker_defender, battle_defender))
+        { self.mark_continuous_state_dirty(); }
     }
 
     /// Check if a card is exiled via madness.

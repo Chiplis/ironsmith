@@ -693,12 +693,14 @@ fn apply_priority_response_with_dm_inner(
                         return Err(GameLoopError::InvalidState("Failed to move land".into()));
                     }
                 };
-                // Check for ETB triggers only if the land entered the battlefield.
-                if let Some(entry) = original_entry
-                    && game
-                        .object(entry.new_id)
-                        .is_some_and(|object| object.zone == Zone::Battlefield)
-                {
+                // Capture the original completion before Saga handling or any
+                // deferred replacement additions can change its characteristics.
+                let original_play = original_entry.as_ref().map(|entry|
+                    crate::events::LandPlayedEvent::from_completed_entry(entry, player, old_zone, game)
+                ).transpose().map_err(GameLoopError::ExecutionFailed)?;
+                let entered_battlefield = original_play.as_ref()
+                    .is_some_and(|event| event.completed_destination == Some(Zone::Battlefield));
+                if let Some(entry) = original_entry.as_ref().filter(|_| entered_battlefield) {
                     let new_id = entry.new_id;
 
                     let etb_event_provenance = game
@@ -724,20 +726,26 @@ fn apply_priority_response_with_dm_inner(
                         trigger_queue.add(trigger);
                     }
 
+                }
+
+                // Playing the land completes even when entry is redirected.
+                if let Some(played) = original_play {
                     let land_play_event_provenance = game
                         .provenance_graph_mut()
                         .alloc_root_event(crate::events::EventKind::LandPlayed);
                     let land_play_event =
                         game.ensure_trigger_event_provenance(TriggerEvent::new_with_provenance(
-                            crate::events::LandPlayedEvent::new(new_id, player, old_zone),
+                            played,
                             land_play_event_provenance,
                         ));
                     let land_play_triggers = check_triggers(game, &land_play_event);
                     for trigger in land_play_triggers {
                         trigger_queue.add(trigger);
                     }
+                }
 
-                    handle_saga_enters_battlefield(game, new_id, trigger_queue, decision_maker)
+                if let Some(entry) = original_entry.filter(|_| entered_battlefield) {
+                    handle_saga_enters_battlefield(game, entry.new_id, trigger_queue, decision_maker)
                         .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
                     if decision_maker.awaiting_choice() {
                         return Ok(());

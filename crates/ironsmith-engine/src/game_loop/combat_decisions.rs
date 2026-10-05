@@ -1156,7 +1156,8 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
             .with_combat_phase(game.turn_store.combat_phases_started_this_turn),
             event_provenance,
         );
-        attack_events.push(event);
+        let reference = game.retain_attacking_role(decl.creature, &decl.target);
+        attack_events.push(event.with_defending_player_reference(reference));
     }
     // CR 508.3b/e: player-level conditions observe declarations, not every
     // creature and not objects entering already attacking. Freeze both roles
@@ -2135,7 +2136,8 @@ pub fn queue_block_declaration_events(
                 ),
                 event_provenance,
             );
-            block_events.push(event);
+            let reference = game.retain_attacking_role(attacker_id, &attacker_info.target);
+            block_events.push(event.with_defending_player_reference(reference));
         }
     }
 
@@ -2162,7 +2164,8 @@ pub fn queue_block_declaration_events(
             CreatureAttackedAndUnblockedEvent::new(info.creature, attack_target),
             event_provenance,
         );
-        block_events.push(event);
+        let reference = game.retain_attacking_role(info.creature, &info.target);
+        block_events.push(event.with_defending_player_reference(reference));
     }
 
     queue_triggers_for_simultaneous_events(game, trigger_queue, block_events);

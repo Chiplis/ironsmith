@@ -69,6 +69,7 @@ pub use check::{
     generate_step_trigger_events_for_active_players, player_filter_matches_with_context,
     verify_intervening_if,
 };
+pub use check::{verify_intervening_if_checked, verify_intervening_if_at_resolution_checked};
 pub use event::{AttackEventTarget, DamageEventTarget};
 pub use matcher_trait::{TriggerContext, TriggerMatcher};
 pub use model_interpreter::TriggerModelConversionError;

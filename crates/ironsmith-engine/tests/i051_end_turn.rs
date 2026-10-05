@@ -95,6 +95,7 @@ fn delayed_upkeep_trigger(source: ObjectId, controller: PlayerId) -> DelayedTrig
         tagged_players: std::collections::HashMap::new(),
         prepayment: None,
         prevention_shield: None,
+        defending_player_reference: None,
     }
 }
 

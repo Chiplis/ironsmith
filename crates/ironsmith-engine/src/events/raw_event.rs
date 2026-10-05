@@ -27,6 +27,7 @@ pub struct RawEvent {
     lookback_source_snapshots: Vec<ObjectSnapshot>,
     /// Contextual player bindings carried across delayed-trigger boundaries.
     player_tags: HashMap<TagKey, Vec<PlayerId>>,
+    defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
 }
 
 impl RawEvent {
@@ -39,6 +40,7 @@ impl RawEvent {
             source_snapshot: None,
             lookback_source_snapshots: Vec::new(),
             player_tags: HashMap::new(),
+            defending_player_reference: None,
         }
     }
 
@@ -51,6 +53,7 @@ impl RawEvent {
             source_snapshot: None,
             lookback_source_snapshots: Vec::new(),
             player_tags: HashMap::new(),
+            defending_player_reference: None,
         }
     }
 
@@ -136,6 +139,15 @@ impl RawEvent {
         &self.player_tags
     }
 
+    pub fn defending_player_reference(&self) -> Option<crate::combat_state::DefendingPlayerReference> {
+        self.defending_player_reference
+    }
+    #[must_use]
+    pub fn with_defending_player_reference(mut self, reference: crate::combat_state::DefendingPlayerReference) -> Self {
+        self.defending_player_reference = Some(reference);
+        self
+    }
+
     /// Human-readable event description.
     pub fn display(&self) -> String {
         self.inner().display()
@@ -213,6 +225,7 @@ impl RawEvent {
             source_snapshot: self.source_snapshot.clone(),
             lookback_source_snapshots: self.lookback_source_snapshots.clone(),
             player_tags: self.player_tags.clone(),
+            defending_player_reference: self.defending_player_reference,
         }
     }
 
@@ -228,6 +241,7 @@ impl std::fmt::Debug for RawEvent {
             .field("provenance", &self.provenance)
             .field("triggers_captured", &self.triggers_captured)
             .field("simultaneous_batch", &self.simultaneous_batch)
+            .field("defending_player_reference", &self.defending_player_reference)
             .field("source_snapshot", &self.source_snapshot)
             .field("lookback_source_snapshots", &self.lookback_source_snapshots)
             .field("player_tags", &self.player_tags)

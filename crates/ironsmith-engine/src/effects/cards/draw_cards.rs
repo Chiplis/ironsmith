@@ -310,6 +310,9 @@ pub(crate) fn automatic_reveal_events_for_draw(
 /// let effect = DrawCardsEffect::new(2, PlayerFilter::Specific(player_id));
 /// ```
 impl EffectExecutor for DrawCardsEffect {
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        self.player.mentions_player_filter(needle)
+    }
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }

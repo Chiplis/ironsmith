@@ -2810,6 +2810,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 };
                 return format!("it's {card_description}");
             }
+            if let Some(surface) = filter.shared_type_antecedent_surface()
+                && let [constraint] = filter.tagged_constraints.as_slice()
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::SharesCardType
+                && constraint.tag.as_str() == "triggering"
+            {
+                let mut remaining = filter.clone(); remaining.tagged_constraints.clear();
+                if remaining == ObjectFilter::default() { return format!("it shares a card type with {}", surface.phrase()); }
+            }
             if crate::cards::is_sentence_helper_tag(tag.as_str(), "revealed") {
                 let mut remainder = filter.clone();
                 let shared_with_triggering = remainder

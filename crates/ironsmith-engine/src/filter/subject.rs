@@ -116,6 +116,12 @@ impl<'a> ObjectSubject<'a> {
             Self::Snapshot(snapshot) => snapshot.ring_bearer.unwrap_or_else(current),
         }
     }
+    pub(crate) fn suspected(self, game: &GameState) -> bool {
+        match self {
+            Self::Live(object) => game.is_suspected(object.id),
+            Self::Snapshot(snapshot) => snapshot.suspected == Some(true),
+        }
+    }
     pub(crate) fn goaded(self, game: &GameState) -> bool {
         match self {
             Self::Live(object) => game.is_goaded(object.id),

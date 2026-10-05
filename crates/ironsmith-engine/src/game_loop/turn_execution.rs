@@ -478,6 +478,9 @@ fn combat_damage_trigger_events(
         );
     }
     let mut damage_event = TriggerEvent::new_with_provenance(damage_event, damage_event_provenance);
+    if let Some(reference) = event.defending_player_reference {
+        damage_event = damage_event.with_defending_player_reference(reference);
+    }
     if let Some(snapshot) = &event.source_snapshot {
         damage_event = damage_event.with_source_snapshot(snapshot.clone());
     }
@@ -539,6 +542,7 @@ mod tests {
         assert!(can_batch_combat_damage_trigger_events(&game));
         let events = vec![
             CombatDamageEvent {
+                defending_player_reference: None,
                 damage_receipt: None,
                 source_snapshot: None,
                 target_snapshot: None,
@@ -559,6 +563,7 @@ mod tests {
                 lifelink_outcome: None,
             },
             CombatDamageEvent {
+                defending_player_reference: None,
                 damage_receipt: None,
                 source_snapshot: None,
                 target_snapshot: None,
@@ -646,6 +651,7 @@ mod tests {
 
         let events = vec![
             CombatDamageEvent {
+                defending_player_reference: None,
                 damage_receipt: None,
                 source_snapshot: None,
                 target_snapshot: None,
@@ -666,6 +672,7 @@ mod tests {
                 lifelink_outcome: None,
             },
             CombatDamageEvent {
+                defending_player_reference: None,
                 damage_receipt: None,
                 source_snapshot: None,
                 target_snapshot: None,

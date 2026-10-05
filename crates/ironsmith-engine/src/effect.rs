@@ -282,6 +282,7 @@ impl OutcomeObjectMemory {
                 tapped: false,
                 attacking: false,
                 goaded: None,
+            suspected: None,
                 ring_bearer: None,
                 flipped: false,
                 face_down: false,
@@ -1880,6 +1881,13 @@ impl RestrictionExt for Restriction {
                 };
                 if !tracker.cant_enter_battlefield.contains(&restriction) {
                     tracker.cant_enter_battlefield.push(restriction);
+                }
+            }
+            Restriction::BecomeSuspected(filter) => {
+                for &obj_id in &game.battlefield {
+                    if !game.is_phased_out(obj_id) && game.object(obj_id).is_some_and(|object| filter.matches(object, &ctx, game)) {
+                        tracker.cant_become_suspected.insert(obj_id);
+                    }
                 }
             }
             Restriction::BeSacrificed(filter) => {

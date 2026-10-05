@@ -1661,6 +1661,7 @@ pub(super) fn test_drain_pending_events_checks_delayed_zone_change_triggers() {
             tagged_players: std::collections::HashMap::new(),
             prepayment: None,
             prevention_shield: None,
+            defending_player_reference: None,
         });
 
     let moved = game.move_object_by_effect(stangg_id, Zone::Graveyard);

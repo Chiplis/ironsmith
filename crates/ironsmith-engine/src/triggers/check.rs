@@ -445,6 +445,8 @@ pub struct DelayedTrigger {
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     /// Player references captured when the delayed trigger was registered.
     pub tagged_players: std::collections::HashMap<crate::tag::TagKey, Vec<crate::ids::PlayerId>>,
+    /// Selected actor inherited at delayed registration; a new combat observation leaves this absent.
+    pub defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     /// Optional payment window that removes this registration when paid.
     pub prepayment: Option<PendingDelayedTriggerPayment>,
     /// Prevention shield whose accumulated prevented damage supplies the
@@ -3808,9 +3810,11 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                             intervening_if: None,
                             presentation_label: None,
                         },
-                        triggering_event: trigger_event
-                            .clone()
-                            .with_player_tags(delayed.tagged_players.clone()),
+                        triggering_event: {
+                            let event = trigger_event.clone().with_player_tags(delayed.tagged_players.clone());
+                            delayed.defending_player_reference
+                                .map(|reference| event.clone().with_defending_player_reference(reference)).unwrap_or(event)
+                        },
                         source_stable_id,
                         source_name,
                         source_snapshot: delayed.ability_source_snapshot.clone(),
@@ -4377,6 +4381,41 @@ fn verify_intervening_if_impl(
     optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
     triggering_object_current: bool,
 ) -> bool {
+    match verify_intervening_if_checked_impl(game, condition, controller, event, source_object_id,
+        trigger_identity, optional_costs_paid, triggering_object_current) {
+        Ok(value) => value,
+        Err(error) => { game.record_token_resource_failure(&error); false }
+    }
+}
+
+pub fn verify_intervening_if_checked(
+    game: &GameState, condition: &crate::ConditionExpr, controller: PlayerId,
+    event: &TriggerEvent, source_object_id: ObjectId, trigger_identity: Option<TriggerIdentity>,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+) -> Result<bool, crate::effects::ExecutionError> {
+    verify_intervening_if_checked_impl(game, condition, controller, event, source_object_id,
+        trigger_identity, optional_costs_paid, false)
+}
+
+pub fn verify_intervening_if_at_resolution_checked(
+    game: &GameState, condition: &crate::ConditionExpr, controller: PlayerId,
+    event: &TriggerEvent, source_object_id: ObjectId, trigger_identity: Option<TriggerIdentity>,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+) -> Result<bool, crate::effects::ExecutionError> {
+    verify_intervening_if_checked_impl(game, condition, controller, event, source_object_id,
+        trigger_identity, optional_costs_paid, true)
+}
+
+fn verify_intervening_if_checked_impl(
+    game: &GameState,
+    condition: &crate::ConditionExpr,
+    controller: PlayerId,
+    event: &TriggerEvent,
+    source_object_id: ObjectId,
+    trigger_identity: Option<TriggerIdentity>,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+    triggering_object_current: bool,
+) -> Result<bool, crate::effects::ExecutionError> {
     let defending_player = if event.kind() == crate::events::traits::EventKind::CreatureAttacked {
         event
             .downcast::<crate::events::combat::CreatureAttackedEvent>()
@@ -4448,37 +4487,7 @@ fn verify_intervening_if_impl(
             ..Default::default()
         },
     };
-    evaluate_intervening_if_condition(game, condition, &eval_ctx, optional_costs_paid)
-}
-
-fn evaluate_intervening_if_condition(
-    game: &GameState,
-    condition: &crate::ConditionExpr,
-    eval_ctx: &crate::condition_eval::ExternalEvaluationContext<'_>,
-    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
-) -> bool {
-    match condition {
-        crate::effect::Condition::Not(inner) => {
-            !evaluate_intervening_if_condition(game, inner, eval_ctx, optional_costs_paid)
-        }
-        crate::effect::Condition::And(left, right) => {
-            evaluate_intervening_if_condition(game, left, eval_ctx, optional_costs_paid)
-                && evaluate_intervening_if_condition(game, right, eval_ctx, optional_costs_paid)
-        }
-        crate::effect::Condition::Or(left, right) => {
-            evaluate_intervening_if_condition(game, left, eval_ctx, optional_costs_paid)
-                || evaluate_intervening_if_condition(game, right, eval_ctx, optional_costs_paid)
-        }
-        crate::effect::Condition::ThisSpellWasKicked => optional_costs_paid.map_or_else(
-            || crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
-            crate::cost::OptionalCostsPaid::was_kicked,
-        ),
-        crate::effect::Condition::ThisSpellPaidLabel(label) => optional_costs_paid.map_or_else(
-            || crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
-            |paid| paid.was_paid_label(label.clone()),
-        ),
-        _ => crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
-    }
+    crate::condition_eval::evaluate_condition_external_checked(game, condition, &eval_ctx, optional_costs_paid)
 }
 
 #[cfg(test)]

@@ -3581,7 +3581,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
             | PredicateAst::ItMatches(_)
             | PredicateAst::ItMatchedLastKnown(_)
             | PredicateAst::TargetMatches(_) => true,
-            PredicateAst::TaggedMatches(tag, _)
+            PredicateAst::TaggedMatches(tag, _) | PredicateAst::TaggedMatchedLastKnown(tag, _)
                 if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     || tag.as_str() == "triggering" =>
             {
@@ -3643,7 +3643,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
 
     fn predicate_references_triggering_tag(predicate: &PredicateAst) -> bool {
         match predicate {
-            PredicateAst::TaggedMatches(tag, _) => tag.as_str() == "triggering",
+            PredicateAst::TaggedMatches(tag, _) | PredicateAst::TaggedMatchedLastKnown(tag, _) => tag.as_str() == "triggering",
             PredicateAst::Not(inner) => predicate_references_triggering_tag(inner),
             PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
                 predicate_references_triggering_tag(left)

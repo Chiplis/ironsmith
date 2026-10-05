@@ -222,6 +222,19 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         // Refreshing once is cheaper than letting each of those reads rebuild
         // every continuous effect from scratch.
         game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+        // New attack/damage observations start their own exact role. Other
+        // delayed bodies inherit a selected actor at registration time.
+        let new_combat_observation = self.trigger.subscribed_kinds().is_some_and(|kinds|
+            kinds.iter().any(|kind| matches!(kind, crate::events::EventKind::CreatureAttacked
+                | crate::events::EventKind::CreatureAttackedAndUnblocked
+                | crate::events::EventKind::CreatureBecameBlocked | crate::events::EventKind::Damage)));
+        let needs_defender = self.effects.all_effects().iter()
+            .any(|effect| effect.0.mentions_player_filter(&crate::target::PlayerFilter::Defending));
+        let defending_player_reference = if needs_defender && !new_combat_observation {
+            if !ctx.bind_defending_player(game)? { return Ok(EffectOutcome::resolved()); }
+            ctx.combat.defending_player_reference.or_else(|| ctx.combat.defending_player
+                .map(crate::combat_state::DefendingPlayerReference::Selected))
+        } else { None };
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
         // Watching the ability source means this exact incarnation. A
         // source that left before registration must not turn a blinked new
@@ -350,6 +363,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
                 .with_tagged_objects(delayed_tagged_objects)
                 .with_tagged_players(tagged_players.clone())
+                .with_defending_player_reference(defending_player_reference)
                 .with_prepayment(prepayment.clone())
                 .with_prevention_shield(prevention_shield);
                 queue_delayed_from_template(
@@ -402,6 +416,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
         .with_tagged_objects(tagged_objects)
         .with_tagged_players(tagged_players)
+        .with_defending_player_reference(defending_player_reference)
         .with_prepayment(prepayment)
         .with_prevention_shield(prevention_shield);
         let mut watched_targets = if self.watch_all_object_targets {
@@ -1268,5 +1283,38 @@ mod tests {
             game.player(bob).expect("Bob should exist").life,
             life_before - 1
         );
+    }
+}
+
+#[cfg(test)]
+mod defending_player_delay_tests {
+    // Reconstructed source contracts, UNRUN.
+    use super::*;
+    use crate::combat_state::{AttackTarget,DefendingPlayerReference};
+    use crate::ids::{CardId,PlayerId};
+    use crate::zone::Zone;
+    fn fixture()->(GameState,crate::ids::ObjectId){
+        let mut game=GameState::new(vec!["A".into(),"B".into(),"C".into()],20);
+        let source=game.create_object_from_card(&crate::card::CardBuilder::new(CardId::new(),"Delayed combat source").card_types(vec![crate::types::CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,4)).build(),PlayerId(0),Zone::Battlefield);
+        game.add_entering_attacker(source,AttackTarget::Player(PlayerId(1)));(game,source)
+    }
+    #[test]
+    fn delayed_end_combat_body_retains_the_registration_actor_across_restore(){
+        let (mut game,source)=fixture();let reference=game.retain_attacking_role(source,&AttackTarget::Player(PlayerId(1)));let mut dm=crate::decision::SelectFirstDecisionMaker;
+        let mut ctx=ExecutionContext::new(source,PlayerId(0),&mut dm);ctx.combat.defending_player_reference=Some(reference);
+        ScheduleDelayedTriggerEffect::new(Trigger::end_of_combat(),vec![Effect::lose_life_player(1,PlayerFilter::Defending)],true,Vec::new(),PlayerFilter::You).execute(&mut game,&mut ctx).unwrap();
+        assert_eq!(game.effect_store.delayed_triggers[0].defending_player_reference,Some(DefendingPlayerReference::Selected(PlayerId(1))));let saved=game.clone();game.combat.as_mut().unwrap().attackers[0].target=AttackTarget::Player(PlayerId(2));game.remove_object_from_combat(source);
+        let event=crate::triggers::TriggerEvent::new_with_provenance(crate::events::phase::EndOfCombatEvent::new(),Default::default());
+        for mut branch in [game,saved]{let triggered=crate::triggers::check_delayed_triggers(&mut branch,&event);assert_eq!(triggered.len(),1);assert_eq!(triggered[0].triggering_event.defending_player_reference(),Some(DefendingPlayerReference::Selected(PlayerId(1))));
+            let mut queue=crate::triggers::TriggerQueue::new();for trigger in triggered{queue.add(trigger);}crate::game_loop::put_triggers_on_stack(&mut branch,&mut queue).unwrap();crate::game_loop::resolve_stack_entry(&mut branch).unwrap();assert_eq!(branch.player(PlayerId(1)).unwrap().life,19);assert_eq!(branch.player(PlayerId(2)).unwrap().life,20);}
+    }
+    #[test]
+    fn delayed_attack_starts_a_new_combat_observation_instead_of_inheriting_the_old_actor(){
+        let (mut game,source)=fixture();let mut dm=crate::decision::SelectFirstDecisionMaker;let mut ctx=ExecutionContext::new(source,PlayerId(0),&mut dm);ctx.combat.defending_player_reference=Some(DefendingPlayerReference::Selected(PlayerId(1)));
+        ScheduleDelayedTriggerEffect::new(Trigger::this_attacks(),vec![Effect::lose_life_player(1,PlayerFilter::Defending)],true,vec![source],PlayerFilter::You).watch_ability_source().execute(&mut game,&mut ctx).unwrap();assert_eq!(game.effect_store.delayed_triggers[0].defending_player_reference,None);
+        game.remove_object_from_combat(source);game.add_entering_attacker(source,AttackTarget::Player(PlayerId(2)));let reference=game.retain_attacking_role(source,&AttackTarget::Player(PlayerId(2)));
+        let event=crate::triggers::TriggerEvent::new_with_provenance(crate::events::CreatureAttackedEvent::new(source,crate::triggers::AttackEventTarget::Player(PlayerId(2))),Default::default()).with_defending_player_reference(reference);
+        let triggered=crate::triggers::check_delayed_triggers(&mut game,&event);assert_eq!(triggered.len(),1);assert_eq!(triggered[0].triggering_event.defending_player_reference(),Some(reference));let mut queue=crate::triggers::TriggerQueue::new();for trigger in triggered{queue.add(trigger);}
+        crate::game_loop::put_triggers_on_stack(&mut game,&mut queue).unwrap();crate::game_loop::resolve_stack_entry(&mut game).unwrap();assert_eq!(game.player(PlayerId(1)).unwrap().life,20);assert_eq!(game.player(PlayerId(2)).unwrap().life,19);
     }
 }

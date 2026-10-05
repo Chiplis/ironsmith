@@ -50,9 +50,8 @@ impl TriggerMatcher for PlayerPlaysLandTrigger {
         if filter.zone.take().is_some_and(|zone| zone != e.from_zone) {
             return false;
         }
-        ctx.game
-            .object(e.land)
-            .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game))
+        if let Some(snapshot) = &e.snapshot { return filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game); }
+        ctx.game.object(e.land).is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game))
     }
 
     fn display(&self) -> String {

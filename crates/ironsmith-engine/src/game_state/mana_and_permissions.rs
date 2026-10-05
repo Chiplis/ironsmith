@@ -294,8 +294,10 @@ impl GameState {
             self.clear_soulbond_pair(id);
             self.set_summoning_sick(id);
         }
-        self.reconcile_combat_membership(&changed);
+        // Preserve previous destination actors before retiring attackers in
+        // the same simultaneous control/type transition.
         self.reconcile_attacked_permanents(&previous_controllers);
+        self.reconcile_combat_membership(&changed);
     }
 
     /// CR 506.4 / 506.4e: a planeswalker or battle that's being attacked is
@@ -313,37 +315,27 @@ impl GameState {
         use crate::combat_state::AttackTarget;
         use crate::types::CardType;
 
-        let Some(combat) = self.combat.as_ref() else {
-            return;
-        };
-        if !combat
-            .attackers
-            .iter()
-            .any(|info| info.target.attacked_permanent().is_some())
-        {
-            return;
+        let mut attacked = Vec::new();
+        for combat in self.combat_lanes() {
+            for info in &combat.attackers {
+                let Some(permanent) = info.target.attacked_permanent() else { continue; };
+                let as_battle = matches!(info.target, AttackTarget::Battle(_));
+                let types = combat.attacked_permanent_types.get(&permanent).copied()
+                    .unwrap_or(crate::combat_state::AttackedPermanentTypes {
+                        planeswalker: !as_battle || self.object_has_card_type(permanent, CardType::Planeswalker),
+                        battle: as_battle || self.object_has_card_type(permanent, CardType::Battle),
+                    });
+                attacked.push((permanent, as_battle, types));
+            }
         }
-        // Permanents that began being attacked outside a declaration (e.g.
-        // entering attacking) are recorded the first time they're seen.
-        let mut combat = self.combat.take().expect("combat checked above");
-        combat.record_attacked_permanent_types(self);
-        let mut attacked = combat
-            .attackers
-            .iter()
-            .filter_map(|info| {
-                let permanent = info.target.attacked_permanent()?;
-                Some((
-                    permanent,
-                    matches!(info.target, AttackTarget::Battle(_)),
-                    combat
-                        .attacked_permanent_types
-                        .get(&permanent)
-                        .copied()
-                        .unwrap_or_default(),
-                ))
-            })
-            .collect::<Vec<_>>();
-        self.combat = Some(combat);
+        self.mutate_combat_lanes(|combat| {
+            for (permanent, _, types) in &attacked {
+                if combat.attackers.iter().any(|info| info.target.attacked_permanent() == Some(*permanent)) {
+                    combat.attacked_permanent_types.entry(*permanent).or_insert(*types);
+                }
+            }
+            false
+        });
         attacked.sort_by_key(|(id, as_battle, _)| (id.0, *as_battle));
         attacked.dedup_by_key(|(id, as_battle, _)| (*id, *as_battle));
         for (permanent, as_battle, attacked_as) in attacked {
@@ -410,13 +402,12 @@ impl GameState {
                     (true, true) => continue,
                 }
             };
-            if let Some(combat) = self.combat.as_mut() {
+            self.mutate_combat_lanes(|combat| {
                 for info in &mut combat.attackers {
-                    if info.target.attacked_permanent() == Some(permanent) {
-                        info.target = retarget.clone();
-                    }
+                    if info.target.attacked_permanent() == Some(permanent) { info.target = retarget.clone(); }
                 }
-            }
+                true
+            });
         }
     }
 
@@ -424,20 +415,11 @@ impl GameState {
     /// or if it's an attacking or blocking creature that stops being a
     /// creature or becomes a battle.
     fn reconcile_combat_membership(&mut self, controller_changed: &[ObjectId]) {
-        let Some(combat) = self.combat.as_ref() else {
-            return;
-        };
-        let mut combatants = combat
-            .attackers
-            .iter()
-            .map(|attacker| attacker.creature)
-            .collect::<Vec<_>>();
-        for blockers in combat.blockers.values() {
-            for blocker in blockers {
-                if !combatants.contains(blocker) {
-                    combatants.push(*blocker);
-                }
-            }
+        let mut combatants = Vec::new();
+        for combat in self.combat_lanes() {
+            for id in combat.attackers.iter().map(|attacker| attacker.creature)
+                .chain(combat.blockers.values().flatten().copied())
+            { if !combatants.contains(&id) { combatants.push(id); } }
         }
         let removed = combatants
             .into_iter()

@@ -18,6 +18,29 @@ use crate::rules::combat::{
 use crate::static_abilities::StaticAbility;
 use crate::zone::Zone;
 
+/// Exact attacking tenure, retained in the native copy-on-write combat owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AttackingRoleId(pub(crate) usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DefendingPlayersId(pub(crate) usize);
+
+/// Current-or-last combat actor. None on an envelope means no inherited role;
+/// Missing is an explicit lack of required evidence, not an empty player set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefendingPlayerReference {
+    Selected(PlayerId),
+    KnownAbsent,
+    Attacker { attacker: ObjectId, role: AttackingRoleId },
+    CombatOpponents { attacking_player: PlayerId, defenders: DefendingPlayersId },
+    LegacyAttack { attacker: ObjectId, player: PlayerId },
+    Missing,
+}
+#[derive(Debug, Clone)]
+pub(crate) struct RetainedAttackingRole {
+    pub attacker: ObjectId,
+    pub last_defender: Option<PlayerId>,
+}
+
 /// Combat state tracking.
 #[derive(Debug, Clone, Default)]
 pub struct CombatState {
@@ -52,6 +75,59 @@ pub struct AttackedPermanentTypes {
 }
 
 impl CombatState {
+    pub(crate) fn remove_combatant(&mut self, id: ObjectId) -> bool {
+        let was_participating = self
+            .attackers
+            .iter()
+            .any(|attacker| attacker.creature == id)
+            || self
+                .blockers
+                .values()
+                .any(|blockers| blockers.contains(&id));
+        self.remember_blocked_attackers();
+        self.attackers.retain(|attacker| attacker.creature != id);
+        self.blockers.remove(&id);
+        self.blocked_attackers.remove(&id);
+        self.damage_assignment_order.remove(&id);
+        self
+            .attacking_bands
+            .iter_mut()
+            .for_each(|band| band.retain(|member| *member != id));
+        self.attacking_bands.retain(|band| !band.is_empty());
+        self.had_to_attack_this_combat.remove(&id);
+        for blockers in self.blockers.values_mut() {
+            blockers.retain(|blocker| *blocker != id);
+        }
+        for order in self.damage_assignment_order.values_mut() {
+            order.retain(|object| *object != id);
+        }
+        was_participating
+    }
+    pub(crate) fn remove_attacked_permanent(&mut self, permanent: ObjectId,
+        planeswalker_defender: Option<PlayerId>, battle_defender: Option<PlayerId>) -> bool
+    {
+        if !self.attackers.iter().any(|info| info.target.attacked_permanent() == Some(permanent)) { return false; }
+        self.attacked_permanent_types.remove(&permanent);
+        for info in &mut self.attackers {
+            info.target = match info.target {
+                crate::combat_state::AttackTarget::Planeswalker(id) if id == permanent => {
+                    crate::combat_state::AttackTarget::Nothing {
+                        defending_player: planeswalker_defender,
+                        was_planeswalker: true,
+                    }
+                }
+                crate::combat_state::AttackTarget::Battle(id) if id == permanent => {
+                    crate::combat_state::AttackTarget::Nothing {
+                        defending_player: battle_defender,
+                        was_planeswalker: false,
+                    }
+                }
+                ref other => other.clone(),
+            };
+        }
+        true
+    }
+
     /// Record, for each planeswalker or battle that just began being
     /// attacked, the card types it has now (CR 506.4e). Already-recorded
     /// permanents keep their declaration-time types.

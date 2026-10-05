@@ -85,6 +85,15 @@ pub enum ChooseSpec {
 }
 
 impl ChooseSpec {
+    pub fn mentions_player_filter(&self, needle: &PlayerFilter) -> bool {
+        match self.base() {
+            Self::Player(filter) | Self::EachPlayer(filter) | Self::PlayerOrPlaneswalker(filter) => filter.mentions_player_filter(needle),
+            Self::Object(filter) | Self::All(filter) => filter.mentions_player_filter(needle),
+            Self::ObjectOrPlayer(object, player) => object.mentions_player_filter(needle) || player.mentions_player_filter(needle),
+            _ => false,
+        }
+    }
+
     pub fn with_surface_hint(self, hint: ChooseSpecSurfaceHint) -> Self {
         self.with_surface_hints([hint])
     }

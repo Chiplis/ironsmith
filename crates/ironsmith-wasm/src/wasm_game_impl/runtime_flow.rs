@@ -4288,6 +4288,7 @@ mod live_action_rollback_tests {
     include!("payment_disclosure_undo_tests.rs");
     include!("snc_payment_disclosure_undo_tests.rs");
     include!("payment_disclosure_transaction_tests.rs");
+    include!("combat_defending_actor_savepoint_tests.rs");
     include!("grouped_hand_payment_disclosure_tests.rs");
 
 }

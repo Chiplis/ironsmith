@@ -234,6 +234,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             tapped: false,
             attacking: false,
             goaded: None,
+            suspected: None,
             ring_bearer: None,
             flipped: false,
             face_down: false,
@@ -331,6 +332,11 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         {
             return Ok(EffectOutcome::resolved());
         }
+        // The antecedent succeeded. Bind its actor now, not before a declined
+        // optional action, and retain it for this separate resolution.
+        let needs_defender = self.choices.iter().any(|spec| spec.mentions_player_filter(&crate::target::PlayerFilter::Defending))
+            || self.effects.iter().any(|effect| effect.0.mentions_player_filter(&crate::target::PlayerFilter::Defending));
+        if needs_defender && !ctx.bind_defending_player(game)? { return Ok(EffectOutcome::resolved()); }
         let fallback_it_snapshots = reflexive_it_snapshots(game, &outcome);
 
         // X chosen while paying for the antecedent belongs to this follow-up,
@@ -696,6 +702,7 @@ pub(crate) fn reflexive_trigger_stack_entry(
         return Some(None);
     }
     game.effect_store.pending_reflexive_triggers.remove(index);
+    entry.defending_player_reference = pending.combat.defending_player_reference;
     if let Some(defending_player) = pending.combat.defending_player {
         entry = entry.with_defending_player(defending_player);
     }

@@ -548,6 +548,19 @@ pub trait EffectExecutor:
     /// provided by the default capability helpers below.
     fn visit_child_effects(&self, _visitor: &mut dyn FnMut(&Effect)) {}
 
+    /// Direct role use, excluding optional/conditional children until they run.
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        let mut has_children = false;
+        self.visit_child_effects(&mut |_| has_children = true);
+        !has_children && self.get_target_spec().is_some_and(|spec| spec.mentions_player_filter(needle))
+    }
+    fn mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        let mut found = self.directly_mentions_player_filter(needle);
+        self.visit_child_effects(&mut |effect| found |= effect.0.mentions_player_filter(needle));
+        found
+    }
+
+
     /// Visit complete definitions directly owned by this executor. Composition
     /// traversal remains the caller's responsibility through child effects.
     fn visit_card_definitions(&self, _visitor: &mut dyn FnMut(&crate::cards::CardDefinition)) {}

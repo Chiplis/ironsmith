@@ -202,10 +202,16 @@ pub(super) fn read_source_suspected(
     {
         let simple_words = non_article_token_word_refs(predicate_tokens);
         if [
+            &["it", "is", "suspected"][..], &["its", "suspected"],
+            &["any", "of", "them", "are", "suspected"],
+            &["they", "are", "suspected"], &["theyre", "suspected"],
+        ].iter().any(|expected| surface::exact_words(&simple_words, expected)) {
+            return Ok(Some(PredicateAst::ItMatches(ObjectFilter::default().suspected())));
+        }
+        if [
             &["this", "creature", "is", "suspected"][..],
             &["this", "permanent", "is", "suspected"][..],
-            &["it", "is", "suspected"][..],
-            &["its", "suspected"][..],
+
         ]
         .iter()
         .any(|expected| surface::exact_words(&simple_words, expected))

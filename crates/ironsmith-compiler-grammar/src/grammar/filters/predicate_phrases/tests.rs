@@ -3937,7 +3937,7 @@ fn explicit_additional_cost_object_predicates_use_stable_alias() -> Result<(), C
         ),
     ] {
         let tokens = lex_line(text, 0)?;
-        let PredicateAst::TaggedMatches(tag, filter) = parse_predicate(&tokens)? else {
+        let PredicateAst::TaggedMatchedLastKnown(tag, filter) = parse_predicate(&tokens)? else {
             panic!("expected tagged cost-object predicate for {text}");
         };
         assert_eq!(
@@ -4411,4 +4411,15 @@ fn foretold_spell_predicate_is_distinct_from_exile_and_payment() -> Result<(), C
         assert!(!matches!(parse_predicate(&predicate_tokens_after_if(&tokens))?, PredicateAst::ThisSpellWasForetold));
     }
     Ok(())
+}
+
+#[test]
+fn suspected_predicates_distinguish_source_pronoun_and_paid_history() {
+    for text in ["it's suspected", "it is suspected", "any of them are suspected"] {
+        let predicate = parse_predicate(&lex_line(text, 0).unwrap()).unwrap();
+        assert!(matches!(predicate, PredicateAst::ItMatches(filter) if filter.suspected), "{text}");
+    }
+    assert!(matches!(parse_predicate(&lex_line("this creature is suspected", 0).unwrap()).unwrap(), PredicateAst::Source(SourcePredicateAst::SourceSuspected)));
+    let predicate = parse_predicate(&lex_line("the sacrificed creature was suspected", 0).unwrap()).unwrap();
+    assert!(matches!(predicate, PredicateAst::TaggedMatchedLastKnown(tag, filter) if filter.suspected && tag.as_str() == crate::tag::CompilerReferenceTag::AdditionalCostObject.as_str()));
 }

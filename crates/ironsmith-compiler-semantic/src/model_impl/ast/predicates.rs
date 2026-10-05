@@ -52,6 +52,8 @@ pub enum PredicateAst {
     ItMatchedLastKnown(ObjectFilter),
     TargetMatches(ObjectFilter),
     TaggedMatches(TagRef, ObjectFilter),
+    /// Explicit tagged object, evaluated exclusively from retained pre-move evidence.
+    TaggedMatchedLastKnown(TagRef, ObjectFilter),
     TaggedWasCast(TagRef),
     EnchantedPermanentAttackedThisTurn,
     EnchantedPermanentAttackedOrBlockedSinceLastUpkeep,

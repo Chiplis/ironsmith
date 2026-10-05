@@ -57,6 +57,7 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
     entry.casting_method = ctx.casting_method.clone();
     entry.optional_costs_paid = ctx.optional_costs_paid.clone();
     entry.defending_player = ctx.combat.defending_player;
+    entry.defending_player_reference = ctx.combat.defending_player_reference;
     entry.chosen_player = ctx.combat.chosen_player;
     entry.source_snapshot = ctx.source_snapshot.clone();
     entry.triggering_event = ctx.triggering_event.clone();
@@ -216,6 +217,7 @@ pub(crate) fn create_stack_copy_from_object(
         copy_entry.optional_costs_paid.cast_was_foretold = Some(false);
     }
     copy_entry.defending_player = original_entry.defending_player;
+    copy_entry.defending_player_reference = original_entry.defending_player_reference;
     copy_entry.chosen_player = original_entry.chosen_player;
     copy_entry.source_snapshot = original_entry.source_snapshot.clone();
     copy_entry.source_name = original_entry.source_name.clone();
@@ -565,6 +567,18 @@ mod tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn copied_and_resolving_sources_preserve_exact_defender_bindings() {
+        // Reconstructed source contract, UNRUN.
+        let mut game=setup_game();let source=game.create_object_from_card(&CardBuilder::new(CardId::new(),"Attacker").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2,2)).build(),PlayerId(0),Zone::Battlefield);
+        game.add_entering_attacker(source,crate::combat_state::AttackTarget::Player(PlayerId(1)));let attacking=game.retain_attacking_role(source,&crate::combat_state::AttackTarget::Player(PlayerId(1)));
+        for reference in [attacking,crate::combat_state::DefendingPlayerReference::Selected(PlayerId(1)),crate::combat_state::DefendingPlayerReference::KnownAbsent,crate::combat_state::DefendingPlayerReference::Missing]{
+            let object=game.object(source).unwrap().clone();let mut entry=StackEntry::ability(source,PlayerId(0),vec![Effect::gain_life(1)]);entry.defending_player_reference=Some(reference);
+            let copy=create_stack_copy_from_object(&mut game,&object,source,&entry,PlayerId(0),&[],|_|{},None).unwrap().unwrap();assert_eq!(game.stack.iter().find(|entry|entry.object_id==copy).unwrap().defending_player_reference,Some(reference));
+            let mut dm=crate::decision::SelectFirstDecisionMaker;let mut ctx=ExecutionContext::new(source,PlayerId(0),&mut dm);ctx.combat.defending_player_reference=Some(reference);assert_eq!(resolving_source_stack_entry(&ctx).defending_player_reference,Some(reference));
+        }
     }
 
     fn create_instant_on_stack(

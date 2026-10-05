@@ -766,7 +766,6 @@ fn execute_resolution_program_inner(
     // effects all observe the same active teammate.
     let program_debug = format!("{program:?}");
     let attacking_anchor = ctx.combat.attacking_player;
-    let defending_anchor = ctx.combat.defending_player;
     if !bind_singular_active_player_choice(game, ctx, program_debug.contains("Active"))
         || !bind_singular_combat_player_choice(
             game,
@@ -774,13 +773,6 @@ fn execute_resolution_program_inner(
             program_debug.contains("Attacking"),
             attacking_anchor,
             true,
-        )
-        || !bind_singular_combat_player_choice(
-            game,
-            ctx,
-            program_debug.contains("Defending"),
-            defending_anchor,
-            false,
         )
     {
         return Ok(Vec::new());
@@ -1158,9 +1150,8 @@ fn resolve_stack_entry_full_inner(
     }
     ctx.effect_outcomes = entry.effect_outcomes.clone();
     ctx.ninjutsu_attack_target = entry.ninjutsu_attack_target.clone();
-    if let Some(defending) = entry.defending_player {
-        ctx = ctx.with_defending_player(defending);
-    }
+    ctx.combat.defending_player = entry.defending_player;
+    ctx.combat.defending_player_reference = entry.defending_player_reference;
     if let Some(triggering_event) = entry.triggering_event.clone() {
         if let Some(attacked) =
             triggering_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
@@ -1370,7 +1361,7 @@ fn resolve_stack_entry_full_inner(
     // If the condition is false, the ability does nothing (but doesn't fizzle)
     if let Some(ref condition) = entry.intervening_if
         && let Some(ref triggering_event) = entry.triggering_event
-        && !crate::triggers::verify_intervening_if_at_resolution(
+        && !crate::triggers::verify_intervening_if_at_resolution_checked(
             game,
             condition,
             entry.controller,
@@ -1378,7 +1369,7 @@ fn resolve_stack_entry_full_inner(
             execution_source,
             None,
             Some(&entry.optional_costs_paid),
-        )
+        ).map_err(GameLoopError::ExecutionFailed)?
     {
         // Condition no longer true - ability resolves but does nothing
         crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
@@ -2109,6 +2100,7 @@ fn resolve_stack_entry_full_inner(
                             tagged_players: std::collections::HashMap::new(),
                             prepayment: None,
                             prevention_shield: None,
+                            defending_player_reference: None,
                         });
                 }
                 completion_receipts.push((entry.object_id, receipt));
@@ -3059,7 +3051,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_combat_resolution_selects_singular_attacking_and_defending_players() {
+    fn shared_combat_resolution_selects_attacker_but_preserves_the_exact_defender() {
         let mut game = GameState::new(
             vec![
                 "Alice".into(),
@@ -3145,8 +3137,8 @@ mod tests {
 
         assert_eq!(game.player(alice).expect("Alice").life, 20);
         assert_eq!(game.player(bob).expect("Bob").life, 21);
-        assert_eq!(game.player(charlie).expect("Charlie").life, 20);
-        assert_eq!(game.player(diana).expect("Diana").life, 21);
+        assert_eq!(game.player(charlie).expect("Charlie").life, 21);
+        assert_eq!(game.player(diana).expect("Diana").life, 20);
     }
 
     #[test]

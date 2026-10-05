@@ -442,6 +442,10 @@ pub struct ObjectSnapshot {
     /// noncopiable information available to already-pending abilities.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub noted_life_total: Option<i32>,
+    /// Suspected designation of this exact incarnation when captured.
+    /// Missing evidence in older/public snapshots is not an unsuspicious result.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub suspected: Option<bool>,
 }
 
 /// Counters encoded as `(kind, count)` pairs: a named counter kind is not a
@@ -529,6 +533,7 @@ impl ObjectSnapshot {
             tapped: false,
             attacking: false,
             goaded: None,
+            suspected: None,
             ring_bearer: None,
             flipped: false,
             face_down: false,
@@ -674,6 +679,7 @@ impl ObjectSnapshot {
                 .as_ref()
                 .is_some_and(|combat| crate::combat_state::is_attacking(combat, obj.id)),
             goaded: None,
+            suspected: Some(obj.zone == Zone::Battlefield && game.is_suspected(obj.id)),
             ring_bearer: Some(obj.zone == Zone::Battlefield && game.player(game.controller_of(obj)).is_some_and(|player| player.ring_bearer == Some(obj.id))),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
@@ -1067,6 +1073,7 @@ impl ObjectSnapshot {
             tapped: false,
             attacking: false,
             goaded: Some(false),
+            suspected: Some(false),
             ring_bearer: Some(false),
             flipped: false,
             face_down: false,

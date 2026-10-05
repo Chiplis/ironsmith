@@ -1635,6 +1635,9 @@ pub fn resolve_restriction_it_tag(
                 cause,
             }
         }
+        Restriction::BecomeSuspected(filter) => {
+            Restriction::BecomeSuspected(resolve_it_tag(filter, refs)?)
+        }
         Restriction::BeSacrificed(filter) => {
             Restriction::be_sacrificed(resolve_it_tag(filter, refs)?)
         }

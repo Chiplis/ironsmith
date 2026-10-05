@@ -2227,6 +2227,7 @@ pub(super) fn deal_test_combat_damage_to_player(
     }
 
     CombatDamageEvent {
+        defending_player_reference: None,
         damage_receipt: None,
         source_snapshot: None,
         target_snapshot: None,

@@ -98,6 +98,7 @@ mod tests {
             casting_method: crate::alternative_cast::CastingMethod::Normal,
             optional_costs_paid: Default::default(),
             defending_player: None,
+            defending_player_reference: None,
             chosen_player: None,
             chapter_ability_source: None,
             battle_defeat_source: None,

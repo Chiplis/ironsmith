@@ -4559,6 +4559,20 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         filter.shares_creature_type_with_source = true;
         return Some(PredicateAst::ItMatches(filter));
     }
+    if surface::exact_any(descriptor, &[
+        &["shares", "a", "card", "type", "with", "that", "permanent"],
+        &["shares", "card", "type", "with", "that", "permanent"],
+    ]) {
+        let mut filter = ObjectFilter::default().shares_card_type_with_tagged(crate::tag::CompilerReferenceTag::Triggering.bind());
+        filter.set_shared_type_antecedent_surface(Some(ironsmith_core::DemonstrativeAntecedentSurface::Permanent));
+        return Some(PredicateAst::ItMatches(filter));
+    }
+    if surface::exact_any(descriptor, &[
+        &["shares", "a", "card", "type", "with", "the", "exiled", "card"],
+        &["shares", "card", "type", "with", "the", "exiled", "card"],
+    ]) {
+        return Some(PredicateAst::ItMatches(ObjectFilter::default().shares_card_type_with_tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())));
+    }
     if surface::exact_any(
         descriptor,
         &[
@@ -4987,4 +5001,22 @@ fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
             right: Value::Fixed(value),
         }
     })
+}
+
+#[cfg(test)]
+mod shared_type_reference_predicate_tests {
+    use super::*;
+    #[test]
+    fn sharing_predicates_preserve_their_distinct_subject_and_comparison_operand() {
+        for (text, tag) in [("if it shares a card type with the exiled card", crate::tag::CompilerReferenceTag::SourceExiled),
+            ("if it shares a card type with that permanent", crate::tag::CompilerReferenceTag::Triggering)] {
+            let PredicateAst::ItMatches(filter) = parse_predicate(&crate::lexer::lex_line(text, 0).unwrap()).unwrap() else { panic!("missing subject predicate"); };
+            assert_eq!(filter, ObjectFilter::default().shares_card_type_with_tagged(tag.bind()));
+            assert!(filter.card_types.is_empty()); assert!(filter.description().contains("shares a card type"));
+            if tag == crate::tag::CompilerReferenceTag::Triggering {
+                assert_eq!(filter.shared_type_antecedent_surface(), Some(ironsmith_core::DemonstrativeAntecedentSurface::Permanent));
+            }
+        }
+        assert!(parse_demonstrative_shares_predicate(&crate::lexer::lex_line("it shares a card type with the exiled card and is red", 0).unwrap()).is_none());
+    }
 }

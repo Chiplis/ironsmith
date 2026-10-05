@@ -2091,6 +2091,9 @@ fn finish_players_outcome(
 }
 
 impl EffectExecutor for ForPlayersEffect {
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        self.filter.mentions_player_filter(needle)
+    }
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }

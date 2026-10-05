@@ -40,6 +40,7 @@ use crate::zone::Zone;
 
 mod alternating_teams;
 mod attack_direction;
+mod defending_player;
 mod attractions;
 mod commander_draft;
 mod conspiracy;
@@ -627,6 +628,9 @@ struct ExileTracking {
 /// Combat and per-turn transient tracking grouped behind copy-on-write storage.
 #[derive(Debug, Clone, Default)]
 struct CombatTransientState {
+    attacking_roles: Vec<crate::combat_state::RetainedAttackingRole>,
+    current_attacking_roles: HashMap<ObjectId, crate::combat_state::AttackingRoleId>,
+    combat_defending_players: Vec<(PlayerId, Vec<PlayerId>)>,
     /// Soulbond pairings (stored bidirectionally: A -> B and B -> A).
     soulbond_pairs: crate::incremental::TrackedValue<HashMap<ObjectId, ObjectId>>,
     /// Attack targets captured while paying Ninjutsu costs.
@@ -1815,6 +1819,9 @@ pub struct CantEffectTracker {
     /// Permanents that can't be sacrificed.
     pub cant_be_sacrificed: crate::incremental::ObjectSet,
 
+    /// Live designation prohibitions, owned by their source.
+    pub cant_become_suspected: crate::incremental::ObjectSet,
+
     /// Object, protected cause, and controller of the restriction's source.
     pub cant_be_sacrificed_by_cause: Vec<(ObjectId, ironsmith_core::CauseFilter, PlayerId)>,
 
@@ -2501,6 +2508,7 @@ impl CantEffectTracker {
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
         self.cant_be_regenerated.extend(other.cant_be_regenerated);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
+        self.cant_become_suspected.extend(other.cant_become_suspected);
         self.cant_be_sacrificed_by_cause
             .extend(other.cant_be_sacrificed_by_cause);
         for restriction in other.cant_enter_battlefield {
@@ -2605,6 +2613,7 @@ impl CantEffectTracker {
         self.cant_be_destroyed.clear();
         self.cant_be_regenerated.clear();
         self.cant_be_sacrificed.clear();
+        self.cant_become_suspected.clear();
         self.cant_be_sacrificed_by_cause.clear();
         self.cant_enter_battlefield.clear();
         self.cant_cast_filters.clear();
@@ -3625,6 +3634,7 @@ pub struct StackEntry {
     pub optional_costs_paid: OptionalCostsPaid,
     /// The defending player for combat-related triggers.
     pub defending_player: Option<PlayerId>,
+    pub defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     /// The chosen player linked to this source at the time the stack entry was created.
     pub chosen_player: Option<PlayerId>,
     /// If this is a chapter ability, the source object's ID.
@@ -3723,6 +3733,7 @@ impl StackEntry {
             casting_method: CastingMethod::Normal,
             optional_costs_paid: OptionalCostsPaid::default(),
             defending_player: None,
+            defending_player_reference: None,
             chosen_player: None,
             chapter_ability_source: None,
             battle_defeat_source: None,
@@ -3771,6 +3782,7 @@ impl StackEntry {
             casting_method: CastingMethod::Normal,
             optional_costs_paid: OptionalCostsPaid::default(),
             defending_player: None,
+            defending_player_reference: None,
             chosen_player: None,
             chapter_ability_source: None,
             battle_defeat_source: None,

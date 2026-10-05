@@ -759,6 +759,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/819"
+    },
+    {
+      "stage": 55,
+      "branch": "fix/card-failures-55-recovery-on-d51",
+      "base": "main",
+      "source_integration_commit": "cc915c3fb4ef9162bfda86fbf69c2549c1e37c85",
+      "remote_commit": "b1cd77bf2302a4e7ce40c857a2ab38e79878b816",
+      "tree": "fc2f447b8d3fcb463da043a53cde5f6768e3211f",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 821,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/821"
     }
   ]
 }

@@ -3038,6 +3038,24 @@ fn try_parse_player_plays_card_lexed(
     )))
 }
 
+/// The two actions share exactly one player subject. Parse each complete
+/// arm separately so the land-play arm cannot consume the spell-cast arm.
+fn try_parse_land_play_or_spell_cast_lexed(
+    raw_tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let tokens = trim_edge_punctuation_tokens(strip_leading_trigger_intro(raw_tokens));
+    let Some(play) = tokens.iter().position(|token| token.is_word("play") || token.is_word("plays")) else { return Ok(None); };
+    if parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[..play])).is_none() { return Ok(None); }
+    let tail = crate::lexer::token_word_refs(&tokens[play + 1..]);
+    if !matches!(tail.as_slice(), ["a", "land", "or", "cast" | "casts", "a", "spell"]) { return Ok(None); }
+    let or = tokens.iter().position(|token| token.is_word("or")).expect("complete union has or");
+    let land = parse_trigger_clause_lexed_unstacked(&tokens[..or])?;
+    let mut cast = tokens[..play].to_vec();
+    cast.extend_from_slice(&tokens[or + 1..]);
+    let spell = parse_trigger_clause_lexed_unstacked(&cast)?;
+    Ok(Some(apply_leading_trigger_intro_surface(TriggerSpec::Either(Box::new(land), Box::new(spell)), raw_tokens)))
+}
+
 /// Split a shared-subject "or" only for verbs without a dedicated union
 /// shape, preserving the tuned enters-or-attacks and damage-recipient routes.
 fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
@@ -3189,5 +3207,23 @@ mod singular_attack_ownership_tests {
                 .unwrap()
                 .is_none()
         );
+    }
+}
+
+#[cfg(test)]
+mod shared_type_land_cast_union_tests {
+    use super::*;
+    #[test]
+    fn union_has_two_complete_domains_with_one_actor() {
+        for (text, actor) in [("Whenever a player plays a land or casts a spell", PlayerFilter::Any), ("Whenever you play a land or cast a spell", PlayerFilter::You)] {
+            let parsed = try_parse_land_play_or_spell_cast_lexed(&crate::lexer::lex_line(text, 0).unwrap()).unwrap().unwrap();
+            let TriggerSpec::WithIntro { trigger, .. } = parsed else { panic!("missing intro"); };
+            let TriggerSpec::Either(left, right) = *trigger else { panic!("missing union"); };
+            assert!(matches!(*left, TriggerSpec::PlayerPlaysLand { player, .. } if player == actor));
+            assert!(matches!(*right, TriggerSpec::SpellCast { caster, .. } if caster == actor));
+        }
+        for text in ["you play a land or cast two spells", "you play a land or cast a spell from exile", "a player plays a land or another player casts a spell"] {
+            assert!(try_parse_land_play_or_spell_cast_lexed(&crate::lexer::lex_line(text, 0).unwrap()).unwrap().is_none());
+        }
     }
 }

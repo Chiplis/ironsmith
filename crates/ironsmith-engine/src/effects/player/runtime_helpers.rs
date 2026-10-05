@@ -47,11 +47,13 @@ pub(super) fn queue_effect_driven_land_play(
     land_id: ObjectId,
     player: PlayerId,
     from_zone: Zone,
-) {
+    completed_destination: Zone,
+) -> Result<(), ExecutionError> {
+    let event = LandPlayedEvent::with_current_snapshot(land_id, player, from_zone, completed_destination, game)?;
     game.queue_trigger_event(
         ctx.provenance,
         TriggerEvent::new_with_provenance(
-            LandPlayedEvent::new(land_id, player, from_zone),
+            event,
             ctx.provenance,
         ),
     );
@@ -63,6 +65,7 @@ pub(super) fn queue_effect_driven_land_play(
     if let Some(player_data) = game.player_mut(player) {
         player_data.record_land_play();
     }
+    Ok(())
 }
 
 pub(super) fn with_spell_cast_event(

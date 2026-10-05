@@ -7,6 +7,7 @@ use super::*;
 /// Combat damage event for trigger processing.
 #[derive(Debug, Clone)]
 pub struct CombatDamageEvent {
+    pub defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     /// Exact completed damage notification, including batch totals and proof
     /// when observers were captured before replacement/prevention additions.
     pub damage_receipt: Option<TriggerEvent>,
@@ -303,6 +304,7 @@ fn apply_combat_damage_step_with_dm_and_first_step_snapshot(
 
 #[derive(Debug)]
 struct PlannedCombatDamage {
+    defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     source: ObjectId,
     source_snapshot: crate::snapshot::ObjectSnapshot,
     target: EventDamageTarget,
@@ -438,6 +440,7 @@ fn plan_general_combat_damage(
                 ),
             };
             planned.push(PlannedCombatDamage {
+                defending_player_reference: Some(game.retain_combat_damage_role(combat, attacker_id)),
                 source: attacker_id,
                 source_snapshot:
                     crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
@@ -520,6 +523,7 @@ fn plan_general_combat_damage(
                 continue;
             }
             planned.push(PlannedCombatDamage {
+                defending_player_reference: Some(game.retain_combat_damage_role(combat, blocker_id)),
                 source: blocker_id,
                 source_snapshot:
                     crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
@@ -978,6 +982,7 @@ fn plan_unblocked_player_damage(
 
 fn unblocked_plan_as_general(planned: PlannedUnblockedPlayerDamage) -> PlannedCombatDamage {
     PlannedCombatDamage {
+        defending_player_reference: None,
         source: planned.source,
         source_snapshot: planned.source_snapshot,
         target: EventDamageTarget::Player(planned.target),
@@ -995,10 +1000,13 @@ fn execute_unblocked_player_damage_fast_path(
     first_step_strikers: Option<&std::collections::HashSet<ObjectId>>,
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<Vec<CombatDamageEvent>, CombatDamageAssignmentError> {
-    let planned = plan_unblocked_player_damage(game, combat, first_strike, first_step_strikers)
+    let mut planned = plan_unblocked_player_damage(game, combat, first_strike, first_step_strikers)
         .into_iter()
         .map(unblocked_plan_as_general)
         .collect::<Vec<_>>();
+    for plan in &mut planned {
+        plan.defending_player_reference = Some(game.retain_combat_damage_role(combat, plan.source));
+    }
     let processed = planned
         .iter()
         .map(|plan| {
@@ -1030,6 +1038,9 @@ fn execute_unblocked_player_damage_batch_path(
         .into_iter()
         .map(unblocked_plan_as_general)
         .collect::<Vec<_>>();
+    for plan in &mut planned {
+        plan.defending_player_reference = Some(game.retain_combat_damage_role(combat, plan.source));
+    }
     let proposals = planned
         .iter()
         .map(|plan| crate::events::processing::SimultaneousDamageEvent {

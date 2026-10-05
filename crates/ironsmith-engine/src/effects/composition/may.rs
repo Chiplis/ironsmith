@@ -303,6 +303,9 @@ impl MayEffect {
 }
 
 impl EffectExecutor for MayEffect {
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        self.decider.as_ref().is_some_and(|filter| filter.mentions_player_filter(needle))
+    }
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }

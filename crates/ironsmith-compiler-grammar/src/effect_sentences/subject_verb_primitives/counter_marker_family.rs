@@ -84,6 +84,7 @@ fn retarget_it_restriction_for_counter_followup(
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
+        | Restriction::BecomeSuspected(filter)
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::BeTargeted(filter)

@@ -6,6 +6,12 @@ pub fn parse_become_clause(
     subject_tokens: &[OwnedLexToken],
     rest_tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    let mut designation_clause = subject_tokens.to_vec();
+    designation_clause.push(OwnedLexToken::synthetic_word("become"));
+    designation_clause.extend_from_slice(rest_tokens);
+    if let Some(effect) = super::super::suspected::parse_clear_suspected_clause(&designation_clause)? {
+        return Ok(effect);
+    }
     let subject_tokens = LexedClause::new(subject_tokens).trim();
     let rest_clause = LexedClause::new(rest_tokens).trimmed();
     let rest_words = rest_clause.word_refs();

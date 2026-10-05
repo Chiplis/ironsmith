@@ -386,7 +386,7 @@ pub(super) fn matches_subject(
     }
 
     if filter.suspected
-        && (subject.zone() != Zone::Battlefield || !game.is_suspected(subject.object_id()))
+        && (subject.zone() != Zone::Battlefield || !subject.suspected(game))
     {
         return false;
     }

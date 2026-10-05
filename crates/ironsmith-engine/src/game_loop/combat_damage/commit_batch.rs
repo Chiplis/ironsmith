@@ -65,6 +65,7 @@ pub(super) fn commit_combat_damage_batch(
     for (plan, result) in planned.into_iter().zip(processed) {
         let base = events.len();
         events.push(CombatDamageEvent {
+            defending_player_reference: plan.defending_player_reference,
             damage_receipt: None,
             source_snapshot: Some(plan.source_snapshot.clone()),
             target_snapshot: None,
@@ -118,6 +119,7 @@ pub(super) fn commit_combat_damage_batch(
             } else {
                 let index = events.len();
                 events.push(CombatDamageEvent {
+            defending_player_reference: plan.defending_player_reference,
                     damage_receipt: None,
                     source_snapshot: Some(plan.source_snapshot.clone()),
                     target_snapshot: None,

@@ -77,6 +77,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             tapped: false,
             attacking: false,
             goaded: None,
+            suspected: None,
             ring_bearer: None,
             flipped: false,
             face_down: false,

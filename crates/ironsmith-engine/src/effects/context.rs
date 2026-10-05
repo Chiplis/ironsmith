@@ -264,6 +264,7 @@ pub struct CombatExecutionContext {
     pub last_added_combat_order: Option<u64>,
     /// The defending player for combat triggers.
     pub defending_player: Option<PlayerId>,
+    pub defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     /// The attacking player for combat triggers.
     pub attacking_player: Option<PlayerId>,
     /// The chosen player linked to this source, if one was captured earlier.
@@ -938,6 +939,54 @@ impl<'a> ExecutionContext<'a> {
         self
     }
 
+    /// Bind only when an instruction actually uses the role. Native choices
+    /// and the existing enclosing checkpoint own suspension and rollback.
+    pub(crate) fn bind_defending_player(&mut self, game: &GameState) -> Result<bool, ExecutionError> {
+        let reference = self.combat.defending_player_reference.or_else(|| {
+            self.combat.defending_player.is_none().then(|| self.triggering_event.as_ref()
+                .and_then(|event| game.defending_reference_for_event(event))).flatten()
+        });
+        if matches!(reference, Some(crate::combat_state::DefendingPlayerReference::Selected(_)
+            | crate::combat_state::DefendingPlayerReference::KnownAbsent)) { return Ok(true); }
+        let players = if let Some(reference) = reference {
+            game.defending_player_candidates(reference)?
+        } else if let Some(player) = self.combat.defending_player {
+            vec![player]
+        } else { return Err(ExecutionError::IncompleteEvidence(
+            "defending player has no combat reference or selected actor".into())); };
+        let chosen = match players.as_slice() {
+            [] => {
+                self.combat.defending_player = None;
+                self.combat.defending_player_reference = Some(crate::combat_state::DefendingPlayerReference::KnownAbsent);
+                return Ok(true);
+            }
+            [player] => *player,
+            _ => {
+                let options = players.iter().filter_map(|id|
+                    game.player(*id).map(|player| (player.name.to_string(), *id))).collect::<Vec<_>>();
+                let choice = crate::decisions::ask_choose_one(game, &mut self.decision_maker,
+                    self.controller, self.source, &options);
+                if self.decision_maker.awaiting_choice() { return Ok(false); }
+                choice.ok_or(ExecutionError::UnresolvedPlayerDecision {
+                    player: self.controller, decision: "choose the defending player",
+                })?
+            }
+        };
+        self.combat.defending_player = Some(chosen);
+        self.combat.defending_player_reference = Some(crate::combat_state::DefendingPlayerReference::Selected(chosen));
+        Ok(true)
+    }
+
+    pub(crate) fn defending_players(&self, game: &GameState) -> Result<Vec<PlayerId>, ExecutionError> {
+        if let Some(reference) = self.combat.defending_player_reference {
+            return game.defending_player_candidates(reference);
+        }
+        self.combat.defending_player.map(|player| {
+            if game.player(player).is_some_and(|player| player.is_in_game()) { vec![player] } else { Vec::new() }
+        }).ok_or_else(|| ExecutionError::IncompleteEvidence(
+            "defending player has no combat reference or selected actor".into()))
+    }
+
     /// Set the X value.
     pub fn with_x(mut self, x: u32) -> Self {
         self.x_value = Some(x);
@@ -1164,6 +1213,9 @@ impl<'a> ExecutionContext<'a> {
     /// voted with Bob, not players who voted with Alice.
     pub fn with_triggering_event(mut self, event: crate::triggers::TriggerEvent) -> Self {
         self.provenance = event.provenance();
+        if self.combat.defending_player.is_none() && self.combat.defending_player_reference.is_none() {
+            self.combat.defending_player_reference = event.defending_player_reference();
+        }
         if let Some(attack) = event.downcast::<crate::events::PlayerAttackDeclarationEvent>() {
             self.combat.attacking_player = Some(attack.attacker);
             self.combat.defending_player = Some(attack.defender);
@@ -1669,11 +1721,11 @@ impl<'a> ExecutionContext<'a> {
         filter_ctx.active_player = game.singular_active_player(chosen_player);
         if self.combat.defending_player.is_some() {
             filter_ctx.defending_player = self.combat.defending_player;
-            filter_ctx.defending_players = if game.shared_team_turns_enabled() {
-                game.team_players_for(self.combat.defending_player.unwrap())
-            } else {
-                Vec::new()
-            };
+            filter_ctx.defending_players.clear();
+        }
+        filter_ctx.defending_player_reference = self.combat.defending_player_reference;
+        if let Some(reference) = self.combat.defending_player_reference {
+            filter_ctx.defending_players = game.defending_player_candidates(reference).unwrap_or_default();
         }
         if self.combat.attacking_player.is_some() {
             filter_ctx.attacking_player = self.combat.attacking_player;

@@ -1460,7 +1460,7 @@ fn classification_row_subject(effect: &EffectAst) -> Option<(String, &PredicateA
         | PredicateAst::ItMatchedLastKnown(_)
         | PredicateAst::ItIsLandCard => crate::tag::CompilerReferenceTag::It.as_str().to_string(),
         PredicateAst::TargetMatches(_) => "__target__".to_string(),
-        PredicateAst::TaggedMatches(tag, _) => tag.as_str().to_string(),
+        PredicateAst::TaggedMatches(tag, _) | PredicateAst::TaggedMatchedLastKnown(tag, _) => tag.as_str().to_string(),
         _ => return None,
     };
     Some((subject, predicate))
@@ -1480,7 +1480,7 @@ fn classification_sibling_predicates(effects: &[EffectAst]) -> Vec<PredicateAst>
             PredicateAst::ItMatches(filter)
             | PredicateAst::ItMatchedLastKnown(filter)
             | PredicateAst::TargetMatches(filter)
-            | PredicateAst::TaggedMatches(_, filter) => Some(filter),
+            | PredicateAst::TaggedMatches(_, filter) | PredicateAst::TaggedMatchedLastKnown(_, filter) => Some(filter),
             _ => None,
         }
     }

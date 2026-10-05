@@ -856,6 +856,14 @@ pub fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
 
 pub fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let target_tokens = trim_commas(tokens);
+    if resource_grammar::parse_suspect_triggering_group_choice_shape(&target_tokens) {
+        // This definite event subset cannot bind to the source antecedent of
+        // an intervening-if. Keep the whole body unsupported until the counted
+        // event-set choice also proves that suspecting is possible.
+        return Err(CardTextError::ParseError(
+            "suspect-triggering-group-choice requires exact event-set selection and action feasibility".into(),
+        ));
+    }
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "missing suspect target".to_string(),

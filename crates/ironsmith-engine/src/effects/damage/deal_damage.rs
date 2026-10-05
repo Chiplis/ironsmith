@@ -549,6 +549,9 @@ impl ExcessDamageRedirectExt for DealDamageEffect {
 }
 
 impl EffectExecutor for DealDamageEffect {
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        self.target.mentions_player_filter(needle)
+    }
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }

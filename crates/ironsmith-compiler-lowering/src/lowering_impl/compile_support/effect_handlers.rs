@@ -2037,7 +2037,7 @@ fn compile_conditional_ast(
     let mut effective_if_true = if_true.to_vec();
     let predicate_names_explicit_subject = matches!(
         predicate,
-        PredicateAst::TaggedMatches(tag, _)
+        PredicateAst::TaggedMatches(tag, _) | PredicateAst::TaggedMatchedLastKnown(tag, _)
             if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
     );
     if let Some(antecedent) = predicate_object_filter_antecedent(predicate)

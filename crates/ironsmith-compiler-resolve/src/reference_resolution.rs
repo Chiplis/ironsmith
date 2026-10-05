@@ -9313,9 +9313,11 @@ fn bind_unresolved_it_in_predicate(predicate: &mut PredicateAst, seed_tag: &TagK
         PredicateAst::ItMatches(filter)
         | PredicateAst::ItMatchedLastKnown(filter)
         | PredicateAst::TargetMatches(filter)
-        | PredicateAst::TaggedMatches(_, filter) => {
+        | PredicateAst::TaggedMatches(_, filter)
+        | PredicateAst::TaggedMatchedLastKnown(_, filter) => {
             let mut replacements = bind_unresolved_it_in_filter(filter, seed_tag);
-            if let PredicateAst::TaggedMatches(tag, _) = predicate {
+            if let PredicateAst::TaggedMatches(tag, _)
+                | PredicateAst::TaggedMatchedLastKnown(tag, _) = predicate {
                 replacements += bind_unresolved_it_in_tag(&mut tag.key, seed_tag);
             }
             replacements
@@ -9394,6 +9396,7 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
+        | Restriction::BecomeSuspected(filter)
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::BeTargeted(filter)

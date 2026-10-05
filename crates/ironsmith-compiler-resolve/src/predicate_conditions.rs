@@ -131,6 +131,12 @@ pub fn resolve_condition_from_predicate(
             }
             Condition::TaggedObjectMatches(resolved_tag, resolved)
         }
+        PredicateAst::TaggedMatchedLastKnown(tag, filter) => {
+            let resolved_tag = resolve_it_tag_key(tag, &refs)?;
+            let mut resolved = resolve_it_tag(filter, &refs)?;
+            resolved.zone = None;
+            Condition::TaggedObjectMatchedLastKnown(resolved_tag, resolved)
+        }
         PredicateAst::TaggedWasCast(tag) => match resolve_it_tag_key(tag, &refs) {
             Ok(resolved_tag) => Condition::TaggedObjectWasCast(resolved_tag),
             // "When this creature enters, if it was cast, ..." (Doomsday

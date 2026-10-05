@@ -299,6 +299,14 @@ fn it_or_them<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
+fn suspect_triggering_group_choice<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["one", "of", "the", "other", "creatures"]).parse_next(input)
+}
+
+pub fn parse_suspect_triggering_group_choice_shape(tokens: &[OwnedLexToken]) -> bool {
+    exact_unit(tokens, suspect_triggering_group_choice)
+}
+
 pub fn parse_resource_tagged_reference_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, it_or_them)
 }

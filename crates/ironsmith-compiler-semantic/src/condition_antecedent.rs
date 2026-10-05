@@ -39,7 +39,7 @@ pub fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Ob
     match predicate {
         // "if enchanted creature is untapped, tap it": the tagged condition
         // subject is the antecedent for "it" in the body effects.
-        PredicateAst::TaggedMatches(tag, _) => Some(ObjectFilter::tagged(tag.clone())),
+        PredicateAst::TaggedMatches(tag, _) | PredicateAst::TaggedMatchedLastKnown(tag, _) => Some(ObjectFilter::tagged(tag.clone())),
         // "put a +1/+1 counter on enchanted creature if it attacked or
         // blocked since your last upkeep. Otherwise, remove a counter from
         // it": the tested object is the enchanted permanent.

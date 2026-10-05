@@ -315,6 +315,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target: Some(target) })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,
             })
@@ -1192,7 +1193,8 @@ pub fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> bool {
         | PredicateAst::TurnEvents(
             TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter),
         ) => filter_references_tag(filter, tag),
-        PredicateAst::TaggedMatches(found, filter) => {
+        PredicateAst::TaggedMatches(found, filter)
+        | PredicateAst::TaggedMatchedLastKnown(found, filter) => {
             found.as_str() == tag || filter_references_tag(filter, tag)
         }
         PredicateAst::TaggedWasCast(found)
@@ -2718,6 +2720,7 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
+        | Restriction::BecomeSuspected(filter)
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::BeTargeted(filter)

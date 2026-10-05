@@ -49,6 +49,17 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             .as_ref()
             .expect("triggering event checked above");
 
+        // Keep a singular entry reference independent from a subsequent
+        // looked/revealed card. Grouped references retain their whole-set owner.
+        let singular_entry = event.downcast::<crate::events::EnterBattlefieldEvent>().is_some()
+            || event.downcast::<crate::events::ZoneChangeEvent>().is_some_and(|change|
+                change.to == crate::zone::Zone::Battlefield && change.destination_objects().len() == 1);
+        if singular_entry && ctx.get_tagged_all(ironsmith_core::ZONE_CHANGE_GROUP_TAG).is_none_or(|group| group.is_empty()) {
+            let snapshot = crate::condition_eval::capture_triggering_object_at_resolution(game, event)?;
+            set_triggering_object_tags(ctx, self.tag.as_str(), vec![snapshot]);
+            return Ok(EffectOutcome::count(1));
+        }
+
         // A typed attachment trigger has two participants. Its ordinary
         // demonstrative is the recipient, never the Aura/Equipment itself.
         if matches!(
@@ -766,6 +777,7 @@ mod tests {
                     tapped: false,
                     attacking: false,
                     goaded: Some(false),
+            suspected: Some(false),
                     ring_bearer: None,
                     flipped: false,
                     face_down: false,

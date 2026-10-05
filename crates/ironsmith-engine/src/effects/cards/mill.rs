@@ -30,6 +30,9 @@ use crate::zone::Zone;
 pub type MillEffect = ironsmith_core::MillEffect;
 
 impl EffectExecutor for MillEffect {
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        self.player.mentions_player_filter(needle)
+    }
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }

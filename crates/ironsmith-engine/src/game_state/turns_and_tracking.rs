@@ -3500,7 +3500,7 @@ impl GameState {
                 if let Some(player) =
                     crate::combat_state::defending_player_for_attack_target(self, target)
                 {
-                    let players = if self.shared_team_turns_enabled() {
+                    let players = if source_attack.is_none() && self.shared_team_turns_enabled() {
                         self.team_players_for(player)
                     } else {
                         vec![player]
@@ -3526,6 +3526,7 @@ impl GameState {
             players_in_range: self.range_players_for_source(controller, source),
             defending_player,
             defending_players,
+            defending_player_reference: None,
             attacking_player: None,
             attacking_players: Vec::new(),
             your_commanders,
@@ -3558,13 +3559,7 @@ impl GameState {
         let mut ctx = self.filter_context_for(controller, source);
         ctx.defending_player = defending_player;
         ctx.attacking_player = attacking_player;
-        ctx.defending_players = if self.shared_team_turns_enabled() {
-            defending_player
-                .map(|player| self.team_players_for(player))
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        ctx.defending_players.clear();
         ctx.attacking_players = if self.shared_team_turns_enabled() {
             attacking_player
                 .map(|player| self.team_players_for(player))

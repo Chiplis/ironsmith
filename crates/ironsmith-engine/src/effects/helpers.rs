@@ -2098,9 +2098,10 @@ pub fn resolve_player_filter(
             .ok_or_else(|| {
                 ExecutionError::UnresolvableValue("There is no active player".to_string())
             }),
-        PlayerFilter::Defending => ctx.combat.defending_player.ok_or_else(|| {
-            ExecutionError::UnresolvableValue("DefendingPlayer not set".to_string())
-        }),
+        PlayerFilter::Defending => match ctx.defending_players(game)?.as_slice() {
+            [player] => Ok(*player), [] => Err(ExecutionError::InvalidTarget),
+            _ => Err(ExecutionError::UnresolvedPlayerDecision { player: ctx.controller, decision: "choose the defending player" }),
+        },
         PlayerFilter::IteratedPlayer => ctx
             .iteration
             .iterated_player
@@ -4217,14 +4218,7 @@ pub(crate) fn resolve_player_filter_to_list(
             .ok_or_else(|| {
                 ExecutionError::UnresolvableValue("There is no active player".to_string())
             }),
-        PlayerFilter::Defending => {
-            ctx.combat
-                .defending_player
-                .map(|id| vec![id])
-                .ok_or_else(|| {
-                    ExecutionError::UnresolvableValue("DefendingPlayer not set".to_string())
-                })
-        }
+        PlayerFilter::Defending => ctx.defending_players(game),
         PlayerFilter::Attacking => combat_attacking_player(game, ctx)
             .map(|id| vec![id])
             .ok_or_else(|| {

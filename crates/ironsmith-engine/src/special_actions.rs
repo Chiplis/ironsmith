@@ -1620,10 +1620,12 @@ fn perform_play_land(
             player_data.record_land_play();
         }
 
-        if let Some(entry) = original_entry
-            && game
-                .object(entry.new_id)
-                .is_some_and(|object| object.zone == Zone::Battlefield)
+        // Retain the original completion before deferred additions execute.
+        let original_play = original_entry.as_ref().map(|entry|
+            crate::events::LandPlayedEvent::from_completed_entry(entry, player, old_zone, game)
+        ).transpose().map_err(|error| ActionError::ExecutionFailure { source: card_id, error })?;
+        if let Some(entry) = original_entry.filter(|_| original_play.as_ref()
+            .is_some_and(|event| event.completed_destination == Some(Zone::Battlefield)))
         {
             let new_id = entry.new_id;
             let event = if entry.enters_tapped {
@@ -1641,13 +1643,15 @@ fn perform_play_land(
                     error,
                 })?;
             game.queue_trigger_event(provenance, event);
+        }
+        if let Some(played) = original_play {
             let provenance = game
                 .provenance_graph_mut()
                 .alloc_root_event(crate::events::EventKind::LandPlayed);
             game.queue_trigger_event(
                 provenance,
                 crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::LandPlayedEvent::new(new_id, player, old_zone),
+                    played,
                     provenance,
                 ),
             );
@@ -7030,6 +7034,14 @@ mod replacement_land_owner_contract_tests {
                     game.counter_count(arrival.id, CounterType::PlusOnePlusOne),
                     1
                 );
+                let played = game.turn_store.turn_history.projected_records()
+                    .find_map(|record| record.event.downcast::<crate::events::LandPlayedEvent>())
+                    .expect("the original play is recorded before additions");
+                assert_eq!(played.land, arrival.id);
+                assert_eq!(played.completed_destination, Some(Zone::Battlefield));
+                let snapshot = played.snapshot.as_ref().unwrap();
+                assert_eq!(snapshot.object_id, arrival.id);
+                assert_eq!(snapshot.counters.get(&CounterType::PlusOnePlusOne).copied().unwrap_or(0), 0);
             }
             assert!(
                 game.effect_store

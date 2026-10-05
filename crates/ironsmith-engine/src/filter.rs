@@ -1069,6 +1069,18 @@ fn object_current_mana_value_for_relation(object: &Object, game: &GameState) -> 
     )
 }
 
+/// Bool characteristic comparisons run beneath checked query/action owners.
+/// Keep unavailable card-type evidence on their shared incomplete-execution
+/// latch so negation and zero counts cannot turn it into success.
+fn checked_card_type_characteristics(
+    game: &GameState,
+    object: ObjectId,
+) -> Result<Option<CalculatedCharacteristics>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+    game.try_current_characteristics(object).inspect_err(|error| {
+        game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error.clone()));
+    })
+}
+
 fn subject_shares_characteristic_with_object(
     subject: &impl TaggedConstraintSubject,
     object: &Object,
@@ -1077,13 +1089,9 @@ fn subject_shares_characteristic_with_object(
 ) -> bool {
     match characteristic {
         ObjectCharacteristic::CardType | ObjectCharacteristic::PermanentType => {
-            let object_types = game
-                .current_card_types(object.id)
-                .unwrap_or_else(|| object.card_types.to_vec());
-            subject
-                .subject_card_types()
-                .iter()
-                .any(|card_type| object_types.contains(card_type))
+            checked_card_type_characteristics(game, object.id).ok().flatten().is_some_and(|chars| {
+                subject.subject_card_types().iter().any(|kind| chars.card_types.contains(kind))
+            })
         }
         ObjectCharacteristic::Subtype(family) => {
             let subject_subtypes = subject_subtypes_in_family(subject, family);
@@ -1129,23 +1137,26 @@ fn characteristic_relation_matches_subject(
         comparison_context.filter_candidate_players =
             Some((subject.subject_controller(), subject.subject_owner()));
     }
-    let shares = game
-        .objects_in_deterministic_order()
-        .into_iter()
-        .any(|object| {
-            (!relation.exclude_candidate || object.id != subject.subject_object_id())
-                && relation
-                    .comparison
-                    .matches(object, &comparison_context, game)
-                && relation.characteristics.iter().any(|characteristic| {
-                    subject_shares_characteristic_with_object(
-                        subject,
-                        object,
-                        *characteristic,
-                        game,
-                    )
-                })
-        });
+    let checks_types = relation.characteristics.iter().any(|characteristic|
+        matches!(characteristic, ObjectCharacteristic::CardType | ObjectCharacteristic::PermanentType));
+    let mut shares = false;
+    for object in game.objects_in_deterministic_order() {
+        if (relation.exclude_candidate && object.id == subject.subject_object_id())
+            || relation.comparison.zone.is_some_and(|zone| object.zone != zone)
+            || (object.zone == Zone::Battlefield && game.is_phased_out(object.id))
+        { continue; }
+        if checks_types {
+            match checked_card_type_characteristics(game, object.id) {
+                Ok(Some(_)) => {}
+                Ok(None) => continue,
+                Err(_) => return false,
+            }
+        }
+        if !relation.comparison.matches(object, &comparison_context, game) { continue; }
+        shares = relation.characteristics.iter().any(|characteristic|
+            subject_shares_characteristic_with_object(subject, object, *characteristic, game));
+        if shares { break; }
+    }
     match relation.kind {
         ObjectCharacteristicRelationKind::SharesAny => shares,
         ObjectCharacteristicRelationKind::SharesNone => !shares,
@@ -1232,6 +1243,53 @@ fn tagged_host_left_battlefield(snapshot: &ObjectSnapshot, game: &GameState) -> 
         && !game.object(snapshot.object_id).is_some_and(|object| {
             object.zone == Zone::Battlefield && object.stable_id == snapshot.stable_id
         })
+}
+
+/// Canonical source-linked exile is current exact membership. The source
+/// itself may use exact departure/phasing LKI; arbitrary result tags retain
+/// their historical snapshot semantics.
+fn source_card_type_constraint_matches_subject(
+    subject: &impl TaggedConstraintSubject,
+    constraint: &TaggedObjectConstraint,
+    ctx: &FilterContext,
+    game: &GameState,
+) -> Option<bool> {
+    if !matches!(constraint.relation, TaggedOpbjectRelation::SharesCardType | TaggedOpbjectRelation::SharesPermanentType)
+        || !matches!(constraint.tag.as_str(), crate::tag::SOURCE_EXILED_TAG | crate::tag::SOURCE_OBJECT_TAG)
+    { return None; }
+    let Some(source) = ctx.source else {
+        game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+            "card-type comparison has no exact source identity".into(),
+        ));
+        return Some(false);
+    };
+    let matches_types = |types: &[CardType]| subject.subject_card_types().iter().any(|kind| types.contains(kind));
+    if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
+        return Some(game.get_exiled_with_source_links(source).iter().any(|id| {
+            if !game.object(*id).is_some_and(|object| object.zone == Zone::Exile) { return false; }
+            checked_card_type_characteristics(game, *id).ok().flatten().is_some_and(|chars| matches_types(&chars.card_types))
+        }));
+    }
+    if game.object(source).is_some() {
+        match checked_card_type_characteristics(game, source) {
+            Ok(Some(chars)) => return Some(matches_types(&chars.card_types)),
+            Err(_) => return Some(false),
+            Ok(None) => {}
+        }
+    }
+    let retained = game.turn_store.turn_history.source_last_known_snapshot(source)
+        .or_else(|| ctx.source_snapshot.as_ref().filter(|snapshot| snapshot.object_id == source))
+        .or_else(|| ctx.tagged_objects.get(crate::tag::SOURCE_OBJECT_TAG)
+            .and_then(|snapshots| snapshots.iter().find(|snapshot| snapshot.object_id == source)));
+    Some(match retained {
+        Some(snapshot) => matches_types(&snapshot.card_types),
+        None => {
+            game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                format!("card-type comparison lacks current or retained source evidence for {source:?}"),
+            ));
+            false
+        }
+    })
 }
 
 fn tagged_constraint_matches_subject(
@@ -1483,6 +1541,7 @@ pub struct FilterContext {
 
     /// The defending player (in combat)
     pub defending_player: Option<PlayerId>,
+    pub defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
 
     /// Candidate defending-team players before CR 805.10e selects one.
     pub defending_players: Vec<PlayerId>,
@@ -2710,7 +2769,7 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::Active => ctx.active_player.is_some_and(|ap| player == ap),
 
             PlayerFilter::Defending => {
-                if ctx.defending_players.is_empty() {
+                if ctx.defending_player_reference.is_none() && ctx.defending_players.is_empty() {
                     ctx.defending_player.is_some_and(|dp| player == dp)
                 } else {
                     ctx.defending_players.contains(&player)
@@ -2823,6 +2882,15 @@ pub(crate) fn player_filter_matches_game(
     ctx: &FilterContext,
 ) -> bool {
     match filter {
+        PlayerFilter::Defending if ctx.defending_player_reference.is_some() => {
+            match game.defending_player_candidates(ctx.defending_player_reference.unwrap())
+            {
+                Ok(players) => players.contains(&player)
+                    && ctx.players_in_range.as_ref().is_none_or(|range| range.contains(&player)),
+                Err(error) => { game.record_token_resource_failure(&error); false }
+            }
+        }
+
         PlayerFilter::AttackedBySourceThisTurn => {
             let Some(source) = ctx.source else {
                 return false;
@@ -3446,6 +3514,10 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         for constraint in &self.tagged_constraints {
+            if let Some(matches) = source_card_type_constraint_matches_subject(subject, constraint, ctx, game) {
+                if !matches { return false; }
+                continue;
+            }
             if constraint.relation == TaggedOpbjectRelation::SharesMostCommonPermanentColor {
                 if !subject_shares_most_common_permanent_color(subject, game) {
                     return false;
@@ -4610,6 +4682,10 @@ impl ObjectFilterExt for ObjectFilter {
                     );
                 }
                 TaggedOpbjectRelation::SharesCardType => {
+                    if let Some(surface) = self.shared_type_antecedent_surface() {
+                        post_noun_qualifiers.push(format!("that shares a card type with {}", surface.phrase()));
+                        continue;
+                    }
                     if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
                         post_noun_qualifiers.push(
                             "that shares a card type with a card exiled with this permanent"
@@ -6008,3 +6084,7 @@ mod fewest_controller_set_tests {
         assert!(selected(&game).is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "filter/shared_card_type_reference_tests.rs"]
+mod shared_card_type_reference_tests;

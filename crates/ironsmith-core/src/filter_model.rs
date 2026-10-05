@@ -686,6 +686,9 @@ pub struct ObjectFilterUnionSurface {
     /// Oracle framed this turn-long stack-object grant as
     /// "as you cast ... this turn, they gain ...".
     as_you_cast_this_turn_surface: bool,
+    /// Authored comparison noun; the tagged relation alone carries identity.
+    #[cfg_attr(feature = "serde", serde(default))]
+    shared_type_antecedent: Option<DemonstrativeAntecedentSurface>,
 }
 
 impl ObjectFilterUnionSurface {
@@ -739,6 +742,7 @@ impl ObjectFilterUnionSurface {
             you_had_entry_surface: false,
             mana_source_spent_trailing_if_surface: false,
             as_you_cast_this_turn_surface: false,
+            shared_type_antecedent: None,
         }
     }
 
@@ -1099,6 +1103,12 @@ impl ObjectFilterUnionSurface {
     pub const fn chosen_name_source(self) -> Option<ChosenNameSourceSurface> {
         self.chosen_name_source
     }
+
+    pub const fn with_shared_type_antecedent(mut self, surface: Option<DemonstrativeAntecedentSurface>) -> Self {
+        self.shared_type_antecedent = surface;
+        self
+    }
+    pub const fn shared_type_antecedent(self) -> Option<DemonstrativeAntecedentSurface> { self.shared_type_antecedent }
 
     pub const fn with_demonstrative_antecedent(
         mut self,
@@ -1705,29 +1715,32 @@ impl PlayerFilter {
         }
     }
 
-    pub fn mentions_iterated_player(&self) -> bool {
+    pub fn mentions_iterated_player(&self) -> bool { self.mentions_player_filter(&PlayerFilter::IteratedPlayer) }
+
+    pub fn mentions_player_filter(&self, needle: &PlayerFilter) -> bool {
+        if self == needle { return true; }
         match self {
-            Self::IteratedPlayer => true,
-            Self::Target(inner) | Self::AliasedTarget(inner) => inner.mentions_iterated_player(),
-            Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_iterated_player(),
-            Self::WasDealtDamageBySourceThisGame { base } => base.mentions_iterated_player(),
+            Self::IteratedPlayer => false,
+            Self::Target(inner) | Self::AliasedTarget(inner) => inner.mentions_player_filter(needle),
+            Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_player_filter(needle),
+            Self::WasDealtDamageBySourceThisGame { base } => base.mentions_player_filter(needle),
             Self::WasDealtCombatDamageBySourcesThisGame { base, sources } => {
-                base.mentions_iterated_player() || sources.mentions_iterated_player()
+                base.mentions_player_filter(needle) || sources.mentions_player_filter(needle)
             }
-            Self::LostLifeThisTurn { base } => base.mentions_iterated_player(),
+            Self::LostLifeThisTurn { base } => base.mentions_player_filter(needle),
             Self::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
-                base.mentions_iterated_player() || sources.mentions_iterated_player()
+                base.mentions_player_filter(needle) || sources.mentions_player_filter(needle)
             }
-            Self::HasMoreLifeThanYou { base } => base.mentions_iterated_player(),
+            Self::HasMoreLifeThanYou { base } => base.mentions_player_filter(needle),
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => {
-                player.mentions_iterated_player() || filter.mentions_iterated_player()
+                player.mentions_player_filter(needle) || filter.mentions_player_filter(needle)
             }
             Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } => {
-                filter.mentions_iterated_player()
+                filter.mentions_player_filter(needle)
             }
-            Self::OpponentOf(base) | Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
+            Self::OpponentOf(base) | Self::MaxSpeed { base, .. } => base.mentions_player_filter(needle),
             Self::Excluding { base, excluded } => {
-                base.mentions_iterated_player() || excluded.mentions_iterated_player()
+                base.mentions_player_filter(needle) || excluded.mentions_player_filter(needle)
             }
             Self::Any
             | Self::You
@@ -2588,7 +2601,9 @@ impl ObjectFilter {
         self.union_surface.chosen_type_this_way()
     }
 
-    pub fn mentions_iterated_player(&self) -> bool {
+    pub fn mentions_iterated_player(&self) -> bool { self.mentions_player_filter(&PlayerFilter::IteratedPlayer) }
+
+    pub fn mentions_player_filter(&self, needle: &PlayerFilter) -> bool {
         [
             self.controller.as_ref(),
             self.cast_by.as_ref(),
@@ -2608,39 +2623,39 @@ impl ObjectFilter {
         ]
         .into_iter()
         .flatten()
-        .any(PlayerFilter::mentions_iterated_player)
+        .any(|filter| filter.mentions_player_filter(needle))
             || self
                 .targets_object
                 .as_deref()
-                .is_some_and(ObjectFilter::mentions_iterated_player)
+                .is_some_and(|filter| filter.mentions_player_filter(needle))
             || self
                 .mana_from_source_spent_to_cast
                 .as_deref()
-                .is_some_and(ObjectFilter::mentions_iterated_player)
+                .is_some_and(|filter| filter.mentions_player_filter(needle))
             || self
                 .targets_only_object
                 .as_deref()
-                .is_some_and(ObjectFilter::mentions_iterated_player)
+                .is_some_and(|filter| filter.mentions_player_filter(needle))
             || self
                 .attached_to_object
                 .as_deref()
-                .is_some_and(ObjectFilter::mentions_iterated_player)
+                .is_some_and(|filter| filter.mentions_player_filter(needle))
             || self
                 .blocked_or_was_blocked_by_this_turn
                 .as_deref()
-                .is_some_and(ObjectFilter::mentions_iterated_player)
+                .is_some_and(|filter| filter.mentions_player_filter(needle))
             || self
                 .no_shared_creature_types_with
                 .iter()
-                .any(ObjectFilter::mentions_iterated_player)
+                .any(|filter| filter.mentions_player_filter(needle))
             || self
                 .characteristic_relations
                 .iter()
-                .any(|relation| relation.comparison.mentions_iterated_player())
+                .any(|relation| relation.comparison.mentions_player_filter(needle))
             || self
                 .any_of
                 .iter()
-                .any(ObjectFilter::mentions_iterated_player)
+                .any(|filter| filter.mentions_player_filter(needle))
     }
 
     /// Preserve the Oracle connective used for this filter's inclusive union.
@@ -2927,6 +2942,13 @@ impl ObjectFilter {
 
     pub const fn chosen_name_source_surface(&self) -> Option<ChosenNameSourceSurface> {
         self.union_surface.chosen_name_source()
+    }
+
+    pub fn set_shared_type_antecedent_surface(&mut self, surface: Option<DemonstrativeAntecedentSurface>) {
+        self.union_surface = self.union_surface.with_shared_type_antecedent(surface);
+    }
+    pub const fn shared_type_antecedent_surface(&self) -> Option<DemonstrativeAntecedentSurface> {
+        self.union_surface.shared_type_antecedent()
     }
 
     /// Preserve the authored noun of an explicit demonstrative condition
@@ -4776,6 +4798,10 @@ impl ObjectFilter {
                     );
                 }
                 TaggedOpbjectRelation::SharesCardType => {
+                    if let Some(surface) = self.shared_type_antecedent_surface() {
+                        post_noun_qualifiers.push(format!("that shares a card type with {}", surface.phrase()));
+                        continue;
+                    }
                     if constraint.tag.as_str() == crate::SOURCE_EXILED_TAG {
                         post_noun_qualifiers.push(
                             "that shares a card type with a card exiled with this permanent"

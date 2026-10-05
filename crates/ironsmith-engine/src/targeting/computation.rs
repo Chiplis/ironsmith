@@ -1083,6 +1083,13 @@ pub(crate) fn compute_legal_targets_with_execution_context_and_view(
     ctx: &crate::effects::ExecutionContext,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
+    if spec.mentions_player_filter(&PlayerFilter::Defending)
+        && ctx.combat.defending_player_reference.is_some()
+        && let Err(error) = ctx.defending_players(game)
+    {
+        game.record_token_resource_failure(&error);
+        return Vec::new();
+    }
     let objects = |filter: &ObjectFilter| {
         compute_object_targets_with_filter_context(
             game,
@@ -1662,7 +1669,8 @@ fn compute_object_targets_with_filter_context(
     if filter_ctx.source_snapshot.is_none() {
         filter_ctx.source_snapshot = source_snapshot.cloned();
     }
-    if filter_ctx.defending_player.is_none() && filter_ctx.defending_players.is_empty() {
+    if filter_ctx.defending_player_reference.is_none()
+        && filter_ctx.defending_player.is_none() && filter_ctx.defending_players.is_empty() {
         let combat_filter = target_filter_context(game, caster, source_id);
         filter_ctx.defending_player = combat_filter.defending_player;
         filter_ctx.defending_players = combat_filter.defending_players;
@@ -1864,7 +1872,6 @@ fn apply_combat_target_filter_context(
     filter_ctx.defending_players.clear();
     filter_ctx.attacking_players.clear();
     if game.shared_team_turns_enabled() {
-        filter_ctx.defending_players = game.team_players_for(defending_player);
         filter_ctx.attacking_players = game.team_players_for(attacking_player);
     }
 }

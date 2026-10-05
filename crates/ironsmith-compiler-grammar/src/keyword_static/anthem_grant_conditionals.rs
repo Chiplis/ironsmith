@@ -2344,6 +2344,19 @@ fn lower_atomic_anthem_predicate(
             }
             return Some(ability.into());
         }
+        S::CantBecomeSuspected => {
+            if quoted { return None; }
+            let mut filter = anthem_subject_filter(&clause.subject);
+            if attached_goaded_display_subject(&clause.subject).is_some() {
+                filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
+            }
+            let mut ability = StaticAbility::restriction(
+                crate::effect::Restriction::BecomeSuspected(filter),
+                format!("{} can't become suspected", anthem_subject_filter(&clause.subject).description()),
+            );
+            if let Some(condition) = &clause.condition { ability = ability.with_condition(condition.clone()); }
+            return Some(ability.into());
+        }
         S::CantAttack => StaticAbility::cant_attack(),
         S::MustBeBlocked => StaticAbility::restriction(
             crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),

@@ -3810,9 +3810,20 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_combat_context_and_view(
         &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     >,
     defending_player: Option<PlayerId>,
+    defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     attacking_player: Option<PlayerId>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
+    if let Some(source) = source_id {
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(source, caster, &mut dm);
+        ctx.source_snapshot = source_snapshot.cloned();
+        if let Some(tagged) = tagged_objects { ctx.tagged_objects = tagged.clone(); }
+        ctx.combat.defending_player = defending_player;
+        ctx.combat.defending_player_reference = defending_player_reference;
+        ctx.combat.attacking_player = attacking_player;
+        return crate::targeting::compute_legal_targets_with_execution_context_and_view(game, spec, &ctx, view);
+    }
     let combat_context = defending_player.zip(attacking_player);
     crate::targeting::compute_legal_targets_with_tagged_objects_combat_context_with_view(
         game,
@@ -4648,6 +4659,7 @@ pub(crate) fn stack_entry_assignment_legal_targets(
         }
         ctx.event_value_amount = entry.event_value_amount;
         ctx.combat.defending_player = entry.defending_player;
+        ctx.combat.defending_player_reference = entry.defending_player_reference;
         ctx.combat.attacking_player = combat_attacking_player_for_entry(game, entry);
         crate::targeting::compute_legal_targets_with_execution_context_and_view(
             game,
@@ -4655,7 +4667,7 @@ pub(crate) fn stack_entry_assignment_legal_targets(
             &ctx,
             view,
         )
-    } else if entry.defending_player.is_some() {
+    } else if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
         compute_legal_targets_with_tagged_objects_combat_context_and_view(
             game,
             &resolved_spec,
@@ -4664,6 +4676,7 @@ pub(crate) fn stack_entry_assignment_legal_targets(
             entry.source_snapshot.as_ref(),
             Some(&entry.tagged_objects),
             entry.defending_player,
+            entry.defending_player_reference,
             combat_attacking_player_for_entry(game, entry),
             view,
         )
@@ -4862,6 +4875,12 @@ pub(super) fn validate_stack_entry_targets_with_view(
         return Ok((Vec::new(), Vec::new(), false));
     }
 
+    if let Some(reference) = entry.defending_player_reference
+        && entry.target_assignments.iter().map(|assignment| &assignment.spec)
+            .chain(stack_entry_validation_target_specs(game, entry).iter())
+            .any(|spec| spec.mentions_player_filter(&PlayerFilter::Defending))
+    { game.defending_player_candidates(reference)?; }
+
     if !entry.target_assignments.is_empty() {
         let mut valid_targets = Vec::new();
         let mut valid_assignments = Vec::with_capacity(entry.target_assignments.len());
@@ -4962,6 +4981,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
                 execution.triggering_event = entry.triggering_event.clone();
                 execution.event_value_amount = entry.event_value_amount;
                 execution.combat.defending_player = entry.defending_player;
+                execution.combat.defending_player_reference = entry.defending_player_reference;
                 execution.combat.attacking_player = combat_attacking_player_for_entry(game, entry);
                 return crate::targeting::compute_legal_targets_with_execution_context_and_view(
                     game,
@@ -4970,7 +4990,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
                     view,
                 );
             }
-            if entry.defending_player.is_some() {
+            if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
                 return compute_legal_targets_with_tagged_objects_combat_context_and_view(
                     game,
                     &resolved_spec,
@@ -4979,6 +4999,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
                     entry.source_snapshot.as_ref(),
                     None,
                     entry.defending_player,
+                    entry.defending_player_reference,
                     combat_attacking_player_for_entry(game, entry),
                     view,
                 );

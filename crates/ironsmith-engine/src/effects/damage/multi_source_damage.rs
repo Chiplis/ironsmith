@@ -280,6 +280,10 @@ pub(crate) fn commit_damage_batch(
     // destination. These scalars precede every original damage consequence.
     game.refresh_continuous_state()
         .map_err(ExecutionError::ContinuousDiscovery)?;
+    let combat = game.combat.clone();
+    let defending_references = events.iter().map(|event| event.is_combat.then(||
+        combat.as_ref().map(|combat| game.retain_combat_damage_role(combat, event.source))
+            .unwrap_or(crate::combat_state::DefendingPlayerReference::Missing))).collect::<Vec<_>>();
     let mut original_recipients = Vec::new();
     for event in &events {
         let receipt = match event.target {
@@ -485,6 +489,9 @@ pub(crate) fn commit_damage_batch(
                 event = event.with_target_snapshot(snapshot);
             }
             let mut event = TriggerEvent::new_with_provenance(event, observation);
+            if let Some(reference) = defending_references[index] {
+                event = event.with_defending_player_reference(reference);
+            }
             if let Some(batch) = batch {
                 event = event.with_simultaneous_batch(batch);
             }

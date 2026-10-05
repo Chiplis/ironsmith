@@ -1091,6 +1091,8 @@ impl TurnRunner {
                     return Ok(TurnAction::Decision(prompt));
                 }
                 if phase == Phase::Combat {
+                    self.sync_combat_from_game(game);
+                    game.retain_ending_combat(&self.combat);
                     crate::combat_state::end_combat(&mut self.combat);
                     game.combat = Some(self.combat.clone());
                     game.cleanup_effects_end_of_combat();
@@ -1901,6 +1903,8 @@ impl TurnRunner {
                 if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
                     return Ok(TurnAction::Decision(prompt));
                 }
+                self.sync_combat_from_game(game);
+                game.retain_ending_combat(&self.combat);
                 crate::combat_state::end_combat(&mut self.combat);
                 game.combat = Some(self.combat.clone());
                 game.mark_continuous_state_dirty();
@@ -1929,6 +1933,8 @@ impl TurnRunner {
                         if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
                             return Ok(TurnAction::Decision(prompt));
                         }
+                        self.sync_combat_from_game(game);
+                        game.retain_ending_combat(&self.combat);
                         crate::combat_state::end_combat(&mut self.combat);
                         game.combat = Some(self.combat.clone());
                         game.cleanup_effects_end_of_combat();
@@ -2022,6 +2028,8 @@ impl TurnRunner {
                         if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
                             return Ok(TurnAction::Decision(prompt));
                         }
+                        self.sync_combat_from_game(game);
+                        game.retain_ending_combat(&self.combat);
                         crate::combat_state::end_combat(&mut self.combat);
                         if let Some(combat) = game.combat.as_mut() {
                             crate::combat_state::end_combat(combat);

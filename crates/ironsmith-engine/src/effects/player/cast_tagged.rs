@@ -147,13 +147,13 @@ impl EffectExecutor for CastTaggedEffect {
                         let original = match &entry.outcome {
                             BattlefieldEntryOutcome::Moved(new_id) => {
                                 queue_effect_driven_land_play(
-                                    game, ctx, *new_id, caster, from_zone,
-                                );
+                                    game, ctx, *new_id, caster, from_zone, Zone::Battlefield,
+                                )?;
                                 EffectOutcome::with_objects(vec![*new_id])
                             }
                             BattlefieldEntryOutcome::Redirected(change) => {
                                 if let Some(id) = change.new_object_id {
-                                    queue_effect_driven_land_play(game, ctx, id, caster, from_zone);
+                                    queue_effect_driven_land_play(game, ctx, id, caster, from_zone, change.final_zone)?;
                                 }
                                 EffectOutcome::with_objects(change.new_object_ids.clone())
                             }
@@ -238,12 +238,12 @@ impl EffectExecutor for CastTaggedEffect {
                     })?;
                     let original = match &entry.outcome {
                         BattlefieldEntryOutcome::Moved(new_id) => {
-                            queue_effect_driven_land_play(game, ctx, *new_id, caster, from_zone);
+                            queue_effect_driven_land_play(game, ctx, *new_id, caster, from_zone, Zone::Battlefield)?;
                             EffectOutcome::with_objects(vec![*new_id])
                         }
                         BattlefieldEntryOutcome::Redirected(change) => {
                             if let Some(id) = change.new_object_id {
-                                queue_effect_driven_land_play(game, ctx, id, caster, from_zone);
+                                queue_effect_driven_land_play(game, ctx, id, caster, from_zone, change.final_zone)?;
                             }
                             EffectOutcome::with_objects(change.new_object_ids.clone())
                         }
@@ -976,6 +976,14 @@ mod replacement_cast_tagged_land_owner_contract_tests {
                     .event_kind_count(crate::events::EventKind::LandPlayed),
                 1
             );
+            let played = game.turn_store.turn_history.projected_records()
+                .find_map(|record| record.event.downcast::<crate::events::LandPlayedEvent>())
+                .expect("original completed land-play notice");
+            assert_eq!(played.completed_destination, Some(Zone::Battlefield));
+            let snapshot = played.snapshot.as_ref().expect("checked original play snapshot");
+            assert_eq!(snapshot.object_id, arrival);
+            assert_eq!(snapshot.counters.get(&CounterType::PlusOnePlusOne).copied().unwrap_or(0), 0,
+                "original play evidence precedes the replacement's additional counter instruction");
             assert_eq!(
                 game.objects_in_deterministic_order().len(),
                 before_objects + usize::from(as_copy)

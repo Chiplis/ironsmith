@@ -3689,9 +3689,13 @@ pub(super) fn parse_additional_cost_object_state_predicate(
     if descriptor.tokens().is_empty() {
         return Ok(None);
     }
-    let mut filter = match parse_object_filter(descriptor.tokens(), false) {
-        Ok(filter) => filter,
-        Err(err) => parse_color_only_object_filter_clause(descriptor).ok_or(err)?,
+    let mut filter = if descriptor.word_refs().as_slice() == ["suspected"] {
+        ObjectFilter::default().suspected()
+    } else {
+        match parse_object_filter(descriptor.tokens(), false) {
+            Ok(filter) => filter,
+            Err(err) => parse_color_only_object_filter_clause(descriptor).ok_or(err)?,
+        }
     };
     if filter.card_types.is_empty()
         && let Some(card_type) = subject_card_type
@@ -3707,7 +3711,7 @@ pub(super) fn parse_additional_cost_object_state_predicate(
     filter.set_additional_cost_object_surface(Some(
         ironsmith_core::AdditionalCostObjectSurface::new(cost_action, subject_kind),
     ));
-    Ok(Some(PredicateAst::TaggedMatches(
+    Ok(Some(PredicateAst::TaggedMatchedLastKnown(
         crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
         filter,
     )))

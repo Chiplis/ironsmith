@@ -5434,6 +5434,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 )
             }
         }
+        crate::effect::Restriction::BecomeSuspected(filter) => {
+            format!("{} can't become suspected", filter.description())
+        }
         crate::effect::Restriction::BeSacrificed(filter) => {
             format!("{} can't be sacrificed", filter.description())
         }

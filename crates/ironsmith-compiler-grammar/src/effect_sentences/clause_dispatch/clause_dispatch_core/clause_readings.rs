@@ -70,6 +70,12 @@ pub(super) const CLAUSE_REGISTRY: RuleId = RuleId::new("clause-reading-registry"
 /// The readings, in the order they were ranked.
 const CLAUSE_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("clear-suspected-designation"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.tokens.iter().any(|token| token.is_word("suspected")),
+        read: |input| input.outcome(super::super::suspected::parse_clear_suspected_clause(input.tokens)),
+    },
+    Reading {
         id: RuleId::new("ability-loss-object-template"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

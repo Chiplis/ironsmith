@@ -1145,6 +1145,9 @@ pub enum Restriction {
     /// A continuous combat rule, independent of removable granted abilities.
     /// Its matching set is re-evaluated while the rule's duration is active.
     MustAttack(ObjectFilter),
+    /// Matching permanents cannot receive the suspected designation.
+    /// Appended to preserve existing serialized variant ordinals.
+    BecomeSuspected(ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.

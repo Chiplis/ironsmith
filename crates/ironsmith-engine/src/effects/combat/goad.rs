@@ -227,6 +227,7 @@ mod tests {
                 tapped: false,
                 attacking: false,
                 goaded: None,
+            suspected: None,
             ring_bearer: None,
                 flipped: false,
                 face_down: false,

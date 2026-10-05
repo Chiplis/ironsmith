@@ -196,6 +196,7 @@ fn u037_scheduler_skips_end_combat_triggers_and_defers_procedure_triggers() {
         tagged_players: std::collections::HashMap::new(),
         prepayment: None,
         prevention_shield: None,
+        defending_player_reference: None,
     });
     assert_eq!(game.calculated_power(attacker), Some(5));
     assert!(game.combat_damage_assignment_is_suppressed(attacker));
