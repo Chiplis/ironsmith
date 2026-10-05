@@ -460,6 +460,10 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub max_plays: Option<u32>,
     /// Static abilities granted to a spell as it is cast using this permission.
     pub cast_this_way_grants: Vec<SA>,
+    /// Noncopiable recipient abilities retained until the played/cast permanent leaves.
+    /// Unlike cast_this_way_grants these do not expire at the end of the turn.
+    #[cfg_attr(feature = "serde", serde(default = "Vec::new"))]
+    pub permanent_this_way_grants: Vec<SA>,
     /// An optional narrower filter for the spell that receives
     /// `cast_this_way_grants`. The permission itself continues to use
     /// `filter`, which matters for permissions that include lands or
@@ -510,6 +514,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             usage_limit: None,
             max_plays: None,
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
             source_exiled_surface: None,
@@ -543,6 +548,11 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             max_plays: self.max_plays,
             cast_this_way_grants: self
                 .cast_this_way_grants
+                .into_iter()
+                .map(&mut map_static)
+                .collect::<Result<Vec<_>, _>>()?,
+            permanent_this_way_grants: self
+                .permanent_this_way_grants
                 .into_iter()
                 .map(&mut map_static)
                 .collect::<Result<Vec<_>, _>>()?,
@@ -651,6 +661,7 @@ where
             usage_limit: None,
             max_plays: None,
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
             source_exiled_surface: None,
@@ -718,6 +729,7 @@ where
             usage_limit: None,
             max_plays: None,
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
             source_exiled_surface: None,

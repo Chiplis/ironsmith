@@ -51,10 +51,28 @@ pub fn parse_self_zone_alternative_cost(
     };
     let after_cost_word = rather + 2 + cost_tail_len;
     let exile_rider = &words[after_cost_word..];
+    let mut entry_counters = Vec::new();
     let exiles_after_resolution = if exile_rider.is_empty() {
         false
     } else if exile_rider == ["if", "you", "cast", "this", "card", "this", "way", "and", "it", "would", "be", "put", "into", "your", "graveyard", "exile", "it", "instead"] {
         true
+    } else if exile_rider.starts_with(&["if", "you", "do", "it", "enters", "with"]) {
+        let entry_start = view.token_start_indices()[after_cost_word + 4];
+        let mut entry_tokens = crate::lexer::synthetic_word_tokens(["this", "creature"]);
+        entry_tokens.extend_from_slice(&tokens[entry_start..]);
+        let entries = crate::keyword_static::parse_enters_with_counters_line(&entry_tokens)?.ok_or_else(||
+            CardTextError::ParseError("unsupported alternative-cost entry counter rider".into()))?;
+        for ability in entries {
+            let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } = ability.payload else {
+                return Err(CardTextError::ParseError("alternative-cost entry rider must only place counters".into()));
+            };
+            let crate::effect::Value::Fixed(amount) = count.unhinted() else {
+                return Err(CardTextError::ParseError("dynamic alternative-cost entry counter amount is unsupported".into()));
+            };
+            let amount = u32::try_from(*amount).map_err(|_| CardTextError::ParseError("negative entry counter count".into()))?;
+            entry_counters.push((counter, amount));
+        }
+        false
     } else {
         return Err(CardTextError::ParseError("unsupported intrinsic graveyard-cast follow-up".into()));
     };
@@ -76,7 +94,7 @@ pub fn parse_self_zone_alternative_cost(
     Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
         "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard,
         total_cost, condition, exiles_after_resolution,
-    )))
+    ).with_entry_counters(entry_counters)))
 }
 
 pub fn parse_self_free_cast(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {
@@ -543,7 +561,9 @@ mod intrinsic_zone_alternative_tests {
     }
     #[test]
     fn intrinsic_zone_reader_rejects_unknown_riders_and_does_not_claim_static_price_grants() {
-        assert!(parse("You may cast this card from your graveyard by paying {3}{R} rather than paying its mana cost. If you do, it enters with two +1/+1 counters on it.").is_err());
+        let entry = parse("You may cast this card from your graveyard by paying {3}{R} rather than paying its mana cost. If you do, it enters with two +1/+1 counters on it.").unwrap().unwrap();
+        assert_eq!(entry.entry_counters(), &[(ironsmith_core::CounterType::PlusOnePlusOne, 2)]);
+        assert!(parse("You may cast this card from your graveyard by paying {3}{R} rather than paying its mana cost. If you do, it enters with two +1/+1 counters on it and you draw a card.").is_err());
         for text in [
             "You may pay {0} rather than pay the mana cost for spells you cast.",
             "You may cast spells from your graveyard by paying {2} rather than paying their mana costs.",

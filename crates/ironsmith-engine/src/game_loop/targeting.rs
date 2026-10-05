@@ -123,6 +123,7 @@ pub(crate) fn queue_triggers_from_reported_events(
                     | crate::events::EventKind::DieRolled
                     | crate::events::EventKind::Damage
                     | crate::events::EventKind::LifeLoss
+                    | crate::events::EventKind::LifePaid
                     | crate::events::EventKind::ZoneChange
                     | crate::events::EventKind::ObjectLeavesGame
                     | crate::events::EventKind::PermanentTapped

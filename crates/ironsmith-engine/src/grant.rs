@@ -174,7 +174,7 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     None,
                     vec![
                         Cost::try_from_runtime_effect(crate::effect::Effect::new(
-                            crate::effects::LoseLifeEffect::you(crate::effect::Value::ManaValueOf(
+                            crate::effects::PayLifeEffect::you(crate::effect::Value::ManaValueOf(
                                 Box::new(crate::target::ChooseSpec::Source),
                             )),
                         ))
@@ -191,7 +191,7 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     *zone,
                     TotalCost::from_costs(vec![
                         Cost::try_from_runtime_effect(crate::effect::Effect::new(
-                            crate::effects::LoseLifeEffect::you(crate::effect::Value::ManaValueOf(
+                            crate::effects::PayLifeEffect::you(crate::effect::Value::ManaValueOf(
                                 Box::new(crate::target::ChooseSpec::Source),
                             )),
                         ))

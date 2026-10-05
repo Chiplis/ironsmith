@@ -307,7 +307,7 @@ mod tests {
         assert_eq!(player.restricted_mana[1].symbol, ManaSymbol::Black);
         let spell = game.create_object_from_card(&card, A, Zone::Stack);
         let cost = crate::mana::ManaCost::from_pips(vec![vec![ManaSymbol::Snow]]);
-        assert!(game.try_pay_mana_cost_with_reason(A, Some(spell), &cost, 0, crate::costs::PaymentReason::CastSpell));
+        assert!(game.try_pay_mana_cost_with_reason(A, Some(spell), &cost, 0, crate::costs::PaymentReason::CastSpell).expect("checked fixture mana payment"));
         let player = game.player(A).unwrap();
         assert_eq!(player.mana_pool.black, 1);
         assert_eq!(player.restricted_mana, vec![restricted(ManaSymbol::Black, source, CardType::Instant)]);

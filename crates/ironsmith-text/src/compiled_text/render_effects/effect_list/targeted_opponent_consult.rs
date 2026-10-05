@@ -40,7 +40,7 @@ pub(super) fn describe_targeted_opponent_consult_may_cast_remainder(
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if may.decider != Some(PlayerFilter::You)
         || may.fallback != crate::decision::FallbackStrategy::Decline
         || cast.tag != consult.match_tag

@@ -4053,7 +4053,7 @@ pub(super) fn describe_copy_tagged_then_may_cast_copy(effects: &[Effect]) -> Opt
         return None;
     };
     let cast_tagged = unwrap_basic_tag_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if !cast_tagged.as_copy || &cast_tagged.tag != copy_tag {
         return None;
     }
@@ -5235,7 +5235,7 @@ pub(super) fn describe_consult_exile_may_cast_rest_bottom_sequence(
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag != consult.match_tag || cast.allow_land || cast.as_copy {
         return None;
     }
@@ -5344,7 +5344,7 @@ pub(super) fn describe_consult_may_cast_remainder_bottom_sequence(
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag != consult.match_tag || cast.allow_land || cast.as_copy {
         return None;
     }
@@ -6727,7 +6727,7 @@ pub(super) fn describe_target_player_consult_exile_shuffle_may_cast(
         return None;
     };
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag != consult.match_tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -7703,7 +7703,7 @@ pub(in crate::compiled_text) fn describe_reveal_hand_choose_graveyard_or_hand_ex
                 describe_life_amount_phrase(&lose.amount)
             ));
         } else {
-            let grant = trailing_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+            let grant = trailing_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
             if grant.tag.as_str() != "__source_exiled__"
                 || grant.player != PlayerFilter::You
                 || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled

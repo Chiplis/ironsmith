@@ -1,0 +1,96 @@
+[
+  {
+    "oracle_id": "32476743-c9d4-49ca-bec2-0669c215841b",
+    "frozen_name": "Anrakyr the Traveller",
+    "name": "Anrakyr the Traveller",
+    "text": "Mana cost: {4}{B}\nType: Legendary Artifact Creature \u2014 Necron\nPower/Toughness: 4/4\nLord of the Pyrrhian Legions \u2014 Whenever Anrakyr the Traveller attacks, you may cast an artifact spell from your hand or graveyard by paying life equal to its mana value rather than paying its mana cost.",
+    "proposed_coverage": "partial",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed",
+    "remaining_blocker": "Immediate choice across hand and graveyard needs priced prospective face/choice integration."
+  },
+  {
+    "oracle_id": "12b859f8-36f3-43cd-b537-6e07857b247e",
+    "frozen_name": "Bismuth Mindrender",
+    "name": "Bismuth Mindrender",
+    "text": "Mana cost: {3}{B}\nType: Creature \u2014 Eldrazi\nPower/Toughness: 4/3\nDevoid (This card has no color.)\nMenace\nWhenever this creature deals combat damage to a player, that player exiles cards from the top of their library until they exile a nonland card. You may cast that card by paying life equal to the spell's mana value rather than paying its mana cost.",
+    "proposed_coverage": "source_reviewed_proposed_unvalidated",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed"
+  },
+  {
+    "oracle_id": "6290233b-b015-4909-8aba-bf8d65cc37b5",
+    "frozen_name": "Blue Mage's Cane",
+    "name": "Blue Mage's Cane",
+    "text": "Mana cost: {2}{U}\nType: Artifact \u2014 Equipment\nJob select\nEquipped creature gets +0/+2, is a Wizard in addition to its other types, and has \"Whenever this creature attacks, exile up to one target instant or sorcery card from defending player's graveyard. If you do, copy it. You may cast the copy by paying {3} rather than paying its mana cost.\"\nSpirit of the Whalaqee \u2014 Equip {2}",
+    "proposed_coverage": "source_reviewed_proposed_unvalidated",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed"
+  },
+  {
+    "oracle_id": "d901e17f-a5f4-49d9-8a6d-ab771949af24",
+    "frozen_name": "Dream Halls",
+    "name": "Dream Halls",
+    "text": "Mana cost: {3}{U}{U}\nType: Enchantment\nRather than pay the mana cost for a spell, its controller may discard a card that shares a color with that spell.",
+    "proposed_coverage": "source_reviewed_proposed_unvalidated",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed"
+  },
+  {
+    "oracle_id": "c48cf135-b280-4e9f-a9d9-225104870741",
+    "frozen_name": "Gwenom, Remorseless",
+    "name": "Gwenom, Remorseless",
+    "text": "Mana cost: {3}{B}{B}\nType: Legendary Creature \u2014 Symbiote Spider Hero\nPower/Toughness: 4/4\nDeathtouch, lifelink\nWhenever Gwenom attacks, until end of turn, you may look at the top card of your library any time and you may play cards from the top of your library. If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost.",
+    "proposed_coverage": "source_reviewed_proposed_unvalidated",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed"
+  },
+  {
+    "oracle_id": "66961bcb-f588-47a7-b3f3-12f4ac674477",
+    "frozen_name": "Inside Information",
+    "name": "Inside Information",
+    "text": "Mana cost: {X}{B}{B}\nType: Sorcery\nExile the top X cards of target opponent's library. You may play those cards this turn. If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost.",
+    "proposed_coverage": "source_reviewed_proposed_unvalidated",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed"
+  },
+  {
+    "oracle_id": "ca79cd3f-13ba-4d11-b885-48a504ae69aa",
+    "frozen_name": "Jadzi, Oracle of Arcavios // Journey to the Oracle",
+    "name": "Jadzi, Oracle of Arcavios",
+    "text": "Mana cost: {6}{U}{U}\nType: Legendary Creature \u2014 Human Wizard\nPower/Toughness: 5/5\nDiscard a card: Return Jadzi to its owner's hand.\nMagecraft \u2014 Whenever you cast or copy an instant or sorcery spell, reveal the top card of your library. If it's a nonland card, you may cast it by paying {1} rather than paying its mana cost. If it's a land card, put it onto the battlefield.",
+    "proposed_coverage": "source_reviewed_proposed_unvalidated",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed",
+    "other_face": {
+      "name": "Journey to the Oracle",
+      "text": "Mana cost: {2}{G}{G}\nType: Sorcery\nYou may put any number of land cards from your hand onto the battlefield. Then if you control eight or more lands, you may discard a card. If you do, return Journey to the Oracle to its owner's hand."
+    }
+  },
+  {
+    "oracle_id": "d04b6c2c-50fc-464d-9991-230efec70d2b",
+    "frozen_name": "Nashi, Moon Sage's Scion",
+    "name": "Nashi, Moon Sage's Scion",
+    "text": "Mana cost: {1}{B}{B}\nType: Legendary Creature \u2014 Rat Ninja\nPower/Toughness: 3/2\nNinjutsu {3}{B} ({3}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nWhenever Nashi deals combat damage to a player, exile the top card of each player's library. Until end of turn, you may play one of those cards. If you cast a spell this way, pay life equal to its mana value rather than paying its mana cost.",
+    "proposed_coverage": "source_reviewed_proposed_unvalidated",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed"
+  },
+  {
+    "oracle_id": "e229d55c-9513-437d-bd67-015ac46aaa18",
+    "frozen_name": "The Infamous Cruelclaw",
+    "name": "The Infamous Cruelclaw",
+    "text": "Mana cost: {1}{B}{R}\nType: Legendary Creature \u2014 Weasel Mercenary\nPower/Toughness: 3/3\nMenace\nWhenever The Infamous Cruelclaw deals combat damage to a player, exile cards from the top of your library until you exile a nonland card. You may cast that card by discarding a card rather than paying its mana cost.",
+    "proposed_coverage": "source_reviewed_proposed_unvalidated",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed"
+  },
+  {
+    "oracle_id": "740fe41a-16bb-4c97-a03c-f678f15a0a0c",
+    "frozen_name": "Wizard's Spellbook",
+    "name": "Wizard's Spellbook",
+    "text": "Mana cost: {5}{U}{U}\nType: Artifact \u2014 Book\n{T}: Exile target instant or sorcery card from a graveyard. Roll a d20. Activate only as a sorcery.\n1\u20149 | Copy that card. You may cast the copy.\n10\u201419 | Copy that card. You may cast the copy by paying {1} rather than paying its mana cost.\n20 | Copy each card exiled with this artifact. You may cast any number of the copies without paying their mana costs.",
+    "proposed_coverage": "partial",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed",
+    "remaining_blocker": "Roll-20 creates a collection of card copies and allows any number in chosen order; singular tagged cast does not establish this complete body."
+  },
+  {
+    "oracle_id": "3df11e5c-19aa-441c-a889-6b40eb3fdabf",
+    "frozen_name": "Xander's Pact",
+    "name": "Xander's Pact",
+    "text": "Mana cost: {4}{B}{B}\nType: Sorcery\nCasualty 2 (As you cast this spell, you may sacrifice a creature with power 2 or greater. When you do, copy this spell.)\nEach opponent exiles the top card of their library. You may cast spells from among those cards this turn. If you cast a spell this way, pay life equal to that spell's mana value rather than pay its mana cost.",
+    "proposed_coverage": "source_reviewed_proposed_unvalidated",
+    "validation": "UNVALIDATED; no build, compilation, test or runtime probe executed"
+  }
+]

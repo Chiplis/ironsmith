@@ -241,6 +241,7 @@ pub(super) fn cast_from_among(
                 player: chooser,
             },
             action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+                alternative_cost: None,
                 tag: crate::tag::TagRef::of(chosen_tag.clone()),
                 player: chooser,
                 allow_land: false,

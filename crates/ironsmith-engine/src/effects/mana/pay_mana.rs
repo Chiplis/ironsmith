@@ -133,7 +133,8 @@ fn try_pay_interactively(
                 plan_id,
                 request_hash,
             } if plan.payable && plan_id == plan.id && request_hash == plan.request_hash => {
-                return match crate::mana_payment::execute_mana_payment_plan(game, &request, &plan, &mut ctx.decision_maker) {
+                let execution = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+                return match crate::mana_payment::execute_mana_payment_plan_in_context(game, &request, &plan, &mut ctx.decision_maker, Some(&execution)) {
                     Ok(crate::mana_payment::ManaPaymentExecution::Paid) => Ok(true),
                     Err(crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)) => Err(error),
                     _ => Ok(false),

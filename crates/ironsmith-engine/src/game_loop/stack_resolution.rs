@@ -1553,9 +1553,9 @@ fn resolve_stack_entry_full_inner(
                 } else { None }
             });
             let current_turn = game.turn.turn_number;
-            if let Some(method) = battlefield_method
+            if let Some(method) = battlefield_method.as_ref()
                 && let Some(spell) = game.object_mut(entry.object_id) {
-                crate::alternative_cast::ensure_alternative_battlefield_abilities(spell, &method, current_turn);
+                crate::alternative_cast::ensure_alternative_battlefield_abilities(spell, method, current_turn);
             }
 
             // It's a permanent spell, move to battlefield with ETB processing
@@ -1566,6 +1566,9 @@ fn resolve_stack_entry_full_inner(
             })).flatten();
             if let Some(player) = chosen_player { game.set_chosen_player(entry.object_id, player); }
             let mut options = crate::effects::zones::BattlefieldEntryOptions::specific(obj.initial_controller, cast_with_sneak);
+            if let Some(method) = &battlefield_method {
+                options = options.with_initial_counters(method.entry_counters().to_vec());
+            }
             if obj.subtypes.contains(&Subtype::Aura) { options = options.with_aura_entry_attachment(aura_target); }
             let receipt = crate::effects::zones::move_to_battlefield_with_options(game, &mut ctx, entry.object_id, options)?;
             if ctx.decision_maker.awaiting_choice() { return Ok(()); }

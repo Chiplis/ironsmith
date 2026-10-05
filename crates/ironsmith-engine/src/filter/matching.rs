@@ -157,6 +157,13 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    if filter.milled_into_graveyard_this_turn
+        && (subject.zone() != Zone::Graveyard
+            || !game.turn_store.turn_history.graveyard_incarnation_was_milled_this_turn(subject.object_id()))
+    {
+        return false;
+    }
+
     if filter.entered_graveyard_from_library_this_turn {
         let history = &game.turn_store.turn_history;
         let entered = if subject.is_live() {

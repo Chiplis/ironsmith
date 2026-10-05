@@ -760,6 +760,7 @@ pub enum TriggerKind {
     AttacksPlayerAlone { filter: ObjectFilter },
     BecomesBlockedOneOrMore { filter: ObjectFilter },
     KeywordActionMatchingObjectOneOrMore { action: KeywordActionKind, player: PlayerFilter, filter: ObjectFilter },
+    PlayerPaysLife { player: PlayerFilter },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -1832,6 +1833,7 @@ impl Trigger {
             TriggerKind::PlayerGainsLife { player, during_turn },
         )
     }
+    pub fn player_pays_life(player: PlayerFilter) -> Self { Self::typed("player_pays_life",TriggerKind::PlayerPaysLife { player }) }
     pub fn player_loses_life(player: PlayerFilter) -> Self {
         Self::typed("player_loses_life", TriggerKind::PlayerLosesLife { player })
     }

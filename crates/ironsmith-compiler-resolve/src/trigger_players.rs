@@ -111,6 +111,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
             ))
         }
         TriggerSpec::PlayerLosesGame(_) => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerPaysLife(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLifeDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCardDuringTurn { .. } | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCard(_) => Some(PlayerFilter::IteratedPlayer),

@@ -1202,7 +1202,7 @@ fn continue_interactive_replacement(
 
     // Handle pay-life-or-enter-tapped (shock land pattern)
     if let Some(cost) = life_cost {
-        return Ok(handle_pay_life_or_enter_tapped(game, response, controller, cost));
+        return handle_pay_life_or_enter_tapped(game, response, object_id, controller, cost, provenance, decision_maker, replacement_scope, source_snapshot);
     }
 
     if let Some(destinations) = destinations {
@@ -1402,31 +1402,35 @@ fn handle_reveal_card_or_enter_tapped(
 fn handle_pay_life_or_enter_tapped(
     game: &mut GameState,
     response: &InteractiveReplacementResponse,
+    object_id: crate::ids::ObjectId,
     controller: crate::ids::PlayerId,
     life_cost: u32,
-) -> InteractiveReplacementResult {
+    provenance: crate::provenance::ProvNodeId,
+    decision_maker: &mut dyn DecisionMaker,
+    replacement_scope: &crate::effects::ReplacementExecutionContext,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+) -> Result<InteractiveReplacementResult, crate::effects::ExecutionError> {
     match response {
         InteractiveReplacementResponse::Accept => {
             // Player chose to pay life
             // Verify they can still pay
-            let can_pay = game.can_pay_life(controller, life_cost);
-
-            if can_pay {
-                // Deduct life
-                game.pay_life(controller, life_cost);
+            let mut ctx = crate::effects::ExecutionContext::new(object_id, controller, decision_maker).with_provenance(provenance);
+            ctx.replacement = replacement_scope.clone();
+            ctx.source_snapshot = source_snapshot.cloned();
+            if game.pay_life_with_context(controller, life_cost, &mut ctx)?.is_some() {
                 // Permanent enters untapped
-                InteractiveReplacementResult::enters_battlefield()
+                Ok(InteractiveReplacementResult::enters_battlefield())
             } else {
                 // Can't pay anymore (life changed since decision was made)
                 // Permanent enters tapped
-                InteractiveReplacementResult::enters_tapped()
+                Ok(InteractiveReplacementResult::enters_tapped())
             }
         }
         InteractiveReplacementResponse::Decline
         | InteractiveReplacementResponse::Objects(_)
         | InteractiveReplacementResponse::Options(_) => {
             // Player chose not to pay life - permanent enters tapped
-            InteractiveReplacementResult::enters_tapped()
+            Ok(InteractiveReplacementResult::enters_tapped())
         }
     }
 }
@@ -8080,7 +8084,7 @@ mod tests {
             let second = if cloned_payload { first.clone() } else { external_enter_as_copy_ability() };
             for ability in [first, second] {
                 game.object_mut(source).unwrap().temporary_static_ability_grants.push(
-                    crate::object::TemporaryStaticAbilityGrant { ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: 4 });
+                    crate::object::TemporaryStaticAbilityGrant { ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: Some(4) });
             }
             let store = &game.object(source).unwrap().temporary_static_ability_grants;
             assert_ne!(store.origin(0), store.origin(1));
@@ -8123,7 +8127,7 @@ mod tests {
                         source, bob, crate::continuous::EffectTarget::Specific(source), crate::continuous::Modification::AddAbility(ability)));
                 } else {
                     game.object_mut(source).unwrap().temporary_static_ability_grants.push(
-                        crate::object::TemporaryStaticAbilityGrant { ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: 4 });
+                        crate::object::TemporaryStaticAbilityGrant { ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: Some(4) });
                 }
             }
             let entering = create_creature_in_zone(&mut game, "Entering Bear", alice, Zone::Hand, 2, 2);
@@ -8146,7 +8150,7 @@ mod tests {
                 let source = create_creature_in_zone(&mut game, "Temporary Copy Source", alice, Zone::Battlefield, 6, 6);
                 let ability = external_enter_as_copy_ability();
                 game.object_mut(source).unwrap().temporary_static_ability_grants.push(
-                    crate::object::TemporaryStaticAbilityGrant { ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn });
+                    crate::object::TemporaryStaticAbilityGrant { ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: Some(expires_end_of_turn) });
                 if warm {
                     assert_eq!(game.sparse_enter_as_copy_source_abilities().unwrap().len(), 1);
                 }

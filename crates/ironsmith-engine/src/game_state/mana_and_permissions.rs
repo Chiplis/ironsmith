@@ -2287,8 +2287,9 @@ impl GameState {
         policy: &crate::player::ManaSpendPolicy, allow_life_payment: bool,
         allow_black_life: bool, prefer_life_payment: bool,
         mut continuation: impl FnMut(&GameState, ironsmith_core::mana::ActualManaAllocation) -> bool,
-    ) -> Option<crate::mana::ManaCost> {
+    ) -> Result<Option<crate::mana::ManaCost>, crate::effects::ExecutionError> {
         let mut result = None;
+        let mut failure = None;
         self.mana_payment_plan_matching(payer, source, cost, x_value, reason, Some(policy),
             Some((allow_life_payment, prefer_life_payment, allow_black_life)),
             &mut |units, plan| {
@@ -2298,12 +2299,16 @@ impl GameState {
                         _ => None,
                     })) else { return false; };
                 let mut staged = self.clone();
-                if !staged.commit_mana_payment_plan(payer, source, reason, units, plan)
-                    || !continuation(&staged, actual) { return false; }
+                let paid = match staged.commit_mana_payment_plan(payer, source, reason, units, plan) {
+                    Ok(paid) => paid,
+                    Err(error) => { staged.record_token_resource_failure(&error); failure = Some(error); return false; }
+                };
+                if !paid || !continuation(&staged, actual) { return false; }
                 result = Some(cost.clone().with_required_actual_payment(Some(actual)));
                 true
-            })?;
-        result
+            });
+        if let Some(error) = failure { self.record_token_resource_failure(&error); return Err(error); }
+        Ok(result)
     }
 
     /// Attempt to pay a mana cost, accounting for "spend as though any color".
@@ -2313,7 +2318,7 @@ impl GameState {
         source: Option<ObjectId>,
         cost: &crate::mana::ManaCost,
         x_value: u32,
-    ) -> bool {
+    ) -> Result<bool, crate::effects::ExecutionError> {
         self.try_pay_mana_cost_with_reason(
             payer,
             source,
@@ -2331,9 +2336,19 @@ impl GameState {
         cost: &crate::mana::ManaCost,
         x_value: u32,
         reason: crate::costs::PaymentReason,
-    ) -> bool {
-        let policy = self.mana_spend_policy(payer, source);
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        let checked = self.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        let policy = checked.mana_spend_policy(payer, source);
         self.try_pay_mana_cost_with_policy(payer, source, cost, x_value, reason, &policy)
+    }
+
+    pub fn try_pay_mana_cost_with_reason_and_dm(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, cost: &crate::mana::ManaCost,
+        x_value: u32, reason: crate::costs::PaymentReason, decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        let checked = self.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        let policy = checked.mana_spend_policy(payer, source);
+        self.try_pay_mana_cost_with_payment_options_and_dm(payer, source, cost, x_value, reason, &policy, true, true, false, decision_maker)
     }
 
     /// Commit a payment using a transaction-local spend policy.
@@ -2345,7 +2360,7 @@ impl GameState {
         x_value: u32,
         reason: crate::costs::PaymentReason,
         policy: &crate::player::ManaSpendPolicy,
-    ) -> bool {
+    ) -> Result<bool, crate::effects::ExecutionError> {
         self.try_pay_mana_cost_with_payment_options(
             payer, source, cost, x_value, reason, policy, true, true, false,
         )
@@ -2364,7 +2379,31 @@ impl GameState {
         allow_life_payment: bool,
         allow_black_life: bool,
         prefer_life_payment: bool,
-    ) -> bool {
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.try_pay_mana_cost_with_payment_options_and_dm(payer, source, cost, x_value, reason, policy,
+            allow_life_payment, allow_black_life, prefer_life_payment, &mut crate::decision::SelectFirstDecisionMaker)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_pay_mana_cost_with_payment_options_and_dm(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, cost: &crate::mana::ManaCost,
+        x_value: u32, reason: crate::costs::PaymentReason, policy: &crate::player::ManaSpendPolicy,
+        allow_life_payment: bool, allow_black_life: bool, prefer_life_payment: bool,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.try_pay_mana_cost_with_payment_options_in_context(payer, source, cost, x_value, reason, policy,
+            allow_life_payment, allow_black_life, prefer_life_payment, decision_maker, None)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn try_pay_mana_cost_with_payment_options_in_context(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, cost: &crate::mana::ManaCost,
+        x_value: u32, reason: crate::costs::PaymentReason, policy: &crate::player::ManaSpendPolicy,
+        allow_life_payment: bool, allow_black_life: bool, prefer_life_payment: bool,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+        execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        let checkpoint = self.clone();
+        let result = (|| {
+        self.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         let Some((units, plan)) = self.mana_payment_plan(
             payer,
             source,
@@ -2374,17 +2413,41 @@ impl GameState {
             Some(policy),
             Some((allow_life_payment, prefer_life_payment, allow_black_life)),
         ) else {
-            return false;
+            return Ok(false);
         };
-        self.commit_mana_payment_plan(payer, source, reason, &units, &plan)
+        self.commit_mana_payment_plan_with_dm(payer, source, reason, &units, &plan, decision_maker, execution)
+        })();
+        if !matches!(result, Ok(true)) { self.restore_execution_checkpoint(checkpoint, result.is_ok() && decision_maker.awaiting_choice()); }
+        result
     }
 
     fn commit_mana_payment_plan(
         &mut self, payer: PlayerId, source: Option<ObjectId>, reason: crate::costs::PaymentReason,
         units: &[PayableManaUnit], plan: &ManaPaymentPlan,
-    ) -> bool {
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.commit_mana_payment_plan_with_dm(payer, source, reason, units, plan, &mut crate::decision::SelectFirstDecisionMaker, None)
+    }
+    fn commit_mana_payment_plan_with_dm(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, reason: crate::costs::PaymentReason,
+        units: &[PayableManaUnit], plan: &ManaPaymentPlan, decision_maker: &mut dyn crate::decision::DecisionMaker,
+        execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        let checkpoint = self.clone();
+        let result = (|| {
+            self.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            self.commit_mana_payment_plan_inner(payer, source, reason, units, plan, decision_maker, execution)
+        })();
+        if !matches!(result, Ok(true)) { self.restore_execution_checkpoint(checkpoint, result.is_ok() && decision_maker.awaiting_choice()); }
+        result
+    }
+
+    fn commit_mana_payment_plan_inner(
+        &mut self, payer: PlayerId, source: Option<ObjectId>, reason: crate::costs::PaymentReason,
+        units: &[PayableManaUnit], plan: &ManaPaymentPlan, decision_maker: &mut dyn crate::decision::DecisionMaker,
+        execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+    ) -> Result<bool, crate::effects::ExecutionError> {
         let Some(player) = self.player(payer) else {
-            return false;
+            return Ok(false);
         };
         let original_pool = player.mana_pool.clone();
         let original_restricted = player.restricted_mana.clone();
@@ -2405,7 +2468,7 @@ impl GameState {
             .filter(|payment| matches!(payment, ManaPipCommit::ManaUnit { .. }))
             .count();
         if selected.len() != selected_count {
-            return false;
+            return Ok(false);
         }
         let spent_units = selected
             .iter()
@@ -2452,13 +2515,19 @@ impl GameState {
         } else {
             false
         };
-        if !committed || (plan.life_to_pay > 0 && !self.pay_life(payer, plan.life_to_pay)) {
+        let life_paid = if committed && plan.life_to_pay > 0 {
+            let mut ctx = crate::effects::ExecutionContext::new(source.unwrap_or(ObjectId::from_raw(0)), payer, decision_maker);
+            if let Some(execution) = execution { execution.restore_ref(&mut ctx); }
+            ctx.mana.payment_reason = Some(reason);
+            self.pay_life_with_context(payer, plan.life_to_pay, &mut ctx)?.is_some()
+        } else { committed };
+        if !committed || !life_paid {
             if let Some(player) = self.player_mut(payer) {
                 player.mana_pool = original_pool;
                 player.restricted_mana = original_restricted;
                 player.mana_source_provenance = original_provenance;
             }
-            return false;
+            return Ok(false);
         }
 
         if reason == crate::costs::PaymentReason::CastSpell
@@ -2471,7 +2540,7 @@ impl GameState {
 
         self.publish_spent_mana_units(payer, source, reason, spent_units);
         self.record_bulk_mana_sources_spent_to_cast(payer, source, reason, &original_provenance);
-        true
+        Ok(true)
     }
 
     fn publish_spent_mana_units(

@@ -47,3 +47,5 @@ pub(crate) use draw_continuation::{PreparedReplacementChild, ReplacementResume, 
 pub(crate) use draw_continuation::prepare_draw_continuation_with_bindings;
 
 pub(crate) use execute_payload::execute_replacement_payload_with_snapshot;
+
+pub(crate) use execute_payload::with_replacement_child;

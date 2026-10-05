@@ -577,6 +577,7 @@ pub struct GrantedAlternativeCast {
     pub usage_limit: Option<GrantUsageLimit>,
     /// Riders belonging to this exact indexed permission, not every equal-cost method.
     pub cast_this_way_grants: Vec<crate::static_abilities::StaticAbility>,
+    pub permanent_this_way_grants: Vec<crate::static_abilities::StaticAbility>,
     pub cast_this_way_filter: Option<ObjectFilter>,
     pub on_use_effects: Vec<crate::effect::Effect>,
 }
@@ -641,6 +642,7 @@ pub struct Grant {
     /// What is being granted (ability or alternative casting method).
     pub grantable: Grantable,
     pub cast_this_way_grants: Vec<crate::static_abilities::StaticAbility>,
+    pub permanent_this_way_grants: Vec<crate::static_abilities::StaticAbility>,
     pub cast_this_way_filter: Option<ObjectFilter>,
     pub on_use_effects: Vec<crate::effect::Effect>,
     /// How often this grant may be used from the same source.
@@ -703,6 +705,7 @@ pub struct RetainedGrant<G, P, S, F> {
     pub player: PlayerId,
     pub grantable: G,
     pub cast_this_way_grants: Vec<S>,
+    pub permanent_this_way_grants: Vec<S>,
     #[cfg_attr(
         feature = "serialization",
         serde(deserialize_with = "deserialize_present_permission_reference")
@@ -743,6 +746,7 @@ impl From<Grant> for NativeRetainedGrant {
             player,
             grantable,
             cast_this_way_grants,
+            permanent_this_way_grants,
             cast_this_way_filter,
             on_use_effects,
             usage_limit,
@@ -762,6 +766,7 @@ impl From<Grant> for NativeRetainedGrant {
             player,
             grantable,
             cast_this_way_grants,
+            permanent_this_way_grants,
             cast_this_way_filter,
             on_use_effects,
             usage_limit,
@@ -786,6 +791,7 @@ impl From<NativeRetainedGrant> for Grant {
             player,
             grantable,
             cast_this_way_grants,
+            permanent_this_way_grants,
             cast_this_way_filter,
             on_use_effects,
             usage_limit,
@@ -805,6 +811,7 @@ impl From<NativeRetainedGrant> for Grant {
             player,
             grantable,
             cast_this_way_grants,
+            permanent_this_way_grants,
             cast_this_way_filter,
             on_use_effects,
             usage_limit,
@@ -835,6 +842,7 @@ impl<G, P, S, F> RetainedGrant<G, P, S, F> {
             player,
             grantable,
             cast_this_way_grants,
+            permanent_this_way_grants,
             cast_this_way_filter,
             on_use_effects,
             usage_limit,
@@ -854,6 +862,10 @@ impl<G, P, S, F> RetainedGrant<G, P, S, F> {
             player: player,
             grantable: map_grantable(grantable)?,
             cast_this_way_grants: cast_this_way_grants
+                .into_iter()
+                .map(&mut ability)
+                .collect::<Result<_, _>>()?,
+            permanent_this_way_grants: permanent_this_way_grants
                 .into_iter()
                 .map(&mut ability)
                 .collect::<Result<_, _>>()?,
@@ -1007,6 +1019,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: constraints,
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: Some(shared_usage_id),
@@ -1135,6 +1148,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
@@ -1166,6 +1180,7 @@ impl GrantRegistry {
             available_starting_turn: Some(available_starting_turn),
             play_from_constraints: PlayFromConstraints::default(),
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
@@ -1197,6 +1212,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
@@ -1229,6 +1245,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: constraints,
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
@@ -1263,6 +1280,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: constraints,
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
@@ -1294,6 +1312,7 @@ impl GrantRegistry {
             available_starting_turn: None,
             play_from_constraints: PlayFromConstraints::default(),
             cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
             on_use_effects: Vec::new(),
             cast_this_way_filter: None,
             shared_usage_id: None,
@@ -2022,6 +2041,7 @@ impl GrantRegistry {
                                 ..Default::default()
                             },
                             cast_this_way_grants: spec.cast_this_way_grants.clone(),
+                            permanent_this_way_grants: spec.permanent_this_way_grants.clone(),
                             on_use_effects: spec.on_use_effects.clone(),
                             cast_this_way_filter: spec.cast_this_way_filter.clone(),
                             shared_usage_id: None,
@@ -2086,6 +2106,7 @@ fn materialize_granted_alternative_cast(
         usage_limit: usage_limit.or(grant.usage_limit),
         constraints: grant.play_from_constraints,
         cast_this_way_grants: grant.cast_this_way_grants,
+        permanent_this_way_grants: grant.permanent_this_way_grants,
         on_use_effects: grant.on_use_effects,
         cast_this_way_filter: grant.cast_this_way_filter,
     })

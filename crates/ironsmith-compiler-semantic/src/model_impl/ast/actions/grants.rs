@@ -26,6 +26,7 @@ pub enum GrantActionAst {
         max_plays: Option<u32>,
         /// Mana reduction attached to using this permission.
         spell_cost_reduction: Option<ManaCost>,
+        alternative_cost: Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
         surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {

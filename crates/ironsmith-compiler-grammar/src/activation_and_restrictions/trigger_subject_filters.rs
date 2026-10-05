@@ -987,6 +987,7 @@ pub enum MayCastItVerb {
 
 pub struct MayCastTaggedSpec {
     pub tag: TagKey,
+    pub alternative_cost: Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
     pub player: PlayerAst,
     pub verb: MayCastItVerb,
     pub as_copy: bool,
@@ -997,6 +998,12 @@ pub struct MayCastTaggedSpec {
 }
 
 pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTaggedSpec> {
+    if let Some((body, cost)) = crate::permission_helpers::effect_cast_prices::replacement_price_suffix(tokens).ok()? {
+        let mut spec = parse_may_cast_it_sentence(body)?;
+        if spec.without_paying_mana_cost || !matches!(spec.verb, MayCastItVerb::Cast) { return None; }
+        spec.alternative_cost = Some(cost);
+        return Some(spec);
+    }
     let clause_words = crate::lexer::parser_token_word_refs(tokens);
     let facts = trigger_subject_grammar::parse_may_cast_sentence_facts(&clause_words)?;
     use trigger_subject_grammar::{
@@ -1063,6 +1070,7 @@ pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTag
 
     Some(MayCastTaggedSpec {
         tag: tag.key.clone(),
+        alternative_cost: None,
         player,
         verb,
         as_copy,
@@ -1093,6 +1101,7 @@ pub fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
         spec.without_paying_mana_cost,
         spec.cost_reduction.clone(),
     );
+    let cast = spec.alternative_cost.as_ref().map(|cost| cast.clone().with_casting_alternative_cost(cost.clone())).unwrap_or(cast);
     let cast = spec
         .copy_instruction_surface
         .map(|surface| cast.clone().with_copy_instruction_surface(surface))

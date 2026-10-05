@@ -653,7 +653,7 @@ fn describe_mixed_target_exile_top_damage_program(
     if player_exile != object_exile || player_exiled_tag != object_exiled_tag {
         return None;
     }
-    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if player_exile.accumulated_tags.first() != Some(&permission.tag)
         || permission.player != PlayerFilter::You
         || permission.duration != crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
@@ -681,7 +681,7 @@ fn describe_prior_exile_until_next_turn_permission_program(
     let [permission_effect] = permission_segment.default_effects.as_slice() else {
         return None;
     };
-    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if permission.player != PlayerFilter::You
         || permission.duration != crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
         || !permission.allow_land
@@ -6587,7 +6587,7 @@ fn describe_cross_segment_bottom_library_exile_look_cast_window(
     };
     let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
     let look = look_effect.downcast_ref::<crate::effects::LookAtObjectsEffect>()?;
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     describe_for_players_bottom_library_exile_then_look_cast(for_players, look, grant)
         .map(|rendered| (rendered, 2))
 }
@@ -13118,7 +13118,7 @@ fn describe_cross_segment_linked_exile_top_play_window(
             {
                 continue;
             }
-            if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
                 && let Some(source_tag) = derived_tag_sources.get(&grant.tag)
             {
                 let mut normalized = grant.clone();
@@ -13128,7 +13128,7 @@ fn describe_cross_segment_linked_exile_top_play_window(
                 continue;
             }
             has_linked_grant |= effect
-                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
                 .is_some_and(|grant| linked_tags.contains(&grant.tag));
             normalized_segment_effects.push(effect);
         }
@@ -13197,7 +13197,7 @@ fn describe_cross_segment_filtered_exile_cast_then_has_ability_window(
     let with_id = permission_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
     let grant = with_id
         .effect
-        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if grant.tag != matching.tag
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
@@ -13324,7 +13324,7 @@ fn describe_cross_segment_filtered_exile_cast_window(
     if spell_filter == ObjectFilter::default() {
         return None;
     }
-    let grant = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if grant.tag != matching.tag
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
@@ -13688,7 +13688,7 @@ fn describe_cross_segment_treasure_look_exile_permission_window(
         return None;
     };
     let grant = structural_unwrap_render_wrappers(permission_effect)
-        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if grant.tag.as_str() != crate::tag::SOURCE_EXILED_TAG
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
@@ -13764,7 +13764,7 @@ mod cross_segment_treasure_look_exile_permission_tests {
 
         let mut near_miss_segments = exact.segments.clone();
         let permission = near_miss_segments[1].default_effects[0]
-            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             .expect("second segment should retain the typed permission");
         let mut wrong_permission = permission.clone();
         wrong_permission.tag = "unrelated_exiled_set".into();
@@ -13822,7 +13822,7 @@ fn describe_cross_segment_exile_top_choose_play_window(
     };
     let exile_top = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let grant_play = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant_play = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     describe_exile_top_choose_one_then_play(exile_top, choose, grant_play)
         .map(|rendered| (rendered, 2))
 }
@@ -13977,7 +13977,7 @@ fn describe_cross_segment_shuffle_exile_top_free_play_window(
         return None;
     }
     let exile_top = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
-    let grant_play = grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant_play = grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     let grant_free_cast = grant_free_cast_effect
         .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(
     )?;
@@ -14079,7 +14079,7 @@ fn describe_cross_segment_shuffle_reveal_top_free_play_window(
         let reveal_permission = structural_unwrap_render_wrappers(reveal_permission_effect)
             .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
         let grant_play = structural_unwrap_render_wrappers(grant_play_effect)
-            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
         let grant_free_cast = structural_unwrap_render_wrappers(grant_free_effect)
             .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(
         )?;
@@ -16930,7 +16930,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if &cast.tag != exile_tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -16959,7 +16959,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
     let [grant_effect] = fallback.then.as_slice() else {
         return None;
     };
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if &grant.tag != exile_tag
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
@@ -17285,7 +17285,7 @@ fn describe_amass_mill_then_optional_capped_cast_program(
         return None;
     }
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag != choose.tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -18856,7 +18856,7 @@ fn describe_cross_segment_reveal_optional_cast_decline_bottom_window(
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if !matches!(may.decider.as_ref(), None | Some(PlayerFilter::You))
         || may.fallback != crate::decision::FallbackStrategy::Decline
         || cast.tag != *revealed_tag
@@ -19784,7 +19784,7 @@ fn describe_you_life_change_exile_then_play_program(
         return None;
     };
     let permission = structural_unwrap_render_wrappers(permission_effect)
-        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if !exile.moved_tags.contains(&permission.tag)
         || permission.player != PlayerFilter::You
         || permission.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
@@ -21903,7 +21903,7 @@ pub(super) fn describe_resolution_program(
                 && let Some(exile_top) =
                     exile_top_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
                 && let Some(grant_play) =
-                    grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                    grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
                 && let Some(grant_free_cast) = grant_free_cast_effect
                     .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
                 && let Some(rendered) =
@@ -31012,7 +31012,7 @@ pub(super) fn describe_alternative_cast_line(
     idx: usize,
 ) -> String {
     match method {
-        AlternativeCastingMethod::FromZone { name, zone, total_cost, condition, exiles_after_resolution }
+        AlternativeCastingMethod::FromZone { name, zone, total_cost, condition, exiles_after_resolution, entry_counters }
             if name.as_ref() == "Parsed graveyard alternative cost" =>
         {
             fn payment(cost: &crate::cost::TotalCost) -> String {
@@ -31045,6 +31045,12 @@ pub(super) fn describe_alternative_cast_line(
             }
             if *exiles_after_resolution {
                 line.push_str(". If you cast this card this way and it would be put into your graveyard, exile it instead");
+            }
+            if !entry_counters.is_empty() {
+                let entries = entry_counters.iter().map(|(kind, count)| format!("{} {} counter{}",
+                    ironsmith_core::cardinal_word(*count).unwrap_or_else(|| count.to_string()),
+                    kind.description(), if *count == 1 { "" } else { "s" })).collect::<Vec<_>>().join(" and ");
+                line.push_str(&format!(". If you do, it enters with {entries} on it"));
             }
             line
         }
@@ -32331,7 +32337,7 @@ fn describe_triggering_card_type_exile_then_cast_permission(ability: &Ability) -
     let [permission_effect] = permission_segment.default_effects.as_slice() else {
         return None;
     };
-    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     let expected_permission = crate::effects::GrantPlayTaggedEffect::new(
         tagged.tag.clone(),
         PlayerFilter::You,
@@ -32393,7 +32399,7 @@ mod triggering_card_type_exile_permission_tests {
             panic!("expected triggered ability");
         };
         let mut permission = triggered.effects.segments[1].default_effects[0]
-            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             .expect("permission")
             .clone();
         permission.tag = TagKey::from("unrelated_card");
@@ -37202,6 +37208,7 @@ fn describe_source_line_graveyard_permission_dynamic_surcharge_group(
         || grant.beneficiary != PlayerFilter::You
         || grant.usage_limit.is_some()
         || !grant.cast_this_way_grants.is_empty()
+        || !grant.permanent_this_way_grants.is_empty()
         || grant.cast_this_way_filter.is_some()
         || grant.source_exiled_surface.is_some()
         || !grant.filter.source

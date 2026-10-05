@@ -2324,6 +2324,8 @@ pub struct ObjectFilter {
     /// The object moved from a library to a graveyard during the current turn.
     /// This is stable-identity history, not merely a present-zone qualifier.
     pub entered_graveyard_from_library_this_turn: bool,
+    /// This exact graveyard incarnation resulted from a mill instruction this turn.
+    pub milled_into_graveyard_this_turn: bool,
     pub surveilled_this_turn: bool,
     /// The object fought this turn ("a creature that fought this turn",
     /// Boxing Ring). Stable-identity history of fight keyword actions.
@@ -5894,6 +5896,10 @@ impl ObjectFilter {
                 .map(SourceReferenceSurface::display_text)
                 .unwrap_or_else(|| "this permanent".to_string());
             parts.push(format!("created with {source}"));
+        }
+
+        if self.milled_into_graveyard_this_turn {
+            parts.push("that was milled this turn".to_string());
         }
 
         if self.entered_graveyard_from_library_this_turn && self.zone == Some(Zone::Graveyard) {

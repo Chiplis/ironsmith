@@ -16,7 +16,7 @@ struct PermissionShape<'a> {
     instant_timing: bool,
     usage: Option<crate::grant::GrantUsageLimit>,
 }
-fn subject_before_from<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
+pub(super) fn subject_before_from<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
     repeat_till(1.., any.void(), peek(primitives::kw("from")))
         .map(|((), ())| ()).take().parse_next(input)
 }
@@ -64,7 +64,7 @@ fn names_land_domain(tokens: &[OwnedLexToken]) -> bool {
     crate::lexer::parser_token_word_refs(tokens).iter().any(|word|
         matches!(*word, "land" | "lands" | "forest" | "forests" | "island" | "islands" | "plains" | "swamp" | "swamps" | "mountain" | "mountains"))
 }
-fn card_filter(tokens: &[OwnedLexToken]) -> Result<Option<ObjectFilter>, CardTextError> {
+pub(super) fn card_filter(tokens: &[OwnedLexToken]) -> Result<Option<ObjectFilter>, CardTextError> {
     let Some(mut filter) = permission_subject_facts::parse_permission_subject_filter_tokens(tokens)? else { return Ok(None); };
     // These nouns describe the proposed card face, not an object already on
     // the battlefield/stack. Keep nested comparison domains intact.
@@ -114,6 +114,10 @@ pub(super) fn parse_permission_with_token_follow_up(tokens: &[OwnedLexToken]) ->
 
 pub(super) fn parse_filtered_zone_permission(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
     let Some(shape) = primitives::probe_all(tokens, shape, "filtered-zone-play-cast-permission") else { return Ok(None); };
+    permission_from_shape(tokens, shape)
+}
+
+fn permission_from_shape(tokens: &[OwnedLexToken], shape: PermissionShape<'_>) -> Result<Option<PermissionClauseSpec>, CardTextError> {
     let mut filter = if let Some(subject) = shape.subject {
         if shape.play {
             if let Some((separator, _, spell_tokens)) = primitives::find_prefix(subject, || action_separator) {
@@ -128,8 +132,10 @@ pub(super) fn parse_filtered_zone_permission(tokens: &[OwnedLexToken]) -> Result
                 let Some(mut lands) = card_filter(subject)? else { return Ok(None); };
                 // The play-only spelling here must name land cards. General
                 // tagged-card permissions remain owned by their own grammar.
-                if !names_land_domain(subject) { return Ok(None); }
-                lands.card_types = vec![CardType::Land]; lands
+                let general_cards = crate::lexer::parser_token_word_refs(subject) == ["cards"];
+                if !names_land_domain(subject) && !general_cards { return Ok(None); }
+                if !general_cards { lands.card_types = vec![CardType::Land]; }
+                lands
             }
         } else {
             let Some(mut spells) = card_filter(subject)? else { return Ok(None); };
@@ -155,7 +161,7 @@ pub(super) fn parse_timed_top_look_and_permission(tokens: &[OwnedLexToken]) -> R
     )) else { return Ok(None); };
     let Some((_, permission)) = primitives::parse_prefix(body, (
         primitives::phrase(&["you", "may", "look", "at", "the", "top", "card", "of", "your", "library", "any", "time"]),
-        primitives::comma(), primitives::kw("and"),
+        opt(primitives::comma()), primitives::kw("and"),
     )) else { return Ok(None); };
     let Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, mut spec, lifetime: PermissionLifetime::Static}) = parse_filtered_zone_permission(permission)?
         else { return Ok(None); };
@@ -170,7 +176,7 @@ pub(super) fn parse_timed_top_look_and_permission(tokens: &[OwnedLexToken]) -> R
 pub(crate) fn parse_top_look_and_permission(tokens: &[OwnedLexToken]) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let Some((_, permission)) = primitives::parse_prefix(tokens, (
         primitives::phrase(&["you", "may", "look", "at", "the", "top", "card", "of", "your", "library", "any", "time"]),
-        primitives::comma(), primitives::kw("and"),
+        opt(primitives::comma()), primitives::kw("and"),
     )) else { return Ok(None); };
     let Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, spec, lifetime: PermissionLifetime::Static}) = parse_filtered_zone_permission(permission)?
         else { return Ok(None); };
@@ -251,4 +257,30 @@ mod tests {
             assert!(parse_filtered_zone_permission(&crate::lexer::lex_line(text, 0).unwrap()).unwrap().is_none(), "{text}");
         }
     }
+}
+
+
+/// A current-turn origin qualifier belongs to the proposed card incarnation,
+/// not to a source-wide condition or a generic count of cards milled.
+pub(super) fn parse_recent_graveyard_permission(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    fn recent<'a>(input: &mut LexStream<'a>) -> WResult<(PermissionShape<'a>, bool)> {
+        primitives::phrase(&["once", "during", "each", "of", "your", "turns"]).parse_next(input)?;
+        primitives::comma().parse_next(input)?;
+        primitives::phrase(&["you", "may"]).parse_next(input)?;
+        let play = alt((primitives::kw("play").value(true), primitives::kw("cast").value(false))).parse_next(input)?;
+        let subject = subject_before_from(input)?;
+        primitives::phrase(&["from", "among", "cards", "in", "your", "graveyard", "that", "were"]).parse_next(input)?;
+        let mill = alt((
+            primitives::phrase(&["milled", "this", "turn"]).value(true),
+            primitives::phrase(&["put", "there", "from", "your", "library", "this", "turn"]).value(false),
+        )).parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        Ok((PermissionShape {play, subject: Some(subject), zone: Zone::Graveyard, top_only: false,
+            instant_timing: false, usage: Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)}, mill))
+    }
+    let Some((shape, mill)) = primitives::probe_all(tokens, recent, "recent-graveyard-play-permission") else { return Ok(None); };
+    let Some(PermissionClauseSpec::GrantBySpec {player, mut spec, lifetime}) = permission_from_shape(tokens, shape)? else { return Ok(None); };
+    if mill { spec.filter.milled_into_graveyard_this_turn = true; }
+    else { spec.filter.entered_graveyard_from_library_this_turn = true; }
+    Ok(Some(PermissionClauseSpec::GrantBySpec {player, spec, lifetime}))
 }

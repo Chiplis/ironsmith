@@ -7143,6 +7143,11 @@
         return format!("{condition}, {triggered}");
     }
     if let Some(cast_tagged) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {
+        if let Some(price) = &cast_tagged.alternative_cost {
+            let mut cast = cast_tagged.clone(); cast.alternative_cost = None;
+            return format!("{} by {} rather than paying its mana cost",
+                describe_effect(&Effect::new(cast)), describe_casting_price_payment(price));
+        }
         let verb = if cast_tagged.allow_land {
             "play"
         } else {
@@ -7160,7 +7165,8 @@
             || crate::cards::is_sentence_helper_tag(tag, "revealed")
             || crate::cards::is_sentence_helper_tag(tag, "looked")
             || crate::cards::is_sentence_helper_tag(tag, "chosen")
-            || crate::cards::is_sentence_helper_tag(tag, "searched");
+            || crate::cards::is_sentence_helper_tag(tag, "searched")
+            || crate::cards::is_sentence_helper_tag(tag, "consult_match");
         let spec = crate::target::ChooseSpec::Tagged(cast_tagged.tag.clone());
         let target = if cast_tagged.as_copy {
             let tag_is_numbered = tag.rsplit_once('_').is_some_and(|(_, suffix)| {
@@ -7449,7 +7455,7 @@
 
         if may.effects.len() == 1
             && let Some(cast_tagged) =
-                may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()
+                may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             && cast_tagged.as_copy
         {
             // Sentence-helper provenance identifies the copied card, but the

@@ -173,6 +173,10 @@ impl SimultaneousEffectCommit {
 /// mutation: it must not ask a new question or recalculate a value from game
 /// state changed by an earlier proposal in the same batch.
 pub trait SimultaneousEffectProposal: std::fmt::Debug + Send {
+    /// Accepted nominal life payment, before replacements alter its actions.
+    /// The batch owner checks shared team affordability once (CR 119.4a).
+    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId, u32)> { None }
+
     /// Resolve a prepared proposal's replacement choices against the shared
     /// pre-mutation world. Owners run this for every participant before any
     /// commit; immutable choice-free proposals need no further preparation.

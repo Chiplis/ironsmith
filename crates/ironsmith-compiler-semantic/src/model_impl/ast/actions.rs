@@ -1164,6 +1164,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("surface", surface)
                 .finish(),
             Self::Stack(StackActionAst::CastTagged {
+                alternative_cost,
                 tag,
                 player,
                 allow_land,
@@ -1188,8 +1189,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("cost_reduction", cost_reduction)
                 .field("mana_spend_mode", mana_spend_mode)
                 .field("alternative_payment", alternative_payment)
+                .field("alternative_cost", alternative_cost)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                alternative_cost,
                 tag,
                 player,
                 allow_land,
@@ -1212,6 +1215,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("free_cast_from_current_zone", free_cast_from_current_zone)
                 .field("until_source_exiles_another", until_source_exiles_another)
                 .field("spell_cost_reduction", spell_cost_reduction)
+                .field("alternative_cost", alternative_cost)
                 .field("max_plays", max_plays)
                 .field("surface", surface)
                 .finish(),

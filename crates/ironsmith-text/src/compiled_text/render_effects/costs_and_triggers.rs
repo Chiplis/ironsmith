@@ -7301,3 +7301,21 @@ mod choice_slot_regression_tests {
         );
     }
 }
+
+/// Gerund payment phrase for an explicit CR 118.9 substitution.
+pub(super) fn describe_casting_price_payment(cost: &crate::cost::TotalCost) -> String {
+    if let Some([component]) = cost.as_all() {
+        if let Some(effect) = component.effect_ref() {
+            let amount = effect.downcast_ref::<crate::effects::PayLifeEffect>().map(|life| &life.amount)
+                .or_else(|| effect.downcast_ref::<crate::effects::LoseLifeEffect>().map(|life| &life.amount));
+            if amount.is_some_and(|amount| matches!(amount.unhinted(), Value::ManaValueOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source))) {
+                return "paying life equal to the spell's mana value".into();
+            }
+        }
+    }
+    let payment = describe_total_cost_payment(cost);
+    for (verb, gerund) in [("Discard ", "discarding "), ("Sacrifice ", "sacrificing "), ("Exile ", "exiling ")] {
+        if let Some(tail) = payment.strip_prefix(verb) { return format!("{gerund}{tail}"); }
+    }
+    format!("paying {}", lowercase_first(&payment))
+}

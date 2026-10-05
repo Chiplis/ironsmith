@@ -2374,3 +2374,16 @@ fn paid_upkeep_triggers_require_a_complete_authenticated_source_and_distinct_pai
     }
 
 }
+
+#[test]
+fn life_payment_trigger_has_a_complete_player_subject_and_does_not_accept_loss_or_trailing_costs() {
+    use crate::model::ast::TriggerSpec;
+    for (text,player) in [("you pay life",PlayerFilter::You),("an opponent pays life",PlayerFilter::Opponent),("a player pays life",PlayerFilter::Any)] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        assert_eq!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap(),TriggerSpec::PlayerPaysLife(player));
+    }
+    for text in ["unknown participants pay life","you pay life and sacrifice a creature","you choose to lose life"] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        assert!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).is_err(),"{text}");
+    }
+}

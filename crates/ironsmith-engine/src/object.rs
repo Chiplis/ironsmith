@@ -2481,7 +2481,8 @@ impl<'a> IntoIterator for &'a TemporaryStaticAbilityGrants {
 pub struct TemporaryStaticAbilityGrant {
     pub ability: StaticAbilityId,
     pub ability_payload: Option<StaticAbility>,
-    pub expires_end_of_turn: u32,
+    /// None lasts for this incarnation, including Stack -> Battlefield.
+    pub expires_end_of_turn: Option<u32>,
 }
 
 /// Complete captured temporary registration, including a present optional payload.
@@ -2501,7 +2502,8 @@ pub struct RetainedTemporaryStaticAbilityGrant<S> {
         serde(deserialize_with = "deserialize_present_temporary_payload")
     )]
     pub ability_payload: Option<S>,
-    pub expires_end_of_turn: u32,
+    #[cfg_attr(feature = "serialization", serde(deserialize_with = "deserialize_present_temporary_payload"))]
+    pub expires_end_of_turn: Option<u32>,
 }
 
 #[cfg(feature = "serialization")]
@@ -2657,7 +2659,7 @@ impl TryFrom<RetainedTemporaryStaticAbilityGrants<StaticAbility>> for TemporaryS
 }
 impl TemporaryStaticAbilityGrant {
     pub fn is_expired(&self, current_turn: u32) -> bool {
-        current_turn > self.expires_end_of_turn
+        self.expires_end_of_turn.is_some_and(|end| current_turn > end)
     }
 
     pub fn materialize(&self) -> Option<StaticAbility> {
@@ -3431,7 +3433,13 @@ impl Object {
             caster_mana_spent_to_cast: None,
             mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
-            temporary_static_ability_grants: source.temporary_static_ability_grants.clone(),
+            temporary_static_ability_grants: {
+                let mut grants = source.temporary_static_ability_grants.clone();
+                // A permission's indefinite recipient rider is an applied
+                // continuous effect, not part of the spell's copiable values.
+                grants.retain(|grant| grant.expires_end_of_turn.is_some());
+                grants
+            },
             x_value: source.x_value,
             keyword_payment_contributions_to_cast: source
                 .keyword_payment_contributions_to_cast
@@ -5177,7 +5185,7 @@ mod temporary_ability_registration_tests {
             let mut grants = TemporaryStaticAbilityGrants::new(source);
             for _ in 0..2 {
                 grants.push(TemporaryStaticAbilityGrant {
-                    ability, ability_payload: None, expires_end_of_turn: 2,
+                    ability, ability_payload: None, expires_end_of_turn: Some(2),
                 });
             }
             assert_ne!(grants.origin(0), grants.origin(1),
@@ -5192,7 +5200,7 @@ mod temporary_ability_registration_tests {
                 let reconstructed = rebuilt[slot].materialize().expect("keyword is supported").instance_id();
                 observations.push((ability, slot, first, repeated, cloned, reconstructed));
             }
-            grants.retain(|grant| grant.expires_end_of_turn > 2);
+            grants.retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > 2));
             assert!(grants.is_empty(), "expiry still removes the registrations");
         }
         assert!(observations.iter().all(|(_, _, first, repeated, cloned, rebuilt)|
@@ -5205,12 +5213,12 @@ mod temporary_ability_registration_tests {
         let source = ObjectId::from_raw(90001);
         let ability = crate::static_abilities::StaticAbility::haste();
         let grant = |expiry| TemporaryStaticAbilityGrant { ability: ability.id(),
-            ability_payload: Some(ability.clone()), expires_end_of_turn: expiry };
+            ability_payload: Some(ability.clone()), expires_end_of_turn: Some(expiry) };
         let mut grants = TemporaryStaticAbilityGrants::new(source);
         grants.push(grant(1)); grants.push(grant(2));
         let first = grants.origin(0).unwrap().clone(); let second = grants.origin(1).unwrap().clone();
         assert_ne!(first, second, "cloned payloads register independently");
-        grants.retain(|grant| grant.expires_end_of_turn > 1);
+        grants.retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > 1));
         assert_eq!(grants.origin(0), Some(&second), "expiry must not renumber survivor");
         assert_eq!(grants.clone(), grants);
         let mut rebuilt = grants.empty_with_allocator(); rebuilt.extend_existing(&grants);
@@ -5300,15 +5308,15 @@ mod retained_temporary_registration_schema_tests {
             grants.push(TemporaryStaticAbilityGrant {
                 ability: shared.id(),
                 ability_payload: Some(shared.clone()),
-                expires_end_of_turn: expiry,
+                expires_end_of_turn: Some(expiry),
             });
         }
-        grants.retain(|grant| grant.expires_end_of_turn > 1);
+        grants.retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > 1));
         let mut component = TemporaryStaticAbilityGrants::new(ObjectId::from_raw(9982));
         component.push(TemporaryStaticAbilityGrant {
             ability: shared.id(),
             ability_payload: Some(shared),
-            expires_end_of_turn: 4,
+            expires_end_of_turn: Some(4),
         });
         grants.extend_existing(&component);
         grants
@@ -5348,7 +5356,7 @@ mod retained_temporary_registration_schema_tests {
         restored.push(TemporaryStaticAbilityGrant {
             ability: StaticAbilityId::Flying,
             ability_payload: None,
-            expires_end_of_turn: 9,
+            expires_end_of_turn: Some(9),
         });
         assert_eq!(
             restored.origin(0).unwrap().serial,
@@ -5400,7 +5408,7 @@ mod retained_temporary_registration_schema_tests {
         unresolved.push(TemporaryStaticAbilityGrant {
             ability: StaticAbilityId::Enchant,
             ability_payload: None,
-            expires_end_of_turn: 1,
+            expires_end_of_turn: Some(1),
         });
         let restored = TemporaryStaticAbilityGrants::try_from(
             RetainedTemporaryStaticAbilityGrants::from(unresolved.clone()),
@@ -5419,7 +5427,7 @@ mod retained_temporary_registration_schema_tests {
         unresolved.push(TemporaryStaticAbilityGrant {
             ability: StaticAbilityId::Enchant,
             ability_payload: None,
-            expires_end_of_turn: 4,
+            expires_end_of_turn: Some(4),
         });
         let state = RetainedTemporaryStaticAbilityGrants::from(unresolved)
             .try_map_abilities(|_| Ok::<String, String>("unused".into()))
@@ -6029,7 +6037,7 @@ mod retained_live_object_schema_tests {
             .push(TemporaryStaticAbilityGrant {
                 ability: flying.id(),
                 ability_payload: Some(flying),
-                expires_end_of_turn: 8,
+                expires_end_of_turn: Some(8),
             });
         object.x_value = Some(11);
         object.mana_spent_to_cast.blue = 3;
@@ -6195,5 +6203,25 @@ mod retained_live_object_schema_tests {
         }
         let decoded: ScalarObject = serde_json::from_value(value.clone()).unwrap();
         assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+    }
+}
+
+#[cfg(all(test, feature = "serialization"))]
+mod permanent_permission_registration_tests {
+    use super::*;
+    #[test]
+    fn indefinite_registration_is_explicit_and_retained_without_an_expiry() {
+        let mut grants = TemporaryStaticAbilityGrants::new(ObjectId::from_raw(99999));
+        grants.push(TemporaryStaticAbilityGrant {ability: StaticAbilityId::Flying,
+            ability_payload: Some(StaticAbility::flying()), expires_end_of_turn: None});
+        assert!(!grants[0].is_expired(u32::MAX));
+        let retained = RetainedTemporaryStaticAbilityGrants::from(grants)
+            .try_map_abilities(|_| Ok::<_, String>("flying".to_string())).unwrap();
+        let json = serde_json::to_value(&retained).unwrap();
+        assert!(json["grants"][0]["expires_end_of_turn"].is_null());
+        let restored: RetainedTemporaryStaticAbilityGrants<String> = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(restored, retained);
+        let mut missing = json; missing["grants"][0].as_object_mut().unwrap().remove("expires_end_of_turn");
+        assert!(serde_json::from_value::<RetainedTemporaryStaticAbilityGrants<String>>(missing).is_err());
     }
 }

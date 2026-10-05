@@ -761,6 +761,7 @@ fn read_cast_from_among_free(
                     player: PlayerAst::You,
                 },
                 action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+                    alternative_cost: None,
                     tag: chosen,
                     player: PlayerAst::You,
                     allow_land: false,
@@ -801,6 +802,7 @@ fn read_cast_hand_free(
                     player: PlayerAst::You,
                 },
                 action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+                    alternative_cost: None,
                     tag: chosen,
                     player: PlayerAst::You,
                     allow_land: false,

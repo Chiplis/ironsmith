@@ -906,6 +906,7 @@ impl Auditor {
             "PlayerGainsLife"
             | "LifeChanged"
             | "PlayerLosesLife"
+            | "PlayerPaysLife"
             | "PlayersLoseLifeOneOrMore"
             | "OpponentsEachLoseExactLife"
             | "PlayerLosesLifeDuringTurn"

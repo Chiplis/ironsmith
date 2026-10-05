@@ -7,7 +7,7 @@ pub use ironsmith_core::{
     BattlefieldController, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
     BecomeCreatureTypeChoiceEffect, BecomeMonarchEffect, BecomePlottedEffect,
     BecomeSaddledUntilEotEffect, BeholdEffect, BidLifeEffect as CoreBidLifeEffect, BolsterEffect,
-    CantEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
+    CantEffect, CastSourceEffect, CastTaggedEffect as CoreCastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
     ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
     ChooseModeEffect as CoreChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
     RippleEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
@@ -37,7 +37,7 @@ pub use ironsmith_core::{
     GrantAbilitiesTargetEffect as CoreGrantAbilitiesTargetEffect,
     GrantBySpecEffect as CoreGrantBySpecEffect, GrantEffect as CoreGrantEffect,
     GrantEndThisEffectPaymentEffect, GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration,
-    GrantPlayTaggedEffect,
+    GrantPlayTaggedEffect as CoreGrantPlayTaggedEffect,
     GrantRepeatableManaPaymentActionUntilEndOfTurnEffect as CoreGrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
     HauntExileEffect as CoreHauntExileEffect, HealDamageEffect, IfEffect as CoreIfEffect,
@@ -237,3 +237,6 @@ pub use ironsmith_core::RegisterDamageMultiplierEffect;
 pub use ironsmith_core::DealDamageBySourcesEffect;
 
 pub use ironsmith_core::DealDamageEachEffect;
+
+pub type CastTaggedEffect = CoreCastTaggedEffect<crate::costs::Cost>;
+pub type GrantPlayTaggedEffect = CoreGrantPlayTaggedEffect<crate::costs::Cost>;

@@ -97,7 +97,7 @@ pub use traits::{
 pub use cards::{DiscardEvent, DrawEvent};
 pub use counters::{MoveCountersEvent, PutCountersEvent, RemoveCountersEvent};
 pub use damage::{DamageEvent, DamagePreventedEvent, PreventedDamage};
-pub use life::{LifeGainEvent, LifeLossEvent};
+pub use life::{LifeGainEvent, LifeLossEvent, LifePaidEvent};
 pub use mana::{ManaAddedEvent, ManaLostEvent, ManaUnitSpentEvent};
 pub use permanents::{DestroyEvent, SacrificeEvent, TapEvent, UntapEvent};
 pub use tokens::CreateTokensEvent;

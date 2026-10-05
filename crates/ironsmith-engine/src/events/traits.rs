@@ -157,6 +157,8 @@ pub enum EventKind {
     PlayerAttackDeclaration,
     /// A batch of existing unspent mana would leave a pool.
     ManaLost,
+    /// A successfully completed life payment (not generic life loss).
+    LifePaid,
 }
 
 /// A target within an event that can potentially be redirected.

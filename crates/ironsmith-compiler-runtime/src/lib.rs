@@ -249,6 +249,11 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
                 .into_iter()
                 .map(|ability| self.runtime_static_ability_hook(ability))
                 .collect::<Result<Vec<_>, _>>()?,
+            permanent_this_way_grants: spec
+                .permanent_this_way_grants
+                .into_iter()
+                .map(|ability| self.runtime_static_ability_hook(ability))
+                .collect::<Result<Vec<_>, _>>()?,
         })
     }
 
@@ -3242,7 +3247,7 @@ mod retained_temporary_grant_codec_tests {
             grants.push(TemporaryStaticAbilityGrant {
                 ability,
                 ability_payload: None,
-                expires_end_of_turn: 3,
+                expires_end_of_turn: Some(3),
             });
             let mut encoder = StaticAbilityOccurrenceEncoder::default();
             if let Err(error) = encoder.encode_temporary_grants(grants) {
@@ -3290,7 +3295,7 @@ mod retained_temporary_grant_codec_tests {
                 grants.push(TemporaryStaticAbilityGrant {
                     ability,
                     ability_payload: None,
-                    expires_end_of_turn: 2,
+                    expires_end_of_turn: Some(2),
                 });
             }
             let original_origins = (0..2)
@@ -3363,7 +3368,7 @@ mod retained_temporary_grant_codec_tests {
             grants.push(TemporaryStaticAbilityGrant {
                 ability,
                 ability_payload: None,
-                expires_end_of_turn: 4,
+                expires_end_of_turn: Some(4),
             });
             assert!(
                 !original_origins.contains(grants.origin(0).unwrap()),
@@ -4959,7 +4964,7 @@ mod retained_live_object_codec_tests {
             ironsmith::object::TemporaryStaticAbilityGrant {
                 ability: flying.id(),
                 ability_payload: Some(flying),
-                expires_end_of_turn: 3,
+                expires_end_of_turn: Some(3),
             },
         );
         object

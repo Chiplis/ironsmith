@@ -925,7 +925,7 @@ mod tests {
                 &ManaCost::from_symbols(vec![ManaSymbol::Blue]),
                 0,
                 crate::costs::PaymentReason::CastSpell,
-            ),
+            ).expect("checked fixture mana payment"),
             "bob should be able to pay for the spell before it is countered"
         );
         let stack_spell = game

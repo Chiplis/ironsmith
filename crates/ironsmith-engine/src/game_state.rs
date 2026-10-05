@@ -48,6 +48,8 @@ mod free_for_all;
 mod grand_melee;
 mod hidden_hand_choices;
 mod mana_and_permissions;
+mod life_payments;
+pub(crate) use life_payments::PreparedLifePayment;
 mod object_state_and_events;
 mod opaque_library_epochs;
 mod announcement_visibility;
@@ -1196,6 +1198,7 @@ struct EnterAsCopySourceCache {
 struct RuntimeCacheState {
     library_top_announcements: HashMap<LibraryTopAnnouncement, LibraryTopVisibilityBoundary>,
     pending_grant_use_completions: HashMap<ObjectId, Vec<crate::grant_registry::GrantUseCompletion>>,
+    pending_land_permission_grants: HashMap<ObjectId, Vec<StaticAbility>>,
     token_creation_limits: crate::effects::tokens::TokenCreationLimits,
     token_creation_meter: Option<crate::effects::tokens::resources::SharedTokenCreationMeter>,
     observed_players: RefCell<Option<crate::incremental::ChangeCursor>>,
@@ -1244,6 +1247,7 @@ impl Clone for RuntimeCacheState {
         Self {
             library_top_announcements: self.library_top_announcements.clone(),
             pending_grant_use_completions: self.pending_grant_use_completions.clone(),
+            pending_land_permission_grants: self.pending_land_permission_grants.clone(),
             token_creation_limits: self.token_creation_limits,
             // All speculative/nested work belongs to one host computation.
             token_creation_meter: self.token_creation_meter.clone(),
@@ -1292,6 +1296,7 @@ impl RuntimeCacheState {
         Self {
             library_top_announcements: HashMap::new(),
             pending_grant_use_completions: HashMap::new(),
+            pending_land_permission_grants: HashMap::new(),
             token_creation_limits: Default::default(),
             token_creation_meter: None,
             observed_players: RefCell::new(None),
@@ -5610,6 +5615,7 @@ impl GameState {
             || filter.entered_graveyard_this_turn
             || filter.entered_graveyard_from_battlefield_this_turn
             || filter.entered_graveyard_from_library_this_turn
+            || filter.milled_into_graveyard_this_turn
             || filter.surveilled_this_turn
             || filter.fought_this_turn
             || filter.counters_put_on_this_turn.is_some()
@@ -6542,8 +6548,18 @@ impl GameState {
             .push(crate::object::TemporaryStaticAbilityGrant {
                 ability,
                 ability_payload,
-                expires_end_of_turn,
+                expires_end_of_turn: Some(expires_end_of_turn),
             });
+    }
+
+    /// A noncopiable granted ability survives only this object incarnation
+    /// (plus the resolving permanent spell's Stack -> Battlefield transition).
+    pub(crate) fn grant_incarnation_static_ability(&mut self, object: ObjectId, ability: StaticAbility) {
+        if let Some(object) = self.object_mut(object) {
+            object.temporary_static_ability_grants.push(crate::object::TemporaryStaticAbilityGrant {
+                ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: None,
+            });
+        }
     }
 
     pub fn temporary_granted_spell_abilities(
@@ -6903,7 +6919,7 @@ impl GameState {
                 object
                     .temporary_static_ability_grants
                     .iter()
-                    .any(|grant| grant.expires_end_of_turn <= current_turn)
+                    .any(|grant| grant.expires_end_of_turn.is_some_and(|end| end <= current_turn))
                     .then_some(id)
             })
             .collect::<Vec<_>>();
@@ -6911,7 +6927,7 @@ impl GameState {
             if let Some(object) = self.object_mut(id) {
                 object
                     .temporary_static_ability_grants
-                    .retain(|grant| grant.expires_end_of_turn > current_turn);
+                    .retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > current_turn));
             }
         }
     }
@@ -6967,7 +6983,7 @@ impl GameState {
         if amount == 0 {
             return self.player(player).is_some();
         }
-        self.can_lose_life(player) && self.player(player).is_some_and(|p| p.life >= amount as i32)
+        self.can_lose_life(player) && self.player(player).is_some_and(|p| i64::from(p.life) >= i64::from(amount))
     }
 
     /// Returns true if a player can currently pay life for the given reason.
@@ -7128,34 +7144,6 @@ impl GameState {
             .into_iter()
             .filter(|player| self.mark_player_lost(*player))
             .collect()
-    }
-
-    /// Pays life as a cost.
-    ///
-    /// Returns true if the player could pay and life was deducted.
-    pub fn pay_life(&mut self, player: PlayerId, amount: u32) -> bool {
-        if amount == 0 {
-            return self.player(player).is_some();
-        }
-        if !self.can_pay_life(player, amount) {
-            return false;
-        }
-        self.lose_life(player, amount) == amount
-    }
-
-    /// Atomically pays life for multiple players from one immutable state.
-    pub fn pay_life_simultaneously(&mut self, payments: &[(PlayerId, u32)]) -> bool {
-        if !self.can_pay_life_simultaneously(payments) {
-            return false;
-        }
-        let checkpoint = self.clone();
-        for (player, amount) in payments.iter().copied() {
-            if amount > 0 && self.lose_life(player, amount) != amount {
-                *self = checkpoint;
-                return false;
-            }
-        }
-        true
     }
 
     /// Apply a chosen redistribution of life totals as one transaction.

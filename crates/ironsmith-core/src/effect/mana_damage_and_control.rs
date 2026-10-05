@@ -863,7 +863,8 @@ impl RedirectAllDamageThisTurnToTargetEffect {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
-pub struct GrantPlayTaggedEffect {
+#[cfg_attr(feature = "serde", serde(bound(deserialize = "C: serde::Deserialize<'de>")))]
+pub struct GrantPlayTaggedEffect<C> {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
     pub duration: GrantPlayTaggedDuration,
@@ -900,9 +901,13 @@ pub struct GrantPlayTaggedEffect {
     /// each tagged card independently; `Some(1)` models "play one of those
     /// cards" while deferring the choice until a card is actually played.
     pub max_plays: Option<u32>,
+    /// Required replacement price for a spell cast through this permission.
+    /// This does not create a separate optional price or change a land play.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub alternative_cost: Option<crate::TotalCost<C>>,
 }
 
-impl GrantPlayTaggedEffect {
+impl<C> GrantPlayTaggedEffect<C> {
     pub fn new(
         tag: crate::tag::TagKey,
         player: PlayerFilter,
@@ -928,7 +933,13 @@ impl GrantPlayTaggedEffect {
             lands_enter_tapped: false,
             cast_pool_is_plural: false,
             max_plays: None,
+            alternative_cost: None,
         }
+    }
+
+    pub fn with_alternative_cost(mut self, cost: crate::TotalCost<C>) -> Self {
+        self.alternative_cost = Some(cost);
+        self
     }
 
     pub fn cast_pool_is_plural(mut self, plural: bool) -> Self {
@@ -4214,7 +4225,8 @@ pub enum CopyInstructionSurface {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, TagKeyWalk)]
-pub struct CastTaggedEffect {
+#[cfg_attr(feature = "serde", serde(bound(deserialize = "C: serde::Deserialize<'de>")))]
+pub struct CastTaggedEffect<C> {
     pub tag: TagKey,
     pub player: PlayerFilter,
     pub allow_land: bool,
@@ -4238,6 +4250,10 @@ pub struct CastTaggedEffect {
     /// paying its mana cost").
     #[cfg_attr(feature = "serde", serde(default))]
     pub alternative_payment: Option<CastTaggedAlternativePayment>,
+    /// The resolving instruction's mandatory alternative to the mana cost.
+    /// Other additional costs still apply. None preserves the ordinary price.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub alternative_cost: Option<crate::TotalCost<C>>,
 }
 
 /// A payment the resolving instruction substitutes for the cast spell's mana
@@ -4249,7 +4265,7 @@ pub enum CastTaggedAlternativePayment {
     EnergyEqualToManaValue,
 }
 
-impl PartialEq for CastTaggedEffect {
+impl<C: PartialEq> PartialEq for CastTaggedEffect<C> {
     fn eq(&self, other: &Self) -> bool {
         self.tag == other.tag
             && self.player == other.player
@@ -4260,10 +4276,11 @@ impl PartialEq for CastTaggedEffect {
             && self.cost_reduction == other.cost_reduction
             && self.mana_spend_mode == other.mana_spend_mode
             && self.alternative_payment == other.alternative_payment
+            && self.alternative_cost == other.alternative_cost
     }
 }
 
-impl CastTaggedEffect {
+impl<C> CastTaggedEffect<C> {
     pub fn new(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
         Self {
             tag: tag.into(),
@@ -4277,7 +4294,25 @@ impl CastTaggedEffect {
             cost_reduction: None,
             mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
             alternative_payment: None,
+            alternative_cost: None,
         }
+    }
+
+    pub fn with_alternative_cost(mut self, cost: crate::TotalCost<C>) -> Self {
+        self.alternative_cost = Some(cost);
+        self
+    }
+
+    pub fn try_map_cost<C2, Error>(self, mut map: impl FnMut(C) -> Result<C2, Error>) -> Result<CastTaggedEffect<C2>, Error> {
+        Ok(CastTaggedEffect {
+            tag: self.tag, player: self.player, allow_land: self.allow_land, as_copy: self.as_copy,
+            copy_cast_reminder_surface: self.copy_cast_reminder_surface,
+            copy_instruction_surface: self.copy_instruction_surface,
+            without_paying_mana_cost: self.without_paying_mana_cost,
+            additional_mana_cost: self.additional_mana_cost, cost_reduction: self.cost_reduction,
+            mana_spend_mode: self.mana_spend_mode, alternative_payment: self.alternative_payment,
+            alternative_cost: self.alternative_cost.map(|cost| cost.try_map(&mut map)).transpose()?,
+        })
     }
 
     pub fn alternative_payment(mut self, payment: CastTaggedAlternativePayment) -> Self {

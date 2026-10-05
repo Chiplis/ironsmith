@@ -856,7 +856,7 @@ pub(crate) fn describe_target_same_name_graveyard_may_cast(effects: &[Effect]) -
         return None;
     };
     let cast =
-        unwrap_wrapped_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        unwrap_wrapped_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if may
         .decider
         .as_ref()
@@ -2802,7 +2802,7 @@ pub(crate) fn describe_copy_then_may_cast_copy(effects: &[&Effect]) -> Option<St
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if !cast.as_copy {
         return None;
     }
@@ -3348,7 +3348,7 @@ pub(crate) fn describe_sequence_copy_then_may_cast(effects: &[&Effect]) -> Optio
         return None;
     };
     let cast =
-        unwrap_wrapped_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        unwrap_wrapped_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if !cast.as_copy
         || cast.cost_reduction.is_some()
         || !matches!(&copy_spell.target, ChooseSpec::Tagged(tag) if *tag == cast.tag)
@@ -5924,7 +5924,7 @@ pub(crate) fn describe_may_exile_one_from_triggered_set_then_cast(
         // tag wrapper.
         .unwrap_or_else(|| TagKey::from(crate::tag::SOURCE_EXILED_TAG));
     let grant = structural_unwrap_render_wrappers(&conditional.then[0])
-        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if grant.tag != moved_tag
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
@@ -6545,7 +6545,7 @@ pub(in crate::compiled_text) fn describe_result_producer_then_for_each_tagged(
     };
     let force_card_noun = followup_effects.iter().any(|effect| {
         unwrap_tag_wrappers(effect)
-            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
             .is_some()
     });
     let followup = lowercase_first(&describe_effect_list(followup_effects));

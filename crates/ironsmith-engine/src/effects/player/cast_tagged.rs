@@ -13,21 +13,25 @@ use crate::effects::zones::{
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::zone::Zone;
-pub use ironsmith_core::CastTaggedEffect;
+pub type CastTaggedEffect = ironsmith_core::CastTaggedEffect<crate::costs::Cost>;
 
 use super::runtime_helpers::{queue_effect_driven_land_play, with_spell_cast_event};
 
 /// Effect that casts a tagged card immediately.
 impl EffectExecutor for CastTaggedEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        if let Some(cost) = &self.alternative_cost {
+            crate::ability::visit_total_cost_owned_effects(cost, visitor);
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
+        let instruction = crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
         use crate::alternative_cast::CastingMethod;
         use crate::effects::helpers::resolve_player_filter;
 
@@ -37,6 +41,11 @@ impl EffectExecutor for CastTaggedEffect {
 
         let mut object_id = snapshot.object_id;
         if game.object(object_id).is_none() {
+            // A priced instruction refers to this exact result incarnation;
+            // a blink/re-exile cannot revive its authorization.
+            if self.alternative_cost.is_some() || self.alternative_payment.is_some() {
+                return Ok(EffectOutcome::target_invalid());
+            }
             if let Some(found) = game.find_object_by_stable_id(snapshot.stable_id) {
                 object_id = found;
             } else {
@@ -53,40 +62,19 @@ impl EffectExecutor for CastTaggedEffect {
 
         let caster = resolve_player_filter(game, &self.player, ctx)?;
 
-        // A substituted payment replaces the mana cost: the spell is cast
-        // without paying it, and the substitute is paid once the cast is made.
-        let energy_payment = match self.alternative_payment {
-            Some(ironsmith_core::CastTaggedAlternativePayment::EnergyEqualToManaValue)
-                if !is_land =>
-            {
-                let mana_value = game
-                    .object(object_id)
-                    .and_then(|obj| obj.mana_cost.as_ref())
-                    .map_or(0, |cost| cost.mana_value());
-                if game
-                    .player(caster)
-                    .is_none_or(|player| player.energy_counters < mana_value)
-                {
-                    return Ok(EffectOutcome::impossible());
-                }
-                Some(mana_value)
-            }
-            _ => None,
+        if self.alternative_cost.is_some() && (self.alternative_payment.is_some() || self.without_paying_mana_cost) {
+            return Err(ExecutionError::InternalError("multiple resolving-effect alternative prices".into()));
+        }
+        let legacy_payment = match self.alternative_payment {
+            Some(ironsmith_core::CastTaggedAlternativePayment::EnergyEqualToManaValue) => Some(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
+                    crate::effects::PayEnergyEffect::new(
+                        crate::effect::Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source)),
+                        crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You))))),
+            None => None,
         };
-        let without_paying_mana_cost = self.without_paying_mana_cost || energy_payment.is_some();
-        let pay_energy = |game: &mut GameState, outcome: EffectOutcome| match energy_payment {
-            Some(amount) if amount > 0 => match game.remove_player_counters_with_source(
-                caster,
-                crate::object::CounterType::Energy,
-                amount,
-                Some(ctx.source),
-                Some(ctx.controller),
-            ) {
-                Some((_, event)) => outcome.with_event(event),
-                None => outcome,
-            },
-            _ => outcome,
-        };
+        let alternative_cost = self.alternative_cost.as_ref().or(legacy_payment.as_ref());
+        let without_paying_mana_cost = self.without_paying_mana_cost;
 
         if self.as_copy {
             let copy_id = game.new_object_id();
@@ -139,13 +127,14 @@ impl EffectExecutor for CastTaggedEffect {
                 }
             };
             let cast_tags = ctx.tagged_objects.clone();
-            let result = crate::game_loop::cast_spell_from_resolving_effect_with_context(
+            let result = crate::game_loop::cast_spell_from_resolving_effect_with_price(
                 game,
                 copy_id,
                 from_zone,
                 caster,
                 &casting_method,
                 without_paying_mana_cost,
+                alternative_cost,
                 self.cost_reduction.as_ref(),
                 self.additional_mana_cost.as_ref(),
                 self.mana_spend_mode,
@@ -170,7 +159,7 @@ impl EffectExecutor for CastTaggedEffect {
                 from_zone,
                 ctx.provenance,
             );
-            return Ok(pay_energy(game, outcome));
+            return Ok(outcome);
         }
 
         if is_land {
@@ -213,13 +202,14 @@ impl EffectExecutor for CastTaggedEffect {
         };
 
         let cast_tags = ctx.tagged_objects.clone();
-        let result = crate::game_loop::cast_spell_from_resolving_effect_with_context(
+        let result = crate::game_loop::cast_spell_from_resolving_effect_with_price(
             game,
             object_id,
             from_zone,
             caster,
             &casting_method,
             without_paying_mana_cost,
+            alternative_cost,
             self.cost_reduction.as_ref(),
             self.additional_mana_cost.as_ref(),
             self.mana_spend_mode,
@@ -243,12 +233,10 @@ impl EffectExecutor for CastTaggedEffect {
             from_zone,
             ctx.provenance,
         );
-        Ok(pay_energy(game, outcome))
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
-        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
-        instruction
+        Ok(outcome)
+        });
+        if ctx.decision_maker.awaiting_choice() { instruction.map(|_| EffectOutcome::count(0)) }
+        else { instruction }
     }
 }
 

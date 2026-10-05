@@ -31,7 +31,7 @@ BidLifeEffect	ironsmith_core::BidLifeEffect<wire::WireEffect>	composition-a-l
 BolsterEffect	ironsmith_core::BolsterEffect	composition-a-l
 CantEffect	ironsmith_core::CantEffect	stack-event
 CastSourceEffect	ironsmith_core::CastSourceEffect	player
-CastTaggedEffect	ironsmith_core::CastTaggedEffect	player
+CastTaggedEffect	ironsmith_core::CastTaggedEffect<wire::WireCost>	player
 ChooseCardNameEffect	ironsmith_core::ChooseCardNameEffect	player
 ChooseCardTypeEffect	ironsmith_core::ChooseCardTypeEffect	player
 ChooseColorEffect	ironsmith_core::ChooseColorEffect	player
@@ -120,7 +120,7 @@ GrantBySpecEffect	ironsmith_core::GrantBySpecEffect<wire::WireGrantSpec, wire::W
 GrantEffect	ironsmith_core::GrantEffect<wire::WireGrantable, wire::WireGrantDuration>	player
 GrantNextSpellAbilityEffect	ironsmith_core::GrantNextSpellAbilityEffect<wire::WireAbility>	player
 GrantNextSpellCostReductionEffect	ironsmith_core::GrantNextSpellCostReductionEffect	player
-GrantPlayTaggedEffect	ironsmith_core::GrantPlayTaggedEffect	player
+GrantPlayTaggedEffect	ironsmith_core::GrantPlayTaggedEffect<wire::WireCost>	player
 GrantRepeatableManaPaymentActionUntilEndOfTurnEffect	ironsmith_core::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect<wire::WireEffect>	composition-a-l
 GrantTaggedSpellFreeCastUntilEndOfTurnEffect	ironsmith_core::GrantTaggedSpellFreeCastUntilEndOfTurnEffect	player
 GrantTaggedSpellLifeCostByManaValueEffect	ironsmith_core::GrantTaggedSpellLifeCostByManaValueEffect	player

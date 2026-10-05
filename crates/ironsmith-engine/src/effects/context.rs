@@ -573,6 +573,9 @@ macro_rules! execution_context_checkpoint {
             pub(crate) fn restore(self, ctx: &mut ExecutionContext<'_>) {
                 $(ctx.$field = self.$field;)*
             }
+            pub(crate) fn restore_ref(&self, ctx: &mut ExecutionContext<'_>) {
+                $(ctx.$field = self.$field.clone();)*
+            }
         }
     };
 }

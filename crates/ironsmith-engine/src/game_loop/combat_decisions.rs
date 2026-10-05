@@ -1019,11 +1019,10 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
                 )
             })
         };
-        result.map_err(|error| {
-            ResponseError::InvalidAttackers(format!(
-                "Cannot pay required attack cost ({}): {error}",
-                locked.display
-            ))
+        result.map_err(|error| match error {
+            crate::cost::CostPaymentError::ExecutionFailed(error) => GameLoopError::ExecutionFailed(error),
+            error => ResponseError::InvalidAttackers(format!(
+                "Cannot pay required attack cost ({}): {error}", locked.display)).into(),
         })?;
     }
 

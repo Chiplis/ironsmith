@@ -4968,7 +4968,7 @@ pub(super) fn describe_search_face_down_exile_shuffle_conditional_cast_else_hand
         let [cast_effect] = may.effects.as_slice() else {
             return None;
         };
-        unwrap_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()
+        unwrap_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
     }
 
     fn effects_move_tag_to_hand(effects: &[Effect], tag: &str) -> bool {
@@ -5122,7 +5122,7 @@ pub(crate) fn describe_search_face_down_exile_shuffle_split_bargain_cast_else_ha
     let [cast_effect] = may_cast.effects.as_slice() else {
         return None;
     };
-    let cast = unwrap_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = unwrap_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if !tag_is_linked_exiled_object(&cast.tag, choose)
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -5181,14 +5181,14 @@ pub(crate) fn describe_search_choose_then_exile_and_cast(
 
     fn extract_cast_tagged(effect: &Effect) -> Option<&crate::effects::CastTaggedEffect> {
         let effect = unwrap_effect(effect);
-        if let Some(cast_tagged) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {
+        if let Some(cast_tagged) = effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none()) {
             return Some(cast_tagged);
         }
         let may = effect.downcast_ref::<crate::effects::MayEffect>()?;
         if may.effects.len() != 1 {
             return None;
         }
-        may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()
+        may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
     }
 
     if !choose.is_search
@@ -5274,14 +5274,14 @@ pub(crate) fn describe_search_choose_then_cast_then_shuffle(
 
     fn extract_cast_tagged(effect: &Effect) -> Option<&crate::effects::CastTaggedEffect> {
         let effect = unwrap_effect(effect);
-        if let Some(cast_tagged) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {
+        if let Some(cast_tagged) = effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none()) {
             return Some(cast_tagged);
         }
         let may = effect.downcast_ref::<crate::effects::MayEffect>()?;
         let [cast_effect] = may.effects.as_slice() else {
             return None;
         };
-        unwrap_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()
+        unwrap_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
     }
 
     if !choose.is_search
@@ -6962,7 +6962,7 @@ pub(super) fn describe_for_each_optional_free_cast_any_number(
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag.as_str() != "__it__"
         || cast.player != PlayerFilter::You
         || cast.allow_land

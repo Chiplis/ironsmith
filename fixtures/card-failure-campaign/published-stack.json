@@ -731,6 +731,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/817"
+    },
+    {
+      "stage": 52,
+      "branch": "fix/card-failures-52-tokens-payments-and-results",
+      "base": "fix/card-failures-51-combat-rules-and-retention",
+      "source_integration_commit": "3be705ff3fd2e4f665d537806f724735f8699b7c",
+      "remote_commit": "c9d90805a2f0ffcac0df85068c6c11177eeacb1e",
+      "tree": "f0df75a1f9481a05e883a6718e8fbb49d82f365a",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 818,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/818"
     }
   ]
 }

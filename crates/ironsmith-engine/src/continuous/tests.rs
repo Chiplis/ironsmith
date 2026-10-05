@@ -2899,7 +2899,7 @@ fn retained_temporary_registration_expiry_matches_all_layer_routes_and_preserves
     let other = game.create_object_from_card(&card, alice, Zone::Battlefield);
     let store = &mut game.object_mut(source).unwrap().temporary_static_ability_grants;
     for (ability, expires_end_of_turn) in [(StaticAbilityId::Deathtouch, 2), (StaticAbilityId::Haste, 4)] {
-        store.push(TemporaryStaticAbilityGrant { ability, ability_payload: None, expires_end_of_turn });
+        store.push(TemporaryStaticAbilityGrant { ability, ability_payload: None, expires_end_of_turn: Some(expires_end_of_turn) });
     }
     let expected_origin = store.origin(1).unwrap().clone();
     game.refresh_continuous_state().unwrap();

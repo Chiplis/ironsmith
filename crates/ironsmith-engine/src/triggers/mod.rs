@@ -1156,6 +1156,7 @@ impl Trigger {
     }
 
     /// Create a "whenever [player] loses life" trigger.
+    pub fn player_pays_life(player: PlayerFilter) -> Self { Self::new(life_damage::PlayerPaysLifeTrigger::new(player)) }
     pub fn player_loses_life(player: PlayerFilter) -> Self {
         Self::new(PlayerLosesLifeTrigger::new(player))
     }

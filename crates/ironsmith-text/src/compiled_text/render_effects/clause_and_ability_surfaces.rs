@@ -3427,7 +3427,7 @@ fn describe_comma_then_sequence(sequence: &crate::effects::SequenceEffect) -> Op
     if let [look_effect, exile_effect, grant_effect] = sequence.effects.as_slice()
         && let Some(look) = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
         && let Some(exile) = exile_effect.downcast_ref::<crate::effects::ExileEffect>()
-        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
         && let Some(compact) =
             describe_look_at_top_exile_face_down_then_play_while_exiled(look, exile, grant)
     {
@@ -4422,7 +4422,7 @@ pub(super) fn describe_coordinated_sequence(
         && let [look_effect, exile_effect, grant_effect] = sequence.effects.as_slice()
         && let Some(look) = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
         && let Some(exile) = exile_effect.downcast_ref::<crate::effects::ExileEffect>()
-        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
         && let Some(compact) =
             describe_look_at_top_exile_face_down_then_play_while_exiled(look, exile, grant)
     {

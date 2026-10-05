@@ -5156,6 +5156,7 @@
             && grant.player == crate::filter::PlayerFilter::You
             && grant.spec.usage_limit.is_none()
             && grant.spec.cast_this_way_grants.is_empty()
+            && grant.spec.permanent_this_way_grants.is_empty()
             && grant.spec.cast_this_way_filter.is_none()
             && grant.spec.source_exiled_surface.is_none()
             && let crate::grant::Grantable::AlternativeCast(method) = &grant.spec.grantable
@@ -5210,6 +5211,15 @@
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
+        if let Some(price) = &grant_play_tagged.alternative_cost {
+            let mut grant = grant_play_tagged.clone(); grant.alternative_cost = None;
+            let payment = describe_casting_price_payment(price);
+            let payment = payment.strip_prefix("paying ").map(|tail| format!("pay {tail}"))
+                .or_else(|| payment.strip_prefix("discarding ").map(|tail| format!("discard {tail}")))
+                .unwrap_or(payment);
+            return format!("{}. If you cast a spell this way, {payment} rather than pay its mana cost",
+                describe_effect(&Effect::new(grant)));
+        }
         if let Some(filter) = &grant_play_tagged.spell_filter {
             let mut permission = grant_play_tagged.clone();
             permission.spell_filter = None;

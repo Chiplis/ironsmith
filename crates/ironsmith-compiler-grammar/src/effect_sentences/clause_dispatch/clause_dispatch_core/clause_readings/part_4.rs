@@ -133,6 +133,7 @@ pub(super) fn read_cast_target_without_paying(
                     player: PlayerAst::Implicit,
                 },
                 action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+                    alternative_cost: None,
                     tag: crate::tag::CompilerReferenceTag::It.bind(),
                     player: PlayerAst::Implicit,
                     allow_land: false,

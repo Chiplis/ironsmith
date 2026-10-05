@@ -121,7 +121,7 @@ fn trinisphere_counts_krrik_life_paid_black_pips_toward_floor() {
             &effective,
             0,
             PaymentReason::CastSpell
-        ),
+        ).expect("checked fixture mana payment"),
         "three black pips should already satisfy Trinisphere even when Krrik pays them with life"
     );
     assert_eq!(game.player(alice).expect("alice exists").life, 14);

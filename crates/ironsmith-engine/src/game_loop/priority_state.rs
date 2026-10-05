@@ -159,6 +159,9 @@ pub struct PendingCast {
     /// A resolving effect may impose a mandatory mana cost in addition to the
     /// spell's ordinary and optional costs.
     pub effect_additional_mana_cost: Option<crate::mana::ManaCost>,
+    /// A resolving instruction's selected alternative price. The effect cast
+    /// is replayed atomically if input is pending; this never grants priority.
+    pub effect_alternative_cost: Option<crate::cost::TotalCost>,
     /// Simple additional-cost alternatives announced before targets and total-cost locking.
     /// Each entry replaces one occurrence of an effect-backed cost at payment time.
     pub announced_cost_replacements: Option<Vec<(crate::costs::Cost, Vec<crate::costs::Cost>)>>,
@@ -272,6 +275,7 @@ impl PendingCast {
             base_mana_cost_waived: false,
             effect_mana_cost_reduction: None,
             effect_additional_mana_cost: None,
+            effect_alternative_cost: None,
             announced_cost_replacements: None,
             cost_resource_announced: false,
             cost_resource: None,

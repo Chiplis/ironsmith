@@ -1410,6 +1410,9 @@ fn resolve_event_value(
                     "EventValue(Amount) requires a triggering event".to_string(),
                 ));
             };
+            if let Some(payment) = triggering_event.downcast::<crate::events::LifePaidEvent>() {
+                return crate::events::damage::checked_damage_count(u128::from(payment.amount), "life payment event amount");
+            }
             if let Some(life_loss_event) = triggering_event.downcast::<LifeLossEvent>() {
                 return crate::events::damage::checked_damage_count(
                     u128::from(life_loss_event.amount),
