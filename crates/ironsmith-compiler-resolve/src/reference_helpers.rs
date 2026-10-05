@@ -2094,6 +2094,20 @@ fn resolve_choose_spec_it_tag_preserving_selection(
 
 pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value, CardTextError> {
     match value {
+        Value::DamageHistory(query) => {
+            let mut query = (**query).clone();
+            for spec in query.reference_specs_mut() {
+                *spec = resolve_choose_spec_it_tag(spec, refs)?;
+            }
+            for filter in query.object_filters_mut() {
+                *filter = resolve_it_tag(filter, refs)?;
+            }
+            if let Some(player) = query.player_filter_mut() {
+                *player = resolve_contextual_player_filter(player, refs)?;
+            }
+            Ok(Value::DamageHistory(Box::new(query)))
+        }
+
         Value::PendingComparisonLeft
         | Value::PendingComparisonRight
         | Value::PendingComparisonDifference => {

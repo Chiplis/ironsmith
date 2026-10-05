@@ -1545,3 +1545,13 @@ fn compound_become_pump_grant_keeps_three_children_and_one_target_owner() {
         assert!(parse_gain_ability_sentence(&tokenize_line(text, 0)).is_err(), "{text}");
     }
 }
+
+#[test]
+fn quoted_first_target_trigger_keeps_its_event_history_gate() {
+    let tokens = lex_line("Whenever this creature becomes the target of a spell or ability for the first time each turn, counter that spell or ability.", 0).unwrap();
+    let words = crate::lexer::token_word_refs(&tokens);
+    let ability = parse_granted_activated_or_triggered_ability_for_gain(&tokens, &words).unwrap().unwrap();
+    let debug = format!("{ability:?}");
+    assert!(debug.contains("ThisBecomesTargeted") && debug.contains("FirstTimeThisTurn"), "{debug}");
+    assert!(!debug.contains("MaxTimesEachTurn"), "first-event history is not a trigger-count limit: {debug}");
+}

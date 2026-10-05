@@ -147,6 +147,18 @@ fn choose_spec_references_identity(
 
 fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'_>) -> bool {
     match value.unhinted() {
+        Value::DamageHistory(query) => {
+            query
+                .reference_specs()
+                .any(|spec| choose_spec_references_identity(spec, identity))
+                || query
+                    .object_filters()
+                    .any(|filter| object_filter_references_identity(filter, identity))
+                || query
+                    .player_filter()
+                    .is_some_and(|player| player_filter_references_identity(player, identity))
+        }
+
         Value::Add(left, right) | Value::Min(left, right) => {
             value_references_identity(left, identity) || value_references_identity(right, identity)
         }

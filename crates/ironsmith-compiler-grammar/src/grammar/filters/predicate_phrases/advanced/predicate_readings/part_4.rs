@@ -138,7 +138,9 @@ pub(super) fn read_value_reference_comparison_predicate(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
-    if let Some(predicate) = parse_value_reference_comparison_predicate(predicate_tokens) {
+    if let Some(predicate) = damage_history::parse(predicate_tokens)
+        .or_else(|| parse_value_reference_comparison_predicate(predicate_tokens))
+    {
         return Ok(Some(predicate));
     }
     Ok(None)

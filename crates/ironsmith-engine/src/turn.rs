@@ -1183,7 +1183,7 @@ fn apply_cleanup_discard_inner(
             if event.player != player || event.card != card_id || event.cause != cause {
                 return Err(ExecutionError::InternalError("cleanup discard changed an unsupported batch identity".into()));
             }
-            successful.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone));
+            successful.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone, receipt.result.new_id));
         }
         if let Some(id) = receipt.result.new_id && game.is_madness_exiled(id) { madness_cards.push(id); }
         receipts.push(receipt);

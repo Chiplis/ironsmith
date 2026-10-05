@@ -66,4 +66,5 @@ pub enum PermanentStateActionAst {
     Flip {
         target: TargetAst,
     },
+    BecomeBlocked { target: TargetAst },
 }

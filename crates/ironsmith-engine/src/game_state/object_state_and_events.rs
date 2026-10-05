@@ -1783,6 +1783,7 @@ impl GameState {
             return None;
         }
         Some(crate::grant_registry::GrantedAlternativeCast {
+            constraints: Default::default(),
             permission_identity: None,
             method: AlternativeCastingMethod::Plot {
                 cost: crate::mana::ManaCost::new(),

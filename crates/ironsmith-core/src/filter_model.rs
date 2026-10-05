@@ -7670,6 +7670,16 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     filter.description()
                 )
             }
+            Value::DamageHistory(query) => query.describe_with_reference(|spec| {
+                if let Some(surface) = spec.source_reference_surface() {
+                    return surface.display_text().to_string();
+                }
+                match spec.base() {
+                    ChooseSpec::Source => "this source".into(),
+                    ChooseSpec::Object(filter) => filter.description(),
+                    _ => "that object".into(),
+                }
+            }),
             Value::MaximumLifeTotal(players) => {
                 let scope = match players {
                     PlayerFilter::Any => "all players".to_string(),

@@ -300,7 +300,7 @@ pub fn execute_effect(
     };
     if let Err(error) = &result { game.record_token_resource_failure(error); }
     if let Some(error) = game.token_resource_failure() { result = Err(error); }
-    if matches!(&result, Err(ExecutionError::ResourceLimitExceeded { .. } | ExecutionError::ResourceAllocationFailed { .. } | ExecutionError::ContinuousDiscovery(_))) {
+    if result.as_ref().err().is_some_and(ExecutionError::is_incomplete_execution) {
         if let Some(checkpoint) = checkpoint { game.restore_execution_checkpoint(checkpoint, false); }
         if let Some(checkpoint) = context_checkpoint { checkpoint.restore(ctx); }
     }

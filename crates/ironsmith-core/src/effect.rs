@@ -665,6 +665,13 @@ pub enum DelayedTriggerSpec {
     },
     ControlChanged(crate::trigger_model::ControlChangeTrigger),
     PermanentBecomesUntapped { filter: ObjectFilter },
+    PlayerDiscardsCard {
+        player: PlayerFilter,
+        filter: Option<ObjectFilter>,
+        cause_controller: Option<PlayerFilter>,
+        effect_like_only: bool,
+        one_or_more: bool,
+    },
 }
 
 /// Lifetime policy for a delayed trigger registration.

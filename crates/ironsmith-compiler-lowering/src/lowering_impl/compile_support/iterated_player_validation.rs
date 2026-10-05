@@ -165,6 +165,18 @@ fn choose_spec_contains_pending_effect_metric(spec: &ChooseSpec) -> bool {
 
 pub fn value_mentions_iterated_player(value: &Value) -> bool {
     match value {
+        Value::DamageHistory(query) => {
+            query
+                .reference_specs()
+                .any(choose_spec_mentions_iterated_player)
+                || query
+                    .object_filters()
+                    .any(object_filter_mentions_iterated_player)
+                || query
+                    .player_filter()
+                    .is_some_and(PlayerFilter::mentions_iterated_player)
+        }
+
         Value::SurfaceHinted { value, .. }
         | Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
@@ -336,6 +348,15 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
 
 pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
     match value {
+        Value::DamageHistory(query) => {
+            query
+                .reference_specs()
+                .any(choose_spec_contains_pending_effect_metric)
+                || query
+                    .object_filters()
+                    .any(object_filter_contains_pending_effect_metric)
+        }
+
         Value::PendingEffectMetric { .. }
         | Value::PendingEffectMetricOffset { .. }
         | Value::PendingComparisonLeft

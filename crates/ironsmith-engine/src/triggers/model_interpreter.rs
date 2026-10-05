@@ -589,12 +589,13 @@ pub(crate) fn interpret_trigger_model(
             filter,
             controller,
             effect_like_only,
-        } => crate::triggers::Trigger::player_discards_card_caused_by_controller(
-            player,
-            filter,
-            controller,
-            effect_like_only,
-        ),
+            one_or_more,
+        } => {
+            let mut trigger = crate::triggers::YouDiscardCardTrigger::new(player, filter).caused_by_controller(controller);
+            if effect_like_only { trigger = trigger.effect_like_only(); }
+            if one_or_more { trigger = trigger.one_or_more(); }
+            crate::triggers::Trigger::new(trigger)
+        },
         TriggerKind::PlayerDiscardsCard {
             player,
             filter,
@@ -1084,6 +1085,13 @@ impl super::Trigger {
                 } else {
                     Self::player_loses_life(player)
                 }
+            }
+            ironsmith_core::DelayedTriggerSpec::PlayerDiscardsCard { player, filter, cause_controller, effect_like_only, one_or_more } => {
+                let mut trigger = crate::triggers::YouDiscardCardTrigger::new(player, filter);
+                if let Some(controller) = cause_controller { trigger = trigger.caused_by_controller(controller); }
+                if effect_like_only { trigger = trigger.effect_like_only(); }
+                if one_or_more { trigger = trigger.one_or_more(); }
+                Self::new(trigger)
             }
             ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(player) => {
                 Self::player_draws_card(player)

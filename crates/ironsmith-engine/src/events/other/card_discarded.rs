@@ -8,6 +8,15 @@ use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 
+/// Exact destination of one original discard, before any added program or
+/// subsequent zone movement. Absence means the action created no new object.
+#[derive(Debug, Clone)]
+pub struct DiscardedCardDestination {
+    pub card: ObjectId,
+    pub object: Option<ObjectId>,
+    pub zone: crate::zone::Zone,
+}
+
 /// A player discarded a card event.
 ///
 /// Triggered when a player discards a card. Distinct from the Discard event
@@ -28,6 +37,8 @@ pub struct CardDiscardedEvent {
     pub batch_snapshots: Vec<ObjectSnapshot>,
     /// This card's index in `batch_cards` when the event came from a batch discard.
     pub batch_index: Option<usize>,
+    /// One exact receipt per original member of this completed discard batch.
+    pub destinations: Vec<DiscardedCardDestination>,
 }
 
 impl CardDiscardedEvent {
@@ -41,6 +52,7 @@ impl CardDiscardedEvent {
             batch_cards: vec![card],
             batch_snapshots: Vec::new(),
             batch_index: Some(0),
+            destinations: Vec::new(),
         }
     }
 
@@ -53,7 +65,16 @@ impl CardDiscardedEvent {
             batch_cards: vec![card],
             batch_snapshots: Vec::new(),
             batch_index: Some(0),
+            destinations: Vec::new(),
         }
+    }
+
+    pub fn with_destinations(mut self, destinations: Vec<DiscardedCardDestination>) -> Self {
+        self.destinations = destinations; self
+    }
+
+    pub fn destination(&self, origin: ObjectId) -> Option<&DiscardedCardDestination> {
+        self.destinations.iter().find(|receipt| receipt.card == origin)
     }
 
     pub fn with_snapshot(mut self, snapshot: ObjectSnapshot) -> Self {
@@ -75,6 +96,8 @@ impl CardDiscardedEvent {
 }
 
 impl GameEventType for CardDiscardedEvent {
+    fn cause(&self) -> Option<&crate::events::cause::EventCause> { self.cause.as_ref() }
+
     fn event_kind(&self) -> EventKind {
         EventKind::CardDiscarded
     }

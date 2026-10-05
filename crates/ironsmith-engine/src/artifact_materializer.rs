@@ -476,6 +476,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
             decode_as::<T, ironsmith_core::RemoveAnyCountersAmongEffect>(effect)
         }
         "RemoveCountersEffect" => decode_as::<T, ironsmith_core::RemoveCountersEffect>(effect),
+        "BecomeBlockedEffect" => decode_as::<T, ironsmith_core::BecomeBlockedEffect>(effect),
         "RemoveFromCombatEffect" => decode_as::<T, ironsmith_core::RemoveFromCombatEffect>(effect),
         "RemoveUpToAnyCountersEffect" => {
             decode_as::<T, ironsmith_core::RemoveUpToAnyCountersEffect>(effect)
@@ -928,6 +929,9 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter,
             source_exiled_surface: spec.source_exiled_surface,
+            filtered_zone_surface: spec.filtered_zone_surface,
+            top_card_only: spec.top_card_only,
+            instant_timing: spec.instant_timing,
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .into_iter()

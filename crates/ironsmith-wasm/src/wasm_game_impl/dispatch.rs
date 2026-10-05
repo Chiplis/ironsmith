@@ -234,7 +234,7 @@ impl WasmGame {
         let battlefield_transitions =
             battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
         let disclosure_view = self.payment_disclosure_view();
-        let mut snap = GameSnapshot::from_game_with_object_view_cache(
+        let mut snap = GameSnapshot::from_game_with_object_view_cache_during_action(
             self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
             self.pending_decision.as_ref(),
@@ -248,6 +248,7 @@ impl WasmGame {
             undo_land_stable_id,
             snapshot_id,
             &self.snapshot_object_view_cache,
+            self.static_library_top_visibility_window(),
         );
         if let Some(view) = disclosure_view.as_ref() {
             snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
@@ -1086,6 +1087,7 @@ impl WasmGame {
             active_resolving_stack_hash: hash_debug_value(&self.active_resolving_stack_object),
             active_viewed_cards_hash: hash_debug_value(&self.active_viewed_cards),
             crypto_requirements_hash: hash_debug_value(&self.last_crypto_requirements),
+            static_library_top_visibility_hash: self.static_library_top_visibility_hash(),
             cancelable,
             undo_land_stable_id,
         }
@@ -3513,7 +3515,7 @@ impl WasmGame {
             self.update_crypto_requirements_from(before);
         }
         let disclosure_view = self.payment_disclosure_view();
-        let mut snap = GameSnapshot::from_game_with_object_view_cache(
+        let mut snap = GameSnapshot::from_game_with_object_view_cache_during_action(
             self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
             self.pending_decision.as_ref(),
@@ -3527,6 +3529,7 @@ impl WasmGame {
             undo_land_stable_id,
             snapshot_id,
             &self.snapshot_object_view_cache,
+            self.static_library_top_visibility_window(),
         );
         if let Some(view) = disclosure_view.as_ref() {
             snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
@@ -4832,6 +4835,8 @@ impl WasmGame {
     pub fn is_replay_checkpoint_boundary(&self) -> bool {
         self.pregame.is_none()
             && retain_checkpoint_replacement_state(&self.game).is_ok()
+            && validate_checkpoint_turn_history(&self.game).is_ok()
+            && !self.has_unretained_ability_programs()
             && matches!(self.pending_decision, Some(DecisionContext::Priority(_)))
             && self.pending_decision_game.is_none()
             && self.pending_replay_action.is_none()
@@ -4912,7 +4917,7 @@ impl WasmGame {
         let dispatch_started_at = PerfTimer::start();
         self.last_dispatch_perf = None;
 
-        // A face-down cast of a hidden hand card carries its public cast kind
+        // A face-down cast of a hidden card carries its public cast kind
         // (morph, megamorph, disguise). Record it before the command is
         // replayed so every peer, including those holding only a placeholder
         // that is never opened for the cast, agrees the cast is legal and on
@@ -4925,7 +4930,7 @@ impl WasmGame {
             && self
                 .game
                 .object(spell)
-                .is_some_and(|object| object.zone == Zone::Hand)
+                .is_some_and(|object| !matches!(object.zone, Zone::Battlefield | Zone::Stack))
         {
             self.game.set_hidden_face_down_cast_claim(spell, kind);
         }

@@ -24,3 +24,9 @@ mod runtime_audit_devourer;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "../tests/hidden_resolution.rs"]
 mod hidden_resolution_tests;
+
+#[cfg(test)]
+mod static_top_visibility_tests;
+
+#[cfg(test)]
+mod face_down_zone_permission_tests;

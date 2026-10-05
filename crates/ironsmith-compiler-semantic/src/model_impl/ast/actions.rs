@@ -2609,6 +2609,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("ExcessDamageToController")
                 .field("condition", condition)
                 .finish(),
+            Self::PermanentState(PermanentStateActionAst::BecomeBlocked { target }) => {
+                f.debug_tuple("BecomeBlocked").field(target).finish()
+            }
             Self::PermanentState(PermanentStateActionAst::RemoveFromCombat { target }) => {
                 f.debug_tuple("RemoveFromCombat").field(target).finish()
             }

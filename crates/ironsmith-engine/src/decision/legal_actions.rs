@@ -90,7 +90,7 @@ fn append_granted_play_from_actions_for_card(
     card: &crate::object::Object,
     source_zone: Zone,
     view: &DerivedGameView<'_>,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     let play_from_grants = view.granted_play_from_for_card(card_id, source_zone, player);
     for grant in play_from_grants {
         if !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit) {
@@ -188,11 +188,34 @@ fn append_granted_play_from_actions_for_card(
         }
     }
 
+    // Morph/disguise is a different proposed spell face. Its public 2/2
+    // characteristics, not the printed card's type/power, select permission.
+    if spell_can_be_cast_face_down(game, card) {
+        let face = spell_view_for_face_down_cast(game, card);
+        let face_game = crate::grant_registry::proposed_card_face_query(game, &face)?;
+        let face_view = DerivedGameView::new(&face_game);
+        let face_card = face_game.object(card_id).ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
+        let cost = face_down_cast_mana_cost();
+        for grant in face_view.granted_play_from_for_card(card_id, source_zone, player) {
+            if !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit) { continue; }
+            let method = CastingMethod::FaceDownPlayFrom {source: grant.source_id, zone: grant.zone};
+            if can_cast_with_cost_with_view_for_casting_method(
+                &face_game, player, face_card, card_id, Some(&cost), None,
+                &AdditionalCastRequirements::default(), &method, &face_view,
+            ) {
+                actions.push(LegalAction::CastSpell {spell_id: card_id, from_zone: grant.zone, casting_method: method});
+            }
+        }
+    }
+
     let Some(adventure_view) = spell_view_for_split_other_half_cast(game, card) else {
-        return;
+        return Ok(());
     };
+    let face_game = crate::grant_registry::proposed_card_face_query(game, &adventure_view)?;
+    let face_view = DerivedGameView::new(&face_game);
+    let face_card = face_game.object(card_id).ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
     let adventure_play_from_grants =
-        view.granted_play_from_for_card_view(card_id, &adventure_view, source_zone, player);
+        face_view.granted_play_from_for_card(card_id, source_zone, player);
     let face_alternatives =
         view.granted_alternative_casts_for_card_view(card_id, &adventure_view, source_zone, player);
     let face_alternative_base = card.alternative_casts.len()
@@ -206,13 +229,18 @@ fn append_granted_play_from_actions_for_card(
         let has_same_source_alternative = face_alternatives
             .iter()
             .any(|alternative| alternative.source_id == grant.source_id);
+        let normal_face_permission = CastingMethod::SplitOtherHalfPlayFrom {
+            source: grant.source_id, zone: grant.zone, use_alternative: None,
+        };
         if !has_same_source_alternative
-            && can_cast_spell_with_view(game, player, card, &CastingMethod::SplitOtherHalf, view)
+            && can_cast_spell_with_view(&face_game, player, face_card,
+                &CastingMethod::PlayFrom { source: grant.source_id, zone: grant.zone, use_alternative: None },
+                &face_view)
         {
             actions.push(LegalAction::CastSpell {
                 spell_id: card_id,
                 from_zone: grant.zone,
-                casting_method: CastingMethod::SplitOtherHalf,
+                casting_method: normal_face_permission,
             });
         }
         for (offset, alternative) in face_alternatives.iter().enumerate() {
@@ -222,7 +250,7 @@ fn append_granted_play_from_actions_for_card(
             let casting_method = CastingMethod::SplitOtherHalfPlayFrom {
                 source: grant.source_id,
                 zone: grant.zone,
-                use_alternative: face_alternative_base + offset,
+                use_alternative: Some(face_alternative_base + offset),
             };
             if can_cast_spell_with_view(game, player, card, &casting_method, view) {
                 actions.push(LegalAction::CastSpell {
@@ -233,6 +261,7 @@ fn append_granted_play_from_actions_for_card(
             }
         }
     }
+    Ok(())
 }
 
 fn append_native_alternative_cast_actions_for_card_from_zone(
@@ -399,7 +428,7 @@ fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
         let casting_method = CastingMethod::SplitOtherHalfPlayFrom {
             source: grant.source_id,
             zone: Zone::Graveyard,
-            use_alternative: base_alt_idx + offset,
+            use_alternative: Some(base_alt_idx + offset),
         };
         if !can_cast_with_cost_with_view_for_casting_method(
             game,
@@ -481,7 +510,7 @@ fn append_cast_actions_from_zone_for_card(
     from_zone: Zone,
     view: &DerivedGameView<'_>,
     zone_has_active_grants: bool,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     append_native_alternative_cast_actions_for_card_from_zone(
         game, actions, player, card_id, card, from_zone, view,
     );
@@ -517,8 +546,9 @@ fn append_cast_actions_from_zone_for_card(
     if zone_has_active_grants {
         append_granted_play_from_actions_for_card(
             game, actions, player, card_id, card, from_zone, view,
-        );
+        )?;
     }
+    Ok(())
 }
 
 /// CR 712.12: offer the back face of a land//land modal DFC as its own land
@@ -545,7 +575,7 @@ fn append_granted_land_play_actions_from_public_zone(
     actions: &mut Vec<LegalAction>,
     player: PlayerId,
     zone: Zone,
-    view: &DerivedGameView<'_>,
+    _view: &DerivedGameView<'_>,
 ) -> Result<(), crate::effects::ExecutionError> {
     for card_id in game.zone_ids(zone) {
         if !requested_action_source(card_id) { continue; }
@@ -557,13 +587,8 @@ fn append_granted_land_play_actions_from_public_zone(
         {
             continue;
         }
-        if view
-            .granted_play_from_for_card(card_id, zone, player)
-            .is_empty()
-        {
-            continue;
-        }
-
+        // The authoritative owner evaluates the chosen land face. Filtering
+        // only the front card here hides legal subtype-qualified MDFC backs.
         let action = SpecialAction::PlayLand { card_id };
         if special_action_is_legal(crate::special_actions::can_perform_check(&action, game, player))? {
             actions.push(LegalAction::PlayLand { land_id: card_id });
@@ -695,9 +720,6 @@ fn add_land_actions(
         && let Some(card) = game.object(card_id)
         && (card.is_land()
             || crate::decision::linked_other_face_land_definition(game, card).is_some())
-        && !view
-            .granted_play_from_for_card(card_id, Zone::Library, player)
-            .is_empty()
     {
         let action = SpecialAction::PlayLand { card_id };
         if special_action_is_legal(can_perform_check(&action, game, player))? {
@@ -763,7 +785,7 @@ fn add_graveyard_cast_actions(
     graveyard: &[ObjectId],
     view: &DerivedGameView<'_>,
     graveyard_has_active_grants: bool,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     for &card_id in graveyard {
         if let Some(card) = game.object(card_id) {
             append_cast_actions_from_zone_for_card(
@@ -775,9 +797,10 @@ fn add_graveyard_cast_actions(
                 Zone::Graveyard,
                 view,
                 graveyard_has_active_grants,
-            );
+            )?;
         }
     }
+    Ok(())
 }
 
 fn add_library_cast_actions(
@@ -786,21 +809,21 @@ fn add_library_cast_actions(
     player: PlayerId,
     view: &DerivedGameView<'_>,
     library_has_active_grants: bool,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     if !library_has_active_grants {
-        return;
+        return Ok(());
     }
     let Some(card_id) = game
         .player(player)
         .and_then(|player_obj| player_obj.library.last().copied())
     else {
-        return;
+        return Ok(());
     };
     if !requested_action_source(card_id) {
-        return;
+        return Ok(());
     }
     let Some(card) = game.object(card_id) else {
-        return;
+        return Ok(());
     };
     append_cast_actions_from_zone_for_card(
         game,
@@ -811,7 +834,8 @@ fn add_library_cast_actions(
         Zone::Library,
         view,
         true,
-    );
+    )?;
+    Ok(())
 }
 
 fn add_exile_cast_actions(
@@ -837,7 +861,7 @@ fn add_exile_cast_actions(
             Zone::Exile,
             view,
             exile_has_active_grants,
-        );
+        )?;
         // A prepare spell copy waits in exile for exactly one caster: whoever
         // controls the prepared permanent right now.
         // CR 715.3d: the Adventure spell's controller may cast the card.
@@ -1350,14 +1374,14 @@ fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<V
         graveyard,
         &view,
         graveyard_has_active_grants,
-    );
+    )?;
     perf.graveyard_casts_ms = graveyard_casts_started_at.elapsed_ms();
 
     let exile_casts_started_at = PerfTimer::start();
     add_exile_cast_actions(game, &mut actions, player, &view, exile_has_active_grants)?;
     perf.exile_casts_ms = exile_casts_started_at.elapsed_ms();
 
-    add_library_cast_actions(game, &mut actions, player, &view, library_has_active_grants);
+    add_library_cast_actions(game, &mut actions, player, &view, library_has_active_grants)?;
     if view.player_has_active_grants_for_zone(player, Zone::OutsideGame) {
         for &card_id in &game.player(player).expect("active player").sideboard {
             if !requested_action_source(card_id) {
@@ -1375,7 +1399,7 @@ fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<V
                 Zone::OutsideGame,
                 &view,
                 true,
-            );
+            )?;
         }
         append_granted_land_play_actions_from_public_zone(
             game,
@@ -2833,4 +2857,45 @@ mod land_enumeration_failure_tests {
             }
         }
     }
+    #[test]
+    fn granted_spell_enumeration_propagates_selected_face_discovery_failure() {
+        for zone in [Zone::Graveyard, Zone::Exile, Zone::Library, Zone::OutsideGame] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let player = PlayerId::from_index(0);
+            game.turn.active_player = player; game.turn.priority_player = Some(player);
+            game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
+            let host = CardDefinitionBuilder::new(CardId::new(), "Finite spell query host")
+                .card_types(vec![crate::types::CardType::Artifact])
+                .with_ability(Ability::static_ability(StaticAbility::new(RegrantOnlyForBackFace))).build();
+            game.create_object_from_definition(&host, player, Zone::Battlefield);
+            let mut spec = crate::grant::GrantSpec::play_from_graveyard();
+            spec.zone = zone; spec.filter = crate::target::ObjectFilter::creature();
+            spec.top_card_only = zone == Zone::Library;
+            let permission = CardDefinitionBuilder::new(CardId::new(), "Chosen-face permission")
+                .card_types(vec![crate::types::CardType::Artifact])
+                .with_ability(Ability::static_ability(StaticAbility::grants(spec))).build();
+            game.create_object_from_definition(&permission, player, Zone::Battlefield);
+            let front_id = CardId::new(); let back_id = CardId::new();
+            let front = CardDefinitionBuilder::new(front_id, "Finite front")
+                .card_types(vec![crate::types::CardType::Artifact]).mana_cost(crate::ManaCost::new())
+                .other_face(back_id).other_face_name("Unbounded back")
+                .linked_face_layout(LinkedFaceLayout::TransformLike).build();
+            let back = CardDefinitionBuilder::new(back_id, "Unbounded back")
+                .card_types(vec![crate::types::CardType::Creature]).mana_cost(crate::ManaCost::new())
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .other_face(front_id).other_face_name("Finite front")
+                .linked_face_layout(LinkedFaceLayout::TransformLike).build();
+            game.register_linked_face_definition(&front); game.register_linked_face_definition(&back);
+            let card = game.create_object_from_definition(&front, player, zone);
+            game.continuous_query_snapshot().expect("front query is finite");
+            for scoped in [false, true] {
+                let result = if scoped { compute_actions_for_source(&game, player, Some(card)) }
+                    else { compute_legal_actions(&game, player) };
+                assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(_))), "{zone:?}: {result:?}");
+                assert_eq!(game.object(card).unwrap().name.as_str(), "Finite front");
+                assert_eq!(game.object(card).unwrap().zone, zone);
+            }
+        }
+    }
+
 }

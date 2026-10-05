@@ -1170,7 +1170,8 @@ impl<'a> DerivedGameView<'a> {
                     method: method.clone(),
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
-                    usage_limit: None,
+                    usage_limit: grant.usage_limit,
+                    constraints: grant.play_from_constraints.clone(),
                     cast_this_way_grants: grant.cast_this_way_grants.clone(),
                     cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 }),
@@ -1181,7 +1182,8 @@ impl<'a> DerivedGameView<'a> {
                             method,
                             source_id: grant.source.source_id(),
                             zone: grant.zone,
-                            usage_limit: spec.usage_limit(),
+                            usage_limit: spec.usage_limit().or(grant.usage_limit),
+                            constraints: grant.play_from_constraints.clone(),
                             cast_this_way_grants: grant.cast_this_way_grants.clone(),
                             cast_this_way_filter: grant.cast_this_way_filter.clone(),
                         }
@@ -1274,7 +1276,8 @@ impl<'a> DerivedGameView<'a> {
                     method: method.clone(),
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
-                    usage_limit: None,
+                    usage_limit: grant.usage_limit,
+                    constraints: grant.play_from_constraints.clone(),
                     cast_this_way_grants: grant.cast_this_way_grants.clone(),
                     cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 }),
@@ -1285,7 +1288,8 @@ impl<'a> DerivedGameView<'a> {
                             method,
                             source_id: grant.source.source_id(),
                             zone: grant.zone,
-                            usage_limit: spec.usage_limit(),
+                            usage_limit: spec.usage_limit().or(grant.usage_limit),
+                            constraints: grant.play_from_constraints.clone(),
                             cast_this_way_grants: grant.cast_this_way_grants.clone(),
                             cast_this_way_filter: grant.cast_this_way_filter.clone(),
                         }
@@ -1982,6 +1986,8 @@ fn grant_applies_to_card(
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
+    if !crate::grant_registry::grant_top_card_matches(game, grant, card_id) { return false; }
+
     if grant
         .required_face_name
         .as_ref()
@@ -2015,6 +2021,8 @@ fn grant_applies_to_card_non_recursive(
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
+    if !crate::grant_registry::grant_top_card_matches(game, grant, card_id) { return false; }
+
     // A self-grant can require a particular cast face even when the grant's
     // card filter must use that card's characteristics in its current zone.
     if grant

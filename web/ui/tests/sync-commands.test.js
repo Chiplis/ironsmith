@@ -391,6 +391,8 @@ test("every casting method retains its identity across a JSON round trip", () =>
     { kind: "play_from", source: 12, zone: "exile", use_alternative: undefined },
     { kind: "play_from", source: 12, zone: "exile", use_alternative: 0 },
     { kind: "split_other_half_play_from", source: 12, zone: "exile", use_alternative: 0 },
+    { kind: "split_other_half_play_from", source: 12, zone: "exile", use_alternative: null },
+    { kind: "face_down_play_from", source: 12, zone: "library" },
   ];
   const actions = methods.map((casting_method, index) => ({ index, action_ref: {
     kind: "cast_spell", spell_id: 42, from_zone: "exile", casting_method,

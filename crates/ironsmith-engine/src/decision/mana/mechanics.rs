@@ -176,7 +176,7 @@ pub fn calculate_improvise_cost(
         i += 1;
     }
 
-    let effective_cost = crate::mana::ManaCost::from_pips(remaining_pips);
+    let effective_cost = cost.with_pips(remaining_pips);
     (artifacts_to_tap, effective_cost)
 }
 
@@ -327,6 +327,6 @@ pub fn calculate_convoke_cost(
         i += 1;
     }
 
-    let effective_cost = crate::mana::ManaCost::from_pips(remaining_pips);
+    let effective_cost = cost.with_pips(remaining_pips);
     (creatures_to_tap, effective_cost)
 }

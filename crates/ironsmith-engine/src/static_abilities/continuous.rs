@@ -6005,6 +6005,33 @@ fn materialize_named_granting_source_in_effect(
     effect: &crate::effect::Effect,
     source: ObjectId,
 ) -> crate::effect::Effect {
+    if let Some(fight) = effect.downcast_ref::<crate::effects::FightEffect>() {
+        let mut fight = fight.clone();
+        for spec in [&mut fight.creature1, &mut fight.creature2] {
+            let named = matches!(spec.base(), ChooseSpec::Source)
+                && matches!(
+                    spec.source_reference_surface(),
+                    Some(
+                        SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_)
+                    )
+                );
+            let tagged = matches!(spec.base(),ChooseSpec::Tagged(tag) if tag.as_str()==crate::tag::GRANTING_SOURCE_TAG);
+            if named || tagged {
+                *spec = ChooseSpec::SpecificObject(source)
+                    .with_surface_hints(spec.surface_hints().iter().cloned());
+            }
+        }
+        return crate::effect::Effect::new(fight);
+    }
+    if let Some(optional) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        let mut optional = optional.clone();
+        optional.effects = optional
+            .effects
+            .iter()
+            .map(|effect| materialize_named_granting_source_in_effect(effect, source))
+            .collect();
+        return crate::effect::Effect::new(optional);
+    }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         let mut sequence = sequence.clone();
         sequence.effects = sequence

@@ -172,7 +172,7 @@ fn stack_entry_cast_with_named_alternative(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
+            use_alternative: Some(idx),
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(
@@ -1593,7 +1593,7 @@ fn resolve_stack_entry_full_inner(
                         ..
                     }
                     | CastingMethod::SplitOtherHalfPlayFrom {
-                        use_alternative: idx,
+                        use_alternative: Some(idx),
                         zone,
                         ..
                     } => matches!(
@@ -1619,7 +1619,7 @@ fn resolve_stack_entry_full_inner(
                         ..
                     }
                     | CastingMethod::SplitOtherHalfPlayFrom {
-                        use_alternative: idx,
+                        use_alternative: Some(idx),
                         zone,
                         ..
                     } => matches!(
@@ -1646,7 +1646,7 @@ fn resolve_stack_entry_full_inner(
                         ..
                     }
                     | CastingMethod::SplitOtherHalfPlayFrom {
-                        use_alternative: idx,
+                        use_alternative: Some(idx),
                         zone,
                         ..
                     } => matches!(
@@ -1668,7 +1668,7 @@ fn resolve_stack_entry_full_inner(
                         ..
                     }
                     | CastingMethod::SplitOtherHalfPlayFrom {
-                        use_alternative: idx,
+                        use_alternative: Some(idx),
                         zone,
                         ..
                     } if *zone == Zone::Exile => matches!(
@@ -1804,11 +1804,16 @@ fn resolve_stack_entry_full_inner(
             // Only methods which explicitly replace leaving the stack exile the spell.
             let should_exile = match &entry.casting_method {
                 CastingMethod::Normal => false,
-                CastingMethod::FaceDown => false,
-                CastingMethod::SplitOtherHalf => {
+                CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => false,
+                CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => {
                     obj.subtypes.contains(&crate::types::Subtype::Adventure)
                 }
-                CastingMethod::SplitOtherHalfPlayFrom { .. } => true,
+                CastingMethod::SplitOtherHalfPlayFrom { use_alternative: Some(index), zone, .. } => {
+                    crate::decision::resolve_play_from_alternative_method(game, entry.controller, obj, *zone, *index)
+                        .or_else(|| obj.cast_alternative_method_owned())
+                        .is_some_and(|method| method.exiles_after_resolution())
+                        || obj.subtypes.contains(&crate::types::Subtype::Adventure)
+                }
                 CastingMethod::Fuse => false,
                 CastingMethod::Alternative(idx) => obj
                     .alternative_casts
@@ -1852,7 +1857,7 @@ fn resolve_stack_entry_full_inner(
             let omen_alternative_exiles = match &entry.casting_method {
                 CastingMethod::SplitOtherHalfPlayFrom {
                     zone,
-                    use_alternative,
+                    use_alternative: Some(use_alternative),
                     ..
                 } => crate::decision::resolve_play_from_alternative_method(
                     game,

@@ -495,15 +495,15 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
 fn lower_materialization_costs(
     segments: &[MaterializationCost],
 ) -> Result<TotalCost, CardTextError> {
-    fn flush_pending_mana(costs: &mut Vec<Cost>, pending: &mut Vec<Vec<ManaSymbol>>) {
+    fn flush_pending_mana(costs: &mut Vec<Cost>, pending: &mut ManaCost) {
         if pending.is_empty() {
             return;
         }
-        costs.push(Cost::mana(ManaCost::from_pips(std::mem::take(pending))));
+        costs.push(Cost::mana(std::mem::take(pending)));
     }
 
     let mut costs = Vec::new();
-    let mut pending_mana_pips = Vec::new();
+    let mut pending_mana_pips = ManaCost::new();
     let mut tap_tag_id = 0usize;
     let mut untap_tag_id = 0usize;
     let mut discard_tag_id = 0usize;
@@ -518,7 +518,8 @@ fn lower_materialization_costs(
     for (segment_index, segment) in segments.iter().enumerate() {
         match segment {
             MaterializationCost::Mana(cost) => {
-                pending_mana_pips.extend(cost.pips().to_vec());
+                for pip in cost.pips() { pending_mana_pips.push_alternatives(pip.clone()); }
+                pending_mana_pips = pending_mana_pips.inherit_spending_restrictions(cost);
             }
             MaterializationCost::DynamicMana(cost) => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

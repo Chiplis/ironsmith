@@ -5479,6 +5479,7 @@ impl GameState {
                 | StaticAbilityId::Improvise
                 | StaticAbilityId::BlackManaMayBePaidWithLife
                 | StaticAbilityId::MinimumSpellTotalMana
+                | StaticAbilityId::SpellManaSpendingRestriction
         )
     }
 

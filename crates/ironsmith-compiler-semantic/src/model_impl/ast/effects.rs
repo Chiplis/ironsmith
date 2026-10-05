@@ -6067,6 +6067,11 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_become_blocked(target: TargetAst) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked{target}))
+    }
+
     pub fn subject_verb_remove_from_combat(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,

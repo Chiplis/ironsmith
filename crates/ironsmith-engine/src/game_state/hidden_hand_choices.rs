@@ -748,7 +748,7 @@ impl GameState {
         self.push_hidden_identity_obligations(obligations);
     }
 
-    /// Record that the face-down spell `id`, cast from a hidden hand with the
+    /// Record that the face-down spell `id`, cast from a hidden origin with the
     /// public `kind`, must have that keyword once opened. Recorded on every
     /// peer for every tracked card (the owner included), so the shared ledger
     /// stays identical.
@@ -761,6 +761,7 @@ impl GameState {
         &mut self,
         id: ObjectId,
         kind: FaceDownCastKind,
+        origin: Zone,
         permission: Option<&FaceDownCastPermission>,
     ) {
         if self.hidden_card_info(id).is_none() {
@@ -789,7 +790,7 @@ impl GameState {
         let obligation = HiddenIdentityObligation {
             stable_id: object.stable_id,
             owner: object.owner,
-            zone: Zone::Hand,
+            zone: origin,
             filter,
             filter_ctx,
             description,
@@ -951,7 +952,7 @@ impl GameState {
     }
 
     /// Record the public face-down cast kind carried by a face-down cast
-    /// command for the hidden hand card `id`. Called identically on every
+    /// command for the hidden card `id`. Called identically on every
     /// peer before the command is replayed. A permission kind is accepted only
     /// while that permission lets the card's owner cast face down from the
     /// card's zone (identity-free facts every peer shares); otherwise it is

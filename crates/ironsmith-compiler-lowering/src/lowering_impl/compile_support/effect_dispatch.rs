@@ -2981,6 +2981,18 @@ pub(super) fn player_target_choice_matches_filter(choice: &ChooseSpec, player: &
 
 fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSpec>) {
     match value {
+        Value::DamageHistory(query) => {
+            for spec in query.reference_specs() {
+                collect_choose_spec_player_target_choices(spec, choices);
+            }
+            for filter in query.object_filters() {
+                collect_object_filter_player_target_choices(filter, choices);
+            }
+            if let Some(player) = query.player_filter() {
+                collect_player_filter_target_choice(player, choices);
+            }
+        }
+
         Value::SurfaceHinted { value, .. } => collect_value_player_target_choices(value, choices),
         Value::Add(left, right) | Value::Min(left, right) => {
             collect_value_player_target_choices(left, choices);

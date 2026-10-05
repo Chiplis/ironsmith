@@ -207,7 +207,7 @@ fn counter_one_stack_object_of_kind_inner(
                             target_id,
                             controller,
                             countered_snapshot,
-                        ).with_cause(ctx.cause.clone()),
+                        ).with_cause(ctx.cause.clone()).with_complete_source_lookback(),
                         ctx.provenance,
                     )
                     .with_lookback_source_snapshots(lookback_source_snapshots);

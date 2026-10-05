@@ -235,6 +235,9 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter,
             source_exiled_surface: spec.source_exiled_surface,
+            filtered_zone_surface: spec.filtered_zone_surface,
+            top_card_only: spec.top_card_only,
+            instant_timing: spec.instant_timing,
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .into_iter()

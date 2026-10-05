@@ -55,7 +55,8 @@ impl ManaCredit {
         game: &GameState,
         request: &super::ManaPaymentRequest,
     ) -> Vec<PaymentManaUnit> {
-        if self.event.player != request.payer {
+        if self.event.player != request.payer
+            || !production_satisfies_cost(&request.cost, self.event.snapshot.as_ref()) {
             return Vec::new();
         }
         let snow = self.event.snapshot.as_ref().map_or_else(
@@ -104,6 +105,27 @@ impl ManaCredit {
             self.event.player,
         ))
     }
+}
+
+/// Evaluate production characteristics, never the producer's later state.
+/// Untracked pool units have no evidence and cannot satisfy a source condition.
+pub(crate) fn production_satisfies_cost(
+    cost: &crate::mana::ManaCost,
+    snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+) -> bool {
+    fn matches(filter: &ironsmith_core::mana::ManaProducerFilter, snapshot: &crate::snapshot::ObjectSnapshot) -> bool {
+        use ironsmith_core::mana::ManaProducerFilter;
+        match filter {
+            ManaProducerFilter::CardType(kind) => snapshot.card_types.contains(kind),
+            ManaProducerFilter::Supertype(kind) => snapshot.supertypes.contains(kind),
+            ManaProducerFilter::Subtype(kind) => snapshot.subtypes.contains(kind),
+            ManaProducerFilter::All(parts) => parts.iter().all(|part| matches(part, snapshot)),
+        }
+    }
+    cost.spending_restrictions().iter().all(|rule| match rule {
+        ironsmith_core::mana::ManaSpendingRestriction::ProducedBy(filter) =>
+            snapshot.is_some_and(|snapshot| snapshot.zone == crate::zone::Zone::Battlefield && matches(filter, snapshot)),
+    })
 }
 
 /// A transaction-qualified unit. Full source/snapshot/restriction/retention

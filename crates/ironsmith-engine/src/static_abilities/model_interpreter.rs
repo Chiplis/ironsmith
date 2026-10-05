@@ -372,6 +372,9 @@ impl StaticAbilityModelInterpreter {
             max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter.clone(),
             source_exiled_surface: spec.source_exiled_surface.clone(),
+            filtered_zone_surface: spec.filtered_zone_surface.clone(),
+            top_card_only: spec.top_card_only,
+            instant_timing: spec.instant_timing,
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .iter()
@@ -845,6 +848,7 @@ impl StaticAbilityModelInterpreter {
     fn this_spell_cast_restriction_from_model(
         kind: &ironsmith_core::ThisSpellCastRestrictionKind,
     ) -> super::ThisSpellCastRestrictionKind {
+        if let Some(timing) = kind.timing { return super::ThisSpellCastRestrictionKind::timing(timing); }
         match kind.label.as_str() {
             "during declare attackers step" => {
                 super::ThisSpellCastRestrictionKind::during_declare_attackers_step()

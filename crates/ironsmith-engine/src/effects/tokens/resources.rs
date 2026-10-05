@@ -36,7 +36,7 @@ pub(crate) fn close_meter(meter: &SharedTokenCreationMeter) {
     if let Ok(mut state) = meter.lock() { state.active = false; }
 }
 pub(crate) fn record_failure(meter: &SharedTokenCreationMeter, error: &ExecutionError) {
-    if error.is_resource_exhaustion()
+    if error.is_incomplete_execution()
         && let Ok(mut state) = meter.lock()
         && state.failure.is_none() {
         state.failure = Some(error.clone());

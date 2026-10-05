@@ -32,4 +32,5 @@ pub enum TriggeringPredicateAst {
     TriggeringSpellColoredManaSpentToCastAtLeast(u32),
     TriggeringSpellWasKicked,
     YouChoseAnotherRingBearer,
+    TriggeringEventCausedBy { controller: PlayerFilter, effect_like_only: bool },
 }

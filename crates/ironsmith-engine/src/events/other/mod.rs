@@ -36,7 +36,7 @@ mod transformed;
 mod turned_face_up;
 
 pub use became_monstrous::BecameMonstrousEvent;
-pub use card_discarded::CardDiscardedEvent;
+pub use card_discarded::{CardDiscardedEvent, DiscardedCardDestination};
 pub use card_drawn::CardsDrawnEvent;
 pub use card_revealed::CardRevealedEvent;
 pub use chapter_ability_resolved::ChapterAbilityResolvedEvent;

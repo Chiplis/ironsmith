@@ -309,6 +309,9 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
+                target,
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate {
                 target, ..
@@ -1605,6 +1608,9 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. })
         | SubjectVerbActionAst::Damage(DamageActionAst::ExcessDamageToController { .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
+            ..
+        })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
             ..
         })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })

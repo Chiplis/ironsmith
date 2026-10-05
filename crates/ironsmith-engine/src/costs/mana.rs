@@ -46,7 +46,7 @@ pub(crate) fn pay_mana_cost_with_choices(
                 game.can_pay_mana_cost_with_payment_options(
                     payer,
                     source,
-                    &ManaCost::from_pips(candidate),
+                    &cost.with_pips(candidate),
                     x_value,
                     reason,
                     &policy,
@@ -101,7 +101,7 @@ pub(crate) fn pay_mana_cost_with_choices(
     if game.try_pay_mana_cost_with_payment_options(
         payer,
         source,
-        &ManaCost::from_pips(pips),
+        &cost.with_pips(pips),
         x_value,
         reason,
         &policy,

@@ -157,6 +157,7 @@ struct SnapshotCacheKey {
     active_resolving_stack_hash: u64,
     active_viewed_cards_hash: u64,
     crypto_requirements_hash: u64,
+    static_library_top_visibility_hash: u64,
     cancelable: bool,
     undo_land_stable_id: Option<u64>,
 }
@@ -929,7 +930,7 @@ fn cast_payment_cost_context(
     let object = game.object(pending.spell_id);
     let method = match &pending.casting_method {
         CastingMethod::Normal => "Normal cast".to_string(),
-        CastingMethod::FaceDown => "Face down".to_string(),
+        CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => "Face down".to_string(),
         CastingMethod::SplitOtherHalf => "Other half".to_string(),
         CastingMethod::Fuse => "Fuse".to_string(),
         CastingMethod::GrantedEscape { .. } => "Escape".to_string(),
@@ -940,13 +941,13 @@ fn cast_payment_cost_context(
             ..
         }
         | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: index,
+            use_alternative: Some(index),
             ..
         } => object
             .and_then(|object| object.alternative_casts.get(*index))
             .map(|method| method.name().to_string())
             .unwrap_or_else(|| "Alternative cost".to_string()),
-        CastingMethod::PlayFrom { .. } => "Granted cast".to_string(),
+        CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => "Granted cast".to_string(),
     };
     let mut result = vec![method];
     if pending.base_mana_cost_waived {
@@ -1594,10 +1595,12 @@ fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
     })
 }
 
-fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewedCards>) {
+fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewedCards>, window: StaticLibraryTopVisibilityWindow<'_>) {
     let public_viewer = PlayerId::from_index(0);
     for player in &game.players {
-        if let Some(&top_card) = player.library.last() {
+        if let Some(&top_card) = player.library.last()
+            && window.allows(game, player.id)
+        {
             if library_top_revealed_by_static_ability(game, player.id) {
                 views.push(ActiveViewedCards {
                     viewer: public_viewer,
@@ -2301,7 +2304,7 @@ impl WasmGame {
         {
             audit_views.push(view.clone());
         }
-        append_static_visibility_views(audit_game, &mut audit_views);
+        append_static_visibility_views(audit_game, &mut audit_views, self.static_library_top_visibility_window());
 
         for view in audit_views {
             let count = view.cards.len().min(u16::MAX as usize) as u16;
@@ -2747,7 +2750,15 @@ enum CastingMethodRef {
     SplitOtherHalfPlayFrom {
         source: u64,
         zone: String,
-        use_alternative: usize,
+        use_alternative: Option<usize>,
+    },
+    FaceDownPlayFrom {
+        source: u64,
+        zone: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        face_down_kind: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        face_down_permission_source: Option<u64>,
     },
 }
 
@@ -5477,6 +5488,8 @@ impl PregameState {
 }
 
 mod wasm_game_impl;
+mod static_top_visibility;
+use static_top_visibility::StaticLibraryTopVisibilityWindow;
 use wasm_game_impl::*;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

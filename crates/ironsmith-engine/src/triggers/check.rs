@@ -508,6 +508,13 @@ impl TriggerQueue {
         self.entries.push(entry);
     }
 
+    /// Publish a successful action's pre-cost queue without creating new
+    /// AbilityTriggered notifications for the same captured occurrences.
+    pub(crate) fn append_captured(&mut self, mut captured: Self) {
+        self.entries.append(&mut captured.entries);
+        self.ability_triggered_events.append(&mut captured.ability_triggered_events);
+    }
+
     /// Restore an already-announced trigger after an interactive choice paused stacking.
     pub(crate) fn requeue(&mut self, entry: TriggeredAbilityEntry) {
         self.entries.push(entry);
@@ -524,6 +531,13 @@ impl TriggerQueue {
     /// Returns true if the queue is empty.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// No queued ability programs or still-undelivered AbilityTriggered
+    /// notifications. Recovery boundaries must not use the entries-only
+    /// `is_empty` check after entries have been drained for ordering.
+    pub fn is_fully_empty(&self) -> bool {
+        self.entries.is_empty() && self.ability_triggered_events.is_empty()
     }
 
     /// Clear all entries from the queue.
@@ -2577,6 +2591,14 @@ fn skip_post_event_source_discovery(
     {
         return true;
     }
+    if trigger_event.downcast::<crate::events::DestroyEvent>()
+        .is_some_and(|event| event.complete_source_lookback)
+        && trigger_ability.trigger.looks_back_for_source(trigger_event)
+    { return true; }
+    if trigger_event.downcast::<crate::events::SpellCounteredEvent>()
+        .is_some_and(|event| event.complete_source_lookback)
+        && trigger_ability.trigger.looks_back_for_source(trigger_event)
+    { return true; }
     // A look-back matcher describes which abilities can function from an
     // object's LKI; it does not mean every still-present permanent with that
     // matcher must be skipped. Only suppress the current-state copy when this
@@ -3704,7 +3726,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                                     });
                                 }
                             }
-                            for (tag, snapshots) in tagged_objects_for_trigger_event(game, trigger_event) {
+                            for (tag, snapshots) in tagged_objects_for_matched_trigger(game, trigger_event, &delayed.trigger, &ctx) {
                                 tagged.entry(tag).or_default().extend(snapshots);
                             }
                             tagged
@@ -4138,6 +4160,14 @@ pub(crate) fn first_time_this_turn_event(
     {
         return true;
     }
+    // A completed checkpoint can retain this exact unqualified event fact
+    // without inventing a prior spell/ability or any historical characteristics.
+    // Filtered source/target triggers still require their full event history.
+    if trigger_ability.trigger.downcast_ref::<crate::triggers::BecomesTargetedTrigger>().is_some()
+        && trigger_event.downcast::<crate::events::BecomesTargetedEvent>()
+            .and_then(|event| event.target_object()) == Some(ctx.source_id)
+        && game.turn_store.turn_history.object_was_targeted_before_checkpoint(ctx.source_id)
+    { return false; }
     // Only events recorded before this one count; events of the same
     // simultaneous action recorded after it are not "earlier".
     let records = &game.turn_store.turn_history.event_records;

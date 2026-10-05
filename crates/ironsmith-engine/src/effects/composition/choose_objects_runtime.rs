@@ -128,6 +128,28 @@ fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
 
 fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
     match value {
+        crate::effect::Value::DamageHistory(query) => {
+            query
+                .object_filters()
+                .any(object_filter_mentions_iterated_player)
+                || query
+                    .player_filter()
+                    .is_some_and(PlayerFilter::mentions_iterated_player)
+                || query.reference_specs().any(|spec| match spec.base() {
+                    ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+                        object_filter_mentions_iterated_player(filter)
+                    }
+                    ChooseSpec::Player(player)
+                    | ChooseSpec::EachPlayer(player)
+                    | ChooseSpec::PlayerOrPlaneswalker(player) => player.mentions_iterated_player(),
+                    ChooseSpec::ObjectOrPlayer(filter, player) => {
+                        object_filter_mentions_iterated_player(filter)
+                            || player.mentions_iterated_player()
+                    }
+                    _ => false,
+                })
+        }
+
         crate::effect::Value::Add(left, right) => {
             value_mentions_iterated_player(left) || value_mentions_iterated_player(right)
         }

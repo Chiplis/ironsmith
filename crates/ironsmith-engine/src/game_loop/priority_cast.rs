@@ -674,7 +674,7 @@ pub(super) fn non_mana_costs_for_casting_method(
     casting_method: &CastingMethod,
 ) -> Vec<crate::costs::Cost> {
     match casting_method {
-        CastingMethod::FaceDown => Vec::new(),
+        CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => Vec::new(),
         CastingMethod::Alternative(idx) => spell
             .alternative_casts
             .get(*idx)
@@ -1580,7 +1580,7 @@ pub(crate) fn cast_spell_from_resolving_effect_with_context(
     let mut trigger_queue = TriggerQueue::new();
     state.save_checkpoint(game);
 
-    let stack_id = match propose_spell_cast(game, spell_id, from_zone, caster, casting_method) {
+    let stack_id = match super::priority_mana::propose_spell_cast_from_effect(game, spell_id, from_zone, caster, casting_method) {
         Ok(stack_id) => stack_id,
         Err(error) => {
             state.rollback_action(game);
@@ -3326,6 +3326,11 @@ pub(super) fn finalize_pending_spell_cast(
             .optional_costs_paid
             .mark_label_paid("CastDuringYourMainPhase");
     }
+    let captured_targeting = match pending.targeting_announcement.take() {
+        Some(queue) => queue,
+        None if pending.chosen_targets.is_empty() => TriggerQueue::new(),
+        None => return Err(GameLoopError::InvalidState("completed targeted cast has no announced targeting receipt".into())),
+    };
     let spell_cast_provenance =
         game.alloc_child_event_provenance(pending.provenance, crate::events::EventKind::SpellCast);
     let result = finalize_spell_cast(
@@ -3355,6 +3360,8 @@ pub(super) fn finalize_pending_spell_cast(
         spell_cast_provenance,
         &mut *decision_maker,
     )?;
+
+    trigger_queue.append_captured(captured_targeting);
 
     if effect_driven {
         // The resolving effect reports the SpellCast event through its own
@@ -3565,6 +3572,7 @@ pub(super) fn prompt_spell_assist_player(
     state: &mut PriorityLoopState,
     mut pending: PendingCast,
 ) -> Result<GameProgress, GameLoopError> {
+    let options = crate::decision::with_complete_legality_query(game, |game| {
     let caster_can_pay = spell_mana_payment_request(game, &pending)
         .is_ok_and(|request| crate::mana_payment::check_mana_payment(game, &request).is_ok());
     let mut options = vec![crate::decisions::context::SelectableOption::with_legality(
@@ -3593,6 +3601,12 @@ pub(super) fn prompt_spell_assist_player(
             can_complete,
         ));
     }
+
+        Ok(options)
+    }).map_err(|error| {
+        state.pending_cast = Some(pending.clone());
+        GameLoopError::ExecutionFailed(error)
+    })?;
 
     pending.stage = CastStage::ChoosingAssistPlayer;
     let caster = pending.caster;
@@ -3650,7 +3664,8 @@ pub(super) fn assist_generic_contribution_is_legal(
             assistant,
             pending.spell_id,
             crate::costs::PaymentReason::CastSpell,
-            crate::mana::ManaCost::new().add_generic(amount),
+            crate::mana::ManaCost::new().add_generic(amount)
+                .inherit_spending_restrictions(pending.mana_cost_to_pay.as_ref().expect("positive assist requires a total cost")),
         )
         .with_spend_policy(game.mana_spend_policy(assistant, Some(pending.spell_id)));
         if crate::mana_payment::check_mana_payment(game, &assistant_request).is_err() {
@@ -3672,7 +3687,10 @@ pub(super) fn prompt_spell_assist_payment_plan(
     let assistant = pending.assist_player.ok_or_else(|| {
         GameLoopError::InvalidState("Assist payment has no chosen player".to_string())
     })?;
-    let cost = crate::mana::ManaCost::new().add_generic(pending.assist_generic_contribution);
+    let total = pending.mana_cost_to_pay.as_ref().ok_or_else(||
+        GameLoopError::InvalidState("Assist payment has no total mana cost".into()))?;
+    let cost = crate::mana::ManaCost::new().add_generic(pending.assist_generic_contribution)
+        .inherit_spending_restrictions(total);
     let mut request = crate::mana_payment::ManaPaymentRequest::new(
         assistant,
         pending.spell_id,
@@ -3701,6 +3719,11 @@ pub(super) fn prompt_spell_assist_payment_plan(
         }
     });
     let plan = plan_result.map_err(|failure| {
+        if let crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) = failure {
+            state.pending_cast = Some(pending.clone());
+            return GameLoopError::ExecutionFailed(error);
+        }
+
         state.rollback_action(game);
         GameLoopError::ActionCancelled(format!(
             "the announced Assist contribution has no legal payment plan: {failure:?}"
@@ -3745,6 +3768,7 @@ pub(super) fn prompt_spell_assist_contribution(
         .as_ref()
         .map(|cost| assist_payable_generic_total(cost, pending.x_value.unwrap_or(0)))
         .unwrap_or(0);
+    let options = crate::decision::with_complete_legality_query(game, |game| {
     let options = (0..=maximum)
         .map(|amount| {
             crate::decisions::context::SelectableOption::with_legality(
@@ -3758,6 +3782,11 @@ pub(super) fn prompt_spell_assist_contribution(
             )
         })
         .collect::<Vec<_>>();
+        Ok(options)
+    }).map_err(|error| {
+        state.pending_cast = Some(pending.clone());
+        GameLoopError::ExecutionFailed(error)
+    })?;
     pending.stage = CastStage::ChoosingAssistContribution;
     let source = pending.spell_id;
     let subject = game
@@ -3799,7 +3828,7 @@ pub(super) fn spell_mana_payment_request(
             payment_pips.remove(index);
         }
     }
-    let locked_cost = crate::mana::ManaCost::from_pips(payment_pips);
+    let locked_cost = cost.with_pips(payment_pips);
     let mut spend_policy = game.mana_spend_policy(pending.caster, Some(pending.spell_id));
     spend_policy.allow_mode(pending.effect_mana_spend_mode);
     let mut request = crate::mana_payment::ManaPaymentRequest::new(
@@ -3892,6 +3921,11 @@ pub(super) fn prompt_spell_mana_ability_window(
         }
     });
     let plan = plan_result.map_err(|failure| {
+        if let crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) = failure {
+            state.pending_cast = Some(pending.clone());
+            return GameLoopError::ExecutionFailed(error);
+        }
+
         state.rollback_action(game);
         GameLoopError::ActionCancelled(format!(
             "no legal mana payment plan for the spell: {failure:?}"
@@ -3988,7 +4022,7 @@ pub(super) fn activation_mana_payment_request(
     let cost = pending.mana_cost_to_pay.as_ref().ok_or_else(|| {
         GameLoopError::InvalidState("activation payment prompt has no mana cost".to_string())
     })?;
-    let locked_cost = crate::mana::ManaCost::from_pips(expand_mana_cost_to_pips(
+    let locked_cost = cost.with_pips(expand_mana_cost_to_pips(
         cost,
         pending.x_value.unwrap_or(0),
         &pending.hybrid_choices,
@@ -4286,7 +4320,7 @@ fn mana_cost_with_paid_optional_costs(
     spell: &crate::object::Object,
     optional_costs_paid: &OptionalCostsPaid,
 ) -> crate::mana::ManaCost {
-    let mut pips = base_cost.pips().to_vec();
+    let mut result = base_cost.clone();
     for (index, optional_cost) in spell.optional_costs.iter().enumerate() {
         let times = optional_costs_paid.times_paid(index);
         let Some(mana_cost) = crate::cost::optional_cost_payment_branch(
@@ -4297,10 +4331,10 @@ fn mana_cost_with_paid_optional_costs(
             continue;
         };
         for _ in 0..times {
-            pips.extend(mana_cost.pips().iter().cloned());
+            result = crate::decision::add_mana_cost(&result, mana_cost);
         }
     }
-    crate::mana::ManaCost::from_pips(pips)
+    result
 }
 
 fn mana_cost_with_paid_optional_and_splice_costs(
@@ -4311,10 +4345,10 @@ fn mana_cost_with_paid_optional_and_splice_costs(
     chosen_modes: Option<&[usize]>,
 ) -> crate::mana::ManaCost {
     let combined = mana_cost_with_paid_optional_costs(base_cost, spell, optional_costs_paid);
-    let mut pips = combined.pips().to_vec();
+    let mut result = combined;
     for splice_cost in splice_costs {
         if let Some(mana_cost) = splice_cost.mana_cost() {
-            pips.extend(mana_cost.pips().iter().cloned());
+            result = crate::decision::add_mana_cost(&result, mana_cost);
         }
     }
     if let Some(chosen_modes) = chosen_modes
@@ -4331,11 +4365,11 @@ fn mana_cost_with_paid_optional_and_splice_costs(
     {
         for mode in chosen_modes {
             if let Some(cost) = spree.mode_additional_mana_costs.get(*mode) {
-                pips.extend(cost.pips().iter().cloned());
+                result = crate::decision::add_mana_cost(&result, cost);
             }
         }
     }
-    crate::mana::ManaCost::from_pips(pips)
+    result
 }
 
 fn spell_escalate_cost(spell: &crate::object::Object) -> Option<&crate::cost::TotalCost> {
@@ -4359,11 +4393,11 @@ fn mana_cost_with_escalate(
         return base_cost.clone();
     };
 
-    let mut pips = base_cost.pips().to_vec();
+    let mut result = base_cost.clone();
     for _ in 0..times {
-        pips.extend(escalate_mana.pips().iter().cloned());
+        result = crate::decision::add_mana_cost(&result, escalate_mana);
     }
-    crate::mana::ManaCost::from_pips(pips)
+    result
 }
 
 fn mana_cost_with_effect_additional_cost(
@@ -4373,9 +4407,9 @@ fn mana_cost_with_effect_additional_cost(
     let Some(additional_cost) = additional_cost else {
         return base_cost.clone();
     };
-    let mut pips = base_cost.pips().to_vec();
-    pips.extend(additional_cost.pips().iter().cloned());
-    crate::mana::ManaCost::from_pips(pips)
+    let mut result = base_cost.clone();
+    result = crate::decision::add_mana_cost(&result, additional_cost);
+    result
 }
 
 /// Replace each announced hybrid/Phyrexian pip with the single symbol its
@@ -4399,7 +4433,7 @@ fn mana_cost_with_announced_hybrid_choices(
                 .map_or_else(|| pip.clone(), |(_, symbol)| vec![*symbol])
         })
         .collect::<Vec<_>>();
-    crate::mana::ManaCost::from_pips(pips)
+    cost.with_pips(pips)
 }
 
 fn announced_spell_mana_cost(
@@ -4471,6 +4505,20 @@ pub(super) fn continue_to_mana_payment(
         return Err(GameLoopError::ActionCancelled(
             "completed spell proposal is illegal under CR 601.2e".to_string(),
         ));
+    }
+
+    if pending.targeting_announcement.is_none() {
+        let mut entry = StackEntry::new(pending.stack_id, pending.caster)
+            .with_provenance(pending.provenance)
+            .with_targets(pending.chosen_targets.clone())
+            .with_target_assignments(pending.chosen_target_assignments.clone())
+            .with_target_distributions(pending.target_distributions.clone())
+            .with_casting_method(pending.casting_method.clone())
+            .with_optional_costs_paid(pending.optional_costs_paid.clone())
+            .with_chosen_modes(pending.chosen_modes.clone())
+            .with_tagged_objects(pending.tagged_objects.clone());
+        if let Some(x) = pending.x_value { entry = entry.with_x(x); }
+        pending.targeting_announcement = Some(capture_announced_targeting(game, entry)?);
     }
 
     // Compute the effective mana cost for this spell
@@ -5340,7 +5388,7 @@ pub(super) fn collect_spell_cost_steps(
                 .and_then(|method| method.total_cost())
                 .cloned()
                 .unwrap_or_else(crate::cost::TotalCost::free),
-            CastingMethod::FaceDown => crate::cost::TotalCost::free(),
+            CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => crate::cost::TotalCost::free(),
             CastingMethod::SplitOtherHalf | CastingMethod::Fuse => crate::cost::TotalCost::free(),
             CastingMethod::Alternative(idx) => obj
                 .alternative_casts
@@ -5353,14 +5401,15 @@ pub(super) fn collect_spell_cost_steps(
             CastingMethod::PlayFrom {
                 use_alternative: None,
                 ..
-            } => crate::cost::TotalCost::free(),
+            }
+            | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => crate::cost::TotalCost::free(),
             CastingMethod::PlayFrom {
                 use_alternative: Some(idx),
                 zone,
                 ..
             }
             | CastingMethod::SplitOtherHalfPlayFrom {
-                use_alternative: idx,
+                use_alternative: Some(idx),
                 zone,
                 ..
             } => crate::decision::resolve_play_from_alternative_method(
@@ -5394,7 +5443,7 @@ pub(super) fn collect_spell_cost_steps(
                 ..
             }
             | CastingMethod::SplitOtherHalfPlayFrom {
-                use_alternative: idx,
+                use_alternative: Some(idx),
                 zone,
                 ..
             } => crate::decision::resolve_play_from_alternative_method(
@@ -5404,13 +5453,15 @@ pub(super) fn collect_spell_cost_steps(
             .and_then(|method| method.additional_cost().cloned())
             .unwrap_or_else(crate::cost::TotalCost::free),
             CastingMethod::FaceDown
+            | CastingMethod::FaceDownPlayFrom { .. }
             | CastingMethod::SplitOtherHalf
             | CastingMethod::Fuse
             | CastingMethod::GrantedFlashback
             | CastingMethod::PlayFrom {
                 use_alternative: None,
                 ..
-            } => crate::cost::TotalCost::free(),
+            }
+            | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => crate::cost::TotalCost::free(),
         };
 
         extend_non_mana(&mut cost_steps, &alternative_additional_cost);
@@ -6458,6 +6509,25 @@ pub(super) fn continue_activation(
             crate::cost::prospective_references::refresh_source_exiled_reference(game, pending.source, &mut pending.tagged_objects);
         }
 
+        if pending.targeting_announcement.is_none() && matches!(pending.stage,
+            ActivationStage::ChoosingNextCost | ActivationStage::ProcessingCosts
+                | ActivationStage::PayingMana | ActivationStage::ReadyToFinalize)
+        {
+            let ability_id = *pending.announced_stack_ability.get_or_insert_with(|| game.allocate_stack_ability_id());
+            let mut entry = StackEntry::ability(pending.source, pending.activator, pending.effects.clone())
+                .with_ability_index(pending.ability_index)
+                .with_provenance(pending.provenance)
+                .with_source_snapshot(pending.source_snapshot.clone())
+                .with_chosen_modes(pending.chosen_modes.clone())
+                .with_targets(pending.chosen_targets.clone())
+                .with_target_assignments(pending.chosen_target_assignments.clone())
+                .with_target_distributions(pending.target_distributions.clone())
+                .with_tagged_objects(pending.tagged_objects.clone());
+            entry.ability_id = Some(ability_id);
+            if let Some(x) = pending.x_value { entry = entry.with_x(x as u32); }
+            pending.targeting_announcement = Some(capture_announced_targeting(game, entry)?);
+        }
+
         match pending.stage {
             ActivationStage::ChoosingCostReferences => {
                 if let Some(choice) = pending.cost_reference_choices.first() {
@@ -6988,16 +7058,13 @@ pub(super) fn continue_activation(
                     entry = entry.with_x(x as u32);
                 }
 
+                entry.ability_id = pending.announced_stack_ability;
                 game.push_to_stack(entry);
-                queue_becomes_targeted_events(
-                    game,
-                    trigger_queue,
-                    &pending.chosen_targets,
-                    pending.source,
-                    pending.activator,
-                    true,
-                    pending.provenance,
-                );
+                game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(pending.provenance));
+                trigger_queue.append_captured(pending.targeting_announcement.take().ok_or_else(||
+                    GameLoopError::InvalidState("completed activation has no announced targeting receipt".into()))?);
+                queue_targeting_crime(game, trigger_queue, &pending.chosen_targets,
+                    pending.source, pending.activator, pending.provenance);
                 queue_ability_activated_event(
                     game,
                     trigger_queue,

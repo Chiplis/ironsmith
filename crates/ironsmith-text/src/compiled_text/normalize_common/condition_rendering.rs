@@ -3451,6 +3451,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::DoThisMaxTimesEachTurn(limit) => {
             format!("this effect has been used fewer than {limit} times this turn")
         }
+        Condition::TriggeringEventCausedBy { controller, effect_like_only } => format!(
+            "the triggering action was caused by {} controlled by {}",
+            if *effect_like_only { "a spell or ability" } else { "a source" },
+            describe_player_filter(controller),
+        ),
         Condition::TriggeringObjectWasEnchanted => "the triggering object was enchanted".to_string(),
         Condition::TriggeringObjectBecameTappedFirstTimeThisTurn => {
             "it's the first time that object has become tapped this turn".to_string()

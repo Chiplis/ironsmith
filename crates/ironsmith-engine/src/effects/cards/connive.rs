@@ -339,7 +339,7 @@ impl EffectExecutor for ConniveEffect {
                                 if event.player != controller || event.card != card_to_discard || event.cause != cause {
                                     return Err(ExecutionError::InternalError("connive discard changed an unsupported batch identity".into()));
                                 }
-                                successful_discards.push((event.card, snapshot, discard_result.final_zone));
+                                successful_discards.push((event.card, snapshot, discard_result.final_zone, discard_result.new_id));
                             }
                             receipts.push(receipt);
                         }

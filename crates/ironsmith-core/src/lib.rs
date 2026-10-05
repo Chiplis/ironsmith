@@ -155,7 +155,7 @@ pub use effect::{
     RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
     RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect,
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
-    RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
+    BecomeBlockedEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReorderTopPlanarDeckEffect,
     RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect, RepeatProcessPromptKind,
     ReplaceNextDamageToTargetEffect, ReplacementApplyMode, ResolvesDespiteIllegalTargetsEffect,
@@ -238,7 +238,7 @@ pub use static_ability_model::{
 pub use tag::{
     ATTACKING_GROUP_TAG, CAST_CONTROLLED_OBJECTS_TAG, CLASH_OPPONENT_TAG, CAST_MODIFIED_CREATURES_TAG,
     CHOSEN_OBJECTS_TAG, COMBAT_DAMAGE_GROUP_TAG, EXPLOITED_TAG, EXPLOITER_TAG,
-    INITIATIVE_HOLDER_TAG, LINKED_TRIGGER_PLAYER_TAG, TRIGGERING_EVENT_CONTROLLER_TAG, MANA_PAID_OBJECT_TAG, MANA_SOURCES_SPENT_TO_CAST_TAG, TAXED_ATTACKER_TAG, BLOCK_PAIR_SUBJECT_TAG,
+    INITIATIVE_HOLDER_TAG, LINKED_TRIGGER_PLAYER_TAG, TRIGGERING_EVENT_CONTROLLER_TAG, TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG, MANA_PAID_OBJECT_TAG, MANA_SOURCES_SPENT_TO_CAST_TAG, TAXED_ATTACKER_TAG, BLOCK_PAIR_SUBJECT_TAG,
     MANIFEST_DREAD_GRAVEYARD_TAG, PREVIOUS_ITERATED_OBJECTS_TAG, PRIOR_EXILED_CARD_TAG,
     REVEALED_THIS_WAY_TAG, SOURCE_EXILED_TAG, SOURCE_EXILED_THIS_RESOLUTION_TAG, SOURCE_OBJECT_TAG, GRANTING_SOURCE_TAG, SPELLS_CAST_THIS_TURN_TAG, TagKey, ZONE_CHANGE_GROUP_TAG, TAP_STATE_GROUP_TAG,
 };
@@ -265,3 +265,8 @@ pub use filter_model::describe_filter_static_ability;
 
 pub use effect::RegisterDamageMultiplierEffect;
 pub use effect::DealDamageToRecipientsEffect;
+
+mod damage_history_model;
+pub use damage_history_model::{
+    DamageHistoryQuery, DamageHistoryRecipients, DamageHistoryReduction, DamageHistorySources,
+};

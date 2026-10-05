@@ -256,6 +256,11 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::YouDrawCard => Ok(ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(
             PlayerFilter::You,
         )),
+        TriggerSpec::PlayerDiscardsCard { player, filter, cause_controller, effect_like_only, one_or_more } =>
+            Ok(ironsmith_core::DelayedTriggerSpec::PlayerDiscardsCard {
+                player: player.clone(), filter: filter.clone(), cause_controller: cause_controller.clone(),
+                effect_like_only: *effect_like_only, one_or_more: *one_or_more,
+            }),
         TriggerSpec::PlayerDrawsCard(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(player.clone()),
         ),

@@ -76,6 +76,11 @@ impl ExecutionError {
     pub fn is_resource_exhaustion(&self) -> bool {
         matches!(self, Self::ResourceLimitExceeded { .. } | Self::ResourceAllocationFailed { .. })
     }
+    /// An incomplete engine calculation must survive boolean affordability
+    /// adapters; it is not proof that the Magic payment is impossible.
+    pub fn is_incomplete_execution(&self) -> bool {
+        self.is_resource_exhaustion() || matches!(self, Self::ContinuousDiscovery(_))
+    }
 }
 
 impl std::fmt::Display for ExecutionError {
@@ -1235,6 +1240,9 @@ impl<'a> ExecutionContext<'a> {
 
         for (tag, players) in event.player_tags() {
             self.set_tagged_players(tag.clone(), players.clone());
+        }
+        if let Some(controller) = event.cause().and_then(|cause| cause.source_controller) {
+            self.set_tagged_players(ironsmith_core::TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG, vec![controller]);
         }
         if let Some(controller) = event.controller() {
             self.set_tagged_players(

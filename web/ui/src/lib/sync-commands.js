@@ -31,7 +31,7 @@ export function findPriorityActionForCommand(decision, command) {
     const method = ref?.casting_method || null;
     if (
       String(ref?.kind || "") === "cast_spell"
-      && String(method?.kind || "") === "face_down"
+      && ["face_down", "face_down_play_from"].includes(String(method?.kind || ""))
       && method?.face_down_kind
     ) {
       return {

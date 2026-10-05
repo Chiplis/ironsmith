@@ -596,3 +596,7 @@ pub fn parse_power_toughness_value_pair_words(words: &[&str]) -> Option<(Value, 
 #[path = "value_expr/life_totals.rs"]
 mod life_totals;
 pub use life_totals::parse_life_total_quantity_words;
+
+#[path = "value_expr/damage_history_quantities.rs"]
+pub(crate) mod damage_history_quantities;
+mod extrema_quantities;

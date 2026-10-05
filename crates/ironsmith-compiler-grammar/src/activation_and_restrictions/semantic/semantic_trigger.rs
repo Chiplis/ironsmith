@@ -19,6 +19,8 @@ mod life_change_triggers;
 mod qualified_player_events;
 #[path = "control_transitions.rs"]
 mod control_transitions;
+#[path = "causal_events.rs"]
+mod causal_events;
 
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
@@ -682,6 +684,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             "empty trigger clause".to_string(),
         ));
     }
+
+    if let Some(trigger) = causal_events::parse(tokens)? { return Ok(trigger); }
 
     if let Some(player) = parse_unpaid_cumulative_upkeep_player(&words) {
         return Ok(TriggerSpec::KeywordActionFromSource {
@@ -3519,7 +3523,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             }
             if trigger_pattern_accepts(tail_words, ONLY_IT_ABILITY_TARGET_TAIL_PATTERN) {
                 let mut ability_filter = ObjectFilter::ability();
-                ability_filter.target_count = Some(crate::effect::ChoiceCount::exactly(1));
+                // CR 115.9c: "targets only it" permits selecting that same
+                // object for multiple target words. A literal target-count
+                // constraint instead counts each chosen instance (115.9a).
                 ability_filter.targets_only_object = Some(Box::new(ObjectFilter::source()));
                 return Ok(TriggerSpec::ThisBecomesTargetedByStackObject(
                     ability_filter,

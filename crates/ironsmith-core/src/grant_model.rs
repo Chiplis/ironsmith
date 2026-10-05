@@ -450,6 +450,15 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub cast_this_way_filter: Option<ObjectFilter>,
     /// Presentation metadata for a persistent source-linked exile grant.
     pub source_exiled_surface: Option<SourceExiledGrantSurface>,
+    /// Only the current top card of the beneficiary's library is permitted.
+    /// This is authoritative action scope, not just an enumeration shortcut.
+    pub top_card_only: bool,
+    /// This exact play-from permission supplies instant-speed timing.
+    pub instant_timing: bool,
+    /// Complete surface retained only by the strict filtered-zone production.
+    /// Execution uses the typed filter, origin, timing and use-limit fields.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub filtered_zone_surface: Option<String>,
 }
 
 /// A filter naming exactly the cards exiled with the granting source (any
@@ -481,6 +490,9 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             source_exiled_surface: None,
+            top_card_only: false,
+            instant_timing: false,
+            filtered_zone_surface: None,
         }
     }
 
@@ -511,8 +523,14 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
                 .collect::<Result<Vec<_>, _>>()?,
             cast_this_way_filter: self.cast_this_way_filter,
             source_exiled_surface: self.source_exiled_surface,
+            top_card_only: self.top_card_only,
+            instant_timing: self.instant_timing,
+            filtered_zone_surface: self.filtered_zone_surface,
         })
     }
+
+    pub fn with_top_card_only(mut self) -> Self { self.top_card_only = true; self }
+    pub fn with_instant_timing(mut self) -> Self { self.instant_timing = true; self }
 
     /// Return a copy of this grant specification with an explicit beneficiary.
     pub fn with_beneficiary(mut self, beneficiary: PlayerFilter) -> Self {
@@ -585,6 +603,9 @@ where
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             source_exiled_surface: None,
+            top_card_only: false,
+            instant_timing: false,
+            filtered_zone_surface: None,
         }
     }
 
@@ -646,6 +667,9 @@ where
             cast_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             source_exiled_surface: None,
+            top_card_only: false,
+            instant_timing: false,
+            filtered_zone_surface: None,
         }
     }
 }
@@ -659,6 +683,14 @@ where
 {
     /// Get a display string for this grant specification.
     pub fn display(&self) -> String {
+        if let Some(surface) = &self.filtered_zone_surface { return surface.clone(); }
+        let text = self.display_base();
+        if self.instant_timing {
+            format!("{text}. If you cast a spell this way, you may cast it as though it had flash")
+        } else { text }
+    }
+
+    fn display_base(&self) -> String {
         fn zone_name(zone: Zone) -> &'static str {
             match zone {
                 Zone::Battlefield => "battlefield",

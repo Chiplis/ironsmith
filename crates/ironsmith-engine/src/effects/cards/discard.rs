@@ -642,7 +642,7 @@ impl DiscardEffect {
                 if let Some(memory) = pre_memory {
                     affected_memory.push(memory);
                 }
-                successful_discards.push((card_id, pre_discard_snapshot, result.final_zone));
+                successful_discards.push((card_id, pre_discard_snapshot, result.final_zone, result.new_id));
                 let snapshot_id = result.new_id.unwrap_or(card_id);
                 if let Some(obj) = game.object(snapshot_id) {
                     discarded_snapshots.push(ObjectSnapshot::from_object(obj, game));
@@ -1514,18 +1514,20 @@ pub(crate) fn completed_discard_events(
     player_id: crate::ids::PlayerId,
     cause: crate::events::cause::EventCause,
     provenance: crate::provenance::ProvNodeId,
-    successful_discards: Vec<(crate::ids::ObjectId, Option<ObjectSnapshot>, Zone)>,
+    successful_discards: Vec<(crate::ids::ObjectId, Option<ObjectSnapshot>, Zone, Option<crate::ids::ObjectId>)>,
 ) -> Vec<crate::triggers::TriggerEvent> {
     let batch_cards: Vec<_> = successful_discards
         .iter()
-        .map(|(card_id, _, _)| *card_id)
+        .map(|(card_id, _, _, _)| *card_id)
         .collect();
     let batch_snapshots: Vec<_> = successful_discards
         .iter()
-        .filter_map(|(_, snapshot, _)| snapshot.clone())
+        .filter_map(|(_, snapshot, _, _)| snapshot.clone())
         .collect();
+    let destinations = successful_discards.iter().map(|(card, _, zone, object)|
+        crate::events::other::DiscardedCardDestination { card: *card, object: *object, zone: *zone }).collect::<Vec<_>>();
     let mut discard_events = Vec::new();
-    for (batch_index, (card_id, pre_discard_snapshot, final_zone)) in
+    for (batch_index, (card_id, pre_discard_snapshot, final_zone, _)) in
         successful_discards.into_iter().enumerate()
     {
         // Each observation needs its own identity: turn history stages
@@ -1538,7 +1540,8 @@ pub(crate) fn completed_discard_events(
             discard_provenance,
         ));
         let mut event = CardDiscardedEvent::with_cause(player_id, card_id, cause.clone())
-            .with_batch(batch_cards.clone(), batch_snapshots.clone(), batch_index);
+            .with_batch(batch_cards.clone(), batch_snapshots.clone(), batch_index)
+            .with_destinations(destinations.clone());
         if let Some(snapshot) = pre_discard_snapshot {
             event = event.with_snapshot(snapshot);
         }

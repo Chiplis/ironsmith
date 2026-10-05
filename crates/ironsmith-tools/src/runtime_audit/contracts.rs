@@ -327,7 +327,8 @@ impl Auditor {
             | "TriggeringSpellSnowManaOfAnySpellColorSpentToCast"
             | "TriggeringSpellWasKicked"
             | "AnotherOpponentControlsPotentialTarget" => scope.cast_event,
-            "TriggeringObjectWasEnchanted"
+            "TriggeringEventCausedBy"
+            | "TriggeringObjectWasEnchanted"
             | "TriggeringObjectHadCounters"
             | "EvolveEnteringCreatureIsLarger"
             | "TriggeringObjectBecameTappedFirstTimeThisTurn"
@@ -1051,6 +1052,11 @@ impl Auditor {
                     scope.cast_event = Binding::Present;
                 }
             }
+            "PermanentDestroyed" => {
+                // Successful native matching requires a retained destroyed
+                // permanent snapshot and a completed nonbattlefield result.
+                scope.event_object = Binding::Present;
+            }
             "PlayerDiscardsCard"
             | "PlayerDiscardsCardCausedByController"
             | "YouDrawCard"
@@ -1169,7 +1175,6 @@ impl Auditor {
             | "BecomesTargetedObjectByStackObject"
             | "BecomesTargetedBySourceController"
             | "PlayerOrObjectBecomesTargetedBySourceController"
-            | "PermanentDestroyed"
             | "SourceControllerLosesControl"
             | "Custom" => {
                 known = false;

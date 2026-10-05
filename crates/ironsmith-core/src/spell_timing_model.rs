@@ -15,4 +15,8 @@ pub enum ThisSpellCastTiming {
     DuringOpponentsTurnAfterUpkeep,
     DuringYourEndStep,
     AfterCombat,
+    DuringDeclareBlockersStep,
+    DuringCombatOnYourTurn,
+    DuringYourTurn,
+    DuringOpponentsTurn,
 }

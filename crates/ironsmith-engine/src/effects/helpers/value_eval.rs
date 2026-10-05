@@ -2,9 +2,11 @@
 use super::*;
 use crate::continuous::value_context::LayerValueContext;
 mod context;
+mod damage_history;
 pub(crate) use context::EvaluationContext;
 pub(crate) use context::NumericProperty;
 use context::Reduction;
+pub(crate) use damage_history::resolve_damage_history_for_comparison;
 
 pub(crate) fn resolve_continuous(value: &Value, layer: LayerValueContext<'_, '_>) -> i32 {
     let context = EvaluationContext::continuous(layer);
@@ -81,6 +83,7 @@ pub(crate) fn resolve(
     match value {
         Value::SurfaceHinted { value, .. } => resolve(value, context),
         Value::Fixed(n) => Ok(*n),
+        Value::DamageHistory(query) => damage_history::resolve_damage_history(query, context),
         // `max(a,b)` is canonically encoded as a+b-min(a,b). Recognize
         // that exact algebra before evaluating its potentially overflowing
         // intermediate sum. This does not grant semantics to surface hints.
@@ -88,7 +91,11 @@ pub(crate) fn resolve(
             let (left, right) = canonical_maximum_operands(sum, subtract).expect("guarded maximum");
             Ok(resolve(left, context)?.max(resolve(right, context)?))
         }
-        Value::Add(left, right) => Ok(resolve(left, context)? + resolve(right, context)?),
+        Value::Add(left, right) => resolve(left, context)?
+            .checked_add(resolve(right, context)?)
+            .ok_or_else(|| ExecutionError::UnresolvableValue(
+                "addition is outside the supported integer range".into(),
+            )),
         Value::X => context.x(),
         Value::XTimes(multiplier) => Ok(context.x()? * *multiplier),
         Value::Scaled(inner, -1) if canonical_absolute_difference_operands(inner).is_some() => {

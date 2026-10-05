@@ -139,7 +139,7 @@ fn activation_index(definition: &CardDefinition) -> usize {
         .unwrap()
 }
 #[test]
-fn four_complete_proposals_and_four_partials_retain_exact_oracle_and_artifact_round_trip() {
+fn eight_complete_proposals_retain_exact_oracle_and_artifact_round_trip() {
     assert_eq!(fixtures().len(), 8);
     for row in fixtures()
         .into_iter()
@@ -539,7 +539,7 @@ fn four_heroic_aliases_trigger_on_own_cast_and_keep_each_complete_body() {
     }
 }
 
-// Known gap, deliberately unignored: a granted target trigger exists when the
+// Source-closed, unrun regression: a granted target trigger exists when the
 // target is announced, before sacrificing its grantor to pay the spell's cost.
 #[test]
 fn kira_grant_survives_sacrificing_kira_to_pay_for_the_already_targeted_spell() {
@@ -584,7 +584,7 @@ fn kira_grant_survives_sacrificing_kira_to_pay_for_the_already_targeted_spell() 
 }
 
 #[test]
-fn skophos_full_oracle_keeps_source_qualification_while_pre_cost_capture_remains_partial() {
+fn skophos_full_oracle_keeps_source_qualification_and_complete_body() {
     for definition in definitions("Skophos Maze-Warden") {
         assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
     }
@@ -680,5 +680,92 @@ fn skophos_real_land_activation_fights_the_targeted_creature_and_keeps_paid_pump
         game.refresh_continuous_state().unwrap();
         assert_eq!(game.calculated_power(source), Some(3));
         assert_eq!(game.calculated_toughness(source), Some(4));
+    }
+}
+
+#[test]
+fn kira_uses_first_event_history_even_before_the_grant_and_resets_on_the_next_turn() {
+    for definition in definitions("Kira, Great Glass-Spinner") {
+        for first_before_grant in [false, true] {
+            let mut game = game();
+            let target = object(
+                &mut game,
+                A,
+                Zone::Battlefield,
+                "Target creature",
+                "Type: Creature\nPower/Toughness: 2/2",
+            );
+            let mut dm = Choices {
+                targets: vec![Target::Object(target)],
+                yes: true,
+            };
+            if !first_before_grant {
+                game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            }
+            for cast_index in 0..2 {
+                let spell = object(
+                    &mut game,
+                    A,
+                    Zone::Hand,
+                    "Two target slots",
+                    "Mana cost: {0}\nType: Instant\nTarget creature gets +0/+1 until end of turn. Target creature gets +0/+1 until end of turn.",
+                );
+                let spell = cast(&mut game, A, spell, &mut dm);
+                let should_trigger = !first_before_grant && cast_index == 0;
+                assert_eq!(game.stack.len(), if should_trigger { 2 } else { 1 });
+                resolve(&mut game, &mut dm);
+                if should_trigger {
+                    assert!(!game.stack.iter().any(|entry| entry.object_id == spell));
+                }
+                if first_before_grant && cast_index == 0 {
+                    game.create_object_from_definition(&definition, A, Zone::Battlefield);
+                }
+            }
+            game.next_turn();
+            game.turn.phase = ironsmith::Phase::FirstMain;
+            game.turn.step = None;
+            let spell = object(
+                &mut game,
+                A,
+                Zone::Hand,
+                "New turn target",
+                "Mana cost: {0}\nType: Instant\nTarget creature gets +0/+1 until end of turn.",
+            );
+            cast(&mut game, A, spell, &mut dm);
+            assert_eq!(
+                game.stack.len(),
+                2,
+                "first event resets with the actual turn"
+            );
+        }
+    }
+}
+
+#[test]
+fn dormant_target_trigger_is_captured_before_its_source_is_sacrificed_for_the_spell() {
+    for definition in definitions("Dormant Gomazoa") {
+        let mut game = game();
+        let dormant = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let spell = object(
+            &mut game,
+            A,
+            Zone::Hand,
+            "Target then sacrifice",
+            "Mana cost: {0}\nType: Instant\nAs an additional cost to cast this spell, sacrifice a creature.\nTarget player gains 1 life.",
+        );
+        let mut dm = Choices {
+            targets: vec![Target::Player(A)],
+            yes: true,
+        };
+        cast(&mut game, A, spell, &mut dm);
+        assert!(game.object(dormant).is_none());
+        assert_eq!(
+            game.stack.len(),
+            2,
+            "the targeting event preceded the sacrifice cost"
+        );
+        resolve(&mut game, &mut dm);
+        resolve(&mut game, &mut dm);
+        assert_eq!(game.player(A).unwrap().life, 21);
     }
 }

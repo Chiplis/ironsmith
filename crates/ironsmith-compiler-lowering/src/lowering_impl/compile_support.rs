@@ -950,6 +950,18 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
     player_filter: &PlayerFilter,
 ) {
     match value {
+        Value::DamageHistory(query) => {
+            for spec in query.reference_specs_mut() {
+                bind_relative_iterated_player_in_choose_spec_to_player_filter(spec, player_filter);
+            }
+            for filter in query.object_filters_mut() {
+                bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+            }
+            if let Some(player) = query.player_filter_mut() {
+                bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
+            }
+        }
+
         Value::SurfaceHinted { value, .. } => {
             bind_relative_iterated_player_in_value_to_player_filter(value, player_filter);
         }

@@ -247,7 +247,8 @@ fn stack_spell_cast_origin_zone(
         crate::alternative_cast::CastingMethod::GrantedEscape { .. }
         | crate::alternative_cast::CastingMethod::GrantedFlashback => Zone::Graveyard,
         crate::alternative_cast::CastingMethod::PlayFrom { zone, .. }
-        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => *zone,
+        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. }
+        | crate::alternative_cast::CastingMethod::FaceDownPlayFrom { zone, .. } => *zone,
     })
 }
 

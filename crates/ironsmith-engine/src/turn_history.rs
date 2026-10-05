@@ -142,6 +142,9 @@ pub struct TurnHistory {
     pub spell_warped_this_turn: bool,
     /// Spells each player has cast this game (never cleared between turns).
     pub spells_cast_this_game: HashMap<PlayerId, u32>,
+    /// Completed unqualified target history restored without fabricating old
+    /// event records. Exact incarnations remain distinct after a zone change.
+    checkpoint_targeted_objects: HashSet<ObjectId>,
     pub event_records: TurnEventRecords,
     pub staged_event_records: TurnEventRecords,
     /// Index into `event_records` where the simultaneous action whose events
@@ -185,6 +188,7 @@ impl TurnHistory {
         self.crew_abilities_resolved_this_turn.clear();
         self.saddled_this_turn.clear();
         self.spell_warped_this_turn = false;
+        self.checkpoint_targeted_objects.clear();
         self.event_records.clear();
         self.staged_event_records.clear();
         self.simultaneous_batch_start = None;
@@ -201,6 +205,26 @@ impl TurnHistory {
 
     pub(crate) fn end_simultaneous_batch(&mut self, previous: Option<usize>) {
         self.simultaneous_batch_start = previous;
+    }
+
+    /// Plain completed first-target facts. Provisional copy targets are not
+    /// included: publication must finish before a continuation-free checkpoint.
+    pub fn targeted_object_history_for_checkpoint(&self) -> Vec<ObjectId> {
+        let mut ids = self.checkpoint_targeted_objects.clone();
+        ids.extend(self.event_records.iter().filter_map(|record|
+            record.event.downcast::<crate::events::BecomesTargetedEvent>()
+                .and_then(|targeted| targeted.target_object())));
+        let mut ids: Vec<_> = ids.into_iter().collect(); ids.sort(); ids
+    }
+
+    pub fn restore_targeted_object_history(&mut self, ids: Vec<ObjectId>) -> Result<(), String> {
+        let unique: HashSet<_> = ids.iter().copied().collect();
+        if unique.len() != ids.len() { return Err("duplicate exact object in completed target history".into()); }
+        self.checkpoint_targeted_objects = unique; Ok(())
+    }
+
+    pub(crate) fn object_was_targeted_before_checkpoint(&self, id: ObjectId) -> bool {
+        self.checkpoint_targeted_objects.contains(&id)
     }
 
     pub(crate) fn projected_records(&self) -> impl DoubleEndedIterator<Item = &TurnEventRecord> {
@@ -1902,32 +1926,15 @@ pub(crate) fn resolve_turn_history_count(
             .map(|event| event.amount)
             .sum::<u32>() as i32,
         TurnHistoryCount::DamageDealtToSource => {
-            let source_object = filter_ctx.source;
-            let source_stable_id = source_object
-                .and_then(|source| game.object(source).map(|object| object.stable_id))
-                .or_else(|| {
-                    filter_ctx
-                        .source_snapshot
-                        .as_ref()
-                        .map(|snapshot| snapshot.stable_id)
-                });
-
-            history
-                .projected_records()
+            let source_object = filter_ctx.source.or_else(|| {
+                filter_ctx
+                    .source_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.object_id)
+            });
+            history.projected_records()
                 .filter_map(|record| record.event.downcast::<DamageEvent>())
-                .filter(|event| event.amount > 0)
-                .filter(|event| match event.target {
-                    DamageTarget::Object(target) => {
-                        source_object == Some(target)
-                            || source_stable_id.is_some_and(|stable_id| {
-                                event
-                                    .target_snapshot
-                                    .as_ref()
-                                    .is_some_and(|snapshot| snapshot.stable_id == stable_id)
-                            })
-                    }
-                    DamageTarget::Player(_) => false,
-                })
+                .filter(|event| matches!(event.target,DamageTarget::Object(target) if source_object == Some(target)))
                 .map(|event| event.amount)
                 .sum::<u32>() as i32
         }
@@ -2282,7 +2289,8 @@ mod tests {
     }
 
     #[test]
-    fn source_damage_history_count_follows_stable_identity_after_zone_change() {
+    fn source_damage_history_count_uses_exact_incarnation_even_when_snapshots_share_card_identity()
+    {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let alice = PlayerId::from_index(0);
         let creature = CardDefinitionBuilder::new(CardId::new(), "History Creature")
@@ -2330,7 +2338,27 @@ mod tests {
         ctx.source_snapshot = Some(source_snapshot);
         assert_eq!(
             resolve_turn_history_count(&game, &TurnHistoryCount::DamageDealtToSource, &ctx, None,),
-            5
+            2
+        );
+        let graveyard = game.move_object_by_effect(source, Zone::Graveyard).unwrap();
+        let returned = game
+            .move_object_by_effect(graveyard, Zone::Battlefield)
+            .unwrap();
+        assert_eq!(
+            resolve_turn_history_count(&game, &TurnHistoryCount::DamageDealtToSource, &ctx, None),
+            2,
+            "the old source snapshot still names the departed incarnation"
+        );
+        let returned_ctx = game.filter_context_for(alice, Some(returned));
+        assert_eq!(
+            resolve_turn_history_count(
+                &game,
+                &TurnHistoryCount::DamageDealtToSource,
+                &returned_ctx,
+                None
+            ),
+            0,
+            "the returned card is a new source with no damage history"
         );
     }
 }

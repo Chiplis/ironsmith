@@ -119,6 +119,9 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::PermanentState(
                 PermanentStateActionAst::RemoveFromCombat { .. }
             )
+            | SubjectVerbActionAst::PermanentState(
+                PermanentStateActionAst::BecomeBlocked { .. }
+            )
             | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
             | SubjectVerbActionAst::ZoneMoves(
@@ -2744,6 +2747,8 @@ pub(super) fn compile_subject_verb_late(
                 None => Effect::heal_all_damage(spec),
             })
         }
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked { target }) =>
+            compile_tagged_effect_for_target(target,ctx,"blocked",|spec|Effect::new(crate::effects::BecomeBlockedEffect::with_spec(spec))),
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
             target,
         }) => {

@@ -134,12 +134,19 @@ pub(super) fn begin_mana_ability_activation(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
+    let mut saved_root_checkpoint = false;
     let result = (|| -> Result<GameProgress, GameLoopError> {
     if game.object(*source).is_some()
         && let Some(ability) = game.current_ability(*source, *ability_index)
         && let AbilityKind::Activated(mana_ability) = &ability.kind
         && mana_ability.is_runtime_mana_ability(game, *source, player)
     {
+        // A root mana announcement can be canceled before paying. Its
+        // checkpoint must precede exhaust and visibility registration alike.
+        if state.checkpoint.is_none() {
+            state.save_checkpoint(game);
+            saved_root_checkpoint = true;
+        }
         let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
         let effects_to_run = mana_ability.effects.clone();
         let base_cost = mana_ability.mana_cost.clone();
@@ -212,6 +219,7 @@ pub(super) fn begin_mana_ability_activation(
                     source: *source,
                     controller: player,
                 });
+        game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(mana_ability_provenance));
         // Continuous effects have to be part of the snapshot: an
         // animated land (earthbend, Awaken, ...) is a creature only in
         // its calculated characteristics, and "whenever you tap a
@@ -251,6 +259,7 @@ pub(super) fn begin_mana_ability_activation(
             drop(cost_ctx);
 
             if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+            game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(mana_ability_provenance));
             drain_pending_trigger_events(game, trigger_queue);
 
             let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
@@ -350,6 +359,8 @@ pub(super) fn begin_mana_ability_activation(
         *game = checkpoint.0;
         *trigger_queue = checkpoint.1;
         *state = checkpoint.2;
+    } else if saved_root_checkpoint && !state.has_pending_action() {
+        state.clear_checkpoint();
     }
     result
 }
@@ -599,6 +610,7 @@ fn apply_priority_response_with_dm_inner(
                 crate::special_actions::shared_usage_to_consume_for_land_play(
                     game, player, *land_id,
                 );
+            game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Land(*land_id));
             let permission_forces_tapped = old_zone != Zone::Hand
                 && game
                     .effect_store
@@ -936,6 +948,7 @@ fn apply_priority_response_with_dm_inner(
                         controller: player,
                     });
 
+            game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance));
             // Defer non-mana activation costs until after target selection.
             let mut mana_cost_to_pay: Option<crate::mana::ManaCost> = None;
             let mut remaining_cost_steps = Vec::new();
@@ -1098,6 +1111,7 @@ fn apply_priority_response_with_dm_inner(
                     )
                     .with_tagged_objects(granting_source_tags);
                 game.push_to_stack(entry);
+                game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance));
                 queue_ability_activated_event(
                     game,
                     trigger_queue,
