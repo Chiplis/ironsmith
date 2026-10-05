@@ -408,7 +408,7 @@ fn execute_effect_with_resource_scope_using<'a>(
     // executors route child effects through this function, so this guard also
     // suppresses later instructions inside a sequence, modal branch, loop, or
     // other nested effect after EndTurnEffect requests the scheduler jump.
-    if game.turn_store.end_turn_procedure_pending
+    if ctx.resolution_stopped() || game.turn_store.end_turn_procedure_pending
         || game.turn_store.end_combat_phase_procedure_pending
     {
         return Ok(EffectOutcome::resolved());

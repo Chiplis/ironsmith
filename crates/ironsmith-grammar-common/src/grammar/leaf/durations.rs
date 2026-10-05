@@ -22,6 +22,7 @@ pub enum LeafDurationPhrase {
     ControllersNextUntapStep,
     UntilNextEndStep,
     Forever,
+    YourNextUntapStep,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,7 +109,7 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
     (&["this", "turn"], LeafDurationPhrase::ThisTurn),
     (
         &["during", "your", "next", "untap", "step"],
-        LeafDurationPhrase::ControllersNextUntapStep,
+        LeafDurationPhrase::YourNextUntapStep,
     ),
     (
         &["during", "its", "controller", "next", "untap", "step"],
@@ -132,6 +133,10 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
     ),
     (
         &["during", "their", "controllers", "next", "untap", "step"],
+        LeafDurationPhrase::ControllersNextUntapStep,
+    ),
+    (
+        &["during", "their", "controllers", "next", "untap", "steps"],
         LeafDurationPhrase::ControllersNextUntapStep,
     ),
     (
@@ -353,6 +358,7 @@ fn leaf_turn_duration_from_duration(
         LeafDurationPhrase::UntilEndOfCombat
         | LeafDurationPhrase::UntilYourNextUpkeep
         | LeafDurationPhrase::ControllersNextUntapStep
+        | LeafDurationPhrase::YourNextUntapStep
         | LeafDurationPhrase::UntilNextEndStep
         | LeafDurationPhrase::Forever => None,
     }
@@ -472,4 +478,25 @@ mod tests {
             ["gain", "control", "of", "it"]
         );
     }
+    #[test]
+    fn plural_controller_untap_steps_are_one_complete_duration() {
+        let tokens = crate::lexer::lex_line("during their controllers' next untap steps", 0).unwrap();
+        let parsed = parse_leaf_restriction_duration_prefix_tokens(&tokens).unwrap();
+        assert_eq!(parsed.duration, LeafDurationPhrase::ControllersNextUntapStep);
+        assert!(parsed.rest.is_empty());
+        let words = ["during", "their", "controllers", "next", "untap", "steps"];
+        assert_eq!(parse_leaf_duration_prefix_words(&words).unwrap().end, words.len());
+        // The duration leaf consumes only its own complete span; outer readers
+        // retain and validate unrelated suffixes rather than discarding them.
+        let tokens = crate::lexer::lex_line("during their controllers' next untap steps instead", 0).unwrap();
+        let parsed = parse_leaf_restriction_duration_prefix_tokens(&tokens).unwrap();
+        assert_eq!(crate::lexer::TokenWordView::new(parsed.rest).word_refs(), ["instead"]);
+        assert!(parse_duration_phrase_complete("during their controllers next untap steps instead").is_err());
+        assert!(parse_duration_phrase_complete("during their controllers next two untap steps").is_err());
+        let tokens = crate::lexer::lex_line("during your next untap step", 0).unwrap();
+        assert_eq!(parse_leaf_restriction_duration_prefix_tokens(&tokens).unwrap().duration,
+            LeafDurationPhrase::YourNextUntapStep);
+
+    }
+
 }

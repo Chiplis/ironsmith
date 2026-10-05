@@ -90,6 +90,35 @@ pub const SOURCE_OBJECT_TAG: &str = "__source_object__";
 /// Emerge alternative cost. Imported only by that incarnation's ETB event.
 pub const SOURCE_EMERGE_SACRIFICE_TAG: &str = "__source_emerge_sacrifice__";
 
+/// A sacrifice cost's announced object set and its completed original action
+/// are different references when a replacement changes the payment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SacrificeCostTag {
+    Selected(usize),
+    OriginalResult(usize),
+}
+
+impl SacrificeCostTag {
+    pub fn parse(tag: &TagKey) -> Option<Self> {
+        if let Some(ordinal) = tag.as_str().strip_prefix("sacrifice_cost_") {
+            return ordinal.parse().ok().map(Self::Selected);
+        }
+        tag.as_str().strip_prefix("__original_sacrifice_cost_")?
+            .parse().ok().map(Self::OriginalResult)
+    }
+
+    pub fn key(self) -> TagKey {
+        match self {
+            Self::Selected(ordinal) => TagKey::new(format!("sacrifice_cost_{ordinal}")),
+            Self::OriginalResult(ordinal) => TagKey::new(format!("__original_sacrifice_cost_{ordinal}")),
+        }
+    }
+
+    pub fn original_result_key(self) -> TagKey {
+        match self { Self::Selected(ordinal) | Self::OriginalResult(ordinal) => Self::OriginalResult(ordinal).key() }
+    }
+}
+
 /// Runtime player tag for the opponent a resolving clash was performed with
 /// (CR 701.30a). "Clash with an opponent. ... Otherwise, that player ..."
 /// refers back to this player.

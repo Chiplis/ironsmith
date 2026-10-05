@@ -50,6 +50,19 @@ pub(crate) fn resolve_wide(
     context: &EvaluationContext<'_, '_>,
 ) -> Result<i64, ExecutionError> {
     let game = context.game;
+    use ironsmith_core::tag::{SacrificeCostTag, TagKeyWalk};
+    let mut missing_original_sacrifice = false;
+    value.for_each_tag_key(&mut |tag| {
+        if matches!(SacrificeCostTag::parse(tag), Some(SacrificeCostTag::OriginalResult(_)))
+            && context.execution().is_none_or(|ctx| !ctx.tagged_objects.contains_key(tag)) {
+            missing_original_sacrifice = true;
+        }
+    });
+    if missing_original_sacrifice {
+        let error = ExecutionError::IncompleteEvidence("sacrifice-result quantity has no completed original-action receipt".into());
+        game.record_token_resource_failure(&error);
+        return Err(error);
+    }
     match value {
         Value::SurfaceHinted { value, .. } => resolve_wide(value, context),
         Value::Fixed(n) => Ok(i64::from(*n)),
@@ -428,14 +441,12 @@ pub(crate) fn resolve_wide(
             .source_number(NumericProperty::Toughness)
             .map(i64::from),
         Value::PowerOf(target_spec) => context
-            .object_number(target_spec, NumericProperty::Power)
-            .map(i64::from),
+            .object_number_wide(target_spec, NumericProperty::Power),
         Value::BasePowerOf(target_spec) => context
             .object_number(target_spec, NumericProperty::BasePower)
             .map(i64::from),
         Value::ToughnessOf(target_spec) => context
-            .object_number(target_spec, NumericProperty::Toughness)
-            .map(i64::from),
+            .object_number_wide(target_spec, NumericProperty::Toughness),
         Value::KicksPaidOf(target_spec) => context
             .object_number(target_spec, NumericProperty::KickerCount)
             .map(i64::from),
@@ -443,8 +454,7 @@ pub(crate) fn resolve_wide(
             .object_number(target_spec, NumericProperty::ManaSpent)
             .map(i64::from),
         Value::ManaValueOf(target_spec) => context
-            .object_number(target_spec, NumericProperty::ManaValue)
-            .map(i64::from),
+            .object_number_wide(target_spec, NumericProperty::ManaValue),
         Value::ColorsOf(target_spec) => context
             .object_number(target_spec, NumericProperty::ColorCount)
             .map(i64::from),

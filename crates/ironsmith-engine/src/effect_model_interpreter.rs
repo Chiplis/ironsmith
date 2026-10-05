@@ -1927,6 +1927,8 @@ where
         };
         runtime.count = payload.count;
         runtime.repeat_until_loss = payload.repeat_until_loss;
+        runtime.stop_condition = payload.stop_condition;
+        runtime.loss_action = payload.loss_action;
         runtime.opponent_results = payload.opponent_results.clone();
         runtime.count_value = payload.count_value.clone();
         runtime.forced_face = payload.forced_face;

@@ -11,6 +11,8 @@ pub enum RandomActionAst {
         count: u32,
         kind: ironsmith_core::CoinFlipKind,
         repeat_until_loss: bool,
+        stop_condition: Option<ironsmith_core::CoinFlipStopCondition>,
+        loss_action: Option<ironsmith_core::CoinFlipLossAction>,
         opponent_results: Option<(ironsmith_compiler_ast::TagRef, ironsmith_compiler_ast::TagRef)>,
         count_value: Option<Value>,
     },

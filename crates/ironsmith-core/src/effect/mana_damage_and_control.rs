@@ -1828,6 +1828,25 @@ pub enum CoinFlipKind {
     FaceOnly,
 }
 
+/// An additional stopping condition for successive called flips. A loss always
+/// stops the instruction; this policy never changes a simultaneous fixed batch.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum CoinFlipStopCondition {
+    /// Ask the actual flipper after each retained win, including beyond rewards.
+    ChooseToStop,
+    /// Stop after the independently resolved count, or the first loss.
+    CountReached,
+}
+
+/// An explicit instruction-wide consequence of losing a retained called flip.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum CoinFlipLossAction {
+    /// The resolving spell has no further effect, including appended text.
+    StopResolution,
+}
+
 /// The retained result groups of one coin associated with each opponent.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
@@ -1853,6 +1872,10 @@ pub struct FlipCoinEffect {
     pub opponent_results: Option<CoinFlipOpponentTags>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub count_value: Option<Value>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub stop_condition: Option<CoinFlipStopCondition>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub loss_action: Option<CoinFlipLossAction>,
 }
 
 fn single_coin_count() -> u32 {
@@ -1863,6 +1886,8 @@ impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
             repeat_until_loss: false,
+            stop_condition: None,
+            loss_action: None,
             opponent_results: None,
             count_value: None,
             count: 1,
@@ -1877,6 +1902,8 @@ impl FlipCoinEffect {
     pub fn face_only(player: PlayerFilter) -> Self {
         Self {
             repeat_until_loss: false,
+            stop_condition: None,
+            loss_action: None,
             opponent_results: None,
             count_value: None,
             count: 1,

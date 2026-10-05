@@ -1549,7 +1549,10 @@
     }
     if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseNumberEffect>() {
         let chooser = describe_player_filter(&choose.chooser);
-        return format!("{chooser} {} a number between {} and {}", player_verb(&chooser, "choose", "chooses"), choose.min, choose.max);
+        return match choose.max {
+            Some(max) => format!("{chooser} {} a number between {} and {max}", player_verb(&chooser, "choose", "chooses"), choose.min),
+            None => format!("{chooser} {} a number", player_verb(&chooser, "choose", "chooses")),
+        };
     }
     if let Some(choose_named_option) =
         effect.downcast_ref::<crate::effects::ChooseNamedOptionEffect>()
@@ -6544,24 +6547,27 @@
     }
     if let Some(flip_coin) = effect.downcast_ref::<crate::effects::FlipCoinEffect>() {
         let player = describe_player_filter(&flip_coin.player);
-        if flip_coin.opponent_results.is_some() {
-            return if player == "you" { "Flip a coin for each opponent you have".into() }
-                else { format!("{player} flips a coin for each opponent they have") };
+        let (actor, pronoun) = if player == "you" { ("Flip".to_string(), "you") } else { (format!("{player} flips"), "they") };
+        let mut instruction = if flip_coin.opponent_results.is_some() {
+            if player == "you" { "Flip a coin for each opponent you have".into() }
+                else { format!("{player} flips a coin for each opponent they have") }
+        } else if flip_coin.repeat_until_loss {
+            match flip_coin.stop_condition {
+                Some(ironsmith_core::CoinFlipStopCondition::ChooseToStop) => format!("{actor} a coin until {pronoun} lose a flip or choose to stop flipping"),
+                Some(ironsmith_core::CoinFlipStopCondition::CountReached) => format!("{actor} a coin {} times or until {pronoun} lose a flip, whichever comes first", flip_coin.count_value.as_ref().map(describe_value).unwrap_or_else(|| flip_coin.count.to_string())),
+                None => format!("{actor} a coin until {pronoun} lose a flip"),
+            }
+        } else if let Some(count) = &flip_coin.count_value {
+            format!("{actor} {} coins", describe_value(count))
+        } else if flip_coin.count != 1 {
+            format!("{actor} {} coins", flip_coin.count)
+        } else {
+            format!("{actor} a coin")
+        };
+        if flip_coin.loss_action == Some(ironsmith_core::CoinFlipLossAction::StopResolution) {
+            instruction.push_str(&format!(". If {pronoun} lose a flip, this spell has no effect"));
         }
-        if flip_coin.repeat_until_loss {
-            return if player == "you" { "Flip a coin until you lose a flip".into() }
-                else { format!("{player} flips a coin until they lose a flip") };
-        }
-        if let Some(count) = &flip_coin.count_value {
-            return format!("{} {} coins", if player == "you" { "Flip".to_string() } else { format!("{player} flips") }, describe_value(count));
-        }
-        if flip_coin.count != 1 {
-            return format!("{} {} coins", if player == "you" { "Flip".to_string() } else { format!("{player} flips") }, flip_coin.count);
-        }
-        if player == "you" {
-            return "Flip a coin".to_string();
-        }
-        return format!("{player} flips a coin");
+        return instruction;
     }
     if effect
         .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()

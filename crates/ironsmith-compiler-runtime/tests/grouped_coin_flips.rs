@@ -79,6 +79,9 @@ struct Choices {
     targets: Vec<Target>,
     option: usize,
     accept: bool,
+    booleans: Vec<bool>,
+    boolean_players: Vec<PlayerId>,
+    pause_on_boolean: Option<usize>,
     option_players: Vec<PlayerId>,
     pause_on_option: Option<usize>,
     number: Option<u32>,
@@ -119,8 +122,10 @@ impl DecisionMaker for Choices {
         self.number.unwrap_or(context.min)
     }
 
-    fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool {
-        self.accept
+    fn decide_boolean(&mut self, _: &GameState, context: &BooleanContext) -> bool {
+        self.boolean_players.push(context.player);
+        self.pending = self.pause_on_boolean == Some(self.boolean_players.len());
+        self.booleans.get(self.boolean_players.len() - 1).copied().unwrap_or(self.accept)
     }
 
     fn awaiting_choice(&self) -> bool {
@@ -1300,3 +1305,6 @@ fn required_player_iteration_shares_one_token_resource_transaction_across_partic
 fn game_controller(g: &GameState, id: ObjectId) -> PlayerId {
     g.controller_of(g.object(id).unwrap())
 }
+
+#[path = "grouped_coin_flips/optional_loops.rs"]
+mod optional_loops;

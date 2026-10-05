@@ -1,12 +1,12 @@
 {
-  "checked_at": "2026-10-05T17:28:00Z",
+  "checked_at": "2026-10-05T18:09:00Z",
   "working_base": "77760eaf8670b3cbb0f368632edc4b40762f19a7",
   "prior_working_base": "ced8df84fa9e2103c04dfdf54e98e3332ad9a6d0",
   "main_repair_commit": "492c077394eaf416d41c19c9a1c11c58a7579c3e",
   "original_baseline": "e8740178a7f7367ffa3147e7642607042079237c",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
-  "published_source_proposals": 1044,
-  "safe_current_proposals_after_confirmed_holds": 1054,
+  "published_source_proposals": 1054,
+  "safe_current_proposals_after_confirmed_holds": 1068,
   "sigil_original_hold_fixed_upstream": true,
   "historical_local_stage61": {
     "commit": "c6c3978f31132d92b8f8fab5fce3d31b5483e859",
@@ -20,7 +20,7 @@
   "working_tree_replaced": true,
   "historical_local_manifests_and_bundle_unavailable": true,
   "unpublished_proposals_above_main_requiring_recovery": 72,
-  "remote_source_checkpoint": "2c363379605c0cd996767ab70d0a31858476e448",
+  "remote_source_checkpoint": "0280f1ab9c755f1b476db92bf80f2aa23fbd38e3",
   "remote_recovery_archive_branch": "checkpoint/card-campaign-20261005-recovery-bundles",
   "execution": "all builds/tests/probes/formatters/corpus deferred; no recovery credit claimed",
   "prior_recovery_working_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
@@ -37,7 +37,7 @@
   "recovered_historical_missing_72": 16,
   "remaining_historical_missing_72": 56,
   "additional_foretell_not_in_historical_1014": 4,
-  "latest_published_pr": 833,
+  "latest_published_pr": 834,
   "main_delta_scope": {
     "commit": "77760eaf8670b3cbb0f368632edc4b40762f19a7",
     "paths": 22,
@@ -45,6 +45,6 @@
     "overlap_with_recovery_source_paths": [],
     "integration": "Exact upstream contents retained without conflict in local branch; runtime execution remains deferred."
   },
-  "latest_card_source_integration": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f",
+  "latest_card_source_integration": "020896ba82af6d3a63239f19fe4564d365c6e630",
   "publication_scope": "Card-source-only delta on prior draft; the separate upstream UI commit remains on main and a local reconciliation branch, excluded from new draft diffs."
 }

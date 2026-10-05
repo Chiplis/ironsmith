@@ -2136,12 +2136,24 @@ pub struct RestrictionEffectInstance {
     pub duration: crate::effect::Until,
     pub expires_end_of_turn: u32,
     pub consumed_next_untap: bool,
+    /// Exact affected incarnation whose current controller owns the next step.
+    /// None preserves fixed-player native owners such as exert.
+    pub untap_step_object: Option<ObjectId>,
     /// Creation timestamp, for rule modifications that must be applied in
     /// timestamp order (maximum hand size, CR 613.11 / 402.2).
     pub timestamp: u64,
 }
 
 impl RestrictionEffectInstance {
+    pub fn untap_step_player(&self, game: &GameState) -> Option<PlayerId> {
+        match self.untap_step_object {
+            Some(id) => game.object(id)
+                .filter(|object| object.zone == Zone::Battlefield)
+                .map(|object| game.controller_of(object)),
+            None => Some(self.controller),
+        }
+    }
+
     pub fn is_pending(&self) -> bool {
         self.starts_next_turn_of.is_some() || self.starts_in_added_combat.is_some()
     }
@@ -2149,7 +2161,7 @@ impl RestrictionEffectInstance {
     pub fn is_expired(&self, current_turn: u32) -> bool {
         if matches!(
             self.duration,
-            crate::effect::Until::ControllersNextUntapStep
+            crate::effect::Until::ControllersNextUntapStep | crate::effect::Until::YourNextUntapStep
         ) && self.consumed_next_untap
         {
             return true;
@@ -2179,8 +2191,8 @@ impl RestrictionEffectInstance {
                     false
                 }
             }
-            crate::effect::Until::ControllersNextUntapStep => {
-                game.is_active_player(self.controller)
+            crate::effect::Until::ControllersNextUntapStep | crate::effect::Until::YourNextUntapStep => {
+                self.untap_step_player(game).is_some_and(|player| game.is_active_player(player))
                     && matches!(game.turn.phase, Phase::Beginning)
                     && matches!(game.turn.step, Some(Step::Untap))
             }
@@ -6421,6 +6433,7 @@ impl GameState {
                 duration,
                 expires_end_of_turn,
                 consumed_next_untap: false,
+                untap_step_object: None,
                 timestamp,
             });
     }

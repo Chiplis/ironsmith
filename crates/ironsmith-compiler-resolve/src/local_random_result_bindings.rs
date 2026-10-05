@@ -9,7 +9,7 @@ impl Family {
         let (action, metric) = match self {
             Self::Die => (PriorEffectAction::Rolled, query.metric == EffectMetric::Count),
             Self::Coin => (PriorEffectAction::Flipped, matches!(query.metric,
-                EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails)),
+                EffectMetric::CoinFlipsTotal | EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails)),
         };
         query.action == Some(action) && metric && query.source == EffectMetricSource::Outcome
             && query.filter.is_none() && query.player.is_none() && query.counter_type.is_none()

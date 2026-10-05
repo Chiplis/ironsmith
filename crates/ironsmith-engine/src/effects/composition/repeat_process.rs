@@ -21,10 +21,12 @@ impl EffectExecutor for RepeatProcessEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
         let sequence = SequenceEffect::new(self.effects.clone());
         let mut all_events = Vec::new();
         let mut all_execution_facts = Vec::new();
         let mut continuation_count = 0i64;
+        let mut reported_cursor = 0usize;
         let (status, value) = loop {
             // A failed result may itself be the authored continuation gate
             // (for example, paying an "unless" cost records Declined and then
@@ -32,28 +34,44 @@ impl EffectExecutor for RepeatProcessEffect {
             // earlier gate cannot accidentally drive a later iteration that
             // failed before reaching the condition.
             ctx.effect_outcomes.remove(&self.condition);
-            let outcome = sequence.execute(game, ctx)?;
-            all_events.extend(outcome.events.clone());
-            all_execution_facts.extend(outcome.execution_facts.clone());
+            let mut outcome = sequence.execute(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
+            all_events.try_reserve(outcome.events.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
+                resource: "repeated process events", requested: outcome.events.len(),
+            })?;
+            all_execution_facts.try_reserve(outcome.execution_facts.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
+                resource: "repeated process receipts", requested: outcome.execution_facts.len(),
+            })?;
+            all_events.append(&mut outcome.events);
+            all_execution_facts.append(&mut outcome.execution_facts);
+            if ctx.resolution_stopped() { break (outcome.status, outcome.value); }
 
-            let should_continue = ctx.get_outcome(self.condition).is_some_and(|outcome| {
+            let condition = ctx.get_outcome(self.condition).ok_or_else(|| ExecutionError::IncompleteEvidence(
+                "repeated process has no completed continuation receipt".into(),
+            ))?;
+            let should_continue = {
                 if self.predicate == crate::effect::EffectPredicate::Happened
-                    && let Some(player_counts) = outcome.player_counts()
+                    && let Some(player_counts) = condition.player_counts()
                 {
                     // A mixed optional pass can contain both accepted and
                     // declined outcomes. Its aggregate `Declined` fact must
                     // not hide that another participant acted this round.
-                    return player_counts.iter().any(|(_, count)| *count > 0);
-                }
-                super::if_effect::predicate_matches_with_context(
+                    player_counts.iter().any(|(_, count)| *count > 0)
+                } else { super::if_effect::predicate_matches_with_context(
                     &self.predicate,
-                    outcome,
+                    condition,
                     game,
                     ctx,
-                )
-            });
+                ) }
+            };
             if should_continue {
-                continuation_count += 1;
+                continuation_count = continuation_count.checked_add(1).ok_or(ExecutionError::ResourceLimitExceeded {
+                    resource: "repeated process continuation count",
+                    requested: continuation_count as u128 + 1, maximum: i64::MAX as u128,
+                })?;
+                if crate::effects::match_triggers_at_instruction_boundary(game, ctx, None, all_events[reported_cursor..].iter()) {
+                    reported_cursor = all_events.len();
+                }
                 continue;
             }
             break (outcome.status, outcome.value);
@@ -73,6 +91,7 @@ impl EffectExecutor for RepeatProcessEffect {
             all_events,
             EffectOutcome::merge_execution_facts(all_execution_facts),
         ))
+        })
     }
 }
 

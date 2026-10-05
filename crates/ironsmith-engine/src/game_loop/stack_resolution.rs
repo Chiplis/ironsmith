@@ -961,7 +961,7 @@ fn execute_resolution_program_inner(
                 all_events.append(&mut unmatched_outcome_events);
                 return Ok(all_events);
             }
-            if ctx.decision_maker.awaiting_choice() {
+            if ctx.resolution_stopped() || ctx.decision_maker.awaiting_choice() {
                 all_events.append(&mut unmatched_outcome_events);
                 return Ok(all_events);
             }

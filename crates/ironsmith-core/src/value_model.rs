@@ -79,6 +79,8 @@ pub enum EffectMetric {
     CoinFlipsLost,
     CoinHeads,
     CoinTails,
+    /// Number of retained authored flips, excluding ignored replacement coins.
+    CoinFlipsTotal,
 }
 
 /// The authored action that produced a prior-effect metric query.

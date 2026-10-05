@@ -296,6 +296,19 @@ impl crate::effects::SimultaneousEffectProposal for CantEffectProposal {
     }
 }
 
+/// A followup names the exact objects of its earlier instruction, not later
+/// incarnations found through the generic stable-card membership relation.
+fn exact_untap_subject(filter: &ObjectFilter) -> ObjectFilter {
+    let mut filter = filter.clone();
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+            constraint.relation = crate::filter::TaggedOpbjectRelation::SameObjectId;
+        }
+    }
+    filter.any_of = filter.any_of.iter().map(exact_untap_subject).collect();
+    filter
+}
+
 /// Effect that applies a restriction for a duration.
 /// Split an object-subject restriction whose `ForAsLongAs` duration names
 /// the affected object into one restriction per currently matching object,
@@ -418,6 +431,8 @@ impl EffectExecutor for CantEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
         let duration = if let Until::ForAsLongAs(predicate) = &self.duration {
             let Some(predicate) = crate::effects::continuous::materialize_duration_predicate(
                 predicate,
@@ -489,15 +504,17 @@ impl EffectExecutor for CantEffect {
                 crate::effects::helpers::resolve_player_filter(game, player, ctx)?,
             ),
         };
-        if matches!(duration, Until::ControllersNextUntapStep)
+        if matches!(duration, Until::ControllersNextUntapStep | Until::YourNextUntapStep)
             && let Restriction::Untap(filter) = &restriction
         {
+            let filter = exact_untap_subject(filter);
             let filter_ctx = ctx.filter_context(game);
             let targets: Vec<_> = game
                 .battlefield
                 .iter()
                 .filter_map(|object_id| {
                     let obj = game.object(*object_id)?;
+                    if game.is_phased_out(*object_id) { return None; }
                     if filter.matches(obj, &filter_ctx, game) {
                         Some((*object_id, game.controller_of(obj)))
                     } else {
@@ -506,21 +523,9 @@ impl EffectExecutor for CantEffect {
                 })
                 .collect();
 
-            if !targets.is_empty() {
-                for (object_id, controller) in targets {
-                    game.add_restriction_effect_with_start_and_tagged_objects(
-                        Restriction::untap(crate::target::ObjectFilter::specific(object_id)),
-                        duration.clone(),
-                        ctx.source,
-                        controller,
-                        ctx.iteration.iterated_player,
-                        starts_next_turn_of,
-                        Default::default(),
-                    );
-                }
-            } else {
+            for (object_id, _) in targets {
                 game.add_restriction_effect_with_start_and_tagged_objects(
-                    self.restriction.clone(),
+                    Restriction::untap(crate::target::ObjectFilter::specific(object_id)),
                     duration.clone(),
                     ctx.source,
                     ctx.controller,
@@ -528,7 +533,11 @@ impl EffectExecutor for CantEffect {
                     starts_next_turn_of,
                     Default::default(),
                 );
+                if matches!(duration, Until::ControllersNextUntapStep) {
+                    game.effect_store.restriction_effects.last_mut().unwrap().untap_step_object = Some(object_id);
+                }
             }
+            // A known empty affected set cannot become a future broad rule.
         } else {
             game.add_restriction_effect_with_start_and_tagged_objects(
                 restriction,
@@ -542,6 +551,7 @@ impl EffectExecutor for CantEffect {
         }
         game.update_cant_effects();
         Ok(EffectOutcome::resolved())
+        })
     }
 }
 

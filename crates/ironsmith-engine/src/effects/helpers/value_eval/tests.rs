@@ -60,6 +60,125 @@ fn division_by_zero_keeps_resolution_error() {
 }
 
 #[test]
+fn source_linked_characteristics_use_the_live_incarnation_set_and_checked_wide_sum() {
+    let (mut game, source, alice) = fixture();
+    let value = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0);
+    let card = CardBuilder::new(CardId::new(), "Linked quantity witness")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(i32::MAX, 4)).build();
+    let first = game.create_object_from_card(&card, alice, Zone::Exile);
+    let second = game.create_object_from_card(&card, alice, Zone::Exile);
+    game.add_exiled_with_source_link(source, first);
+    game.add_exiled_with_source_link(source, second);
+    assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 2 * i64::from(i32::MAX));
+    ctx.tag_object(crate::tag::SOURCE_EXILED_TAG, ObjectSnapshot::from_object(game.object(first).unwrap(), &game));
+    game.move_object_by_game_rule(first, Zone::Hand).unwrap();
+    assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), i64::from(i32::MAX), "stale captured exile snapshot cannot restore a departed link");
+    game.move_object_by_game_rule(second, Zone::Graveyard).unwrap();
+    assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0);
+    let missing = ExecutionContext::new_default(ObjectId::from_raw(u64::MAX), alice);
+    assert!(matches!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &missing)), Err(ExecutionError::IncompleteEvidence(_))));
+}
+
+#[test]
+fn missing_original_sacrifice_is_an_error_while_completed_empty_is_zero_for_scalar_and_filter_values() {
+    let (game, source, alice) = fixture();
+    let tag = ironsmith_core::tag::SacrificeCostTag::OriginalResult(3).key();
+    for value in [
+        Value::PowerOf(Box::new(ChooseSpec::Tagged(tag.clone()))),
+        Value::TotalPower(ObjectFilter::tagged(tag.clone())),
+        Value::Count(ObjectFilter::tagged(tag.clone())),
+    ] {
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        assert!(matches!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)), Err(ExecutionError::IncompleteEvidence(_))));
+        ctx.set_tagged_objects(tag.clone(), Vec::new());
+        assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0);
+    }
+}
+
+#[test]
+fn source_linked_split_card_keeps_checked_combined_mana_value_and_face_down_zero() {
+    let (mut game, source, alice) = fixture();
+    let card = CardBuilder::new(CardId::new(), "First split half")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(crate::ManaCost::from_pips(vec![vec![crate::ManaSymbol::Generic(2)]]))
+        .build();
+    let linked = game.create_object_from_card(&card, alice, Zone::Exile);
+    let object = game.object_mut(linked).unwrap();
+    object.linked_face_layout = crate::card::LinkedFaceLayout::Split;
+    object.linked_face_mana_cost = Some(crate::ManaCost::from_pips(vec![vec![crate::ManaSymbol::Generic(3)]]).into());
+    game.add_exiled_with_source_link(source, linked);
+    let value = Value::ManaValueOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
+    let ctx = ExecutionContext::new_default(source, alice);
+    assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 5);
+    assert!(game.set_face_down(linked));
+    assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0);
+}
+
+#[test]
+fn direct_and_dispatched_linked_quantity_failures_leave_no_partial_stat_effect() {
+    use crate::effects::EffectExecutor;
+    for dispatched in [false, true] { for invalid in [false, true] {
+        let (mut game, source, alice) = fixture();
+        let card = CardBuilder::new(CardId::new(), "Checked linked card")
+            .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(3, 4)).build();
+        let linked = game.create_object_from_card(&card, alice, Zone::Exile);
+        let link = if invalid { ObjectId::from_raw(u64::MAX) } else { linked };
+        game.add_exiled_with_source_link(source, link);
+        if !invalid { game.object_mut(linked).unwrap().counters.insert(crate::CounterType::PlusOnePlusOne, u32::MAX); }
+        let number = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
+        let pump = crate::effects::ModifyPowerToughnessEffect::new(ChooseSpec::SpecificObject(source), number.clone(), number, crate::effect::Until::EndOfTurn);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let ids = game.next_object_id_counter(); let history = game.turn_store.turn_history.event_records.len();
+        let provenance = game.provenance_graph().node_count();
+        let outcome = if dispatched { crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(pump.clone()), &mut ctx) }
+            else { pump.execute(&mut game, &mut ctx) };
+        assert!(matches!(outcome, Err(ExecutionError::IncompleteEvidence(_) | ExecutionError::ContinuousDiscovery(_))), "{outcome:?}");
+        assert_eq!(game.next_object_id_counter(), ids); assert_eq!(game.turn_store.turn_history.event_records.len(), history);
+        assert_eq!(game.provenance_graph().node_count(), provenance);
+        assert!(ctx.effect_outcomes.is_empty() && ctx.tagged_objects.is_empty());
+        assert!(!game.effect_store.has_pending_trigger_work());
+        if invalid { game.remove_exiled_with_source_link(link); }
+        else { game.object_mut(linked).unwrap().counters.clear(); }
+        pump.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.current_power(source), Some(if invalid { -3 } else { 0 }));
+    }}
+}
+
+#[test]
+fn linked_quantity_propagates_incomplete_static_discovery_without_a_printed_fallback() {
+    #[derive(Debug, Clone)]
+    struct UnboundedLinkedSource(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+    impl crate::static_abilities::StaticAbilityKind for UnboundedLinkedSource {
+        fn id(&self) -> crate::static_abilities::StaticAbilityId { crate::static_abilities::StaticAbilityId::GrantObjectAbilityForFilter }
+        fn display(&self) -> String { "Unbounded linked quantity fixture".into() }
+        fn generate_effects(&self, source: ObjectId, controller: PlayerId, game: &GameState) -> Vec<ContinuousEffect> {
+            assert!(self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 32_768);
+            let crate::ability::AbilityKind::Static(parent) = &game.object(source).unwrap().abilities[0].kind else { panic!("static fixture"); };
+            vec![
+                ContinuousEffect::new(source, controller, EffectTarget::Source, Modification::AddAbility(parent.clone())),
+                ContinuousEffect::new(source, controller, EffectTarget::Source, Modification::ModifyPower(1)),
+            ]
+        }
+    }
+    std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+        let (mut game, source, alice) = fixture();
+        let card = CardBuilder::new(CardId::new(), "Linked witness")
+            .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(7, 8)).build();
+        let linked = game.create_object_from_card(&card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(source, linked);
+        game.object_mut(source).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::new(UnboundedLinkedSource(Default::default()))));
+        let value = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
+        let ctx = ExecutionContext::new_default(source, alice);
+        assert!(matches!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)),
+            Err(ExecutionError::ContinuousDiscovery(crate::static_ability_processor::StaticEffectDiscoveryError::RoundLimit { .. }))));
+    }).unwrap().join().unwrap();
+}
+
+#[test]
 #[should_panic(expected = "unsupported continuous-effect value Fixed(1): division by zero")]
 fn division_by_zero_keeps_layer_error() {
     let (game, source, alice) = fixture();

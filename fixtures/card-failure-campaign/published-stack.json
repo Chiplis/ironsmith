@@ -941,6 +941,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/833"
+    },
+    {
+      "stage": 68,
+      "branch": "fix/card-failures-68-shuffle-and-source-references",
+      "base": "fix/card-failures-67-coin-and-public-reveal-bodies",
+      "source_integration_commit": "a7cde15414b6fcb716754be16880be5d1e0caffb",
+      "remote_commit": "0280f1ab9c755f1b476db92bf80f2aa23fbd38e3",
+      "tree": "3b1ae4c218d65b6a6936b67a4b779bb062c634ad",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 834,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/834"
     }
   ]
 }

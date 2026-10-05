@@ -6091,6 +6091,7 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    crate::grammar::shared_util::value_expr::validate_result_quantity_bindings(tokens)?;
     // A leading payment condition owns the complete consequence. Broad
     // document readings must not claim only the payment verb inside it.
     let leading = trim_edge_punctuation(tokens);
@@ -14281,7 +14282,7 @@ fn parse_coin_batch_and_counted_turn_skip(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind: ironsmith_core::CoinFlipKind::FaceOnly, repeat_until_loss: false, opponent_results: None, count_value: None }),
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind: ironsmith_core::CoinFlipKind::FaceOnly, repeat_until_loss: false, stop_condition: None, loss_action: None, opponent_results: None, count_value: None }),
         ),
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: Value::PendingEffectMetric {

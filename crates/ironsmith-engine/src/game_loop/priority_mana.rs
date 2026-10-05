@@ -111,6 +111,14 @@ fn pay_selected_cost(
                 tagged.push(snapshot);
             }
             let completed_sacrifice = cost_ctx.completed_sacrifice.take();
+            if preserve_chosen_snapshot
+                && let Some(binding) = effective_choice_tag.as_ref().and_then(ironsmith_core::tag::SacrificeCostTag::parse)
+            {
+                let actual = completed_sacrifice.as_ref().ok_or_else(|| GameLoopError::InvalidState(
+                    "paid sacrifice is missing its original-action result".into(),
+                ))?;
+                cost_ctx.tagged_objects.insert(binding.original_result_key(), actual.clone());
+            }
             *tagged_objects = cost_ctx.tagged_objects;
             *effect_outcomes = cost_ctx.effect_outcomes;
             Ok(completed_sacrifice)
@@ -197,6 +205,10 @@ mod emerge_receipt_payment_boundary_tests {
             crate::costs::PaymentReason::CastSpell, Default::default(), material,
             Some(&tag), &mut tags, &mut outcomes, &mut dm).unwrap().unwrap();
         assert_eq!(completed.len(), 1);
+        let actual_tag = ironsmith_core::tag::SacrificeCostTag::OriginalResult(0).key();
+        assert_eq!(tags[&actual_tag].len(), 1);
+        assert_eq!(tags[&actual_tag][0].object_id, material);
+        assert_eq!(tags[&actual_tag][0].zone, Zone::Battlefield);
         assert_eq!(completed[0].object_id, material);
         assert_eq!(completed[0].toughness, Some(5));
         assert_eq!(game.player(player).unwrap().life, 23);

@@ -5644,8 +5644,9 @@ impl GameState {
             } else if effect.is_pending()
                 || (matches!(
                     effect.duration,
-                    crate::effect::Until::ControllersNextUntapStep
-                ) && !effect.is_expired(current_turn))
+                    crate::effect::Until::ControllersNextUntapStep | crate::effect::Until::YourNextUntapStep
+                ) && !effect.is_expired(current_turn)
+                    && effect.untap_step_player(self).is_some())
             {
                 retained_restrictions.push(effect.clone());
             }

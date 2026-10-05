@@ -226,8 +226,10 @@ pub struct NumberContext {
     pub description: String,
     /// Minimum value (inclusive).
     pub min: u32,
-    /// Maximum value (inclusive).
+    /// Maximum representable response (inclusive).
     pub max: u32,
+    /// The authored limit, absent when the rules let a player choose any number.
+    pub authored_max: Option<u32>,
     /// Whether this is an X value decision (affects response type).
     pub is_x_value: bool,
     /// Optional richer UI hints for contextual rendering.
@@ -248,6 +250,7 @@ impl NumberContext {
             source,
             min,
             max,
+            authored_max: Some(max),
             description: description.into(),
             is_x_value: false,
             ui_hints: DecisionUiHints::default(),
@@ -266,6 +269,7 @@ impl NumberContext {
             source: Some(source),
             min,
             max,
+            authored_max: Some(max),
             description: "Choose value for X".to_string(),
             is_x_value: true,
             ui_hints: DecisionUiHints::default(),

@@ -366,6 +366,7 @@ pub fn parse_reveal_source_exiled_permanents_sentence_lexed(
 }
 
 pub fn parse_effect_chain_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
+    crate::grammar::shared_util::value_expr::validate_result_quantity_bindings(tokens)?;
     // Chain parsing recursively re-enters the sentence dispatcher for
     // nested clauses and quoted/conditional payloads.  The public chain
     if let Some(effects) = super::parse_complete_create_statement(tokens)? {

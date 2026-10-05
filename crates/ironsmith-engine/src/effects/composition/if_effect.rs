@@ -461,7 +461,7 @@ pub(crate) fn prepare_if_branches(
             .execution_facts
             .iter()
             .filter_map(|fact| match fact {
-                ExecutionFact::ChosenNumber(n) => Some(*n as i32),
+                ExecutionFact::ChosenNumber(n) => Some(i64::from(*n)),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -470,7 +470,7 @@ pub(crate) fn prepare_if_branches(
         } else {
             let matches = chosen_numbers
                 .into_iter()
-                .filter(|value| cmp.evaluate(*value))
+                .filter(|value| cmp.evaluate_wide(*value))
                 .count();
             Some(matches)
         }

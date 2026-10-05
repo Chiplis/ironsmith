@@ -533,8 +533,13 @@ pub fn parse_value_expr_tokens(tokens: &[OwnedLexToken]) -> Option<(Value, usize
         .get(used_words)
         .copied()
         .unwrap_or(tokens.len());
+    if !result_reference_syntax::tokens_are_complete(&tokens[..used_tokens]) { return None; }
     Some((value, used_tokens))
 }
+
+#[path = "value_expr/result_reference_syntax.rs"]
+mod result_reference_syntax;
+pub(crate) use result_reference_syntax::validate_bindings as validate_result_quantity_bindings;
 
 #[cfg(test)]
 #[path = "value_expr_inline_tests.rs"]

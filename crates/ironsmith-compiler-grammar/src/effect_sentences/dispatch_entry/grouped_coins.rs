@@ -24,7 +24,6 @@ fn malformed_coin_clause() -> CardTextError {
 }
 
 fn flip_instruction(tokens: &[OwnedLexToken], kind: CoinFlipKind) -> Option<EffectAst> {
-    if !bare_words(tokens, TokenKind::Period) { return None; }
     let view = crate::lexer::TokenWordView::new(tokens);
     let words = view.word_refs();
     let (start, optional) = if words.starts_with(&["you", "may", "flip"]) { (2, true) }
@@ -32,11 +31,22 @@ fn flip_instruction(tokens: &[OwnedLexToken], kind: CoinFlipKind) -> Option<Effe
         else if words.starts_with(&["flip"]) { (0, false) }
         else { return None };
     let rest = &words[start + 1..];
-    let count_value = (rest == ["that", "many", "coins"]).then(|| Value::PendingPriorEffectMetric(
+    let count_or_loss = rest == ["a", "coin", "that", "many", "times", "or", "until", "you", "lose", "a", "flip", "whichever", "comes", "first"];
+    let optional_stop = rest == ["a", "coin", "until", "you", "lose", "a", "flip", "or", "choose", "to", "stop", "flipping"];
+    if count_or_loss {
+        let comma = view.map_word_to_token_start(start + 12)?;
+        if tokens.get(comma.wrapping_sub(1))?.kind != TokenKind::Comma
+            || !bare_words(&tokens[..comma], TokenKind::Comma)
+            || !bare_words(&tokens[comma..], TokenKind::Period) { return None; }
+    } else if !bare_words(tokens, TokenKind::Period) { return None; }
+    let count_value = (rest == ["that", "many", "coins"] || count_or_loss).then(|| Value::PendingPriorEffectMetric(
         PriorEffectMetricQuery::new(EffectMetricSource::Outcome, EffectMetric::Count)
             .with_action(PriorEffectAction::ChosenNumber),
     ));
-    let (count, repeat_until_loss, opponent_results) = if rest == ["a", "coin", "until", "you", "lose", "a", "flip"] {
+    let stop_condition = if optional_stop { Some(ironsmith_core::CoinFlipStopCondition::ChooseToStop) }
+        else if count_or_loss { Some(ironsmith_core::CoinFlipStopCondition::CountReached) }
+        else { None };
+    let (count, repeat_until_loss, opponent_results) = if rest == ["a", "coin", "until", "you", "lose", "a", "flip"] || optional_stop || count_or_loss {
         (1, true, None)
     } else if rest == ["a", "coin", "for", "each", "opponent", "you", "have"] {
         (0, false, Some((
@@ -55,7 +65,7 @@ fn flip_instruction(tokens: &[OwnedLexToken], kind: CoinFlipKind) -> Option<Effe
     let flip = EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
         SubjectVerbActionAst::Random(RandomActionAst::FlipCoins {
-            count, kind: if repeat_until_loss { CoinFlipKind::Called } else { kind }, repeat_until_loss, opponent_results, count_value,
+            count, kind: if repeat_until_loss { CoinFlipKind::Called } else { kind }, repeat_until_loss, stop_condition, loss_action: None, opponent_results, count_value,
         }),
     );
     Some(if optional { EffectAst::Permissions(PermissionEffectAst::May { effects: vec![flip] }) } else { flip })
@@ -95,11 +105,16 @@ fn quantified_effect(mut effects: Vec<EffectAst>, metric: EffectMetric) -> Vec<E
                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. })
                 | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. })
                 | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { count, .. }) => Some(count),
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { count, .. })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }) => Some(count),
                 _ => None,
             };
             if let Some(count) = count {
-                if count.unhinted() == &Value::Fixed(1) { *count = metric_value(metric); return true; }
+                if let Value::Fixed(n) = count.unhinted() {
+                    *count = if *n == 1 { metric_value(metric) }
+                        else { Value::Scaled(Box::new(metric_value(metric)), *n) };
+                    return true;
+                }
             }
             return false;
         }
@@ -118,6 +133,47 @@ fn quantified_effect(mut effects: Vec<EffectAst>, metric: EffectMetric) -> Vec<E
 fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let view = crate::lexer::TokenWordView::new(tokens);
     let words = view.word_refs();
+    if (words.starts_with(&["if", "they", "lose", "the", "flip"])
+        || words.starts_with(&["if", "they", "win", "the", "flip"]))
+    {
+        let start = view.map_word_to_token_start(5).ok_or_else(malformed_coin_clause)?;
+        if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
+        let metric = if words[2] == "lose" { EffectMetric::CoinFlipsLost } else { EffectMetric::CoinFlipsWon };
+        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: coin_comparison(metric, ironsmith_core::ValueComparisonOperator::GreaterThan, 0),
+            if_true: parse_effect_sentences_lexed(&tokens[start..])?, if_false: Vec::new(),
+        })]));
+    }
+    if words.starts_with(&["if", "you", "win", "all", "the", "flips"])
+        && words.ends_with(&["for", "each", "flip"])
+    {
+        let start = view.map_word_to_token_start(6).ok_or_else(malformed_coin_clause)?;
+        let end = view.map_word_to_token_start(words.len() - 3).ok_or_else(malformed_coin_clause)?;
+        if !bare_words(&tokens[..start], TokenKind::Comma)
+            || !bare_words(&tokens[end..], TokenKind::Period) { return Err(malformed_coin_clause()); }
+        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ValueComparison {
+                left: metric_value(EffectMetric::CoinFlipsWon), operator: ironsmith_core::ValueComparisonOperator::Equal,
+                right: metric_value(EffectMetric::CoinFlipsTotal),
+            },
+            if_true: quantified_effect(parse_effect_sentences_lexed(&tokens[start..end])?, EffectMetric::CoinFlipsWon),
+            if_false: Vec::new(),
+        })]));
+    }
+    if words.starts_with(&["if", "you", "win"])
+        && words.get(4..7) == Some(&["or", "more", "flips"][..])
+    {
+        let number_start = view.map_word_to_token_start(3).ok_or_else(malformed_coin_clause)?;
+        let Some((count, consumed)) = crate::grammar::leaf::parse_leaf_number_prefix_tokens(&tokens[number_start..])
+            .and_then(|number| number.into_fixed()) else { return Err(malformed_coin_clause()); };
+        if count > i32::MAX as u32 || Some(number_start + consumed) != view.map_word_to_token_start(4) { return Err(malformed_coin_clause()); }
+        let start = view.map_word_to_token_start(7).ok_or_else(malformed_coin_clause)?;
+        if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
+        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: coin_comparison(EffectMetric::CoinFlipsWon, ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual, count as i32),
+            if_true: parse_effect_sentences_lexed(&tokens[start..])?, if_false: Vec::new(),
+        })]));
+    }
     if let Some((word, metric)) = prefix_metric(&words) {
         let start = view.map_word_to_token_start(word).ok_or_else(|| CardTextError::ParseError("coin count has no following action".into()))?;
         if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
@@ -165,8 +221,35 @@ fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     Ok(None)
 }
 
+fn coin_comparison(metric: EffectMetric, operator: ironsmith_core::ValueComparisonOperator, count: i32) -> PredicateAst {
+    PredicateAst::ValueComparison { left: metric_value(metric), operator, right: Value::Fixed(count) }
+}
+
+fn no_effect_after_loss(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::TokenWordView::new(tokens).word_refs();
+    if words.len() < 9 || !words.starts_with(&["if", "you", "lose", "a", "flip"])
+        || !words.ends_with(&["has", "no", "effect"])
+        || !crate::util::is_source_reference_words(&words[5..words.len() - 3]) { return false; }
+    let Some(start) = crate::lexer::TokenWordView::new(tokens).map_word_to_token_start(5) else { return false; };
+    bare_words(&tokens[..start], TokenKind::Comma) && bare_words(&tokens[start..], TokenKind::Period)
+}
+
 pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentences = split_lexed_sentences(tokens);
+    // The explicit loss cancels the remaining consequence program, including
+    // its conditional target instruction. Lowering still declares that target
+    // before casting; this is control flow, never a resolution-time choice.
+    if sentences.len() > 2 && no_effect_after_loss(&sentences[1])
+        && let Some(mut flip) = flip_instruction(&sentences[0], CoinFlipKind::Called)
+        && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { loss_action, .. }), ..
+        }) = &mut flip
+    {
+        *loss_action = Some(ironsmith_core::CoinFlipLossAction::StopResolution);
+        let mut effects = vec![flip];
+        for sentence in &sentences[2..] { effects.extend(parse_effect_sentences_lexed(sentence)?); }
+        return Ok(Some(effects));
+    }
     // Face-only is proved by this instruction's own consumers. Stop at the
     // next coin instruction so another instruction cannot change its kind.
     let mut parsed = Vec::new();
@@ -178,6 +261,7 @@ pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Effe
             || words.starts_with(&["you", "flip"])
             || words.starts_with(&["you", "may", "flip"]);
         if coin_head && (words.contains(&"coins") || words.contains(&"coin"))
+            && flip_instruction(sentence, CoinFlipKind::Called).is_none()
             && !bare_words(sentence, TokenKind::Period)
         { return Err(malformed_coin_clause()); }
         let mut kind = CoinFlipKind::Called;
@@ -251,6 +335,39 @@ mod tests {
             action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind, repeat_until_loss, .. }), ..
         }) = &effects[0] else { panic!("expected a grouped flip: {effects:?}") };
         (*count, *kind, *repeat_until_loss)
+    }
+
+    #[test]
+    fn optional_and_counted_stops_preserve_typed_policy_and_conditional_targets() {
+        for (text, policy) in [
+            ("Flip a coin until you lose a flip or choose to stop flipping.", ironsmith_core::CoinFlipStopCondition::ChooseToStop),
+            ("Flip a coin that many times or until you lose a flip, whichever comes first.", ironsmith_core::CoinFlipStopCondition::CountReached),
+        ] {
+            let parsed = parse(text);
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { stop_condition, repeat_until_loss, count_value, .. }), ..
+            }) = &parsed[0] else { panic!("missing coin instruction") };
+            assert_eq!(*stop_condition, Some(policy)); assert!(*repeat_until_loss);
+            assert_eq!(count_value.is_some(), policy == ironsmith_core::CoinFlipStopCondition::CountReached);
+        }
+        let parsed = parse("Flip a coin until you lose a flip or choose to stop flipping. If you lose a flip, this spell has no effect. If you win one or more flips, this spell deals 3 damage to target creature. If you win two or more flips, this spell deals 6 damage to each opponent. If you win three or more flips, draw nine cards and untap all lands you control.");
+        assert_eq!(parsed.len(), 4);
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { loss_action, .. }), ..
+        }) = &parsed[0] else { panic!("missing loss control") };
+        assert_eq!(*loss_action, Some(ironsmith_core::CoinFlipLossAction::StopResolution));
+    }
+
+    #[test]
+    fn counted_clause_owns_its_comma_and_rejects_unconsumed_symbols_or_riders() {
+        for text in [
+            "Flip a coin that many times or until you lose a flip: whichever comes first.",
+            "Flip a coin that many times or until you lose a flip, whichever comes first {R}.",
+            "Flip a coin until you lose a flip or choose to stop flipping except on Tuesdays.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(flip_instruction(&tokens, CoinFlipKind::Called).is_none());
+        }
     }
 
     #[test]

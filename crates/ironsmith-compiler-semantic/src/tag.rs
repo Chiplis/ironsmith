@@ -99,6 +99,9 @@ impl CompilerCostObjectTag {
     }
 
     pub fn key(self, ordinal: usize) -> TagRef {
+        if self == Self::Sacrifice {
+            return declared(ironsmith_core::tag::SacrificeCostTag::Selected(ordinal).key());
+        }
         declared(TagKey::new(format!("{}_{ordinal}", self.stem())))
     }
 

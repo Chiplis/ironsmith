@@ -417,8 +417,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 f.debug_tuple("Clash").field(opponent).finish()
             }
             Self::Random(RandomActionAst::FlipCoin) => f.write_str("FlipCoin"),
-            Self::Random(RandomActionAst::FlipCoins { count, kind, repeat_until_loss, opponent_results, count_value }) => {
-                f.debug_struct("FlipCoins").field("count", count).field("kind", kind).field("repeat_until_loss", repeat_until_loss).field("opponent_results", opponent_results).field("count_value", count_value).finish()
+            Self::Random(RandomActionAst::FlipCoins { count, kind, repeat_until_loss, stop_condition, loss_action, opponent_results, count_value }) => {
+                f.debug_struct("FlipCoins").field("count", count).field("kind", kind).field("repeat_until_loss", repeat_until_loss).field("stop_condition", stop_condition).field("loss_action", loss_action).field("opponent_results", opponent_results).field("count_value", count_value).finish()
             }
             Self::Random(RandomActionAst::FlipCoinFaceOnly) => f.write_str("FlipCoinFaceOnly"),
             Self::Random(RandomActionAst::ChooseNumberAtRandom { choices }) => f

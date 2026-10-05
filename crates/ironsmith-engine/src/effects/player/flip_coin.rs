@@ -20,12 +20,16 @@ pub struct FlipCoinEffect {
     pub forced_face: Option<ironsmith_core::CoinFace>,
     pub forced_winner: Option<PlayerFilter>,
     pub forced_loser: Option<PlayerFilter>,
+    pub stop_condition: Option<ironsmith_core::CoinFlipStopCondition>,
+    pub loss_action: Option<ironsmith_core::CoinFlipLossAction>,
 }
 
 impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
             repeat_until_loss: false,
+            stop_condition: None,
+            loss_action: None,
             opponent_results: None,
             count_value: None,
             count: 1,
@@ -40,6 +44,8 @@ impl FlipCoinEffect {
     pub fn face_only(player: PlayerFilter) -> Self {
         Self {
             repeat_until_loss: false,
+            stop_condition: None,
+            loss_action: None,
             opponent_results: None,
             count_value: None,
             count: 1,
@@ -85,8 +91,12 @@ impl EffectExecutor for FlipCoinEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
-            if self.repeat_until_loss && self.kind != ironsmith_core::CoinFlipKind::Called {
+            if (self.repeat_until_loss || self.loss_action.is_some()) && self.kind != ironsmith_core::CoinFlipKind::Called {
                 return Err(ExecutionError::UnresolvableValue("repeat until loss requires called flips".into()));
+            }
+            use ironsmith_core::CoinFlipStopCondition;
+            if self.stop_condition.is_some() && !self.repeat_until_loss {
+                return Err(ExecutionError::UnresolvableValue("a coin stop condition requires successive called flips".into()));
             }
             let player = resolve_player_filter(game, &self.player, ctx)?;
             if self.repeat_until_loss && self.opponent_results.is_some() {
@@ -106,7 +116,8 @@ impl EffectExecutor for FlipCoinEffect {
                 }
                 Some(opponents)
             } else { None };
-            if self.count_value.is_some() && (self.repeat_until_loss || self.opponent_results.is_some()) {
+            if self.count_value.is_some() && (self.opponent_results.is_some()
+                || (self.repeat_until_loss && self.stop_condition != Some(CoinFlipStopCondition::CountReached))) {
                 return Err(ExecutionError::UnresolvableValue("a chosen coin count cannot also be a repeat or opponent count".into()));
             }
             let authored_count = if let Some(value) = &self.count_value {
@@ -120,6 +131,8 @@ impl EffectExecutor for FlipCoinEffect {
             let mut events = Vec::new();
             let mut facts = Vec::new();
             loop {
+                if self.stop_condition == Some(CoinFlipStopCondition::CountReached)
+                    && results.len() as u128 >= u128::from(authored_count) { break; }
                 let count = if self.repeat_until_loss { 1 } else { authored_count };
                 let start = u32::try_from(results.len()).map_err(|_| ExecutionError::ResourceLimitExceeded {
                     resource: "instruction coin-flip ordinal", requested: results.len() as u128,
@@ -163,6 +176,14 @@ impl EffectExecutor for FlipCoinEffect {
                 }
                 results.extend(batch);
                 if !self.repeat_until_loss || lost { break; }
+                if self.stop_condition == Some(CoinFlipStopCondition::ChooseToStop) {
+                    let again = crate::decisions::ask_may_choice(
+                        game, &mut ctx.decision_maker, player, ctx.source,
+                        "Flip again", crate::decision::FallbackStrategy::Decline,
+                    );
+                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    if !again { break; }
+                }
             }
             if let Some(tags) = &self.opponent_results {
                 let mut won = Vec::new();
@@ -188,6 +209,10 @@ impl EffectExecutor for FlipCoinEffect {
             facts.try_reserve(1).map_err(|_| ExecutionError::ResourceAllocationFailed {
                 resource: "coin-flip grouped fact", requested: 1,
             })?;
+            if self.loss_action == Some(ironsmith_core::CoinFlipLossAction::StopResolution)
+                && results.iter().any(|flip| flip.loser == Some(player)) {
+                ctx.stop_resolution();
+            }
             facts.push(ExecutionFact::CoinFlips(results));
             Ok(EffectOutcome::with_details(
                 crate::effect::OutcomeStatus::Succeeded, crate::effect::OutcomeValue::Count(positive), events, facts,

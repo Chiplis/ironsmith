@@ -339,6 +339,10 @@ fn read_leading_if_clause(
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = input.tokens;
     if let Some(spec) = crate::grammar::static_line_support::parse_leading_if_clause(tokens)
+        && !matches!(
+            crate::grammar::semantic_lowering::parse_statement_effect_preference_tokens(spec.remainder_tokens),
+            Some(crate::grammar::semantic_lowering::StatementEffectPreference::LeadingEffectVerb)
+        )
         && let Ok(condition) = parse_static_condition_clause(spec.condition_tokens)
         && let Some(abilities) =
             parse_static_ability_ast_line_lexed_single_without_leading_condition(
@@ -403,5 +407,17 @@ mod ring_bearer_requirement_tests {
         assert!(debug.contains("ConditionalStaticAbility"), "{debug}");
         assert!(debug.contains("SourceIsRingBearer"), "{debug}");
         assert!(debug.contains("MustBeBlocked"), "{debug}");
+    }
+}
+
+#[cfg(test)]
+mod imperative_conditional_ownership_tests {
+    use super::*;
+    #[test]
+    fn a_conditional_tap_and_freeze_keeps_both_resolving_actions() {
+        let tokens=crate::lexer::lex_line("If you cast this spell during your main phase, tap that creature and it doesn't untap during its controller's next untap step.",0).unwrap();
+        assert!(parse_static_ability_ast_line_lexed(&tokens).unwrap().is_none());
+        let body=crate::lexer::lex_line("tap that creature and it doesn't untap during its controller's next untap step",0).unwrap();
+        assert!(crate::activation_and_restrictions::parse_cant_clauses(&body).unwrap().is_none());
     }
 }

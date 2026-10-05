@@ -253,6 +253,9 @@ pub enum Until {
         object: ContinuousDurationObject,
         from_zone: crate::zone::Zone,
     },
+    /// A fixed resolving controller's next untap step, distinct from the
+    /// affected permanent's current controller after a control change.
+    YourNextUntapStep,
 }
 
 impl Until {
@@ -6144,17 +6147,18 @@ impl MayCastMatchingSpellWithoutPayingManaCostEffect {
     }
 }
 
-/// A bounded numeric choice made while an instruction resolves. The limits
-/// are authored rules bounds, not a host-selected silent cap.
+/// A numeric choice made while an instruction resolves. `None` is an
+/// unbounded authored choice, separate from the host response representation.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ChooseNumberEffect {
     pub chooser: PlayerFilter,
     pub min: u32,
-    pub max: u32,
+    pub max: Option<u32>,
 }
 impl ChooseNumberEffect {
-    pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self { Self { chooser, min, max } }
+    pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self { Self { chooser, min, max: Some(max) } }
+    pub fn unbounded(chooser: PlayerFilter) -> Self { Self { chooser, min: 0, max: None } }
 }
 
 /// One CR702.60 reveal/cast/remainder resolution transaction.

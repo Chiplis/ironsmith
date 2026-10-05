@@ -117,10 +117,9 @@ pub enum WhereXValueShape {
         object_kind: String,
     },
     TwoPlusSacrificedManaValue,
-    SourceExiledManaValue,
+    SourceExiledCharacteristic(WhereXMetricShape),
     PriorEffectMetric(PriorEffectMetricQuery),
     DiedThisWayMetric(PriorEffectMetricQuery),
-    RemovedCountersThisWay,
     CountersOn {
         reference: WhereXReferenceShape,
         counter_type: Option<CounterType>,
@@ -1146,10 +1145,19 @@ fn exact_exiled_card_reference(tokens: &[OwnedLexToken]) -> bool {
     .is_ok()
 }
 
-fn removed_counters_this_way(tokens: &[OwnedLexToken]) -> bool {
-    marker_anywhere(tokens, counter_noun)
-        && marker_anywhere(tokens, primitives::kw("removed"))
-        && marker_anywhere(tokens, primitives::phrase(&["this", "way"]))
+fn removed_counters_this_way(tokens: &[OwnedLexToken]) -> Option<Option<CounterType>> {
+    let descriptor = primitives::parse_all(tokens, (
+        repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(counter_noun))
+            .map(|((), _)| ()).take(),
+        counter_noun,
+        primitives::phrase(&["removed", "this", "way"]),
+        eof,
+    ).map(|(descriptor, _, _, _)| descriptor), "removed-counter result").ok()?;
+    if descriptor.is_empty() { return Some(None); }
+    if !descriptor.iter().all(|token| matches!(token.kind, crate::lexer::TokenKind::Word)) { return None; }
+    let words = parser_token_word_refs(descriptor);
+    if !matches!(words.as_slice(), [_] | ["first" | "double", "strike"]) { return None; }
+    filters::parse_counter_type_from_tokens(descriptor).map(Some)
 }
 
 #[cfg(test)]

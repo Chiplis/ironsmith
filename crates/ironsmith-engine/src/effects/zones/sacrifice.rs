@@ -21,6 +21,45 @@ use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::SacrificePlayerEffect;
 
+#[cfg(test)]
+mod original_result_quantity_tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    #[test]
+    fn direct_and_dispatch_results_do_not_count_replacement_only_sacrifices() {
+        for dispatched in [false, true] { for scenario in 0..4 {
+            let player = PlayerId::from_index(0);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let card = CardBuilder::new(crate::CardId::new(), "Sacrifice witness")
+                .card_types(vec![crate::CardType::Creature]).power_toughness(PowerToughness::fixed(3, 4)).build();
+            let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+            let original = game.create_object_from_card(&card, player, Zone::Battlefield);
+            let added = game.create_object_from_card(&card, player, Zone::Battlefield);
+            let added_sacrifice = crate::effect::Effect::new(crate::effects::SacrificeTargetEffect::new(ChooseSpec::SpecificObject(added)));
+            let action = match scenario {
+                0 => ReplacementAction::Prevent,
+                1 => ReplacementAction::Instead(vec![added_sacrifice]),
+                2 => ReplacementAction::ChangeDestination(Zone::Exile),
+                _ => ReplacementAction::Additionally(vec![added_sacrifice]),
+            };
+            game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, player,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(original), Some(Zone::Battlefield), Some(Zone::Graveyard)), action));
+            let sacrifice = crate::effects::SacrificeTargetEffect::new(ChooseSpec::SpecificObject(original));
+            let mut ctx = ExecutionContext::new_default(source, player);
+            let outcome = if dispatched { crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(sacrifice), &mut ctx) }
+                else { sacrifice.execute(&mut game, &mut ctx) }.unwrap();
+            let actual = usize::from(scenario >= 2);
+            assert_eq!(outcome.instruction_result().count_or_zero(), actual as i64);
+            assert_eq!(outcome.chosen_objects(), Some([original].as_slice()));
+            assert_eq!(outcome.affected_object_memory().unwrap().len(), actual);
+            assert!(outcome.affected_object_memory().unwrap().iter().all(|memory| memory.object_id == original));
+            let all_events = outcome.events.iter().filter(|event| event.downcast::<SacrificeEvent>().is_some()).count();
+            assert_eq!(all_events, actual + usize::from(scenario == 1 || scenario == 3));
+        }}
+    }
+}
+
 
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
@@ -612,9 +651,12 @@ fn sacrifice_selected_objects(
                 continue;
             }
             EventOutcome::Proceed(result) => {
-                if result.final_zone != Zone::Battlefield
-                    && (result.new_object_id.is_some() || !result.new_object_ids.is_empty())
-                    && let Some(snapshot) = pre_snapshot.as_ref()
+                if result.final_zone == Zone::Battlefield
+                    || (result.new_object_id.is_none() && result.new_object_ids.is_empty())
+                {
+                    continue;
+                }
+                if let Some(snapshot) = pre_snapshot.as_ref()
                 {
                     original_sacrifice_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
                 }
@@ -647,25 +689,11 @@ fn sacrifice_selected_objects(
                 ));
             }
             EventOutcome::Replaced => {
-                // Replacement effects already executed by process_zone_change
-                tag_sacrifice_zone_change_event(
-                    game,
-                    id,
-                    event_object_tags,
-                    event_source_tags,
-                    pre_snapshot.as_ref(),
-                    source_snapshot_for_event.as_ref(),
-                );
-                sacrificed_count += 1;
-                sacrificed_objects.push(id);
-                if let Some(snapshot) = pre_snapshot.as_ref() {
-                    sacrificed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
-                }
-                sacrifice_events.push(TriggerEvent::new_with_provenance(
-                    SacrificeEvent::new(id, Some(ctx.source))
-                        .with_snapshot(pre_snapshot, sacrificing_player),
-                    ctx.provenance,
-                ));
+                // The modified cost can be paid (CR 118.11), but a wholly
+                // replaced instruction did not sacrifice its selected
+                // permanent. Its added actions retain their own observations
+                // in finish_zone_change_receipts below.
+                continue;
             }
             EventOutcome::NotApplicable => {
                 // Object no longer exists or isn't applicable
@@ -679,10 +707,8 @@ fn sacrifice_selected_objects(
         .with_events(sacrifice_events)
         .with_execution_fact(ExecutionFact::ChosenObjects(chosen_to_sacrifice))
         .with_chosen_object_memory(chosen_memory);
-    if !sacrificed_objects.is_empty() {
-        outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(sacrificed_objects));
-        outcome = outcome.with_affected_object_memory(sacrificed_memory);
-    }
+    outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(sacrificed_objects));
+    outcome = outcome.with_affected_object_memory(sacrificed_memory);
     Ok(outcome)
     })();
     end_sacrifice_batch_lookback(game, pinned_lookback);

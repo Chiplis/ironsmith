@@ -1028,12 +1028,14 @@ impl GameState {
             .iter_mut()
             .filter(|effect| {
                 effect.controller == player
+                    && effect.untap_step_object.is_none()
                     && matches!(
                         effect.duration,
                         Until::YourNextTurn
                             | Until::YourNextTurnEnd
                             | Until::YourNextUpkeep
                             | Until::ControllersNextUntapStep
+                            | Until::YourNextUntapStep
                     )
             })
         {
@@ -3089,6 +3091,7 @@ impl GameState {
         if entry.triggering_event.is_none() {
             for (tag, snapshots) in entry.tagged_objects.iter_mut() {
                 if tag.as_str() == crate::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG
+                    || matches!(ironsmith_core::tag::SacrificeCostTag::parse(tag), Some(ironsmith_core::tag::SacrificeCostTag::OriginalResult(_)))
                     || tag.as_str().starts_with("__paid_departure__")
                     || tag.as_str().starts_with("__pre_move_history__")
                 {

@@ -831,7 +831,9 @@ pub fn compiler_activation_cost_reference_imports(
             if crate::tag::CompilerCostObjectTag::Sacrifice.matches(&tag) {
                 imports.snapshot_tag_aliases.push((
                     (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
-                    tag,
+                    ironsmith_core::tag::SacrificeCostTag::parse(&tag)
+                        .expect("typed sacrifice-cost tag")
+                        .original_result_key(),
                 ));
             } else if crate::tag::CompilerCostObjectTag::Discard.matches(&tag) {
                 // A filtered or random discard payment tags its card under

@@ -4578,6 +4578,7 @@ pub(crate) fn describe_effect_metric_value(
         crate::effect::EffectMetric::NameStickerUniqueVowels => {
             "the number of unique vowels on that sticker".to_string()
         }
+        crate::effect::EffectMetric::CoinFlipsTotal => "the number of flips".into(),
         crate::effect::EffectMetric::CoinFlipsWon => "the number of flips you won".into(),
         crate::effect::EffectMetric::CoinFlipsLost => "the number of flips you lost".into(),
         crate::effect::EffectMetric::CoinHeads => "the number of coins that came up heads".into(),

@@ -222,7 +222,7 @@ impl EffectExecutor for SequenceEffect {
             // possible. "Then" orders actions without requiring success;
             // explicit conditional effects implement "if you do" gates.
             outcomes.push(outcome);
-            if ctx.decision_maker.awaiting_choice() {
+            if ctx.resolution_stopped() || ctx.decision_maker.awaiting_choice() {
                 let terminal = outcomes
                     .last()
                     .expect("the pending outcome was just appended");

@@ -350,6 +350,14 @@ impl Default for ReplacementExecutionContext {
     }
 }
 
+/// Resolution-level control flow, independent of an instruction's result.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum ResolutionControl {
+    #[default]
+    Continue,
+    Stop,
+}
+
 /// Context for effect execution.
 pub struct ExecutionContext<'a> {
     /// The source object (spell/ability on stack).
@@ -467,6 +475,7 @@ pub struct ExecutionContext<'a> {
     /// This resolution restarted the game (CR 726): its later battlefield
     /// entries are deferred until the new game's first untap step.
     pub(crate) restarted_game: bool,
+    pub(crate) resolution_control: ResolutionControl,
     /// The first object id allocated after this stack entry began resolving.
     ///
     /// Objects with an id at or above it were moved into their current zone
@@ -560,6 +569,7 @@ execution_context_checkpoint! {
     shared_team_structure_operations: HashSet<(usize, usize, &'static str)>,
     created_extra_turn_index: Option<usize>,
     restarted_game: bool,
+    resolution_control: ResolutionControl,
     resolution_object_id_floor: Option<ObjectId>,
     public_search_reveal_tag: Option<TagKey>,
     pending_entry_attachment: Option<crate::target::ChooseSpec>,
@@ -616,6 +626,9 @@ impl std::fmt::Debug for ExecutionContext<'_> {
 }
 
 impl<'a> ExecutionContext<'a> {
+    pub(crate) fn stop_resolution(&mut self) { self.resolution_control = ResolutionControl::Stop; }
+    pub(crate) fn resolution_stopped(&self) -> bool { self.resolution_control == ResolutionControl::Stop }
+
     /// Create a new execution context with a decision maker.
     pub fn new(
         source: ObjectId,
@@ -664,6 +677,7 @@ impl<'a> ExecutionContext<'a> {
             shared_team_structure_operations: HashSet::new(),
             created_extra_turn_index: None,
             restarted_game: false,
+            resolution_control: ResolutionControl::Continue,
             resolution_object_id_floor: None,
             public_search_reveal_tag: None,
             pending_entry_attachment: None,
@@ -726,6 +740,7 @@ impl<'a> ExecutionContext<'a> {
             shared_team_structure_operations: HashSet::new(),
             created_extra_turn_index: None,
             restarted_game: false,
+            resolution_control: ResolutionControl::Continue,
             resolution_object_id_floor: None,
             public_search_reveal_tag: None,
             pending_entry_attachment: None,
@@ -778,6 +793,7 @@ impl<'a> ExecutionContext<'a> {
             shared_team_structure_operations: self.shared_team_structure_operations,
             created_extra_turn_index: self.created_extra_turn_index,
             restarted_game: self.restarted_game,
+            resolution_control: self.resolution_control,
             resolution_object_id_floor: self.resolution_object_id_floor,
             public_search_reveal_tag: self.public_search_reveal_tag,
             pending_entry_attachment: self.pending_entry_attachment,

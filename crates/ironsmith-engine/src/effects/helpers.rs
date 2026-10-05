@@ -351,6 +351,7 @@ pub(crate) fn pin_tagged_objects_to_current(
 ) {
     for (tag, snapshots) in tagged_objects.iter_mut() {
         if tag.as_str().starts_with("__paid_departure__")
+            || matches!(ironsmith_core::tag::SacrificeCostTag::parse(tag), Some(ironsmith_core::tag::SacrificeCostTag::OriginalResult(_)))
             || tag.as_str().starts_with("__pre_move_history__")
         {
             continue;
@@ -727,7 +728,7 @@ fn resolve_effect_metric(
             .find_map(|id| other_number(crate::effect::EffectId(id)));
         return Ok(found.unwrap_or(0));
     }
-    if matches!(metric, EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails) {
+    if matches!(metric, EffectMetric::CoinFlipsTotal | EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails) {
         if source != EffectMetricSource::Outcome {
             return Err(ExecutionError::UnresolvableValue("coin metrics require an exact instruction outcome".into()));
         }
@@ -739,6 +740,7 @@ fn resolve_effect_metric(
             "coin instruction outcome has no retained-flip receipt".into(),
         ))?;
         return Ok(results.iter().filter(|flip| match metric {
+            EffectMetric::CoinFlipsTotal => true,
             EffectMetric::CoinFlipsWon => flip.winner == Some(flip.player),
             EffectMetric::CoinFlipsLost => flip.loser == Some(flip.player),
             EffectMetric::CoinHeads => flip.face == ironsmith_core::CoinFace::Heads,
@@ -754,7 +756,7 @@ fn resolve_effect_metric(
     let object_memory = || effect_metric_memory(game, outcome, source);
 
     let resolved = match metric {
-        EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails => unreachable!("coin metrics handled before generic outcomes"),
+        EffectMetric::CoinFlipsTotal | EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails => unreachable!("coin metrics handled before generic outcomes"),
         EffectMetric::Count => effect_metric_object_count(game, outcome, source),
         EffectMetric::ChosenCount => {
             effect_metric_object_count(game, outcome, EffectMetricSource::ChosenObjects)
@@ -995,7 +997,7 @@ fn resolve_prior_effect_metric(
     if effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST && ctx.get_outcome(effect_id).is_none() {
         return Err(ExecutionError::IncompleteEvidence("activation counter payment has no completed receipt".into()));
     }
-    if matches!(query.metric, EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails)
+    if matches!(query.metric, EffectMetric::CoinFlipsTotal | EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails)
         && (query.filter.is_some() || query.player.is_some())
     {
         return Err(ExecutionError::UnresolvableValue("coin receipts do not accept object or player-memory filters".into()));

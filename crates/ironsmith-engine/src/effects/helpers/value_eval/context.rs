@@ -703,6 +703,71 @@ impl EvaluationContext<'_, '_> {
             Err(ExecutionError::ObjectNotFound(self.source))
         }
     }
+    pub(super) fn object_number_wide(
+        &self,
+        spec: &ChooseSpec,
+        property: NumericProperty,
+    ) -> Result<i64, ExecutionError> {
+        if let ChooseSpec::Tagged(tag) = spec.base()
+            && matches!(ironsmith_core::tag::SacrificeCostTag::parse(tag), Some(ironsmith_core::tag::SacrificeCostTag::OriginalResult(_)))
+        {
+            let missing = || {
+                let error = ExecutionError::IncompleteEvidence("sacrificed-object quantity requires the completed original cost result".into());
+                self.game.record_token_resource_failure(&error); error
+            };
+            let snapshots = self.execution().and_then(|ctx| ctx.tagged_objects.get(tag)).ok_or_else(missing)?;
+            return snapshots.iter().try_fold(0i64, |total, snapshot| {
+                if snapshot.zone != crate::zone::Zone::Battlefield { return Err(missing()); }
+                total.checked_add(i64::from(property.snapshot(snapshot).unwrap_or(0)))
+                    .ok_or_else(|| ExecutionError::UnresolvableValue("sacrificed-object characteristic sum exceeds the scalar range".into()))
+            });
+        }
+        if matches!(spec.base(), ChooseSpec::Tagged(tag)
+            if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+            && matches!(property, NumericProperty::Power | NumericProperty::Toughness | NumericProperty::ManaValue)
+            && let Some(ctx) = self.execution()
+        {
+            let missing = |message: &str| {
+                let error = ExecutionError::IncompleteEvidence(message.into());
+                self.game.record_token_resource_failure(&error);
+                error
+            };
+            // CR 607.3: repeated executions of the linked exile ability can
+            // leave several cards; a characteristic question uses their sum.
+            // Read the source incarnation's live link table, never a captured
+            // tag or an unrelated prior effect. An empty link set is known
+            // zero, including after an exiled card leaves before resolution.
+            if self.game.object(ctx.source).is_none()
+                && !ctx.source_snapshot.as_ref().is_some_and(|snapshot| snapshot.object_id == ctx.source) {
+                return Err(missing("linked exile quantity requires the original source identity"));
+            }
+            return self.game.get_exiled_with_source_links(ctx.source).iter().try_fold(0i64, |total, id| {
+                let object = self.game.object(*id).ok_or_else(||
+                    missing("linked exile quantity has an unavailable linked object"))?;
+                if object.zone != crate::zone::Zone::Exile { return Ok(total); }
+                let chars = self.game.try_current_characteristics(*id).map_err(|discovery| {
+                    let error = ExecutionError::ContinuousDiscovery(discovery);
+                    self.game.record_token_resource_failure(&error);
+                    error
+                })?.ok_or_else(|| missing("linked exile characteristics are unavailable"))?;
+                // Checked absence is zero (CR 107.2); failed discovery and
+                // range validation never fall back to a printed card value.
+                let number = match property {
+                    NumericProperty::Power => i64::from(chars.power.unwrap_or(0)),
+                    NumericProperty::Toughness => i64::from(chars.toughness.unwrap_or(0)),
+                    NumericProperty::ManaValue => i64::from(chars.linked_face_mana_value
+                        .unwrap_or_else(|| chars.mana_cost.as_ref().map_or(0, |cost| cost.mana_value()))),
+                    _ => unreachable!("linked characteristic guard"),
+                };
+                total.checked_add(number)
+                    .ok_or_else(|| ExecutionError::UnresolvableValue(
+                        "linked exile characteristic sum exceeds the scalar range".into(),
+                    ))
+            });
+        }
+        self.object_number(spec, property).map(i64::from)
+    }
+
     pub(super) fn object_number(
         &self,
         spec: &ChooseSpec,

@@ -7809,8 +7809,13 @@ fn resolve_sacrifice_cost_tagged_metric(
     {
         return None;
     }
+    let binding = if query.source == EffectMetricSource::ChosenObjects {
+        ironsmith_core::tag::SacrificeCostTag::Selected(tag_index as usize)
+    } else {
+        ironsmith_core::tag::SacrificeCostTag::OriginalResult(tag_index as usize)
+    };
     let filter = query.filter.clone().unwrap_or_default().match_tagged(
-        ironsmith_compiler_semantic::tag::declared_key(format!("sacrifice_cost_{tag_index}")),
+        ironsmith_compiler_semantic::tag::declared_key(binding.key()),
         TaggedOpbjectRelation::IsTaggedObject,
     );
     match query.metric {
@@ -11278,7 +11283,7 @@ mod tests {
         };
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                && constraint.tag.as_str() == "sacrifice_cost_3"
+                && constraint.tag.as_str() == "__original_sacrifice_cost_3"
         }));
     }
 
@@ -11309,7 +11314,7 @@ mod tests {
                     filter
                         .tagged_constraints
                         .iter()
-                        .any(|constraint| constraint.tag.as_str() == "sacrifice_cost_7")
+                        .any(|constraint| constraint.tag.as_str() == "__original_sacrifice_cost_7")
                 );
             }
         }

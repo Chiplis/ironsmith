@@ -1065,6 +1065,9 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            // A state change names the existing permanent of its antecedent.
+            // A replacement-added move cannot turn it into a later incarnation.
+            let spec = exact_tap_reference(spec);
             let base_effect = Effect::new(
                 crate::effects::TapEffect::with_spec(spec.clone()).with_actor(tap_actor.clone()),
             );
@@ -3299,5 +3302,28 @@ fn bind_it_characteristic_to_damage_source_subject(value: &Value) -> Value {
         Value::PowerOf(spec) if is_it(spec) => Value::PowerOf(Box::new(source(spec))),
         Value::ToughnessOf(spec) if is_it(spec) => Value::ToughnessOf(Box::new(source(spec))),
         other => other.clone(),
+    }
+}
+
+
+fn exact_tap_reference(spec: ChooseSpec) -> ChooseSpec {
+    fn exact_filter(mut filter: ObjectFilter) -> ObjectFilter {
+        for constraint in &mut filter.tagged_constraints {
+            if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+                constraint.relation = crate::filter::TaggedOpbjectRelation::SameObjectId;
+            }
+        }
+        filter.any_of = filter.any_of.into_iter().map(exact_filter).collect();
+        filter
+    }
+    match spec {
+        ChooseSpec::Tagged(tag) => ChooseSpec::All(ObjectFilter::exact_tagged(tag)),
+        ChooseSpec::Object(filter) => ChooseSpec::Object(exact_filter(filter)),
+        ChooseSpec::All(filter) => ChooseSpec::All(exact_filter(filter)),
+        ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted { spec: Box::new(exact_tap_reference(*spec)), hints },
+        ChooseSpec::WithCount(spec, count) => ChooseSpec::WithCount(Box::new(exact_tap_reference(*spec)), count),
+        ChooseSpec::WithCountValue(spec, count, value) => ChooseSpec::WithCountValue(Box::new(exact_tap_reference(*spec)), count, value),
+        // Explicit target declarations keep their normal saved-slot owner.
+        other => other,
     }
 }

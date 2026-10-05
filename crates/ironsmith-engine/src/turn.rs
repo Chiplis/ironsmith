@@ -656,6 +656,14 @@ fn execute_untap_step_inner(
     game.refresh_continuous_state()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     game.update_cant_effects();
+    // Freeze which existing exact restrictions this completed step consumes.
+    // Replacement additions during untapping cannot create or retarget one of
+    // these next-step occurrences retroactively.
+    let consumed_untap_restrictions = game.effect_store.restriction_effects.iter()
+        .filter(|effect| matches!(effect.duration, Until::ControllersNextUntapStep | Until::YourNextUntapStep)
+            && effect.untap_step_player(game).is_some_and(|player| active_players.contains(&player)))
+        .map(|effect| effect.timestamp)
+        .collect::<std::collections::HashSet<_>>();
     let may_have_untap_static_abilities = game_may_have_untap_static_abilities(game);
     let has_cant_untap_restrictions = !game.effect_store.cant_effects.cant_untap.is_empty();
 
@@ -798,9 +806,7 @@ fn execute_untap_step_inner(
     }
 
     for effect in &mut game.effect_store.restriction_effects {
-        if matches!(effect.duration, Until::ControllersNextUntapStep)
-            && active_players.contains(&effect.controller)
-        {
+        if consumed_untap_restrictions.contains(&effect.timestamp) {
             effect.consumed_next_untap = true;
         }
     }

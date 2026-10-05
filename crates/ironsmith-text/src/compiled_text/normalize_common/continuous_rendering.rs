@@ -4550,6 +4550,7 @@ pub(crate) fn describe_until(until: &Until) -> String {
         Until::YourNextUpkeep => "until your next upkeep".to_string(),
         Until::NextEndStep => "until the next end step".to_string(),
         Until::ControllersNextUntapStep => "during its controller's next untap step".to_string(),
+        Until::YourNextUntapStep => "during your next untap step".to_string(),
         Until::EndOfCombat => "until end of combat".to_string(),
         Until::ThisLeavesTheBattlefield => {
             "for as long as this source remains on the battlefield".to_string()
@@ -4811,6 +4812,7 @@ pub(crate) fn describe_untap_restriction_for_subject(
         cant.duration,
         Until::Forever
             | Until::ControllersNextUntapStep
+            | Until::YourNextUntapStep
             | Until::ThisLeavesTheBattlefield
             | Until::SourceUntaps
             | Until::YouStopControllingThis
@@ -4839,6 +4841,7 @@ pub(crate) fn describe_untap_restriction_for_subject(
     };
 
     let mut text = match cant.duration {
+        Until::YourNextUntapStep => format!("{} {verb} during your next untap step", subject.text),
         Until::ControllersNextUntapStep => {
             format!("{} {verb} during {controller_next_step}", subject.text)
         }

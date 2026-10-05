@@ -112,6 +112,7 @@ impl EffectExecutor for RepeatEffectsEffect {
             ctx.clear_object_tag(&choice.tag);
 
             for power in powers {
+                if ctx.resolution_stopped() { break; }
                 let mut power_choice = choice.clone();
                 power_choice.filter.power = Some(Comparison::Equal(power));
                 let outcome =
@@ -173,6 +174,7 @@ impl EffectExecutor for RepeatEffectsEffect {
         let mut reported_cursor = 0usize;
 
         for repetition in 0..count {
+            if ctx.resolution_stopped() { break; }
             // Each repetition is a later instruction (CR 608.2c); a batched
             // vote-token creation is one event and stays together.
             if repetition > 0

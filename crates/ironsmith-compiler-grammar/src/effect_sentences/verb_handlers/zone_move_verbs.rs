@@ -209,7 +209,7 @@ pub fn parse_draw(
             if let Ok(max) = u32::try_from(maximum) {
                 return Ok(EffectAst::Sequence { effects: vec![
                     EffectAst::subject_verb(SubjectVerbRoleAst::Chooser, player.clone(),
-                        SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChooseNumber { min: 0, max })),
+                        SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChooseNumber { min: 0, max: Some(max) })),
                     subject_verb_player_resource_effect(SubjectVerbRoleAst::AffectedPlayer, player,
                         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: Value::PendingEffectMetric { source: ironsmith_core::EffectMetricSource::Outcome, metric: ironsmith_core::EffectMetric::Count } })),
                 ] });
