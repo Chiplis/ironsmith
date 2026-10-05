@@ -2252,12 +2252,33 @@ impl ControlCombatChoicesThisTurnEffect {
     }
 }
 
+/// An authored arithmetic operation on a die result, never an extra roll or mana action.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum DieResultModifier {
+    Add(Value),
+    Subtract(Value),
+}
+
+impl DieResultModifier {
+    pub fn value(&self) -> &Value {
+        match self { Self::Add(value) | Self::Subtract(value) => value }
+    }
+
+    pub fn value_mut(&mut self) -> &mut Value {
+        match self { Self::Add(value) | Self::Subtract(value) => value }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RollDieEffect {
     pub player: PlayerFilter,
     pub sides: u32,
     pub die_text: Option<String>,
+    /// Arithmetic performed on this completed roll, after physical die choices.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub result_modifier: Option<DieResultModifier>,
 }
 
 impl RollDieEffect {
@@ -2266,6 +2287,7 @@ impl RollDieEffect {
             player,
             sides,
             die_text: None,
+            result_modifier: None,
         }
     }
 
@@ -2274,6 +2296,7 @@ impl RollDieEffect {
             player,
             sides,
             die_text,
+            result_modifier: None,
         }
     }
 }

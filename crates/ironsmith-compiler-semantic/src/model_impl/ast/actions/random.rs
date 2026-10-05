@@ -19,6 +19,7 @@ pub enum RandomActionAst {
     RollDie {
         sides: u32,
         surface: Option<DieSurface>,
+        result_modifier: Option<ironsmith_core::effect::DieResultModifier>,
     },
     RollDiceChooseResult {
         count: u32,

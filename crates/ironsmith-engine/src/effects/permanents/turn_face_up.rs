@@ -46,6 +46,29 @@ impl EffectExecutor for TurnFaceUpEffect {
                 return Ok(EffectOutcome::target_invalid());
             }
 
+            // Turning a selected face-down exile card face up is public, but
+            // it is not the Reveal keyword action. Use the existing exact
+            // owner-opening protocol without creating CardRevealed events.
+            for index in 0..game.players.len() {
+                let owner = crate::ids::PlayerId::from_index(index as u8);
+                let exiled: Vec<_> = targets.iter().copied().filter(|id|
+                    game.object(*id).is_some_and(|object| object.owner == owner && object.zone == Zone::Exile)
+                        && game.is_face_down(*id)).collect();
+                if exiled.is_empty() { continue; }
+                let private: Vec<_> = exiled.iter().copied().filter(|id| game.hidden_identity_is_private(*id)).collect();
+                let Some(opened) = game.reveal_private_hidden_cards_publicly(
+                    &mut *ctx.decision_maker, owner, ctx.source, &exiled,
+                    "Turn selected exiled cards face up", false,
+                ) else { return Ok(EffectOutcome::count(0)); };
+                if private.iter().any(|id| !opened.contains(id) && !game.is_publicly_revealed_hidden_card(*id))
+                    || exiled.iter().any(|id| game.is_hidden_card_placeholder(*id))
+                {
+                    return Err(ExecutionError::IncompleteEvidence(
+                        "turning exiled cards face up lacks an authenticated selected identity".into(),
+                    ));
+                }
+            }
+
             let mut turned = 0;
             let mut completed = Vec::new();
             for object_id in targets {
@@ -110,6 +133,111 @@ impl EffectExecutor for TurnFaceUpEffect {
 
     fn target_description(&self) -> &'static str {
         "card to turn face up"
+    }
+}
+
+#[cfg(test)]
+mod exile_opening_tests {
+    use super::*;
+    use crate::decision::DecisionMaker;
+    use crate::decisions::context::{SelectObjectsContext, SelectionRevealPolicy};
+    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::target::ChooseSpec;
+
+    struct Opening { pause: bool, pending: bool, requested: Vec<Vec<ObjectId>> }
+    impl DecisionMaker for Opening {
+        fn decide_objects(&mut self, _: &GameState, context: &SelectObjectsContext) -> Vec<ObjectId> {
+            assert_eq!(context.player, PlayerId::from_index(0));
+            assert_eq!(context.reveal_policy, SelectionRevealPolicy::Public);
+            let cards: Vec<_> = context.candidates.iter().map(|candidate| candidate.id).collect();
+            assert_eq!(context.min, cards.len());
+            assert_eq!(context.max, Some(cards.len()));
+            self.requested.push(cards.clone()); self.pending = self.pause; cards
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+
+    #[test]
+    fn locally_known_exile_faces_still_require_a_complete_owner_opening() {
+        struct Incomplete(usize);
+        impl DecisionMaker for Incomplete {
+            fn decide_objects(&mut self, _: &GameState, context: &SelectObjectsContext) -> Vec<ObjectId> {
+                match self.0 {
+                    0 => vec![],
+                    1 => vec![context.candidates[0].id],
+                    _ => vec![ObjectId::from_raw(9_999_999)],
+                }
+            }
+        }
+        let alice = PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(CardId::from_raw(120_071), "Known private exile card")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        for answer in 0..3 {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let cards: Vec<_> = (0..2).map(|slot|
+                game.create_hidden_card_placeholder(alice, Zone::Exile, slot, format!("malformed-{slot}"))).collect();
+            for id in &cards { game.reveal_hidden_card_with_definition(*id, &definition).unwrap(); game.set_face_down(*id); }
+            let snapshots = cards.iter().map(|id| ObjectSnapshot::from_object(game.object(*id).unwrap(), &game)).collect();
+            let source = game.new_object_id();
+            let mut dm = Incomplete(answer);
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            ctx.set_tagged_objects("pile", snapshots);
+            let result = TurnFaceUpEffect { target: ChooseSpec::tagged("pile") }.execute(&mut game, &mut ctx);
+            assert!(matches!(result, Err(ExecutionError::IncompleteEvidence(_))));
+            assert!(cards.iter().all(|id| game.is_face_down(*id) && !game.is_hidden_card_placeholder(*id)));
+            assert!(game.publicly_revealed_hidden_cards().is_empty());
+            assert!(game.take_pending_trigger_events().is_empty());
+        }
+    }
+
+    #[test]
+    fn turning_an_exile_group_face_up_uses_exact_openings_without_reveal_events() {
+        let alice = PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(CardId::from_raw(120_070), "Exile identity")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        for known in [false, true] {
+            for pause in [false, true] {
+                let mut game = crate::tests::test_helpers::setup_two_player_game();
+                let cards: Vec<_> = (0..4).map(|slot|
+                    game.create_hidden_card_placeholder(alice, Zone::Exile, slot, format!("pile-{slot}"))).collect();
+                if known {
+                    for card in &cards[..2] { game.reveal_hidden_card_with_definition(*card, &definition).unwrap(); }
+                }
+                for card in &cards { game.set_face_down(*card); }
+                let source = game.new_object_id();
+                let selected = cards[..2].iter().map(|id| ObjectSnapshot::from_object(game.object(*id).unwrap(), &game)).collect();
+                let mut dm = Opening { pause, pending: false, requested: vec![] };
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                ctx.set_tagged_objects("selected_pile", selected);
+                let effect = TurnFaceUpEffect { target: ChooseSpec::tagged("selected_pile") };
+                let result = effect.execute(&mut game, &mut ctx);
+                if pause || !known {
+                    assert!(cards.iter().all(|id| game.is_face_down(*id)));
+                    assert!(game.publicly_revealed_hidden_cards().is_empty());
+                    if !pause { assert!(matches!(result, Err(ExecutionError::IncompleteEvidence(_)))); }
+                } else {
+                    assert_eq!(result.unwrap().count_or_zero(), 2);
+                    assert!(cards[..2].iter().all(|id| !game.is_face_down(*id)));
+                }
+                assert!(cards[2..].iter().all(|id| game.is_face_down(*id) && game.is_hidden_card_placeholder(*id)));
+                assert!(game.take_pending_trigger_events().is_empty(), "no reveal or battlefield turn-up event for exile cards");
+                drop(ctx);
+                assert_eq!(dm.requested, vec![cards[..2].to_vec()]);
+                if pause || !known {
+                    if !known { for card in &cards[..2] { game.reveal_hidden_card_with_definition(*card, &definition).unwrap(); } }
+                    dm.pause = false; dm.pending = false;
+                    let selected = cards[..2].iter().map(|id| ObjectSnapshot::from_object(game.object(*id).unwrap(), &game)).collect();
+                    let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                    ctx.set_tagged_objects("selected_pile", selected);
+                    let result = effect.execute(&mut game, &mut ctx).unwrap();
+                    assert_eq!(result.count_or_zero(), 2);
+                    assert!(result.events.is_empty());
+                    assert!(cards[..2].iter().all(|id| !game.is_face_down(*id)));
+                    assert!(cards[2..].iter().all(|id| game.is_face_down(*id) && game.is_hidden_card_placeholder(*id)));
+                }
+            }
+        }
     }
 }
 

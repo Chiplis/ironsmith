@@ -144,6 +144,10 @@ pub struct PriorEffectMetricQuery {
     /// identity still comes from `effect_id`; this preserves wording such as
     /// "stun counters removed this way".
     pub counter_type: Option<CounterType>,
+    /// Read the producer's original arrivals in this actual destination,
+    /// rather than its selected set, source LKI, or replacement-added moves.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub original_destination: Option<crate::zone::Zone>,
 }
 
 impl PriorEffectMetricQuery {
@@ -154,6 +158,7 @@ impl PriorEffectMetricQuery {
             filter: None,
             player: None,
             action: None,
+            original_destination: None,
             counter_type: None,
         }
     }

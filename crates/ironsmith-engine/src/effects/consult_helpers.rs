@@ -98,10 +98,10 @@ pub fn execute_library_consult(
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let instruction = (|| -> Result<LibraryConsultResult, ExecutionError> {
     if let Some(tag) = all_tag {
-        ctx.clear_object_tag(tag.as_str());
+        ctx.set_tagged_objects(tag.clone(), Vec::new());
     }
     if let Some(tag) = match_tag {
-        ctx.clear_object_tag(tag.as_str());
+        ctx.set_tagged_objects(tag.clone(), Vec::new());
     }
 
     let required_matches = stop_rule.required_matches() as usize;
@@ -131,9 +131,15 @@ pub fn execute_library_consult(
                 .unwrap_or_default();
 
             for object_id in top_to_bottom {
-                let Some(object) = game.object(object_id) else {
-                    continue;
-                };
+                // Publicly open exactly this next card before the stop filter
+                // observes any characteristics. Hidden placeholders are not
+                // evidence of a nonmatch and cannot justify looking deeper.
+                if !reveal_consulted_card(game, ctx, player, object_id)? {
+                    return Ok(LibraryConsultResult::default());
+                }
+                let object = game.object(object_id).ok_or_else(|| ExecutionError::IncompleteEvidence(
+                    "a consulted library card disappeared before its match decision".into(),
+                ))?;
                 let snapshot = ObjectSnapshot::from_object(object, game);
                 let mana_value = object
                     .mana_cost
@@ -143,6 +149,9 @@ pub fn execute_library_consult(
 
                 result.exposed_object_ids.push(object_id);
                 result.exposed_snapshots.push(snapshot.clone());
+                let provenance = game.alloc_child_event_provenance(
+                    ctx.provenance, crate::events::EventKind::CardRevealed,
+                );
                 result.reveal_events.push(TriggerEvent::new_with_provenance(
                     crate::events::CardRevealedEvent::new(
                         player,
@@ -152,7 +161,7 @@ pub fn execute_library_consult(
                         Some(snapshot.clone()),
                     )
                     .with_reveal_context_amount(reveal_context_amount),
-                    ctx.provenance,
+                    provenance,
                 ));
                 if matched {
                     result.matched_snapshots.push(snapshot);
@@ -168,7 +177,6 @@ pub fn execute_library_consult(
                 }
             }
 
-            reveal_consulted_cards(game, ctx, player, &result.exposed_object_ids);
         }
         LibraryConsultMode::Exile => loop {
             let Some(top_card_id) = game
@@ -240,10 +248,12 @@ pub fn execute_library_consult(
     result.operation_outcomes.push(observations);
     Ok(result)
     })();
-    if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
-        *game = checkpoint;
+    let pending = ctx.decision_maker.awaiting_choice();
+    if instruction.is_err() || pending {
+        game.restore_execution_checkpoint(checkpoint, pending && instruction.is_ok());
         context_checkpoint.restore(ctx);
     }
+    if pending { return instruction.map(|_| LibraryConsultResult::default()); }
     instruction
 }
 
@@ -333,29 +343,37 @@ pub fn move_tagged_remainder_to_library_bottom(
     instruction
 }
 
-fn reveal_consulted_cards(
+fn reveal_consulted_card(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     subject: PlayerId,
-    card_ids: &[ObjectId],
-) {
-    if card_ids.is_empty() {
-        return;
+    card: ObjectId,
+) -> Result<bool, ExecutionError> {
+    if game.hidden_identity_is_private(card) {
+        let Some(opened) = game.reveal_private_hidden_cards_publicly(
+            &mut *ctx.decision_maker, subject, ctx.source, &[card],
+            "Reveal next consulted card", false,
+        ) else { return Ok(false); };
+        if !opened.contains(&card) {
+            return Err(ExecutionError::IncompleteEvidence(
+                "a mandatory library consultation lacks the next card's public opening".into(),
+            ));
+        }
     }
-
+    if game.is_hidden_card_placeholder(card) {
+        return Err(ExecutionError::IncompleteEvidence(
+            "a revealed library consultation has no authenticated card identity".into(),
+        ));
+    }
     for viewer_idx in 0..game.players.len() {
         let viewer = PlayerId::from_index(viewer_idx as u8);
         let view_ctx = ViewCardsContext::new(
-            viewer,
-            subject,
-            Some(ctx.source),
-            Zone::Library,
-            "Reveal consulted cards",
-        )
-        .with_public(true);
-        ctx.decision_maker
-            .view_cards(game, viewer, card_ids, &view_ctx);
+            viewer, subject, Some(ctx.source), Zone::Library, "Reveal consulted card",
+        ).with_public(true);
+        ctx.decision_maker.view_cards(game, viewer, &[card], &view_ctx);
+        if ctx.decision_maker.awaiting_choice() { return Ok(false); }
     }
+    Ok(true)
 }
 
 #[derive(Debug, Clone)]

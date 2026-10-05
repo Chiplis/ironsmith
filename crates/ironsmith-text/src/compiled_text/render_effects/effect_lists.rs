@@ -37,6 +37,8 @@ mod named_random_discard;
 mod helpers_00;
 #[path = "effect_list/helpers_01.rs"]
 mod helpers_01;
+#[path = "effect_list/binary_card_piles.rs"]
+mod binary_card_piles;
 #[path = "effect_list/helpers_02.rs"]
 pub(crate) mod helpers_02;
 #[path = "effect_list/historical_block_reanimation.rs"]

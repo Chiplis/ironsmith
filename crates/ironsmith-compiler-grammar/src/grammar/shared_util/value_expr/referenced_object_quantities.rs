@@ -11,6 +11,11 @@ fn tagged(tag: crate::tag::CompilerReferenceTag, surface: &str) -> Box<ChooseSpe
 
 pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     use crate::tag::CompilerReferenceTag as Tag;
+    // A plural possessive names the exact preceding object set. This is a
+    // sum over that set, not the first card and not a fresh zone-wide search.
+    if words.starts_with(&["their", "total", "mana", "value"]) {
+        return Some((Value::TotalManaValue(ObjectFilter::tagged(Tag::It.bind())), 4));
+    }
     let offset = usize::from(words.first() == Some(&"the"));
     let rest = &words[offset..];
     // A definite exiled card can be linked by a different ability of this

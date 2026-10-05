@@ -1424,6 +1424,7 @@ fn target_references_event_derived_amount(target: &TargetAst) -> bool {
 fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
     match action {
         SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value, .. }) => count_value.as_ref(),
+        SubjectVerbActionAst::Random(RandomActionAst::RollDie { result_modifier, .. }) => result_modifier.as_ref().map(|modifier| modifier.value()),
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition {
             spec,
         }) => Some(&spec.delta),
@@ -1565,7 +1566,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
-        | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
         | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
@@ -2090,11 +2090,12 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
                             || value_references_event_derived_amount(toughness)
                     }
                     SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+                        filter,
                         stop_rule,
                         max_exposed,
                         ..
                     }) => {
-                        matches!(
+                        filter_references_event_derived_amount(filter) || matches!(
                             stop_rule,
                             crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
                             | crate::cards::builders::LibraryConsultStopRuleAst::TotalManaValue(value)

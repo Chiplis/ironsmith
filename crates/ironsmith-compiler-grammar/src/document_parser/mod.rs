@@ -3013,24 +3013,30 @@ fn try_parse_labeled_line_dispatch(
                     &preprocessed.card,
                     &effect_parse_tokens,
                 )?;
-                return Ok(Some(LineDispatchResult::single(
-                    RecognizedLine::Activated(RecognizedActivatedLine {
-                        info: line.info.clone(),
-                        cost,
-                        cost_parse_tokens: normalized_cost_tokens,
-                        effect_parse_tokens,
-                        presentation: presentation.clone(),
-                        chosen_option: max_speed_chosen_option.clone().or_else(|| {
-                            preserve_as_choice_label
-                                .then(|| {
-                                    document_grammar::parse_chosen_option_context_tokens(
-                                        label_tokens,
-                                    )
-                                })
-                                .flatten()
-                        }),
+                let activated = RecognizedActivatedLine {
+                    info: line.info.clone(),
+                    cost,
+                    cost_parse_tokens: normalized_cost_tokens,
+                    effect_parse_tokens,
+                    presentation: presentation.clone(),
+                    chosen_option: max_speed_chosen_option.clone().or_else(|| {
+                        preserve_as_choice_label
+                            .then(|| {
+                                document_grammar::parse_chosen_option_context_tokens(
+                                    label_tokens,
+                                )
+                            })
+                            .flatten()
                     }),
-                    idx + 1,
+                };
+                let (activated, next_idx) = extend_activated_line_with_result_followups(
+                    &preprocessed.items,
+                    idx,
+                    activated,
+                );
+                return Ok(Some(LineDispatchResult::single(
+                    RecognizedLine::Activated(activated),
+                    next_idx,
                 )));
             }
             Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {
@@ -3171,24 +3177,30 @@ fn try_parse_labeled_line_dispatch(
                     &preprocessed.card,
                     &effect_parse_tokens,
                 )?;
-                return Ok(Some(LineDispatchResult::single(
-                    RecognizedLine::Activated(RecognizedActivatedLine {
-                        info: line.info.clone(),
-                        cost,
-                        cost_parse_tokens: normalized_cost_tokens,
-                        effect_parse_tokens,
-                        presentation,
-                        chosen_option: max_speed_chosen_option.or_else(|| {
-                            preserve_as_choice_label
-                                .then(|| {
-                                    document_grammar::parse_chosen_option_context_tokens(
-                                        label_tokens,
-                                    )
-                                })
-                                .flatten()
-                        }),
+                let activated = RecognizedActivatedLine {
+                    info: line.info.clone(),
+                    cost,
+                    cost_parse_tokens: normalized_cost_tokens,
+                    effect_parse_tokens,
+                    presentation,
+                    chosen_option: max_speed_chosen_option.or_else(|| {
+                        preserve_as_choice_label
+                            .then(|| {
+                                document_grammar::parse_chosen_option_context_tokens(
+                                    label_tokens,
+                                )
+                            })
+                            .flatten()
                     }),
-                    idx + 1,
+                };
+                let (activated, next_idx) = extend_activated_line_with_result_followups(
+                    &preprocessed.items,
+                    idx,
+                    activated,
+                );
+                return Ok(Some(LineDispatchResult::single(
+                    RecognizedLine::Activated(activated),
+                    next_idx,
                 )));
             }
             Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {
@@ -3945,6 +3957,13 @@ fn dispatch_remaining_preprocessed_line(
         return Ok(idx + 1);
     }
     if try_push_complete_typed_statement(&preprocessed.card, line, lines)? {
+        // Fast-path effect recognition does not end the enclosing spell's
+        // program. Result rows still belong to its preceding roll/selection.
+        if let Some(RecognizedLine::Statement(statement)) = lines.last_mut() {
+            return Ok(extend_statement_line_with_result_followups_in_place(
+                &preprocessed.items, idx, statement,
+            ));
+        }
         return Ok(idx + 1);
     }
     if let Some(next_idx) = try_push_named_source_dispatch(
@@ -5978,6 +5997,28 @@ mod tests {
         assert!(effect_text.contains("2—9"), "{effect_text}");
         assert!(effect_text.contains("10—20"), "{effect_text}");
 
+        Ok(())
+    }
+
+    #[test]
+    fn labeled_activation_owns_all_numeric_rows_and_preserves_next_ability()
+    -> Result<(), CardTextError> {
+        for label in ["Search the Room", "Circle of Death", "Unfamiliar Label"] {
+            let text = format!("{label} — {{5}}{{U}}: Roll a d20.\n1—9 | Draw a card.\n10—20 | You gain 2 life.\n{{T}}: Add {{U}}.");
+            let preprocessed = preprocess_document(
+                CardBuilder::new(CardId::new(), "Labeled die table").card_types(vec![CardType::Artifact]),
+                &text,
+            )?;
+            let recognized = super::recognize_document(&preprocessed, false)?;
+            let [super::RecognizedLine::Activated(table), super::RecognizedLine::Activated(next)] = recognized.lines.as_slice() else {
+                panic!("expected two separate activation envelopes: {:?}", recognized.lines);
+            };
+            let body = render_token_slice(&table.effect_parse_tokens);
+            assert!(body.contains("roll a d20") && body.contains("1—9") && body.contains("10—20"), "{body}");
+            assert!(!body.contains("add"), "{body}");
+            assert!(render_token_slice(&next.effect_parse_tokens).contains("add"));
+            assert!(table.presentation.is_some());
+        }
         Ok(())
     }
 

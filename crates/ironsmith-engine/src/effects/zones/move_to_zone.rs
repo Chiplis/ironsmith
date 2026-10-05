@@ -293,6 +293,7 @@ fn matching_cost_candidate_count(
 #[derive(Debug, Default)]
 struct PreparedMoveSelection {
     objects: Vec<crate::ids::ObjectId>,
+    destinations: std::collections::HashMap<crate::ids::ObjectId, Zone>,
     snapshots: std::collections::HashMap<crate::ids::ObjectId, ObjectSnapshot>,
     lookback: Vec<ObjectSnapshot>,
     counters: std::collections::HashMap<crate::ids::ObjectId, Vec<(crate::object::CounterType, u32)>>,
@@ -366,7 +367,8 @@ fn prepare_move_zone_proposals(effect: &MoveToZoneEffect, game: &mut GameState,
     let mut entry_requests = Vec::new();
     for &object in &prepared.objects {
         let Some(snapshot) = prepared.snapshots.get(&object) else { continue; };
-        let to = ctx.simultaneous_zone_destination(object).unwrap_or(effect.zone);
+        let to = ctx.simultaneous_zone_destination(object)
+            .unwrap_or_else(|| prepared.destinations.get(&object).copied().unwrap_or(effect.zone));
         if to == Zone::Battlefield && snapshot.zone != Zone::Battlefield
             && snapshot.subtypes.contains(&crate::types::Subtype::Aura)
             && let Some(target) = prepared.attachment {
@@ -563,6 +565,15 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         mut prepared: Option<PreparedMoveSelection>,
         selection: Option<&mut PreparedMoveSelection>,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if prepared.is_none() {
+            for (tag, _) in &self.tagged_destinations {
+                if ctx.get_tagged_all(tag).is_none() {
+                    return Err(ExecutionError::IncompleteEvidence(
+                        format!("a grouped movement has no completed capture for {tag}"),
+                    ));
+                }
+            }
+        }
         let moves_source = matches!(self.target.base(), ChooseSpec::Source);
         if prepared.is_none() && moves_source && crate::effects::helpers::resolve_source_object_id(game, ctx).is_none() {
             return Ok(EffectOutcome::target_invalid());
@@ -688,9 +699,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             // object, moving "that card" simply does nothing and later
             // instructions in the same sequence still resolve.
             return if matches!(self.target.base(), ChooseSpec::Tagged(_)) {
-                Ok(EffectOutcome::count(0))
+                Ok(EffectOutcome::count(0).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveCards(Vec::new())))
             } else {
-                Ok(EffectOutcome::target_invalid())
+                Ok(EffectOutcome::target_invalid().with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveCards(Vec::new())))
             };
         }
         let orders_library = self.zone == Zone::Library && self.library_order.is_some();
@@ -747,6 +758,28 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 })
             })
             .collect::<std::collections::HashMap<_, _>>());
+        let destinations = if let Some(prepared) = &prepared {
+            prepared.destinations.clone()
+        } else {
+            let mut destinations = std::collections::HashMap::new();
+            if !self.tagged_destinations.is_empty() {
+                for id in &object_ids {
+                    let mut matching = self.tagged_destinations.iter().filter(|(tag, _)| {
+                        ctx.get_tagged_all(tag).into_iter().flatten().any(|snapshot| snapshot.object_id == *id)
+                    });
+                    let (_, destination) = matching.next().ok_or_else(|| ExecutionError::IncompleteEvidence(
+                        "a grouped movement object has no captured destination".into(),
+                    ))?;
+                    if matching.next().is_some() {
+                        return Err(ExecutionError::IncompleteEvidence(
+                            "a grouped movement object belongs to overlapping destination groups".into(),
+                        ));
+                    }
+                    destinations.insert(*id, *destination);
+                }
+            }
+            destinations
+        };
         // Resolve authored counters while every selected object still exists.
         let mut authored_counters = prepared.as_ref().map(|prepared| prepared.counters.clone()).unwrap_or_default();
         for id in &object_ids {
@@ -761,6 +794,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         }
         if let Some(selection) = selection {
             selection.objects = object_ids;
+            selection.destinations = destinations;
             selection.snapshots = original_snapshots;
             selection.lookback = pre_event_lookback;
             selection.counters = authored_counters;
@@ -773,13 +807,14 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         let original_order = object_ids.clone();
         let mut zone_receipts = Vec::new();
         let mut authored_facts = Vec::new();
+        let mut original_arrivals = Vec::new();
         let opened_batch = game.open_simultaneous_action();
         for object_id in object_ids {
             let Some(target_lki_before_move) = original_snapshots.get(&object_id).cloned() else { continue; };
             let from_zone = target_lki_before_move.zone;
             let requested_zone = ctx
                 .simultaneous_zone_destination(object_id)
-                .unwrap_or(self.zone);
+                .unwrap_or_else(|| destinations.get(&object_id).copied().unwrap_or(self.zone));
             // CR 303.4i: an Aura an effect would put onto the battlefield
             // attached to something it can't legally enchant stays where it
             // is; it doesn't enter and choose some other object instead.
@@ -966,6 +1001,15 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         new_object_id,
                         new_object_ids,
                     };
+                    for &id in &result.new_object_ids {
+                        if let Some(arriving) = game.object(id)
+                            && arriving.kind == crate::object::ObjectKind::Card
+                        {
+                            original_arrivals.push(OutcomeObjectMemory::from_snapshot(
+                                &ObjectSnapshot::from_object(arriving, game),
+                            ));
+                        }
+                    }
                     if final_zone == Zone::Hand {
                         for &id in &result.new_object_ids {
                             let arriving = game.object(id).ok_or_else(|| {
@@ -1187,6 +1231,18 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 if matches!(&zone_receipt.original, EventOutcome::Replaced) {
                     any_replaced = true;
                 }
+                if let EventOutcome::Proceed(change) = &zone_receipt.original {
+                    for &id in &change.new_object_ids {
+                        if let Some(arriving) = game.object(id)
+                            && arriving.kind == crate::object::ObjectKind::Card
+                            && arriving.zone == change.final_zone
+                        {
+                            original_arrivals.push(OutcomeObjectMemory::from_snapshot(
+                                &ObjectSnapshot::from_object(arriving, game),
+                            ));
+                        }
+                    }
+                }
                 match entry_outcome {
                     BattlefieldEntryOutcome::Moved(new_id) => {
                         // CR 506.3a/b/f, 508.4: only a creature controlled by
@@ -1287,6 +1343,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             EffectOutcome::target_invalid()
         })();
         original.execution_facts.append(&mut authored_facts);
+        original.execution_facts.push(crate::effect::ExecutionFact::OriginalZoneMoveCards(original_arrivals));
         // All original moves and authored work are complete. Keep replacement
         // programs in the original object order across ordinary and entry paths.
         zone_receipts.sort_by_key(|(object, _)| {
@@ -1341,6 +1398,50 @@ mod tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn grouped_moves_distinguish_missing_captures_from_completed_empty_piles() {
+        for empty in [false, true] {
+            for present in 0..4 {
+                let mut game = setup_game();
+                let alice = PlayerId::from_index(0);
+                let source = create_creature(&mut game, alice);
+                let card = (!empty).then(|| create_named_creature_in_zone(&mut game, alice, "Captured", Zone::Library));
+                let mut union = ObjectFilter::default().in_zone(Zone::Library);
+                union.any_of = vec![ObjectFilter::exact_tagged("hand_pile"), ObjectFilter::exact_tagged("grave_pile")];
+                let mut moved = MoveToZoneEffect::new(ChooseSpec::All(union), Zone::Graveyard, false);
+                moved.tagged_destinations = vec![("hand_pile".into(), Zone::Hand), ("grave_pile".into(), Zone::Graveyard)];
+                let id = crate::effect::EffectId(703);
+                let program = Effect::new(crate::effects::SequenceEffect::new(vec![
+                    Effect::gain_life(4),
+                    Effect::with_id(id.0, Effect::new(moved)),
+                    Effect::put_counters(CounterType::PlusOnePlusOne, 1, ChooseSpec::Source),
+                    Effect::if_then(id, crate::effect::EffectPredicate::DidNotHappen, vec![Effect::gain_life(10)]),
+                ]));
+                let mut ctx = ExecutionContext::new_default(source, alice);
+                if present & 1 != 0 {
+                    let memories = card.into_iter().map(|card| ObjectSnapshot::from_object(game.object(card).unwrap(), &game)).collect();
+                    ctx.set_tagged_objects("hand_pile", memories);
+                }
+                if present & 2 != 0 { ctx.set_tagged_objects("grave_pile", Vec::new()); }
+                let result = crate::effects::execute_effect(&mut game, &program, &mut ctx);
+                if present != 3 {
+                    assert!(matches!(result, Err(ExecutionError::IncompleteEvidence(_))));
+                    assert_eq!(game.player(alice).unwrap().life, 20, "the successful prefix rolls back");
+                    assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 0);
+                    assert!(ctx.get_outcome(id).is_none());
+                    if let Some(card) = card { assert_eq!(game.object(card).unwrap().zone, Zone::Library); }
+                } else {
+                    result.unwrap();
+                    assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 1);
+                    assert_eq!(game.player(alice).unwrap().life, if empty { 34 } else { 24 });
+                    let outcome = ctx.get_outcome(id).unwrap().instruction_result();
+                    assert!(outcome.execution_facts.iter().any(|fact| matches!(fact,
+                        crate::effect::ExecutionFact::OriginalZoneMoveCards(cards) if cards.len() == usize::from(!empty))));
+                }
+            }
+        }
     }
 
     fn create_creature(game: &mut GameState, owner: PlayerId) -> crate::ids::ObjectId {

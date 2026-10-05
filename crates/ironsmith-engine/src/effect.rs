@@ -416,6 +416,10 @@ pub enum ExecutionFact {
     OriginalSacrificeObjects(Vec<OutcomeObjectMemory>),
     /// Retained results from one exact coin instruction; appended for wire stability.
     CoinFlips(Vec<CoinFlipResult>),
+    /// Exact card arrivals from one original move instruction. Recorded before
+    /// deferred replacement programs; each memory carries the actual zone.
+    /// An empty vector is completed zero movement, not missing evidence.
+    OriginalZoneMoveCards(Vec<OutcomeObjectMemory>),
 }
 
 impl ExecutionFact {

@@ -997,6 +997,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/837"
+    },
+    {
+      "stage": 72,
+      "branch": "fix/card-failures-72-reveal-morph-payments",
+      "base": "fix/card-failures-71-miracle-and-original-results",
+      "source_integration_commit": "7ba7f7e31b1287a1374df46ef7c1ec8043beb370",
+      "remote_commit": "7a13203e02b8f8f5019abadcf222dab5656f13d1",
+      "tree": "ed78ca0d2879a042e5791058cc247d3b167bebf0",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 838,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/838"
     }
   ]
 }

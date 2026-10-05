@@ -503,6 +503,7 @@ pub(crate) fn parse_simple_that_creature_owner_library_placement(
         action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
             target: TargetAst::Object(filter, None, None),
             source_top_only: false,
+            tagged_destinations: Vec::new(),
             zone: Zone::Library,
             to_top: shape.placement == LibraryPlacementShape::Top,
             library_order: None,

@@ -1,5 +1,26 @@
 use super::*;
 
+/// Terminal stack-object arity is an outer filter constraint, including when
+/// the unqualified head uses an exact early-return grammar such as "ability".
+fn parse_trailing_stack_target_count(tokens: &[OwnedLexToken]) -> Option<(crate::effect::ChoiceCount, usize)> {
+    if tokens.len() >= 4
+        && tokens[tokens.len() - 4].is_word("with")
+        && tokens[tokens.len() - 3].is_word("a")
+        && tokens[tokens.len() - 2].is_word("single")
+        && tokens[tokens.len() - 1].is_any_word(&["target", "targets"])
+    {
+        Some((crate::effect::ChoiceCount::exactly(1), 4))
+    } else if tokens.len() >= 5
+        && tokens[tokens.len() - 5].is_word("with")
+        && tokens[tokens.len() - 4].is_word("one")
+        && tokens[tokens.len() - 3].is_word("or")
+        && tokens[tokens.len() - 2].is_word("more")
+        && tokens[tokens.len() - 1].is_word("targets")
+    {
+        Some((crate::effect::ChoiceCount::at_least(1), 5))
+    } else { None }
+}
+
 pub(in super::super) fn parse_object_filter_inner(
     tokens: &[OwnedLexToken],
     other: bool,
@@ -30,17 +51,11 @@ pub(in super::super) fn parse_object_filter_inner(
     // target class: "an instant or sorcery spell with a single target". The
     // relation parser below only sees `that target(s) ...`, so retain this
     // independent grammar fact before parsing the ordinary spell domain.
-    let trailing_single_target = tokens.len() >= 4
-        && tokens[tokens.len() - 4].is_word("with")
-        && tokens[tokens.len() - 3].is_word("a")
-        && tokens[tokens.len() - 2].is_word("single")
-        && (tokens[tokens.len() - 1].is_word("target")
-            || tokens[tokens.len() - 1].is_word("targets"));
-    let tokens = if trailing_single_target {
-        &tokens[..tokens.len() - 4]
-    } else {
-        tokens
-    };
+    if let Some((count, consumed)) = parse_trailing_stack_target_count(tokens) {
+        let head = &tokens[..tokens.len() - consumed];
+        return parse_object_filter_inner(head, other, strict)
+            .map(|filter| filter.with_target_count(count));
+    }
     let source_relation_split = crate::object_filters::split_source_relation_phrases(tokens);
     let (attacking_same_defender_as_source, could_be_enchanted_by_source) = source_relation_split
         .as_ref()
@@ -67,7 +82,7 @@ pub(in super::super) fn parse_object_filter_inner(
     let mut target_player: Option<PlayerFilter> = None;
     let mut target_object: Option<ObjectFilter> = None;
     let mut targets_only = false;
-    let mut target_count = trailing_single_target.then_some(crate::effect::ChoiceCount::exactly(1));
+    let mut target_count = None;
     let mut base_tokens: Vec<OwnedLexToken> = tokens.to_vec();
     let mut targets_idx: Option<usize> = None;
     for (idx, token) in tokens.iter().enumerate() {
@@ -530,11 +545,11 @@ pub(in super::super) fn parse_object_filter_inner(
             } else {
                 disjunction.targeting(target_player.take(), target_object.take())
             };
-            if let Some(count) = target_count {
-                disjunction = disjunction.with_target_count(count);
-            } else if targets_only {
-                disjunction = disjunction.target_count_exact(1);
-            }
+        }
+        if let Some(count) = target_count {
+            disjunction = disjunction.with_target_count(count);
+        } else if targets_only {
+            disjunction = disjunction.target_count_exact(1);
         }
         return Ok(disjunction);
     }
@@ -2369,11 +2384,11 @@ pub(in super::super) fn parse_object_filter_inner(
         } else {
             filter.targeting(target_player.take(), target_object.take())
         };
-        if let Some(count) = target_count {
-            filter = filter.with_target_count(count);
-        } else if targets_only {
-            filter = filter.target_count_exact(1);
-        }
+    }
+    if let Some(count) = target_count {
+        filter = filter.with_target_count(count);
+    } else if targets_only {
+        filter = filter.target_count_exact(1);
     }
 
     if let Some(or_subtype) = legendary_or_subtype
@@ -3011,5 +3026,24 @@ mod equipped_plural_tests {
                 .subtypes,
             vec![Subtype::Equipment]
         );
+    }
+}
+
+#[cfg(test)]
+mod terminal_stack_target_cardinality_tests {
+    use super::*;
+    #[test]
+    fn complete_suffix_constrains_exact_stack_heads_as_well_as_disjunctions() {
+        for head in ["spell", "ability", "activated ability", "triggered ability", "spell or ability"] {
+            for (suffix, count) in [
+                ("with a single target", crate::effect::ChoiceCount::exactly(1)),
+                ("with one or more targets", crate::effect::ChoiceCount::at_least(1)),
+            ] {
+                let text = format!("{head} {suffix}");
+                let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+                let filter = parse_object_filter_inner(&tokens, false, true).unwrap();
+                assert_eq!(filter.target_count, Some(count), "{text}");
+            }
+        }
     }
 }

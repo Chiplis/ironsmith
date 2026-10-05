@@ -2464,6 +2464,7 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
         target,
         source_top_only: false,
         zone,
+        tagged_destinations,
         to_top,
         library_order: None,
         library_order_chooser: PlayerAst::Implicit,
@@ -2485,7 +2486,7 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
     else {
         return Ok(None);
     };
-    if *zone == Zone::Battlefield {
+    if *zone == Zone::Battlefield || !tagged_destinations.is_empty() {
         return Ok(None);
     }
 

@@ -6518,11 +6518,18 @@
                 .map(|number| format!("{number}-sided die"))
                 .unwrap_or(die_text)
         } else { die_text };
+        let arithmetic = roll_die.result_modifier.as_ref().map(|modifier| {
+            let operation = match modifier {
+                ironsmith_core::effect::DieResultModifier::Add(_) => "add",
+                ironsmith_core::effect::DieResultModifier::Subtract(_) => "subtract",
+            };
+            format!(" and {operation} {}", describe_value(modifier.value()))
+        }).unwrap_or_default();
         if player == "you" {
-            return format!("Roll a {die_text}");
+            return format!("Roll a {die_text}{arithmetic}");
         }
         return format!(
-            "{player} {} a {die_text}",
+            "{player} {} a {die_text}{arithmetic}",
             player_verb(&player, "roll", "rolls"),
         );
     }

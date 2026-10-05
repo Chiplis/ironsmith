@@ -390,6 +390,12 @@ fn public_claim_outcome(
             ExecutionFact::OriginalSacrificeObjects(memories) => {
                 ExecutionFact::OriginalSacrificeObjects(memories.iter().map(memory).collect())
             }
+            ExecutionFact::OriginalZoneMoveCards(memories) => {
+                ExecutionFact::OriginalZoneMoveCards(memories.iter().map(memory).collect())
+            }
+            ExecutionFact::CardsPutIntoHand { player, cards } => {
+                ExecutionFact::CardsPutIntoHand { player: *player, cards: cards.iter().map(memory).collect() }
+            }
             ExecutionFact::PlayerAffectedObjectMemory(entries) => {
                 ExecutionFact::PlayerAffectedObjectMemory(
                     entries
@@ -1551,14 +1557,16 @@ impl GameState {
             .contains(&id)
     }
 
-    /// Whether the identity of this hidden-zone card is known to its owner
-    /// only (some peer holds a placeholder for it). Symmetric across peers.
+    /// Whether this tracked identity still requires a public opening. A
+    /// face-down exiled card is private even though Exile is a public zone.
+    /// This test is symmetric across peers, including the owner with a face.
     pub(crate) fn hidden_identity_is_private(&self, id: ObjectId) -> bool {
         self.hidden_card_info(id).is_some()
             && !self.is_publicly_revealed_hidden_card(id)
             && self
                 .object(id)
-                .is_some_and(|object| object.zone.is_hidden())
+                .is_some_and(|object| object.zone.is_hidden()
+                    || (object.zone == Zone::Exile && self.is_face_down(id)))
     }
 
     /// Record that `ids` were opened publicly on every peer. Only cards the
@@ -2054,7 +2062,9 @@ mod replacement_public_claim_contract_tests {
             colors: crate::color::ColorSet::COLORLESS, subtypes: Vec::new(), is_token: false,
         };
         let outcome = EffectOutcome::aggregate_replacement_outcomes(
-            EffectOutcome::count(1).with_affected_object_memory(vec![memory.clone()]),
+            EffectOutcome::count(1).with_affected_object_memory(vec![memory.clone()])
+                .with_execution_fact(crate::effect::ExecutionFact::CardsPutIntoHand { player, cards: vec![memory.clone()] })
+                .with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveCards(vec![memory.clone()])),
             [EffectOutcome::count(2).with_chosen_object_memory(vec![memory])]);
         let claim = public_claim_outcome(&outcome, true);
         assert!(claim.instruction_result.is_some());
@@ -2068,6 +2078,20 @@ mod replacement_public_claim_contract_tests {
         for fact in &claim.execution_facts {
             if let crate::effect::ExecutionFact::ChosenObjectMemory(memories) = fact {
                 assert!(memories[0].name.is_empty());
+                assert_eq!(memories[0].mana_value, 0);
+            }
+        }
+        for receipt in [&claim, claim.instruction_result()] {
+            for fact in &receipt.execution_facts {
+                let memories = match fact {
+                    crate::effect::ExecutionFact::CardsPutIntoHand { cards, .. }
+                    | crate::effect::ExecutionFact::OriginalZoneMoveCards(cards) => cards,
+                    _ => continue,
+                };
+                assert_eq!(memories.len(), 1);
+                assert_eq!(memories[0].object_id, id);
+                assert!(memories[0].name.is_empty());
+                assert!(memories[0].card_types.is_empty());
                 assert_eq!(memories[0].mana_value, 0);
             }
         }

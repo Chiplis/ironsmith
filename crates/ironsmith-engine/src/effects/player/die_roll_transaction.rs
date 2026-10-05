@@ -207,12 +207,36 @@ fn apply_numerical_modifiers(
     ctx: &mut ExecutionContext,
     player: PlayerId,
     roll: &mut ResolvedDieRoll,
+    authored_modifier: Option<&ironsmith_core::effect::DieResultModifier>,
 ) -> Result<bool, ExecutionError> {
     let mut remaining = available_modifiers(game, player, false);
-    while !remaining.is_empty() {
-        let Some(index) = choose_next_modifier(game, ctx, player, &remaining, std::slice::from_ref(roll)) else {
-            return Ok(false);
+    let mut authored_modifier = authored_modifier;
+    while !remaining.is_empty() || authored_modifier.is_some() {
+        // The mandatory arithmetic printed on the rolling instruction is a
+        // numerical modifier too (CR 706.2b). The roller chooses its order
+        // relative to external numerical modifiers, after all rerolls.
+        let selected = if authored_modifier.is_some() {
+            if remaining.is_empty() { Some(0) } else {
+                let mut options = remaining.iter().enumerate().map(|(index, modifier)| {
+                    (format!("{} (current die result: {})", modifier.display, roll.result), index)
+                }).collect::<Vec<_>>();
+                options.push(("Apply this instruction's die-result arithmetic".into(), remaining.len()));
+                ask_choose_one(game, &mut ctx.decision_maker, player, ctx.source, &options)
+            }
+        } else {
+            choose_next_modifier(game, ctx, player, &remaining, std::slice::from_ref(roll))
         };
+        let Some(index) = selected else { return Ok(false); };
+        if ctx.decision_maker.awaiting_choice() { return Ok(false); }
+        if index == remaining.len() && let Some(modifier) = authored_modifier.take() {
+            let amount = crate::effects::helpers::resolve_value_wide(game, modifier.value(), ctx)?;
+            let result = match modifier {
+                ironsmith_core::effect::DieResultModifier::Add(_) => i128::from(roll.result) + i128::from(amount),
+                ironsmith_core::effect::DieResultModifier::Subtract(_) => i128::from(roll.result) - i128::from(amount),
+            };
+            roll.result = bounded_die_result(result)?;
+            continue;
+        }
         if ctx.decision_maker.awaiting_choice() {
             return Ok(false);
         }
@@ -256,14 +280,22 @@ fn apply_numerical_modifiers(
             if ctx.decision_maker.awaiting_choice() { return Ok(false); }
             if !paid { continue; }
         }
-        roll.result = if increase {
-            roll.result.saturating_add(modifier.spec.amount)
+        roll.result = bounded_die_result(if increase {
+            i128::from(roll.result) + i128::from(modifier.spec.amount)
         } else {
-            roll.result.saturating_sub(modifier.spec.amount)
-        };
+            i128::from(roll.result) - i128::from(modifier.spec.amount)
+        })?;
         mark_used(game, &modifier);
     }
     Ok(true)
+}
+
+fn bounded_die_result(result: i128) -> Result<u32, ExecutionError> {
+    // CR 107.1b: a negative result of an effect is zero; an unrepresentable
+    // positive result is an execution-resource error, never saturation.
+    u32::try_from(result.max(0)).map_err(|_| ExecutionError::ResourceLimitExceeded {
+        resource: "modified die result", requested: result.max(0) as u128, maximum: u32::MAX as u128,
+    })
 }
 
 pub(crate) fn roll_dice_with_modifiers(
@@ -273,12 +305,23 @@ pub(crate) fn roll_dice_with_modifiers(
     count: u32,
     sides: u32,
 ) -> Result<Option<Vec<ResolvedDieRoll>>, ExecutionError> {
+    roll_dice_with_authored_modifier(game, ctx, player, count, sides, None)
+}
+
+pub(crate) fn roll_dice_with_authored_modifier(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player: PlayerId,
+    count: u32,
+    sides: u32,
+    authored_modifier: Option<&ironsmith_core::effect::DieResultModifier>,
+) -> Result<Option<Vec<ResolvedDieRoll>>, ExecutionError> {
     let Some(mut rolls) = die_roll_replacements::roll_replacement_batch(game, ctx, player, count, sides)? else { return Ok(None); };
     if !apply_reroll_modifiers(game, ctx, player, sides, &mut rolls)? {
         return Ok(None);
     }
     for roll in &mut rolls {
-        if !apply_numerical_modifiers(game, ctx, player, roll)? {
+        if !apply_numerical_modifiers(game, ctx, player, roll, authored_modifier)? {
             return Ok(None);
         }
     }

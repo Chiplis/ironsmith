@@ -3047,6 +3047,10 @@ pub struct MoveToZoneEffect {
     /// This is part of the zone-change instruction, not a later transform action.
     pub enters_transformed: bool,
     pub transfer_exiled_with_source_links: bool,
+    /// One authored move can send disjoint captured groups to different zones.
+    /// Membership is bound before the native batch prepares any replacement.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub tagged_destinations: Vec<(crate::tag::TagKey, crate::zone::Zone)>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3060,6 +3064,7 @@ impl MoveToZoneEffect {
         Self {
             target,
             zone,
+            tagged_destinations: Vec::new(),
             to_top,
             library_order: None,
             verb_surface: MoveToZoneVerbSurface::Canonical,

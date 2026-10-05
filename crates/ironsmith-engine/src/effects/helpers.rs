@@ -36,6 +36,10 @@ use crate::zone::Zone;
 pub(crate) mod value_eval;
 pub(crate) use value_eval::resolve_damage_history_for_comparison;
 
+#[cfg(test)]
+#[path = "helpers/original_destination_tests.rs"]
+mod original_destination_tests;
+
 // ============================================================================
 // Tagged Object Resolution
 // ============================================================================
@@ -994,6 +998,26 @@ fn resolve_prior_effect_metric(
     effect_id: crate::effect::EffectId,
     query: &PriorEffectMetricQuery,
 ) -> Result<i64, ExecutionError> {
+    // A movement's affected memory describes its source LKI. A destination
+    // result instead reads its exact original arrivals, before any additions
+    // can move them again or add unrelated arrivals of their own.
+    let destination_memory = if let Some(destination) = query.original_destination {
+        if query.source != EffectMetricSource::AffectedObjects {
+            return Err(ExecutionError::UnresolvableValue("an original destination query requires arrival memory".into()));
+        }
+        let memory = ctx.get_outcome(effect_id).and_then(|outcome| {
+            let facts = &outcome.instruction_result().execution_facts;
+            let receipts: Vec<_> = facts.iter().filter_map(|fact| match fact {
+                crate::effect::ExecutionFact::OriginalZoneMoveCards(cards) => Some(cards),
+                _ => None,
+            }).collect();
+            (!receipts.is_empty()).then(|| receipts.into_iter().flatten()
+                .filter(|card| card.zone == destination).cloned().collect::<Vec<_>>())
+        }).ok_or_else(|| ExecutionError::IncompleteEvidence(
+            "an original destination query has no completed movement receipt".into(),
+        ))?;
+        Some(memory)
+    } else { None };
     if effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST && ctx.get_outcome(effect_id).is_none() {
         return Err(ExecutionError::IncompleteEvidence("activation counter payment has no completed receipt".into()));
     }
@@ -1023,7 +1047,7 @@ fn resolve_prior_effect_metric(
         }
         return Ok(i64::from(number));
     }
-    if query.filter.is_none() && query.player.is_none() {
+    if query.filter.is_none() && query.player.is_none() && destination_memory.is_none() {
         return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);
     }
 
@@ -1102,7 +1126,9 @@ fn resolve_prior_effect_metric(
         });
     }
 
-    let mut memory = if let Some(selected_players) = selected_players.as_ref()
+    let mut memory = if let Some(memory) = destination_memory {
+        memory
+    } else if let Some(selected_players) = selected_players.as_ref()
         && let Some(partitions) = outcome.player_affected_object_memory()
     {
         partitions

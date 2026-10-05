@@ -4829,6 +4829,7 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
         PriorEffectAction::PhasedOut,
         PriorEffectAction::Prevented,
         PriorEffectAction::PutOntoBattlefield,
+        PriorEffectAction::PutIntoGraveyard,
         PriorEffectAction::PutIntoHand,
         PriorEffectAction::Removed,
         PriorEffectAction::Returned,
@@ -5485,6 +5486,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
     }
     match action {
         SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value: Some(value), .. }) => visit(value),
+        SubjectVerbActionAst::Random(RandomActionAst::RollDie { result_modifier: Some(modifier), .. }) => visit(modifier.value()),
         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count })
         | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count })
         | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, .. })
@@ -5706,10 +5708,12 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             }
         }
         SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+            filter,
             stop_rule,
             max_exposed,
             ..
         }) => {
+            visit_filter_values(filter, visit);
             if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
             | crate::cards::builders::LibraryConsultStopRuleAst::TotalManaValue(value) =
                 stop_rule
@@ -6614,6 +6618,9 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value, .. }) => {
                 if let Some(value) = count_value { resolve_effect_result_value(value, state)?; }
             }
+            SubjectVerbActionAst::Random(RandomActionAst::RollDie { result_modifier, .. }) => {
+                if let Some(modifier) = result_modifier { resolve_effect_result_value(modifier.value_mut(), state)?; }
+            }
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
             | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 count: amount,
@@ -6785,7 +6792,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
-            | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)

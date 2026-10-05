@@ -1824,6 +1824,7 @@ impl EffectAst {
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target,
                 source_top_only: false,
+                tagged_destinations: Vec::new(),
                 zone,
                 to_top,
                 library_order: None,
@@ -1860,6 +1861,7 @@ impl EffectAst {
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target,
                 source_top_only: false,
+                tagged_destinations: Vec::new(),
                 zone,
                 to_top,
                 library_order: None,
@@ -1910,6 +1912,17 @@ impl EffectAst {
         {
             *library_order = Some(order);
             *library_order_chooser = chooser;
+        }
+        self
+    }
+
+    pub fn with_tagged_destinations(mut self, destinations: Vec<(TagRef, Zone)>) -> Self {
+        if let Self::SubjectVerb(subject) = &mut self
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                tagged_destinations, ..
+            }) = &mut subject.action
+        {
+            *tagged_destinations = destinations;
         }
         self
     }
@@ -4886,7 +4899,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::Random(RandomActionAst::RollDie { sides, surface }),
+            SubjectVerbActionAst::Random(RandomActionAst::RollDie { sides, surface, result_modifier: None }),
         )
     }
 

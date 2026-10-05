@@ -14,6 +14,9 @@ use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
+#[path = "divvy/binary_program.rs"]
+mod binary_program;
+
 fn membership_predicate_for_iterated_object(tag: crate::tag::CompilerReferenceTag) -> PredicateAst {
     PredicateAst::TaggedMatches(
         tag.bind(),
@@ -151,6 +154,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     let Some(shape) = divvy_shapes::parse_divvy_sequence_shape(&sentence_tokens) else {
         return Ok(None);
     };
+
+    if let DivvySequenceShape::BinaryCards(program) = shape {
+        return binary_program::lower(program, sentences).map(Some);
+    }
 
     if let DivvySequenceShape::ChosenOpponentFaceDownPiles {
         count,

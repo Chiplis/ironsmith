@@ -425,11 +425,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("ChooseNumberAtRandom")
                 .field("choices", choices)
                 .finish(),
-            Self::Random(RandomActionAst::RollDie { sides, surface }) => {
-                if let Some(surface) = surface {
+            Self::Random(RandomActionAst::RollDie { sides, surface, result_modifier }) => {
+                if surface.is_some() || result_modifier.is_some() {
                     f.debug_struct("RollDie")
                         .field("sides", sides)
                         .field("surface", surface)
+                        .field("result_modifier", result_modifier)
                         .finish()
                 } else {
                     f.debug_tuple("RollDie").field(sides).finish()
@@ -1354,6 +1355,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 source_top_only,
                 zone,
+                tagged_destinations,
                 to_top,
                 library_order,
                 library_order_chooser,
@@ -1376,6 +1378,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("source_top_only", source_top_only)
                 .field("zone", zone)
+                .field("tagged_destinations", tagged_destinations)
                 .field("to_top", to_top)
                 .field("library_order", library_order)
                 .field("library_order_chooser", library_order_chooser)

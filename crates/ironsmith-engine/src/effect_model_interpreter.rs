@@ -1937,13 +1937,11 @@ where
         return Ok(Effect::new(runtime));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RollDieEffect>(&effect) {
-        return Ok(Effect::new(
-            crate::effects::RollDieEffect::new_with_die_text(
-                payload.player.clone(),
-                payload.sides,
-                payload.die_text.clone(),
-            ),
-        ));
+        let mut runtime = crate::effects::RollDieEffect::new_with_die_text(
+            payload.player.clone(), payload.sides, payload.die_text.clone(),
+        );
+        runtime.result_modifier = payload.result_modifier.clone();
+        return Ok(Effect::new(runtime));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RollDiceChooseResultEffect>(&effect) {
         return Ok(Effect::new(

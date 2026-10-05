@@ -88,6 +88,12 @@ pub(super) const CHAIN_COMPOSITION_REGISTRY: RuleId = RuleId::new("chain-composi
 /// The readings, in the order they were ranked.
 const CHAIN_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("die-result-arithmetic"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_die_result_arithmetic(input)),
+    },
+    Reading {
         id: RuleId::new("sentence-each-player-may-reveal-selected-cards-in-their-hand"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -1300,4 +1306,20 @@ fn read_coordinated_and_segments(
         return parse_effect_chain_inner_lexed(tokens).map(Some);
     }
     Ok(None)
+}
+
+// A numeric modifier belongs to the same random instruction. Splitting at
+// "and" would misread the modifier as a mana-producing add action.
+fn read_die_result_arithmetic(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = input.tokens;
+    let start = if tokens.first().is_some_and(|token| token.is_word("you")) { 1 } else { 0 };
+    if !tokens.get(start).is_some_and(|token| token.is_word("roll")) { return Ok(None); }
+    let body = &tokens[start + 1..];
+    let Some(shape) = crate::grammar::effects::misc_action_shapes::parse_roll_die_prefix_tokens(body) else { return Ok(None); };
+    let tail = &body[shape.consumed..];
+    if !tail.first().is_some_and(|token| token.is_word("and"))
+        || !tail.get(1).is_some_and(|token| token.is_any_word(&["add", "subtract"]))
+        || tail.get(2).is_some_and(|token| token.kind == crate::lexer::TokenKind::ManaGroup)
+    { return Ok(None); }
+    super::super::misc_actions::parse_roll(body, None).map(|effect| Some(vec![effect]))
 }

@@ -807,3 +807,15 @@ fn numeric_damage_and_prevention_receipts_preserve_wide_amounts_before_narrowing
         }
     }
 }
+
+#[test]
+fn an_authoritative_empty_object_quantity_is_zero_but_absent_evidence_still_errors() {
+    let (game, source, player) = fixture();
+    let tag = crate::tag::TagKey::from("empty_consult_match");
+    let mut ctx = ExecutionContext::new_default(source, player);
+    let value = Value::ManaValueOf(Box::new(ChooseSpec::Tagged(tag.clone())));
+    assert!(matches!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)),
+        Err(ExecutionError::InvalidTarget)));
+    ctx.set_tagged_objects(tag, Vec::new());
+    assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0);
+}

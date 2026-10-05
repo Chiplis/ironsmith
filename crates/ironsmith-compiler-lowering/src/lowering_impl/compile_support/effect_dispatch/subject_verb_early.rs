@@ -1169,9 +1169,17 @@ pub(super) fn compile_subject_verb_early(
                 Effect::choose_number_at_random(choices.clone())
             })
         }
-        SubjectVerbActionAst::Random(RandomActionAst::RollDie { sides, surface }) => {
+        SubjectVerbActionAst::Random(RandomActionAst::RollDie { sides, surface, result_modifier }) => {
+            let mut result_modifier = result_modifier.clone();
+            if let Some(modifier) = &mut result_modifier {
+                *modifier.value_mut() = resolve_value_it_tag(modifier.value(), &current_reference_env(ctx))?;
+            }
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
-                Effect::roll_die_with_surface(*sides, subject.into_player_filter(), *surface)
+                let mut effect = crate::effects::RollDieEffect::new_with_die_text(
+                    subject.into_player_filter(), *sides, surface.map(|surface| surface.render(*sides)),
+                );
+                effect.result_modifier = result_modifier.clone();
+                Effect::new(effect)
             })
         }
         SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult {

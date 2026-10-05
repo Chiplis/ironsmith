@@ -5,7 +5,7 @@ use crate::events::other::DieRolledEvent;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
-use super::die_roll_transaction::roll_dice_with_modifiers;
+use super::die_roll_transaction::roll_dice_with_authored_modifier;
 
 /// Roll a die for a player using the game's deterministic RNG.
 #[derive(Debug, Clone, PartialEq)]
@@ -13,6 +13,7 @@ pub struct RollDieEffect {
     pub player: PlayerFilter,
     pub sides: u32,
     pub die_text: Option<String>,
+    pub result_modifier: Option<ironsmith_core::effect::DieResultModifier>,
 }
 
 impl RollDieEffect {
@@ -21,6 +22,7 @@ impl RollDieEffect {
             player,
             sides,
             die_text: None,
+            result_modifier: None,
         }
     }
 
@@ -29,6 +31,7 @@ impl RollDieEffect {
             player,
             sides,
             die_text,
+            result_modifier: None,
         }
     }
 }
@@ -46,7 +49,7 @@ impl EffectExecutor for RollDieEffect {
             if self.sides == 0 {
                 return Ok(EffectOutcome::count(0));
             }
-            let Some(mut rolls) = roll_dice_with_modifiers(game, ctx, player, 1, self.sides)?
+            let Some(mut rolls) = roll_dice_with_authored_modifier(game, ctx, player, 1, self.sides, self.result_modifier.as_ref())?
             else {
                 return Ok(EffectOutcome::count(0));
             };
@@ -69,6 +72,9 @@ impl EffectExecutor for RollDieEffect {
                 Some(i64::from(roll.result)),
                 Some(format!("d{}", self.sides)),
             );
+            let provenance = game.alloc_child_event_provenance(
+                ctx.provenance, crate::events::EventKind::DieRolled,
+            );
             Ok(EffectOutcome::count(i64::from(roll.result))
                 .with_event(crate::triggers::TriggerEvent::new_with_provenance(
                     DieRolledEvent::new_with_natural_result(
@@ -79,7 +85,7 @@ impl EffectExecutor for RollDieEffect {
                         self.sides,
                     )
                     .with_turn_ordinal(ordinal),
-                    ctx.provenance,
+                    provenance,
                 ))
                 .with_execution_fact(ExecutionFact::ChosenNumber(roll.result)))
         })();

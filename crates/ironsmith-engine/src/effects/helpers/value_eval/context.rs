@@ -813,6 +813,16 @@ impl EvaluationContext<'_, '_> {
         {
             return property.snapshot(snapshot).ok_or_else(|| missing("had"));
         }
+        // A completed selection/consultation may authoritatively match no
+        // object. Its characteristic is known to be zero (CR 107.2), rather
+        // than an invalid target or a request to borrow another result set.
+        // An absent tag remains missing evidence and takes the normal error
+        // path below; only an explicitly retained empty set qualifies.
+        if let ChooseSpec::Tagged(tag) = spec.base()
+            && ctx.get_tagged_all(tag).is_some_and(Vec::is_empty)
+        {
+            return Ok(0);
+        }
         // A tagged object that left its zone is read from its last known
         // information before any live lookup, which can no longer find it
         // (CR 608.2h).

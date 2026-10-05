@@ -2152,6 +2152,7 @@ pub(super) fn compile_subject_verb_middle(
             target,
             source_top_only,
             zone,
+            tagged_destinations,
             to_top,
             library_order,
             library_order_chooser,
@@ -2480,6 +2481,10 @@ pub(super) fn compile_subject_verb_middle(
                 *zone,
                 *to_top,
             ));
+            let mut move_effect = move_effect;
+            move_effect.tagged_destinations = tagged_destinations.iter().map(|(tag, zone)|
+                Ok((resolve_it_tag_key(tag, &current_reference_env(ctx))?, *zone)))
+                .collect::<Result<Vec<_>, CardTextError>>()?;
             let move_effect = if let Some(surface) = exiled_with_source_surface {
                 move_effect.with_exiled_with_source_surface(surface.clone())
             } else {
