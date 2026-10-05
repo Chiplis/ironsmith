@@ -1,0 +1,8 @@
+{
+  "name": "Avatar Destiny",
+  "id": "19b71bf7-d354-4729-a160-b85402c084f3",
+  "oracle_id": "ecb81888-589b-4486-a444-e0c26384854e",
+  "mana_cost": "{2}{G}{G}",
+  "type_line": "Enchantment — Aura",
+  "oracle_text": "Enchant creature you control\nEnchanted creature gets +1/+1 for each creature card in your graveyard and is an Avatar in addition to its other types.\nWhen enchanted creature dies, mill cards equal to its power. Return this card to its owner's hand and up to one creature card milled this way to the battlefield under your control."
+}

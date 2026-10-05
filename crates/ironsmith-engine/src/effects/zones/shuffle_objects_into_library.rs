@@ -1,7 +1,7 @@
 //! Shuffle specific objects into a library, then shuffle that library.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
+use crate::effects::{EffectExecutor, SimultaneousEffectCommit};
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_objects_from_spec, resolve_player_filter,
 };
@@ -15,7 +15,7 @@ use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::ShuffleObjectsIntoLibraryEffect;
 
-use super::apply_zone_change_with_context_and_additional_effects;
+use crate::events::processing::{PreparedEventOutcome, PreparedZoneChange, ReplacementEventContext};
 
 fn uses_affected_object_owner(player: &PlayerFilter) -> bool {
     matches!(
@@ -49,7 +49,7 @@ fn expected_zone_for_object(
 
 #[derive(Debug)]
 struct PreparedShuffleObjectsAction {
-    objects: Vec<(crate::ids::ObjectId, Option<Zone>)>,
+    objects: Vec<ObjectSnapshot>,
     players_to_shuffle: Vec<crate::ids::PlayerId>,
 }
 
@@ -59,16 +59,15 @@ fn prepare_shuffle_objects_action_from_ids(
     ctx: &ExecutionContext,
     object_ids: Vec<crate::ids::ObjectId>,
 ) -> Result<PreparedShuffleObjectsAction, ExecutionError> {
-    let objects = object_ids
-        .iter()
-        .copied()
-        .map(|object_id| {
-            (
-                object_id,
-                expected_zone_for_object(&effect.target, game, ctx, object_id),
-            )
-        })
-        .collect::<Vec<_>>();
+    let objects = object_ids.iter().filter_map(|&object_id| {
+        let object = game.object(object_id)?;
+        if expected_zone_for_object(&effect.target, game, ctx, object_id)
+            .is_some_and(|zone| object.zone != zone)
+        {
+            return None;
+        }
+        Some(ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+    }).collect::<Vec<_>>();
 
     let shuffle_affected_owners =
         effect.owner_library_destination || uses_affected_object_owner(&effect.player);
@@ -133,115 +132,137 @@ fn prepare_simultaneous_shuffle_objects_action(
     prepare_shuffle_objects_action_from_ids(effect, game, ctx, object_ids)
 }
 
-fn execute_prepared_shuffle_objects_action(
-    prepared: PreparedShuffleObjectsAction,
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = execute_prepared_shuffle_objects_action_inner(prepared, game, ctx);
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        *game = checkpoint;
-        context_checkpoint.restore(ctx);
-    }
-    result
-}
-
-fn execute_prepared_shuffle_objects_action_inner(
-    prepared: PreparedShuffleObjectsAction,
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
-    let mut moved_ids = Vec::new();
-    let mut receipts = Vec::new();
-    let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-    for (object_id, expected_zone) in prepared.objects {
-        let Some(obj) = game.object(object_id) else {
-            continue;
-        };
-        if let Some(expected_zone) = expected_zone
-            && obj.zone != expected_zone
-        {
-            continue;
-        }
-
-        let from_zone = obj.zone;
-        // Revealed cards stay in their library. Shuffling that remainder is
-        // not a zone change and must preserve its object identities.
-        if from_zone == Zone::Library {
-            continue;
-        }
-        let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-        let outcome = apply_zone_change_with_context_and_additional_effects(
-            game, object_id, from_zone, Zone::Library, ctx.cause.clone(),
-            ctx, &additional_effects,
-        )?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let original = outcome.original.clone();
-        receipts.push((object_id, outcome));
-        match original {
-            EventOutcome::Proceed(result) => {
-                if !result.new_object_ids.is_empty() {
-                    ctx.refresh_target_snapshot(pre_snapshot.clone());
-                    if pre_snapshot.object_id == ctx.source {
-                        ctx.refresh_source_snapshot(pre_snapshot.clone());
-                    }
-                }
-                // A replacement destination is still committed. Only objects
-                // that actually reach the library participate in this shuffle.
-                if result.final_zone != Zone::Library { continue; }
-                for &new_id in &result.new_object_ids {
-                    if let Some(owner) = game.object(new_id).map(|moved| moved.owner) {
-                        game.move_library_card_to_bottom(
-                            owner, new_id, "card moved into library before shuffle",
-                        );
-                    }
-                }
-                moved_ids.extend(result.new_object_ids.iter().copied());
-            }
-            EventOutcome::Prevented | EventOutcome::Replaced | EventOutcome::NotApplicable => {}
-        }
-    }
-
-    // Complete the original zone-change batch before running its additions.
-    // The subsequent shuffle is a later action and observes those programs.
-    let original = if moved_ids.is_empty() { EffectOutcome::resolved() }
-        else { EffectOutcome::with_objects(moved_ids) };
-    let mut outcome = super::finish_zone_change_receipts(game, ctx, original, receipts)?;
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-    let mut shuffle_events = Vec::with_capacity(prepared.players_to_shuffle.len());
-    for player_id in prepared.players_to_shuffle {
-        game.shuffle_player_library(player_id);
-        shuffle_events.push(TriggerEvent::new_with_provenance(
-            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-            ctx.provenance,
-        ));
-    }
-
-    outcome.events.extend(shuffle_events);
-    Ok(outcome)
-}
-
 #[derive(Debug)]
 struct ShuffleObjectsIntoLibraryProposal {
     prepared: PreparedShuffleObjectsAction,
-    iterated_player: Option<crate::ids::PlayerId>,
+    zones: Option<Vec<(ObjectSnapshot, PreparedEventOutcome<PreparedZoneChange>, std::ops::Range<usize>)>>,
+    draws: crate::events::processing::ZoneDrawContinuations,
+}
+
+impl ShuffleObjectsIntoLibraryProposal {
+    fn new(prepared: PreparedShuffleObjectsAction) -> Self {
+        Self { prepared, zones: None, draws: Default::default() }
+    }
+
+    fn prepare_zones(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        let additional = ctx.additional_replacement_effects_snapshot();
+        let mut zones = Vec::new();
+        for snapshot in &self.prepared.objects {
+            let object_id = snapshot.object_id;
+            if snapshot.zone == Zone::Library
+                || !game.object(object_id).is_some_and(|object| object.zone == snapshot.zone)
+            {
+                // A revealed library remainder keeps its original identities.
+                continue;
+            }
+            let scope = ReplacementEventContext::with_scope(
+                game,
+                crate::events::Event::zone_change(
+                    object_id, snapshot.zone, Zone::Library, ctx.cause.clone(),
+                    Some(snapshot.clone()),
+                ).with_provenance(ctx.provenance),
+                &ctx.replacement,
+            );
+            let draw_start = self.draws.0.len();
+            let proposal = crate::events::processing::prepare_zone_change_scoped_with_draws(
+                game, object_id, snapshot.zone, Zone::Library, ctx.cause.clone(),
+                &mut *ctx.decision_maker, &additional, Some(snapshot.clone()),
+                Some(&scope), Vec::new(), None, Some(&mut self.draws),
+            )?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+            zones.push((snapshot.clone(), proposal, draw_start..self.draws.0.len()));
+        }
+        self.zones = Some(zones);
+        Ok(())
+    }
+
+    fn commit_zones(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+        let zones = self.zones.ok_or_else(|| {
+            ExecutionError::InternalError("shuffle original was not prepared".into())
+        })?;
+        let mut moved_ids = Vec::new();
+        let mut receipts = Vec::new();
+        for (snapshot, proposal, draws) in zones {
+            let object_id = snapshot.object_id;
+            let receipt = if matches!(&proposal.original, EventOutcome::Proceed(_))
+                && !game.object(object_id).is_some_and(|object| object.zone == snapshot.zone)
+            {
+                // An earlier replacement prefix may remove another original.
+                // Do not revive that object's new incarnation or lose additions.
+                PreparedEventOutcome { original: EventOutcome::NotApplicable, programs: proposal.programs }
+            } else {
+                super::commit_zone_change_proposal(game, object_id, proposal, &mut *ctx.decision_maker)?
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+            }
+            if let EventOutcome::Proceed(result) = &receipt.original {
+                if !result.new_object_ids.is_empty() {
+                    ctx.refresh_target_snapshot(snapshot.clone());
+                    if object_id == ctx.source { ctx.refresh_source_snapshot(snapshot); }
+                }
+                if result.final_zone == Zone::Library {
+                    for &new_id in &result.new_object_ids {
+                        if let Some(owner) = game.object(new_id).map(|object| object.owner) {
+                            game.move_library_card_to_bottom(
+                                owner, new_id, "card moved into library before shuffle",
+                            );
+                        }
+                    }
+                    moved_ids.extend(result.new_object_ids.iter().copied());
+                }
+            }
+            receipts.push(((object_id, receipt), draws));
+        }
+        let mut original = if moved_ids.is_empty() { EffectOutcome::count(0) }
+            else { EffectOutcome::with_objects(moved_ids) };
+        // Randomization is part of this original instruction. All participants
+        // complete it before any appended zone-replacement program executes.
+        for player in self.prepared.players_to_shuffle {
+            game.shuffle_player_library(player);
+            let provenance = game.alloc_child_event_provenance(
+                ctx.provenance, crate::events::EventKind::ShuffleLibrary,
+            );
+            original.events.push(TriggerEvent::new_with_provenance(
+                ShuffleLibraryEvent::new(player, ctx.cause.clone()), provenance,
+            ));
+        }
+        Ok(super::prepare_zone_instruction_completion(original, receipts, self.draws))
+    }
 }
 
 impl crate::effects::SimultaneousEffectProposal for ShuffleObjectsIntoLibraryProposal {
+    fn prepare_original(
+        &mut self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        self.prepare_zones(game, ctx)
+    }
+
+    fn commit_original(
+        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+        (*self).commit_zones(game, ctx)
+    }
+
     fn commit(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
+        mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Self {
-            prepared,
-            iterated_player,
-        } = *self;
-        ctx.with_temp_iterated_player(iterated_player, |ctx| {
-            execute_prepared_shuffle_objects_action(prepared, game, ctx)
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+            crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
+            if self.zones.is_none() { self.prepare_zones(game, ctx)?; }
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            let committed = (*self).commit_zones(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            super::complete_zone_instruction(game, ctx, committed)
+            })
         })
     }
 }
@@ -256,10 +277,9 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(ShuffleObjectsIntoLibraryProposal {
-            prepared: prepare_simultaneous_shuffle_objects_action(self, game, ctx)?,
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+        Ok(Box::new(ShuffleObjectsIntoLibraryProposal::new(
+            prepare_simultaneous_shuffle_objects_action(self, game, ctx)?,
+        )))
     }
 
     fn execute(
@@ -267,18 +287,13 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
             let prepared = prepare_shuffle_objects_action(self, game, ctx)?;
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            execute_prepared_shuffle_objects_action(prepared, game, ctx)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        result
+            crate::effects::SimultaneousEffectProposal::commit(
+                Box::new(ShuffleObjectsIntoLibraryProposal::new(prepared)), game, ctx,
+            )
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -515,3 +530,7 @@ mod tests {
         assert_eq!(game.player(bob).expect("Bob").library.len(), 1);
     }
 }
+
+#[cfg(test)]
+#[path = "shuffle_objects_into_library_tests.rs"]
+mod transaction_tests;

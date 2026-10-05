@@ -483,16 +483,33 @@ pub(crate) fn execute_turn_draw_proposal(
     Ok(completed)
 }
 
+/// The reached draw instruction owns this quantity and recipient even when
+/// an enclosing replacement must finish its original action before drawing.
+#[derive(Clone, Copy)]
+pub(crate) struct PreparedDrawInstruction {
+    player: PlayerId,
+    pub(crate) requested_count: u32,
+}
+pub(crate) fn prepare_draw_instruction(effect: &DrawCardsEffect, game: &GameState,
+    ctx: &ExecutionContext) -> Result<PreparedDrawInstruction, ExecutionError> {
+    Ok(PreparedDrawInstruction {
+        player: resolve_player_filter(game, &effect.player, ctx)?,
+        requested_count: resolve_value(game, &effect.count, ctx)?.max(0) as u32,
+    })
+}
 fn execute_draw_instruction(
     effect: &DrawCardsEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
-    }
-    let player_id = resolve_player_filter(game, &effect.player, ctx)?;
-    let requested_count = resolve_value(game, &effect.count, ctx)?.max(0) as u32;
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    let prepared = prepare_draw_instruction(effect, game, ctx)?;
+    execute_prepared_draw_instruction(prepared, game, ctx)
+}
+pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstruction,
+    game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    let PreparedDrawInstruction { player: player_id, requested_count } = prepared;
 
     // Check for "can't draw extra cards" restriction (e.g., Narset)
     let count = if !game.can_draw_extra_cards(player_id) {

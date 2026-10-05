@@ -1283,6 +1283,14 @@ pub struct ContinuousEffectManager {
     attachment_timestamps: FxMap<ObjectId, u64>,
 }
 
+/// Entry-only projections are removed between preparation and commit while
+/// retaining their registration identities and duration-latch state.
+#[derive(Debug)]
+pub(crate) struct SuspendedEntryEffects {
+    effects: Vec<ContinuousEffect>,
+    latches: FxMap<ContinuousEffectId, ContinuousDurationLatch>,
+}
+
 type LatchedDurationState = ContinuousDurationLatch;
 
 impl ContinuousEffectManager {
@@ -1333,6 +1341,32 @@ impl ContinuousEffectManager {
             self.latched_duration_states.get_mut().remove(&id);
             self.revision += 1;
         }
+    }
+
+    pub(crate) fn suspend_entry_effects(&mut self, ids: &[ContinuousEffectId]) -> SuspendedEntryEffects {
+        let mut suspended = Vec::new();
+        Arc::make_mut(&mut self.effects).retain(|effect| {
+            if ids.contains(&effect.id) { suspended.push(effect.clone()); false } else { true }
+        });
+        let mut latches = FxMap::default();
+        for effect in &suspended {
+            if let Some(latch) = self.latched_duration_states.get_mut().remove(&effect.id) {
+                latches.insert(effect.id, latch);
+            }
+        }
+        if !suspended.is_empty() { self.revision += 1; }
+        SuspendedEntryEffects { effects: suspended, latches }
+    }
+
+    pub(crate) fn restore_entry_effects(&mut self, suspended: SuspendedEntryEffects)
+        -> Result<(), crate::effects::ExecutionError> {
+        if suspended.effects.iter().any(|effect| self.effects.iter().any(|active| active.id == effect.id)) {
+            return Err(crate::effects::ExecutionError::InternalError("entry projection was restored twice".into()));
+        }
+        if !suspended.effects.is_empty() { self.revision += 1; }
+        Arc::make_mut(&mut self.effects).extend(suspended.effects);
+        self.latched_duration_states.get_mut().extend(suspended.latches);
+        Ok(())
     }
 
     /// Move only the persistent sticker effect to the card's new public-zone identity.

@@ -33,6 +33,7 @@ mod for_each_correlated_result;
 mod for_each_object;
 mod for_each_tagged;
 mod for_players;
+mod object_iteration;
 mod grant_repeatable_mana_payment_action;
 mod if_effect;
 mod local_rewrite;

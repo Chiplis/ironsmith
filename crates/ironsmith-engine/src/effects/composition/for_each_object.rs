@@ -6,13 +6,11 @@ use std::collections::HashSet;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutor, SimultaneousEffectProposal};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
-use crate::events::ShuffleLibraryEvent;
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
-use crate::tag::TagKey;
 use crate::target::{ChooseSpec, TaggedOpbjectRelation};
-use crate::triggers::TriggerEvent;
+use super::object_iteration::{ObjectIterationBinding, ObjectIterationProposal, ObjectIterationState, finish_original};
 pub type ForEachObject = ironsmith_core::ForEachObject<Effect>;
 
 fn matching_objects(
@@ -77,50 +75,65 @@ fn matching_objects(
     }
 }
 
-#[derive(Debug)]
-struct ForEachObjectProposal {
-    matching: Vec<(crate::ids::ObjectId, ObjectSnapshot)>,
-    iterations: Vec<Vec<Box<dyn SimultaneousEffectProposal>>>,
+fn object_bindings(effect: &ForEachObject, game: &GameState, ctx: &ExecutionContext)
+    -> Vec<ObjectIterationBinding> {
+    matching_objects(effect, game, ctx).into_iter().map(|(object, snapshot)| ObjectIterationBinding {
+        object, player: snapshot.controller, snapshot, previous: None,
+    }).collect()
 }
 
-impl SimultaneousEffectProposal for ForEachObjectProposal {
-    fn commit(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        let Self {
-            matching,
-            iterations,
-        } = *self;
-        let it_tag = TagKey::from("__it__");
-        let original_it = ctx.tagged_objects.remove(&it_tag);
-        let result = (|| {
-            let mut outcomes = Vec::new();
-            for ((object_id, snapshot), proposals) in matching.iter().zip(iterations.into_iter()) {
-                ctx.set_tagged_objects(it_tag.clone(), vec![snapshot.clone()]);
-                ctx.with_temp_iterated_object(Some(*object_id), |ctx| {
-                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
-                        for proposal in proposals {
-                            outcomes.push(proposal.commit(game, ctx)?);
-                        }
-                        Ok::<(), ExecutionError>(())
-                    })
-                })?;
-            }
-            Ok(EffectOutcome::aggregate_summing_counts(outcomes))
-        })();
-
-        match original_it {
-            Some(value) => {
-                ctx.tagged_objects.insert(it_tag, value);
-            }
-            None => {
-                ctx.tagged_objects.remove(&it_tag);
+fn run_objects(effect: &ForEachObject, game: &mut GameState, ctx: &mut ExecutionContext,
+    defer_draws: bool) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    let bindings = object_bindings(effect, game, ctx);
+    let batched = if let [child] = effect.effects.as_slice()
+        && let Some(sequence) = child.downcast_ref::<crate::effects::SequenceEffect>() {
+        sequence.effects.as_slice()
+    } else { effect.effects.as_slice() };
+    if let [movement, shuffle] = batched
+        && let Some(movement_effect) = movement.downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && matches!(movement_effect.target.base(), ChooseSpec::Iterated)
+        && let Some(shuffle) = shuffle.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+        && matches!(&shuffle.player,
+            crate::target::PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag))
+                if tag.as_str() == "__it__") {
+        let mut owners = Vec::new();
+        let mut iterations = Vec::new();
+        for binding in &bindings {
+            let proposal = binding.with_scope(ctx, |ctx| {
+                let owner = resolve_player_filter(game, &shuffle.player, ctx)?;
+                if !owners.contains(&owner) { owners.push(owner); }
+                movement.0.prepare_simultaneous_player_action(game, ctx)
+            })?;
+            iterations.push(vec![proposal]);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
             }
         }
-        result
+        let mut proposal = Box::new(ObjectIterationProposal { bindings, iterations,
+            correlated: false, tagged_set: None, shuffle_owners: owners, attachments: vec![None] });
+        proposal.prepare_selection(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+        }
+        proposal.prepare_original(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+        }
+        let pinned = crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+        let opened = game.open_simultaneous_action();
+        let committed = proposal.commit_original(game, ctx);
+        game.close_simultaneous_action(opened);
+        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned);
+        let committed = committed?;
+        return finish_original(committed, game, ctx, defer_draws);
     }
+    // Keep the existing simultaneous damage event boundary around the native
+    // cursor. Other authored object loops remain object-major.
+    let opened = effect.effects.iter().all(effect_only_deals_damage) && game.open_simultaneous_action();
+    let result = ObjectIterationState::new(bindings, effect.effects.clone(), false, false)
+        .run(game, ctx, defer_draws);
+    game.close_simultaneous_action(opened);
+    result
 }
 
 impl EffectExecutor for ForEachObject {
@@ -139,157 +152,52 @@ impl EffectExecutor for ForEachObject {
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
-        !self.effects.is_empty()
+        // A multi-instruction body is an ordered program. ForPlayers uses
+        // its native ordered-unit cursor for it, retaining a draw and the
+        // remaining authored tail instead of committing that tail early.
+        // Transparent wrappers also own result/tag/source unwind scopes, so
+        // their bodies use that cursor rather than full-commit proposals.
+        self.effects.len() == 1
             && self
                 .effects
                 .iter()
-                .all(|effect| effect.0.supports_simultaneous_player_action())
+                .all(|effect| effect.transparent_child_effect().is_none()
+                    && effect.0.supports_simultaneous_player_action())
     }
 
     fn prepare_simultaneous_player_action(
-        &self,
-        game: &GameState,
-        ctx: &mut ExecutionContext,
+        &self, game: &GameState, ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
-        let matching = matching_objects(self, game, ctx);
-        let it_tag = TagKey::from("__it__");
-        let original_it = ctx.tagged_objects.remove(&it_tag);
-        let result = (|| {
-            let mut iterations = Vec::with_capacity(matching.len());
-            for (object_id, snapshot) in &matching {
-                ctx.set_tagged_objects(it_tag.clone(), vec![snapshot.clone()]);
-                let proposals = ctx.with_temp_iterated_object(Some(*object_id), |ctx| {
-                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
-                        self.effects
-                            .iter()
-                            .map(|effect| effect.0.prepare_simultaneous_player_action(game, ctx))
-                            .collect::<Result<Vec<_>, _>>()
-                    })
-                })?;
-                iterations.push(proposals);
-            }
-            Ok::<_, ExecutionError>(Box::new(ForEachObjectProposal {
-                matching: matching.clone(),
-                iterations,
-            }) as Box<dyn SimultaneousEffectProposal>)
-        })();
-
-        match original_it {
-            Some(value) => {
-                ctx.tagged_objects.insert(it_tag, value);
-            }
-            None => {
-                ctx.tagged_objects.remove(&it_tag);
-            }
+        let bindings = object_bindings(self, game, ctx);
+        let mut iterations = Vec::new();
+        for binding in &bindings {
+            iterations.push(binding.with_scope(ctx, |ctx| self.effects.iter()
+                .map(|effect| effect.0.prepare_simultaneous_player_action(game, ctx))
+                .collect::<Result<Vec<_>, _>>())?);
+            if ctx.decision_maker.awaiting_choice() { break; }
         }
-        result
+        Ok(Box::new(ObjectIterationProposal { bindings, iterations, correlated: false,
+            tagged_set: None, shuffle_owners: Vec::new(), attachments: vec![None; self.effects.len()] }))
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        let matching = matching_objects(self, game, ctx);
-
-        let mut outcomes = Vec::new();
-
-        // Execute the effects once for each matching object and expose that object via
-        // ctx.iterated_object for inner effects using ChooseSpec::Iterated.
-        let it_tag = TagKey::from("__it__");
-        let batched_effects = if let [effect] = self.effects.as_slice()
-            && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
-        {
-            sequence.effects.as_slice()
-        } else {
-            self.effects.as_slice()
-        };
-        if let [move_effect, shuffle_effect] = batched_effects
-            && let Some(move_to_zone) =
-                move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
-            && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
-            && let Some(shuffle) =
-                shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
-            && matches!(
-                &shuffle.player,
-                crate::target::PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag))
-                    if tag == &it_tag
-            )
-        {
-            let mut owners = Vec::new();
-            for (object_id, snapshot) in &matching {
-                let original_it = ctx.tagged_objects.remove(&it_tag);
-                ctx.tag_object(it_tag.clone(), snapshot.clone());
-                let owner = resolve_player_filter(game, &shuffle.player, ctx)?;
-                if !owners.contains(&owner) {
-                    owners.push(owner);
-                }
-
-                ctx.with_temp_iterated_object(Some(*object_id), |ctx| {
-                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
-                        outcomes.push(execute_effect(game, move_effect, ctx)?);
-                        Ok::<(), ExecutionError>(())
-                    })
-                })?;
-
-                match original_it {
-                    Some(value) => {
-                        ctx.tagged_objects.insert(it_tag.clone(), value);
-                    }
-                    None => {
-                        ctx.tagged_objects.remove(&it_tag);
-                    }
-                }
-            }
-
-            for owner in owners {
-                game.shuffle_player_library(owner);
-                outcomes.push(EffectOutcome::resolved().with_event(
-                    TriggerEvent::new_with_provenance(
-                        ShuffleLibraryEvent::new(owner, ctx.cause.clone()),
-                        ctx.provenance,
-                    ),
-                ));
-            }
-
-            return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
-        }
-
-        // CR 120.3 / 603.2c: "each creature you control deals damage ..."
-        // is several sources dealing damage at the same time, one event for
-        // "whenever one or more ..." and "that much damage" triggers.
-        let opened_action =
-            self.effects.iter().all(effect_only_deals_damage) && game.open_simultaneous_action();
-        let result = (|| {
-            for (object_id, snapshot) in &matching {
-                let original_it = ctx.tagged_objects.remove(&it_tag);
-                ctx.tag_object(it_tag.clone(), snapshot.clone());
-
-                ctx.with_temp_iterated_object(Some(*object_id), |ctx| {
-                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
-                        for effect in &self.effects {
-                            outcomes.push(execute_effect(game, effect, ctx)?);
-                        }
-                        Ok::<(), ExecutionError>(())
-                    })
-                })?;
-
-                match original_it {
-                    Some(value) => {
-                        ctx.tagged_objects.insert(it_tag.clone(), value);
-                    }
-                    None => {
-                        ctx.tagged_objects.remove(&it_tag);
-                    }
-                }
-            }
-            Ok::<(), ExecutionError>(())
-        })();
-        game.close_simultaneous_action(opened_action);
-        result?;
-
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        self.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
     }
+
+    fn prepare_replacement_draw_continuation(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        run_objects(self, game, ctx, true)
+    }
+
+    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+            crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
+                run_objects(self, game, ctx, false).map(|committed| committed.outcome)
+            })
+        })
+    }
+
 }
 
 /// Whether `effect` only has an object deal damage (through tagging and
@@ -326,7 +234,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effects::CounterEffect;
-    use crate::events::{DamageEvent, DamageTarget};
+    use crate::events::{DamageEvent, DamageTarget, ShuffleLibraryEvent};
     use crate::game_state::StackEntry;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};

@@ -927,6 +927,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/832"
+    },
+    {
+      "stage": 67,
+      "branch": "fix/card-failures-67-coin-and-public-reveal-bodies",
+      "base": "fix/card-failures-66-compound-statics-and-groups",
+      "source_integration_commit": "d115ed866bc2b1e923abb1fd0d81cb0604131605",
+      "remote_commit": "2c363379605c0cd996767ab70d0a31858476e448",
+      "tree": "4d86047fcd9699a0172a4456517309dda0361689",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 833,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/833"
     }
   ]
 }

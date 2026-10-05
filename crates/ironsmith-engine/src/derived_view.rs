@@ -952,6 +952,9 @@ impl<'a> DerivedGameView<'a> {
             return self.candidate_ids_for_zone(Some(zone));
         }
 
+        if filter.match_captured_public_destination {
+            return crate::object_query::candidate_ids_for_filter(self.game, filter);
+        }
         if filter.any_of.is_empty() {
             return self.candidate_ids_for_zone(None);
         }
@@ -978,6 +981,9 @@ impl<'a> DerivedGameView<'a> {
         filter_ctx: &crate::filter::FilterContext,
     ) -> Vec<ObjectId> {
         self.ensure_memo_context();
+        if !crate::object_query::require_captured_public_collections(self.game, filter, filter_ctx) {
+            return Vec::new();
+        }
         if let Some(ids) = self.narrow_battlefield_candidates(filter, filter_ctx) {
             return ids;
         }

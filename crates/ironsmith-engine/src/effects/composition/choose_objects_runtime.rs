@@ -804,6 +804,11 @@ fn collect_candidates(
     ctx: &ExecutionContext,
     chooser_id: PlayerId,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
+    if !crate::object_query::require_captured_public_collections(game, &effect.filter,
+        &choice_filter_context(effect, game, ctx, chooser_id))
+    {
+        return Err(ExecutionError::IncompleteEvidence("public destination choice requires its producer collection".into()));
+    }
     let mut candidates = Vec::new();
     let zones = effective_search_zones(effect, game, chooser_id)?;
     for zone in zones.iter().copied() {

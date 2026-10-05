@@ -22,6 +22,7 @@ pub enum ProtectionTargetKind {
     },
     /// "each mana value other than the chosen number" (Haktos the Unscarred).
     ManaValuesOtherThanChosenNumber,
+    ManaValueParity(ironsmith_core::ParityRequirement),
     Spell,
     PermanentCastThisTurn,
     ManaValue {
@@ -189,11 +190,31 @@ pub fn parse_protection_chain_tokens(tokens: &[OwnedLexToken]) -> Option<Protect
         let target_word = from_word + 1;
         let value = *words.get(target_word)?;
         let target_token_first = *view.token_start_indices().get(target_word)?;
+        let kind = classify_protection_target(&words, target_word);
+        if let ProtectionTargetKind::ManaValueParity(parity) = kind {
+            // The owned prefix is part of the same production. Do not let
+            // the word view erase symbols between `protection`, `from`, and
+            // the first quality word before validating the quality suffix.
+            if tokens[..target_token_first].iter().any(|token| token.as_word().is_none()) {
+                return None;
+            }
+            let phrase: &[&str] = match parity {
+                ironsmith_core::ParityRequirement::Odd => &["odd", "mana", "values"],
+                ironsmith_core::ParityRequirement::Even => &["even", "mana", "values"],
+                ironsmith_core::ParityRequirement::Chosen => &["each", "mana", "value", "of", "the", "chosen", "quality"],
+                ironsmith_core::ParityRequirement::NotChosen => return None,
+            };
+            // The word view is only a classifier. Mana symbols, colons and
+            // other non-word tokens must not vanish from a recognized quality.
+            primitives::probe_all(&tokens[target_token_first..],
+                (primitives::phrase(phrase), primitives::sentence_end()),
+                "complete mana-value parity protection quality")?;
+        }
         targets.push(ProtectionTarget {
             value,
             target_word,
             target_token_first,
-            kind: classify_protection_target(&words, target_word),
+            kind,
         });
     }
     (!targets.is_empty()).then_some(ProtectionChain { targets })
@@ -372,6 +393,15 @@ fn parse_protection_head_word_stream(
 
 fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionTargetKind {
     let tail = words.get(target_word..).unwrap_or_default();
+    let parity = match tail {
+        ["odd", "mana", "values"] => Some(ironsmith_core::ParityRequirement::Odd),
+        ["even", "mana", "values"] => Some(ironsmith_core::ParityRequirement::Even),
+        ["each", "mana", "value", "of", "the", "chosen", "quality"] => Some(ironsmith_core::ParityRequirement::Chosen),
+        _ => None,
+    };
+    if let Some(parity) = parity {
+        return ProtectionTargetKind::ManaValueParity(parity);
+    }
     if matches!(
         tail,
         [

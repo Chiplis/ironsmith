@@ -2062,6 +2062,7 @@ fn execute_discard_scoped_inner(
                 &additional_effects,
                 &lookback,
                 Some(replacement_scope),
+                None,
             )?;
             if decision_maker.awaiting_choice() {
                 return Ok(DiscardExecutionReceipt::pending());
@@ -2478,6 +2479,9 @@ impl ReplacementEventContext {
     /// effects were regenerated before the replacement payload executes.
     pub fn apply_to(&self, ctx: &mut crate::effects::ExecutionContext<'_>) {
         ctx.triggering_event = Some(self.event.clone().into_raw());
+        ctx.replacement.original_zone_event = self.zone_change_context.clone().or_else(||
+            crate::events::downcast_event::<crate::events::ZoneChangeEvent>(self.event.inner()).cloned()
+        ).map(Box::new);
         ctx.provenance = self.event.provenance();
         ctx.replacement
             .suppressed_replacement_effects
@@ -3749,6 +3753,16 @@ fn process_zone_change_inner(
     )
 }
 
+/// Retained replacement subtree receipts owned by a compound zone instruction.
+/// This is transaction-local state, never a runtime label or a GameState queue.
+#[derive(Default)]
+pub(crate) struct ZoneDrawContinuations(pub Vec<crate::effects::SimultaneousEffectCommit>);
+impl std::fmt::Debug for ZoneDrawContinuations {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ZoneDrawContinuations").field(&self.0.len()).finish()
+    }
+}
+
 /// A zone proposal whose entry programs and choices have completed. A commit
 /// consumes this record; it must not reconstruct an entry from `final_zone`.
 #[derive(Debug, Clone)]
@@ -3940,17 +3954,39 @@ pub(crate) fn prepare_zone_change_scoped(
     initial_counters: Vec<(CounterType, u32)>,
     inherited_lookback: Option<&[crate::snapshot::ObjectSnapshot]>,
 ) -> Result<PreparedEventOutcome<PreparedZoneChange>, crate::effects::ExecutionError> {
+    prepare_zone_change_scoped_with_draws(game, object, from, to, cause, dm,
+        additional_effects, snapshot, inherited, initial_counters, inherited_lookback, None)
+}
+
+/// A compound original retains replacement-created draws until its remaining
+/// unreplaced parts finish (CR 121.7). Non-draw prefixes run in their own scope.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_zone_change_scoped_with_draws(
+    game: &mut GameState,
+    object: ObjectId,
+    from: Zone,
+    to: Zone,
+    cause: crate::events::cause::EventCause,
+    dm: &mut dyn DecisionMaker,
+    additional_effects: &[ReplacementEffect],
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    inherited: Option<&ReplacementEventContext>,
+    initial_counters: Vec<(CounterType, u32)>,
+    inherited_lookback: Option<&[crate::snapshot::ObjectSnapshot]>,
+    mut draws: Option<&mut ZoneDrawContinuations>,
+) -> Result<PreparedEventOutcome<PreparedZoneChange>, crate::effects::ExecutionError> {
     if dm.awaiting_choice() {
         return Ok(PreparedEventOutcome::pure(EventOutcome::Prevented));
     }
     // This checkpoint precedes commander choices, registration refresh and
     // every one-shot consumption in both the zone and entry phases.
     let checkpoint = game.clone();
+    let draw_count = draws.as_ref().map_or(0, |draws| draws.0.len());
     let outcome = (|| {
         let PreparedEventOutcome {
             original,
             mut programs,
-        } = prepare_zone_change_proposal_scoped(
+        } = prepare_zone_change_proposal_scoped_with_draws(
             game,
             object,
             from,
@@ -3961,13 +3997,14 @@ pub(crate) fn prepare_zone_change_scoped(
             snapshot,
             inherited,
             inherited_lookback,
+            draws.as_deref_mut(),
         )?;
         let mut completed = match original {
             EventOutcome::Proceed(PreparedZoneProposal::Ready(prepared)) => {
                 PreparedEventOutcome::pure(EventOutcome::Proceed(prepared))
             }
             EventOutcome::Proceed(PreparedZoneProposal::Battlefield(proposal)) => {
-                complete_zone_entry_proposal(game, object, proposal, dm, initial_counters)?
+                complete_zone_entry_proposal(game, object, proposal, dm, initial_counters, draws.as_deref_mut())?
             }
             EventOutcome::Prevented => PreparedEventOutcome::pure(EventOutcome::Prevented),
             EventOutcome::Replaced => PreparedEventOutcome::pure(EventOutcome::Replaced),
@@ -3979,6 +4016,7 @@ pub(crate) fn prepare_zone_change_scoped(
     })();
     if outcome.is_err() || dm.awaiting_choice() {
         *game = checkpoint;
+        if let Some(draws) = draws { draws.0.truncate(draw_count); }
     }
     if dm.awaiting_choice() {
         return outcome.map(|_| PreparedEventOutcome::pure(EventOutcome::Prevented));
@@ -4002,6 +4040,24 @@ pub(crate) fn prepare_zone_change_proposal_scoped(
     inherited: Option<&ReplacementEventContext>,
     inherited_lookback: Option<&[crate::snapshot::ObjectSnapshot]>,
 ) -> Result<PreparedEventOutcome<PreparedZoneProposal>, crate::effects::ExecutionError> {
+    prepare_zone_change_proposal_scoped_with_draws(game, object, from, to, cause, dm,
+        additional_effects, snapshot, inherited, inherited_lookback, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_zone_change_proposal_scoped_with_draws(
+    game: &mut GameState,
+    object: ObjectId,
+    from: Zone,
+    to: Zone,
+    cause: crate::events::cause::EventCause,
+    dm: &mut dyn DecisionMaker,
+    additional_effects: &[ReplacementEffect],
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    inherited: Option<&ReplacementEventContext>,
+    inherited_lookback: Option<&[crate::snapshot::ObjectSnapshot]>,
+    draws: Option<&mut ZoneDrawContinuations>,
+) -> Result<PreparedEventOutcome<PreparedZoneProposal>, crate::effects::ExecutionError> {
     if dm.awaiting_choice() {
         return Ok(PreparedEventOutcome::pure(EventOutcome::Prevented));
     }
@@ -4017,6 +4073,7 @@ pub(crate) fn prepare_zone_change_proposal_scoped(
         snapshot,
         inherited,
         inherited_lookback,
+        draws,
     );
     if result.is_err() || dm.awaiting_choice() {
         *game = checkpoint;
@@ -4033,16 +4090,13 @@ fn complete_zone_entry_proposal(
     proposal: PreparedBattlefieldZoneChange,
     dm: &mut dyn DecisionMaker,
     initial_counters: Vec<(CounterType, u32)>,
+    draws: Option<&mut ZoneDrawContinuations>,
 ) -> Result<PreparedEventOutcome<PreparedZoneChange>, crate::effects::ExecutionError> {
     use crate::effects::ExecutionError;
     let (context, additional_effects, pre_event_lookback, mut programs) =
         proposal.into_entry_scope();
-    let mut entry_result = process_etb_from_zone_change_context_with_options(
-        game,
-        context,
-        dm,
-        initial_counters,
-        &additional_effects,
+    let mut entry_result = process_etb_from_zone_change_context_with_options_and_draws(
+        game, context, dm, initial_counters, &additional_effects, draws,
     )?;
     if dm.awaiting_choice() {
         return Ok(PreparedEventOutcome::pure(EventOutcome::Prevented));
@@ -4100,6 +4154,7 @@ fn prepare_zone_change_with_context_inner(
     snapshot: Option<crate::snapshot::ObjectSnapshot>,
     inherited: Option<&ReplacementEventContext>,
     inherited_lookback: Option<&[crate::snapshot::ObjectSnapshot]>,
+    mut draws: Option<&mut ZoneDrawContinuations>,
 ) -> Result<PreparedEventOutcome<PreparedZoneProposal>, crate::effects::ExecutionError> {
     use crate::effects::{ExecutionContext, ExecutionError};
     use crate::events::{ZoneChangeEvent, downcast_event};
@@ -4315,11 +4370,26 @@ fn prepare_zone_change_with_context_inner(
                         &scoped_additional_effects,
                         &pre_event_lookback,
                         None,
+                        draws.as_deref_mut(),
                     )?;
                     return Ok(EventOutcome::Replaced);
                 }
                 let mut ctx = ExecutionContext::new(source, controller, dm);
                 ctx.replacement.additional_replacement_effects = scoped_additional_effects;
+                if let Some(draws) = draws.as_deref_mut() {
+                    let snapshot = context.zone_change_context.as_ref()
+                        .and_then(|zone| zone.snapshot.clone()).into_iter().collect::<Vec<_>>();
+                    if let Some(prepared) = crate::effects::replacement::prepare_draw_continuation_with_bindings(
+                        game, &mut ctx, &effects, source, controller, &context, None,
+                        crate::effects::replacement::ReplacementProgramBindings {
+                            targets: None,
+                            object_tags: vec![("it".into(), snapshot.clone()), ("__it__".into(), snapshot)],
+                        },
+                    )? {
+                        draws.0.push(prepared);
+                        return Ok(EventOutcome::Replaced);
+                    }
+                }
                 let mut outcome = crate::effects::replacement::execute_replacement_payload(
                     game, &mut ctx, &effects, source, controller, &context, None,
                 )?;
@@ -4359,6 +4429,7 @@ fn execute_typed_replacement_move(
     additional_effects: &[ReplacementEffect],
     pre_event_lookback: &[crate::snapshot::ObjectSnapshot],
     replacement_scope: Option<&crate::effects::ReplacementExecutionContext>,
+    draws: Option<&mut ZoneDrawContinuations>,
 ) -> Result<(), crate::effects::ExecutionError> {
     use crate::effects::{ExecutionContext, ExecutionError};
     let (destination, counters, link) = match replacement {
@@ -4401,10 +4472,11 @@ fn execute_typed_replacement_move(
                 .departed_object_snapshot(source)
                 .cloned()
         });
+    let mut nested_draws = ZoneDrawContinuations::default();
     let PreparedEventOutcome {
         original: proposal,
         mut programs,
-    } = prepare_zone_change_scoped(
+    } = prepare_zone_change_scoped_with_draws(
         game,
         object,
         from,
@@ -4416,6 +4488,7 @@ fn execute_typed_replacement_move(
         Some(context),
         counters.to_vec(),
         Some(pre_event_lookback),
+        draws.as_ref().map(|_| &mut nested_draws),
     )?;
     if dm.awaiting_choice() {
         return Ok(());
@@ -4440,11 +4513,7 @@ fn execute_typed_replacement_move(
             };
             (id, counters_in_entry)
         }
-        EventOutcome::Replaced => (
-            game.current_object_id_after_zone_change(object)
-                .filter(|id| *id != object),
-            false,
-        ),
+        EventOutcome::Replaced => (retained_zone_arrival(game, object), false),
         EventOutcome::Prevented | EventOutcome::NotApplicable => (None, false),
     };
     if dm.awaiting_choice() {
@@ -4458,13 +4527,102 @@ fn execute_typed_replacement_move(
     ctx.replacement.additional_replacement_effects = additional_effects.to_vec();
     ctx.iteration.iterated_player = Some(context.affected_player);
     context.apply_to(&mut ctx);
+    if let Some(draws) = draws {
+        if nested_draws.0.iter().any(|draw| draw.completion.is_some()) {
+            let prefix = crate::effect::EffectOutcome::aggregate(
+                nested_draws.0.iter().map(|draw| draw.outcome.clone()).collect::<Vec<_>>(),
+            );
+            draws.0.push(crate::effects::SimultaneousEffectCommit {
+                outcome: prefix,
+                completion: Some(Box::new(TypedMoveDrawCompletion {
+                    nested: nested_draws, object, new_id, counters_in_entry,
+                    counters: counters.to_vec(), link, programs, followups: follow_ups.to_vec(),
+                    scope: crate::effects::ExecutionContextCheckpoint::capture(&ctx),
+                })),
+            });
+            return Ok(());
+        }
+        // Finished replacement prefixes are still original observations.
+        draws.0.append(&mut nested_draws.0);
+        return finish_typed_replacement_move(game, &mut ctx, object, new_id,
+            counters_in_entry, counters, link, programs, follow_ups, Some(draws));
+    }
+    finish_typed_replacement_move(game, &mut ctx, object, new_id,
+        counters_in_entry, counters, link, programs, follow_ups, None)
+}
+
+fn retained_zone_arrival(game: &mut GameState, object: ObjectId) -> Option<ObjectId> {
+    let ids = game.take_zone_change_results(object);
+    let arrival = ids.first().copied();
+    if !ids.is_empty() { game.record_zone_change_results(object, ids); }
+    arrival
+}
+
+struct TypedMoveDrawCompletion {
+    nested: ZoneDrawContinuations,
+    object: ObjectId,
+    new_id: Option<ObjectId>,
+    counters_in_entry: bool,
+    counters: Vec<(CounterType, u32)>,
+    link: bool,
+    programs: Vec<PreparedReplacementProgram>,
+    followups: Vec<crate::effect::Effect>,
+    scope: crate::effects::ExecutionContextCheckpoint,
+}
+impl crate::effects::SimultaneousEffectCompletion for TypedMoveDrawCompletion {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), crate::effects::ExecutionError> {
+        for draw in &mut self.nested.0 {
+            if let Some(completion) = &mut draw.completion { completion.freeze(game)?; }
+        }
+        Ok(())
+    }
+    fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        _prefix: crate::effect::EffectOutcome) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        self.scope.restore(ctx);
+        let result = (|| {
+            let mut outcomes = Vec::new();
+            for draw in self.nested.0 {
+                outcomes.push(if let Some(completion) = draw.completion {
+                    completion.complete(game, ctx, draw.outcome)?
+                } else { draw.outcome });
+                if ctx.decision_maker.awaiting_choice() { return Ok(crate::effect::EffectOutcome::count(0)); }
+            }
+            // An inner Instead program can move the exact original after its
+            // draw. Consume that recorded receipt, never a stable-ID successor.
+            let arrival = self.new_id.or_else(|| retained_zone_arrival(game, self.object));
+            finish_typed_replacement_move(game, ctx, self.object, arrival,
+                self.counters_in_entry, &self.counters, self.link, self.programs,
+                &self.followups, None)?;
+            Ok(crate::effect::EffectOutcome::aggregate(outcomes))
+        })();
+        parent.restore(ctx);
+        result
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_typed_replacement_move(
+    game: &mut GameState,
+    ctx: &mut crate::effects::ExecutionContext,
+    object: ObjectId,
+    new_id: Option<ObjectId>,
+    counters_in_entry: bool,
+    counters: &[(CounterType, u32)],
+    link: bool,
+    programs: Vec<PreparedReplacementProgram>,
+    follow_ups: &[crate::effect::Effect],
+    draws: Option<&mut ZoneDrawContinuations>,
+) -> Result<(), crate::effects::ExecutionError> {
+    use crate::effects::ExecutionError;
+    let source = ctx.source;
     if let Some(new_id) = new_id {
         if !counters_in_entry {
             for (counter_type, count) in counters {
                 let event = Event::put_counters(new_id, *counter_type, *count, ctx.cause.clone())
                     .with_provenance(ctx.provenance);
                 let mut outcome = crate::effects::counters::execute_object_counter_placement(
-                    game, &mut ctx, event,
+                    game, ctx, event,
                 )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(());
@@ -4512,10 +4670,32 @@ fn execute_typed_replacement_move(
     } else {
         crate::effect::EffectOutcome::count(0)
     };
+    if let Some(draws) = draws {
+        let mut bound = Vec::new();
+        for program in programs {
+            let change = program.context.zone_change_context.as_ref().or_else(||
+                crate::events::downcast_event::<crate::events::ZoneChangeEvent>(program.context.event.inner()));
+            let matches = change.is_some_and(|change| change.objects.as_slice() == [object])
+                || crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(program.context.event.inner())
+                    .is_some_and(|entry| entry.object == object);
+            if !matches {
+                return Err(ExecutionError::InternalError("compound addition lost its exact zone receipt".into()));
+            }
+            let snapshots = target_snapshot.clone().into_iter().collect::<Vec<_>>();
+            bound.push((program, crate::effects::replacement::ReplacementProgramBindings {
+                targets: Some(vec![crate::effects::ResolvedTarget::Object(target)]),
+                object_tags: vec![("it".into(), snapshots.clone()), ("__it__".into(), snapshots)],
+            }));
+        }
+        draws.0.push(crate::effects::replacement::prepare_zone_draw_tail(
+            game, ctx, original_outcome, bound, follow_ups,
+        )?);
+        return Ok(());
+    }
     let mut added_outcome =
         crate::effects::replacement::execute_deferred_replacement_programs_with_bindings(
             game,
-            &mut ctx,
+            ctx,
             original_outcome,
             programs,
             |_, captured, _| {
@@ -4559,7 +4739,7 @@ fn execute_typed_replacement_move(
     // Keep the moved-object tag/outcome in this replacement's own scope.
     // The generic child-payload helper deliberately starts a fresh local scope.
     for effect in follow_ups {
-        let mut outcome = crate::effects::execute_effect(game, effect, &mut ctx)?;
+        let mut outcome = crate::effects::execute_effect(game, effect, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(());
         }
@@ -7610,6 +7790,25 @@ pub(crate) fn process_etb_batch_proposal_with_scope(
     additional_effects: &[ReplacementEffect],
     original_source_faces: &[crate::object::Object],
 ) -> Result<EtbEventResult, crate::effects::ExecutionError> {
+    process_etb_batch_proposal_with_scope_and_draws(game, object, from, dm, counters,
+        tapped, controller, reserved_objects, scope, additional_effects, original_source_faces, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn process_etb_batch_proposal_with_scope_and_draws(
+    game: &mut GameState,
+    object: ObjectId,
+    from: Zone,
+    dm: &mut dyn DecisionMaker,
+    counters: Vec<(CounterType, u32)>,
+    tapped: bool,
+    controller: Option<PlayerId>,
+    reserved_objects: &std::collections::HashSet<ObjectId>,
+    scope: ReplacementEventContext,
+    additional_effects: &[ReplacementEffect],
+    original_source_faces: &[crate::object::Object],
+    draws: Option<&mut ZoneDrawContinuations>,
+) -> Result<EtbEventResult, crate::effects::ExecutionError> {
     if dm.awaiting_choice() {
         return Ok(EtbEventResult {
             prevented: true,
@@ -7631,6 +7830,7 @@ pub(crate) fn process_etb_batch_proposal_with_scope(
         Some(scope),
         &additional,
         original_source_faces,
+        draws,
     );
     if result.is_err() || dm.awaiting_choice() {
         *game = checkpoint;
@@ -7704,6 +7904,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
         Some(scope),
         &[],
         &[],
+        None,
     );
     if result.is_err() {
         *game = checkpoint;
@@ -7737,6 +7938,18 @@ fn process_etb_from_zone_change_context_with_options(
     initial_counters: Vec<(CounterType, u32)>,
     additional_effects: &[ReplacementEffect],
 ) -> Result<EtbEventResult, crate::effects::ExecutionError> {
+    process_etb_from_zone_change_context_with_options_and_draws(game, context, dm,
+        initial_counters, additional_effects, None)
+}
+
+fn process_etb_from_zone_change_context_with_options_and_draws(
+    game: &mut GameState,
+    context: ReplacementEventContext,
+    dm: &mut dyn DecisionMaker,
+    initial_counters: Vec<(CounterType, u32)>,
+    additional_effects: &[ReplacementEffect],
+    draws: Option<&mut ZoneDrawContinuations>,
+) -> Result<EtbEventResult, crate::effects::ExecutionError> {
     if dm.awaiting_choice() {
         return Ok(EtbEventResult {
             prevented: true,
@@ -7765,11 +7978,44 @@ fn process_etb_from_zone_change_context_with_options(
         Some(context),
         additional_effects,
         &[],
+        draws,
     );
     if result.is_err() || dm.awaiting_choice() {
         *game = checkpoint;
     }
     result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_entry_replacement_payload(
+    game: &mut GameState, dm: &mut dyn DecisionMaker, effects: &[crate::effect::Effect],
+    source: ObjectId, controller: PlayerId, context: &ReplacementEventContext,
+    additional: &[ReplacementEffect], reserved: &std::collections::HashSet<ObjectId>,
+    draws: Option<&mut ZoneDrawContinuations>,
+) -> Result<(), crate::effects::ExecutionError> {
+    let mut ctx = crate::effects::ExecutionContext::new(source, controller, dm);
+    ctx.replacement.additional_replacement_effects = additional.to_vec();
+    ctx.replacement.entry_reserved_objects = reserved.clone();
+    let snapshots = context.zone_change_context.as_ref().and_then(|zone| zone.snapshot.clone())
+        .into_iter().collect::<Vec<_>>();
+    let bindings = crate::effects::replacement::ReplacementProgramBindings {
+        targets: None,
+        object_tags: vec![("it".into(), snapshots.clone()), ("__it__".into(), snapshots)],
+    };
+    if let Some(draws) = draws {
+        if let Some(prepared) = crate::effects::replacement::prepare_draw_continuation_with_bindings(
+            game, &mut ctx, effects, source, controller, context, None, bindings.clone(),
+        )? {
+            draws.0.push(prepared);
+            return Ok(());
+        }
+    }
+    let mut outcome = crate::effects::replacement::execute_replacement_payload_with_snapshot(
+        game, &mut ctx, effects, source, controller, context, bindings.targets, None, bindings.object_tags,
+    )?;
+    crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
+    for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+    Ok(())
 }
 
 fn restore_source_presentations_for_replaced_entry(
@@ -7783,11 +8029,7 @@ fn restore_source_presentations_for_replaced_entry(
             && card.zone == original.zone
             && card.stable_id == original.stable_id
         {
-            card.copy_copiable_values_from(original);
-            card.other_face = original.other_face;
-            card.other_face_name = original.other_face_name.clone();
-            card.linked_face_layout = original.linked_face_layout;
-            card.linked_face_mana_cost = original.linked_face_mana_cost.clone();
+            card.restore_entry_presentation_from(original);
         }
     }
 }
@@ -7804,6 +8046,7 @@ fn prepare_etb_replacements_inner(
     zone_context: Option<ReplacementEventContext>,
     zone_additional_effects: &[ReplacementEffect],
     original_source_faces: &[crate::object::Object],
+    mut draws: Option<&mut ZoneDrawContinuations>,
 ) -> Result<EtbEventResult, crate::effects::ExecutionError> {
     use crate::ability::AbilityKind;
     use crate::decisions::{
@@ -8299,27 +8542,14 @@ fn prepare_etb_replacements_inner(
                     context: replacement_context,
                     ..
                 } => {
-                    use crate::effects::ExecutionContext;
                     restore_source_presentations_for_replaced_entry(game, original_source_faces);
                     if game.object(object).is_some() {
                         game.effect_store
                             .replacement_effects
                             .mark_effect_used(effect_id);
-                        let mut ctx =
-                            ExecutionContext::new(replacement_source, replacement_controller, dm);
-                        let mut outcome = crate::effects::replacement::execute_replacement_payload(
-                            game,
-                            &mut ctx,
-                            &effects,
-                            replacement_source,
-                            replacement_controller,
-                            &replacement_context,
-                            None,
-                        )?;
-                        crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-                        for event in outcome.events {
-                            game.queue_trigger_event(replacement_context.event.provenance(), event);
-                        }
+                        execute_entry_replacement_payload(game, dm, &effects,
+                            replacement_source, replacement_controller, &replacement_context,
+                            &current_additional_effects, &reserved_objects, draws.as_deref_mut())?;
                     }
                     return Ok(EtbEventResult {
                         prevented: true,
@@ -8394,7 +8624,6 @@ fn prepare_etb_replacements_inner(
                             });
                         }
                         TraitApplyResult::Replaced(effects) => {
-                            use crate::effects::ExecutionContext;
                             restore_source_presentations_for_replaced_entry(
                                 game,
                                 original_source_faces,
@@ -8403,31 +8632,9 @@ fn prepare_etb_replacements_inner(
                                 game.effect_store
                                     .replacement_effects
                                     .mark_effect_used(chosen_id);
-                                let mut ctx = ExecutionContext::new(
-                                    chosen_effect.source,
-                                    chosen_effect.controller,
-                                    dm,
-                                );
-                                let mut outcome =
-                                    crate::effects::replacement::execute_replacement_payload(
-                                        game,
-                                        &mut ctx,
-                                        &effects,
-                                        chosen_effect.source,
-                                        chosen_effect.controller,
-                                        &replacement_context,
-                                        None,
-                                    )?;
-                                crate::effects::retain_unmatched_outcome_events(
-                                    game,
-                                    &mut outcome.events,
-                                );
-                                for event in outcome.events {
-                                    game.queue_trigger_event(
-                                        replacement_context.event.provenance(),
-                                        event,
-                                    );
-                                }
+                                execute_entry_replacement_payload(game, dm, &effects,
+                                    chosen_effect.source, chosen_effect.controller, &replacement_context,
+                                    &current_additional_effects, &reserved_objects, draws.as_deref_mut())?;
                             }
                             return Ok(EtbEventResult {
                                 prevented: true,

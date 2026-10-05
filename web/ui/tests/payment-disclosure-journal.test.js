@@ -159,3 +159,157 @@ test('signed payment attempt and pre-action checkpoint stay immutable while boun
   assert.deepEqual(after.evidence.actionIntent, original);
   assert.deepEqual(after.timing.intent, original);
 });
+
+const randomIntent = () => ({ ...intent(), attemptId: 'random-attempt',
+  preActionPublicCheckpointHash: 'random-before', signature: 'signed-random' });
+const randomMaterial = (changes = {}) => ({ schemaVersion: 1, contextKey: 'ordered-domain-hash',
+  requirement: { id: 'random-target:0:3:4', type: 'fair_random', owner: 1,
+    randomCountBefore: 3, randomCountAfter: 4,
+    announcement: { source: 10, controller: 0, authority: 1, candidates: [20, 21] } },
+  ...changes });
+
+test('RNG-only attempt retains exact local nonce, locked set and verified material across reload', () => {
+  const storage = memoryStorage();
+  const journal = createPaymentDisclosureJournal(storage);
+  const contribution = { player: 1, commitRequestId: 'commit-one', nonceHex: 'fixed-nonce', commitmentHex: 'fixed-commitment' };
+  journal.pin(randomIntent(), { randomAnnouncements: [randomMaterial({ localContributions: [contribution] })] });
+  const recovered = createPaymentDisclosureJournal(storage);
+  const commitment = { player: 1, requestId: 'commit-one', commitmentHex: 'fixed-commitment', signature: 'signed-commitment' };
+  const commitSet = { hash: 'complete-set', commits: [commitment] };
+  const reveal = { player: 1, requestId: 'reveal-one', commitRequestId: 'commit-one', nonceHex: 'fixed-nonce', commitmentHex: 'fixed-commitment', signature: 'signed-reveal' };
+  recovered.pin(randomIntent(), { randomAnnouncements: [randomMaterial({ commitments: [commitment], commitSet, reveals: [reveal] })] });
+  const retained = recovered.lookup(randomIntent());
+  assert.equal(retained.schemaVersion, 2);
+  assert.deepEqual(retained.openings, [], 'no hand opening is needed to retain random authority');
+  assert.deepEqual(retained.randomAnnouncements[0].localContributions, [contribution]);
+  assert.deepEqual(retained.randomAnnouncements[0].commitSet, commitSet);
+  assert.deepEqual(retained.randomAnnouncements[0].reveals, [reveal]);
+  retained.randomAnnouncements[0].localContributions[0].nonceHex = 'edited-clone';
+  assert.equal(recovered.lookup(randomIntent()).randomAnnouncements[0].localContributions[0].nonceHex, 'fixed-nonce');
+});
+
+test('random requirement, order, contribution, reveal and commit-set conflicts reject atomically', () => {
+  const journal = createPaymentDisclosureJournal(memoryStorage());
+  const original = randomMaterial({
+    localContributions: [{ player: 1, commitRequestId: 'request', nonceHex: 'nonce', commitmentHex: 'commit' }],
+    commitments: [{ player: 1, requestId: 'request', commitmentHex: 'commit' }],
+    reveals: [{ player: 1, requestId: 'reveal', commitRequestId: 'request', nonceHex: 'nonce', commitmentHex: 'commit' }],
+    commitSet: { hash: 'set', commits: [{ player: 1, requestId: 'request', commitmentHex: 'commit' }] },
+    witness: { seedHex: 'seed', randomCountBefore: 3, randomCountAfter: 4 },
+  });
+  journal.pin(randomIntent(), { randomAnnouncements: [original] });
+  const before = journal.lookup(randomIntent());
+  for (const changed of [
+    { contextKey: 'different-domain' },
+    { requirement: { ...original.requirement, owner: 0 } },
+    { requirement: { ...original.requirement, announcement: { ...original.requirement.announcement, candidates: [21, 20] } } },
+    { localContributions: [{ player: 1, nonceHex: 'new-nonce', commitmentHex: 'commit' }] },
+    { commitments: [{ player: 1, commitmentHex: 'other-commit' }] },
+    { reveals: [{ player: 1, nonceHex: 'other-nonce' }] },
+    { commitSet: { hash: 'other-set' } }, { witness: { seedHex: 'other-seed' } },
+  ]) {
+    assert.throws(() => journal.pin(randomIntent(), { randomAnnouncements: [randomMaterial(changed)] }), /changed its retained/);
+    assert.deepEqual(journal.lookup(randomIntent()), before);
+  }
+  assert.throws(() => journal.pin({ ...randomIntent(), attemptId: 'another-attempt' }, { randomAnnouncements: [original] }), /original signed attempt/);
+});
+
+test('legacy hand journal uses the same key and upgrades in place without losing its pin', () => {
+  const storage = memoryStorage();
+  const legacy = { ...randomIntent(), openings: [opening], evidence: { actionIntent: randomIntent() } };
+  storage.setItem('ironsmith.payment-disclosure.v1:match-A', JSON.stringify([legacy]));
+  const journal = createPaymentDisclosureJournal(storage);
+  assert.deepEqual(journal.lookup(randomIntent()).openings, [opening]);
+  journal.pin(randomIntent(), { randomAnnouncements: [randomMaterial()] });
+  const upgraded = JSON.parse(storage.getItem('ironsmith.payment-disclosure.v1:match-A'))[0];
+  assert.equal(upgraded.schemaVersion, 2);
+  assert.deepEqual(upgraded.openings, [opening]);
+  assert.equal(upgraded.signedIntent.attemptId, 'random-attempt');
+  journal.accepted('match-A', 7);
+  assert.equal(journal.lookup(randomIntent()), null);
+  journal.pin({ ...randomIntent(), seq: 8, prevStateHash: 'accepted-7', attemptId: 'later-attempt' },
+    { randomAnnouncements: [randomMaterial()] });
+  assert.equal(journal.entries('match-A')[0].signedIntent.attemptId, 'later-attempt',
+    'accepted terminal verdicts retire only their own attempt, without pinning future random outcomes');
+});
+
+test('unsupported RNG journal schemas and unsigned RNG-only material fail closed', () => {
+  const storage = memoryStorage();
+  const journal = createPaymentDisclosureJournal(storage);
+  assert.throws(() => journal.pin(intent(), { randomAnnouncements: [randomMaterial()] }), /original signed attempt/);
+  assert.equal(journal.entries('match-A').length, 0);
+  storage.setItem('ironsmith.payment-disclosure.v1:match-A', JSON.stringify([{ ...randomIntent(), schemaVersion: 99 }]));
+  assert.throws(() => journal.entries('match-A'), /Unsupported disclosure recovery schema/);
+});
+
+test('contradictory stages reject in either arrival order and on persisted-record recovery', () => {
+  const contribution = { player: 1, commitRequestId: 'request', nonceHex: 'nonce', commitmentHex: 'commit' };
+  const commitment = { player: 1, requestId: 'request', commitmentHex: 'commit' };
+  const reveal = { player: 1, requestId: 'reveal', commitRequestId: 'request', nonceHex: 'nonce', commitmentHex: 'commit' };
+  const pairs = [
+    [{ localContributions: [contribution] }, { commitments: [{ ...commitment, commitmentHex: 'different' }] }],
+    [{ localContributions: [contribution] }, { reveals: [{ ...reveal, nonceHex: 'different' }] }],
+    [{ commitments: [commitment] }, { commitSet: { hash: 'set', commits: [{ ...commitment, requestId: 'different' }] } }],
+    [{ commitments: [commitment] }, { reveals: [{ ...reveal, commitmentHex: 'different' }] }],
+  ];
+  for (const pair of pairs) {
+    for (const stages of [pair, [...pair].reverse()]) {
+      const journal = createPaymentDisclosureJournal(memoryStorage());
+      journal.pin(randomIntent(), { randomAnnouncements: [randomMaterial(stages[0])] });
+      const before = journal.lookup(randomIntent());
+      assert.throws(() => journal.pin(randomIntent(), { randomAnnouncements: [randomMaterial(stages[1])] }), /conflicting/);
+      assert.deepEqual(journal.lookup(randomIntent()), before);
+    }
+    const storage = memoryStorage();
+    storage.setItem('ironsmith.payment-disclosure.v1:match-A', JSON.stringify([{ ...randomIntent(), schemaVersion: 2,
+      signedIntent: randomIntent(), randomAnnouncements: [randomMaterial({ ...pair[0], ...pair[1] })] }]));
+    assert.throws(() => createPaymentDisclosureJournal(storage).entries('match-A'), /conflicting/);
+  }
+  const journal = createPaymentDisclosureJournal(memoryStorage());
+  assert.throws(() => journal.pin(randomIntent(), { randomAnnouncements: [randomMaterial({
+    commitments: [{ ...commitment, requirementId: 'other-requirement' }],
+  })] }), /different requirement domain/);
+  assert.throws(() => journal.pin(randomIntent(), { randomAnnouncements: [randomMaterial({
+    witness: { seedHex: 'seed', randomCountBefore: 5, randomCountAfter: 6 },
+  })] }), /different native random boundary/);
+});
+
+test('RNG stage scope is bound to the canonical signed attempt on pin and read', () => {
+  for (const changes of [{ matchId: 'foreign' }, { seq: 8 }, { actorIndex: 1 },
+    { prevStateHash: 'foreign' }, { publicCheckpointHash: 'foreign' },
+    { preActionPublicCheckpointHash: 'foreign' }]) {
+    const material = randomMaterial({ commitments: [{ player: 1, requestId: 'request', commitmentHex: 'commit', ...changes }] });
+    const storage = memoryStorage();
+    const journal = createPaymentDisclosureJournal(storage);
+    assert.throws(() => journal.pin(randomIntent(), { randomAnnouncements: [material] }), /differs from its signed attempt/);
+    assert.equal(journal.entries('match-A').length, 0);
+    storage.setItem('ironsmith.payment-disclosure.v1:match-A', JSON.stringify([{ ...randomIntent(), schemaVersion: 2,
+      signedIntent: randomIntent(), randomAnnouncements: [material] }]));
+    assert.throws(() => createPaymentDisclosureJournal(storage).entries('match-A'), /differs from its signed attempt/);
+  }
+  const journal = createPaymentDisclosureJournal(memoryStorage());
+  assert.doesNotThrow(() => journal.pin(randomIntent(), { randomAnnouncements: [randomMaterial({ commitments: [{
+    player: 1, requester: 1, requestId: 'request', commitmentHex: 'commit', actorIndex: 0,
+    publicCheckpointHash: 'random-before', preActionPublicCheckpointHash: 'random-before',
+  }] })] }), 'requester and trigger controller must not replace the actual command actor');
+});
+
+test('recovered signed attempts must match their enclosing scope and command', () => {
+  for (const schemaVersion of [1, 2]) {
+    for (const changed of [{ matchId: 'different-match' }, { seq: 8 }, { actorIndex: 1 },
+      { prevStateHash: 'different-head' }, { command: { type: 'pass_priority' } }]) {
+      const entry = { ...randomIntent(), ...changed, schemaVersion,
+        signedIntent: randomIntent(), evidence: { actionIntent: randomIntent() } };
+      if (schemaVersion === 2) entry.randomAnnouncements = [randomMaterial()];
+      const storage = memoryStorage();
+      const storageKey = 'ironsmith.payment-disclosure.v1:' + entry.matchId;
+      const original = JSON.stringify([entry]);
+      storage.setItem(storageKey, original);
+      const journal = createPaymentDisclosureJournal(storage);
+      assert.throws(() => journal.entries(entry.matchId), /containing scope or command/);
+      assert.throws(() => journal.lookup(entry), /containing scope or command/);
+      assert.throws(() => journal.pin(entry), /containing scope or command/);
+      assert.equal(storage.getItem(storageKey), original, 'rejected recovery cannot rewrite the retained evidence');
+    }
+  }
+});

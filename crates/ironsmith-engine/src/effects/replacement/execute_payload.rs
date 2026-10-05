@@ -118,6 +118,7 @@ pub(super) fn execute_replacement_program(
 
 /// Explicit bindings for one captured replacement program. Each child scope
 /// receives its own bindings; the interrupted instruction's tags are untouched.
+#[derive(Clone)]
 pub(crate) struct ReplacementProgramBindings {
     pub targets: Option<Vec<crate::effects::ResolvedTarget>>,
     pub object_tags: Vec<(String, Vec<crate::snapshot::ObjectSnapshot>)>,

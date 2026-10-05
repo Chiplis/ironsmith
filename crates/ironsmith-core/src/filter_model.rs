@@ -2497,6 +2497,11 @@ pub struct ObjectFilter {
     /// independently of the color or amount of mana actually paid.
     #[cfg_attr(feature = "serde", serde(default))]
     pub mana_symbol_count: Option<(Color, ChoiceCount)>,
+    /// Match a producer's exact destination incarnation in its
+    /// original public zone. An unspecified zone searches public zones;
+    /// an explicit zone remains an additional constraint.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub match_captured_public_destination: bool,
 }
 
 impl ObjectFilter {
@@ -3660,6 +3665,20 @@ impl ObjectFilter {
     pub fn with_color_count(mut self, cmp: Comparison) -> Self {
         self.color_count = Some(cmp);
         self
+    }
+
+    /// A protection quality stated solely in terms of mana-value parity.
+    pub fn protection_mana_value_parity_quality(&self) -> Option<&'static str> {
+        let parity = self.mana_value_parity?;
+        if *self != ObjectFilter::default().with_mana_value_parity(parity) {
+            return None;
+        }
+        Some(match parity {
+            ParityRequirement::Odd => "odd mana values",
+            ParityRequirement::Even => "even mana values",
+            ParityRequirement::Chosen => "each mana value of the chosen quality",
+            ParityRequirement::NotChosen => "each mana value not of the chosen quality",
+        })
     }
 
     pub fn with_mana_value_parity(mut self, parity: ParityRequirement) -> Self {

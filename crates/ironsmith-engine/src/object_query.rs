@@ -10,6 +10,31 @@ use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::zone::Zone;
 
+pub(crate) const PUBLIC_REFERENCE_ZONES: [Zone; 6] = [
+    Zone::Battlefield, Zone::Graveyard, Zone::Stack, Zone::Exile, Zone::Command, Zone::Ante,
+];
+
+/// Required producer evidence belongs to the query, including when its
+/// candidate set is empty. An explicitly captured empty collection is complete.
+pub(crate) fn require_captured_public_collections(
+    game: &GameState,
+    filter: &ObjectFilter,
+    ctx: &crate::filter::FilterContext,
+) -> bool {
+    if filter.match_captured_public_destination {
+        let tags = filter.tagged_constraints.iter().filter(|constraint| matches!(constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject | crate::filter::TaggedOpbjectRelation::SameObjectId))
+            .collect::<Vec<_>>();
+        if tags.is_empty() || tags.iter().any(|constraint| !ctx.tagged_objects.contains_key(&constraint.tag)) {
+            game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                "public destination reference has no exact producer collection".into(),
+            ));
+            return false;
+        }
+    }
+    filter.any_of.iter().all(|branch| require_captured_public_collections(game, branch, ctx))
+}
+
 /// Collect candidate object IDs for a zone.
 ///
 /// When `zone` is `None`, this defaults to battlefield candidates.
@@ -45,6 +70,9 @@ pub(crate) fn candidate_ids_for_filter(game: &GameState, filter: &ObjectFilter) 
         return candidate_ids_for_zone(game, Some(zone));
     }
 
+    if filter.match_captured_public_destination {
+        return PUBLIC_REFERENCE_ZONES.into_iter().flat_map(|zone| game.zone_ids(zone)).collect();
+    }
     if filter.any_of.is_empty() {
         return candidate_ids_for_zone(game, None);
     }
@@ -75,6 +103,10 @@ pub(crate) fn for_each_candidate_id_for_filter(
         return;
     }
 
+    if filter.match_captured_public_destination {
+        for id in candidate_ids_for_filter(game, filter) { visitor(id); }
+        return;
+    }
     if filter.any_of.is_empty() {
         for_each_candidate_id_for_zone(game, None, visitor);
         return;

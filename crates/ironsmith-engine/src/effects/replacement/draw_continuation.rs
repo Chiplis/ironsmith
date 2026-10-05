@@ -11,6 +11,9 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 
 pub(crate) trait ReplacementResume: Send {
+    /// Freeze already completed originals through every retained scope before
+    /// any sibling continuation can change their exact arrival bindings.
+    fn freeze(&mut self, _game: &mut GameState) -> Result<(), ExecutionError> { Ok(()) }
     /// Return the completed subtree, including its prefix exactly once. The
     /// leaf restores the captured execution state and enclosing scopes unwind.
     fn resume(
@@ -90,7 +93,7 @@ fn life_action(effect: &Effect) -> bool {
 
 fn contains_draw(effect: &Effect) -> bool {
     // A nested life event may be replaced by a draw at runtime.
-    if life_action(effect) {
+    if life_action(effect) || effect.0.supports_replacement_draw_continuation() {
         return true;
     }
     if effect
@@ -105,8 +108,9 @@ fn contains_draw(effect: &Effect) -> bool {
         .visit_child_effects(&mut |child| found |= contains_draw(child));
     found
 }
-fn supported(effect: &Effect) -> bool {
+pub(crate) fn replacement_effect_supported(effect: &Effect) -> bool {
     if life_action(effect)
+        || effect.0.supports_replacement_draw_continuation()
         || !contains_draw(effect)
         || effect
             .downcast_ref::<crate::effects::DrawCardsEffect>()
@@ -115,26 +119,26 @@ fn supported(effect: &Effect) -> bool {
         return true;
     }
     if let Some(players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
-        return players.effects.iter().all(supported);
+        return players.effects.iter().all(replacement_effect_supported);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
-        return repeat.effects.iter().all(supported);
+        return repeat.effects.iter().all(replacement_effect_supported);
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
-        return sequence.effects.iter().all(supported);
+        return sequence.effects.iter().all(replacement_effect_supported);
     }
     if let Some(optional) = effect.downcast_ref::<crate::effects::MayEffect>() {
-        return optional.effects.iter().all(supported);
+        return optional.effects.iter().all(replacement_effect_supported);
     }
     if let Some(condition) = effect.downcast_ref::<crate::effects::IfEffect>() {
-        return condition.then.iter().chain(&condition.else_).all(supported);
+        return condition.then.iter().chain(&condition.else_).all(replacement_effect_supported);
     }
     if let Some(condition) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
         return condition
             .if_true
             .iter()
             .chain(&condition.if_false)
-            .all(supported);
+            .all(replacement_effect_supported);
     }
     if effect
         .downcast_ref::<crate::effects::WithIdEffect>()
@@ -146,7 +150,7 @@ fn supported(effect: &Effect) -> bool {
             .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
             .is_some()
     {
-        return effect.0.transparent_child_effect().is_some_and(supported);
+        return effect.0.transparent_child_effect().is_some_and(replacement_effect_supported);
     }
     false
 }
@@ -155,21 +159,27 @@ struct OriginalActionFrame {
     original: EffectOutcome,
     completion: Box<dyn SimultaneousEffectCompletion>,
     context: ExecutionContextCheckpoint,
+    frozen: bool,
 }
 impl ReplacementResume for OriginalActionFrame {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        if !self.frozen { self.completion.freeze(game)?; self.frozen = true; }
+        Ok(())
+    }
     fn resume(
         mut self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         self.context.restore(ctx);
-        self.completion.freeze(game)?;
+        if !self.frozen { self.completion.freeze(game)?; }
         self.completion.complete(game, ctx, self.original)
     }
 }
 
 struct PlayerActionFrame(crate::effects::ForPlayersDrawContinuation);
 impl ReplacementResume for PlayerActionFrame {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> { self.0.freeze(game) }
     fn resume(
         self: Box<Self>,
         game: &mut GameState,
@@ -182,6 +192,7 @@ impl ReplacementResume for PlayerActionFrame {
 struct DrawLeaf {
     context: ExecutionContextCheckpoint,
     effect: Effect,
+    prepared: crate::effects::cards::PreparedDrawInstruction,
 }
 impl ReplacementResume for DrawLeaf {
     fn resume(
@@ -189,8 +200,11 @@ impl ReplacementResume for DrawLeaf {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        self.context.restore(ctx);
-        crate::effects::execute_effect(game, &self.effect, ctx)
+        let Self { context, effect, prepared } = *self;
+        context.restore(ctx);
+        crate::effects::runtime::prepare_effect_original_with(game, &effect, ctx,
+            |_, game, ctx| crate::effects::cards::execute_prepared_draw_instruction(prepared, game, ctx)
+                .map(SimultaneousEffectCommit::finished)).map(|committed| committed.outcome)
     }
 }
 struct ProgramFrame {
@@ -201,6 +215,7 @@ struct ProgramFrame {
     mode: Mode,
 }
 impl ReplacementResume for ProgramFrame {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> { self.first.freeze(game) }
     fn resume(
         self: Box<Self>,
         game: &mut GameState,
@@ -304,6 +319,7 @@ struct ScopeFrame {
     inner: Box<dyn ReplacementResume>,
 }
 impl ReplacementResume for ScopeFrame {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> { self.inner.freeze(game) }
     fn resume(
         self: Box<Self>,
         game: &mut GameState,
@@ -366,6 +382,7 @@ struct RepetitionFrame {
     remaining: usize,
 }
 impl ReplacementResume for RepetitionFrame {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> { self.first.freeze(game) }
     fn resume(
         self: Box<Self>,
         game: &mut GameState,
@@ -450,6 +467,7 @@ struct BranchesFrame {
     rest: Vec<crate::effects::PreparedIfBranch>,
 }
 impl ReplacementResume for BranchesFrame {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> { self.first.freeze(game) }
     fn resume(
         self: Box<Self>,
         game: &mut GameState,
@@ -590,31 +608,52 @@ fn prepare_effect(
         return crate::effects::execute_effect(game, effect, ctx)
             .map(PreparedReplacementChild::finished);
     }
-    if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
-        // A zero instruction has no draw boundary. In particular its suffix
-        // must not be delayed past another original merely because the AST
-        // contains a draw-shaped node.
-        if matches!(draw.count.unhinted(), crate::effect::Value::Fixed(amount) if *amount <= 0) {
-            return crate::effects::execute_effect(game, effect, ctx)
-                .map(PreparedReplacementChild::finished);
-        }
-        return Ok(PreparedReplacementChild {
-            prefix: EffectOutcome::count(0),
-            resume: Some(Box::new(DrawLeaf {
-                context: ExecutionContextCheckpoint::capture(ctx),
-                effect: effect.clone(),
-            })),
-        });
+    if effect.downcast_ref::<crate::effects::DrawCardsEffect>().is_some() {
+        let mut retained = None;
+        let committed = crate::effects::runtime::prepare_effect_original_with(game, effect, ctx,
+            |effect, game, ctx| {
+                let draw = effect.downcast_ref::<crate::effects::DrawCardsEffect>()
+                    .expect("native draw instruction");
+                let prepared = crate::effects::cards::prepare_draw_instruction(draw, game, ctx)?;
+                // The reached instruction owns its quantity and recipient.
+                // In particular a dynamic zero has no draw boundary, so its
+                // non-draw suffix remains before the enclosing originals.
+                if prepared.requested_count == 0 {
+                    return crate::effects::cards::execute_prepared_draw_instruction(prepared, game, ctx)
+                        .map(SimultaneousEffectCommit::finished);
+                }
+                retained = Some(prepared);
+                Ok(SimultaneousEffectCommit::finished(EffectOutcome::count(0)))
+            })?;
+        if ctx.decision_maker.awaiting_choice() { retained = None; }
+        // The callback temporarily owns executing_effect. Retain the context
+        // after dispatch restores the enclosing instruction's identity.
+        let resume = retained.map(|prepared| Box::new(DrawLeaf {
+            context: ExecutionContextCheckpoint::capture(ctx), effect: effect.clone(), prepared,
+        }) as Box<dyn ReplacementResume>);
+        return Ok(PreparedReplacementChild { prefix: committed.outcome, resume });
+    }
+    if effect.0.supports_replacement_draw_continuation() {
+        let committed = crate::effects::runtime::prepare_effect_draw_continuation(game, effect, ctx)?;
+        let resume = committed.completion.map(|completion| Box::new(OriginalActionFrame {
+            original: committed.outcome.clone(), completion,
+            context: ExecutionContextCheckpoint::capture(ctx), frozen: false,
+        }) as Box<dyn ReplacementResume>);
+        return Ok(PreparedReplacementChild { prefix: committed.outcome, resume });
     }
     if life_action(effect) {
         let mut proposal = effect.0.prepare_simultaneous_player_action(game, ctx)?;
         proposal.prepare_original(game, ctx)?;
         let committed = proposal.commit_original(game, ctx)?;
+        let committed = if let Some(mut completion) = committed.completion {
+            completion.freeze(game)?;
+            completion.prepare_draw_boundary(game, ctx, committed.outcome)?
+        } else { committed };
         let resume = committed.completion.map(|completion| {
             Box::new(OriginalActionFrame {
                 original: committed.outcome.clone(),
                 completion,
-                context: ExecutionContextCheckpoint::capture(ctx),
+                context: ExecutionContextCheckpoint::capture(ctx), frozen: true,
             }) as Box<dyn ReplacementResume>
         });
         return Ok(PreparedReplacementChild {
@@ -737,8 +776,8 @@ struct DrawContinuation {
     controller: PlayerId,
 }
 impl SimultaneousEffectCompletion for DrawContinuation {
-    fn freeze(&mut self, _game: &mut GameState) -> Result<(), ExecutionError> {
-        Ok(())
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        self.resume.freeze(game)
     }
     fn complete(
         self: Box<Self>,
@@ -804,7 +843,7 @@ pub(crate) fn prepare_draw_continuation_with_bindings(
     captured_source_snapshot: Option<ObjectSnapshot>,
     bindings: super::ReplacementProgramBindings,
 ) -> Result<Option<SimultaneousEffectCommit>, ExecutionError> {
-    if !effects.iter().any(contains_draw) || !effects.iter().all(supported) {
+    if !effects.iter().any(contains_draw) || !effects.iter().all(replacement_effect_supported) {
         return Ok(None);
     }
     super::execute_payload::with_replacement_child(
@@ -820,24 +859,34 @@ pub(crate) fn prepare_draw_continuation_with_bindings(
             if !child.target_assignments.is_empty() {
                 return Ok(None);
             }
-            let prepared =
-                crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
-                    prepare_program(game, child, effects, Mode::Aggregate, None)
-                })?;
-            let mut original = EffectOutcome::replaced();
-            original.set_value(OutcomeValue::Count(0));
-            Ok(Some(SimultaneousEffectCommit {
-                outcome: EffectOutcome::aggregate_replacement_outcomes(original, [prepared.prefix]),
-                completion: prepared.resume.map(|resume| {
-                    Box::new(DrawContinuation {
-                        resume,
-                        source,
-                        controller,
-                    }) as Box<dyn SimultaneousEffectCompletion>
-                }),
-            }))
+            prepare_scoped_draw_continuation(game, child, effects)
         },
     )
+}
+
+/// Continue a program in an already established replacement scope. Compound
+/// zone replacements retain their moved-object receipt, tags and source here.
+pub(crate) fn prepare_scoped_draw_continuation(
+    game: &mut GameState,
+    child: &mut ExecutionContext,
+    effects: &[Effect],
+) -> Result<Option<SimultaneousEffectCommit>, ExecutionError> {
+    if !effects.iter().any(contains_draw) || !effects.iter().all(replacement_effect_supported) {
+        return Ok(None);
+    }
+    let source = child.source;
+    let controller = child.controller;
+    let prepared = crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
+        prepare_program(game, child, effects, Mode::Aggregate, None)
+    })?;
+    let mut original = EffectOutcome::replaced();
+    original.set_value(OutcomeValue::Count(0));
+    Ok(Some(SimultaneousEffectCommit {
+        outcome: EffectOutcome::aggregate_replacement_outcomes(original, [prepared.prefix]),
+        completion: prepared.resume.map(|resume| Box::new(DrawContinuation {
+            resume, source, controller,
+        }) as Box<dyn SimultaneousEffectCompletion>),
+    }))
 }
 
 pub(crate) fn prepare_replacement_child(

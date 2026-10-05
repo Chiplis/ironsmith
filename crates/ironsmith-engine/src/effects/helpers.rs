@@ -409,26 +409,51 @@ fn aura_source_graveyard_incarnation(
     if !was_attached {
         return None;
     }
-    let transition = game
+    let Some(transition) = game
         .turn_store
         .turn_history
         .event_records
         .iter()
         .chain(game.turn_store.turn_history.staged_event_records.iter())
         .filter_map(|record| record.event.downcast::<crate::events::ZoneChangeEvent>())
-        .find(|event| event.from == Zone::Battlefield && event.objects.contains(&ctx.source))?;
+        .find(|event| event.from == Zone::Battlefield && event.objects.contains(&ctx.source))
+    else {
+        game.record_token_resource_failure(&ExecutionError::IncompleteEvidence(
+            "attached Aura return requires its exact first battlefield departure receipt".into(),
+        ));
+        return None;
+    };
     if transition.to != Zone::Graveyard
         || transition.cause.cause_type != crate::events::cause::CauseType::StateBasedAction
     {
         return None;
     }
-    transition.result_objects.iter().copied().find(|id| {
+    if transition.result_objects.is_empty() {
+        game.record_token_resource_failure(&ExecutionError::IncompleteEvidence(
+            "attached Aura return requires its exact graveyard destination mapping".into(),
+        ));
+        return None;
+    }
+    let destination = transition.result_objects.iter().copied().find(|id| {
         game.object(*id).is_some_and(|object| {
             object.zone == Zone::Graveyard
                 && object.owner == snapshot.owner
                 && object.stable_id == snapshot.stable_id
         })
-    })
+    });
+    if destination.is_none()
+        && (transition.result_objects.iter().all(|id| game.object(*id).is_some())
+            || transition.result_objects.iter().filter_map(|id| game.object(*id)).any(|object| {
+                object.stable_id == snapshot.stable_id && object.owner != snapshot.owner
+            }))
+    {
+        game.record_token_resource_failure(&ExecutionError::IncompleteEvidence(
+            "attached Aura destination mapping contradicts its retained identity or owner".into(),
+        ));
+    }
+    // A recorded successor that no longer exists changed incarnation; that
+    // is a complete no-return result, unlike a contradictory live mapping.
+    destination
 }
 
 pub(crate) fn resolve_source_object_id(
@@ -1279,7 +1304,7 @@ fn greatest_shared_creature_type_count_for_filter(
     ctx: &ExecutionContext,
     filter_ctx: &FilterContext,
 ) -> i32 {
-    let subtype_sets = if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+    let subtype_sets = if let Some(snapshots) = value_tagged_snapshots_for_filter(game, filter, ctx) {
         snapshots
             .iter()
             .filter(|snapshot| {
@@ -1505,7 +1530,7 @@ fn value_candidate_ids_for_filter(
     filter: &crate::filter::ObjectFilter,
     ctx: &ExecutionContext,
 ) -> Vec<ObjectId> {
-    if value_tagged_snapshots_for_filter(filter, ctx).is_none() {
+    if value_tagged_snapshots_for_filter(game, filter, ctx).is_none() {
         return candidate_ids_for_filter(game, filter);
     }
 
@@ -1607,9 +1632,16 @@ fn count_matching_objects_for_player(
 }
 
 fn value_tagged_snapshots_for_filter<'a>(
+    game: &GameState,
     filter: &crate::filter::ObjectFilter,
     ctx: &'a ExecutionContext,
 ) -> Option<Vec<&'a ObjectSnapshot>> {
+    if !crate::object_query::require_captured_public_collections(game, filter, &ctx.filter_context(game)) {
+        return Some(Vec::new());
+    }
+    // A public destination reference reads the exact still-present result,
+    // rather than historical types of a card that has moved or turned face down.
+    if filter.match_captured_public_destination { return None; }
     // A leave-the-battlefield event captures each attachment under
     // `attached_source` before state-based actions move unattached Auras to
     // their owners' graveyards.  Counts such as Hateful Eidolon's "each Aura
@@ -1709,7 +1741,7 @@ pub(crate) fn distinct_power_values_for_filter(
 ) -> Vec<i32> {
     let filter_ctx = ctx.filter_context(game);
     let mut powers = HashSet::new();
-    if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+    if let Some(snapshots) = value_tagged_snapshots_for_filter(game, filter, ctx) {
         for snapshot in snapshots
             .into_iter()
             .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
@@ -2801,6 +2833,11 @@ pub fn resolve_objects_for_effect_with_choice_description(
     spec: &ChooseSpec,
     choice_description: Option<String>,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
+    if let ChooseSpec::Object(filter) | ChooseSpec::All(filter) = spec.base()
+        && !crate::object_query::require_captured_public_collections(game, filter, &ctx.filter_context(game))
+    {
+        return Err(ExecutionError::IncompleteEvidence("public destination reference requires its producer collection".into()));
+    }
     if !spec.is_target()
         && let ChooseSpec::Object(filter) = spec.base()
     {
@@ -3437,6 +3474,15 @@ pub fn apply_to_selected_objects_with_choice_description(
         ObjectId,
     ) -> Result<bool, ExecutionError>,
 ) -> Result<ObjectApplyResult, ExecutionError> {
+    apply_to_selected_objects_with_prepared(game, ctx, spec, result_policy, choice_description, None, apply)
+}
+
+pub(crate) fn apply_to_selected_objects_with_prepared(
+    game: &mut GameState, ctx: &mut ExecutionContext, spec: &ChooseSpec,
+    result_policy: ObjectApplyResultPolicy, choice_description: Option<String>,
+    prepared: Option<Vec<ObjectId>>,
+    mut apply: impl FnMut(&mut GameState, &mut ExecutionContext, ObjectId) -> Result<bool, ExecutionError>,
+) -> Result<ObjectApplyResult, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
         return Ok(ObjectApplyResult {
             selected_count: 0,
@@ -3447,12 +3493,9 @@ pub fn apply_to_selected_objects_with_choice_description(
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let result = (|| -> Result<ObjectApplyResult, ExecutionError> {
-        let objects = resolve_objects_for_effect_with_choice_description(
-            game,
-            ctx,
-            spec,
-            choice_description,
-        )?;
+        let objects = if let Some(objects) = prepared { objects } else {
+            resolve_objects_for_effect_with_choice_description(game, ctx, spec, choice_description)?
+        };
         if ctx.decision_maker.awaiting_choice() {
             return Ok(ObjectApplyResult {
                 selected_count: 0,
@@ -3567,6 +3610,11 @@ pub fn resolve_objects_from_spec(
     spec: &ChooseSpec,
     ctx: &ExecutionContext,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
+    if let ChooseSpec::Object(filter) | ChooseSpec::All(filter) = spec.base()
+        && !crate::object_query::require_captured_public_collections(game, filter, &ctx.filter_context(game))
+    {
+        return Err(ExecutionError::IncompleteEvidence("public destination reference requires its producer collection".into()));
+    }
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. } => resolve_objects_from_spec(game, spec, ctx),
         // Target wrapper - handle special cases then fall back to ctx.targets

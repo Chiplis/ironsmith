@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Lavabrink Venturer",
+    "id": "6f1bff69-1f20-4a40-8ade-3e86f342bbe1",
+    "oracle_id": "ea66ffa3-d084-434f-91a6-fdff49806285",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Human Soldier",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "As this creature enters, choose odd or even. (Zero is even.)\nThis creature has protection from each mana value of the chosen quality."
+  }
+]

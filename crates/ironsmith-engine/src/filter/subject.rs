@@ -48,7 +48,8 @@ impl<'a> ObjectSubject<'a> {
             Self::Snapshot(snapshot) => snapshot.is_token,
         }
     }
-    pub(crate) fn mana_cost(self) -> Option<&'a ManaCost> {
+    pub(crate) fn mana_cost(self, game: &GameState) -> Option<&'a ManaCost> {
+        if self.zone() == Zone::Exile && self.face_down(game) { return None; }
         match self {
             Self::Live(object) => object.mana_cost.as_deref(),
             Self::Snapshot(snapshot) => snapshot.mana_cost.as_ref(),
@@ -66,7 +67,8 @@ impl<'a> ObjectSubject<'a> {
             Self::Snapshot(snapshot) => &snapshot.attachments,
         }
     }
-    pub(crate) fn mana_value(self) -> i32 {
+    pub(crate) fn mana_value(self, game: &GameState) -> i32 {
+        if self.zone() == Zone::Exile && self.face_down(game) { return 0; }
         match self {
             Self::Live(object) => object_mana_value_for_filter(object),
             Self::Snapshot(snapshot) => snapshot_mana_value_for_filter(snapshot),
@@ -296,6 +298,9 @@ impl<'a> ObjectSubject<'a> {
         let Self::Live(object) = self else {
             return None;
         };
+        if let Some(chars) = game.characteristicless_face_down_characteristics(object.id) {
+            return Some(std::sync::Arc::new(chars));
+        }
         let needs_pt = filter.uses_power_or_toughness_characteristics();
         let needs_non_pt = filter.uses_non_pt_battlefield_characteristics();
         let should_consider_adjusted_object = allow_calculated_pt && (needs_pt || needs_non_pt);

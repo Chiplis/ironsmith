@@ -75,3 +75,5 @@ pub(crate) use discard::{completed_discard_events,finish_discard_receipts};
 pub(crate) use discard_hand::discard_hand_cards;
 
 pub(crate) use draw_cards::execute_turn_draw_proposal;
+
+pub(crate) use draw_cards::{PreparedDrawInstruction, prepare_draw_instruction, execute_prepared_draw_instruction};

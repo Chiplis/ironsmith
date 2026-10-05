@@ -315,6 +315,9 @@ pub struct ManaExecutionContext {
 /// Ephemeral replacement effects scoped to the current resolution path.
 #[derive(Debug, Clone)]
 pub struct ReplacementExecutionContext {
+    /// The unresolved zone proposal whose program is executing. This is not
+    /// a completed zone-change trigger and cannot impose its destination zone.
+    pub original_zone_event: Option<Box<crate::events::ZoneChangeEvent>>,
     /// Source counter additions being proposed during battlefield entry.
     /// Their replacements run on the combined ETB event, not the source-zone card.
     pub entry_counter_source: Option<ObjectId>,
@@ -335,6 +338,7 @@ pub struct ReplacementExecutionContext {
 impl Default for ReplacementExecutionContext {
     fn default() -> Self {
         Self {
+            original_zone_event: None,
             entry_counter_source: None,
             entry_event: None,
             entry_reserved_objects: HashSet::new(),

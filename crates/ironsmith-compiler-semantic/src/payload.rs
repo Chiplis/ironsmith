@@ -533,7 +533,9 @@ impl KeywordAction {
                 "Protection from each mana value other than the chosen number".to_string()
             }
             Self::ProtectionFromFilter(filter) => {
-                if *filter == ObjectFilter::default().multicolored() {
+                if let Some(quality) = filter.protection_mana_value_parity_quality() {
+                    format!("Protection from {quality}")
+                } else if *filter == ObjectFilter::default().multicolored() {
                     "Protection from multicolored".to_string()
                 } else {
                     format!("Protection from {}", filter.description())

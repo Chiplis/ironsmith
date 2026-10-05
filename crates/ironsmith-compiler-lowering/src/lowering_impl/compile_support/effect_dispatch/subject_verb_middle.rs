@@ -1866,6 +1866,8 @@ pub(super) fn compile_subject_verb_middle(
             choices.extend(target_choices);
             let from_exile_tag = choose_spec_references_exiled_tag(&spec);
             let use_move_to_zone = from_exile_tag
+                || matches!(spec.base(), ChooseSpec::Object(filter) | ChooseSpec::All(filter)
+                    if filter.match_captured_public_destination)
                 || *transformed
                 || !matches!(controller, ReturnControllerAst::Preserve);
             let implicit_chooser = if let Some(actor) = explicit_actor.as_ref() {
@@ -1942,6 +1944,7 @@ pub(super) fn compile_subject_verb_middle(
                         let mut spec = spec.clone();
                         if let Some(filter) = choose_spec_object_filter_mut(&mut spec)
                             && filter.zone == Some(Zone::Battlefield)
+                            && !filter.match_captured_public_destination
                             && filter.tagged_constraints.iter().any(|constraint| {
                                 constraint.relation
                                     == crate::filter::TaggedOpbjectRelation::IsTaggedObject
@@ -2108,7 +2111,9 @@ pub(super) fn compile_subject_verb_middle(
                         && (crate::tag::is_sentence_helper_tag(&constraint.tag, "milled")
                             || constraint.tag.as_str().starts_with("milled_"))
                 });
-            if resolved_filter.zone == Some(Zone::Battlefield) && refers_to_milled_cards {
+            if resolved_filter.zone == Some(Zone::Battlefield) && refers_to_milled_cards
+                && !resolved_filter.match_captured_public_destination
+            {
                 // A tagged mill result is a graveyard snapshot. Some "cards
                 // milled this way" subject shapes inherit the destination
                 // battlefield zone while parsing the return action; restore

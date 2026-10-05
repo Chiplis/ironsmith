@@ -888,6 +888,24 @@ pub(crate) struct ForPlayersDrawContinuation {
     context: crate::effects::ExecutionContextCheckpoint,
 }
 impl ForPlayersDrawContinuation {
+    pub(crate) fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        match &mut self.state {
+            ForPlayersContinuationState::Action(state) => {
+                if let Some(pending) = &mut state.pending_unit_draw {
+                    if let Some(child) = &mut pending.child { child.freeze(game)?; }
+                }
+                if let Some(batch) = &mut state.pending_batch_draw {
+                    for (_, _, completion) in &mut batch.outcomes {
+                        if let Some((completion, _, _, _)) = completion { completion.freeze(game)?; }
+                    }
+                }
+            }
+            ForPlayersContinuationState::Sequential(state) => {
+                if let Some(child) = &mut state.pending_child { child.freeze(game)?; }
+            }
+        }
+        Ok(())
+    }
     pub(crate) fn resume(
         self,
         game: &mut GameState,
@@ -940,6 +958,16 @@ struct PlayerUnitDraw {
     unit_tags: PlayerObjectTags,
     accumulated_tags: PlayerObjectTags,
     child: Option<Box<dyn crate::effects::replacement::ReplacementResume>>,
+}
+type OriginalBatchCompletion = (
+    Box<dyn crate::effects::SimultaneousEffectCompletion>,
+    crate::effects::ExecutionContextCheckpoint, bool, Vec<usize>,
+);
+type OriginalBatchOutcome = (usize, EffectOutcome, Option<OriginalBatchCompletion>);
+struct PendingBatchDraw {
+    unit_index: usize,
+    outcomes: Vec<OriginalBatchOutcome>,
+    tags: PlayerObjectTags,
 }
 enum ForPlayersContinuationState {
     Action(Box<ForPlayersActionState>),
@@ -1107,6 +1135,7 @@ struct ForPlayersActionState {
     units: Vec<Vec<usize>>,
     next_unit: usize,
     pending_unit_draw: Option<PlayerUnitDraw>,
+    pending_batch_draw: Option<PendingBatchDraw>,
     tagged_objects_by_player: Vec<PlayerObjectTags>,
     loop_local_tags: std::collections::HashSet<crate::tag::TagKey>,
     effect_outcomes_by_player: Vec<PlayerResultFrame>,
@@ -1224,6 +1253,7 @@ impl ForPlayersActionState {
             effect: effect.clone(),
             next_unit: 0,
             pending_unit_draw: None,
+            pending_batch_draw: None,
             players,
             outcomes,
             outcomes_by_player,
@@ -1268,6 +1298,7 @@ impl ForPlayersActionState {
             units,
             mut next_unit,
             mut pending_unit_draw,
+            mut pending_batch_draw,
             mut tagged_objects_by_player,
             mut loop_local_tags,
             mut effect_outcomes_by_player,
@@ -1386,6 +1417,13 @@ impl ForPlayersActionState {
                 ctx.tagged_objects = completed_tags;
                 continue;
             }
+            let (mut batch_outcomes, mut accumulated_unit_tags) =
+                if let Some(pending) = pending_batch_draw.take() {
+                    if pending.unit_index != unit_index {
+                        return Err(ExecutionError::InternalError("player continuation lost its original action unit".into()));
+                    }
+                    (pending.outcomes, pending.tags)
+                } else {
             let mut prepared: Vec<(
                 usize,
                 std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
@@ -1454,7 +1492,11 @@ impl ForPlayersActionState {
                     && crate::effects::replacement::replacement_effect_contains_draw(
                         &simultaneous_effects[*index],
                     )
-            });
+            }) || resuming.as_ref().is_some_and(|resume| resume.child.is_some());
+            // An indirect movement/life replacement can reach a draw without
+            // a draw node in this unit's syntax. The retained native child is
+            // proof of that boundary: its resumed draws must not acquire a
+            // new simultaneous group, and each draw keeps its capture points.
             if unit_runs_player_by_player || unit_has_draw || resuming.is_some() {
                 // CR 121.2c/d: each player's draws (and their replacement
                 // programs) complete before the next player's draws.
@@ -1598,6 +1640,7 @@ impl ForPlayersActionState {
                             state: ForPlayersContinuationState::Action(Box::new(Self {
                                 next_unit: unit_index,
                                 pending_unit_draw,
+                                pending_batch_draw,
                                 effect,
                                 players,
                                 outcomes,
@@ -1832,6 +1875,20 @@ impl ForPlayersActionState {
                 continue;
             }
             let game_checkpoint = game.clone();
+            // All hidden identities and participant selections are settled
+            // before any replacement prefix may change another player's set.
+            for (index, tags, proposal, optional, path) in &mut prepared {
+                ctx.tagged_objects = tags.clone();
+                ctx.effect_outcomes = effect_outcomes_by_player[*index].clone();
+                ctx.tagged_players = tagged_players_by_player[*index].clone();
+                ctx.with_temp_iterated_player(Some(players[*index]), |ctx| {
+                    in_optional_action(ctx, *optional, |ctx| {
+                        let scopes = program_path_scopes(path, &program_groups, *index);
+                        with_program_scope(ctx, &scopes, |ctx| proposal.prepare_selection(game, ctx))
+                    })
+                })?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(ActionRun::Complete(EffectOutcome::count(0))); }
+            }
             let declared_payments = prepared
                 .iter()
                 .filter_map(|(_, _, proposal, _, _)| proposal.declared_life_payment())
@@ -1974,6 +2031,60 @@ impl ForPlayersActionState {
                         .iter_mut()
                         .flat_map(|(_, outcome, _)| outcome.events.iter_mut()),
                 )?;
+            }
+                    (batch_outcomes, accumulated_unit_tags)
+                };
+            if defer_draws {
+                let mut boundaries = Vec::with_capacity(batch_outcomes.len());
+                for (player_index, mut outcome, completion) in batch_outcomes {
+                    let mut deferred = None;
+                    if let Some((completion, captured, optional, path)) = completion {
+                        captured.restore(ctx);
+                        let baseline = ctx.tagged_objects.clone();
+                        let progress = ctx.with_temp_iterated_player(Some(players[player_index]), |ctx| {
+                            in_optional_action(ctx, optional, |ctx| {
+                                let scopes = program_path_scopes(&path, &program_groups, player_index);
+                                with_program_scope(ctx, &scopes, |ctx|
+                                    completion.prepare_draw_boundary(game, ctx, outcome))
+                            })
+                        })?;
+                        outcome = progress.outcome;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(ActionRun::Complete(EffectOutcome::count(0)));
+                        }
+                        deferred = progress.completion.map(|completion| (
+                            completion, crate::effects::ExecutionContextCheckpoint::capture(ctx), optional, path,
+                        ));
+                        effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
+                        tagged_players_by_player[player_index] = ctx.tagged_players.clone();
+                        capture_player_tagged_object_deltas(&baseline, &ctx.tagged_objects,
+                            &mut tagged_objects_by_player[player_index], &mut loop_local_tags);
+                        merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
+                    }
+                    boundaries.push((player_index, outcome, deferred));
+                }
+                batch_outcomes = boundaries;
+                if batch_outcomes.iter().any(|(_, _, completion)| completion.is_some()) {
+                    crate::effects::capture_triggers_before_added_program(game, ctx, None,
+                        batch_outcomes.iter_mut().flat_map(|(_, outcome, _)| outcome.events.iter_mut()))?;
+                    let before = finish_players_outcome(&effect, players.clone(), outcomes.clone(),
+                        outcomes_by_player.clone(), actual_events.clone())?;
+                    let partial = EffectOutcome::aggregate(batch_outcomes.iter().map(|(_, outcome, _)| outcome.clone()));
+                    return Ok(ActionRun::Paused {
+                        prefix: EffectOutcome::aggregate([before, partial]),
+                        state: ForPlayersContinuationState::Action(Box::new(Self {
+                            effect, players, outcomes, outcomes_by_player, optional_program,
+                            optional_acceptance, optional_outcomes, program_groups, optional_initialized,
+                            optional_limits, optional_limit_reached, actual_events, shared_action_players,
+                            units, next_unit: unit_index, pending_unit_draw,
+                            pending_batch_draw: Some(PendingBatchDraw {
+                                unit_index, outcomes: batch_outcomes, tags: accumulated_unit_tags,
+                            }),
+                            tagged_objects_by_player, loop_local_tags, effect_outcomes_by_player,
+                            incoming_tagged_players, tagged_players_by_player,
+                        })),
+                    });
+                }
             }
             let mut completed_outcomes = Vec::with_capacity(batch_outcomes.len());
             for (player_index, mut outcome, completion) in batch_outcomes {
@@ -2129,7 +2240,8 @@ impl EffectExecutor for ForPlayersEffect {
         let result = crate::effects::tokens::execute_resource_transaction_atomically(
             game,
             ctx,
-            |game, ctx| self.execute_players(game, ctx),
+            |game, ctx| crate::effects::runtime::with_per_event_trigger_matching(game, true,
+                |game| self.execute_players(game, ctx)),
         );
         if ctx.decision_maker.awaiting_choice() {
             result.map(|_| EffectOutcome::count(0))

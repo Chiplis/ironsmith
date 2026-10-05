@@ -117,3 +117,45 @@ fn complete_entry_characteristics_do_not_become_a_granted_keyword() {
     assert_eq!(subtypes, &[crate::Subtype::Dinosaur]);
     assert_eq!((*power, *toughness), (7, 7));
 }
+
+#[test]
+fn chosen_parity_protection_is_a_typed_complete_quality_not_a_marker() {
+    let text = "This creature has protection from each mana value of the chosen quality.";
+    let tokens = crate::lexer::lex_line(text, 0).unwrap();
+    assert!(parse_static_text_marker_line(&tokens).is_none());
+    let parsed = parse(text);
+    let [StaticAbilityAst::KeywordAction(KeywordAction::ProtectionFromFilter(filter))] = parsed.as_slice() else {
+        panic!("typed source protection: {parsed:#?}");
+    };
+    assert_eq!(filter.mana_value_parity, Some(ironsmith_core::ParityRequirement::Chosen));
+    assert!(filter.card_types.is_empty() && filter.zone.is_none());
+    for (text, parity) in [("Protection from odd mana values.", ironsmith_core::ParityRequirement::Odd),
+        ("Protection from even mana values.", ironsmith_core::ParityRequirement::Even)] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let parsed = crate::clause_support::parse_protection_chain(&tokens).unwrap();
+        assert!(matches!(parsed.as_slice(), [KeywordAction::ProtectionFromFilter(filter)] if filter.mana_value_parity == Some(parity)));
+    }
+    let unknown = crate::lexer::lex_line("Protection from each mana value of the chosen quality and draw a card.", 0).unwrap();
+    assert!(crate::clause_support::parse_protection_chain(&unknown).is_none());
+}
+
+#[test]
+fn parity_protection_rejects_hidden_symbol_and_punctuation_tails_in_live_readers() {
+    for quality in [
+        "Protection {R} from odd mana values.",
+        "Protection from {R} odd mana values.",
+        "Protection from odd {R} mana values.",
+        "Protection from even mana values {R}.",
+        "Protection from odd mana values:",
+        "Protection from each mana value of the chosen {R} quality.",
+        "Protection from each mana value of the chosen quality {R}.",
+        "Protection from each mana value of the chosen quality:",
+    ] {
+        let tokens = crate::lexer::lex_line(quality, 0).unwrap();
+        assert!(crate::grammar::clause_support::parse_protection_chain_tokens(&tokens).is_none(), "{quality}");
+        assert!(crate::clause_support::parse_protection_chain(&tokens).is_none(), "{quality}");
+        assert!(parse_ability_line(&tokens).is_none(), "{quality}");
+        let granted = crate::lexer::lex_line(&format!("This creature has {quality}"), 0).unwrap();
+        assert!(!matches!(parse_static_ability_ast_line_lexed(&granted), Ok(Some(_))), "{quality}");
+    }
+}

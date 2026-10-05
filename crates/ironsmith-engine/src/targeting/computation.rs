@@ -833,8 +833,11 @@ pub(crate) fn protection_from_subject_with_view(
         // quality is read from the protected permanent's point of view, as
         // blocking already does (`protection_prevents_blocking_with_view`).
         crate::ability::ProtectionFrom::Permanents(filter) => {
+            // Unbound intrinsic qualities refer to the protected permanent's
+            // choices and characteristics. Granted choices were bound to the
+            // granting object when its continuous grant was constructed.
             let mut filter_ctx =
-                game.filter_context_for(game.controller_of(target), Some(source.object_id()));
+                game.filter_context_for(game.controller_of(target), Some(target_id));
             if source.zone() == Zone::Stack {
                 filter_ctx.caster = Some(source.protection_controller(game));
             }

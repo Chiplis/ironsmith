@@ -4470,6 +4470,46 @@ impl GameState {
         effects
     }
 
+    pub(crate) fn characteristicless_face_down_characteristics(
+        &self,
+        object: ObjectId,
+    ) -> Option<crate::continuous::CalculatedCharacteristics> {
+        // CR 406.3a and hidden-agenda rules: these face-down objects have no
+        // characteristics. Their identities and zones remain available.
+        if !self.is_face_down_conspiracy(object)
+            && !(self.is_face_down(object)
+                && self.object(object).is_some_and(|object| object.zone == Zone::Exile))
+        {
+            return None;
+        }
+        let owner = self.object(object)?.owner;
+        Some(crate::continuous::CalculatedCharacteristics {
+            alternate_name: None,
+            name: "".into(),
+            mana_cost: None,
+            linked_face_mana_value: None,
+            compiled_card_text: std::sync::Arc::<str>::from(""),
+            ability_labels: Default::default(),
+            base_power: None,
+            base_toughness: None,
+            power: None,
+            toughness: None,
+            card_types: Vec::new().into(),
+            subtypes: Vec::new().into(),
+            supertypes: Vec::new().into(),
+            world_supertype_since: None,
+            colors: crate::color::ColorSet::COLORLESS,
+            loyalty: None,
+            defense: None,
+            abilities: Vec::new().into(),
+            static_abilities: Vec::new().into(),
+            numeric_range_error: None,
+            ability_gain_prohibitions: Vec::new(),
+            aura_attach_filter: None,
+            controller: owner,
+        })
+    }
+
     /// Calculate all characteristics for an object using precomputed continuous effects.
     ///
     /// This avoids rebuilding/allocating the full effect list when multiple
@@ -4479,7 +4519,7 @@ impl GameState {
         id: ObjectId,
         effects: &[ContinuousEffect],
     ) -> Option<crate::continuous::CalculatedCharacteristics> {
-        if let Some(chars) = self.face_down_conspiracy_characteristics(id) {
+        if let Some(chars) = self.characteristicless_face_down_characteristics(id) {
             return Some(chars);
         }
         if let Some(chars) = crate::continuous::in_progress_characteristics(self, id) {
@@ -4509,7 +4549,7 @@ impl GameState {
             self,
         );
         for id in ids {
-            if let Some(chars) = self.face_down_conspiracy_characteristics(*id) {
+            if let Some(chars) = self.characteristicless_face_down_characteristics(*id) {
                 calculated.insert(*id, chars);
             }
         }

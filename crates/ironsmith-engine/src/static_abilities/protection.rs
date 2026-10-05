@@ -229,6 +229,19 @@ impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
         {
             crate::filter::ObjectSubject::Snapshot(snapshot)
         } else {
+            // Parity protection needs the damaging source's mana value.
+            // A missing choice is a complete nonmatch; a chosen quality with
+            // missing exact source evidence must stop checked resolution.
+            if let ProtectionFrom::Permanents(filter) = &self.0
+                && let Some(parity) = filter.mana_value_parity
+            {
+                use crate::filter::ParityRequirementRuntimeExt as _;
+                if parity.resolve(ctx.game, Some(target)).is_some() {
+                    ctx.game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                        "mana-value protection requires the exact damage source or its last-known snapshot".into(),
+                    ));
+                }
+            }
             return false;
         };
         let view = crate::derived_view::DerivedGameView::new(ctx.game);
@@ -270,6 +283,9 @@ fn pluralize_leading_subject(description: &str) -> Option<String> {
 }
 
 fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
+    if let Some(quality) = filter.protection_mana_value_parity_quality() {
+        return quality.to_string();
+    }
     if *filter == ObjectFilter::spell() {
         return "spells".to_string();
     }
@@ -727,6 +743,20 @@ pub(crate) fn bind_chosen_filter_qualities(
 ) -> Option<ObjectFilter> {
     let mut bound = filter.clone();
     let mut changed = false;
+    // A granted choice-dependent quality belongs to the granting object.
+    // Bind it before the recipient's own choice context could replace it.
+    if let Some(parity @ (ironsmith_core::ParityRequirement::Chosen | ironsmith_core::ParityRequirement::NotChosen)) = bound.mana_value_parity {
+        use crate::filter::ParityRequirementRuntimeExt as _;
+        if let Some(resolved) = parity.resolve(game, Some(chooser_source)) {
+            bound.mana_value_parity = Some(resolved);
+        } else {
+            // An unchosen grantor grants protection from no mana values. Do
+            // not leave a relative choice for the recipient to supply later.
+            bound.mana_value_parity = None;
+            bound.mana_value = Some(crate::filter::Comparison::OneOf(Vec::new()));
+        }
+        changed = true;
+    }
     if bound.chosen_card_type
         && let Some(card_type) = game.chosen_card_type(chooser_source)
     {

@@ -2346,7 +2346,9 @@ pub(in super::super) fn parse_object_filter_inner(
             }
         } else if saw_spell {
             filter.zone = Some(Zone::Stack);
-        } else if saw_permanent || saw_permanent_type || saw_subtype {
+        } else if !filter.match_captured_public_destination
+            && (saw_permanent || saw_permanent_type || saw_subtype)
+        {
             filter.zone = Some(Zone::Battlefield);
         }
     }

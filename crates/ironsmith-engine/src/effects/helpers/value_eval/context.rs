@@ -215,7 +215,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                 .filter(|attachment| filter.matches_snapshot(attachment, &filter_ctx, self.game))
                 .count() as i32;
         }
-        if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+        if let Some(snapshots) = value_tagged_snapshots_for_filter(self.game, filter, ctx) {
             let count = snapshots
                 .iter()
                 .filter(|snapshot| {
@@ -329,7 +329,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         match self.mode {
             Mode::Execution(ctx) => {
                 let filter_ctx = ctx.filter_context(self.game);
-                if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                if let Some(snapshots) = value_tagged_snapshots_for_filter(self.game, filter, ctx) {
                     for snapshot in snapshots.iter().filter(|snapshot| {
                         filter.matches_snapshot(snapshot, &filter_ctx, self.game)
                     }) {
@@ -426,7 +426,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         match self.mode {
             Mode::Execution(ctx) => {
                 let filter_ctx = ctx.filter_context(self.game);
-                if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                if let Some(snapshots) = value_tagged_snapshots_for_filter(self.game, filter, ctx) {
                     for snapshot in snapshots.iter().filter(|snapshot| {
                         value_tagged_snapshot_matches_filter(self.game, filter, &filter_ctx, snapshot)
                     }) {
@@ -463,7 +463,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         match self.mode {
             Mode::Execution(ctx) => {
                 let filter_ctx = ctx.filter_context(self.game);
-                if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                if let Some(snapshots) = value_tagged_snapshots_for_filter(self.game, filter, ctx) {
                     for snapshot in snapshots.iter().filter(|snapshot| {
                         filter.matches_snapshot(snapshot, &filter_ctx, self.game)
                     }) {

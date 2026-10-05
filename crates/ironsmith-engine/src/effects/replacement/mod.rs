@@ -44,10 +44,15 @@ pub use register_damage_addition::RegisterDamageAdditionEffect;
 mod draw_continuation;
 pub(crate) use draw_continuation::prepare_draw_continuation;
 
-pub(crate) use draw_continuation::{PreparedReplacementChild, ReplacementResume, prepare_replacement_child, replacement_effect_contains_draw};
+pub(crate) use draw_continuation::{PreparedReplacementChild, ReplacementResume, prepare_replacement_child, replacement_effect_contains_draw, replacement_effect_supported};
 
 pub(crate) use draw_continuation::prepare_draw_continuation_with_bindings;
 
 pub(crate) use execute_payload::execute_replacement_payload_with_snapshot;
 
 pub(crate) use execute_payload::with_replacement_child;
+
+pub(crate) use draw_continuation::prepare_scoped_draw_continuation;
+
+mod zone_draw_tail;
+pub(crate) use zone_draw_tail::prepare_zone_draw_tail;

@@ -3,7 +3,7 @@
 use crate::color::{Color, ColorSet};
 use crate::effect::{EffectOutcome, OutcomeObjectMemory, OutcomeStatus};
 use crate::effects::helpers::{
-    ObjectApplyResultPolicy, apply_single_target_object_from_context, apply_to_selected_objects,
+    ObjectApplyResultPolicy, apply_single_target_object_from_context, apply_to_selected_objects_with_prepared,
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
@@ -16,7 +16,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
-use super::{apply_zone_change_with_context_and_additional_effects, take_recorded_zone_change};
+use super::{apply_zone_change_with_context_and_draws, take_recorded_zone_change};
 
 /// Effect that exiles permanents.
 ///
@@ -48,16 +48,17 @@ fn exile_object(
     face_down: bool,
     source_controller_may_look: bool,
     receipts: &mut ExileZoneReceipts,
+    draws: &mut super::ZoneInstructionDraws,
 ) -> Result<Option<OutcomeStatus>, ExecutionError> {
-    if let Some(obj) = game.object(object_id) {
-        let from_zone = obj.zone;
+    if let Some(pre_snapshot) = draws.snapshots.get(&object_id).cloned().or_else(|| game.object(object_id)
+        .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))) {
+        let from_zone = pre_snapshot.zone;
         let requested_zone = ctx
             .simultaneous_zone_destination(object_id)
             .unwrap_or(Zone::Exile);
-        let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
         let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-        let result = apply_zone_change_with_context_and_additional_effects(
+        let result = apply_zone_change_with_context_and_draws(
             game,
             object_id,
             from_zone,
@@ -65,6 +66,7 @@ fn exile_object(
             ctx.cause.clone(),
             ctx,
             &additional_effects,
+            draws,
         )?;
 
         let original = result.original.clone();
@@ -203,59 +205,57 @@ fn matching_cost_candidates(
     candidates
 }
 
-impl EffectExecutor for ExileEffect {
-    fn supports_simultaneous_player_action(&self) -> bool {
-        // Exiling the objects selected for the iterated player is choice-free
-        // once the surrounding effect has established that player.  Defer
-        // the actual move until the batch commits so the normal zone-change
-        // replacement and tagging machinery remains authoritative.
-        true
-    }
-
-    fn prepare_simultaneous_player_action(
-        &self,
-        _game: &GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
-    }
-
-    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
-        Some(self)
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        let retained_self = matches!(self.spec.base(), ChooseSpec::Source)
+fn prepare_exile_instruction(
+    effect: &ExileEffect, game: &mut GameState, ctx: &mut ExecutionContext,
+    replacement_boundary: bool,
+    mut prepared_objects: Option<Vec<crate::ids::ObjectId>>,
+    mut prepared_zones: Option<super::ZoneInstructionDraws>,
+) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        if prepared_zones.is_none() {
+            let mut proposal = ExileProposal {
+                effect: effect.clone(), runtime: crate::effect::Effect::new(effect.clone()),
+                objects: None, prepared: None, skipped: None, player: ctx.iteration.iterated_player,
+            };
+            crate::effects::SimultaneousEffectProposal::prepare_selection(&mut proposal, game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0))); }
+            if let Some(skipped) = proposal.skipped.take() { return Ok(crate::effects::SimultaneousEffectCommit::finished(skipped)); }
+            crate::effects::SimultaneousEffectProposal::prepare_original(&mut proposal, game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0))); }
+            prepared_objects = proposal.objects;
+            prepared_zones = proposal.prepared;
+        }
+        let mut draws = prepared_zones.unwrap_or_default();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let incoming_targets = ctx.targets.clone();
+        if effect.spec.is_target() {
+            if let Some(objects) = &prepared_objects {
+                ctx.targets = objects.iter().copied().map(ResolvedTarget::Object).collect();
+            }
+        }
+        let retained_self = matches!(effect.spec.base(), ChooseSpec::Source)
             .then(|| {
-                game.object(ctx.source)
-                    .map(|object| ObjectSnapshot::from_object(object, game))
+                draws.snapshots.get(&ctx.source).cloned().or_else(|| game.object(ctx.source)
+                    .map(|object| ObjectSnapshot::from_object(object, game)))
             })
             .flatten();
         let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let mut receipts: ExileZoneReceipts = Vec::new();
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
             let pending_start = game.effect_store.pending_trigger_events.len();
             // CR 603.10a: a multi-object exile shares one pre-event look-back.
-            let pinned_lookback = (!self.spec.is_single()
-                || matches!(self.spec.base(), ChooseSpec::Tagged(_)))
+            let pinned_lookback = (!effect.spec.is_single()
+                || matches!(effect.spec.base(), ChooseSpec::Tagged(_)))
                 && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
             let outcome = (|| -> Result<EffectOutcome, ExecutionError> {
                 // Handle targeted effects with special single-target behavior
                 // BUT skip for special specs (Tagged, Source, SpecificObject) which don't use ctx.targets
-                if self.spec.is_target() && uses_ctx_targets(self) {
-                    let count = self.spec.count();
+                if effect.spec.is_target() && uses_ctx_targets(effect) {
+                    let count = effect.spec.count();
                     if count.is_single() {
                         let pre_memory = ctx.targets.iter().find_map(|target| match target {
                             ResolvedTarget::Object(object_id) => {
-                                OutcomeObjectMemory::from_object_id(game, *object_id)
+                                draws.snapshots.get(object_id).map(OutcomeObjectMemory::from_snapshot)
+                                    .or_else(|| OutcomeObjectMemory::from_object_id(game, *object_id))
                             }
                             ResolvedTarget::Player(_) => None,
                         });
@@ -267,9 +267,10 @@ impl EffectExecutor for ExileEffect {
                                     game,
                                     ctx,
                                     object_id,
-                                    self.face_down,
-                                    self.source_controller_may_look,
+                                    effect.face_down,
+                                    effect.source_controller_may_look,
                                     &mut receipts,
+                                    &mut draws,
                                 )
                             },
                         )?;
@@ -316,7 +317,9 @@ impl EffectExecutor for ExileEffect {
                         // ones its own filter accepts — and never more than the
                         // authored maximum.
                         let selected = {
-                            let mut selected = if let ChooseSpec::Object(filter) = self.spec.base()
+                            let mut selected = if let Some(objects) = &prepared_objects {
+                                objects.iter().copied().map(ResolvedTarget::Object).collect()
+                            } else if let ChooseSpec::Object(filter) = effect.spec.base()
                             {
                                 let filter_ctx = ctx.filter_context(game);
                                 // Target legality already checked the relative "other"
@@ -346,15 +349,16 @@ impl EffectExecutor for ExileEffect {
                         };
                         for target in selected {
                             if let ResolvedTarget::Object(object_id) = target {
-                                let pre_memory =
-                                    OutcomeObjectMemory::from_object_id(game, object_id);
+                                let pre_memory = draws.snapshots.get(&object_id).map(OutcomeObjectMemory::from_snapshot)
+                                    .or_else(|| OutcomeObjectMemory::from_object_id(game, object_id));
                                 let status = exile_object(
                                     game,
                                     ctx,
                                     object_id,
-                                    self.face_down,
-                                    self.source_controller_may_look,
+                                    effect.face_down,
+                                    effect.source_controller_may_look,
                                     &mut receipts,
+                                    &mut draws,
                                 )?;
                                 if ctx.decision_maker.awaiting_choice() {
                                     return Ok(EffectOutcome::count(0));
@@ -397,23 +401,23 @@ impl EffectExecutor for ExileEffect {
                 let mut affected_ids = Vec::new();
                 let mut affected_memory = Vec::new();
                 let mut moved_source = None;
-                let apply_result = match apply_to_selected_objects(
+                let apply_result = match apply_to_selected_objects_with_prepared(
                     game,
                     ctx,
-                    &self.spec,
+                    &effect.spec,
                     ObjectApplyResultPolicy::CountApplied,
+                    None, prepared_objects,
                     |game, ctx, object_id| {
-                        let Some(obj) = game.object(object_id) else {
+                        let Some(pre_snapshot) = draws.snapshots.get(&object_id).cloned().or_else(|| game.object(object_id)
+                            .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))) else {
                             return Ok(false);
                         };
-                        let from_zone = obj.zone;
+                        let from_zone = pre_snapshot.zone;
                         let requested_zone = ctx
                             .simultaneous_zone_destination(object_id)
                             .unwrap_or(Zone::Exile);
-                        let pre_snapshot =
-                            ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
                         let additional_effects = ctx.additional_replacement_effects_snapshot();
-                        let receipt = apply_zone_change_with_context_and_additional_effects(
+                        let receipt = apply_zone_change_with_context_and_draws(
                             game,
                             object_id,
                             from_zone,
@@ -421,6 +425,7 @@ impl EffectExecutor for ExileEffect {
                             ctx.cause.clone(),
                             ctx,
                             &additional_effects,
+                            &mut draws,
                         )?;
                         let original = receipt.original.clone();
                         receipts.push((object_id, receipt));
@@ -433,7 +438,7 @@ impl EffectExecutor for ExileEffect {
                                     ctx.refresh_target_snapshot(pre_snapshot.clone());
                                     if pre_snapshot.object_id == ctx.source {
                                         ctx.refresh_source_snapshot(pre_snapshot.clone());
-                                        if matches!(self.spec.base(), ChooseSpec::Source) {
+                                        if matches!(effect.spec.base(), ChooseSpec::Source) {
                                             moved_source = result.new_object_ids.first().copied();
                                         }
                                     }
@@ -441,7 +446,7 @@ impl EffectExecutor for ExileEffect {
                                         .push(OutcomeObjectMemory::from_snapshot(&pre_snapshot));
                                     affected_ids.extend(result.new_object_ids.iter().copied());
                                     for &new_id in &result.new_object_ids {
-                                        if self.face_down && result.final_zone == Zone::Exile {
+                                        if effect.face_down && result.final_zone == Zone::Exile {
                                             game.set_face_down(new_id);
                                             if let Some(viewers) =
                                                 ctx.face_down_exile_viewers_for(object_id)
@@ -453,7 +458,7 @@ impl EffectExecutor for ExileEffect {
                                         }
                                         if result.final_zone == Zone::Exile {
                                             game.add_exiled_with_source_link(ctx.source, new_id);
-                                            if self.source_controller_may_look {
+                                            if effect.source_controller_may_look {
                                                 game.grant_face_down_exile_source_controller_view(
                                                     new_id, ctx.source,
                                                 );
@@ -587,16 +592,125 @@ impl EffectExecutor for ExileEffect {
                     ctx.set_tagged_objects(crate::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG, arrival);
                 }
             }
-            super::finish_zone_change_receipts(game, ctx, original, receipts)
+            Ok(original)
         })();
+        ctx.targets = incoming_targets;
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
+            game.restore_execution_checkpoint(checkpoint, ctx.decision_maker.awaiting_choice() && result.is_ok());
             context_checkpoint.restore(ctx);
         }
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
         }
-        result
+        let original = result?;
+        if replacement_boundary { draws.finish_replacement(game, ctx, original, receipts) }
+        else { Ok(draws.finish(original, receipts)) }
+ }
+
+#[derive(Debug)]
+struct ExileProposal {
+    effect: ExileEffect,
+    runtime: crate::effect::Effect,
+    objects: Option<Vec<crate::ids::ObjectId>>,
+    prepared: Option<super::ZoneInstructionDraws>,
+    skipped: Option<EffectOutcome>,
+    player: Option<crate::ids::PlayerId>,
+}
+impl crate::effects::SimultaneousEffectProposal for ExileProposal {
+    fn prepare_selection(&mut self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<(), ExecutionError> {
+        let runtime = self.runtime.clone();
+        let progress = ctx.with_temp_iterated_player(self.player, |ctx|
+            crate::effects::runtime::prepare_effect_original_with(game, &runtime, ctx, |_, game, ctx| {
+                let objects = crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.effect.spec)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0))); }
+                let mut prepared = super::ZoneInstructionDraws::default();
+                for object in &objects {
+                    if let Some(snapshot) = game.object(*object).map(|object|
+                        ObjectSnapshot::from_object_with_calculated_characteristics(object, game)) {
+                        prepared.snapshots.insert(*object, snapshot);
+                    }
+                }
+                self.objects = Some(objects); self.prepared = Some(prepared);
+                Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::resolved()))
+            }))?;
+        if self.prepared.is_none() { self.skipped = Some(progress.outcome); }
+        Ok(())
+    }
+    fn prepare_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<(), ExecutionError> {
+        if self.skipped.is_some() { return Ok(()); }
+        let runtime = self.runtime.clone();
+        ctx.with_temp_iterated_player(self.player, |ctx|
+            crate::effects::runtime::prepare_effect_original_with(game, &runtime, ctx, |_, game, ctx| {
+                let objects = self.objects.as_ref().ok_or_else(|| ExecutionError::InternalError("exile selection was not prepared".into()))?;
+                let prepared = self.prepared.as_mut().ok_or_else(|| ExecutionError::InternalError("exile original has no preparation frame".into()))?;
+                let additional = ctx.additional_replacement_effects_snapshot();
+                for object in objects {
+                    let Some(from) = prepared.snapshots.get(object).map(|snapshot| snapshot.zone) else { continue; };
+                    let to = ctx.simultaneous_zone_destination(*object).unwrap_or(Zone::Exile);
+                    super::prepare_zone_change_with_context_and_draws(game, *object, from, to,
+                        ctx.cause.clone(), ctx, &additional, prepared)?;
+                    if ctx.decision_maker.awaiting_choice() { return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0))); }
+                }
+                Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::resolved()))
+            }))?;
+        Ok(())
+    }
+    fn commit_original(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        if let Some(skipped) = self.skipped { return Ok(crate::effects::SimultaneousEffectCommit::finished(skipped)); }
+        let runtime = self.runtime.clone();
+        ctx.with_temp_iterated_player(self.player, |ctx|
+            crate::effects::runtime::prepare_effect_original_with(game, &runtime, ctx, |_, game, ctx|
+                prepare_exile_instruction(&self.effect, game, ctx, false, self.objects.take(), self.prepared.take())))
+    }
+    fn commit(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+            if self.prepared.is_none() && self.skipped.is_none() { self.prepare_selection(game, ctx)?; }
+            self.prepare_original(game, ctx)?;
+            let committed = self.commit_original(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            super::complete_zone_instruction(game, ctx, committed)
+        })
+    }
+}
+
+impl EffectExecutor for ExileEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        self.spec.is_target() || matches!(self.spec.base(), ChooseSpec::Source | ChooseSpec::Tagged(_) | ChooseSpec::All(_))
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self, game: &GameState, ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(ExileProposal {
+            effect: self.clone(), runtime: crate::effect::Effect::new(self.clone()), objects: None,
+            prepared: None, skipped: None, player: ctx.iteration.iterated_player,
+        }))
+    }
+
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
+    fn supports_replacement_draw_continuation(&self) -> bool { true }
+
+    fn prepare_replacement_draw_continuation(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        prepare_exile_instruction(self, game, ctx, true, None, None)
+    }
+
+    fn execute(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+            crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
+                let committed = prepare_exile_instruction(self, game, ctx, false, None, None)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                super::complete_zone_instruction(game, ctx, committed)
+            })
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

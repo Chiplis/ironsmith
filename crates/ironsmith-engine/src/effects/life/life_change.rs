@@ -86,6 +86,16 @@ struct LifeChangeCompletion {
     programs: Vec<crate::events::processing::PreparedReplacementProgram>,
 }
 impl crate::effects::SimultaneousEffectCompletion for LifeChangeCompletion {
+    fn prepare_draw_boundary(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        if self.original_continuation.is_some() {
+            return Ok(crate::effects::SimultaneousEffectCommit { outcome: original, completion: Some(self) });
+        }
+        let programs = self.programs.into_iter().map(|program| (program,
+            crate::effects::replacement::ReplacementProgramBindings { targets: None, object_tags: Vec::new() },
+        )).collect();
+        crate::effects::replacement::prepare_zone_draw_tail(game, ctx, original, programs, &[])
+    }
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
         if let Some(original) = &mut self.original_continuation { original.freeze(game)?; }
         Ok(())

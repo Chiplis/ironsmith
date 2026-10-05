@@ -4472,14 +4472,13 @@ pub(super) fn rewrite_grammar_protection_and_ward_probes_match_static_shapes() {
         "grammar-owned protection marker probe should match"
     );
 
-    let protection =
-        super::super::keyword_static::parse_static_text_marker_line(&protection_tokens)
-            .expect("protection marker line should parse");
-    let protection_debug = format!("{protection:?}");
-    assert!(
-        protection_debug.contains("Protection from odd mana values"),
-        "{protection_debug}"
-    );
+    assert!(super::super::keyword_static::parse_static_text_marker_line(&protection_tokens).is_none());
+    let protection = super::super::clause_support::parse_protection_chain(&protection_tokens)
+        .expect("parity protection has a typed keyword owner");
+    assert!(matches!(protection.as_slice(),
+        [crate::cards::builders::KeywordAction::ProtectionFromFilter(filter)]
+            if filter.mana_value_parity == Some(ironsmith_core::ParityRequirement::Odd)));
+
 
     let ward_tokens =
         lex_line("Ward pay 3 life.", 0).expect("rewrite lexer should classify ward marker line");

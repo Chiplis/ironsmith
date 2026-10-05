@@ -3805,9 +3805,8 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
         return Some(keyword_static_marker(tokens));
     }
 
-    if is_protection_mana_value_marker_line_lexed(tokens) {
-        return Some(keyword_static_marker(tokens));
-    }
+    // Mana-value parity protection is a complete typed protection quality.
+    // It is owned by the keyword grammar, not an unsupported marker.
 
     if is_mana_group_slash_marker_line_lexed(tokens) {
         return Some(keyword_static_marker(tokens));

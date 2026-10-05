@@ -1488,6 +1488,23 @@ impl Object {
         self.additional_cost = handles.additional_cost.clone();
     }
 
+    /// Remove or reinstate a prospective entry presentation without replacing
+    /// physical identity, zone, controller, counters, damage or attachments.
+    /// This is the exact field set changed by entry face/face-down overlays;
+    /// using a whole-object restore would erase already reserved entry costs.
+    pub(crate) fn restore_entry_presentation_from(&mut self, original: &Object) {
+        macro_rules! restore {
+            ($($field:ident),* $(,)?) => { $(self.$field = original.$field.clone();)* };
+        }
+        restore!(name, first_printed_set_name, mana_cost, color_override, supertypes,
+            card_types, subtypes, compiled_card_text, ability_labels, rules_text_color_identity,
+            other_face, other_face_name, linked_face_layout, linked_face_mana_cost,
+            base_power, base_toughness, base_loyalty, base_defense, hand_modifier, life_modifier,
+            abilities, spell_effect, aura_attach_filter, bestow_cast_state, face_down_cast_state,
+            prototype_cast_state, alternative_casts, cast_alternative_method, has_fuse,
+            optional_costs, additional_cost, split_combined);
+    }
+
     /// Apply the printed/copied characteristics of another card definition.
     ///
     /// Used for flip cards and similar "becomes this other face" mechanics.

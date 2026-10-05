@@ -153,6 +153,13 @@ where
 /// each participant's execution context and rolls back the whole instruction
 /// if completion pauses for a decision or fails.
 pub trait SimultaneousEffectCompletion: Send {
+    /// Complete non-draw replacement prefixes while retaining an actual draw
+    /// and its tail for an enclosing original action. Ordinary completion
+    /// owners with no event-created draw boundary finish normally.
+    fn prepare_draw_boundary(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome) -> Result<SimultaneousEffectCommit, ExecutionError> {
+        self.complete(game, ctx, original).map(SimultaneousEffectCommit::finished)
+    }
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError>;
     fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
         original: EffectOutcome) -> Result<EffectOutcome, ExecutionError>;
@@ -176,6 +183,11 @@ pub trait SimultaneousEffectProposal: std::fmt::Debug + Send {
     /// Accepted nominal life payment, before replacements alter its actions.
     /// The batch owner checks shared team affordability once (CR 119.4a).
     fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId, u32)> { None }
+
+    /// Resolve mutable preflight and selection for every participant before
+    /// any participant runs a replacement program or commits an original.
+    fn prepare_selection(&mut self, _game: &mut GameState, _ctx: &mut ExecutionContext)
+        -> Result<(), ExecutionError> { Ok(()) }
 
     /// Resolve a prepared proposal's replacement choices against the shared
     /// pre-mutation world. Owners run this for every participant before any
@@ -242,6 +254,17 @@ pub trait EffectExecutor:
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError>;
+
+    /// The native owner can retain draws created by its own replacement events.
+    /// The replacement walker delegates to that owner instead of interpreting
+    /// its movement/entry/choice semantics from a list of child effects.
+    fn supports_replacement_draw_continuation(&self) -> bool { false }
+
+    fn prepare_replacement_draw_continuation(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+        self.execute(game, ctx).map(SimultaneousEffectCommit::finished)
+    }
 
     /// Whether this effect can prepare an immutable proposal for a generic
     /// simultaneous each-player action (CR 101.4, 608.2f).

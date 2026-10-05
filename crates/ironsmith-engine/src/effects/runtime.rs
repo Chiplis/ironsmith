@@ -295,6 +295,13 @@ fn settle_hidden_hand_all_matching_specs(
     {
         filters.push(filter.clone());
     }
+    if effect.0.supports_replacement_draw_continuation() {
+        for spec in effect.0.decision_related_object_specs() {
+            if let ChooseSpec::All(filter) = spec.base() {
+                if !filters.contains(filter) { filters.push(filter.clone()); }
+            }
+        }
+    }
     if let Some(tag_matching) = effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
         && tag_matching.source_tags.is_empty()
     {
@@ -364,6 +371,39 @@ fn execute_effect_with_resource_scope(
     effect: &Effect,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
+    execute_effect_with_resource_scope_using(game, effect, ctx,
+        |effect, game, ctx| effect.0.execute(game, ctx))
+}
+
+/// Native replacement continuations use the same effect preflight, chooser
+/// retry, execution identity and event-publication owner as ordinary execution.
+pub(crate) fn prepare_effect_draw_continuation(
+    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
+) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    prepare_effect_original_with(game, effect, ctx,
+        |effect, game, ctx| effect.0.prepare_replacement_draw_continuation(game, ctx))
+}
+
+pub(crate) fn prepare_effect_original_with<'a>(
+    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext<'a>,
+    mut prepare: impl FnMut(&Effect, &mut GameState, &mut ExecutionContext<'a>)
+        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError>,
+) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    let mut completion = None;
+    let outcome = crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+        execute_effect_with_resource_scope_using(game, effect, ctx, |effect, game, ctx| {
+            let committed = prepare(effect, game, ctx)?;
+            completion = committed.completion;
+            Ok(committed.outcome)
+        })
+    })?;
+    Ok(crate::effects::SimultaneousEffectCommit { outcome, completion })
+}
+
+fn execute_effect_with_resource_scope_using<'a>(
+    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext<'a>,
+    mut execute: impl FnMut(&Effect, &mut GameState, &mut ExecutionContext<'a>) -> Result<EffectOutcome, ExecutionError>,
+) -> Result<EffectOutcome, ExecutionError> {
     // CR 724.1b/724.2b stop the resolving spell or ability immediately. Composite
     // executors route child effects through this function, so this guard also
     // suppresses later instructions inside a sequence, modal branch, loop, or
@@ -385,7 +425,7 @@ fn execute_effect_with_resource_scope(
     let effect_identity =
         effect.0.as_ref() as *const dyn crate::effects::EffectExecutor as *const () as usize;
     ctx.executing_effect = Some(effect_identity);
-    let mut execution = effect.0.execute(game, ctx);
+    let mut execution = execute(effect, game, ctx);
     // A singular untargeted "an opponent" with several opponents is chosen
     // by the controller when the instruction is performed. The innermost
     // instruction that needed the player reports it before acting; ask once,
@@ -420,7 +460,7 @@ fn execute_effect_with_resource_scope(
                     crate::tag::TagKey::from(crate::effects::helpers::AN_OPPONENT_CHOICE_TAG),
                     vec![chosen],
                 );
-                execution = effect.0.execute(game, ctx);
+                execution = execute(effect, game, ctx);
             }
         }
         if let Err(ExecutionError::UnresolvableValue(message)) = &mut execution
@@ -457,7 +497,7 @@ fn execute_effect_with_resource_scope(
             }
             if let Some(chosen) = chosen {
                 ctx.combat.chosen_player = Some(chosen);
-                execution = effect.0.execute(game, ctx);
+                execution = execute(effect, game, ctx);
             }
         }
     }

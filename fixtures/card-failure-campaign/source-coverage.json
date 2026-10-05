@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "ec9f48dbe99355de78a4f551e7696897437b9f53",
+  "source_implementation_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1044,
-    "additional_proposed_compile_entries": 1049,
+    "additional_proposed_unique_cards": 1054,
+    "additional_proposed_compile_entries": 1059,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1044,
+    "source_proposals_excluding_identified_runtime_gaps": 1054,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -2097,38 +2097,6 @@
       "baseline_entries": [],
       "partial_entries": [
         {
-          "card_name": "Archangel's Light",
-          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
-        },
-        {
-          "card_name": "Mnemonic Nexus",
-          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
-        },
-        {
-          "card_name": "Molten Psyche",
-          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
-        },
-        {
-          "card_name": "Rite of Renewal",
-          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
-        },
-        {
-          "card_name": "Stream of Thought",
-          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
-        },
-        {
-          "card_name": "Visions",
-          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
-        },
-        {
-          "card_name": "Whirlpool Warrior",
-          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
-        },
-        {
-          "card_name": "Winds of Change",
-          "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
-        },
-        {
           "card_name": "Wedding Ring",
           "remaining_blocker": "Nested and simultaneous zone-replacement completion must retain all original moves/randomization before deferred draw tails; dynamic non-draw replacement leaves can introduce draws. Native prototype remains isolated and partial."
         }
@@ -2136,7 +2104,8 @@
       "implementation_commit": "4121a105",
       "tests": "authored_not_run",
       "semantic_scope": [
-        "Complete shuffle zone selectors and owner references; draw event receipts and continuation scopes/iterations integrated. Shared dynamic nested completion remains unresolved."
+        "Complete shuffle zone selectors and owner references; draw event receipts and continuation scopes/iterations integrated. Shared dynamic nested completion remains unresolved.",
+        "Stage68 separately source-clears the eight concrete zone-shuffle bodies; Wedding Ring and arbitrary custom AsEntersProgram recursion are not covered by that disposition."
       ]
     },
     {
@@ -4129,6 +4098,64 @@
       "semantic_scope": [
         "Exact Thumb and Edgar full bodies preserve ignored physical flips, actual control/phasing, first completed batch, complete modifier tokens and Edgar's resolving artifact-count draw."
       ]
+    },
+    {
+      "id": "completed-zone-shuffle-and-native-continuations",
+      "stage": 68,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/zone_shuffle_references.json.fixture",
+      "baseline_entries": [
+        "Archangel's Light",
+        "Mnemonic Nexus",
+        "Molten Psyche",
+        "Rite of Renewal",
+        "Stream of Thought",
+        "Visions",
+        "Whirlpool Warrior",
+        "Winds of Change"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f",
+      "source_review_commit": "7cbf27a1a39648c0d856a262354b0617196658c8",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Original zone moves and library randomization complete before retained draw additions. Native Move/Exile/entry and object/tagged/player iterations share checked rollback, exact projections, prepared quantities, receipt capture and completion ownership. Arbitrary custom AsEntersProgram draw recursion remains outside the concrete frozen-card scope."
+      ]
+    },
+    {
+      "id": "chosen-mana-value-parity-protection",
+      "stage": 68,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/chosen_parity_protection.json.fixture",
+      "baseline_entries": [
+        "Lavabrink Venturer"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f",
+      "source_review_commit": "6b2250b89fd66a85695726f41b5a1ed9e5ad6c02",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete odd/even quality grammar and exact protected-source or granting-source choice context retain stack X, current/LKI mana values and source lifetime."
+      ]
+    },
+    {
+      "id": "attached-aura-public-mill-return",
+      "stage": 68,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/avatar_destiny_body.json.fixture",
+      "baseline_entries": [
+        "Avatar Destiny"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f",
+      "source_review_commit": "9f0be336ada575140a12a8a9f61128a9df8e640a",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete enchanted-host death body retains exact Aura departure mapping, original public mill destinations and current characteristicless face-down exile, with required collection evidence before empty queries."
+      ]
     }
   ],
   "cards": [
@@ -5347,11 +5374,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "nested-event-completion-ownership"
-      ]
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-zone-shuffle-and-native-continuations"
+      ],
+      "source_review_commit": "7cbf27a1a39648c0d856a262354b0617196658c8",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f"
     },
     {
       "card_name": "Archdemon of Paliano",
@@ -5915,8 +5943,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "attached-aura-public-mill-return"
+      ],
+      "source_review_commit": "9f0be336ada575140a12a8a9f61128a9df8e640a",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f"
     },
     {
       "card_name": "Avatar Roku, Firebender",
@@ -20807,8 +20839,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "chosen-mana-value-parity-protection"
+      ],
+      "source_review_commit": "6b2250b89fd66a85695726f41b5a1ed9e5ad6c02",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f"
     },
     {
       "card_name": "Lay Bare",
@@ -23091,11 +23127,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "nested-event-completion-ownership"
-      ]
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-zone-shuffle-and-native-continuations"
+      ],
+      "source_review_commit": "7cbf27a1a39648c0d856a262354b0617196658c8",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f"
     },
     {
       "card_name": "Mobile Fort",
@@ -23162,11 +23199,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "nested-event-completion-ownership"
-      ]
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-zone-shuffle-and-native-continuations"
+      ],
+      "source_review_commit": "7cbf27a1a39648c0d856a262354b0617196658c8",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f"
     },
     {
       "card_name": "Molten Sentry",
@@ -28321,11 +28359,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "nested-event-completion-ownership"
-      ]
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-zone-shuffle-and-native-continuations"
+      ],
+      "source_review_commit": "7cbf27a1a39648c0d856a262354b0617196658c8",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f"
     },
     {
       "card_name": "Rite of Ruin",
@@ -32152,11 +32191,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "nested-event-completion-ownership"
-      ]
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-zone-shuffle-and-native-continuations"
+      ],
+      "source_review_commit": "7cbf27a1a39648c0d856a262354b0617196658c8",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f"
     },
     {
       "card_name": "Street Savvy",
@@ -36902,11 +36942,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "nested-event-completion-ownership"
-      ]
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-zone-shuffle-and-native-continuations"
+      ],
+      "source_review_commit": "7cbf27a1a39648c0d856a262354b0617196658c8",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f"
     },
     {
       "card_name": "Visions of Beyond",
@@ -38071,11 +38112,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "nested-event-completion-ownership"
-      ]
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-zone-shuffle-and-native-continuations"
+      ],
+      "source_review_commit": "7cbf27a1a39648c0d856a262354b0617196658c8",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f"
     },
     {
       "card_name": "Whirlwind, Killer Cyclone",
@@ -38292,11 +38334,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "nested-event-completion-ownership"
-      ]
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-zone-shuffle-and-native-continuations"
+      ],
+      "source_review_commit": "7cbf27a1a39648c0d856a262354b0617196658c8",
+      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f"
     },
     {
       "card_name": "Windshaper Planetar",
