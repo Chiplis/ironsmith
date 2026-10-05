@@ -8,12 +8,64 @@ use crate::model::{
 };
 use crate::recognition::{ParseDiagnostic, ParseExpectation, ParseOutcome, RuleId};
 
-use super::chain_splitting::{ChainVerbKind, find_chain_verb_tokens, preserve_and_reason};
+use super::chain_splitting::{
+    ChainVerbKind, ChainVerbMatch, find_chain_verb_tokens, preserve_and_reason,
+};
 use super::typed_clause_heads::{
     ClauseActorHeadAst, ClauseHeadFormAst, TypedClauseHeadAst, classify_typed_clause_head,
 };
 
 const COORDINATION_RULE: RuleId = RuleId::new("typed-effect-coordination");
+
+/// State-setting heads participate in shared-subject coordination as well as
+/// imperative action verbs. Recognize them only after a complete carryable
+/// subject (or at an omitted-subject head), not inside a relative predicate.
+fn find_coordination_verb_tokens(tokens: &[OwnedLexToken]) -> Option<ChainVerbMatch> {
+    let action = find_chain_verb_tokens(tokens);
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let state = words.iter().enumerate().find_map(|(index, word)| {
+        let kind = match *word {
+            "has" | "have"
+                if words.get(index + 1) == Some(&"base")
+                    && matches!(words.get(index + 2), Some(&"power" | &"toughness")) =>
+            {
+                ChainVerbKind::Gain
+            }
+            "is" | "are" | "isnt" | "isn't" | "arent" | "aren't" => ChainVerbKind::Become,
+            _ => return None,
+        };
+        let token_index = *view.token_start_indices().get(index)?;
+        let subject_prefix = trim_lexed_commas(&tokens[..token_index]);
+        let subject = super::chain_carry::parse_carry_duration_prefix_tokens(subject_prefix)
+            .map_or(subject_prefix, |shape| shape.rest);
+        // A relative head belongs to an operand: "target creature that is
+        // red" must not become a new executable characteristic-setting arm.
+        if subject
+            .last()
+            .is_some_and(|token| token.is_any_word(&["that", "which", "who"]))
+        {
+            return None;
+        }
+        if !subject.is_empty()
+            && super::chain_carry::parse_carryable_subject_tokens(subject).is_none()
+        {
+            return None;
+        }
+        Some(ChainVerbMatch {
+            kind,
+            word_index: token_index,
+        })
+    });
+    match (action, state) {
+        (Some(action), Some(state)) => Some(if state.word_index < action.word_index {
+            state
+        } else {
+            action
+        }),
+        (action, state) => action.or(state),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoordinationOmissionAst {
@@ -127,7 +179,7 @@ impl CoordinationPlan<'_> {
                     member_tokens.to_vec()
                 }
                 CoordinationOmissionAst::Subject => {
-                    let verb_index = find_chain_verb_tokens(previous)?.word_index;
+                    let verb_index = find_coordination_verb_tokens(previous)?.word_index;
                     if verb_index == 0 {
                         return None;
                     }
@@ -140,7 +192,7 @@ impl CoordinationPlan<'_> {
                     tokens
                 }
                 CoordinationOmissionAst::Action | CoordinationOmissionAst::Object => {
-                    let verb = find_chain_verb_tokens(previous)?;
+                    let verb = find_coordination_verb_tokens(previous)?;
                     if !matches!(
                         verb.kind,
                         ChainVerbKind::Deal
@@ -352,7 +404,7 @@ pub fn materialize_shared_subject_followup(
     previous: &[OwnedLexToken],
     followup: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
-    let followup_verb = find_chain_verb_tokens(followup)?;
+    let followup_verb = find_coordination_verb_tokens(followup)?;
     if followup_verb.word_index != 0
         || !matches!(
             followup_verb.kind,
@@ -361,7 +413,7 @@ pub fn materialize_shared_subject_followup(
     {
         return None;
     }
-    let previous_verb = find_chain_verb_tokens(previous)?;
+    let previous_verb = find_coordination_verb_tokens(previous)?;
     if previous_verb.word_index == 0 {
         return None;
     }
@@ -666,7 +718,7 @@ fn classify_boundary<'a>(
         CoordinationOperatorAst::Comma | CoordinationOperatorAst::And
     ) && before.last().is_some_and(token_is_card_type_noun)
         && starts_card_type_list_arm(after)
-        && (find_chain_verb_tokens(before).is_some_and(|verb| {
+        && (find_coordination_verb_tokens(before).is_some_and(|verb| {
             matches!(
                 verb.kind,
                 ChainVerbKind::Destroy
@@ -851,7 +903,7 @@ fn classify_boundary<'a>(
     if candidate.operator == CoordinationOperatorAst::And
         && before.last().is_some_and(token_is_card_type_noun)
         && after.first().is_some_and(token_is_card_type_noun)
-        && find_chain_verb_tokens(after).is_none()
+        && find_coordination_verb_tokens(after).is_none()
     {
         // A conjunctive card-type list is likewise one object operand when
         // the later type arm contains no executable verb. Relative filter
@@ -911,8 +963,8 @@ fn classify_boundary<'a>(
         // union intact for the typed damage recognizer.
         return None;
     }
-    let before_verb = find_chain_verb_tokens(before);
-    let after_verb = find_chain_verb_tokens(after);
+    let before_verb = find_coordination_verb_tokens(before);
+    let after_verb = find_coordination_verb_tokens(after);
     let after_head = matched_head(after);
     let starts_shared_object_operand = after.first().is_some_and(|token| {
         token.is_word("a")

@@ -1,0 +1,74 @@
+[
+  {
+    "name": "Battle Cry Goblin",
+    "oracle_id": "e74c4001-d958-4d2b-b57d-c3601f01580c",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Goblin",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "{1}{R}: Goblins you control get +1/+0 and gain haste until end of turn.\nPack tactics — Whenever this creature attacks, if you attacked with creatures with total power 6 or greater this combat, create a 1/1 red Goblin creature token that's tapped and attacking."
+  },
+  {
+    "name": "Gnoll Hunter",
+    "oracle_id": "9e445336-8b1e-4642-b8bc-aa460ad79a3f",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature — Gnoll",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "Pack tactics — Whenever this creature attacks, if you attacked with creatures with total power 6 or greater this combat, put a +1/+1 counter on this creature."
+  },
+  {
+    "name": "Hobgoblin Captain",
+    "oracle_id": "4d92b3d3-d34b-430f-af6a-db512d204d06",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Goblin Barbarian",
+    "power": "3",
+    "toughness": "1",
+    "oracle_text": "Pack tactics — Whenever this creature attacks, if you attacked with creatures with total power 6 or greater this combat, this creature gains first strike until end of turn."
+  },
+  {
+    "name": "Intrepid Outlander",
+    "oracle_id": "ff8d3532-bf4f-4209-ac01-351ddc9b9423",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature — Orc Ranger",
+    "power": "2",
+    "toughness": "3",
+    "oracle_text": "Reach\nPack tactics — Whenever this creature attacks, if you attacked with creatures with total power 6 or greater this combat, venture into the dungeon. (Enter the first room or advance to the next room.)"
+  },
+  {
+    "name": "Minion of the Mighty",
+    "oracle_id": "058062c7-071b-4b14-903d-ae8d2876b37f",
+    "mana_cost": "{R}",
+    "type_line": "Creature — Kobold",
+    "power": "0",
+    "toughness": "1",
+    "oracle_text": "Menace\nPack tactics — Whenever this creature attacks, if you attacked with creatures with total power 6 or greater this combat, you may put a Dragon creature card from your hand onto the battlefield tapped and attacking."
+  },
+  {
+    "name": "Targ Nar, Demon-Fang Gnoll",
+    "oracle_id": "d53ef172-8c26-4469-94c6-bf7fe4d48dbf",
+    "mana_cost": "{R}{G}",
+    "type_line": "Legendary Creature — Gnoll",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "Pack tactics — Whenever Targ Nar attacks, if you attacked with creatures with total power 6 or greater this combat, attacking creatures get +1/+0 until end of turn.\n{2}{R}{G}: Double Targ Nar's power and toughness until end of turn."
+  },
+  {
+    "name": "Tiger-Tribe Hunter",
+    "oracle_id": "d5b4e9fd-3df6-4d1d-8135-d7c8615b05a7",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Creature — Human Barbarian",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Trample\nPack tactics — Whenever this creature attacks, if you attacked with creatures with total power 6 or greater this combat, you may sacrifice another creature. When you do, this creature deals damage equal to the sacrificed creature's power to target creature."
+  },
+  {
+    "name": "Werewolf Pack Leader",
+    "oracle_id": "086a911f-9ed4-4260-ae46-58c9333b95f5",
+    "mana_cost": "{G}{G}",
+    "type_line": "Creature — Human Werewolf",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "Pack tactics — Whenever this creature attacks, if you attacked with creatures with total power 6 or greater this combat, draw a card.\n{3}{G}: Until end of turn, this creature has base power and toughness 5/3, gains trample, and isn't a Human."
+  }
+]

@@ -1141,7 +1141,8 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
                 event_target,
                 total_attackers,
             )
-            .with_declared_attackers(declared_attackers.clone()),
+            .with_declared_attackers(declared_attackers.clone())
+            .with_combat_phase(game.turn_store.combat_phases_started_this_turn),
             event_provenance,
         );
         attack_events.push(event);

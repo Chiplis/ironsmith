@@ -35,4 +35,5 @@ pub enum TurnEventPredicateAst {
     /// "if you attacked this turn"
     AttackedThisTurn,
     ThisAbilityResolvedThisTurnExactly(u32),
+    YouAttackedWithTotalPowerAtLeastThisCombat(u32),
 }

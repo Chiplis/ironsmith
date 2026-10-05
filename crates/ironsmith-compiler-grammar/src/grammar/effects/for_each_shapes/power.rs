@@ -89,7 +89,7 @@ fn has_shared_gain_tail(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         trim_edge_punctuation_tokens(tokens),
         (
-            primitives::kw("and"),
+            winnow::combinator::opt(primitives::kw("and")),
             alt((
                 primitives::kw("gain"),
                 primitives::kw("gains"),

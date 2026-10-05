@@ -112,3 +112,113 @@ fn replacement_anthem_uses_its_controller_condition_and_replaces_rather_than_sta
     }
 }
 
+fn perform_action_and_resolve(
+    game: &mut ironsmith::GameState,
+    action: ironsmith::decision::LegalAction,
+) {
+    perform_action_and_resolve_with(
+        game,
+        action,
+        &mut ironsmith::decision::SelectFirstDecisionMaker,
+    );
+}
+
+fn perform_action_and_resolve_with(
+    game: &mut ironsmith::GameState,
+    action: ironsmith::decision::LegalAction,
+    dm: &mut impl ironsmith::decision::DecisionMaker,
+) {
+    use ironsmith::game_loop::{
+        PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
+        apply_priority_response_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with,
+    };
+    let mut state = PriorityLoopState::new(2);
+    let mut queue = ironsmith::triggers::TriggerQueue::new();
+    let mut progress = apply_priority_response_with_dm(
+        game,
+        &mut queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+        dm,
+    )
+    .unwrap();
+    for _ in 0..30 {
+        if state.pending_activation.is_none() && state.pending_cast.is_none() {
+            break;
+        }
+        let ironsmith::GameProgress::NeedsDecisionCtx(context) = progress else {
+            break;
+        };
+        progress =
+            apply_decision_context_with_dm(game, &mut queue, &mut state, &context, dm).unwrap();
+    }
+    assert!(state.pending_activation.is_none() && state.pending_cast.is_none());
+    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
+    assert!(
+        !game.stack_is_empty(),
+        "an activation or cast must really reach the stack"
+    );
+    while !game.stack_is_empty() {
+        resolve_stack_entry_with(game, dm).unwrap();
+        put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
+    }
+}
+
+#[test]
+fn coordinated_base_stats_grant_and_subtype_removal_share_subject_and_duration() {
+    use ironsmith::decision::{LegalAction, compute_legal_actions};
+    use ironsmith::game_state::Phase;
+    use ironsmith::mana::ManaSymbol;
+    use ironsmith::static_abilities::StaticAbilityId;
+    for definition in definitions("Werewolf Pack Leader") {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(ManaSymbol::Green, 4);
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let other = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        game.object_mut(source)
+            .unwrap()
+            .add_counters(CounterType::PlusOnePlusOne, 1);
+        let action = compute_legal_actions(&game, alice)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a, LegalAction::ActivateAbility { source: s, .. } if *s == source))
+            .expect("four-mana activation should be payable");
+        perform_action_and_resolve(&mut game, action);
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+        assert_eq!(
+            (game.current_power(source), game.current_toughness(source)),
+            (Some(6), Some(4))
+        );
+        let characteristics = game.calculated_characteristics(source).unwrap();
+        assert!(characteristics.subtypes.contains(&Subtype::Werewolf));
+        assert!(!characteristics.subtypes.contains(&Subtype::Human));
+        assert!(game.current_has_static_ability_id(source, StaticAbilityId::Trample));
+        assert_eq!(game.current_power(other), Some(3));
+        assert!(
+            game.calculated_characteristics(other)
+                .unwrap()
+                .subtypes
+                .contains(&Subtype::Human)
+        );
+        ironsmith::turn::execute_cleanup_step(&mut game);
+        assert_eq!(
+            (game.current_power(source), game.current_toughness(source)),
+            (Some(4), Some(4))
+        );
+        assert!(
+            game.calculated_characteristics(source)
+                .unwrap()
+                .subtypes
+                .contains(&Subtype::Human)
+        );
+        assert!(!game.current_has_static_ability_id(source, StaticAbilityId::Trample));
+    }
+}
