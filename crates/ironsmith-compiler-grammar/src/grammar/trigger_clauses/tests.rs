@@ -2284,3 +2284,29 @@ fn play_or_cast_trigger_inherits_the_player_subject() {
         }
     }
 }
+
+#[test]
+fn end_of_combat_is_a_typed_phase_event_without_an_object_antecedent() {
+    for text in ["end of combat", "at end of combat", "the end of combat"] {
+        let tokens = tokenize_line(text, 0);
+        let trigger = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
+        assert_eq!(trigger, crate::model::ast::TriggerSpec::EndOfCombat);
+        assert!(ironsmith_compiler_semantic::trigger_references::phase_step_trigger_has_no_object_reference(&trigger));
+    }
+    for text in ["end of combat on your turn", "end of combat during an opponent's turn"] {
+        let tokens = tokenize_line(text, 0);
+        assert!(crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).is_err(), "a turn qualifier must not be dropped: {text}");
+    }
+}
+
+#[test]
+fn end_combat_directional_object_relations_do_not_widen_to_all_blocked_creatures() {
+    let blocked = crate::object_filters::parse_object_filter(&tokenize_line("creatures blocked by this creature", 0), false).unwrap();
+    assert!(blocked.blocked_by_source);
+    assert!(!blocked.blocked_source_this_turn);
+    assert!(!blocked.blocked);
+    let blockers = crate::object_filters::parse_object_filter(&tokenize_line("creatures that blocked this creature this turn", 0), false).unwrap();
+    assert!(blockers.blocked_source_this_turn);
+    assert!(!blockers.blocked_by_source);
+    assert!(!blockers.blocked);
+}

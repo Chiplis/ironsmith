@@ -2201,6 +2201,10 @@ pub struct ObjectFilter {
     pub blocked: bool,
     pub blocked_by: Option<ObjectRef>,
     pub blocked_by_source: bool,
+    /// The candidate blocked this ability's source during the current turn.
+    /// Directional history, distinct from being blocked by the source.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub blocked_source_this_turn: bool,
     /// The current source crewed this Vehicle this turn ("a Vehicle crewed
     /// by this creature this turn"). Read from the turn's crew history.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4814,7 +4818,10 @@ impl ObjectFilter {
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
         }
         if self.blocked_by_source {
-            post_noun_qualifiers.push("blocked by this creature this turn".to_string());
+            post_noun_qualifiers.push("blocked by this creature".to_string());
+        }
+        if self.blocked_source_this_turn {
+            post_noun_qualifiers.push("that blocked this creature this turn".to_string());
         }
         if self.crewed_by_source_this_turn {
             post_noun_qualifiers.push("crewed by this creature this turn".to_string());

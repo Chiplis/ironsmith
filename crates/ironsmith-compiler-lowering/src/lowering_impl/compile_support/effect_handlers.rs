@@ -39,6 +39,7 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::BeginningOfTheEndStep => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(PlayerFilter::Any),
         ),
+        TriggerSpec::EndOfCombat => Ok(ironsmith_core::DelayedTriggerSpec::EndOfCombat),
         TriggerSpec::BeginningOfCombat(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfCombat(player.clone()),
         ),

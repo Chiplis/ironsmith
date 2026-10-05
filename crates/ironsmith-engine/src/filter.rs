@@ -2419,8 +2419,11 @@ fn object_is_in_combat_with_source_lki(
             || (game
                 .object(source_id)
                 .is_none_or(|source| source.zone != crate::zone::Zone::Battlefield)
-                && (game.creature_was_blocked_by_this_turn(source_id, object_id)
-                    || game.creature_was_blocked_by_this_turn(object_id, source_id)))
+                && (game.turn_store.turn_history.creature_was_blocked_by_in_combat(
+                    source_id, object_id, game.turn_store.combat_phases_started_this_turn,
+                ) || game.turn_store.turn_history.creature_was_blocked_by_in_combat(
+                    object_id, source_id, game.turn_store.combat_phases_started_this_turn,
+                )))
     })
 }
 
@@ -4523,7 +4526,10 @@ impl ObjectFilterExt for ObjectFilter {
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
         }
         if self.blocked_by_source {
-            post_noun_qualifiers.push("blocked by this creature this turn".to_string());
+            post_noun_qualifiers.push("blocked by this creature".to_string());
+        }
+        if self.blocked_source_this_turn {
+            post_noun_qualifiers.push("that blocked this creature this turn".to_string());
         }
         if self.crewed_by_source_this_turn {
             post_noun_qualifiers.push("crewed by this creature this turn".to_string());

@@ -340,8 +340,19 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         ));
     }
 
+    // Verb dispatch may hand this reader only the complement of "put".
+    // Restore that proven grammatical head for coordination recognition, so
+    // a following "and tap those creatures" is its own executable action.
+    let mut headed_tokens = Vec::new();
+    let coordination_tokens = if tokens.first().is_some_and(|token| token.is_word("put")) {
+        tokens
+    } else {
+        headed_tokens.push(OwnedLexToken::word("put".to_string(), TextSpan::synthetic()));
+        headed_tokens.extend_from_slice(tokens);
+        headed_tokens.as_slice()
+    };
     if let crate::recognition::ParseOutcome::Match(matched) =
-        crate::grammar::effects::coordination::recognize_coordination(tokens)
+        crate::grammar::effects::coordination::recognize_coordination(coordination_tokens)
         && matched.value.members.len() > 1
         && (tokens.iter().any(|token| token.is_word("then"))
             || matched.value.members.iter().skip(1).any(|member| {
@@ -1067,6 +1078,46 @@ mod entry_counter_descriptor_tests {
                 "{debug}"
             );
             assert!(!debug.contains("Named(\"each\")"), "{debug}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod coordinated_counter_followup_tests {
+    #[test]
+    fn reciprocal_combat_selector_does_not_swallow_the_following_tap_action() {
+        use crate::cards::builders::{
+            EffectAst, PermanentStateActionAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+        };
+        fn has_tap(effect: &EffectAst) -> bool {
+            if matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::PermanentState(
+                        PermanentStateActionAst::Tap { .. }
+                    ),
+                    ..
+                })
+            ) {
+                return true;
+            }
+            let mut found = false;
+            crate::model::visit::for_each_nested_effects(effect, false, |nested| {
+                found |= nested.iter().any(has_tap);
+            });
+            found
+        }
+        for text in [
+            "Put a paralyzation counter on each creature blocking or blocked by this creature and tap those creatures.",
+            "a paralyzation counter on each creature blocking or blocked by this creature and tap those creatures.",
+            "Put a charge counter on each artifact you control and tap those artifacts.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let effect = super::parse_put_counters(&tokens).unwrap();
+            assert!(
+                has_tap(&effect),
+                "counter placement must not erase the independent tap instruction: {text}: {effect:#?}"
+            );
         }
     }
 }

@@ -1160,6 +1160,18 @@ impl TurnHistory {
         })
     }
 
+    /// Current-combat LKI for a source that left after an ability triggered.
+    /// The object IDs deliberately remain the declaration identities, so a
+    /// leave-and-return is not mistaken for the creature from that combat.
+    pub fn creature_was_blocked_by_in_combat(&self, attacker: ObjectId, blocker: ObjectId, combat_phase: u32) -> bool {
+        self.projected_records().any(|record| {
+            record.event.downcast::<CreatureBlockedEvent>().is_some_and(|event| {
+                event.attacker == attacker && event.blocker == blocker
+                    && event.combat_phase.is_none_or(|phase| phase == combat_phase)
+            })
+        })
+    }
+
     pub fn player_searched_library_this_turn(&self, player: PlayerId) -> bool {
         self.projected_records().any(|record| {
             record

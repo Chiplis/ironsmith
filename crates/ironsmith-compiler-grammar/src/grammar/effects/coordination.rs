@@ -635,6 +635,19 @@ fn classify_boundary<'a>(
     Option<TypedClauseHeadAst<'a>>,
 )> {
     if candidate.operator == CoordinationOperatorAst::Or
+        && (before.last().is_some_and(|token| token.is_word("blocking"))
+            && after.first().is_some_and(|token| token.is_word("blocked"))
+            && after.get(1).is_some_and(|token| token.is_word("by"))
+            || before.last().is_some_and(|token| token.is_word("blocked"))
+                && after.first().is_some_and(|token| token.is_any_word(&["was", "were"]))
+                && after.get(1).is_some_and(|token| token.is_word("blocked"))
+                && after.get(2).is_some_and(|token| token.is_word("by")))
+    {
+        // A reciprocal combat relation stays inside one object selector,
+        // even when a later conjunction starts an actual action such as tap.
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Or
         && before
             .last()
             .is_some_and(|token| token.is_any_word(&["spell", "spells"]))
