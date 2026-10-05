@@ -186,6 +186,7 @@ pub(crate) fn capture_triggers_before_added_program<'a>(
     let mut seen = std::collections::HashSet::new();
     let fresh = reported.iter().filter(|event| !outcome_event_already_matched(game, event))
         .filter(|event| seen.insert(event.occurrence_key())).map(|event| (**event).clone()).collect::<Vec<_>>();
+    crate::events::damage::validate_damage_history_amounts(game, fresh.iter())?;
     let mut matched = crate::triggers::TriggerQueue::new();
     // Scoped matching still deduplicates unmarked aliases held elsewhere in
     // the enclosing resolution. Outside it, the returned receipt owns proof.
@@ -212,9 +213,8 @@ pub(crate) fn retain_unmatched_outcome_events(
     game: &GameState,
     events: &mut Vec<crate::triggers::TriggerEvent>,
 ) {
-    if game.effect_store.matched_outcome_events.is_empty() {
-        return;
-    }
+    // Receipt proof remains valid after the enclosing matching scope clears
+    // its alias map; fresh appended instructions still pass through.
     events.retain(|event| !outcome_event_already_matched(game, event));
 }
 
@@ -450,6 +450,7 @@ fn execute_effect_with_resource_scope(
             }
         }
         game.freeze_completed_entry_events(outcome.events.iter_mut())?;
+        crate::events::damage::validate_damage_history_amounts(game, outcome.events.iter())?;
         for event in &outcome.events {
             game.stage_turn_history_event(event);
         }

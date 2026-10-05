@@ -79,10 +79,17 @@ fn commit_object_counter_placement(
     ctx: &mut ExecutionContext,
     processed: TraitEventResult,
 ) -> Result<EffectOutcome, ExecutionError> {
+    commit_object_counter_placement_with_frame(game,ctx,processed,None)
+}
+
+pub(super) fn commit_object_counter_placement_with_frame(
+    game: &mut GameState, ctx: &mut ExecutionContext, processed: TraitEventResult,
+    before: Option<&GameState>,
+) -> Result<EffectOutcome, ExecutionError> {
     match processed {
         expanded @ TraitEventResult::Expanded { .. } =>
             crate::effects::replacement::execute_event_expansion_with_targets(
-                game, ctx, expanded, commit_object_counter_placement,
+                game, ctx, expanded, |game,ctx,result|commit_object_counter_placement_with_frame(game,ctx,result,before),
                 |_game, context, _original_outcome| {
                     let captured = downcast_event::<PutCountersEvent>(context.event.inner())
                         .ok_or_else(|| ExecutionError::InternalError("added counter program lost its captured event".into()))?;
@@ -104,20 +111,15 @@ fn commit_object_counter_placement(
                     "object counter replacement returned an incompatible recipient".into(),
                 ));
             };
-            if !game.can_have_counter_type_placed(object, resolved.counter_type) {
+            if !before.unwrap_or(game).can_have_counter_type_placed(object, resolved.counter_type) {
                 return Ok(prevented());
             }
             let before = game.counter_count(object, resolved.counter_type);
-            before.checked_add(resolved.count).ok_or_else(|| {
-                ExecutionError::InternalError(
-                    "object counter placement exceeds the supported counter range".into(),
-                )
-            })?;
-            i32::try_from(resolved.count).map_err(|_| {
-                ExecutionError::InternalError(
-                    "object counter outcome exceeds the supported count range".into(),
-                )
-            })?;
+            crate::events::damage::checked_damage_amount(u128::from(before) + u128::from(resolved.count), "object counter total")?;
+            crate::events::damage::checked_damage_count(u128::from(resolved.count), "counter placement outcome")?;
+            if matches!(resolved.counter_type, crate::CounterType::PlusOnePlusOne | crate::CounterType::MinusOneMinusOne) {
+                crate::events::damage::checked_damage_count(u128::from(before) + u128::from(resolved.count), "power/toughness counter total")?;
+            }
             let Some(mut notification) = game.add_counters_with_source(
                 object,
                 resolved.counter_type,
@@ -134,11 +136,7 @@ fn commit_object_counter_placement(
             let actual = game
                 .counter_count(object, resolved.counter_type)
                 .saturating_sub(before);
-            let count = i32::try_from(actual).map_err(|_| {
-                ExecutionError::InternalError(
-                    "object counter outcome exceeds the supported count range".into(),
-                )
-            })?;
+            let count = crate::events::damage::checked_damage_count(u128::from(actual), "counter placement outcome")?;
             let observation = game.alloc_child_event_provenance(
                 event.provenance(), crate::events::EventKind::MarkersChanged);
             notification = notification.with_provenance(observation);

@@ -110,6 +110,9 @@ pub(crate) struct AdditionalTokenInstructions {
     pub entry: TokenEntryOptions,
     pub attack_player: Option<PlayerId>,
     pub attack_player_only: bool,
+    /// One preselected destination per attempted added token, in group order.
+    /// `Some` disables all destination prompts during original commitment.
+    pub prepared_attack_targets: Option<Vec<Option<crate::combat_state::AttackTarget>>>,
     pub blocking_attacker: Option<ObjectId>,
     pub initial_counters: Vec<(crate::object::CounterType, u32)>,
     pub cleanup: Option<TokenCleanupOptions>,
@@ -131,6 +134,7 @@ pub(crate) fn create_replacement_additional_tokens(
     use crate::events::tokens::TokenGroupKey;
     use super::create_token_copy::{attack_targets_for_player, choose_attack_target};
     let mut created_ids = Vec::new();
+    let mut attack_index = 0usize;
     for key in creation.group_keys() {
         let definition = match key {
             TokenGroupKey::Original => continue,
@@ -140,6 +144,11 @@ pub(crate) fn create_replacement_additional_tokens(
         let count = creation.group_count(key) as usize;
         let mut actual = 0u32;
         for _ in 0..count {
+            let prepared_attack = instructions.prepared_attack_targets.as_ref().map(|targets| {
+                targets.get(attack_index).cloned().ok_or_else(||
+                    ExecutionError::InternalError("added token lost its prepared attack destination".into()))
+            }).transpose()?;
+            attack_index += 1;
             let id = game.new_object_id();
             let mut token = game.object_from_token_definition(id, &definition, controller_id);
             token.zone = Zone::Command;
@@ -159,9 +168,15 @@ pub(crate) fn create_replacement_additional_tokens(
             for &exiled in &instructions.linked_exiles { game.add_exiled_with_source_link(entered, exiled); }
             if game.object(entered).is_some_and(|object| object.zone == Zone::Battlefield) {
                 apply_token_battlefield_entry(game, ctx, entered, controller_id, is_creature,
-                    instructions.entry, Zone::Command, entry.enters_tapped, events)?;
+                    if instructions.prepared_attack_targets.is_some() { TokenEntryOptions::default() } else { instructions.entry },
+                    Zone::Command, entry.enters_tapped, events)?;
                 if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
-                if let Some(player) = instructions.attack_player
+                if let Some(target) = prepared_attack {
+                    if let Some(target) = target
+                        && crate::effects::combat::can_enter_attacking(game, entered) {
+                        game.add_entering_attacker(entered, target);
+                    }
+                } else if let Some(player) = instructions.attack_player
                     && crate::effects::combat::can_enter_attacking(game, entered)
                 {
                     let target = if instructions.attack_player_only {

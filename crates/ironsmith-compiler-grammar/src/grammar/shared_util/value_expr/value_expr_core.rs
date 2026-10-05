@@ -20,6 +20,9 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return Some(quantity);
     }
     let offset = usize::from(words.first() == Some(&"the"));
+    if words.get(offset..offset+2) == Some(&["chosen", "number"][..]) {
+        return Some((Value::PendingPriorEffectMetric(ironsmith_core::PriorEffectMetricQuery::new(ironsmith_core::EffectMetricSource::Outcome, ironsmith_core::EffectMetric::Count).with_action(ironsmith_core::PriorEffectAction::ChosenNumber)), offset+2));
+    }
     // A named option is a vote-result scalar, not an object filter. Keeping
     // it as a Value lets ordinary arithmetic compose ("twice ... profit votes").
     if let Some(["number", "of", option, "vote" | "votes", ..]) = words.get(offset..)

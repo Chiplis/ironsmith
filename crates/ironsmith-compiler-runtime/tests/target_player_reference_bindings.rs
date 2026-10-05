@@ -780,3 +780,42 @@ fn all_illegal_damage_targets_fizzle_the_ring_clause_and_a_blinked_source_is_not
         assert_eq!(game.damage_on(returned), 0);
     }
 }
+
+#[test]
+fn an_illegal_damage_source_does_not_use_lki_to_deal_damage_but_the_ring_still_tempts() {
+    for definition in definitions("Breaking of the Fellowship") {
+        for blink in [false, true] {
+            let mut game = new_game();
+            let source = creature(&mut game, B, "Departing damage source", "{R}", 3);
+            let recipient = creature(&mut game, B, "Still legal recipient", "{G}", 2);
+            let sibling = creature(&mut game, C, "Wrong participant", "{R}", 7);
+            let mut dm = Choices {
+                targets: vec![Target::Object(source), Target::Object(recipient)],
+                ..Default::default()
+            };
+            cast(&mut game, &definition, &mut dm);
+            let departed = game
+                .move_object(source, Zone::Exile, ironsmith::events::EventCause::effect())
+                .unwrap();
+            if blink {
+                let returned = game
+                    .move_object(
+                        departed,
+                        Zone::Battlefield,
+                        ironsmith::events::EventCause::effect(),
+                    )
+                    .unwrap();
+                assert_ne!(returned, source);
+                game.object_mut(returned).unwrap().controller = C;
+            }
+            resolve(&mut game, &mut dm);
+            assert_eq!(game.damage_on(recipient), 0);
+            assert_eq!(game.damage_on(sibling), 0);
+            assert_eq!(
+                game.ring_temptations(A),
+                1,
+                "one target remains legal, using the exact departed first target's controller"
+            );
+        }
+    }
+}

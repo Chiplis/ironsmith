@@ -6111,3 +6111,16 @@ impl MayCastMatchingSpellWithoutPayingManaCostEffect {
         self
     }
 }
+
+/// A bounded numeric choice made while an instruction resolves. The limits
+/// are authored rules bounds, not a host-selected silent cap.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ChooseNumberEffect {
+    pub chooser: PlayerFilter,
+    pub min: u32,
+    pub max: u32,
+}
+impl ChooseNumberEffect {
+    pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self { Self { chooser, min, max } }
+}

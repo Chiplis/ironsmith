@@ -75,3 +75,21 @@ chosen black-on-X allocation as resolution evidence, separate from announced X
 and total black mana spent; both Soul Burn and Drain Life have independent capped
 actual-damage life-gain bodies. These are preserved design requirements, not
 source-coverage claims.
+
+## Review correction: announcement relation versus runtime receipt
+
+The first draft attempted to read a newly generated source tag while announcing
+the second target. Ordinary TargetOnly tags exist only during resolution, so that
+was not an announcement-time receipt. The correction keeps the typed shared-player
+relationship for the two adjacent explicit target slots, composing it with the
+distinct-object constraint. A polynomial singular-pair feasibility check rejects
+boards with only one creature per opponent. Runtime/mass recipients retain the
+source tag once the declaration has actually executed.
+
+Resolution rechecks the relation using the immediately preceding declared slot's
+current controller, or that exact ObjectId's departure LKI if gone. It never
+follows a stable-ID successor. The first slot itself remains illegal and produces
+no runtime source tag; therefore ExecuteWithSource cannot deal damage from its
+LKI. A surviving second slot permits the independent Ring instruction to resolve.
+An authored source-only departure/blink scenario isolates this from all-targets-
+illegal fizzle. No tests were run.

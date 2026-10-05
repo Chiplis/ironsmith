@@ -249,6 +249,16 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
     assert_effect_ast_variant_coverage(effect);
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &subject_verb.action {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                sources,
+                target,
+                ..
+            }) => {
+                for source in sources {
+                    visit(source);
+                }
+                visit(target);
+            }
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
                 recipients,
                 ..
@@ -1425,6 +1435,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
             amount, ..
         })
+        | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { amount, .. })
         | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
             amount,
             ..
@@ -1536,6 +1547,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
@@ -2171,6 +2183,11 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
 
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { sources, amount, target }) => {
+                let tag=crate::tag::CompilerReferenceTag::It.as_str();
+                value_references_tag(amount,tag) || target_references_tag(target,tag)
+                    || sources.iter().any(|source|target_references_tag(source,tag))
+            }
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { amount, recipients, object_groups, player_groups }) => {
                 let tag=crate::tag::CompilerReferenceTag::It.as_str();
                 value_references_tag(amount,tag) || recipients.iter().any(|target| target_references_tag(target,tag))

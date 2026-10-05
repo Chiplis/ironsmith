@@ -27,7 +27,7 @@ pub(super) fn apply_trait_replacement(
             if damage.is_unpreventable || damage.amount == 0 {
                 TraitApplyResult::Unchanged(event)
             } else {
-                queue_damage_prevented_event(game, &event, effect, &damage, damage.amount);
+                queue_damage_prevented_event(game, &event, effect, &damage, damage.amount)?;
                 TraitApplyResult::Prevented
             }
         }
@@ -46,7 +46,7 @@ pub(super) fn apply_trait_replacement(
             if prevented == 0 {
                 TraitApplyResult::Unchanged(event)
             } else {
-                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented)?;
                 TraitApplyResult::Modified(event.rewrap(damage.reduced(prevented)))
             }
         }
@@ -84,7 +84,7 @@ pub(super) fn apply_trait_replacement(
             if prevented == 0 {
                 TraitApplyResult::Unchanged(event)
             } else {
-                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented)?;
                 TraitApplyResult::Modified(event.rewrap(damage.reduced(prevented)))
             }
         }
@@ -105,7 +105,7 @@ pub(super) fn apply_trait_replacement(
             if prevented == 0 {
                 TraitApplyResult::Unchanged(event)
             } else {
-                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented)?;
                 TraitApplyResult::Modified(event.rewrap(damage.reduced(prevented)))
             }
         }
@@ -128,7 +128,7 @@ pub(super) fn apply_trait_replacement(
                 counters_to_remove
             };
             if prevented > 0 {
-                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented)?;
             }
             queue_prevention_follow_up(game,
                 crate::prevention::PreventionFollowUp {
@@ -167,7 +167,7 @@ pub(super) fn apply_trait_replacement(
                 damage.amount
             };
             if prevented > 0 {
-                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented)?;
             }
             queue_prevention_follow_up(game,
                 crate::prevention::PreventionFollowUp {
@@ -217,7 +217,7 @@ pub(super) fn apply_trait_replacement(
             }
             let prevented = damage.amount.saturating_sub(result.remaining);
             if prevented > 0 {
-                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented)?;
             }
             if prevented == 0 {
                 TraitApplyResult::Unchanged(event)
@@ -235,6 +235,9 @@ pub(super) fn apply_trait_replacement(
                 let modified = modify_token_groups_checked(game, effect, tokens, modification)?;
                 return Ok(TraitApplyResult::Modified(event.rewrap(modified)));
             }
+            if let Some(modified) = apply_damage_result_modification(game, &event, modification, effect)? {
+                return Ok(TraitApplyResult::Modified(modified));
+            }
             let modified = apply_trait_modification(game, &event, modification, effect);
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
@@ -251,6 +254,9 @@ pub(super) fn apply_trait_replacement(
                     create_tokens.scaled_token_groups(covers, |count| u128::from(count) * 2)?;
                 return Ok(TraitApplyResult::Modified(event.rewrap(modified)));
             }
+            if let Some(modified) = apply_damage_result_modification(game, &event, &EventModification::Multiply(2), effect)? {
+                return Ok(TraitApplyResult::Modified(modified));
+            }
             let modified = apply_trait_double(&event);
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
@@ -259,7 +265,7 @@ pub(super) fn apply_trait_replacement(
         }
 
         ReplacementAction::DoubleCounters { counter_type } => {
-            let modified = apply_trait_double_counters(&event, *counter_type);
+            let modified = apply_trait_double_counters(&event, *counter_type)?;
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
@@ -279,7 +285,7 @@ pub(super) fn apply_trait_replacement(
             additional,
         } => {
             let modified =
-                apply_trait_add_counters_to_placement(&event, *counter_type, *additional);
+                apply_trait_add_counters_to_placement(&event, *counter_type, *additional)?;
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
@@ -1036,10 +1042,11 @@ fn queue_damage_prevented_event(
     effect: &ReplacementEffect,
     damage: &crate::events::DamageEvent,
     amount: u32,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     if amount == 0 {
-        return;
+        return Ok(());
     }
+    crate::events::damage::checked_damage_count(u128::from(amount), "prevented damage amount")?;
     let mut prevented = crate::events::DamagePreventedEvent::new(
         damage.source,
         damage.target,
@@ -1061,6 +1068,7 @@ fn queue_damage_prevented_event(
             crate::provenance::ProvNodeId::default(),
         ),
     );
+    Ok(())
 }
 
 pub(super) fn apply_trait_enter_under_control(
@@ -1268,6 +1276,8 @@ fn modify_token_groups_checked(
     }
 }
 
+include!("damage_result_modification.rs");
+
 fn apply_trait_modification(
     game: &GameState,
     event: &Event,
@@ -1275,88 +1285,10 @@ fn apply_trait_modification(
     effect: &ReplacementEffect,
 ) -> Option<Event> {
     use crate::events::{
-        DamageEvent, DrawEvent, LifeGainEvent, PutCountersEvent, downcast_event,
+        DrawEvent, downcast_event,
     };
 
     match event.kind() {
-        EventKind::Damage => {
-            let damage = downcast_event::<DamageEvent>(event.inner())?;
-            let modified = match modification {
-                EventModification::Multiply(factor) => {
-                    damage.with_amount(damage.amount.saturating_mul(*factor))
-                }
-                EventModification::Add(delta) => {
-                    damage.with_amount(damage.amount.saturating_add_signed(*delta))
-                }
-                EventModification::Subtract(delta) => damage.reduced(*delta),
-                EventModification::SetTo(value) => damage.with_amount(*value),
-                EventModification::SetToAtLeast(value) => {
-                    let floor = resolve_value_for_replacement(value, game, effect.source);
-                    if damage.amount >= floor {
-                        return None;
-                    }
-                    damage.with_amount(floor)
-                }
-                EventModification::ReduceToZero => damage.prevented(),
-            };
-            Some(event.rewrap(modified))
-        }
-        EventKind::LifeGain => {
-            let life_gain = downcast_event::<LifeGainEvent>(event.inner())?;
-            let modified = match modification {
-                EventModification::Multiply(factor) => {
-                    life_gain.with_amount(life_gain.amount.saturating_mul(*factor))
-                }
-                EventModification::Add(delta) => {
-                    life_gain.with_amount(life_gain.amount.saturating_add_signed(*delta))
-                }
-                EventModification::Subtract(delta) => {
-                    life_gain.with_amount(life_gain.amount.saturating_sub(*delta))
-                }
-                EventModification::SetTo(value) => life_gain.with_amount(*value),
-                EventModification::SetToAtLeast(value) => {
-                    let floor = resolve_value_for_replacement(value, game, effect.source);
-                    life_gain.with_amount(life_gain.amount.max(floor))
-                }
-                EventModification::ReduceToZero => life_gain.with_amount(0),
-            };
-            Some(event.rewrap(modified))
-        }
-        EventKind::LifeLoss => {
-            let life_loss = downcast_event::<crate::events::LifeLossEvent>(event.inner())?;
-            let amount = match modification {
-                EventModification::Multiply(factor) => life_loss.amount.saturating_mul(*factor),
-                EventModification::Add(delta) => life_loss.amount.saturating_add_signed(*delta),
-                EventModification::Subtract(delta) => life_loss.amount.saturating_sub(*delta),
-                EventModification::SetTo(value) => *value,
-                EventModification::SetToAtLeast(value) => {
-                    life_loss.amount.max(resolve_value_for_replacement(value, game, effect.source))
-                }
-                EventModification::ReduceToZero => 0,
-            };
-            Some(event.rewrap(life_loss.with_amount(amount)))
-        }
-        EventKind::PutCounters => {
-            let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
-            let modified = match modification {
-                EventModification::Multiply(factor) => {
-                    put_counters.with_count(put_counters.count.saturating_mul(*factor))
-                }
-                EventModification::Add(delta) => {
-                    put_counters.with_count(put_counters.count.saturating_add_signed(*delta))
-                }
-                EventModification::Subtract(delta) => {
-                    put_counters.with_count(put_counters.count.saturating_sub(*delta))
-                }
-                EventModification::SetTo(value) => put_counters.with_count(*value),
-                EventModification::SetToAtLeast(value) => {
-                    let floor = resolve_value_for_replacement(value, game, effect.source);
-                    put_counters.with_count(put_counters.count.max(floor))
-                }
-                EventModification::ReduceToZero => put_counters.with_count(0),
-            };
-            Some(event.rewrap(modified))
-        }
         EventKind::RemoveCounters => {
             let removal = downcast_event::<crate::events::RemoveCountersEvent>(event.inner())?;
             let count = match modification {
@@ -1409,26 +1341,10 @@ fn apply_trait_modification(
 
 fn apply_trait_double(event: &Event) -> Option<Event> {
     use crate::events::{
-        DamageEvent, DrawEvent, LifeGainEvent, PutCountersEvent, downcast_event,
+        DrawEvent, downcast_event,
     };
 
     match event.kind() {
-        EventKind::Damage => {
-            let damage = downcast_event::<DamageEvent>(event.inner())?;
-            Some(event.rewrap(damage.doubled()))
-        }
-        EventKind::LifeGain => {
-            let life_gain = downcast_event::<LifeGainEvent>(event.inner())?;
-            Some(event.rewrap(life_gain.doubled()))
-        }
-        EventKind::LifeLoss => {
-            let life_loss = downcast_event::<crate::events::LifeLossEvent>(event.inner())?;
-            Some(event.rewrap(life_loss.with_amount(life_loss.amount.saturating_mul(2))))
-        }
-        EventKind::PutCounters => {
-            let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
-            Some(event.rewrap(put_counters.doubled()))
-        }
         EventKind::Draw => {
             let draw = downcast_event::<DrawEvent>(event.inner())?;
             Some(event.rewrap(draw.doubled()))
@@ -1437,31 +1353,31 @@ fn apply_trait_double(event: &Event) -> Option<Event> {
     }
 }
 
-fn apply_trait_double_counters(event: &Event, counter_type: Option<CounterType>) -> Option<Event> {
+fn apply_trait_double_counters(event: &Event, counter_type: Option<CounterType>) -> Result<Option<Event>, crate::effects::ExecutionError> {
     use crate::events::{EnterBattlefieldEvent, PutCountersEvent, downcast_event};
 
     match event.kind() {
         EventKind::PutCounters => {
-            let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
+            let Some(put_counters) = downcast_event::<PutCountersEvent>(event.inner()) else { return Ok(None); };
             if counter_type.is_none_or(|ct| ct == put_counters.counter_type) {
-                Some(event.rewrap(put_counters.doubled()))
+                Ok(Some(event.rewrap(put_counters.with_count(crate::events::damage::checked_damage_amount(put_counters.maximum_count.map_or(u128::from(put_counters.count) * 2, |maximum| (u128::from(put_counters.count) * 2).min(u128::from(maximum))), "doubled counter result")?))))
             } else {
-                None
+                Ok(None)
             }
         }
         EventKind::EnterBattlefield => {
-            let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
+            let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event.inner()) else { return Ok(None); };
             let mut doubled = etb.clone();
             let mut changed = false;
             for (existing_type, count) in &mut doubled.enters_with_counters {
                 if counter_type.is_none_or(|ct| ct == *existing_type) {
-                    *count = count.saturating_mul(2);
+                    *count = crate::events::damage::checked_damage_amount(u128::from(*count) * 2, "doubled entry counters")?;
                     changed = true;
                 }
             }
-            changed.then(|| event.rewrap(doubled))
+            Ok(changed.then(|| event.rewrap(doubled)))
         }
-        _ => None,
+        _ => Ok(None),
     }
 }
 
@@ -1497,36 +1413,31 @@ fn apply_trait_add_counters_to_placement(
     event: &Event,
     counter_type: Option<CounterType>,
     additional: i64,
-) -> Option<Event> {
+) -> Result<Option<Event>, crate::effects::ExecutionError> {
     use crate::events::{EnterBattlefieldEvent, PutCountersEvent, downcast_event};
 
     match event.kind() {
         EventKind::PutCounters => {
-            let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
+            let Some(put_counters) = downcast_event::<PutCountersEvent>(event.inner()) else { return Ok(None); };
             if counter_type.is_none_or(|ct| ct == put_counters.counter_type)
                 && put_counters.count > 0
             {
-                Some(
-                    event.rewrap(
-                        put_counters.with_count(
-                            (i64::from(put_counters.count).saturating_add(additional))
-                                .clamp(0, i64::from(u32::MAX)) as u32,
-                        ),
-                    ),
-                )
+                let total = (i128::from(put_counters.count) + i128::from(additional)).max(0) as u128;
+                let total = put_counters.maximum_count.map_or(total, |maximum| total.min(u128::from(maximum)));
+                Ok(Some(event.rewrap(put_counters.with_count(crate::events::damage::checked_damage_amount(total, "counter result addition")?))))
             } else {
-                None
+                Ok(None)
             }
         }
         EventKind::EnterBattlefield => {
-            let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
+            let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event.inner()) else { return Ok(None); };
             let mut increased = etb.clone();
             // Multiple contributions to one counter type are a single
             // placement. Apply the additive adjustment once to that total.
             let mut counters: Vec<(CounterType, u32)> = Vec::new();
             for (kind, count) in increased.enters_with_counters.drain(..) {
                 if let Some((_, total)) = counters.iter_mut().find(|(existing, _)| *existing == kind) {
-                    *total = total.saturating_add(count);
+                    *total = crate::events::damage::checked_damage_amount(u128::from(*total) + u128::from(count), "entry counter total")?;
                 } else {
                     counters.push((kind, count));
                 }
@@ -1535,15 +1446,13 @@ fn apply_trait_add_counters_to_placement(
             let mut changed = false;
             for (existing_type, count) in &mut increased.enters_with_counters {
                 if *count > 0 && counter_type.is_none_or(|ct| ct == *existing_type) {
-                    *count = i64::from(*count)
-                        .saturating_add(additional)
-                        .clamp(0, i64::from(u32::MAX)) as u32;
+                    *count = crate::events::damage::checked_damage_amount((i128::from(*count) + i128::from(additional)).max(0) as u128, "entry counter addition")?;
                     changed = true;
                 }
             }
-            changed.then(|| event.rewrap(increased))
+            Ok(changed.then(|| event.rewrap(increased)))
         }
-        _ => None,
+        _ => Ok(None),
     }
 }
 
@@ -1975,6 +1884,31 @@ fn resolve_value_for_replacement(
     crate::effects::helpers::resolve_value(game, count, &ctx)
         .unwrap_or(0)
         .max(0) as u32
+}
+
+fn resolve_value_for_replacement_checked(
+    count: &crate::effect::Value,
+    game: &GameState,
+    source: crate::ids::ObjectId,
+) -> Result<u32, crate::effects::ExecutionError> {
+    let controller = game
+        .object(source)
+        .map(|o| game.controller_of(o))
+        .unwrap_or(crate::ids::PlayerId::from_index(0));
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm);
+
+    if let Some(source_obj) = game.object(source) {
+        // CR 107.3m: without a cast, the X in the object's own mana cost is 0.
+        ctx.x_value = source_obj.own_entry_x_value();
+        ctx.optional_costs_paid = source_obj.optional_costs_paid.clone();
+        if !source_obj.cast_tagged_objects.is_empty() {
+            ctx = ctx.with_tagged_objects(source_obj.cast_tagged_objects.clone());
+        }
+    }
+
+    Ok(crate::effects::helpers::resolve_value(game, count, &ctx)?.max(0) as u32)
 }
 
 /// A count of the as-enters revealed collection needs the prepared choice.

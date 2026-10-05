@@ -92,17 +92,14 @@ fn attack_requirement_score_for_target(
         .filter(|player| matches!(target, AttackTarget::Player(defender) if defender == player))
         .count();
 
-    for effect in &game.effect_store.goad_effects {
-        if effect.creature == attacker.id && effect.is_active(game, game.turn.turn_number) {
-            score += 1;
-            score += usize::from(attacks_player_other_than(effect.goaded_by));
-        }
+    // Use the same authoritative designation set as legal-attack previews.
+    // Static matching predicates (including attached and same-name subjects)
+    // impose both goad requirements without granting an ability to the victim.
+    for goading_player in game.active_goaders_for(attacker.id) {
+        score += 1;
+        score += usize::from(attacks_player_other_than(goading_player));
     }
     for ability in abilities {
-        if let Some(goading_player) = ability.goaded_by_player(game, attacker.id, controller) {
-            score += 1;
-            score += usize::from(attacks_player_other_than(goading_player));
-        }
         if let Some(required_player) = ability.required_attack_player(game, attacker.id, controller)
         {
             score += usize::from(

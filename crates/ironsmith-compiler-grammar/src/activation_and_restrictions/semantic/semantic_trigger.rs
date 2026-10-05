@@ -10,6 +10,7 @@ mod attachment_transitions;
 #[path = "phasing_transitions.rs"]
 mod phasing_transitions;
 mod permanent_lifecycle;
+mod passive_damage_recipients;
 #[path = "milling_transitions.rs"]
 mod milling_transitions;
 #[path = "player_attack_declarations.rs"]
@@ -3618,6 +3619,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             }
         }
     }
+
+    if let Some(trigger) = passive_damage_recipients::parse(tokens)? { return Ok(trigger); }
 
     if let Some((recipient_end_word, source_start_word)) = passive_damage_by_word_span(&words) {
         let recipient_end_token =

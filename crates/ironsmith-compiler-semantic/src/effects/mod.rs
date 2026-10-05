@@ -10,7 +10,7 @@ pub use ironsmith_core::{
     CantEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
     ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
     ChooseModeEffect as CoreChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
-    ChooseNumberAtRandomEffect, ChooseObjectsEffect, ChoosePlayerEffect,
+    ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClearGoadEffect, ClearSuspectedEffect,
     CombatDamagePreventionTarget, ConditionalEffect as CoreConditionalEffect, ConniveEffect,
     ConspireCostEffect, ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule,
@@ -231,4 +231,5 @@ pub mod mana {
 }
 
 pub use ironsmith_core::RegisterDamageMultiplierEffect;
-pub use ironsmith_core::DealDamageToRecipientsEffect;
+
+pub use ironsmith_core::DealDamageBySourcesEffect;

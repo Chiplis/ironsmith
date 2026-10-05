@@ -1,3 +1,4 @@
+mod multi_source_damage;
 mod shared_amount_recipient_set;
 use super::super::grammar::effects::fanout_shapes as fanout_grammar;
 use super::super::grammar::effects::parse_serial_damage_fanout_tokens;
@@ -1015,6 +1016,9 @@ fn parse_conditional_damage_pair_sentence(
 pub fn parse_compound_damage_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = multi_source_damage::parse(tokens)? {
+        return Ok(Some(effects));
+    }
     if let Some(effects) = shared_amount_recipient_set::parse(tokens)? {
         return Ok(Some(effects));
     }
@@ -1149,6 +1153,9 @@ fn bind_damage_amount_to_removed_counter_count(
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
                 amount,
                 ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
             }) => Some(amount),
             _ => None,
         };
@@ -1185,6 +1192,7 @@ fn is_removed_counter_damage_fanout_member(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { .. })
         ),
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }

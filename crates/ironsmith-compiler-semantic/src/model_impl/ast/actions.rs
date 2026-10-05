@@ -462,6 +462,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Choices(ChoiceActionAst::ChooseCardType { options }) => {
                 f.debug_tuple("ChooseCardType").field(options).finish()
             }
+            Self::Choices(ChoiceActionAst::ChooseNumber { min, max }) => f.debug_struct("ChooseNumber").field("min", min).field("max", max).finish(),
             Self::Choices(ChoiceActionAst::ChooseNamedOption { options }) => {
                 f.debug_tuple("ChooseNamedOption").field(options).finish()
             }
@@ -2036,6 +2037,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::Damage(DamageActionAst::DealDamage { amount, target, .. }) => f
                 .debug_struct("DealDamage")
+                .field("amount", amount)
+                .field("target", target)
+                .finish(),
+            Self::Damage(DamageActionAst::DealDamageBySources {
+                sources,
+                amount,
+                target,
+            }) => f
+                .debug_struct("DealDamageBySources")
+                .field("sources", sources)
                 .field("amount", amount)
                 .field("target", target)
                 .finish(),

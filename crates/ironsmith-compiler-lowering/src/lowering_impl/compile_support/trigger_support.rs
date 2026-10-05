@@ -419,6 +419,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::ThisAttacksAndIsntBlocked => Trigger::this_attacks_and_isnt_blocked(),
         TriggerSpec::ThisAttacksWhileSaddled => Trigger::this_attacks_while_saddled(),
+        TriggerSpec::ThisAttacksPlayerWithMostLife => Trigger::this_attacks_player_with_most_life(),
         TriggerSpec::Attacks(filter) => Trigger::attacks(filter),
         TriggerSpec::AttacksAndIsntBlocked(filter) => Trigger::attacks_and_isnt_blocked(filter),
         TriggerSpec::AttacksAndIsntBlockedOneOrMore(filter) => {
@@ -729,6 +730,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         } => {
             Trigger::ability_triggered_qualified(another, source_filter, caused_by_source_entering)
         }
+        TriggerSpec::DamageReceived { target, combat, minimum, single_source } => Trigger::damage_received(target, combat, minimum, single_source),
         TriggerSpec::ThisIsDealtDamage => Trigger::is_dealt_damage(ChooseSpec::Source),
         TriggerSpec::ThisIsDealtCombatDamage => Trigger::is_dealt_combat_damage(ChooseSpec::Source),
         TriggerSpec::IsDealtDamage(filter) => Trigger::is_dealt_damage(ChooseSpec::Object(filter)),
@@ -1482,6 +1484,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::KeywordActionFromSource { .. }
         | TriggerSpec::WinsClash { .. }
         | TriggerSpec::Expend { .. } => true,
+        TriggerSpec::DamageReceived { target, .. } => matches!(target.base(), ChooseSpec::Player(_) | ChooseSpec::SpecificPlayer(_) | ChooseSpec::SourceController),
         TriggerSpec::StateBased { .. } => false,
         TriggerSpec::PlayerBecomesTargeted { .. } | TriggerSpec::PlayerTurnsFaceUp { .. } => true,
         TriggerSpec::BecomesTargetedBySourceController {
@@ -1551,6 +1554,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             | TriggerSpec::PlayersLoseLifeOneOrMore(_)
             | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
             | TriggerSpec::ThisIsDealtDamage
+            | TriggerSpec::DamageReceived { .. }
             | TriggerSpec::ThisIsDealtCombatDamage
             | TriggerSpec::IsDealtDamage(_)
             | TriggerSpec::IsDealtCombatDamage(_)

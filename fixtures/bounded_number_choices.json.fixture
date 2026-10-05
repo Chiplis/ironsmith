@@ -1,0 +1,88 @@
+[
+  {
+    "name": "By Invitation Only",
+    "oracle_id": "d64e96bf-6815-462c-93b4-c9c22dc43eda",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose a number between 0 and 13. Each player sacrifices that many creatures of their choice.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Expel the Interlopers",
+    "oracle_id": "744b7e93-c893-4770-a3bb-6a45b7f8e4f7",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose a number between 0 and 10. Destroy all creatures with power greater than or equal to the chosen number.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Shapeshifter",
+    "oracle_id": "82a6d89d-9215-4540-b7d5-26cdd6afb05b",
+    "mana_cost": "{6}",
+    "type_line": "Artifact Creature \u2014 Shapeshifter",
+    "oracle_text": "As this creature enters, choose a number between 0 and 7.\nAt the beginning of your upkeep, you may choose a number between 0 and 7.\nShapeshifter's power is equal to the last chosen number and its toughness is equal to 7 minus that number.",
+    "power": "*",
+    "toughness": "7-*",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Persistent entry/reselection, unbounded host numeric choice, additional-cost choice or full secondary predicate/body needs a distinct complete contract."
+  },
+  {
+    "name": "Talion, the Kindly Lord",
+    "oracle_id": "a019e34d-00c4-4687-9d41-fe550bf1dbdc",
+    "mana_cost": "{2}{U}{B}",
+    "type_line": "Legendary Creature \u2014 Faerie Noble",
+    "oracle_text": "Flying\nAs Talion enters, choose a number between 1 and 10.\nWhenever an opponent casts a spell with mana value, power, or toughness equal to the chosen number, that player loses 2 life and you draw a card.",
+    "power": "3",
+    "toughness": "4",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Persistent entry/reselection, unbounded host numeric choice, additional-cost choice or full secondary predicate/body needs a distinct complete contract."
+  },
+  {
+    "name": "Sanctum Prelate",
+    "oracle_id": "7e0cdba8-45e0-4fe5-b440-2d8fcf4d6b2b",
+    "mana_cost": "{1}{W}{W}",
+    "type_line": "Creature \u2014 Human Cleric",
+    "oracle_text": "As this creature enters, choose a number.\nNoncreature spells with mana value equal to the chosen number can't be cast.",
+    "power": "2",
+    "toughness": "2",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Persistent entry/reselection, unbounded host numeric choice, additional-cost choice or full secondary predicate/body needs a distinct complete contract."
+  },
+  {
+    "name": "Void",
+    "oracle_id": "fdb28fd3-70fb-43c3-b367-9cf0d2c46e06",
+    "mana_cost": "{3}{B}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose a number. Destroy all artifacts and creatures with mana value equal to that number. Then target player reveals their hand and discards all nonland cards with mana value equal to the number.",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Persistent entry/reselection, unbounded host numeric choice, additional-cost choice or full secondary predicate/body needs a distinct complete contract."
+  },
+  {
+    "name": "Liquid Fire",
+    "oracle_id": "867d603d-3aa4-4160-9112-a18f795f3d53",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "As an additional cost to cast this spell, choose a number between 0 and 5.\nLiquid Fire deals X damage to target creature and 5 minus X damage to that creature's controller, where X is the chosen number.",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Persistent entry/reselection, unbounded host numeric choice, additional-cost choice or full secondary predicate/body needs a distinct complete contract."
+  },
+  {
+    "name": "Scrying Glass",
+    "oracle_id": "ca16b32c-3f1e-4f8d-821a-064f922c45d8",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "oracle_text": "{3}, {T}: Choose a number greater than 0 and a color. Target opponent reveals their hand. If that opponent reveals exactly the chosen number of cards of the chosen color, you draw a card.",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Persistent entry/reselection, unbounded host numeric choice, additional-cost choice or full secondary predicate/body needs a distinct complete contract."
+  }
+]

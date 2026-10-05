@@ -69,6 +69,8 @@ pub enum SimultaneousTriggerKey {
     DamageSource(ObjectId),
     /// Damage assignments are grouped independently for each recipient.
     DamageTarget(DamageTarget),
+    /// A single damaging source and a single recipient, independently of other assignments.
+    DamageSourceTarget(ObjectId, DamageTarget),
 }
 
 /// Context provided to trigger matchers for determining if they match an event.

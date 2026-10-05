@@ -5014,3 +5014,31 @@ pub struct DealDamageToRecipientsEffect {
     pub amount: Value,
     pub recipients: Vec<ChooseSpec>,
 }
+
+/// All sources deal their own evaluated amount in one simultaneous occurrence.
+/// The complete source set and each source's amount are captured before damage.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct DealDamageBySourcesEffect {
+    pub sources: Vec<ChooseSpec>,
+    /// Original authored groups for declaration-aware presentation. Execution
+    /// uses the corresponding captured `sources`, never chooses again.
+    pub source_declarations: Vec<ChooseSpec>,
+    pub amount: Value,
+    pub target: ChooseSpec,
+}
+
+impl DealDamageBySourcesEffect {
+    pub fn new(sources: Vec<ChooseSpec>, amount: Value, target: ChooseSpec) -> Self {
+        Self {
+            sources,
+            source_declarations: Vec::new(),
+            amount,
+            target,
+        }
+    }
+    pub fn with_source_declarations(mut self, declarations: Vec<ChooseSpec>) -> Self {
+        self.source_declarations = declarations;
+        self
+    }
+}

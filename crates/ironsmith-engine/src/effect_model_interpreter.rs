@@ -238,6 +238,11 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::DealDamageBySourcesEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::DealDamageEffect>(&effect) {
         return Ok(converted);
     }
@@ -1786,6 +1791,9 @@ where
             payload.target.clone(),
             payload.count.clone(),
         )));
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::ChooseNumberEffect>(&effect) {
+        return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseNumberAtRandomEffect>(&effect) {
         return Ok(Effect::new(

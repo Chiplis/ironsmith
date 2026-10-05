@@ -76,17 +76,19 @@ impl DamagePreventedEvent {
         self
     }
 
-    pub fn merge_simultaneous(&mut self, other: Self) -> bool {
+    pub fn merge_simultaneous(&mut self, other: Self) -> Result<bool, crate::effects::ExecutionError> {
         if self.prevention_shield.is_none()
             || self.prevention_shield != other.prevention_shield
             || self.prevention_source != other.prevention_source
             || self.prevention_controller != other.prevention_controller
         {
-            return false;
+            return Ok(false);
         }
-        self.amount = self.amount.saturating_add(other.amount);
+        let total = u128::from(self.amount) + u128::from(other.amount);
+        super::checked_damage_count(total, "simultaneous prevented damage total")?;
+        self.amount = super::checked_damage_amount(total, "simultaneous prevented damage total")?;
         self.applications.extend(other.applications);
-        true
+        Ok(true)
     }
 }
 

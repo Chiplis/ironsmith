@@ -137,6 +137,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
                     | TriggerSpec::PlayersLoseLifeOneOrMore(_)
                     | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
                     | TriggerSpec::ThisIsDealtDamage
+                    | TriggerSpec::DamageReceived { .. }
                     | TriggerSpec::ThisIsDealtCombatDamage
                     | TriggerSpec::IsDealtDamage(_)
                     | TriggerSpec::IsDealtCombatDamage(_)
@@ -998,6 +999,14 @@ fn rebind_noun_excluded_antecedent_references(effect: &mut EffectAst, env: &Refe
                 SubjectVerbActionAst::Control(ControlActionAst::Attach { object, .. }) => {
                     (vec![object], true)
                 }
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                    sources,
+                    target,
+                    ..
+                }) => (
+                    sources.iter_mut().chain(std::iter::once(target)).collect(),
+                    false,
+                ),
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
                     recipients,
                     ..
@@ -1253,7 +1262,8 @@ fn resolve_definite_object_references_in_effect(
             }) => {
                 resolve_definite_object_target_from_bindings(target, bindings);
             }
-            SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget {
                 target,
                 ..
@@ -1879,6 +1889,18 @@ fn advance_reference_frame_for_effect(
                         // even if its affected permanent set is empty.
                         frame.last_player_filter = Some(as_followup_player_alias(player.clone()));
                     }
+                }
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { sources, target, .. }) => {
+                    let previous_auto_tag=frame.auto_tag_object_targets;
+                    for source in sources {
+                        let (spec,_)=resolve_target_spec_with_choices(source,&lowering_reference_frame(frame))?;
+                        if spec.is_target() {
+                            frame.auto_tag_object_targets=true;
+                            maybe_tag_target(source,frame,id_gen,"damage_source")?;
+                        }
+                    }
+                    frame.auto_tag_object_targets=previous_auto_tag;
+                    maybe_tag_target(target, frame, id_gen, "damaged")?;
                 }
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. }) => {
                     // A union is not a new singular object/player antecedent.
@@ -2790,6 +2812,7 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                     player,
+                    filter,
                     all_tag,
                     match_tag,
                     ..
@@ -2801,6 +2824,13 @@ fn advance_reference_frame_for_effect(
                     // match as ordinary object memory while preserving the public
                     // revealed alias for later typed collection counts.
                     remember_public_revealed_alias(frame, Some(all_tag));
+                    // A definite later card description names this matched
+                    // result even after another instruction replaces ordinary
+                    // object memory. The full reveal set has a separate alias.
+                    let binding = ObjectTargetBinding::new(match_tag.key.clone(), filter);
+                    let bindings = std::sync::Arc::make_mut(&mut frame.recent_object_target_bindings);
+                    bindings.retain(|existing| existing.tag != binding.tag);
+                    bindings.push(binding);
                     frame.last_object_tag = Some(match_tag.clone().into());
                 }
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { filter, player, .. }) => {
@@ -4425,6 +4455,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(subject_verb) => matches!(
             subject_verb.action,
             SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
+                | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. })
                 | SubjectVerbActionAst::ZoneMoves(
@@ -4468,6 +4499,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
+| SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { .. })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { .. })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
                 | SubjectVerbActionAst::Stack(StackActionAst::Counter { .. })
@@ -4586,6 +4618,7 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
     for action in [
         PriorEffectAction::Cast,
         PriorEffectAction::Chosen,
+        PriorEffectAction::ChosenNumber,
         PriorEffectAction::Connived,
         PriorEffectAction::Countered,
         PriorEffectAction::CountersPut,
@@ -4749,6 +4782,9 @@ fn replace_delayed_prevention_metric_with_event_value(effect: &mut EffectAst) {
 }
 
 fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectAction) -> bool {
+    if action == PriorEffectAction::ChosenNumber {
+        return matches!(effect, EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. }), .. }));
+    }
     if let EffectAst::MoveTaggedGroupToZone { zone, .. } = effect {
         return matches!(
             (action, zone),
@@ -4833,6 +4869,7 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
         ),
@@ -5213,6 +5250,10 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         })
         | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount: count, .. })
         | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+            amount: count,
+            ..
+        })
+        | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
             amount: count,
             ..
         })
@@ -6273,6 +6314,9 @@ fn resolve_effect_result_values_in_fields(
                 amount,
                 ..
             })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                amount, ..
+            })
             | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
                 amount,
                 ..
@@ -6415,6 +6459,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
@@ -7546,6 +7591,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
@@ -7652,6 +7698,18 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             ) => {
                 bind_unresolved_it_in_tag(&mut tag.key, seed_tag)
                     + bind_unresolved_it_in_filter(filter, seed_tag)
+            }
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
+                sources,
+                amount,
+                target,
+            }) => {
+                bind_unresolved_it_in_value(amount, seed_tag)
+                    + bind_unresolved_it_in_target(target, seed_tag)
+                    + sources
+                        .iter_mut()
+                        .map(|source| bind_unresolved_it_in_target(source, seed_tag))
+                        .sum::<usize>()
             }
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
                 amount,
@@ -11737,3 +11795,21 @@ mod milling_count_tests;
 #[cfg(test)]
 #[path = "tap_cost_quantity_tests.rs"]
 mod tap_cost_quantity_tests;
+
+#[cfg(test)]
+#[test]
+fn definite_consult_match_survives_a_damage_recipient_and_keeps_reveal_set_separate() {
+    use crate::cards::builders::{LibraryConsultModeAst,LibraryConsultStopRuleAst,ReturnControllerAst};
+    let mut nonland=ObjectFilter::default();nonland.excluded_card_types.push(crate::types::CardType::Land);
+    let consult=EffectAst::subject_verb_consult_top_of_library(PlayerAst::You,LibraryConsultModeAst::Reveal,
+        nonland.clone(),LibraryConsultStopRuleAst::MatchCount(Value::Fixed(1)),
+        crate::tag::TagRef::of("consult_all"),crate::tag::TagRef::of("consult_hit"));
+    let damage=EffectAst::subject_verb_damage(Value::Fixed(5),TargetAst::AnyTarget(Some(crate::cards::builders::TextSpan::synthetic())));
+    let movement=EffectAst::subject_verb_move_to_zone(TargetAst::Object(nonland,None,Some(crate::cards::builders::TextSpan::synthetic())),
+        crate::zone::Zone::Hand,false,ReturnControllerAst::Owner,false,None);
+    let annotated=annotate_effect_sequence(&[consult,damage,movement],&ReferenceImports::default(),Default::default(),IdGenContext::default()).unwrap();
+    let EffectAst::SubjectVerb(subject)=&annotated.effects[2].effect else {panic!("{annotated:?}")};
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone{target,..})=&subject.action else {panic!("{subject:?}")};
+    assert!(matches!(target,TargetAst::Tagged(tag,_) if tag.as_str()=="consult_hit"),"{target:?}");
+    assert_ne!(format!("{target:?}"),"consult_all");
+}

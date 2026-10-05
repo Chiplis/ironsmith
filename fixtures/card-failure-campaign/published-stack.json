@@ -675,6 +675,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/813"
+    },
+    {
+      "stage": 48,
+      "branch": "fix/card-failures-48-causal-extrema-and-permission-families",
+      "base": "fix/card-failures-47-action-history-and-payment-roots",
+      "source_integration_commit": "e01c1550d37bf0f682249895f15d7290c2803ea2",
+      "remote_commit": "8431ca193229c674de53889cc173e82659f3e7b2",
+      "tree": "5f6fd5e750e01001af88947081bbe59b3f703c6c",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 814,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/814"
     }
   ]
 }

@@ -83,6 +83,7 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
         return Some(tag);
     }
     if matches!(trigger, TriggerSpec::PlayerBecomesTargeted { .. }) { return None; }
+    if matches!(trigger, TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Player(_), .. }) { return None; }
     if phase_step_trigger_has_no_object_reference(trigger) {
         return None;
     }
@@ -184,7 +185,8 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
     }
     if matches!(
         trigger,
-        TriggerSpec::ThisIsDealtDamage
+        TriggerSpec::DamageReceived { .. }
+            | TriggerSpec::ThisIsDealtDamage
             | TriggerSpec::ThisIsDealtCombatDamage
             | TriggerSpec::IsDealtDamage(_)
             | TriggerSpec::IsDealtCombatDamage(_)
@@ -214,10 +216,14 @@ fn watched_permanent(trigger: &TriggerSpec) -> Option<WatchedPermanent> {
         TriggerSpec::ThisBecomesTapped
         | TriggerSpec::ThisBecomesUntapped
         | TriggerSpec::ThisAttacks
+        | TriggerSpec::ThisAttacksPlayerWithMostLife
         | TriggerSpec::ThisBlocks
         | TriggerSpec::ThisIsDealtDamage
         | TriggerSpec::ThisIsDealtCombatDamage => return Some(WatchedPermanent::Source),
-        TriggerSpec::PermanentBecomesTapped(filter)
+        TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Source, .. } => return Some(WatchedPermanent::Source),
+        TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Object(filter), .. } if filter.source => return Some(WatchedPermanent::Source),
+        TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Object(filter), .. }
+        | TriggerSpec::PermanentBecomesTapped(filter)
         | TriggerSpec::PermanentBecomesTappedOneOrMore(filter)
         | TriggerSpec::PermanentBecomesUntapped { filter, .. }
         | TriggerSpec::PlayerChangesTapState { filter, .. }

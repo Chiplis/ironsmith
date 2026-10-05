@@ -67,6 +67,7 @@ pub(crate) fn execute_life_changes(
             outcomes.push(complete_life_original(game, ctx, receipt)?);
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         }
+        crate::events::damage::checked_damage_count(outcomes.iter().filter_map(|outcome|outcome.as_count()).map(|count| count.max(0) as u128).sum(), "simultaneous life outcome total")?;
         Ok(EffectOutcome::aggregate_summing_counts(outcomes))
     })();
     let pending = ctx.decision_maker.awaiting_choice();
@@ -154,6 +155,17 @@ pub(crate) fn prepare_life_change(
     process_trait_event_with_execution_context(game, event, ctx)
 }
 
+fn check_life_representation(game: &GameState, player: crate::PlayerId, amount: u32, gain: bool) -> Result<(), ExecutionError> {
+    crate::events::damage::checked_damage_count(u128::from(amount), "life change outcome")?;
+    let current = game.player(player).ok_or(ExecutionError::PlayerNotFound(player))?.life;
+    let next = i64::from(current) + if gain { i64::from(amount) } else { -i64::from(amount) };
+    i32::try_from(next).map_err(|_| ExecutionError::ResourceLimitExceeded {
+        resource: "signed life total magnitude", requested: u128::from(next.unsigned_abs()),
+        maximum: if next < 0 { 1u128 << 31 } else { i32::MAX as u128 },
+    })?;
+    Ok(())
+}
+
 fn commit_life_change(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -172,6 +184,7 @@ fn commit_life_change(
                 if gain.amount == 0 {
                     return Ok(EffectOutcome::count(0));
                 }
+                if game.can_gain_life(gain.player) { check_life_representation(game, gain.player, gain.amount, true)?; }
                 let actual = game.gain_life(gain.player, gain.amount);
                 (
                     actual,
@@ -192,6 +205,7 @@ fn commit_life_change(
                     } else {
                         loss.amount
                     };
+                if game.can_lose_life(loss.player) { check_life_representation(game, loss.player, amount, false)?; }
                 let actual = game.lose_life(loss.player, amount);
                 (
                     actual,
@@ -217,7 +231,7 @@ fn commit_life_change(
             {
                 notification = notification.with_source_snapshot(snapshot.clone());
             }
-            Ok(EffectOutcome::count(actual as i32).with_event(notification))
+            Ok(EffectOutcome::count(crate::events::damage::checked_damage_count(u128::from(actual), "life change outcome")?).with_event(notification))
         }
         TraitEventResult::Replaced {
             effects,

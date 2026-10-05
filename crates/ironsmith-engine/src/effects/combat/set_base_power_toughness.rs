@@ -1,8 +1,7 @@
 //! Set base power/toughness effect implementation.
 
-use crate::card::PtValue;
 use crate::continuous::{EffectTarget, Modification, PtSublayer};
-use crate::effect::{Effect, EffectOutcome, Until, Value};
+use crate::effect::{Effect, EffectOutcome, Value};
 use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
@@ -27,16 +26,9 @@ impl EffectExecutor for SetBasePowerToughnessEffect {
         if !game.current_is_creature(target_id) {
             return Ok(EffectOutcome::target_invalid());
         }
-        if matches!(self.duration, Until::Forever) {
-            let target = game
-                .object_mut(target_id)
-                .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-            target.base_power = Some(PtValue::Fixed(base_power));
-            target.base_toughness = Some(PtValue::Fixed(base_toughness));
-            game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
-            return Ok(EffectOutcome::resolved());
-        }
-
+        // An undated resolution effect still belongs in layer 7b. Rewriting
+        // the object's copiable base fields would make later copies inherit
+        // this assignment and would order it incorrectly against copy effects.
         let apply = ApplyContinuousEffect::new(
             EffectTarget::Specific(target_id),
             Modification::SetPowerToughness {

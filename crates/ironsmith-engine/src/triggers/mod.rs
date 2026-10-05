@@ -1177,6 +1177,9 @@ impl Trigger {
     }
 
     /// Create a "when [target] is dealt damage" trigger.
+    pub fn damage_received(target: ChooseSpec, combat: Option<bool>, minimum: Option<u32>, single_source: bool) -> Self {
+        Self::new(IsDealtDamageTrigger { target, combat_only: combat == Some(true), noncombat_only: combat == Some(false), excess_only: false, minimum, single_source })
+    }
     pub fn is_dealt_damage(target: ChooseSpec) -> Self {
         Self::new(IsDealtDamageTrigger::new(target))
     }

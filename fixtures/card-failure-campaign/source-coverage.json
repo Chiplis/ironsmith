@@ -1,21 +1,22 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "6f2901cba12cf9803280c8b4292d18a83f0a6c8d",
+  "source_implementation_commit": "45725dc825b9044097973192417c0a6a1c5cc607",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 791,
-    "additional_proposed_compile_entries": 792,
+    "additional_proposed_unique_cards": 822,
+    "additional_proposed_compile_entries": 824,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
-    "known_runtime_partial_previous_proposals": 0,
+    "known_runtime_partial_previous_proposals": 1,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
-    "identified_source_proposals_with_known_runtime_gaps": 8,
-    "source_proposals_excluding_identified_runtime_gaps": 783,
-    "runtime_gap_inventory_is_not_exhaustive": true
+    "identified_source_proposals_with_known_runtime_gaps": 0,
+    "source_proposals_excluding_identified_runtime_gaps": 822,
+    "runtime_gap_inventory_is_not_exhaustive": true,
+    "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
   "workflow": {
     "effective_at": "2026-10-03T21:19:53Z",
@@ -2815,7 +2816,9 @@
         "Jester's Mask",
         "Meletis Charlatan",
         "Roiling Terrain",
-        "Volrath's Dungeon"
+        "Volrath's Dungeon",
+        "Mutiny",
+        "Breaking of the Fellowship"
       ],
       "partial_entries": [
         {
@@ -2823,23 +2826,20 @@
           "remaining_blocker": "Dependent target announcement binding or additional whole-body semantic gap remains open."
         },
         {
-          "card_name": "Breaking of the Fellowship",
-          "remaining_blocker": "Dependent target announcement binding or additional whole-body semantic gap remains open."
-        },
-        {
           "card_name": "Keeper of the Dead",
-          "remaining_blocker": "Dependent target announcement binding or additional whole-body semantic gap remains open."
-        },
-        {
-          "card_name": "Mutiny",
           "remaining_blocker": "Dependent target announcement binding or additional whole-body semantic gap remains open."
         }
       ],
-      "implementation_commit": "afc092a55",
+      "implementation_commit": "f9c0b70d2ba878cebdcdc1e882531bdc672a4a13",
       "tests": "authored_not_run",
       "semantic_scope": [
         "Local instruction subject binding preserves announced players through effects, hand/library owners, scalar quantities and copied spells.",
-        "Independent bounded review clear for eleven bodies; Mutiny and Breaking held on announcement-time source binding."
+        "Independent bounded review clear for eleven bodies; Mutiny and Breaking held on announcement-time source binding.",
+        "Dependent target declaration groups, distinctness and partial-illegal-source resolution independently source-cleared through cc592beed; the two held bodies promote at stage49."
+      ],
+      "promoted_stage49": [
+        "Mutiny",
+        "Breaking of the Fellowship"
       ]
     },
     {
@@ -2958,6 +2958,159 @@
         "Whole graveyard alternatives preserve full TotalCost, caster gates, ordinary pricing and exact origin.",
         "Method-specific graveyard exile rider is distinct from bounce and ordinary hand casting; Worldheart Phoenix entry counters remain partial.",
         "Independent bounded source review through b61d812a1."
+      ]
+    },
+    {
+      "id": "enter-copy-exceptions",
+      "stage": 49,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/enter_copy_exceptions.json.fixture",
+      "baseline_entries": [
+        "Altered Ego",
+        "Dack's Duplicate",
+        "Protean Raider",
+        "Sakashima of a Thousand Faces",
+        "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces",
+        "Undercover Operative",
+        "Auton Soldier",
+        "Gigantoplasm",
+        "Mocking Doppelganger"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Vesuvan Doppelganger",
+          "remaining_blocker": "Known simultaneous original/completion or additional full-body semantic gap remains open."
+        },
+        {
+          "card_name": "Vizier of Many Faces",
+          "remaining_blocker": "Known simultaneous original/completion or additional full-body semantic gap remains open."
+        }
+      ],
+      "implementation_commit": "85892c409",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Entry-copy own X, chosen-source control, copiable retained abilities and applying-occurrence exclusion preserve native copy layers and counters.",
+        "Raid conditional entry guard and Dethrone event conditions independently source-reviewed; Auton/Myriad remains held for chooser and token-copy completion owners.",
+        "Five unique/six frozen entries source-clear at ee2bc3b1f; no executed credit.",
+        "Auton source-cleared throughd6efecb0c: controller-owned optional choice, frozen copy/attack preparation, all originals before additions, player/planeswalker-only unphased destinations.",
+        "Remaining named bodies now have bounded source clearance, with all authored execution still deferred."
+      ]
+    },
+    {
+      "id": "declared-any-target-programs",
+      "stage": 49,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/declared_any_target_programs.json.fixture",
+      "baseline_entries": [
+        "Blast of Genius",
+        "Erratic Explosion",
+        "Explosive Revelation",
+        "Heretic's Punishment",
+        "Riddle of Lightning",
+        "Comet Storm"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "9e4fe464a",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete explicit any-target programs preserve declared recipients through draw/discard/reveal/mill without introducing a second target.",
+        "Exact consult-match binding for Explosive Revelation remains independent of damage-result and full reveal remainder aliases.",
+        "Five full bodies source-clear through6e4f1aac2; Comet full grammar/payment groundwork remains held for shared simultaneous damage-result completion.",
+        "Remaining named bodies now have bounded source clearance, with all authored execution still deferred."
+      ]
+    },
+    {
+      "id": "bounded-number-choices",
+      "stage": 49,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/bounded_number_choices.json.fixture",
+      "baseline_entries": [
+        "By Invitation Only",
+        "Expel the Interlopers"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Shapeshifter",
+          "remaining_blocker": "Persistent/unbounded numeric contract or additional two-phase source semantics remains open."
+        },
+        {
+          "card_name": "Talion, the Kindly Lord",
+          "remaining_blocker": "Persistent/unbounded numeric contract or additional two-phase source semantics remains open."
+        },
+        {
+          "card_name": "Sanctum Prelate",
+          "remaining_blocker": "Persistent/unbounded numeric contract or additional two-phase source semantics remains open."
+        },
+        {
+          "card_name": "Void",
+          "remaining_blocker": "Persistent/unbounded numeric contract or additional two-phase source semantics remains open."
+        },
+        {
+          "card_name": "Liquid Fire",
+          "remaining_blocker": "Persistent/unbounded numeric contract or additional two-phase source semantics remains open."
+        },
+        {
+          "card_name": "Scrying Glass",
+          "remaining_blocker": "Persistent/unbounded numeric contract or additional two-phase source semantics remains open."
+        }
+      ],
+      "implementation_commit": "90617e99e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Inclusive numeric ranges use typed decisions, preserve zero, reject invalid replies and report representation incompleteness.",
+        "Exact numeric producer survives intervening results; direct native and retained artifact schemas agree.",
+        "Independent bounded source review through badfc0263; persistent/unbounded/additional-cost choices remain partial."
+      ]
+    },
+    {
+      "id": "passive-damage-recipients",
+      "stage": 49,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/passive_damage_recipients.json.fixture",
+      "baseline_entries": [
+        "Innocent Bystander",
+        "Pain Magnification",
+        "Risona, Asari Commander",
+        "Smaug the Impenetrable",
+        "Phyrexian Totem",
+        "Vengeful Pharaoh"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "45725dc82",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Damage source/recipient occurrence thresholds retain event-time identities, controller bindings and proper graveyard functional zones.",
+        "Common original/result/freeze/completion ownership, history idempotence, exact sibling identity and checked totals preserve whole-card observers.",
+        "Independent bounded combined source review at7d8a6bb2c; full body and corrected simultaneous helper scenarios authored unrun."
+      ]
+    },
+    {
+      "id": "multi-source-power-damage",
+      "stage": 49,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/multi_source_damage.json.fixture",
+      "baseline_entries": [
+        "Allies at Last",
+        "Band Together",
+        "Combo Attack",
+        "Coordinated Clobbering",
+        "Friendly Rivalry",
+        "Graceful Takedown",
+        "Tandem Takedown",
+        "Terrific Team-Up"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Alpha Brawl",
+          "remaining_blocker": "Persistent/unbounded numeric contract or additional two-phase source semantics remains open."
+        }
+      ],
+      "implementation_commit": "7d8a6bb2c",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Independent source-target groups retain legal surviving members, exact source control/LKI and pre-damage power quantities.",
+        "One prepared assignment batch owns replacement/prevention and life/counter/lifelink consequences before additions, with checked representation and rollback.",
+        "Eight complete bodies independently source-cleared; Alpha Brawl two-phase linked/departed-source work remains partial."
       ]
     }
   ],
@@ -3459,8 +3612,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "multi-source-power-damage"
+      ]
     },
     {
       "card_name": "Alluring Siren",
@@ -3491,7 +3646,8 @@
       "verified_compile_recovery": false,
       "source_coverage_status": "partial_not_counted",
       "source_families": [
-        "target-player-reference-bindings"
+        "target-player-reference-bindings",
+        "multi-source-power-damage"
       ]
     },
     {
@@ -3551,8 +3707,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Amareth, the Lustrous",
@@ -4637,8 +4795,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Autumn's Veil",
@@ -4941,7 +5101,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "source-context-and-ward"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 49,
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "85892c409"
     },
     {
       "card_name": "Bag of Tricks",
@@ -5069,8 +5233,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "multi-source-power-damage"
+      ]
     },
     {
       "card_name": "Bane Alley Broker",
@@ -5741,8 +5907,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "declared-any-target-programs"
+      ]
     },
     {
       "card_name": "Blast-Furnace Hellkite",
@@ -5825,16 +5993,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "damage-multiplier-scopes"
       ],
-      "runtime_correctness_gaps": [
-        "damage-amount-saturation"
-      ],
+      "runtime_correctness_gaps": [],
       "previously_proposed_complete": true,
       "source_gap_discovered_stage": 43,
-      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
+      "source_review_recovery_closure": "7d8a6bb2c"
     },
     {
       "card_name": "Blinding Angel",
@@ -6239,7 +6405,7 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "target-player-reference-bindings"
       ]
@@ -6561,8 +6727,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "bounded-number-choices"
+      ]
     },
     {
       "card_name": "B\u00f6sium Strip",
@@ -7495,10 +7663,17 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "combat-blocked-status"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 49,
+      "runtime_correctness_gaps": [
+        "simultaneous-damage-result-program-ordering"
+      ],
+      "common_damage_owner_source_clear": "995d6f786",
+      "remaining_body_owner": "Exact mass-damage lowering/DealDamageEach producer still serial; correction pending."
     },
     {
       "card_name": "Choreographed Sparks",
@@ -7993,8 +8168,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "multi-source-power-damage"
+      ]
     },
     {
       "card_name": "Comet Storm",
@@ -8003,8 +8180,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "declared-any-target-programs"
+      ]
     },
     {
       "card_name": "Comet, Stellar Pup",
@@ -8312,8 +8491,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "multi-source-power-damage"
+      ]
     },
     {
       "card_name": "Coral Fighters",
@@ -8890,13 +9071,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "damage-multiplier-scopes"
       ],
-      "runtime_correctness_gaps": [
-        "damage-amount-saturation"
-      ]
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "7d8a6bb2c"
     },
     {
       "card_name": "Curse of Bounty",
@@ -9169,8 +9349,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Dagger of the Worthy",
@@ -11704,8 +11886,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "declared-any-target-programs"
+      ]
     },
     {
       "card_name": "Ertai's Meddling",
@@ -12088,8 +12272,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "bounded-number-choices"
+      ]
     },
     {
       "card_name": "Experimental Frenzy",
@@ -12123,8 +12309,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "declared-any-target-programs"
+      ]
     },
     {
       "card_name": "Explosive Singularity",
@@ -13509,7 +13697,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "single-source-damage-set"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 49,
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "995d6f786"
     },
     {
       "card_name": "Friendly Rivalry",
@@ -13518,8 +13710,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "multi-source-power-damage"
+      ]
     },
     {
       "card_name": "Frodo Baggins",
@@ -14091,7 +14285,11 @@
       "source_families": [
         "complete-anthem-tails",
         "aura-source-incarnations"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 49,
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "85892c409"
     },
     {
       "card_name": "Giant Albatross",
@@ -14254,8 +14452,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Gimli, Mournful Avenger",
@@ -14563,16 +14763,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "damage-multiplier-scopes"
       ],
-      "runtime_correctness_gaps": [
-        "damage-amount-saturation"
-      ],
+      "runtime_correctness_gaps": [],
       "previously_proposed_complete": true,
       "source_gap_discovered_stage": 43,
-      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
+      "source_review_recovery_closure": "7d8a6bb2c"
     },
     {
       "card_name": "Goblin Heelcutter",
@@ -14636,7 +14834,12 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "live-static-condition-scopes"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 49,
+      "runtime_correctness_gaps": [],
+      "common_damage_owner_source_clear": "995d6f786",
+      "source_review_recovery_closure": "c80d3e952"
     },
     {
       "card_name": "Goblin Test Pilot",
@@ -14719,13 +14922,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "damage-multiplier-scopes"
       ],
-      "runtime_correctness_gaps": [
-        "damage-amount-saturation"
-      ]
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "7d8a6bb2c"
     },
     {
       "card_name": "Golgari Brownscale",
@@ -14860,8 +15062,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "multi-source-power-damage"
+      ]
     },
     {
       "card_name": "Grafted Exoskeleton",
@@ -15877,8 +16081,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "declared-any-target-programs"
+      ]
     },
     {
       "card_name": "Hero of Bretagard",
@@ -16986,8 +17192,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-damage-recipients"
+      ]
     },
     {
       "card_name": "Inquisition",
@@ -17028,13 +17236,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "damage-multiplier-scopes"
       ],
-      "runtime_correctness_gaps": [
-        "damage-amount-saturation"
-      ]
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "7d8a6bb2c"
     },
     {
       "card_name": "Inquisitor's Snare",
@@ -19755,8 +19962,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "bounded-number-choices"
+      ]
     },
     {
       "card_name": "Lithomancer's Focus",
@@ -21513,8 +21722,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Moldgraf Monstrosity",
@@ -21888,7 +22099,7 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "target-player-reference-bindings"
       ]
@@ -23584,8 +23795,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-damage-recipients"
+      ]
     },
     {
       "card_name": "Pain's Reward",
@@ -24158,8 +24371,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-damage-recipients"
+      ]
     },
     {
       "card_name": "Phyrexian Unlife",
@@ -24703,7 +24918,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "complete-anthem-tails"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 49,
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "85892c409"
     },
     {
       "card_name": "Press the Enemy",
@@ -24918,8 +25137,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Protection Racket",
@@ -25305,16 +25526,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "damage-multiplier-scopes"
       ],
-      "runtime_correctness_gaps": [
-        "damage-amount-saturation"
-      ],
+      "runtime_correctness_gaps": [],
       "previously_proposed_complete": true,
       "source_gap_discovered_stage": 43,
-      "source_review_recovery_closure": "909991200635453c82f34a3b26f066fd3491d9aa"
+      "source_review_recovery_closure": "7d8a6bb2c"
     },
     {
       "card_name": "Questing Beast",
@@ -26442,8 +26661,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "declared-any-target-programs"
+      ]
     },
     {
       "card_name": "Riddles in the Dark",
@@ -26546,8 +26767,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-damage-recipients"
+      ]
     },
     {
       "card_name": "Rite of Renewal",
@@ -27165,8 +27388,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces",
@@ -27175,8 +27400,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Salvation Colossus",
@@ -27273,8 +27500,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "bounded-number-choices"
+      ]
     },
     {
       "card_name": "Sanctum Spirit",
@@ -27475,13 +27704,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "damage-multiplier-scopes"
       ],
-      "runtime_correctness_gaps": [
-        "damage-amount-saturation"
-      ]
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "7d8a6bb2c"
     },
     {
       "card_name": "Scalpelexis",
@@ -27658,8 +27886,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "bounded-number-choices"
+      ]
     },
     {
       "card_name": "Sculpted Sunburst",
@@ -28166,8 +28396,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "bounded-number-choices"
+      ]
     },
     {
       "card_name": "Sharae of Numbing Depths",
@@ -29117,8 +29349,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-damage-recipients"
+      ]
     },
     {
       "card_name": "Smirking Spelljacker",
@@ -31094,8 +31328,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "bounded-number-choices"
+      ]
     },
     {
       "card_name": "Talruum Piper",
@@ -31180,8 +31416,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "multi-source-power-damage"
+      ]
     },
     {
       "card_name": "Tannuk, Steadfast Second",
@@ -31527,8 +31765,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "multi-source-power-damage"
+      ]
     },
     {
       "card_name": "Territorial Dispute",
@@ -32348,13 +32588,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "damage-multiplier-scopes"
       ],
-      "runtime_correctness_gaps": [
-        "damage-amount-saturation"
-      ]
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "7d8a6bb2c"
     },
     {
       "card_name": "The Ruinous Wrecking Crew",
@@ -34009,8 +34248,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Undercover Skrull",
@@ -34477,8 +34718,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "passive-damage-recipients"
+      ]
     },
     {
       "card_name": "Vengeful Rebirth",
@@ -34599,8 +34842,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Vesuvan Shapeshifter",
@@ -34961,8 +35206,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "enter-copy-exceptions"
+      ]
     },
     {
       "card_name": "Vizkopa Guildmage",
@@ -34983,8 +35230,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "bounded-number-choices"
+      ]
     },
     {
       "card_name": "Void Maw",
@@ -35046,7 +35295,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "single-source-damage-set"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 49,
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "995d6f786"
     },
     {
       "card_name": "Volcano Hellion",
@@ -37323,7 +37576,7 @@
     },
     {
       "id": "damage-amount-saturation",
-      "status": "unresolved_runtime_correctness_gap",
+      "status": "source_reviewed_remediation_integrated_validation_deferred",
       "scope": "Global damage representation; this source cohort is a known affected subset, not exhaustive.",
       "affected_source_family": "damage-multiplier-scopes",
       "affected_card_names": [
@@ -37336,9 +37589,10 @@
         "Sawhorn Nemesis",
         "The Rollercrusher Ride"
       ],
-      "source_location": "Native u32 damage amounts and saturating replacement multiplication",
-      "behavior": "Damage exceeding representable u32 amounts silently saturates. This stage retains the existing bound and cannot establish arbitrary larger-outcome correctness.",
-      "completion_gate": "Replace silent saturation with correct supported representation or explicit transactional resource/representation failure; no final all-cards-correct claim while unresolved."
+      "source_location": "Checked replacement, state, result and history representation owners plus atomic rollback.",
+      "behavior": "Silent u32/i32 saturation is replaced by explicit typed incomplete execution within the checked host profile. Distinct occurrence IDs preserve all sibling receipt amounts; accepted aliases alone deduplicate.",
+      "completion_gate": "Authored boundary/rollback/retry/combat/native scenarios remain unrun; no arbitrary-precision or exhaustive runtime correctness claim.",
+      "source_review_commit": "7d8a6bb2c"
     },
     {
       "id": "runtime-replacement-checkpoint-recovery",
@@ -37428,6 +37682,48 @@
       "source_location": "Authoritative sync has no generic event-record carrier; search/entry/destroy/counter/block and new damage queries scan projected_records, which restore drops.",
       "completion_gate": "Authored main/lane import, native branch, continuation/cancellation and authenticated replay scenarios remain unrun; full runtime validation deferred.",
       "source_review_commit": "6120b07e3"
+    },
+    {
+      "id": "simultaneous-damage-result-program-ordering",
+      "status": "shared_owner_source_clear_one_card_producer_still_partial",
+      "affected_previously_proposed_complete": [
+        "Friendly Fire",
+        "Volcanic Eruption",
+        "Choking Vines",
+        "Goblin Shrine"
+      ],
+      "held_new_cards": [
+        "Comet Storm"
+      ],
+      "source_location": "apply_processed_damage_assignment_with_dm: life-loss and infect/wither counter replacement programs can execute per assignment before later simultaneous originals and damage observer publication",
+      "scope": "Four confirmed one-source multi-recipient proposals; creature-only damage uses the same incomplete result owner when damage yields wither counters. Not an exhaustive inventory.",
+      "completion_gate": "Integrate reviewed shared prepare/original-commit/complete result owner; author negative replacement-trigger/rollback scenarios now and execute at deferred validation gate.",
+      "source_review_commit": "995d6f786",
+      "behavior": "Prepared original/freeze/completion owner and explicit-source All producer are source-clear; Choking Vines still requires generic DealDamageEach migration.",
+      "still_held_card_names": [
+        "Choking Vines"
+      ],
+      "source_cleared_card_names": [
+        "Friendly Fire",
+        "Volcanic Eruption",
+        "Goblin Shrine"
+      ]
+    },
+    {
+      "id": "live-goad-declaration-enforcement",
+      "status": "source_reviewed_remediation_integrated_validation_deferred",
+      "affected_previously_proposed_complete": [
+        "Baeloth Barrityl, Entertainer",
+        "Ghoulish Impetus",
+        "Predatory Impetus"
+      ],
+      "held_new_cards": [
+        "Mocking Doppelganger"
+      ],
+      "source_location": "decision/attack_block.rs preview and game_loop/combat_decisions.rs requirement scoring omit live GoadMatching owners used by active_goaders_for.",
+      "completion_gate": "Use the authoritative live goader query consistently in declaration consumers and author actual attack/other-player requirement scenarios; source review and deferred execution required.",
+      "source_review_commit": "85892c409",
+      "behavior": "Preview and actual declaration scoring use the same authoritative current goader set, preserving requirements rather than prohibitions."
     }
   ]
 }

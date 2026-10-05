@@ -33,6 +33,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "ChooseLandTypeEffect" => {
             decode_as::<ironsmith_core::ChooseLandTypeEffect>(payload).map(Some)
         }
+        "ChooseNumberEffect" => decode_as::<ironsmith_core::ChooseNumberEffect>(payload).map(Some),
         "ChooseNamedOptionEffect" => {
             decode_as::<ironsmith_core::ChooseNamedOptionEffect>(payload).map(Some)
         }
@@ -212,6 +213,7 @@ pub(super) fn map_card_ids(
             ironsmith_core::ChooseLandTypeEffect,
         >(payload, context)
         .map(Some),
+        "ChooseNumberEffect" => super::card_graph::map_payload_as::<ironsmith_core::ChooseNumberEffect>(payload, context).map(Some),
         "ChooseNamedOptionEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::ChooseNamedOptionEffect,
         >(payload, context)

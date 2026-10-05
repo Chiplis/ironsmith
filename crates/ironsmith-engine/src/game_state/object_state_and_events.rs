@@ -3331,6 +3331,9 @@ impl GameState {
     }
 
     pub(crate) fn stage_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
+        // Captured receipts were already committed by their original-operation
+        // owner. Projection must not count them again while an effect returns.
+        if event.triggers_captured() || self.effect_store.matched_outcome_events.contains_key(&event.occurrence_key()) { return; }
         let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(event);
         self.turn_store
             .turn_history
@@ -3339,6 +3342,7 @@ impl GameState {
     }
 
     pub(crate) fn record_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
+        if event.triggers_captured() { return; }
         if let Some(mutated) = event.downcast::<crate::events::other::MutatedEvent>() {
             self.mark_mutated(mutated.permanent);
         }

@@ -74,6 +74,11 @@ pub(super) const DOCUMENT_REGISTRY: RuleId = RuleId::new("document-reading-regis
 /// The readings, in the order they were ranked.
 const DOCUMENT_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("declared-any-target-program"),
+        head: HeadDiscriminator::Words(&["choose"]),
+        read: |document| document.outcome(super::declared_any_target::parse(document.tokens)),
+    },
+    Reading {
         id: RuleId::new("resolving-card-countered-exile-replacement"),
         head: HeadDiscriminator::Any,
         read: |document| {

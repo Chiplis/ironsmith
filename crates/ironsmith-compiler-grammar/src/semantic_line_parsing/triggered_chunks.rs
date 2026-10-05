@@ -60,6 +60,7 @@ pub(crate) fn apply_trigger_intro_surface(
         | TriggerSpec::ThisAttacksWithExactlyNOthers(_)
         | TriggerSpec::ThisAttacksAndIsntBlocked
         | TriggerSpec::ThisAttacksWhileSaddled
+        | TriggerSpec::ThisAttacksPlayerWithMostLife
         | TriggerSpec::Attacks(_)
         | TriggerSpec::AttacksAndIsntBlocked(_)
         | TriggerSpec::AttacksAndIsntBlockedOneOrMore(_)

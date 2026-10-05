@@ -6755,7 +6755,14 @@ impl GameState {
                     continue;
                 };
                 let controller = chars.controller;
-                let ctx = self.filter_context_for(controller, Some(*source));
+                let mut ctx = self.filter_context_for(controller, Some(*source));
+                // A live same-name predicate reads the source's current name,
+                // including a copy/name-changing effect. Do not build a full
+                // calculated snapshot here: its goad fact re-enters this query.
+                if let Some(snapshots) = ctx.tagged_objects.get_mut(crate::tag::SOURCE_OBJECT_TAG)
+                    && let Some(snapshot) = snapshots.first_mut() {
+                    snapshot.name = chars.name.to_string();
+                }
                 if chars.static_abilities.iter().any(|ability| {
                     ability
                         .goads_matching()

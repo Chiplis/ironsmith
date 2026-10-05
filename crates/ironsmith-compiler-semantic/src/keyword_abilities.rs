@@ -142,3 +142,43 @@ pub fn vanishing_granted_abilities(amount: u32) -> Vec<Ability> {
     }
     abilities
 }
+
+
+/// Real embedded attack-keyword abilities, shared by copy exceptions and other
+/// object-ability grants. No keyword marker crosses the lowering boundary.
+pub fn attack_keyword_granted_ability(action: &crate::cards::builders::KeywordAction) -> Option<Ability> {
+    use crate::model::{ForEachEffectAst, PermissionEffectAst, TokenActionAst};
+    let (trigger, effects) = match action {
+        crate::cards::builders::KeywordAction::Dethrone => (
+            TriggerSpec::ThisAttacksPlayerWithMostLife,
+            vec![EffectAst::subject_verb_put_counters(CounterType::PlusOnePlusOne, Value::Fixed(1), TargetAst::Source(None), None, false)],
+        ),
+        crate::cards::builders::KeywordAction::Myriad => {
+            let create = EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                    source: TargetAst::Source(None), count: Value::Fixed(1), player: PlayerAst::You,
+                    enters_tapped: true, enters_attacking: true, entry_tapped_attacking_followup: false,
+                    attack_target_player_or_planeswalker_controlled_by: Some(PlayerAst::That),
+                    attack_target_player_only: false, half_power_toughness_round_up: false,
+                    has_haste: false, haste_followup_reference_surface: None,
+                    exile_at_end_of_combat: true, exile_at_end_of_combat_reference_surface: None,
+                    loses_soulbond: false, sacrifice_at_next_end_step: false,
+                    sacrifice_at_next_end_step_reference_surface: None, sacrifice_at_next_end_step_ability_surface: None,
+                    exile_at_next_end_step: false, exile_at_next_end_step_reference_surface: None,
+                    next_end_step_player: PlayerFilter::Any, set_colors: None, set_card_types: None, set_subtypes: None,
+                    added_card_types: Vec::new(), added_subtypes: Vec::new(), removed_supertypes: Vec::new(),
+                    set_base_power_toughness: None, set_base_power_toughness_to_source_totals: false,
+                    starting_loyalty: None, granted_abilities: Vec::new(),
+                }));
+            (TriggerSpec::ThisAttacks, vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false, filter: PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending),
+                effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {player: PlayerAst::You, effects: vec![create]})],
+            })])
+        }
+        _ => return None,
+    };
+    Some(Ability {kind: AbilityKind::Triggered(TriggeredAbility {
+        trigger, effects: ironsmith_core::ResolutionProgram::from_effects(effects), choices: Vec::new(),
+        intervening_if: None, presentation_label: None,
+    }), functional_zones: vec![Zone::Battlefield]})
+}

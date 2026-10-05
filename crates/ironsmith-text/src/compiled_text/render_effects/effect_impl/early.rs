@@ -1544,6 +1544,10 @@
             .collect::<Vec<_>>();
         return format!("{chooser} {choose_verb} {}", join_with_or(&options));
     }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseNumberEffect>() {
+        let chooser = describe_player_filter(&choose.chooser);
+        return format!("{chooser} {} a number between {} and {}", player_verb(&chooser, "choose", "chooses"), choose.min, choose.max);
+    }
     if let Some(choose_named_option) =
         effect.downcast_ref::<crate::effects::ChooseNamedOptionEffect>()
     {
@@ -2696,8 +2700,7 @@
         return format!("Destroy {target}{where_clause}");
     }
     if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
-        if let Some(deal_damage) = with_source
-            .effect
+        if let Some(deal_damage) = unwrap_basic_tag_wrappers(&with_source.effect)
             .downcast_ref::<crate::effects::DealDamageEffect>()
             && let Some(redirect) = &deal_damage.excess_to_controller
         {
@@ -2736,8 +2739,7 @@
             }
             return format!("{subject} becomes saddled until end of turn");
         }
-        if let Some(deal_damage) = with_source
-            .effect
+        if let Some(deal_damage) = unwrap_basic_tag_wrappers(&with_source.effect)
             .downcast_ref::<crate::effects::DealDamageEffect>()
         {
             let has_explicit_source_surface =
@@ -2946,6 +2948,24 @@
             return text;
         }
         return describe_effect(&with_source.effect);
+    }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageBySourcesEffect>() {
+        let declarations=if damage.source_declarations.is_empty(){&damage.sources}else{&damage.source_declarations};
+        let subjects = declarations
+            .iter()
+            .map(describe_choose_spec)
+            .collect::<Vec<_>>()
+            .join(" and ");
+        let amount = if matches!(damage.amount.unhinted(), Value::SourcePower) {
+            "their power".to_string()
+        } else {
+            describe_value(&damage.amount)
+        };
+        return format!(
+            "{} each deal damage equal to {amount} to {}",
+            capitalize_first(&subjects),
+            describe_choose_spec(&damage.target)
+        );
     }
     if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageToRecipientsEffect>() {
         let recipients=damage.recipients.iter().map(describe_choose_spec).collect::<Vec<_>>().join(" and ");

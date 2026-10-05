@@ -376,6 +376,15 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
         return choose_spec_references_identity(&fight.creature1, identity)
             || choose_spec_references_identity(&fight.creature2, identity);
     }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageBySourcesEffect>() {
+        return damage
+            .sources
+            .iter()
+            .chain(&damage.source_declarations)
+            .any(|spec| choose_spec_references_identity(spec, identity))
+            || choose_spec_references_identity(&damage.target, identity)
+            || value_references_identity(&damage.amount, identity);
+    }
     if let Some(execute) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
         return choose_spec_references_identity(&execute.source, identity)
             || effect_references_identity(&execute.effect, identity);
@@ -849,6 +858,16 @@ fn describe_target_player_token_creation(
 /// Multiple consumers retain the declaration so their shared tag remains
 /// visible and unambiguous.
 pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect]) -> Option<String> {
+    if let Some(last)=effects.last()
+        && let Some(damage)=structural_unwrap_render_wrappers(last).downcast_ref::<crate::effects::DealDamageBySourcesEffect>()
+        && effects.len()==damage.sources.len()+1
+        && damage.sources.len()==damage.source_declarations.len()
+        && effects[..effects.len()-1].iter().zip(damage.sources.iter().zip(&damage.source_declarations)).all(|(effect,(source,declaration))| {
+            let Some(target)=structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::TargetOnlyEffect>() else {return false;};
+            !target.explicit_declaration && target.chooser.is_none() && &target.target==declaration
+                && matches!(source.base(),ChooseSpec::Tagged(tag) if wrapped_effect_tag(effect)==Some(tag))
+        })
+    {return Some(describe_effect(last));}
     let (target_index, identity, consumer_index) = single_synthetic_target_consumer(effects)?;
     let consumer = &effects[consumer_index];
 

@@ -188,7 +188,7 @@ pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,
     BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
     ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
-    ChooseNamedOptionEffect, ChooseNumberAtRandomEffect, ChoosePlayerEffect,
+    ChooseNamedOptionEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChoosePlayerEffect,
     ControlCombatChoicesThisTurnEffect, ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect,
     DrawTheGameEffect, EndCombatPhaseEffect, EndTurnEffect, EnergyCountersEffect,
     ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect, ExileUntilMatchCastEffect,
@@ -245,3 +245,5 @@ pub(crate) use composition::{prepare_conditional_branch, resolve_source_binding,
 pub(crate) use composition::{PreparedIfBranch, prepare_if_branches, execute_if_branches};
 
 pub(crate) use composition::{ForPlayersDrawContinuation, ForPlayersDrawProgress};
+
+pub use damage::DealDamageBySourcesEffect;

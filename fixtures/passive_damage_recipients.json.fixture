@@ -1,0 +1,68 @@
+[
+  {
+    "name": "Innocent Bystander",
+    "oracle_id": "c293f1c0-93de-4a73-aaf6-4e9f01e557ec",
+    "oracle_text": "Whenever this creature is dealt 3 or more damage, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+    "text": "Mana cost: {1}{R}\nType: Creature — Goblin Citizen\nPower/Toughness: 2/1\nWhenever this creature is dealt 3 or more damage, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever this creature is dealt 3 or more damage, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever this creature is dealt 3 or more damage, investigate.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "638c6281a7cd223e54fdecddffe01242cabe69f30744d808ef80711d17b10f28",
+    "proposed_complete": true,
+    "status": "UNVALIDATED complete source proposal; bounded source review only"
+  },
+  {
+    "name": "Pain Magnification",
+    "oracle_id": "659c749d-2852-4cce-9eba-7ea962f7af6d",
+    "oracle_text": "Whenever an opponent is dealt 3 or more damage by a single source, that player discards a card.",
+    "text": "Mana cost: {1}{B}{R}\nType: Enchantment\nWhenever an opponent is dealt 3 or more damage by a single source, that player discards a card.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever an opponent is dealt 3 or more damage by a single source, that player discards a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever an opponent is dealt 3 or more damage by a single source, that player discards a card.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "91bb73e5e28b3f843c25bcdd7c53ad0968337e0a3267cff23a438980c728cfce",
+    "proposed_complete": true,
+    "status": "UNVALIDATED complete source proposal; bounded source review only"
+  },
+  {
+    "name": "Risona, Asari Commander",
+    "oracle_id": "44c4839f-c92a-4535-817b-1838c47fcb5e",
+    "oracle_text": "Haste\nWhenever Risona deals combat damage to a player, if it doesn't have an indestructible counter on it, put an indestructible counter on it.\nWhenever combat damage is dealt to you, remove an indestructible counter from Risona.",
+    "text": "Mana cost: {1}{R}{W}\nType: Legendary Creature — Human Samurai\nPower/Toughness: 3/3\nHaste\nWhenever Risona deals combat damage to a player, if it doesn't have an indestructible counter on it, put an indestructible counter on it.\nWhenever combat damage is dealt to you, remove an indestructible counter from Risona.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever combat damage is dealt to you, remove an indestructible counter from Risona.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever combat damage is dealt to you, remove an indestructible counter from Risona.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "a68055ad5b80aece8c5f206d15368faa11f01c403211daf887de7bd299cf6d22",
+    "proposed_complete": true,
+    "status": "UNVALIDATED complete source proposal; bounded source review only"
+  },
+  {
+    "name": "Smaug the Impenetrable",
+    "oracle_id": "ce2fc562-7a71-4846-bfef-0a7c5f6c1ff3",
+    "oracle_text": "Flying, indestructible, haste\nWhenever Smaug is dealt noncombat damage, create that many Treasure tokens.",
+    "text": "Mana cost: {5}{B}{R}\nType: Legendary Creature — Dragon\nPower/Toughness: 8/7\nFlying, indestructible, haste\nWhenever Smaug is dealt noncombat damage, create that many Treasure tokens.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever Smaug is dealt noncombat damage, create that many Treasure tokens.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever Smaug is dealt noncombat damage, create that many Treasure tokens.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "4dab2baf0f713b4f0c9a65b249efd426fb2e499950eed3ca9cebfa88590288bd",
+    "proposed_complete": true,
+    "status": "UNVALIDATED complete source proposal; bounded source review only"
+  },
+  {
+    "name": "Phyrexian Totem",
+    "oracle_id": "65afedc9-9446-4417-8576-807279061342",
+    "oracle_text": "{T}: Add {B}.\n{2}{B}: This artifact becomes a 5/5 black Phyrexian Horror artifact creature with trample until end of turn.\nWhenever this permanent is dealt damage, if it's a creature, sacrifice that many permanents.",
+    "text": "Mana cost: {3}\nType: Artifact\n{T}: Add {B}.\n{2}{B}: This artifact becomes a 5/5 black Phyrexian Horror artifact creature with trample until end of turn.\nWhenever this permanent is dealt damage, if it's a creature, sacrifice that many permanents.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported trigger clause (clause: 'this permanent is dealt damage') [rule-path=compiler-trigger-facts]; oracle-only fallback also failed: unsupported trigger clause (clause: 'this permanent is dealt damage') [rule-path=compiler-trigger-facts]",
+    "baseline_content_hash": "a3640daf51b1da08c3fc6b0d029b1116d381083b7b98417bb12da18553f8134e",
+    "proposed_complete": true,
+    "status": "UNVALIDATED complete source proposal; bounded source review only"
+  },
+  {
+    "name": "Vengeful Pharaoh",
+    "oracle_id": "7e465cfe-d2ee-4420-87f4-945728f58f87",
+    "oracle_text": "Deathtouch (Any amount of damage this deals to a creature is enough to destroy it.)\nWhenever combat damage is dealt to you or a planeswalker you control, if this card is in your graveyard, destroy target attacking creature, then put this card on top of your library.",
+    "text": "Mana cost: {2}{B}{B}{B}\nType: Creature — Zombie\nPower/Toughness: 5/4\nDeathtouch (Any amount of damage this deals to a creature is enough to destroy it.)\nWhenever combat damage is dealt to you or a planeswalker you control, if this card is in your graveyard, destroy target attacking creature, then put this card on top of your library.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported trigger clause (clause: 'combat damage is dealt to you or a planeswalker you control') [rule-path=compiler-trigger-facts]; oracle-only fallback also failed: unsupported trigger clause (clause: 'combat damage is dealt to you or a planeswalker you control') [rule-path=compiler-trigger-facts]",
+    "baseline_content_hash": "744801cc741074340d1f27ae1227e4f96cae73297d3938b06d908529544cd77d",
+    "proposed_complete": true,
+    "status": "UNVALIDATED complete source proposal; bounded source review only"
+  }
+]
