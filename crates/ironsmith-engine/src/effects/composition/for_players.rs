@@ -433,6 +433,14 @@ impl OptionalActionProgram {
                     }
                 }
                 let optional = unwrapped.downcast_ref::<crate::effects::MayEffect>();
+                // A compound payment is one action owner. Splitting its
+                // children would bypass the TotalCost transaction.
+                if optional.is_some_and(|optional| optional.pay_as_cost) {
+                    program.effects.push(effect);
+                    program.markers.push(None);
+                    program.paths.push(path.to_vec());
+                    continue;
+                }
                 if optional.is_some() || !wrappers.is_empty() {
                     let offer = optional
                         .cloned()

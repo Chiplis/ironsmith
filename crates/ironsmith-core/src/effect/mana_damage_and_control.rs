@@ -4996,6 +4996,10 @@ impl<E> ManaRetainedEffect<E> {
 pub struct MayEffect<E> {
     pub decider: Option<PlayerFilter>,
     pub effects: Vec<E>,
+    /// The complete optional program is a cost, paid atomically before its
+    /// successful outcome can enable a following "if you do" instruction.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub pay_as_cost: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

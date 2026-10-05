@@ -1563,6 +1563,38 @@ impl TurnHistory {
         snapshots
     }
 
+    /// Exact completed cast receipts for a characteristic-sensitive history
+    /// query. An event's caster is independent of its spell's controller.
+    /// Absent history is a known empty set; a relevant cast without the
+    /// required stack snapshot is incomplete evidence, never a zero count.
+    pub fn checked_spell_cast_history(
+        &self,
+        players: &[PlayerId],
+        exclude: Option<ObjectId>,
+    ) -> Result<Vec<(PlayerId, ObjectSnapshot)>, crate::effects::ExecutionError> {
+        let mut order = 0u32;
+        let mut casts = Vec::new();
+        for record in self.projected_records() {
+            let Some(event) = record.event.downcast::<SpellCastEvent>() else { continue; };
+            order = order.checked_add(1).ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
+                "cast history order is not representable".into(),
+            ))?;
+            if !players.contains(&event.caster) || exclude == Some(event.spell) { continue; }
+            let snapshot = event.snapshot.as_ref().or(record.object_snapshot.as_ref()).ok_or_else(|| {
+                crate::effects::ExecutionError::IncompleteEvidence(format!("cast {:?} has no retained stack snapshot", event.spell))
+            })?;
+            if snapshot.object_id != event.spell || snapshot.zone != Zone::Stack {
+                return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                    format!("cast {:?} has mismatched retained stack evidence", event.spell),
+                ));
+            }
+            let mut snapshot = snapshot.clone();
+            snapshot.cast_order_this_turn = Some(order);
+            casts.push((event.caster, snapshot));
+        }
+        Ok(casts)
+    }
+
     pub fn damage_dealt_by_spell_this_turn(
         &self,
         provenance_graph: &ProvenanceGraph,

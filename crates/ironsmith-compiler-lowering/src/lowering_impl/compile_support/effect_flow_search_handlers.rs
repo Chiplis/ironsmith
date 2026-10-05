@@ -648,6 +648,63 @@ fn try_compile_for_each_object_as_damage_source(
     )))
 }
 
+/// Recognize the bounded compound payment from semantic actions, before
+/// lowering can wrap their results in tags or effect IDs. Ordinary optional
+/// actions retain their established result semantics.
+fn compound_optional_payment_actions(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
+    // Coordination retains the authored "and" boundary. Expose only that
+    // conjunctive payment's semantic members to component lowering; a runtime
+    // Sequence would execute them as ordinary independent instructions.
+    if let [EffectAst::Coordination(coordination)] = effects {
+        if coordination.kind == crate::model::CoordinationKindAst::Disjunction
+            || coordination.boundaries.iter().any(|boundary| {
+                boundary.operator != crate::model::CoordinationOperatorAst::And
+            })
+        {
+            return None;
+        }
+        return compound_optional_payment_actions(
+            &coordination.effects().cloned().collect::<Vec<_>>(),
+        );
+    }
+    if let [EffectAst::Sequence { effects }] = effects {
+        return compound_optional_payment_actions(effects);
+    }
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: mana_subject,
+            action: SubjectVerbActionAst::Mana(crate::cards::builders::ManaActionAst::PayMana {
+                cost,
+                x_value: None,
+                x_maximum: None,
+            }),
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: sacrifice_subject,
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                count: 1,
+                one_of_referenced_set: false,
+                ..
+            }),
+        }),
+    ] = effects else {
+        return None;
+    };
+    (!cost.has_x()
+        && matches!(mana_subject.player, PlayerAst::You | PlayerAst::Implicit)
+        && matches!(sacrifice_subject.player, PlayerAst::You | PlayerAst::Implicit))
+        .then(|| effects.to_vec())
+}
+
+fn with_optional_payment_mode(effect: Effect, pay_as_cost: bool) -> Effect {
+    let Some(optional) = effect.downcast_ref::<crate::effects::MayEffect<Effect>>() else {
+        return effect;
+    };
+    let mut optional = optional.clone();
+    optional.pay_as_cost = pay_as_cost;
+    Effect::new(optional)
+}
+
 pub(super) fn try_compile_flow_and_iteration_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -662,8 +719,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             if let Some(compiled) = lower_may_imprint_from_hand_effect(effects, ctx)? {
                 return Ok(Some(compiled));
             }
-            let (inner_effects, inner_choices) =
-                compile_effects_preserving_last_effect(effects, ctx)?;
+            let payment_actions = compound_optional_payment_actions(effects);
+            let (inner_effects, inner_choices) = compile_effects_preserving_last_effect(
+                payment_actions.as_deref().unwrap_or(effects), ctx,
+            )?;
             if inner_effects.is_empty() {
                 return Err(CardTextError::ParseError(
                     "empty compiled may-effect branch is unsupported".to_string(),
@@ -683,6 +742,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             } else {
                 Effect::may(inner_effects)
             };
+            let effect = with_optional_payment_mode(effect, payment_actions.is_some());
             (vec![effect], inner_choices)
         }
         EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects }) => {
@@ -750,8 +810,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             } else {
                 saved_last_player_filter
             };
-            let (inner_effects, inner_choices) =
-                compile_effects_preserving_last_effect(effects, ctx)?;
+            let payment_actions = compound_optional_payment_actions(effects);
+            let (inner_effects, inner_choices) = compile_effects_preserving_last_effect(
+                payment_actions.as_deref().unwrap_or(effects), ctx,
+            )?;
             if inner_effects.is_empty() {
                 return Err(CardTextError::ParseError(
                     "empty compiled may-by-player effect branch is unsupported".to_string(),
@@ -766,6 +828,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 return Ok(Some((inner_effects, choices)));
             }
             let effect = Effect::may_player(player_filter, inner_effects);
+            let effect = with_optional_payment_mode(effect, payment_actions.is_some());
             (vec![effect], choices)
         }
         EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) => {

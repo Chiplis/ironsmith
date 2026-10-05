@@ -995,7 +995,7 @@ where
         } else {
             crate::effects::MayEffect::new(effects)
         };
-        return Ok(Effect::new(converted));
+        return Ok(Effect::new(converted.with_pay_as_cost(payload.pay_as_cost)));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::RevealTopEffect>(&effect) {
         return Ok(converted);

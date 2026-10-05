@@ -843,6 +843,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/826"
+    },
+    {
+      "stage": 61,
+      "branch": "fix/card-failures-61-cumulative-action-costs",
+      "base": "fix/card-failures-60-cast-quantities-and-craft",
+      "source_integration_commit": "2312b1e9173ea7f3e655dc7bc75a691c8ed94552",
+      "remote_commit": "9a493368d17be938851cc174f605ea99f4f45d44",
+      "tree": "11925b28093bd0e6a51484c0218b07bb3b5bb473",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 827,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/827"
     }
   ]
 }

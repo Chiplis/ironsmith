@@ -72,6 +72,42 @@ fn transparent_cost_effect(mut effect: &Effect) -> &Effect {
     effect
 }
 
+fn sacrifice_target_cost_object(
+    effect: &crate::effects::SacrificeTargetEffect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Result<crate::ids::ObjectId, CostPaymentError> {
+    // Source and captured-object costs name the original permanent. They
+    // must not fall back to its later incarnation or a different permanent,
+    // and only its current controller can pay by sacrificing it.
+    let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
+        .with_tagged_objects(ctx.tagged_objects.clone());
+    exec.source_snapshot = ctx.source_snapshot.clone();
+    exec.replacement = ctx.replacement.clone();
+    exec.effect_outcomes = ctx.effect_outcomes.clone();
+    let objects = if matches!(effect.target.base(), crate::target::ChooseSpec::Source) {
+        vec![ctx.source]
+    } else {
+        match crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, &exec) {
+            Ok(objects) => objects,
+            Err(crate::effects::ExecutionError::InvalidTarget
+                | crate::effects::ExecutionError::TagNotFound(_)) => {
+                return Err(CostPaymentError::NoValidSacrificeTarget);
+            }
+            Err(error) => return Err(CostPaymentError::ExecutionFailed(error)),
+        }
+    };
+    let [id] = objects.as_slice() else {
+        return Err(CostPaymentError::NoValidSacrificeTarget);
+    };
+    game.object(*id).is_some_and(|object| {
+        object.zone == crate::zone::Zone::Battlefield
+            && game.controller_of(object) == ctx.payer
+            && !game.is_phased_out(*id)
+            && game.can_be_sacrificed_with_cause(*id, &ctx.event_cause())
+    }).then_some(*id).ok_or(CostPaymentError::NoValidSacrificeTarget)
+}
+
 fn sacrifice_cost_precheck(
     effect: &Effect,
     game: &GameState,
@@ -79,12 +115,7 @@ fn sacrifice_cost_precheck(
 ) -> Option<Result<(), CostPaymentError>> {
     let effect = transparent_cost_effect(effect);
     if let Some(effect) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>() {
-        if matches!(effect.target.base(), crate::target::ChooseSpec::Source)
-            && !game.can_be_sacrificed_with_cause(ctx.source, &ctx.event_cause())
-        {
-            return Some(Err(CostPaymentError::NoValidSacrificeTarget));
-        }
-        return None;
+        return Some(sacrifice_target_cost_object(effect, game, ctx).map(|_| ()));
     }
     let (filter, count, player) = if let Some(effect) =
         effect.downcast_ref::<crate::effects::SacrificeEffect>()
@@ -579,6 +610,34 @@ impl CostPayer for CostEffect {
             );
         }
 
+        if let Some(mana) = transparent_cost_effect(&self.effect)
+            .downcast_ref::<crate::effects::PayManaEffect>()
+            && !mana.cost.has_x()
+            && mana.x_value.is_none()
+            && mana.x_maximum.is_none()
+        {
+            let exec = ExecutionContext::new_default(ctx.source, ctx.payer)
+                .with_tagged_objects(ctx.tagged_objects.clone());
+            let payer = crate::effects::helpers::resolve_player_from_spec(game, &mana.player, &exec)
+                .map_err(CostPaymentError::ExecutionFailed)?;
+            let adjusted = game.adjust_mana_cost_for_payment_reason(
+                payer, Some(ctx.source), &mana.cost, ctx.reason,
+            );
+            let mut request = crate::mana_payment::ManaPaymentRequest::new(
+                payer, ctx.source, ctx.reason, adjusted,
+            ).with_spend_policy(game.mana_spend_policy(payer, Some(ctx.source)));
+            request.allow_black_life = crate::decision::mana_cost_has_black_symbol(&request.cost)
+                && game.player_can_pay_black_with_life_for_reason(payer, Some(ctx.source), ctx.reason);
+            return crate::mana_payment::check_mana_payment(game, &request).map_err(|error| {
+                match error {
+                    crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => {
+                        CostPaymentError::ExecutionFailed(error)
+                    }
+                    _ => CostPaymentError::InsufficientMana,
+                }
+            });
+        }
+
         if let Some(evidence) = transparent_cost_effect(&self.effect)
             .downcast_ref::<crate::effects::CollectEvidenceEffect>()
         {
@@ -709,6 +768,14 @@ impl CostPayer for CostEffect {
             self.can_pay(game, ctx)?;
         }
 
+        // Remember the exact legal original before replacement processing can
+        // change or prevent its movement. CR 118.11: a replacement-modified
+        // cost is paid when that original action completes, even with no move.
+        let original_sacrifice = transparent_cost_effect(&self.effect)
+            .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+            .map(|effect| sacrifice_target_cost_object(effect, game, ctx))
+            .transpose()?;
+
         // Clone the existing tags to pass to ExecutionContext
         let existing_tags = ctx.tagged_objects.clone();
         let chosen_targets = ctx
@@ -757,11 +824,21 @@ impl CostPayer for CostEffect {
             Ok::<_, crate::effects::ExecutionError>(outcome)
         })
         .map_err(CostPaymentError::ExecutionFailed)?;
-        // The instruction owner restored a suspended choice/replacement.
-        // Keep the enclosing payment's pending step; its provisional empty
-        // answer is not an underpayment and publishes no payment evidence.
+        // A suspended component has no payment result yet. The enclosing
+        // TotalCost owner preserves the decision and rolls back all components.
         if exec_ctx.decision_maker.awaiting_choice() {
             return Ok(CostPaymentResult::Paid);
+        }
+        let action = transparent_cost_effect(&self.effect);
+        if action.downcast_ref::<crate::effects::PayManaEffect>().is_some()
+            && (!outcome.status.is_success() || !outcome.something_happened())
+        {
+            return Err(CostPaymentError::Other("mana payment was not completed".into()));
+        }
+        if let Some(original) = original_sacrifice
+            && outcome.chosen_objects() != Some(std::slice::from_ref(&original))
+        {
+            return Err(CostPaymentError::Other("original sacrifice payment was not completed".into()));
         }
         if let Some(move_to_zone) =
             transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::MoveToZoneEffect>()

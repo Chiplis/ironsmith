@@ -1123,6 +1123,7 @@ impl Effect {
         Self::new(crate::effects::MayEffect {
             decider: None,
             effects: _effects,
+            pay_as_cost: false,
         })
     }
 
@@ -1130,6 +1131,7 @@ impl Effect {
         Self::new(crate::effects::MayEffect {
             decider: Some(_player),
             effects: _effects,
+            pay_as_cost: false,
         })
     }
 

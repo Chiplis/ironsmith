@@ -786,6 +786,58 @@ fn transport_reflexive_damage_followups(effects: &mut Vec<EffectAst>) {
     }
 }
 
+/// A same-name library search consumes the object chosen only by a successful
+/// result branch. Its complete search action (including disposition and shuffle)
+/// therefore belongs to that branch even when authored as a following sentence.
+/// This correlation is established before references are resolved, from the
+/// choice producer and the search filter's typed relation, never from card text.
+fn correlate_result_gated_choice_search_followups(effects: &mut Vec<EffectAst>) {
+    let mut index = 0;
+    while index + 1 < effects.len() {
+        let choice_tag = match sentence_tail(&effects[index]) {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: crate::cards::builders::IfResultPredicate::Did,
+                effects: branch,
+            }) => match branch.as_slice() {
+                [choice] => match sentence_tail(choice) {
+                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                        tag, count, count_value: None, ..
+                    }) if count.min == 1 && count.max == Some(1) => Some(tag.as_str()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        };
+        let consumes_choice = choice_tag.is_some_and(|choice_tag| {
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                    filter, ..
+                }),
+                ..
+            }) = sentence_tail(&effects[index + 1]) else {
+                return false;
+            };
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                    && (constraint.tag.as_str() == choice_tag
+                        || constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                        || constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str())
+            })
+        });
+        if consumes_choice {
+            let followup = effects.remove(index + 1);
+            let EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects: branch, .. }) =
+                sentence_tail_mut(&mut effects[index])
+            else {
+                unreachable!("checked result branch");
+            };
+            branch.push(followup);
+        }
+        index += 1;
+    }
+}
+
 fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     transport_reflexive_damage_followups(effects);
     transport_tap_quantity_reflexive_into_player_loop(effects);
@@ -824,6 +876,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     // producer is provably a source-bound counter removal and every following
     // member belongs to the damage fanout.
     bind_removed_counter_damage_fanout(effects);
+    correlate_result_gated_choice_search_followups(effects);
     bind_explicit_chosen_object_followups(effects);
     bind_other_group_to_explicit_target_choice(effects);
     correlate_conditional_quantified_choice_followups(effects);
@@ -3810,5 +3863,67 @@ mod tap_reflexive_iteration_tests {
             body[1],
             EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })
         ));
+    }
+}
+
+#[cfg(test)]
+mod result_gated_same_name_search_tests {
+    use super::*;
+    use crate::cards::builders::{IfResultPredicate, PlayerAst};
+    use crate::effect::{ChoiceCount, SearchResultReferenceSurface, SearchSelectionMode};
+    use crate::filter::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+    use crate::zone::Zone;
+
+    fn sentence(effect: EffectAst, leading_then: bool) -> EffectAst {
+        EffectAst::SourceSentence {
+            effects: vec![effect], leading_then, starting_with_controller: false,
+        }
+    }
+
+    fn program(same_name: bool) -> Vec<EffectAst> {
+        let tag = crate::tag::CompilerReferenceTag::It.bind();
+        let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter: ObjectFilter::land(), count: ChoiceCount::exactly(1), count_value: None,
+            player: PlayerAst::You, tag: tag.clone(),
+        });
+        let mut filter = ObjectFilter::land();
+        if same_name {
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: tag.into(), relation: TaggedOpbjectRelation::SameNameAsTagged,
+            });
+        }
+        let search = EffectAst::subject_verb_search_library(
+            filter, Zone::Battlefield, PlayerAst::You, PlayerAst::You,
+            SearchSelectionMode::Optional, false, None, true, ChoiceCount::up_to(2),
+            None, None, SearchResultReferenceSurface::ThoseCards, false, true, false,
+        );
+        vec![
+            sentence(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: IfResultPredicate::Did, effects: vec![choice],
+            }), false),
+            sentence(search, true),
+        ]
+    }
+
+    #[test]
+    fn dependent_search_keeps_move_shuffle_and_then_inside_success_branch() {
+        let normalized = normalize_effects_ast(&program(true));
+        assert_eq!(normalized.len(), 1);
+        let EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) =
+            sentence_tail(&normalized[0]) else { panic!("result branch disappeared"); };
+        assert_eq!(effects.len(), 2);
+        assert!(matches!(&effects[1], EffectAst::SourceSentence { leading_then: true, .. }));
+        assert!(matches!(sentence_tail(&effects[1]),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                    destination: Zone::Battlefield, shuffle: true, tapped: true, ..
+                }), ..
+            })
+        ));
+    }
+
+    #[test]
+    fn unrelated_following_search_keeps_its_independent_sentence() {
+        assert_eq!(normalize_effects_ast(&program(false)).len(), 2);
     }
 }

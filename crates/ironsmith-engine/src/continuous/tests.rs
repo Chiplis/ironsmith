@@ -713,6 +713,7 @@ fn test_ability_granting_counters() {
 
     // Calculate characteristics
     let mut chars = CalculatedCharacteristics {
+        alternate_name: creature.split_other_half_name().map(str::to_string),
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
         linked_face_mana_value: creature.linked_face_mana_value(),
@@ -776,6 +777,7 @@ fn test_multiple_ability_counters() {
     creature.add_counters(CounterType::Vigilance, 1);
 
     let mut chars = CalculatedCharacteristics {
+        alternate_name: creature.split_other_half_name().map(str::to_string),
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
         linked_face_mana_value: creature.linked_face_mana_value(),
@@ -855,6 +857,7 @@ fn test_counter_flying_preserves_independent_redundant_instances() {
     let printed_flying = StaticAbility::flying();
     let printed_id = printed_flying.instance_id();
     let mut chars = CalculatedCharacteristics {
+        alternate_name: creature.split_other_half_name().map(str::to_string),
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
         linked_face_mana_value: creature.linked_face_mana_value(),

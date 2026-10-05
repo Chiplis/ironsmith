@@ -4797,6 +4797,9 @@ pub(super) fn parse_complete_quantified_discard_statement(
 pub(crate) fn parse_complete_get_pump_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effects) = super::parse_same_name_gets_fanout_sentence(sentence)? {
+        return Ok(Some(EffectAst::Sequence { effects }));
+    }
     if sentence
         .first()
         .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))

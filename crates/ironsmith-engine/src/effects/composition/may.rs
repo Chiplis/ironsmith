@@ -26,9 +26,25 @@ pub(crate) fn is_object_selection(effect: &Effect) -> bool {
 
 fn execute_optional_effects(
     effects: &[Effect],
+    pay_as_cost: bool,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
+    if pay_as_cost {
+        let cost = crate::costs::Cost::try_effects(effects.iter().cloned())
+            .map_err(ExecutionError::InternalError)?;
+        let payer = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
+        return match crate::special_actions::pay_total_cost_with_choice_in_context(
+            game, payer, ctx.source, &cost, crate::costs::PaymentReason::Effect, ctx,
+        ) {
+            Ok(()) if !ctx.decision_maker.awaiting_choice() => Ok(
+                EffectOutcome::count(1).with_execution_fact(ExecutionFact::Accepted),
+            ),
+            Ok(()) => Ok(EffectOutcome::count(0)),
+            Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => Err(error),
+            Err(_) => Ok(EffectOutcome::impossible()),
+        };
+    }
     let has_action = effects.iter().any(|effect| !is_object_selection(effect));
     let mut outcomes = Vec::new();
     for (index, effect) in effects.iter().enumerate() {
@@ -93,6 +109,8 @@ pub struct MayEffect {
     pub decider: Option<PlayerFilter>,
     /// Strategy when no decision maker is present.
     pub fallback: FallbackStrategy,
+    /// Execute all children as one TotalCost transaction.
+    pub pay_as_cost: bool,
 }
 
 pub(crate) struct PreparedOptionalExecution {
@@ -106,6 +124,7 @@ impl MayEffect {
             effects,
             decider: None,
             fallback: FallbackStrategy::Decline,
+            pay_as_cost: false,
         }
     }
 
@@ -115,6 +134,7 @@ impl MayEffect {
             effects,
             decider: Some(decider),
             fallback: FallbackStrategy::Decline,
+            pay_as_cost: false,
         }
     }
 
@@ -126,6 +146,11 @@ impl MayEffect {
     /// Set the fallback strategy for when no decision maker is present.
     pub fn with_fallback(mut self, fallback: FallbackStrategy) -> Self {
         self.fallback = fallback;
+        self
+    }
+
+    pub fn with_pay_as_cost(mut self, pay_as_cost: bool) -> Self {
+        self.pay_as_cost = pay_as_cost;
         self
     }
 
@@ -325,28 +350,26 @@ impl EffectExecutor for MayEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // The complete optional instruction owns all of its child actions.
-        // Pending answers cannot become a decline or publish earlier partial
-        // actions; retry must retain the original context and one-shot state.
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+            // A failed optional cost also leaves its once-per-turn/identity
+            // bookkeeping uncommitted. An accepted offer is not yet a payment.
+            let payment_checkpoint = self.pay_as_cost.then(|| {
+                (game.clone(), crate::effects::ExecutionContextCheckpoint::capture(ctx))
+            });
             let Some(prepared) = self.prepare_optional_execution(game, ctx)? else {
                 return Ok(EffectOutcome::declined());
             };
-            let result = execute_optional_effects(&self.effects, game, ctx);
+            let result = execute_optional_effects(&self.effects, self.pay_as_cost, game, ctx);
             ctx.iteration.iterated_player = prepared.previous_iterated_player;
+            if let Some((checkpoint, context_checkpoint)) = payment_checkpoint
+                && result.as_ref().is_ok_and(|outcome| !outcome.status.is_success())
+                && !ctx.decision_maker.awaiting_choice()
+            {
+                game.restore_execution_checkpoint(checkpoint, false);
+                context_checkpoint.restore(ctx);
+            }
             result
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if result.is_err() || pending {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if pending {
-            return result.map(|_| EffectOutcome::count(0));
-        }
-        result
+        })
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
@@ -363,6 +386,7 @@ impl EffectExecutor for MayEffect {
         if self.should_auto_decline_without_prompt(game, ctx)? {
             return Ok(Box::new(MayProposal {
                 effects: Vec::new(),
+                pay_as_cost: self.pay_as_cost,
                 iterated_player: ctx.iteration.iterated_player,
             }));
         }
@@ -381,6 +405,7 @@ impl EffectExecutor for MayEffect {
             self.fallback,
         );
         Ok(Box::new(MayProposal {
+            pay_as_cost: self.pay_as_cost,
             effects: if should_do {
                 self.effects.clone()
             } else {
@@ -417,6 +442,7 @@ impl EffectExecutor for MayEffect {
 #[derive(Debug)]
 struct MayProposal {
     effects: Vec<crate::effect::Effect>,
+    pay_as_cost: bool,
     iterated_player: Option<PlayerId>,
 }
 
@@ -430,8 +456,10 @@ impl crate::effects::SimultaneousEffectProposal for MayProposal {
             return Ok(EffectOutcome::declined());
         }
         let effects = self.effects;
-        ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
-            execute_optional_effects(&effects, game, ctx)
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+            ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
+                execute_optional_effects(&effects, self.pay_as_cost, game, ctx)
+            })
         })
     }
 }

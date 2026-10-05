@@ -297,6 +297,7 @@ pub enum SameNameAntecedentSurface {
     Permanent,
     Creature,
     Object,
+    Land,
 }
 
 impl SameNameAntecedentSurface {
@@ -307,6 +308,7 @@ impl SameNameAntecedentSurface {
             "permanent" | "permanents" => Some(Self::Permanent),
             "creature" | "creatures" => Some(Self::Creature),
             "object" | "objects" => Some(Self::Object),
+            "land" | "lands" => Some(Self::Land),
             _ => None,
         }
     }
@@ -318,6 +320,7 @@ impl SameNameAntecedentSurface {
             Self::Permanent => "that permanent",
             Self::Creature => "that creature",
             Self::Object => "that object",
+            Self::Land => "that land",
         }
     }
 
@@ -328,6 +331,7 @@ impl SameNameAntecedentSurface {
             Self::Permanent => "this permanent",
             Self::Creature => "this creature",
             Self::Object => "this object",
+            Self::Land => "this land",
         }
     }
 }

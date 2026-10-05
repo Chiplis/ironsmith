@@ -2617,6 +2617,11 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                     || filter.name_originally_printed_in_set.is_some()
                     || filter.distinct_names
                     || filter.shares_name
+                    || filter.tagged_constraints.iter().any(|constraint| matches!(
+                        constraint.relation,
+                        crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                            | crate::filter::TaggedOpbjectRelation::DifferentNameFromTagged
+                    ))
                     || filter.characteristic_relations.iter().any(|relation| relation.characteristics.contains(&crate::ObjectCharacteristic::Name))
             }
             Modification::AddCardTypes(types) | Modification::RemoveCardTypes(types) => {
@@ -3422,6 +3427,7 @@ mod tests {
         let baseline = HashMap::from([(
             object.id,
             CalculatedCharacteristics {
+                alternate_name: object.split_other_half_name().map(str::to_string),
                 name: object.name.clone(),
                 mana_cost: object.mana_cost_owned(),
                 linked_face_mana_value: object.linked_face_mana_value(),
@@ -3484,6 +3490,7 @@ mod tests {
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
+                alternate_name: land.split_other_half_name().map(str::to_string),
                 name: land.name.clone(),
                 mana_cost: land.mana_cost_owned(),
                 linked_face_mana_value: land.linked_face_mana_value(),
@@ -3611,6 +3618,7 @@ mod tests {
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
+                alternate_name: land.split_other_half_name().map(str::to_string),
                 name: land.name.clone(),
                 mana_cost: land.mana_cost_owned(),
                 linked_face_mana_value: land.linked_face_mana_value(),
@@ -3792,6 +3800,7 @@ mod tests {
         let baseline = HashMap::from([(
             object.id,
             CalculatedCharacteristics {
+                alternate_name: object.split_other_half_name().map(str::to_string),
                 name: object.name.clone(),
                 mana_cost: object.mana_cost_owned(),
                 linked_face_mana_value: object.linked_face_mana_value(),
@@ -4023,6 +4032,7 @@ mod tests {
 
     fn chars_for(object: &crate::object::Object) -> CalculatedCharacteristics {
         CalculatedCharacteristics {
+            alternate_name: object.split_other_half_name().map(str::to_string),
             name: object.name.clone(),
             mana_cost: object.mana_cost_owned(),
             linked_face_mana_value: object.linked_face_mana_value(),

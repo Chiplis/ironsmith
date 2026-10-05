@@ -462,6 +462,7 @@ impl GameState {
         }
         let owner = self.object(object)?.owner;
         Some(crate::continuous::CalculatedCharacteristics {
+            alternate_name: None,
             name: "".into(),
             mana_cost: None,
             linked_face_mana_value: None,

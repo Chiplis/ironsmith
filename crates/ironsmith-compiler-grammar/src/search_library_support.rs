@@ -430,7 +430,8 @@ pub fn split_search_same_name_reference_filter(
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
     let (start_token_idx, end_token_idx) =
         find_token_word_sequence_span(tokens, &["with", "the", "same", "name", "as"])
-            .or_else(|| find_token_word_sequence_span(tokens, &["with", "same", "name", "as"]))?;
+            .or_else(|| find_token_word_sequence_span(tokens, &["with", "same", "name", "as"]))
+            .or_else(|| find_token_word_sequence_span(tokens, &["which", "have", "the", "same", "name", "as"]))?;
     let base_filter_tokens = trim_commas(&tokens[..start_token_idx]);
     let reference_tokens = trim_commas(&tokens[end_token_idx..]);
     Some((base_filter_tokens, reference_tokens))

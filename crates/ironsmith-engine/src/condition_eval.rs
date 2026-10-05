@@ -4842,7 +4842,18 @@ fn evaluate_condition_in_context(
             }
             if let Some(tagged) = ctx.get_tagged_all(tag.as_str()) {
                 for snapshot in tagged {
-                    if let Some(current_id) = crate::effects::helpers::resolve_tagged_object_id(game, ctx, snapshot)
+                    // A produced token that has left the battlefield cannot
+                    // become a later usable incarnation (CR 111.8). Its
+                    // characteristic predicate reads exact departure LKI,
+                    // even before state-based actions remove its new record.
+                    let current_id = if snapshot.kind == crate::object::ObjectKind::Token
+                        && snapshot.zone == Zone::Battlefield
+                    {
+                        game.object(snapshot.object_id).map(|object| object.id)
+                    } else {
+                        crate::effects::helpers::resolve_tagged_object_id(game, ctx, snapshot)
+                    };
+                    if let Some(current_id) = current_id
                         && let Some(object) = game.object(current_id)
                     {
                         // Current characteristics own an ordinary predicate;

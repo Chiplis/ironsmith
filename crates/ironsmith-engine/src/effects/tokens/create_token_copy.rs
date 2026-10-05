@@ -568,7 +568,7 @@ fn commit_token_copy_proposal(mut proposal: TokenCopyProposal, game: &mut GameSt
     let mut committed = match proposal.prepared.take().ok_or_else(||
         ExecutionError::InternalError("copy proposal has no prepared creation".into()))? {
         PreparedTokenCreation::Finished { outcome, programs } => crate::effects::SimultaneousEffectCommit {
-            outcome, completion: Some(Box::new(TokenCopyCompletion { instruction: proposal.instruction.take(),
+            outcome: outcome.with_result_objects(Vec::new()), completion: Some(Box::new(TokenCopyCompletion { instruction: proposal.instruction.take(),
                 entries: Some(Vec::new()), frozen: None, programs })),
         },
         PreparedTokenCreation::Proceed { event, provenance, programs } => {

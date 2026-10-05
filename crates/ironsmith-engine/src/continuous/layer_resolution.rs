@@ -311,6 +311,7 @@ pub(super) fn calculate_with_layers(
                 }
                 Modification::SetName(name) => {
                     chars.name = name.clone().into();
+                    chars.alternate_name = None;
                 }
                 Modification::InsertNameWords {
                     words,

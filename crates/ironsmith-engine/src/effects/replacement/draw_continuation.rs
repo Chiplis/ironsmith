@@ -650,6 +650,9 @@ fn prepare_effect(
         );
     }
     if let Some(optional) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        if optional.pay_as_cost {
+            return execute_effect(game, effect, ctx).map(PreparedReplacementChild::finished);
+        }
         let Some(branch) = optional.prepare_optional_execution(game, ctx)? else {
             return Ok(PreparedReplacementChild::finished(EffectOutcome::declined()));
         };

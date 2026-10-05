@@ -1567,6 +1567,9 @@ pub fn parse_search_library_same_name_reference_lexed(
                 (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
             ))
         } else if is_same_name_that_reference_words(&reference_words) {
+            if reference_tokens.iter().any(|token| token.as_word().is_none()) {
+                return Err(CardTextError::ParseError("malformed bound same-name search reference".into()));
+            }
             Some(SearchLibrarySameNameReference::Tagged(
                 (crate::tag::CompilerReferenceTag::It.bind()).into(),
             ))

@@ -815,13 +815,9 @@ pub(crate) fn resolve_wide(
             let player_ids = context.player_ids(value, player)?;
             let filter_ctx = context.filter_context(game);
             let mut count: i64 = 0;
-            for snapshot in game.turn_store.turn_history.spell_cast_snapshot_history() {
-                if *exclude_source && snapshot.object_id == context.source {
-                    continue;
-                }
-                if !player_ids.contains(&snapshot.controller) {
-                    continue;
-                }
+            for (_, snapshot) in game.turn_store.turn_history.checked_spell_cast_history(
+                &player_ids, exclude_source.then_some(context.source),
+            )? {
                 if filter.matches_snapshot(&snapshot, &filter_ctx, game) {
                     count = context.add_spell_metric(count, 1)?;
                 }
@@ -836,13 +832,9 @@ pub(crate) fn resolve_wide(
             let player_ids = context.player_ids(value, player)?;
             let filter_ctx = context.filter_context(game);
             let mut total: i64 = 0;
-            for snapshot in game.turn_store.turn_history.spell_cast_snapshot_history() {
-                if *exclude_source && snapshot.object_id == context.source {
-                    continue;
-                }
-                if !player_ids.contains(&snapshot.controller) {
-                    continue;
-                }
+            for (_, snapshot) in game.turn_store.turn_history.checked_spell_cast_history(
+                &player_ids, exclude_source.then_some(context.source),
+            )? {
                 if filter.matches_snapshot(&snapshot, &filter_ctx, game) {
                     total = context.add_spell_metric(total, snapshot.mana_value() as i64)?;
                 }

@@ -236,11 +236,21 @@ impl From<RetainedCopiableValues<Ability>> for CopiableValues {
     }
 }
 
+fn retained_copiable_name(name: &str, alternate: Option<&str>) -> String {
+    if crate::filter::name_is_nameless(name) {
+        return name.to_string();
+    }
+    match alternate {
+        Some(other) if !name.split(" // ").any(|part| part.trim() == other) => format!("{name} // {other}"),
+        _ => name.to_string(),
+    }
+}
+
 impl CopiableValues {
     pub fn from_object(obj: &Object) -> Self {
         let bestow_restore = obj.bestow_cast_state.as_ref();
         Self {
-            name: obj.name.to_owned_string(),
+            name: retained_copiable_name(&obj.name, obj.split_other_half_name()),
             mana_cost: obj.mana_cost_owned(),
             compiled_card_text: obj.compiled_card_text.to_string(),
             ability_labels: obj.ability_labels.to_vec(),
@@ -273,7 +283,7 @@ impl CopiableValues {
 
     pub fn from_calculated(chars: &CalculatedCharacteristics) -> Self {
         Self {
-            name: chars.name.to_owned_string(),
+            name: retained_copiable_name(&chars.name, chars.alternate_name.as_deref()),
             mana_cost: chars.mana_cost.clone(),
             compiled_card_text: chars.compiled_card_text.to_string(),
             ability_labels: chars.ability_labels.to_vec(),
@@ -840,6 +850,9 @@ impl ObjectSnapshot {
                 snapshot.first_printed_set_name = None;
             }
             snapshot.name = calculated.name.to_string();
+            if snapshot.linked_face_layout == crate::card::LinkedFaceLayout::Split {
+                snapshot.other_face_name = calculated.alternate_name.clone();
+            }
             snapshot.mana_cost = calculated.mana_cost.clone();
             snapshot.linked_face_mana_value = calculated.linked_face_mana_value;
             snapshot.compiled_card_text = calculated.compiled_card_text.to_string();

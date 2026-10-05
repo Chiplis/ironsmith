@@ -3974,6 +3974,11 @@ pub(super) fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Opt
 }
 
 pub(super) fn is_implicit_object_state_subject_clause(clause: LexedClause<'_>) -> bool {
+    // A definite token names the immediately preceding creation result.
+    // An indefinite "a token" remains an existential object description.
+    if surface::exact_any(clause.trimmed(), &[&["the", "token"], &["that", "token"]]) {
+        return true;
+    }
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
     surface::exact_any(
         clause,

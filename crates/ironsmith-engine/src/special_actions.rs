@@ -4197,6 +4197,9 @@ fn pay_total_cost_branch_in_context(
                     execution_ctx,
                     if costs[index + 1..].iter().any(|cost| cost.requires_tap()) { vec![source] } else { Vec::new() },
                 )?;
+                if execution_ctx.decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
             }
             Ok(())
         }

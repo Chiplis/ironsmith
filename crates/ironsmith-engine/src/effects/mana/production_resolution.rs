@@ -277,7 +277,7 @@ impl ManaProduction<'_> {
                         collect_available_mana_symbols(game, ctx, filter)
                     }
                     super::ManaTypeSource::TriggeringEventProduced => {
-                        collect_triggering_event_mana_symbols(game, ctx, filter)
+                        collect_triggering_event_mana_symbols(game, ctx, filter)?
                     }
                 }
                 .into_iter()

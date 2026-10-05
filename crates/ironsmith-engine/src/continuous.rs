@@ -2031,6 +2031,8 @@ pub struct CalculatedCharacteristics {
     /// P/T domain. Checked owners reject it before publishing any snapshot.
     pub(crate) numeric_range_error: Option<(&'static str, i128)>,
     pub name: SharedStr,
+    /// A second current split-card name, cleared when layer 1 replaces names.
+    pub alternate_name: Option<String>,
     pub mana_cost: Option<ManaCost>,
     /// Noncopiable linked-face mana value of the current view. Copy and
     /// face-down layers replace this even if both raw mana costs are absent.
@@ -2375,6 +2377,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         |combined| combined.supertypes.clone(),
     );
     let mut chars = CalculatedCharacteristics {
+        alternate_name: object.split_other_half_name().map(str::to_string),
         name: object.name.clone(),
         mana_cost: object.mana_cost_owned(),
         linked_face_mana_value: object.linked_face_mana_value(),
@@ -2469,6 +2472,7 @@ fn apply_copy_effect_exceptions(
         .or_else(|| name_override.clone())
     {
         chars.name = name.clone().into();
+        chars.alternate_name = None;
     }
     for supertype in add_supertypes {
         if !chars.supertypes.contains(supertype) {
@@ -2516,6 +2520,7 @@ fn copy_characteristics_from_copiable_values(
     origin: Option<AbilityEffectOrigin>,
 ) {
     chars.name = values.name.clone().into();
+    chars.alternate_name = None;
     chars.mana_cost = values.mana_cost.clone();
     chars.linked_face_mana_value = None;
     chars.compiled_card_text = values.compiled_card_text.clone().into();
@@ -2563,6 +2568,7 @@ fn apply_room_no_unlocked_door_layer(
         return;
     }
     chars.name = "".into();
+    chars.alternate_name = None;
     chars.mana_cost = None;
     chars.linked_face_mana_value = None;
     chars.abilities.clear();
@@ -3800,6 +3806,7 @@ fn apply_text_box_modification_to_chars(
         }
         Modification::SetName(name) => {
             chars.name = name.clone().into();
+            chars.alternate_name = None;
         }
         Modification::InsertNameWords {
             words,
@@ -5925,6 +5932,7 @@ fn apply_modification_to_chars(
         }
         Modification::SetName(name) => {
             chars.name = name.clone().into();
+            chars.alternate_name = None;
         }
         Modification::InsertNameWords {
             words,

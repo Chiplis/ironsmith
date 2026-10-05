@@ -565,6 +565,7 @@ impl EffectOutcome {
         let mut other = Vec::new();
         let mut chosen_objects = Vec::new();
         let mut result_objects = Vec::new();
+        let mut has_result_objects = false;
         let mut affected_objects = Vec::new();
         let mut chosen_memory = Vec::new();
         let mut affected_memory = Vec::new();
@@ -574,7 +575,10 @@ impl EffectOutcome {
         for fact in facts {
             match fact {
                 ExecutionFact::ChosenObjects(ids) => chosen_objects.extend(ids),
-                ExecutionFact::ResultObjects(ids) => result_objects.extend(ids),
+                ExecutionFact::ResultObjects(ids) => {
+                    has_result_objects = true;
+                    result_objects.extend(ids);
+                }
                 ExecutionFact::AffectedObjects(ids) => affected_objects.extend(ids),
                 ExecutionFact::ChosenObjectMemory(memory) => chosen_memory.extend(memory),
                 ExecutionFact::AffectedObjectMemory(memory) => affected_memory.extend(memory),
@@ -589,7 +593,7 @@ impl EffectOutcome {
         if !chosen_objects.is_empty() {
             other.push(ExecutionFact::ChosenObjects(chosen_objects));
         }
-        if !result_objects.is_empty() {
+        if has_result_objects {
             other.push(ExecutionFact::ResultObjects(result_objects));
         }
         if !affected_objects.is_empty() {
@@ -766,12 +770,9 @@ impl EffectOutcome {
     ///
     /// Use this when the compatibility payload must remain a count or another
     /// value, but follow-up effects need the post-effect object IDs.
+    /// An empty vector is an authoritative empty result, not absent evidence.
     pub fn with_result_objects(self, objects: Vec<ObjectId>) -> Self {
-        if objects.is_empty() {
-            self
-        } else {
-            self.with_execution_fact(ExecutionFact::ResultObjects(objects))
-        }
+        self.with_execution_fact(ExecutionFact::ResultObjects(objects))
     }
 
     /// Record affected object ids and their current object memory in one step.

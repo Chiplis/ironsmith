@@ -4686,6 +4686,7 @@ impl GameState {
         let mut chars =
             self.calculated_characteristics(id)
                 .unwrap_or_else(|| CalculatedCharacteristics {
+                    alternate_name: object.split_other_half_name().map(str::to_string),
                     name: object.name.clone(),
                     mana_cost: object.mana_cost_owned(),
                     linked_face_mana_value: object.linked_face_mana_value(),
