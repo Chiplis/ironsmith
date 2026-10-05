@@ -5,6 +5,10 @@ use crate::cards::builders::PlayerPredicateAst;
 mod zone_change_surfaces;
 #[path = "permanent_tap_state.rs"]
 mod permanent_tap_state;
+#[path = "attachment_transitions.rs"]
+mod attachment_transitions;
+#[path = "phasing_transitions.rs"]
+mod phasing_transitions;
 
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
@@ -3351,6 +3355,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    if let Some(trigger) = phasing_transitions::parse_phasing_transition_trigger(tokens)? {
+        return Ok(trigger);
+    }
+    if let Some(trigger) = attachment_transitions::parse_attachment_transition_trigger(tokens)? {
+        return Ok(trigger);
+    }
     if let Some(trigger) = permanent_tap_state::parse_player_tap_state_trigger(tokens)? {
         return Ok(trigger);
     }

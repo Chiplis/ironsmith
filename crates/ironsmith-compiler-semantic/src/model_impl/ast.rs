@@ -174,6 +174,7 @@ pub enum TriggerSpec {
     /// controller, quantifier, and event-time turn restrictions.
     ZoneChange(ironsmith_core::trigger_model::ZoneChangeTrigger),
     ThisPhasesOut,
+    PhasingChanged { filter: ObjectFilter, phased_in: bool, one_or_more: bool },
     StateBased {
         condition: PredicateAst,
         display: String,
@@ -281,6 +282,7 @@ pub enum TriggerSpec {
     /// "When this Class becomes level N" (CR 716.2a).
     ThisClassBecomesLevel(u32),
     ThisBecomesTapped,
+    AttachmentChanged { attachment: ObjectFilter, recipient: ObjectFilter, attached: bool },
     PermanentBecomesTapped(ObjectFilter),
     PermanentBecomesTappedOneOrMore(ObjectFilter),
     ThisBecomesUntapped,

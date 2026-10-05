@@ -701,6 +701,12 @@ pub enum TriggerKind {
         one_or_more: bool,
         during_untap_step: Option<PlayerFilter>,
     },
+    AttachmentChanged {
+        attachment: ObjectFilter,
+        recipient: ObjectFilter,
+        attached: bool,
+    },
+    PhasingChanged { filter: ObjectFilter, phased_in: bool, one_or_more: bool },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1100,6 +1106,9 @@ impl Trigger {
             TriggerKind::ThisLeavesBattlefield,
         )
     }
+    pub fn phasing_changed(filter: ObjectFilter, phased_in: bool, one_or_more: bool) -> Self {
+        Self::typed("phasing_changed", TriggerKind::PhasingChanged { filter, phased_in, one_or_more })
+    }
     pub fn this_phases_out() -> Self {
         Self::typed("When this phases out", TriggerKind::ThisPhasesOut)
     }
@@ -1128,6 +1137,9 @@ impl Trigger {
         Self::typed("player_changes_tap_state", TriggerKind::PlayerChangesTapState {
             player, filter, tapped, one_or_more, during_untap_step,
         })
+    }
+    pub fn attachment_changed(attachment: ObjectFilter, recipient: ObjectFilter, attached: bool) -> Self {
+        Self::typed("attachment_changed", TriggerKind::AttachmentChanged { attachment, recipient, attached })
     }
     pub fn becomes_tapped() -> Self {
         Self::typed("becomes_tapped", TriggerKind::BecomesTapped)

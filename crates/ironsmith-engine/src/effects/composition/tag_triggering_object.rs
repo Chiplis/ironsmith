@@ -26,6 +26,15 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             ExecutionError::UnresolvableValue("missing triggering event".to_string())
         })?;
 
+        // A typed attachment trigger has two participants. Its ordinary
+        // demonstrative is the recipient, never the Aura/Equipment itself.
+        if matches!(event.kind(), crate::events::EventKind::ObjectBecameAttached | crate::events::EventKind::ObjectBecameUnattached)
+            && let Some(recipient) = ctx.get_tagged_all(ironsmith_core::tag::TRIGGER_ATTACHMENT_RECIPIENT_TAG).cloned() {
+            let count = recipient.len() as i32;
+            set_triggering_object_tags(ctx, self.tag.as_str(), recipient);
+            return Ok(EffectOutcome::count(count));
+        }
+
         if let Some(zone_change) = event.downcast::<crate::events::zones::ZoneChangeEvent>() {
             // CR 603.2c: a "one or more" trigger's "them" / "those cards" is
             // every object of the simultaneous event that matched it, not the
@@ -140,6 +149,8 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             Some(ironsmith_core::ATTACKING_GROUP_TAG)
         } else if matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped) {
             Some(ironsmith_core::TAP_STATE_GROUP_TAG)
+        } else if matches!(event.kind(), crate::events::EventKind::PermanentPhasedIn | crate::events::EventKind::PermanentPhasedOut) {
+            Some(ironsmith_core::tag::PHASING_GROUP_TAG)
         } else if event
             .downcast::<crate::events::other::CardDiscardedEvent>()
             .is_some()

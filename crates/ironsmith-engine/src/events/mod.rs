@@ -112,7 +112,7 @@ pub use other::{
     BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent, CoinFlippedEvent,
     ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
     KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
-    MutatedEvent, ObjectBecameUnattachedEvent, PermanentPhasedOutEvent, PermanentTappedEvent,
+    MutatedEvent, ObjectBecameAttachedEvent, ObjectBecameUnattachedEvent, PermanentPhasedInEvent, PermanentPhasedOutEvent, PermanentTappedEvent,
     PermanentUntappedEvent, PlayerLosesGameEvent, PlayerVote, PlayersFinishedVotingEvent,
     SearchLibraryEvent, ShuffleLibraryEvent, SpellCounteredEvent, StateTriggerEvent,
     TransformedEvent, TurnedFaceUpEvent, WouldKeywordActionMatcher,

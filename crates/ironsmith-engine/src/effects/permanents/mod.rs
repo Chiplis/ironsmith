@@ -229,9 +229,6 @@ pub(crate) fn attach_battlefield_object_to_target(
         return false;
     }
 
-    game.effect_store
-        .continuous_effects
-        .record_attachment(attachment_id);
     true
 }
 

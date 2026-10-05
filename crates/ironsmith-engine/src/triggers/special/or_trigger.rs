@@ -1239,6 +1239,15 @@ impl TriggerMatcher for OrTrigger {
             .unwrap_or(0)
     }
 
+    fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        crate::triggers::matcher_trait::alternative_grouping_key(self.active_branches(), event)
+    }
+
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        self.active_branches().filter(|branch| branch.matches(event, ctx))
+            .find_map(|branch| branch.event_value_amount(event, ctx))
+    }
+
     fn subscribed_kinds(&self) -> Option<Vec<crate::events::EventKind>> {
         let mut kinds = Vec::new();
         for trigger in &self.triggers {

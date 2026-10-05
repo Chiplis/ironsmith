@@ -213,10 +213,6 @@ fn execute_aura_swap(
             if !exchange.attach_object_to_target(new_aura, attached_to) {
                 return Ok(EffectOutcome::impossible());
             }
-            exchange
-                .effect_store
-                .continuous_effects
-                .record_attachment(new_aura);
         }
 
         let returned = crate::effects::zones::promote_committed_zone_change_receipt(

@@ -64,15 +64,11 @@ impl EffectExecutor for PhaseInEffect {
                         })
                 })
                 .collect::<Vec<_>>();
-            let mut phased_in = Vec::new();
-            for object_id in candidates {
-                if game.is_phased_out(object_id) {
-                    game.phase_in(object_id);
-                    if !game.is_phased_out(object_id) {
-                        phased_in.push(object_id);
-                    }
-                }
-            }
+            game.phase_in_simultaneously(&candidates);
+            let phased_in = candidates
+                .into_iter()
+                .filter(|id| !game.is_phased_out(*id))
+                .collect::<Vec<_>>();
             // A following "... and all creatures with phasing phase out" in
             // the same instruction happens simultaneously (Time and Tide):
             // the permanents that just phased in must not phase out again.
@@ -90,6 +86,7 @@ impl EffectExecutor for PhaseInEffect {
             ObjectApplyResultPolicy::CountApplied
         };
 
+        let mut affected = Vec::new();
         let apply_result = apply_to_selected_objects(
             game,
             ctx,
@@ -102,7 +99,7 @@ impl EffectExecutor for PhaseInEffect {
                     && game.is_phased_out(object_id)
                     && game.can_phase_in(object_id)
                 {
-                    game.phase_in(object_id);
+                    affected.push(object_id);
                     Ok(true)
                 } else {
                     Ok(false)
@@ -110,6 +107,7 @@ impl EffectExecutor for PhaseInEffect {
             },
         )?;
 
+        game.phase_in_simultaneously(&affected);
         Ok(apply_result.outcome)
     }
 

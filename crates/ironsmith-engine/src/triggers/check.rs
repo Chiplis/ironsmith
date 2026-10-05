@@ -1930,6 +1930,17 @@ fn tagged_objects_for_matched_trigger_with_view(
         trigger_event,
         trigger_requires_other_attacker_tag(trigger),
     );
+    if matches!(trigger.simultaneous_trigger_key(trigger_event), Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::PhasingBatch { .. }))
+        && let Some(snapshot) = trigger_event.snapshot()
+    {
+        tagged.insert(crate::tag::TagKey::from(ironsmith_core::tag::PHASING_GROUP_TAG), vec![snapshot.clone()]);
+    }
+    if let Some(attachment_trigger) = trigger.downcast_ref::<crate::triggers::AttachmentChangedTrigger>()
+        && let Some((attachment, recipient)) = attachment_trigger.participants(trigger_event)
+    {
+        tagged.insert(crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG), vec![attachment.clone()]);
+        tagged.insert(crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_RECIPIENT_TAG), vec![recipient.clone()]);
+    }
     if let Some(attacks) = trigger.downcast_ref::<crate::triggers::AttacksTrigger>()
         && attacks.one_or_more
         && let Some(attacked) =
@@ -2548,6 +2559,15 @@ fn skip_post_event_source_discovery(
         // Planeswalking can trigger abilities on both the plane left behind
         // (from LKI) and the newly face-up plane (from the current state).
         return false;
+    }
+    // During a simultaneous in/out exchange, an observer that only phased
+    // in did not exist before the phase-out event (CR 603.10). A complete
+    // producer snapshot already enumerated every eligible old source.
+    if trigger_event.downcast::<crate::events::PermanentPhasedOutEvent>()
+        .is_some_and(|event| event.complete_source_lookback)
+        && trigger_ability.trigger.looks_back_for_source(trigger_event)
+    {
+        return true;
     }
     // A look-back matcher describes which abilities can function from an
     // object's LKI; it does not mean every still-present permanent with that

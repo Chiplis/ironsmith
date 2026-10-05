@@ -930,6 +930,15 @@ impl Auditor {
                 scope.player = Binding::Present;
                 scope.amount = Binding::Present;
             }
+            "PhasingChanged" => {
+                scope.event_object = Binding::Present;
+                scope.amount = Binding::Present;
+            }
+            "AttachmentChanged" => {
+                // Both attachment and recipient snapshots are mandatory in
+                // the typed matcher; the recipient is the body event object.
+                scope.event_object = Binding::Present;
+            }
             "PlayerChangesTapState" => {
                 // The matcher requires an explicit event actor and an origin
                 // snapshot. It supplies 1 per transition; simultaneous queues
