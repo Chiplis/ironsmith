@@ -172,11 +172,13 @@ fn parse_life_equal_payment<'a>(input: &mut LexStream<'a>) -> WResult<Activation
     let words = crate::lexer::token_word_refs(rest);
     // Pronoun-relative amounts ("life equal to its toughness") are resolved by
     // the target-aware unless-cost grammar; this segment reads only
-    // self-contained value phrases.
+    // self-contained value phrases. An explicit `this creature's ...` is
+    // source-bound, not an unresolved target pronoun, and is read by the
+    // shared typed value grammar below.
     if words.iter().any(|word| {
         matches!(
             *word,
-            "its" | "it" | "it's" | "their" | "that" | "this" | "his" | "her"
+            "its" | "it" | "it's" | "their" | "that" | "his" | "her"
         )
     }) {
         return Err(primitives::backtrack_err(
@@ -296,6 +298,36 @@ mod tests {
             ActivationCostSegmentKind::Behold => parse_behold_segment_tokens(&tokens).unwrap(),
             ActivationCostSegmentKind::Blight => parse_blight_segment_tokens(&tokens).unwrap(),
             _ => parse_bare_symbol_segment_tokens(&tokens).unwrap(),
+        }
+    }
+
+    #[test]
+    fn equal_life_payment_accepts_explicit_typed_source_characteristics() {
+        for (text, power) in [
+            ("pay life equal to this creature's power", true),
+            ("pay life equal to this creature's toughness", false),
+        ] {
+            let ActivationCostSegmentCst::Life(value) = parse(text) else {
+                panic!("expected a typed life payment");
+            };
+            let target = match value.unhinted() {
+                Value::PowerOf(target) if power => target,
+                Value::ToughnessOf(target) if !power => target,
+                value => panic!("source characteristic was not retained: {value:?}"),
+            };
+            assert!(matches!(
+                target.unhinted(),
+                crate::target::ChooseSpec::Source
+            ));
+        }
+        for text in [
+            "pay life equal to its power",
+            "pay life equal to that creature's power",
+            "pay life equal to this creature's prestige",
+            "pay life equal to this",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert!(parse_pay_segment_tokens(&tokens).is_err(), "{text}");
         }
     }
 
