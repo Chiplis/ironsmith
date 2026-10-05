@@ -133,6 +133,27 @@
       "status": "UNVALIDATED committed-source checkpoint; coverage only from independently reviewed committed matrix",
       "builds_tests": "not_run",
       "bundle_integrity": "git bundle verify succeeded; prerequisite base exists locally"
+    },
+    {
+      "file": "recovery-sources-20261005-1150.bundle",
+      "requires_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
+      "refs": {
+        "refs/heads/campaign/recovery-integration-d51": "cc915c3fb4ef9162bfda86fbf69c2549c1e37c85",
+        "refs/heads/recovery/activation-counter-costs": "e017e9d5135cfff8e1c2e521d74ff71b2c13f7b4",
+        "refs/heads/recovery/defending-player-references": "9a0fba623fe4d0a4ecf6da571b56f9ef35e4ef10",
+        "refs/heads/recovery/dynamic-keyword-amounts": "71d9da365dc91c629b2b651fe2a244e611409a81",
+        "refs/heads/recovery/foretell-state-and-grants": "c0c0db42745a64753baef2af3a8b386536045bce",
+        "refs/heads/recovery/next-play-and-flashback": "f3762e6d7699d191ab8f6f41ae42e96745880771",
+        "refs/heads/recovery/shared-type-references": "79debf90a76b832d64f866e462155d7bea651041",
+        "refs/heads/recovery/suspected-designations": "615dfa40a83f8660ac7ebc77e5f7dee063017d8a",
+        "refs/heads/recovery/suspected-on-shared": "29c6b38304fb5a7f7d10347620d7bf561d52abfd"
+      },
+      "bytes": 488611,
+      "sha256": "94acd2ce02a80d8fe60cbe9e2f7d1a73025d2176efdf74b831e6a280c359ef28",
+      "blob_sha": "e5a03b34d780cee73ddc58382090ffb5a0eecfad",
+      "status": "UNVALIDATED committed-source checkpoint; coverage only from independently reviewed committed matrix",
+      "builds_tests": "not_run",
+      "bundle_integrity": "git bundle verify succeeded; prerequisite base exists locally"
     }
   ]
 }
