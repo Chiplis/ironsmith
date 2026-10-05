@@ -1851,6 +1851,8 @@ impl StaticAbilityModelInterpreter {
                     display.clone(),
                 ),
             },
+            ironsmith_core::StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display } =>
+                StaticAbility::actor_counters_addition_replacement(filter.clone(), player_filter.clone(), actor.clone(), *counter_type, *additional, display.clone()),
             ironsmith_core::StaticAbilityPayload::AddCountersPlacementReplacement {
                 filter,
                 player_filter,

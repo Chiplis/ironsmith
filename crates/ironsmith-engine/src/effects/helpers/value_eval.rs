@@ -1254,6 +1254,20 @@ fn resolve_event_value(
     spec: &EventValueSpec,
 ) -> Result<i32, ExecutionError> {
     match spec {
+        EventValueSpec::LifeChange { gained, for_controller } => {
+            let event = ctx.triggering_event.as_ref().ok_or_else(|| ExecutionError::UnresolvableValue("life quantity requires its triggering event".into()))?;
+            let (player, amount) = if *gained {
+                let life = event.downcast::<LifeGainEvent>().ok_or_else(|| ExecutionError::UnresolvableValue("life-gain quantity requires a life-gain event".into()))?;
+                (life.player, life.amount)
+            } else {
+                let life = event.downcast::<LifeLossEvent>().ok_or_else(|| ExecutionError::UnresolvableValue("life-loss quantity requires a life-loss event".into()))?;
+                (life.player, life.amount)
+            };
+            if *for_controller && player != ctx.controller {
+                return Err(ExecutionError::UnresolvableValue("life quantity names another participant".into()));
+            }
+            i32::try_from(amount).map_err(|_| ExecutionError::UnresolvableValue("life quantity exceeds supported range".into()))
+        }
         EventValueSpec::DieResult => {
             let roll = ctx
                 .triggering_event

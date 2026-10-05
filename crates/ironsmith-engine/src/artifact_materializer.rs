@@ -459,6 +459,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "RegisterManaReplacementEffect" => {
             decode_as::<T, ironsmith_core::RegisterManaReplacementEffect>(effect)
         }
+        "RegisterDamageMultiplierEffect" => {
+            decode_as::<T, ironsmith_core::RegisterDamageMultiplierEffect>(effect)
+        }
         "RegisterCounterPlacementReplacementEffect" => {
             decode_as::<T, ironsmith_core::RegisterCounterPlacementReplacementEffect>(effect)
         }
@@ -1416,6 +1419,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::ReconfigureEffect,
             crate::effects::ReduceSpeedEffect,
             crate::effects::RegisterCounterPlacementReplacementEffect,
+            crate::effects::RegisterDamageMultiplierEffect,
             crate::effects::RegisterEnterTappedReplacementEffect,
             crate::effects::RegisterFutureZoneReplacementEffect,
             crate::effects::RegisterManaReplacementEffect,

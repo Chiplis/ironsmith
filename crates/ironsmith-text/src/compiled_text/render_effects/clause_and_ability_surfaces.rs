@@ -9553,6 +9553,7 @@ pub(crate) fn describe_static_ability_with_subject(
             target_object_filter,
             factor,
             combat_only,
+            noncombat_only,
             ..
         } = &ability.payload
         && *source_filter == ObjectFilter::default().you_control()
@@ -9563,6 +9564,8 @@ pub(crate) fn describe_static_ability_with_subject(
         let multiplier = if *factor == 2 { "double" } else { "triple" };
         let damage = if *combat_only {
             "combat damage"
+        } else if *noncombat_only {
+            "noncombat damage"
         } else {
             "damage"
         };

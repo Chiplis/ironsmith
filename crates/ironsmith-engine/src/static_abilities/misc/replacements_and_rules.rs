@@ -454,6 +454,7 @@ pub struct DoubleDamageAmountReplacement {
     pub combat_only: bool,
     pub noncombat_only: bool,
     pub display: String,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl DoubleDamageAmountReplacement {
@@ -473,6 +474,7 @@ impl DoubleDamageAmountReplacement {
             combat_only,
             noncombat_only: false,
             display: display.into(),
+            condition: None,
         }
     }
 
@@ -491,6 +493,18 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
         self.display.clone()
     }
 
+    fn with_static_condition(
+        &self,
+        condition: crate::ConditionExpr,
+    ) -> Option<super::StaticAbility> {
+        let mut ability = self.clone();
+        ability.condition = Some(match ability.condition.take() {
+            Some(existing) => existing.and(condition),
+            None => condition,
+        });
+        Some(super::StaticAbility::new(ability))
+    }
+
     fn generate_replacement_effect(
         &self,
         source: ObjectId,
@@ -503,7 +517,7 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
                 source_filter: self.source_filter.clone(),
                 target_player_filter: self.target_player_filter.clone(),
                 target_object_filter: self.target_object_filter.clone(),
-                condition: None,
+                condition: self.condition.clone(),
                 combat_only: self.combat_only,
                 noncombat_only: self.noncombat_only,
                 amount_less_than: None,
@@ -804,6 +818,8 @@ pub struct AddCountersPlacementReplacement {
     pub player_filter: Option<PlayerFilter>,
     pub counter_type: Option<CounterType>,
     pub additional: i64,
+    pub actor: Option<PlayerFilter>,
+    pub includes_permanents: bool,
     pub display: String,
 }
 
@@ -819,6 +835,8 @@ impl AddCountersPlacementReplacement {
             player_filter: None,
             counter_type,
             additional: additional.into(),
+            actor: None,
+            includes_permanents: false,
             display,
         }
     }
@@ -853,8 +871,8 @@ impl StaticAbilityKind for AddCountersPlacementReplacement {
                 filter: self.filter.clone(),
                 player_filter: self.player_filter.clone(),
                 counter_type: self.counter_type,
-                actor: None,
-                includes_permanents: false,
+                actor: self.actor.clone(),
+                includes_permanents: self.includes_permanents,
                 effect_only: false,
             },
             ReplacementAction::AddCountersToPlacement {
@@ -4395,6 +4413,21 @@ impl StaticAbilityKind for AllPlayersLookAtYourTopLibraryCard {
     fn display(&self) -> String {
         "Play with the top card of your library revealed.".to_string()
     }
+}
+
+/// Public hand visibility is enforced by both the live sync view and cached
+/// UI snapshot. These scopes do not reveal an unrelated player's library.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControllerPlaysWithHandRevealed;
+impl StaticAbilityKind for ControllerPlaysWithHandRevealed {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::ControllerPlaysWithHandRevealed }
+    fn display(&self) -> String { "Play with your hand revealed.".into() }
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayersPlayWithHandsRevealed;
+impl StaticAbilityKind for PlayersPlayWithHandsRevealed {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::PlayersPlayWithHandsRevealed }
+    fn display(&self) -> String { "Players play with their hands revealed.".into() }
 }
 
 /// Makes the controller's opponents play with revealed hands.

@@ -1077,7 +1077,8 @@ fn anthem_value_as_layer_value(value: &AnthemValue) -> Option<Value> {
     match value {
         AnthemValue::Fixed(value) => Some(Value::Fixed(*value)),
         AnthemValue::Dynamic(value)
-            if ironsmith_core::anthem_model::supports_controller_state_anthem_value(value) => Some(value.clone()),
+            if ironsmith_core::anthem_model::supports_controller_state_anthem_value(value)
+                || ironsmith_core::anthem_model::supports_scoped_reference_anthem_value(value) => Some(value.clone()),
         // Legacy object-/resolution-relative Dynamic values retain their
         // original discovery path until their source/affected context is
         // explicitly supported by the layer adapter.

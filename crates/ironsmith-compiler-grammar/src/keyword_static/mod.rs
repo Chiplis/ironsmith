@@ -754,6 +754,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("play"),
             StaticAbilityLineHeadHint::Pair("play", "with"),
         ],
+        "parse_self_or_global_hands_revealed_line" => vec![StaticAbilityLineHeadHint::Single("play"), StaticAbilityLineHeadHint::Single("players")],
         "parse_your_opponents_play_with_hands_revealed_line" => vec![
             StaticAbilityLineHeadHint::Single("your"),
             StaticAbilityLineHeadHint::Pair("your", "opponents"),
@@ -1724,6 +1725,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_players_play_top_card_libraries_revealed_line),
         single_static_ability_ast_rule!(parse_play_top_card_your_library_revealed_line),
         single_static_ability_ast_rule!(parse_your_opponents_play_with_hands_revealed_line),
+        single_static_ability_ast_rule!(parse_self_or_global_hands_revealed_line),
         single_static_ability_ast_rule!(parse_control_opponents_while_searching_libraries_line),
         single_static_ability_ast_rule!(parse_opponent_search_exile_found_cards_line),
         single_static_ability_ast_rule!(parse_cast_this_card_from_library_while_searching_line),
@@ -4788,37 +4790,96 @@ pub fn parse_double_damage_amount_replacement_line(
     let Some(spec) = keyword_static_lines::parse_damage_multiplier_tokens(&tokens) else {
         return Ok(None);
     };
-    let (target_player_filter, target_object_filter) =
-        if let Some(damaged_tokens) = spec.damaged_tokens {
-            let damaged_words = parser_token_word_refs(damaged_tokens);
-            let filters = parse_damage_amount_replacement_target_filters(&damaged_words)?;
-            if filters.0.is_none() && filters.1.is_none() {
-                return Ok(None);
-            }
-            filters
-        } else {
-            (Some(PlayerFilter::Any), Some(ObjectFilter::default()))
-        };
-
-    let source_filter = damage_source_filter_from_shape(spec.source)?;
-
+    if spec.this_turn {
+        return Ok(None);
+    }
+    let Some(parts) = damage_multiplier_parts_from_shape(spec)? else {
+        return Ok(None);
+    };
     let mut display = render_token_slice(&tokens).trim().to_string();
     if !crate::string_primitives::ends_with_char(&display, '.') {
         display.push('.');
     }
+    let mut ability = StaticAbility::multiply_damage_amount_replacement(
+        parts.source_filter,
+        parts.target_player_filter,
+        parts.target_object_filter,
+        parts.factor,
+        parts.combat_only,
+        display,
+    );
+    if parts.noncombat_only {
+        ability = ability.with_noncombat_only_damage_multiplier();
+    }
+    if let Some(condition) = spec.condition_tokens {
+        ability = ability.with_condition(parse_static_condition_clause(condition)?);
+    }
+    Ok(Some(ability))
+}
 
-    let ability = StaticAbility::multiply_damage_amount_replacement(
+/// Both static and resolving replacements use the same source/recipient
+/// semantics. The repeated recipient is an anaphor, never a redirection.
+pub(crate) fn damage_multiplier_parts_from_shape(
+    spec: keyword_static_lines::DamageMultiplierSpec<'_>,
+) -> Result<Option<ironsmith_core::RegisterDamageMultiplierEffect>, CardTextError> {
+    let (target_player_filter, target_object_filter) = if let Some(tokens) = spec.damaged_tokens {
+        let words = parser_token_word_refs(tokens);
+        let filters = parse_damage_amount_replacement_target_filters(&words)?;
+        if filters.0.is_none() && filters.1.is_none() {
+            return Ok(None);
+        }
+        if let Some(repeated) = spec.repeated_target_tokens {
+            let repeated = parser_token_word_refs(repeated);
+            let normalized = strip_leading_word_refs_any(&words, &["a", "an", "the"]);
+            let same = repeated == words
+                || repeated.strip_prefix(&["that"]).is_some_and(|tail| {
+                    tail == normalized
+                        || (tail == ["player"] && filters.0.is_some() && filters.1.is_none())
+                        || (tail == ["creature"] && normalized.ends_with(&["creature"]))
+                        || (tail == ["permanent"]
+                            && filters.0.is_none()
+                            && normalized.ends_with(&["permanent"]))
+                        || (filters.0.is_some() && filters.1.is_some()
+                            && matches!(tail, ["player", "or", "permanent"] | ["permanent", "or", "player"]))
+                        || tail == ["target"]
+                });
+            if !same {
+                return Ok(None);
+            }
+        }
+        filters
+    } else {
+        if spec.repeated_target_tokens.is_some() {
+            return Ok(None);
+        }
+        (Some(PlayerFilter::Any), Some(ObjectFilter::default()))
+    };
+    let source_words = parser_token_word_refs(spec.source.filter_tokens);
+    let mut source_filter = damage_source_filter_from_shape(spec.source)?;
+    // "another creature" is relative to the equipped recipient, not the
+    // Equipment that owns the ability. The host is excluded even on a
+    // self-damage event and even if the Equipment is itself a creature.
+    if source_words.starts_with(&["another"])
+        && spec
+            .damaged_tokens
+            .is_some_and(|t| parser_token_word_refs(t) == ["equipped", "creature"])
+    {
+        source_filter.other = false;
+        source_filter.without_attached_object = Some(Box::new(ObjectFilter::source()));
+    }
+    // Intrinsic attachment relations do not fall back to unrelated equipped
+    // creatures when this Equipment is unattached.
+    if source_words == ["equipped", "creature"] {
+        source_filter = ObjectFilter::creature().with_attached_object(ObjectFilter::source());
+    }
+    Ok(Some(ironsmith_core::RegisterDamageMultiplierEffect {
         source_filter,
         target_player_filter,
         target_object_filter,
-        spec.factor,
-        spec.combat_only,
-        display,
-    );
-    Ok(Some(if spec.noncombat_only {
-        ability.with_noncombat_only_damage_multiplier()
-    } else {
-        ability
+        factor: spec.factor,
+        combat_only: spec.combat_only,
+        noncombat_only: spec.noncombat_only,
+        mode: ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,
     }))
 }
 
@@ -4912,6 +4973,47 @@ fn damage_source_filter_from_shape(
 fn parse_damage_amount_replacement_target_filters(
     words: &[&str],
 ) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
+    let simple = strip_leading_word_refs_any(words, &["a", "an"]);
+    let object = match simple {
+        ["creature"] => Some(ObjectFilter::creature()),
+        ["this", "creature"] | ["this", "permanent"] => Some(ObjectFilter::source()),
+        ["equipped", "creature"] | ["enchanted", "creature"] => {
+            Some(ObjectFilter::creature().with_attached_object(ObjectFilter::source()))
+        }
+        ["enchanted", "permanent"] => {
+            Some(ObjectFilter::permanent().with_attached_object(ObjectFilter::source()))
+        }
+        _ => None,
+    };
+    if let Some(object) = object {
+        return Ok((None, Some(object)));
+    }
+    if matches!(
+        simple,
+        [
+            "the",
+            "chosen",
+            "player",
+            "or",
+            "a",
+            "permanent",
+            "they",
+            "control"
+        ] | [
+            "the",
+            "chosen",
+            "player",
+            "or",
+            "permanent",
+            "they",
+            "control"
+        ]
+    ) {
+        return Ok((
+            Some(PlayerFilter::ChosenPlayer),
+            Some(ObjectFilter::permanent().controlled_by(PlayerFilter::ChosenPlayer)),
+        ));
+    }
     #[derive(Clone, Copy)]
     enum DamageReplacementTargetKind {
         You,
@@ -6722,3 +6824,6 @@ mod zero_loyalty_exception_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod damage_multiplier_scope_tests;

@@ -1381,6 +1381,14 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         optional: bool,
         display: String,
     },
+    ActorCountersAddition {
+        filter: ObjectFilter,
+        player_filter: Option<PlayerFilter>,
+        actor: PlayerFilter,
+        counter_type: Option<CounterType>,
+        additional: i64,
+        display: String,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2905,6 +2913,8 @@ where
                     templates: templates.into_iter().map(map_effect).collect::<Result<Vec<_>, _>>()?,
                     mode, choose_one, optional, display,
                 },
+            StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display } =>
+                StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display },
             StaticAbilityPayload::AddLifeGainReplacement { player, additional, display } =>
                 StaticAbilityPayload::AddLifeGainReplacement { player, additional, display },
             StaticAbilityPayload::DoubleLifeChangeReplacement {
@@ -6177,6 +6187,14 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn controller_plays_with_hand_revealed() -> Self {
+        Self { id: Some(StaticAbilityId::ControllerPlaysWithHandRevealed),
+            label: "Play with your hand revealed.".into(), payload: StaticAbilityPayload::None }
+    }
+    pub fn players_play_with_hands_revealed() -> Self {
+        Self { id: Some(StaticAbilityId::PlayersPlayWithHandsRevealed),
+            label: "Players play with their hands revealed.".into(), payload: StaticAbilityPayload::None }
+    }
     pub fn opponents_play_with_hands_revealed() -> Self {
         Self {
             id: Some(StaticAbilityId::OpponentsPlayWithHandsRevealed),
@@ -6834,6 +6852,17 @@ impl<
                 display,
             },
         }
+    }
+
+    pub fn actor_counters_addition_replacement(
+        filter: ObjectFilter, player_filter: Option<PlayerFilter>, actor: PlayerFilter,
+        counter_type: Option<CounterType>, additional: impl Into<i64>, display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::AddCountersPlacementReplacement), label: display.clone(),
+            payload: StaticAbilityPayload::ActorCountersAddition {
+                filter, player_filter, actor, counter_type, additional: additional.into(), display,
+            } }
     }
 
     pub fn add_counters_placement_replacement(

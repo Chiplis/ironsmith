@@ -40,6 +40,9 @@ struct Scope {
     ability: Binding,
     cast_event: Binding,
     amount: Binding,
+    life_gain: Binding,
+    life_loss: Binding,
+    life_controller: Binding,
     die_result: Binding,
     blockers: Binding,
     damaged_player: Binding,
@@ -58,6 +61,9 @@ impl Scope {
             ability: Binding::Absent,
             cast_event: Binding::Absent,
             amount: Binding::Absent,
+            life_gain: Binding::Absent,
+            life_loss: Binding::Absent,
+            life_controller: Binding::Absent,
             die_result: Binding::Absent,
             blockers: Binding::Absent,
             damaged_player: Binding::Absent,
@@ -76,6 +82,9 @@ impl Scope {
         scope.ability = Binding::Unknown;
         scope.cast_event = Binding::Unknown;
         scope.amount = Binding::Unknown;
+        scope.life_gain = Binding::Unknown;
+        scope.life_loss = Binding::Unknown;
+        scope.life_controller = Binding::Unknown;
         scope.die_result = Binding::Unknown;
         scope.blockers = Binding::Unknown;
         scope.damaged_player = Binding::Unknown;
@@ -92,6 +101,9 @@ impl Scope {
             ability: self.ability.intersect(other.ability),
             cast_event: self.cast_event.intersect(other.cast_event),
             amount: self.amount.intersect(other.amount),
+            life_gain: self.life_gain.intersect(other.life_gain),
+            life_loss: self.life_loss.intersect(other.life_loss),
+            life_controller: self.life_controller.intersect(other.life_controller),
             die_result: self.die_result.intersect(other.die_result),
             blockers: self.blockers.intersect(other.blockers),
             damaged_player: self.damaged_player.intersect(other.damaged_player),
@@ -346,6 +358,17 @@ impl Auditor {
     fn event_value(&mut self, spec: &Value, path: &str, scope: &Scope) {
         match enum_variant(spec).map(|(name, _)| name) {
             Some("Amount" | "LifeAmount") => self.require(path, "EventValue(Amount)", scope.amount),
+            Some("LifeChange") => {
+                let payload = enum_variant(spec).map(|(_, payload)| payload);
+                match payload.and_then(|value| value.get("gained")).and_then(Value::as_bool) {
+                    Some(true) => self.require(path, "EventValue(LifeGained)", scope.life_gain),
+                    Some(false) => self.require(path, "EventValue(LifeLost)", scope.life_loss),
+                    None => self.gap(path, "life_quantity_direction", "Life quantity has no typed direction"),
+                }
+                if payload.and_then(|value| value.get("for_controller")).and_then(Value::as_bool) == Some(true) {
+                    self.require(path, "EventValue(ControllerLifeChange)", scope.life_controller);
+                }
+            }
             Some("DieResult") => self.require(path, "EventValue(DieResult)", scope.die_result),
             Some("BlockersBeyondFirst") => {
                 self.require(path, "EventValue(BlockersBeyondFirst)", scope.blockers)
@@ -860,6 +883,17 @@ impl Auditor {
         let mut scope = Scope::empty();
         scope.event = Binding::Present;
         scope.event_object = Binding::Unknown;
+        let gain = matches!(name, "PlayerGainsLife" | "YouGainLife" | "YouGainLifeCausedBy" | "YouGainLifeDuringTurn")
+            || (name == "LifeChanged" && payload.get("gained").and_then(Value::as_bool) == Some(true));
+        let loss = matches!(name, "PlayerLosesLife" | "PlayerLosesLifeDuringTurn")
+            || (name == "LifeChanged" && payload.get("gained").and_then(Value::as_bool) == Some(false));
+        if gain || loss {
+            scope.life_gain = if gain { Binding::Present } else { Binding::Absent };
+            scope.life_loss = if loss { Binding::Present } else { Binding::Absent };
+            scope.life_controller = if name.starts_with("YouGainLife") || payload.get("player").is_some_and(|player| player == "You") {
+                Binding::Present
+            } else { Binding::Unknown };
+        }
         let mut known = true;
         match name {
             "PlayerGainsLife"

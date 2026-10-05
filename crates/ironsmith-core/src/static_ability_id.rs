@@ -379,6 +379,8 @@ pub enum StaticAbilityId {
     /// Add to one life-gain event; appended for serialized ID compatibility.
     AddLifeGainReplacement,
     TokenCreationTemplates,
+    ControllerPlaysWithHandRevealed,
+    PlayersPlayWithHandsRevealed,
 }
 
 impl StaticAbilityId {
@@ -658,6 +660,8 @@ impl StaticAbilityId {
             | AllPlayersLookAtTopCardsOfLibraries
             | AllPlayersLookAtYourTopLibraryCard
             | OpponentsPlayWithHandsRevealed
+            | ControllerPlaysWithHandRevealed
+            | PlayersPlayWithHandsRevealed
             | ControlOpponentsWhileSearchingLibraries
             | OpponentSearchExileFoundCards
             | CastThisCardFromLibraryWhileSearching

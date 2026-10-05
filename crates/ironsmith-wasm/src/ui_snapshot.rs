@@ -480,6 +480,8 @@ impl IncrementalBattlefieldGroups {
                             | StaticAbilityId::AllPlayersLookAtYourTopLibraryCard
                             | StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries
                             | StaticAbilityId::OpponentsPlayWithHandsRevealed
+                            | StaticAbilityId::ControllerPlaysWithHandRevealed
+                            | StaticAbilityId::PlayersPlayWithHandsRevealed
                     )
                 })
             }) {
@@ -512,6 +514,8 @@ impl IncrementalBattlefieldGroups {
                     StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
                     StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries,
                     StaticAbilityId::OpponentsPlayWithHandsRevealed,
+                    StaticAbilityId::ControllerPlaysWithHandRevealed,
+                    StaticAbilityId::PlayersPlayWithHandsRevealed,
                 ]
                 .into_iter()
                 .enumerate()
@@ -571,7 +575,9 @@ impl IncrementalBattlefieldGroups {
         let hand = self
             .visibility
             .values()
-            .any(|(controller, flags)| *controller != player && flags & 8 != 0);
+            .any(|(controller, flags)| flags & 32 != 0
+                || (*controller == player && flags & 16 != 0)
+                || (game.are_opponents(*controller, player) && flags & 8 != 0));
         (top, hand)
     }
 
@@ -2088,12 +2094,11 @@ fn can_view_library_top(game: &GameState, perspective: PlayerId, player: PlayerI
 #[cfg(test)]
 fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
-        game.object(*id).is_some_and(|object| {
-            game.current_controller(*id).unwrap_or(object.owner) != player
-                && game.object_has_static_ability_id(
-                    *id,
-                    StaticAbilityId::OpponentsPlayWithHandsRevealed,
-                )
+        !game.is_phased_out(*id) && game.object(*id).is_some_and(|object| {
+            let controller = game.current_controller(*id).unwrap_or(object.owner);
+            game.object_has_static_ability_id(*id, StaticAbilityId::PlayersPlayWithHandsRevealed)
+                || (controller == player && game.object_has_static_ability_id(*id, StaticAbilityId::ControllerPlaysWithHandRevealed))
+                || (game.are_opponents(controller, player) && game.object_has_static_ability_id(*id, StaticAbilityId::OpponentsPlayWithHandsRevealed))
         })
     })
 }
@@ -5837,6 +5842,46 @@ mod hidden_zone_continuous_effects {
                 "the bear in the {label} should be the chosen type, got {:?}",
                 chars.subtypes
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod scoped_revealed_hand_tests {
+    use super::*;
+    use ironsmith::ability::Ability;
+    use ironsmith::cards::CardDefinitionBuilder;
+    use ironsmith::static_abilities::StaticAbility;
+    use ironsmith::{CardId, CardType, Zone};
+    #[test]
+    fn public_hand_scopes_match_cached_and_sync_views_through_control_phase_and_leave() {
+        let _ids = crate::test_id_counter_guard();
+        for (scope, ability) in [
+            (0, StaticAbility::controller_plays_with_hand_revealed()),
+            (1, StaticAbility::players_play_with_hands_revealed()),
+            (2, StaticAbility::opponents_play_with_hands_revealed()),
+        ] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into(), "Dan".into()], 20);
+            let [a, b, c, d] = [0, 1, 2, 3].map(PlayerId::from_index);
+            game.set_teams(vec![vec![a, c], vec![b, d]]).unwrap();
+            let definition = CardDefinitionBuilder::new(CardId::new(), "Public hand scope probe")
+                .card_types(vec![CardType::Enchantment]).with_ability(Ability::static_ability(ability)).build();
+            let host = game.create_object_from_definition(&definition, a, Zone::Battlefield);
+            let views = SnapshotObjectViewCache::default(); let mut groups = IncrementalBattlefieldGroups::default();
+            let check = |game: &GameState, groups: &mut IncrementalBattlefieldGroups, controller: PlayerId, active: bool| {
+                groups.update(game, &HashSet::new(), &views);
+                for viewer in [a, b, c, d] { for subject in [a, b, c, d] {
+                    let expected = active && match scope { 0 => subject == controller, 1 => true, _ => game.are_opponents(controller, subject) };
+                    let (top, hand) = groups.visibility_for_player(game, viewer, subject);
+                    assert!(!top, "revealing hands grants no library information"); assert_eq!(hand, expected);
+                    assert_eq!(crate::hand_revealed_by_static_ability(game, subject), expected);
+                } }
+            };
+            check(&game, &mut groups, a, true);
+            game.set_current_controller(host, b).unwrap(); check(&game, &mut groups, b, true);
+            game.phase_out(host); check(&game, &mut groups, b, false);
+            game.phase_in(host); check(&game, &mut groups, b, true);
+            game.move_object_by_effect(host, Zone::Graveyard).unwrap(); check(&game, &mut groups, b, false);
         }
     }
 }

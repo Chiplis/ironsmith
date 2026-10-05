@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Doc Samson, Super Psychiatrist",
+    "oracle_id": "699610c9-c991-4faf-b712-d015ef0799ad",
+    "mana_cost": "{4}{G}",
+    "type_line": "Legendary Creature — Gamma Doctor Hero",
+    "oracle_text": "If you would put one or more counters on a permanent you control, put that many plus one of each of those kinds of counters on that permanent instead.\n{T}: Add X mana of any one color, where X is Doc Samson's power.",
+    "power": "3",
+    "toughness": "6",
+    "scryfall_uri": "https://scryfall.com/card/msh/164/doc-samson-super-psychiatrist?utm_source=api"
+  },
+  {
+    "name": "Lae'zel, Vlaakith's Champion",
+    "oracle_id": "c066f921-e349-45d1-8ec3-0955d10bbf19",
+    "mana_cost": "{2}{W}",
+    "type_line": "Legendary Creature — Gith Warrior",
+    "oracle_text": "If you would put one or more counters on a creature or planeswalker you control or on yourself, put that many plus one of each of those kinds of counters on that permanent or player instead.\nChoose a Background (You can have a Background as a second commander.)",
+    "power": "3",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/plst/CLB-29/laezel-vlaakiths-champion?utm_source=api"
+  },
+  {
+    "name": "Loading Zone",
+    "oracle_id": "16156274-8dc0-439c-94c4-e8c89bbb5687",
+    "mana_cost": "{3}{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "If one or more counters would be put on a creature, Spacecraft, or Planet you control, twice that many of each of those kinds of counters are put on it instead.\nWarp {G} (You may cast this card from your hand for its warp cost. Exile this enchantment at the beginning of the next end step, then you may cast it from exile on a later turn.)",
+    "scryfall_uri": "https://scryfall.com/card/peoe/196s/loading-zone?utm_source=api"
+  }
+]

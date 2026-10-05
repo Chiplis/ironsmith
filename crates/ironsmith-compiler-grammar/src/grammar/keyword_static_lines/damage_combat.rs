@@ -28,6 +28,9 @@ pub struct DamageSourceShape<'a> {
 pub struct DamageMultiplierSpec<'a> {
     pub source: DamageSourceShape<'a>,
     pub damaged_tokens: Option<&'a [OwnedLexToken]>,
+    pub repeated_target_tokens: Option<&'a [OwnedLexToken]>,
+    pub this_turn: bool,
+    pub condition_tokens: Option<&'a [OwnedLexToken]>,
     pub factor: u32,
     pub combat_only: bool,
     /// "would deal noncombat damage" (Solphim, Mayhem Dominus).
@@ -180,6 +183,9 @@ fn parse_imperative_damage_multiplier_lexed<'a>(
     Ok(DamageMultiplierSpec {
         source,
         damaged_tokens: None,
+        repeated_target_tokens: None,
+        this_turn: false,
+        condition_tokens: None,
         factor,
         combat_only: false,
         noncombat_only: false,
@@ -197,22 +203,25 @@ fn parse_damage_multiplier_lexed<'a>(
         primitives::phrase(&["would", "deal", "damage"]).value((false, false)),
     ))
     .parse_next(input)?;
-    // "If a red instant or sorcery spell you control would deal damage, it
-    // deals double that damage instead." (Fire Servant) names no recipient.
+    // The recipient ends before either the duration, a live condition, or
+    // the replacement clause. None of those are part of its object filter.
     let damaged_tokens = if opt(primitives::kw("to")).parse_next(input)?.is_some() {
         Some(
             repeat_till::<_, _, (), _, _, _, _>(
                 1..,
                 any.void(),
-                peek((
-                    opt(primitives::comma()),
-                    alt((
-                        primitives::phrase(&["it", "deals"]),
-                        primitives::phrase(&["that", "source", "deals"]),
-                    )),
-                    alt((primitives::kw("double"), primitives::kw("triple"))),
-                    primitives::phrase(&["that", "damage"]),
-                )),
+                peek(alt((
+                    primitives::phrase(&["this", "turn"]).void(),
+                    primitives::kw("while").void(),
+                    (
+                        opt(primitives::comma()),
+                        alt((
+                            primitives::phrase(&["it", "deals"]),
+                            primitives::phrase(&["that", "source", "deals"]),
+                        )),
+                    )
+                        .void(),
+                ))),
             )
             .map(|((), _)| ())
             .take()
@@ -221,6 +230,17 @@ fn parse_damage_multiplier_lexed<'a>(
     } else {
         None
     };
+    let this_turn = opt(primitives::phrase(&["this", "turn"]))
+        .parse_next(input)?
+        .is_some();
+    let condition_tokens = opt((
+        primitives::kw("while"),
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::comma()))
+            .map(|((), _)| ())
+            .take(),
+    ))
+    .parse_next(input)?
+    .map(|(_, tokens)| tokens);
     opt(primitives::comma()).parse_next(input)?;
     alt((
         primitives::phrase(&["it", "deals"]),
@@ -233,17 +253,22 @@ fn parse_damage_multiplier_lexed<'a>(
     ))
     .parse_next(input)?;
     primitives::phrase(&["that", "damage"]).parse_next(input)?;
-    opt((
-        primitives::phrase(&["to", "that"]),
+    let repeated_target_tokens = opt((
+        primitives::kw("to"),
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("instead")))
-            .void(),
+            .map(|((), _)| ())
+            .take(),
     ))
-    .parse_next(input)?;
+    .parse_next(input)?
+    .map(|(_, tokens)| tokens);
     primitives::kw("instead").parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(DamageMultiplierSpec {
         source,
         damaged_tokens: damaged_tokens.map(trim_lexed_commas),
+        repeated_target_tokens,
+        this_turn,
+        condition_tokens,
         factor,
         combat_only,
         noncombat_only,
@@ -370,7 +395,11 @@ fn parse_explicit_damage_source_shape_lexed<'a>(
     let filter_tokens = trim_lexed_commas(filter_tokens);
     let filter_tokens = if primitives::parse_all(
         filter_tokens,
-        alt((primitives::kw("a"), primitives::kw("an"))),
+        alt((
+            primitives::kw("a"),
+            primitives::kw("an"),
+            primitives::kw("any"),
+        )),
         "unqualified damage source article",
     )
     .is_ok()

@@ -209,6 +209,8 @@ pub struct LoweringFrame {
     pub allow_life_event_value: bool,
     pub allow_excess_damage_event_value: bool,
     pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
+    pub life_event_binding: Option<std::sync::Arc<crate::trigger_references::LifeEventBinding>>,
+    pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub bind_unbound_x_to_last_effect: bool,
 }
 
@@ -364,6 +366,8 @@ impl EffectLoweringContext {
         self.allow_life_event_value = frame.allow_life_event_value;
         self.allow_excess_damage_event_value = frame.allow_excess_damage_event_value;
         self.milling_event_filter = frame.milling_event_filter.clone();
+        self.life_event_binding = frame.life_event_binding.clone();
+        self.life_amount_producers = frame.life_amount_producers.clone();
         self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
     }
 

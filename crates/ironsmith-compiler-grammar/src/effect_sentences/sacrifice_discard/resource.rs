@@ -598,6 +598,10 @@ pub fn parse_sacrifice(
             filter: fe_filter,
             effects: vec![sacrifice],
         }),
+        Some(count) if crate::effect_sentences::life_unit_programs::is_life_unit_count(&count) => {
+            crate::effect_sentences::life_unit_programs::batch_sacrifice(tokens, &sacrifice, count)
+                .ok_or_else(|| CardTextError::ParseError("per-unit life sacrifice requires a selectable permanent batch".into()))?
+        }
         Some(count) => EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
             effects: vec![sacrifice],

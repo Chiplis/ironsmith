@@ -234,3 +234,5 @@ pub use zones::{
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
     ShuffleObjectsIntoLibraryEffect,
 };
+
+pub use replacement::RegisterDamageMultiplierEffect;

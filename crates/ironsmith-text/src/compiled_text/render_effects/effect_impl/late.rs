@@ -4306,6 +4306,34 @@
             "{prefix}{source} is tapped for mana, it produces {mana} instead of any other type"
         );
     }
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterDamageMultiplierEffect>() {
+        let mut base = register.source_filter.clone();
+        base.controller = None;
+        let source = if base == ObjectFilter::default() {
+            match &register.source_filter.controller {
+                None => "a source".to_string(),
+                Some(PlayerFilter::You) => "a source you control".to_string(),
+                Some(PlayerFilter::Opponent) => "a source an opponent controls".to_string(),
+                Some(player) => format!("a source controlled by {}", describe_player_filter(player)),
+            }
+        } else { with_indefinite_article(strip_leading_article(&register.source_filter.description())) };
+        let recipient = match (&register.target_player_filter, &register.target_object_filter) {
+            (Some(PlayerFilter::Any), Some(object)) if *object == ObjectFilter::permanent() => "a permanent or player".to_string(),
+            (Some(player), None) => describe_player_filter(player),
+            (None, Some(object)) => with_indefinite_article(strip_leading_article(&object.description())),
+            (Some(player), Some(object)) => format!("{} or {}", object.description(), describe_player_filter(player)),
+            (None, None) => "no recipients".to_string(),
+        };
+        let damage = if register.combat_only { "combat damage" } else if register.noncombat_only { "noncombat damage" } else { "damage" };
+        let multiplier = match register.factor { 2 => "double".to_string(), 3 => "triple".to_string(), n => format!("{n} times") };
+        let duration = match register.mode {
+            crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => " until your next turn",
+            _ => "",
+        };
+        let prefix = if matches!(register.mode, crate::effects::ReplacementApplyMode::OneShot) { "The next time" } else { "If" };
+        return format!("{prefix} {source} would deal {damage} to {recipient}{duration}, it deals {multiplier} that damage instead");
+    }
     if let Some(register) =
         effect.downcast_ref::<crate::effects::RegisterCounterPlacementReplacementEffect>()
     {

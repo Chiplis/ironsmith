@@ -6561,6 +6561,14 @@ pub(crate) fn describe_value(value: &Value) -> String {
         | Value::PendingPriorEffectMetric(query) => describe_prior_effect_metric_value(query),
         Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount) => "that much".to_string(),
+        Value::EventValue(EventValueSpec::LifeChange { gained, for_controller }) => format!(
+            "the amount of life {} {}", if *for_controller { "you" } else { "that player" },
+            if *gained { "gained" } else { "lost" },
+        ),
+        Value::EventValueOffset(EventValueSpec::LifeChange { gained, for_controller }, offset) => format!(
+            "the amount of life {} {} {:+}", if *for_controller { "you" } else { "that player" },
+            if *gained { "gained" } else { "lost" }, offset,
+        ),
         Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
         Value::EventValueOffset(EventValueSpec::DieResult, offset) => {
             if *offset == 0 {

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "Chiplis/ironsmith",
   "frozen_baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "published_through_stage": 37,
+  "published_through_stage": 38,
   "purpose": "Verified published tree/ref/parent and draft-PR lookup for the source-coverage stage IDs. Only historical compile/runtime evidence is verification; stages08+ remain UNVALIDATED. The current stage appears in the next cumulative source update to avoid a self-referential commit.",
   "entries": [
     {
@@ -552,6 +552,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/802"
+    },
+    {
+      "stage": 38,
+      "branch": "fix/card-failures-38-token-lifetime-roots",
+      "base": "fix/card-failures-37-animation-event-roots",
+      "remote_commit": "3c4a6c57e8bc64a6f3a7e5e278798f269b6428c7",
+      "tree": "36de48a06632223f2d7e7cb574a96cabe858def2",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 804,
+      "draft": true,
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/804",
+      "validation_status": "UNVALIDATED_source_only_all_execution_deferred",
+      "local_commit": "2ee64c7c5f87d839d07f386200f549c3d20d4918"
     }
   ]
 }

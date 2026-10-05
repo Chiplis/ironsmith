@@ -1800,6 +1800,9 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Replacements(
             ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
         )
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
+            ..
+        })
         | SubjectVerbActionAst::Replacements(
             ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
         )

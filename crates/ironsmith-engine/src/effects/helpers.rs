@@ -681,6 +681,26 @@ fn resolve_prior_effect_metric(
         .map(|player| resolve_player_filter_to_list(game, player, &filter_ctx, ctx))
         .transpose()?;
 
+    if query.source == EffectMetricSource::Outcome
+        && matches!(query.metric, EffectMetric::LifeGained | EffectMetric::LifeLost)
+    {
+        if query.filter.is_some() {
+            return Err(ExecutionError::UnresolvableValue("life metrics cannot apply an object filter".into()));
+        }
+        let accepts = |player| selected_players.as_ref().is_none_or(|players| players.contains(&player));
+        let mut amounts = outcome.events.iter().filter_map(|event| {
+            if query.metric == EffectMetric::LifeGained {
+                event.downcast::<LifeGainEvent>().filter(|life| accepts(life.player)).map(|life| life.amount)
+            } else {
+                event.downcast::<LifeLossEvent>().filter(|life| accepts(life.player)).map(|life| life.amount)
+            }
+        });
+        return amounts.try_fold(0i32, |sum, amount| {
+            i32::try_from(amount).ok().and_then(|amount| sum.checked_add(amount))
+                .ok_or_else(|| ExecutionError::UnresolvableValue("life metric exceeds supported range".into()))
+        });
+    }
+
     let mut memory = if let Some(selected_players) = selected_players.as_ref()
         && let Some(partitions) = outcome.player_affected_object_memory()
     {

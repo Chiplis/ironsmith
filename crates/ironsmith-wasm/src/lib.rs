@@ -1589,12 +1589,11 @@ fn library_top_revealed_by_static_ability(game: &GameState, player: PlayerId) ->
 
 fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
-        game.object(*id).is_some_and(|object| {
-            game.current_controller(*id).unwrap_or(object.owner) != player
-                && game.object_has_static_ability_id(
-                    *id,
-                    StaticAbilityId::OpponentsPlayWithHandsRevealed,
-                )
+        !game.is_phased_out(*id) && game.object(*id).is_some_and(|object| {
+            let controller = game.current_controller(*id).unwrap_or(object.owner);
+            game.object_has_static_ability_id(*id, StaticAbilityId::PlayersPlayWithHandsRevealed)
+                || (controller == player && game.object_has_static_ability_id(*id, StaticAbilityId::ControllerPlaysWithHandRevealed))
+                || (game.are_opponents(controller, player) && game.object_has_static_ability_id(*id, StaticAbilityId::OpponentsPlayWithHandsRevealed))
         })
     })
 }

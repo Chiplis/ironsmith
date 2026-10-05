@@ -1,0 +1,64 @@
+[
+  {
+    "name": "Blind Fury",
+    "oracle_id": "5dbfd316-a0a9-4caa-99b1-069931d2aaa4",
+    "mana_cost": "{2}{R}{R}",
+    "type_line": "Instant",
+    "oracle_text": "All creatures lose trample until end of turn. If a creature would deal combat damage to a creature this turn, it deals double that damage to that creature instead."
+  },
+  {
+    "name": "Curse of Bloodletting",
+    "oracle_id": "3383a72f-fb83-4b9a-aca6-b736ed929c2e",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Enchantment — Aura Curse",
+    "oracle_text": "Enchant player\nIf a source would deal damage to enchanted player, it deals double that damage to that player instead."
+  },
+  {
+    "name": "Goblin Goliath",
+    "oracle_id": "131069a6-8f30-4caf-8934-3588837b5f7f",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Creature — Goblin Mutant",
+    "power": "5",
+    "toughness": "4",
+    "oracle_text": "When this creature enters, create a number of 1/1 red Goblin creature tokens equal to the number of opponents you have.\n{3}{R}, {T}: If a source you control would deal damage to an opponent this turn, it deals double that damage to that player instead."
+  },
+  {
+    "name": "Goldnight Castigator",
+    "oracle_id": "d46a6e0b-d39e-42ad-b95f-6902e1b72e62",
+    "mana_cost": "{2}{R}{R}",
+    "type_line": "Creature — Angel",
+    "power": "4",
+    "toughness": "9",
+    "oracle_text": "Flying, haste\nIf a source would deal damage to you, it deals double that damage to you instead.\nIf a source would deal damage to this creature, it deals double that damage to this creature instead."
+  },
+  {
+    "name": "Inquisitor's Flail",
+    "oracle_id": "a89ae357-b5aa-4256-beb3-a2e5e7f43200",
+    "mana_cost": "{2}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "If equipped creature would deal combat damage, it deals double that damage instead.\nIf another creature would deal combat damage to equipped creature, it deals double that damage to equipped creature instead.\nEquip {2}"
+  },
+  {
+    "name": "Quest for Pure Flame",
+    "oracle_id": "71220cc2-5f3d-4c97-ae66-05b1b79adef1",
+    "mana_cost": "{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a source you control deals damage to an opponent, you may put a quest counter on this enchantment.\nRemove four quest counters from this enchantment and sacrifice it: If any source you control would deal damage to a permanent or player this turn, it deals double that damage to that permanent or player instead."
+  },
+  {
+    "name": "Sawhorn Nemesis",
+    "oracle_id": "2f9107c5-991a-4c20-9b77-2e2fb4b9dc53",
+    "mana_cost": "{3}{R}",
+    "type_line": "Creature — Dinosaur",
+    "power": "2",
+    "toughness": "4",
+    "oracle_text": "As this creature enters, choose a player.\nIf a source would deal damage to the chosen player or a permanent they control, it deals double that damage instead."
+  },
+  {
+    "name": "The Rollercrusher Ride",
+    "oracle_id": "aed1f0cd-8df8-415f-afd6-ccfd12234334",
+    "mana_cost": "{X}{2}{R}",
+    "type_line": "Legendary Enchantment",
+    "oracle_text": "Delirium — If a source you control would deal noncombat damage to a permanent or player while there are four or more card types among cards in your graveyard, it deals double that damage instead.\nWhen The Rollercrusher Ride enters, it deals X damage to each of up to X target creatures."
+  }
+]

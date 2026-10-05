@@ -3953,6 +3953,7 @@ pub fn parse_anthem_clause(
                         crate::lexer::token_word_refs(tokens).join(" ")
                     ))
                 })?;
+                let x_value = dynamic_anthem_values::bind_affected_mana_value(x_value, &subject_tokens);
                 let count = match &x_value {
                     Value::GreatestManaValue(filter) => Some(AnthemCountExpression::GreatestManaValueAmong(filter.clone())),
                     Value::BasicLandTypesAmong(filter) => Some(AnthemCountExpression::BasicLandTypesAmong(filter.clone())),

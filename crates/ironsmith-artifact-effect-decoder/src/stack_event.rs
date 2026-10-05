@@ -41,6 +41,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RegisterManaReplacementEffect" => {
             decode_as::<ironsmith_core::RegisterManaReplacementEffect>(payload).map(Some)
         }
+        "RegisterDamageMultiplierEffect" => {
+            decode_as::<ironsmith_core::RegisterDamageMultiplierEffect>(payload).map(Some)
+        }
         "RegisterCounterPlacementReplacementEffect" => {
             decode_as::<ironsmith_core::RegisterCounterPlacementReplacementEffect>(payload)
                 .map(Some)
@@ -126,6 +129,10 @@ pub(super) fn map_card_ids(
         .map(Some),
         "RegisterManaReplacementEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::RegisterManaReplacementEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterDamageMultiplierEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterDamageMultiplierEffect,
         >(payload, context)
         .map(Some),
         "RegisterCounterPlacementReplacementEffect" => super::card_graph::map_payload_as::<

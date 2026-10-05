@@ -4167,6 +4167,17 @@ impl StaticAbility {
         ))
     }
 
+    pub fn actor_counters_addition_replacement(
+        filter: crate::target::ObjectFilter, player_filter: Option<crate::target::PlayerFilter>, actor: crate::target::PlayerFilter,
+        counter_type: Option<crate::object::CounterType>, additional: i64, display: String,
+    ) -> Self {
+        let mut ability = AddCountersPlacementReplacement::new(filter, counter_type, additional, display);
+        ability.player_filter = player_filter;
+        ability.actor = Some(actor);
+        ability.includes_permanents = true;
+        Self::new(ability)
+    }
+
     pub fn add_counters_placement_replacement(
         filter: crate::target::ObjectFilter,
         counter_type: Option<crate::object::CounterType>,
@@ -4869,6 +4880,8 @@ impl StaticAbility {
         Self::new(AllPlayersLookAtYourTopLibraryCard)
     }
 
+    pub fn controller_plays_with_hand_revealed() -> Self { Self::new(ControllerPlaysWithHandRevealed) }
+    pub fn players_play_with_hands_revealed() -> Self { Self::new(PlayersPlayWithHandsRevealed) }
     pub fn opponents_play_with_hands_revealed() -> Self {
         Self::new(OpponentsPlayWithHandsRevealed)
     }

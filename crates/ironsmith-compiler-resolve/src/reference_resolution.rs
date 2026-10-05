@@ -1,3 +1,5 @@
+#[path = "life_amount_bindings.rs"]
+mod life_amount_bindings;
 use crate::TagKey;
 use crate::cards::builders::{
     CardTextError, CharacteristicActionAst, ChoiceActionAst, ConditionalEffectAst,
@@ -62,6 +64,8 @@ pub struct EffectReferenceResolutionConfig {
     pub allow_life_event_value: bool,
     pub allow_excess_damage_event_value: bool,
     pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
+    pub life_event_binding: Option<std::sync::Arc<ironsmith_compiler_semantic::trigger_references::LifeEventBinding>>,
+    pub life_amount_producers: std::sync::Arc<Vec<ironsmith_compiler_semantic::trigger_references::LifeAmountProducer>>,
     pub bind_unbound_x_to_last_effect: bool,
     pub initial_last_effect_id: Option<EffectId>,
     pub initial_iterated_player: bool,
@@ -99,6 +103,8 @@ struct EffectReferenceResolutionState<'a> {
     allow_life_event_value: bool,
     allow_excess_damage_event_value: bool,
     milling_event_filter: Option<&'a ObjectFilter>,
+    life_event_binding: Option<&'a ironsmith_compiler_semantic::trigger_references::LifeEventBinding>,
+    life_amount_producers: &'a [ironsmith_compiler_semantic::trigger_references::LifeAmountProducer],
     bind_unbound_x_to_last_effect: bool,
     /// Inside a delayed trigger's body: the result id of the registering
     /// instruction's last producer. The delayed ability resolves later with
@@ -204,6 +210,8 @@ pub fn annotate_effect_sequence_owned(
     );
     env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     env.milling_event_filter = config.milling_event_filter.clone();
+    env.life_event_binding = config.life_event_binding.clone();
+    env.life_amount_producers = config.life_amount_producers.clone();
     let mut id_gen = id_gen;
     let mut effects = effects;
     // Persist result identities before transparent wrappers are traversed again
@@ -3447,9 +3455,22 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
         allow_life_event_value: env.allow_life_event_value,
         allow_excess_damage_event_value: env.allow_excess_damage_event_value,
         milling_event_filter: env.milling_event_filter.as_deref(),
+        life_event_binding: env.life_event_binding.as_deref(),
+        life_amount_producers: &env.life_amount_producers,
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
         delayed_registration_effect_id: None,
     }
+}
+
+/// Shared typed boundary for value helpers that resolve before the sequence
+/// result-ID pass. Life queries must never use their generic last-result fallback.
+pub(crate) fn resolve_life_quantity_query(
+    query: &ironsmith_core::PriorEffectMetricQuery,
+    env: &ReferenceEnv,
+) -> Option<Result<Value, CardTextError>> {
+    life_amount_bindings::is_life_query(query).then(|| {
+        life_amount_bindings::bind_life_query(query, effect_reference_resolution_state(env))
+    })
 }
 
 fn tap_cost_tag_from_env(env: &ReferenceEnv) -> Option<&TagKey> {
@@ -3935,6 +3956,11 @@ fn annotate_effect_sequence_with_env_internal(
             out_env.last_library_search_effect_id = RefState::Known(id);
         }
 
+        if let Some(id) = assigned_effect_id {
+            life_amount_bindings::remember_life_producer(
+                std::sync::Arc::make_mut(&mut out_env.life_amount_producers), id, &effect,
+            );
+        }
         current_env = out_env.clone();
         annotated.push(AnnotatedEffect {
             effect,
@@ -4084,6 +4110,10 @@ fn maybe_assign_effect_result_id(
     id_gen: &mut IdGenContext,
     config: EffectReferenceResolutionConfig,
 ) -> Option<EffectId> {
+    if let Some(id) = life_amount_bindings::rebound_producer_id(effect, remaining) {
+        id_gen.next_effect_id = id_gen.next_effect_id.max(id.0 + 1);
+        return Some(id);
+    }
     let next_is_result_gate = remaining.first().is_some_and(|next| {
         result_gate_surface(next).is_some() && result_gate_accepts_producer(next, effect)
     });
@@ -4362,6 +4392,8 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::PayMana { .. })
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { .. })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { .. })
                 | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. })
                 | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. })
                 | SubjectVerbActionAst::TargetOnly { .. }
@@ -4437,6 +4469,9 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
 fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &EffectAst) -> bool {
     if !effect_references_event_derived_amount(consumer) {
         return false;
+    }
+    if let Some(compatible) = life_amount_bindings::supplies_requested_life_metric(effect, consumer) {
+        return compatible;
     }
     if effect_references_only_other_number_metric(consumer) {
         return matches!(
@@ -5382,6 +5417,8 @@ fn resolve_effect_references_in_effect(
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter,
+                life_event_binding: state.life_event_binding,
+                life_amount_producers: state.life_amount_producers,
                 bind_unbound_x_to_last_effect: predicate != IfResultPredicate::AcceptedChoice,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
             },
@@ -5417,6 +5454,8 @@ fn resolve_effect_references_in_effect(
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter,
+                life_event_binding: state.life_event_binding,
+                life_amount_producers: state.life_amount_producers,
                 bind_unbound_x_to_last_effect: true,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
             },
@@ -5478,6 +5517,8 @@ fn resolve_effect_references_in_effect(
             allow_life_event_value: true,
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
+            life_event_binding: None,
+            life_amount_producers: &[],
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
             delayed_registration_effect_id: state.delayed_registration_effect_id,
         };
@@ -5495,6 +5536,7 @@ fn resolve_effect_references_in_effect(
     }) = effect
     {
         let milling_event_filter = ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter(trigger);
+        let life_event_binding = ironsmith_compiler_semantic::trigger_references::trigger_life_event_binding(trigger);
         let nested_state = EffectReferenceResolutionState {
             last_effect_id: state.last_effect_id,
             pinned_effect_metric_id: state.pinned_effect_metric_id,
@@ -5509,6 +5551,8 @@ fn resolve_effect_references_in_effect(
                     trigger,
                 ),
             milling_event_filter: milling_event_filter.as_deref(),
+            life_event_binding: life_event_binding.as_deref(),
+            life_amount_producers: &[],
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
             delayed_registration_effect_id: state.pinned_effect_metric_id.or(state.last_effect_id),
         };
@@ -5579,6 +5623,7 @@ fn resolve_effect_sequence_references_with_state_in_place(
     mut state: EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
     let effect_count = effects.len();
+    let mut life_producers = state.life_amount_producers.to_vec();
 
     for idx in 0..effect_count {
         let saved_last_effect_id = state.last_effect_id;
@@ -5594,10 +5639,18 @@ fn resolve_effect_sequence_references_with_state_in_place(
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter.cloned().map(std::sync::Arc::new),
+                life_event_binding: state.life_event_binding.cloned().map(std::sync::Arc::new),
+                life_amount_producers: std::sync::Arc::new(state.life_amount_producers.to_vec()),
                 ..Default::default()
             },
         );
-        resolve_effect_references_in_effect(effect, id_gen, state)?;
+        resolve_effect_references_in_effect(effect, id_gen, EffectReferenceResolutionState {
+            life_amount_producers: &life_producers,
+            ..state
+        })?;
+        if let Some(id) = assigned_effect_id {
+            life_amount_bindings::remember_life_producer(&mut life_producers, id, effect);
+        }
         let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
         state.last_effect_id = if result_gate_surface(effect).is_some() {
             if result_gate_exports_outcome_to_fallback(effect, remaining.first()) {
@@ -5792,6 +5845,8 @@ fn advance_reference_env_for_effect(
                     allow_life_event_value: env.allow_life_event_value,
                     allow_excess_damage_event_value: env.allow_excess_damage_event_value,
                     milling_event_filter: env.milling_event_filter.clone(),
+                    life_event_binding: env.life_event_binding.clone(),
+                    life_amount_producers: env.life_amount_producers.clone(),
                     bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
                 });
             }
@@ -5828,6 +5883,8 @@ fn advance_reference_env_for_effect(
                 allow_life_event_value: env.allow_life_event_value,
                 allow_excess_damage_event_value: env.allow_excess_damage_event_value,
                 milling_event_filter: env.milling_event_filter.clone(),
+                life_event_binding: env.life_event_binding.clone(),
+                life_amount_producers: env.life_amount_producers.clone(),
                 bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
             })
         }
@@ -6478,6 +6535,9 @@ fn resolve_effect_result_values_in_fields(
                 ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
             )
             | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterDamageMultiplier { .. },
+            )
+            | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
             )
             | SubjectVerbActionAst::Control(ControlActionAst::Enchant { .. })
@@ -6999,6 +7059,9 @@ fn resolve_effect_result_value(
                 metric: *metric,
                 offset: *offset,
             };
+        }
+        Value::PendingPriorEffectMetric(query) if life_amount_bindings::is_life_query(query) => {
+            *value = life_amount_bindings::bind_life_query(query, state)?;
         }
         Value::PendingPriorEffectMetric(query) => {
             if let Some(id) = state.pinned_effect_metric_id.or(state.last_effect_id)
@@ -7738,6 +7801,15 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 source_filter,
                 ..
             }) => bind_unresolved_it_in_filter(source_filter, seed_tag),
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterDamageMultiplier { spec },
+            ) => {
+                let mut count = bind_unresolved_it_in_filter(&mut spec.source_filter, seed_tag);
+                if let Some(filter) = &mut spec.target_object_filter {
+                    count += bind_unresolved_it_in_filter(filter, seed_tag);
+                }
+                count
+            }
             SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterCounterPlacementReplacement { filter, .. },
             ) => bind_unresolved_it_in_filter(filter, seed_tag),
@@ -9410,6 +9482,8 @@ mod tests {
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
+                life_event_binding: None,
+                life_amount_producers: &[],
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -9438,6 +9512,8 @@ mod tests {
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
+                life_event_binding: None,
+                life_amount_producers: &[],
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -9467,6 +9543,8 @@ mod tests {
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
+                life_event_binding: None,
+                life_amount_producers: &[],
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -11322,6 +11400,8 @@ mod excess_damage_binding_tests {
             allow_life_event_value: true,
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
+            life_event_binding: None,
+            life_amount_producers: &[],
             bind_unbound_x_to_last_effect: false,
             delayed_registration_effect_id: None,
         }

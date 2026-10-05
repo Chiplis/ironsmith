@@ -72,4 +72,7 @@ pub enum ReplacementActionAst {
         counter_type: CounterType,
         count: Value,
     },
+    RegisterDamageMultiplier {
+        spec: ironsmith_core::RegisterDamageMultiplierEffect,
+    },
 }

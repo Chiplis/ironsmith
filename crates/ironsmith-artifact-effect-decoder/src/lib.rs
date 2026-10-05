@@ -244,6 +244,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "RegisterFutureZoneReplacementEffect" => Some(EffectFamily::StackEvent),
         "RegisterManaReplacementEffect" => Some(EffectFamily::StackEvent),
         "RegisterCounterPlacementReplacementEffect" => Some(EffectFamily::StackEvent),
+        "RegisterDamageMultiplierEffect" => Some(EffectFamily::StackEvent),
         "RegisterEnterWithCountersReplacementEffect" => Some(EffectFamily::StackEvent),
         "RegisterNextBatchEnterWithCountersEffect" => Some(EffectFamily::StackEvent),
         "RegisterZoneReplacementEffect" => Some(EffectFamily::StackEvent),

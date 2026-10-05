@@ -367,6 +367,8 @@ impl StaticAbility {
             Some(StaticAbilityId::AllPlayersLookAtYourTopLibraryCard) => {
                 Self::all_players_look_at_your_top_library_card()
             }
+            Some(StaticAbilityId::ControllerPlaysWithHandRevealed) => Self::controller_plays_with_hand_revealed(),
+            Some(StaticAbilityId::PlayersPlayWithHandsRevealed) => Self::players_play_with_hands_revealed(),
             Some(StaticAbilityId::OpponentsPlayWithHandsRevealed) => {
                 Self::opponents_play_with_hands_revealed()
             }
