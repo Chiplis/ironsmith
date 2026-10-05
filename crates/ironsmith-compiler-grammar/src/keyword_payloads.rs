@@ -230,21 +230,9 @@ pub(super) fn parse_additional_cost(
         _ => None,
     };
     if let Some(minimum) = evidence_minimum {
-        let tag = crate::tag::TagRef::of(crate::util::helper_tag_for_tokens(
-            effect_tokens,
-            "evidence_cost",
-        ));
-        let mut filter = ObjectFilter::default()
-            .in_zone(Zone::Graveyard)
-            .owned_by(PlayerFilter::You);
-        filter.other = true;
-        return Ok(ast(LineAst::AdditionalCost { effects: vec![
-            EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
-                filter, count: crate::ChoiceCount::any_number(), player: PlayerAst::You,
-                tag: tag.clone(), constraint: ironsmith_core::ChoiceAggregateConstraint::total_mana_value_at_least(minimum),
-            }),
-            EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
-        ] }));
+        return Ok(ast(LineAst::AdditionalCost {
+            effects: vec![EffectAst::subject_verb_collect_evidence(minimum)],
+        }));
     }
     if is_additional_cost_choice_line_lexed(tokens)
         && parse_additional_cost_choice_options_lexed(effect_tokens)?.is_some()

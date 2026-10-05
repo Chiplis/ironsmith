@@ -851,7 +851,11 @@ fn pre_rule_optional_source_exile_and_collect_evidence(
         wrap_if_result: None,
         direct_effects: Some(vec![
             EffectAst::Permissions(PermissionEffectAst::May {
-                effects: vec![choose_evidence, exile_source, collect_evidence],
+                effects: vec![choose_evidence, exile_source, collect_evidence,
+                    EffectAst::subject_verb_emit_keyword_action(
+                        crate::events::KeywordActionKind::CollectEvidence, amount,
+                    ),
+                ],
             }),
             EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::Did,

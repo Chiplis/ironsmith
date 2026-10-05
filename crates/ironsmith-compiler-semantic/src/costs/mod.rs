@@ -93,6 +93,7 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
             .downcast_ref::<effects::ChooseCreatureTypeEffect>()
             .is_some()
         || effect.downcast_ref::<effects::BeholdEffect>().is_some()
+        || effect.downcast_ref::<effects::CollectEvidenceEffect>().is_some()
         || effect
             .downcast_ref::<effects::RevealTaggedEffect>()
             .is_some()

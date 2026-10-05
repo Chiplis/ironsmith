@@ -46,6 +46,7 @@ pub enum KeywordSubjectShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeywordMechanicShape<'a> {
     EmpowerJace { amount_and_binding_tokens: &'a [OwnedLexToken] },
+    CollectEvidence { amount_and_binding_tokens: &'a [OwnedLexToken] },
     Amass {
         subtype: Option<Subtype>,
         amount_and_binding_tokens: &'a [OwnedLexToken],
@@ -164,6 +165,13 @@ fn classify_subject(tokens: &[OwnedLexToken]) -> KeywordSubjectShape<'_> {
     } else {
         KeywordSubjectShape::Target(tokens)
     }
+}
+
+fn parse_collect_evidence<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::phrase(&["collect", "evidence"]).parse_next(input)?;
+    let amount_and_binding_tokens = tokens_before(input, 1, primitives::sentence_end())?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::CollectEvidence { amount_and_binding_tokens })
 }
 
 fn parse_empower_jace<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {

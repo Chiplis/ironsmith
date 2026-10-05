@@ -1692,6 +1692,11 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
                     }
                 }
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { .. }) => {
+                    if frame.auto_tag_object_targets {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "exiled"));
+                    }
+                }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { .. }) => {
                     if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "empowered"));
@@ -4981,6 +4986,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             count, ..
         })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount: count })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount: count })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount: count })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount: count, .. })
         | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount: count })
@@ -5946,6 +5952,7 @@ fn resolve_effect_result_values_in_fields(
                 count: amount,
             })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
@@ -7153,6 +7160,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_value(count, seed_tag)
             }
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount }) => {
                 bind_unresolved_it_in_value(amount, seed_tag)
             }

@@ -57,6 +57,21 @@ pub fn parse_forage_segment_tokens(
     }, "forage")
 }
 
+pub fn parse_collect_evidence_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    parse_simple_segment(tokens, |input: &mut LexStream<'_>| {
+        primitives::phrase(&["collect", "evidence"]).parse_next(input)?;
+        let amount = if opt(primitives::kw("x")).parse_next(input)?.is_some() {
+            Value::X
+        } else {
+            Value::Fixed(leaf::parse_leaf_number_prefix_lexed.parse_next(input)? as i32)
+        };
+        eof.parse_next(input)?;
+        Ok(ActivationCostSegmentCst::CollectEvidence { amount })
+    }, "collect-evidence")
+}
+
 pub fn parse_exert_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {

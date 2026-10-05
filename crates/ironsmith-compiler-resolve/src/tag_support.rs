@@ -1382,6 +1382,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
             Some(amount)
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. }) => {
             Some(amount)

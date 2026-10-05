@@ -82,6 +82,8 @@ pub enum KeywordActionKind {
     BecomeSaddled,
     /// A player empowers Jace (CR 701.71).
     EmpowerJace,
+    /// A player collects evidence; amount is the announced threshold, not overpayment.
+    CollectEvidence,
 }
 
 impl KeywordActionKind {
@@ -173,6 +175,7 @@ impl KeywordActionKind {
             Self::Sticker => "put a sticker",
             Self::Amass => "amass",
             Self::EmpowerJace => "empower Jace",
+            Self::CollectEvidence => "collect evidence",
             Self::AssembleContraption => "assemble a Contraption",
             Self::ArtSticker => "put an art sticker",
             Self::AbilitySticker => "put an ability sticker",
@@ -246,6 +249,7 @@ impl KeywordActionKind {
             Self::Sticker => "puts a sticker",
             Self::Amass => "amasses",
             Self::EmpowerJace => "empowers Jace",
+            Self::CollectEvidence => "collects evidence",
             Self::AssembleContraption => "assembles a Contraption",
             Self::ArtSticker => "puts an art sticker",
             Self::AbilitySticker => "puts an ability sticker",

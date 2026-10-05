@@ -12499,9 +12499,11 @@ fn describe_optional_self_exile_collect_evidence_then_return(
     };
     let with_id = optional_with_id.downcast_ref::<crate::effects::WithIdEffect>()?;
     let optional = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
-    let [choose_effect, source_exile_effect, evidence_exile_effect] = optional.effects.as_slice()
-    else {
-        return None;
+    let (choose_effect, source_exile_effect, evidence_exile_effect, emission) = match optional.effects.as_slice() {
+        [choose, source_exile, evidence_exile] => (choose, source_exile, evidence_exile, None),
+        [choose, source_exile, evidence_exile, emission] => (choose, source_exile, evidence_exile,
+            Some(emission.downcast_ref::<crate::effects::EmitKeywordActionEffect>()?)),
+        _ => return None,
     };
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let source_exile = source_exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
@@ -12533,6 +12535,8 @@ fn describe_optional_self_exile_collect_evidence_then_return(
         return None;
     };
     if *minimum < 0
+        || emission.is_some_and(|emit| emit.action != crate::events::KeywordActionKind::CollectEvidence
+            || emit.amount != *minimum as u32 || !emit.object_tags.is_empty())
         || choose.filter != expected_evidence_filter
         || !choose.count.is_any_number()
         || choose.count_value.is_some()

@@ -326,6 +326,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::Casualty { power }) => {
                 f.debug_tuple("Casualty").field(power).finish()
             }
+            Self::KeywordActions(KeywordActionAst::CollectEvidence { amount }) => f
+                .debug_struct("CollectEvidence").field("amount", amount).finish(),
             Self::KeywordActions(KeywordActionAst::EmpowerJace { amount }) => f
                 .debug_struct("EmpowerJace")
                 .field("amount", amount)
