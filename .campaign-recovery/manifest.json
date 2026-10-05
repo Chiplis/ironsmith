@@ -38,6 +38,22 @@
       "blob_sha": "ab1eea53973d457ebc349054acdebf436cd9436a",
       "status": "UNVALIDATED source reconstruction; coverage only from reviewed committed matrix",
       "builds_tests": "not_run"
+    },
+    {
+      "file": "recovery-sources-20261005-1119.bundle",
+      "requires_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
+      "refs": {
+        "campaign/recovery-integration-d51": "6ba906fb9a3fd1aa233c7979d535305ea911503e",
+        "recovery/dynamic-keyword-amounts": "2ebc61dc25b77c24323ea73d688cdfe0a4df9012",
+        "recovery/shared-type-references": "20819bff2e95bb1743b0a7bd007f769daed82063",
+        "recovery/foretell-state-and-grants": "c0c0db42745a64753baef2af3a8b386536045bce",
+        "recovery/suspected-designations": "18dc1ed36f54cff8413b23522a6af9b4f1e97d70"
+      },
+      "bytes": 236654,
+      "sha256": "97a03f55232fd3d0ea4653b198cfe07d358cc73c795f2c8113d48ff1795e2ace",
+      "blob_sha": "84374344b57e0fbb2ef48a02d8a8f624936f43a2",
+      "status": "UNVALIDATED; matrix counts only independently source-reviewed bodies",
+      "builds_tests": "not_run"
     }
   ]
 }
