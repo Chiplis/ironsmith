@@ -2240,6 +2240,13 @@ pub fn parse_keyword_mechanic_clause(
                 effects: vec![action],
             })
         }
+        clause_shapes::KeywordMechanicShape::PhaseExchange { phase_in, phase_out } => {
+            let mut phase_in = parse_object_filter(phase_in, false)?;
+            let mut phase_out = parse_object_filter(phase_out, false)?;
+            phase_in.zone.get_or_insert(Zone::Battlefield);
+            phase_out.zone.get_or_insert(Zone::Battlefield);
+            EffectAst::subject_verb_phase_exchange(phase_in, phase_out)
+        }
         clause_shapes::KeywordMechanicShape::Phase { direction, subject } => match subject {
             clause_shapes::PhaseSubjectShape::All(filter_tokens) => {
                 let mut filter = parse_object_filter(filter_tokens, false)?;

@@ -472,10 +472,9 @@ fn simultaneous_untap_exchange_does_not_let_a_newly_phased_in_source_look_back()
 }
 
 #[test]
-fn known_gap_time_and_tide_does_not_enable_a_new_phase_out_observer() {
-    // This exact supported-card interaction is intentionally retained as an
-    // unignored regression. Sequentially lowering the authored simultaneous
-    // exchange remains a known gap; War Doctor is therefore still partial.
+fn time_and_tide_does_not_enable_a_new_phase_out_observer() {
+    // Authored and unrun: an explicit typed exchange must retain the same
+    // pre-event observer set as the regular untap-step exchange.
     let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../fixtures/phasing_transition_runtime_gaps.json.fixture"
     ))
@@ -513,5 +512,118 @@ fn known_gap_time_and_tide_does_not_enable_a_new_phase_out_observer() {
             "an observer absent before the simultaneous exchange cannot see its phase-out half"
         );
         assert_eq!(counters(&game, source, CounterType::Time), 0);
+    }
+}
+
+#[test]
+fn authored_sequential_phase_in_then_out_is_not_silently_made_simultaneous() {
+    let text = "Mana cost: {0}\nType: Instant\nAll phased-out creatures phase in. All creatures with phasing phase out.";
+    let (artifact, direct) =
+        compile_to_artifact("Sequential phasing fixture", text, false).unwrap();
+    let restored = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
+    for (observer, spell) in definitions("The War Doctor")
+        .into_iter()
+        .zip([direct, materialize_artifact(&restored).unwrap()])
+    {
+        assert!(
+            !ironsmith_text::compiled_text_lines(&spell)
+                .join(" ")
+                .to_lowercase()
+                .contains("simultaneously")
+        );
+        let mut game = game();
+        let source = game.create_object_from_definition(&observer, A, Zone::Battlefield);
+        let incoming = resource(
+            &mut game,
+            A,
+            Zone::Battlefield,
+            "Type: Creature\nPower/Toughness: 2/2\nPhasing",
+        );
+        game.phase_out(source);
+        game.phase_out(incoming);
+        settle(&mut game, &mut SelectFirstDecisionMaker);
+        let outgoing = resource(
+            &mut game,
+            A,
+            Zone::Battlefield,
+            "Type: Creature\nPower/Toughness: 2/2\nPhasing",
+        );
+        let spell = game.create_object_from_definition(&spell, A, Zone::Stack);
+        game.push_to_stack(ironsmith::game_state::StackEntry::new(spell, A));
+        resolve_stack_entry_with(&mut game, &mut SelectFirstDecisionMaker).unwrap();
+        assert!(!game.is_phased_out(source));
+        assert!(
+            game.is_phased_out(incoming),
+            "a later separate instruction may phase a just-returned permanent out again"
+        );
+        assert!(game.is_phased_out(outgoing));
+        assert_eq!(
+            settle(&mut game, &mut SelectFirstDecisionMaker),
+            1,
+            "the now-present observer sees the separate outgoing batch once"
+        );
+        assert_eq!(counters(&game, source, CounterType::Time), 1);
+    }
+}
+
+#[test]
+fn exchange_payload_keeps_both_filters_through_artifacts_and_legacy_defaults() {
+    let text = "Mana cost: {U}\nType: Instant\nSimultaneously, all phased-out creatures phase in and all creatures with phasing phase out.";
+    let (artifact, direct) = compile_to_artifact("Exchange fixture", text, false).unwrap();
+    let restored = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
+    restored.validate().unwrap();
+    for definition in [direct, materialize_artifact(&restored).unwrap()] {
+        let effects = definition
+            .spell_effect
+            .as_ref()
+            .unwrap()
+            .flattened_default_effects();
+        let exchange = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<PhaseInEffect>())
+            .unwrap();
+        let out = exchange
+            .simultaneous_phase_out
+            .as_ref()
+            .expect("explicit second set must survive materialization");
+        assert_eq!(out.card_types, vec![ironsmith::CardType::Creature]);
+        assert!(
+            out.static_abilities
+                .contains(&ironsmith::static_abilities::StaticAbilityId::Phasing)
+        );
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| effect.downcast_ref::<PhaseOutEffect>().is_some())
+        );
+        assert!(
+            ironsmith_text::compiled_text_lines(&definition)
+                .join(" ")
+                .to_lowercase()
+                .contains("simultaneously")
+        );
+    }
+    let legacy = ironsmith_core::PhaseInEffect::with_spec(ironsmith_core::ChooseSpec::all(
+        ironsmith_core::ObjectFilter::creature(),
+    ));
+    let mut json = serde_json::to_value(legacy).unwrap();
+    json.as_object_mut()
+        .unwrap()
+        .remove("simultaneous_phase_out");
+    let restored: ironsmith_core::PhaseInEffect = serde_json::from_value(json).unwrap();
+    assert!(restored.simultaneous_phase_out.is_none());
+}
+
+#[test]
+fn public_compiler_rejects_unknown_simultaneous_compound_tails() {
+    for oracle in [
+        "Simultaneously, all phased-out creatures phase in and all creatures with phasing phase out and draw a card.",
+        "Simultaneously, all phased-out creatures phase in and all creatures with phasing.",
+    ] {
+        let text = format!("Type: Instant\n{oracle}");
+        assert!(
+            compile_to_artifact("Unsupported simultaneous fixture", &text, false).is_err(),
+            "a fallback must not split away simultaneity: {oracle}"
+        );
     }
 }

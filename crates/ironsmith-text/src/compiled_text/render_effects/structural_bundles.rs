@@ -5820,34 +5820,6 @@ pub(in crate::compiled_text) fn describe_revealed_hand_then_optional_free_cast(
     )
 }
 
-pub(super) fn describe_phase_in_out_pair(first: &Effect, second: &Effect) -> Option<String> {
-    let phase_in = first.downcast_ref::<crate::effects::PhaseInEffect>()?;
-    let phase_out = second.downcast_ref::<crate::effects::PhaseOutEffect>()?;
-    let ChooseSpec::All(phase_in_filter) = phase_in.spec.base() else {
-        return None;
-    };
-    let ChooseSpec::All(phase_out_filter) = phase_out.spec.base() else {
-        return None;
-    };
-    let phase_in_is_all_creatures = phase_in_filter.card_types == vec![CardType::Creature]
-        && phase_in_filter.subtypes.is_empty()
-        && phase_in_filter.static_abilities.is_empty();
-    let phase_out_is_creatures_with_phasing = phase_out_filter.card_types
-        == vec![CardType::Creature]
-        && phase_out_filter.subtypes.is_empty()
-        && phase_out_filter
-            .static_abilities
-            .contains(&crate::static_abilities::StaticAbilityId::Phasing);
-    if phase_in_is_all_creatures && phase_out_is_creatures_with_phasing {
-        Some(
-            "Simultaneously, all phased-out creatures phase in and all creatures with phasing phase out"
-                .to_string(),
-        )
-    } else {
-        None
-    }
-}
-
 pub(super) fn describe_for_players_target_return_unless_draw(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {

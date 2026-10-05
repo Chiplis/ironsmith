@@ -1,0 +1,40 @@
+[
+  {
+    "name": "Cinder Cloud",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Destroy target creature. If a white creature dies this way, Cinder Cloud deals damage to that creature's controller equal to the creature's power."
+  },
+  {
+    "name": "Kaervek's Purge",
+    "mana_cost": "{X}{B}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Destroy target creature with mana value X. If that creature dies this way, Kaervek's Purge deals damage equal to the creature's power to the creature's controller."
+  },
+  {
+    "name": "Morgue Burst",
+    "mana_cost": "{4}{B}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Return target creature card from your graveyard to your hand. Morgue Burst deals damage to any target equal to the power of the card returned this way."
+  },
+  {
+    "name": "Unerring Sling",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "{3}, {T}, Tap an untapped creature you control: This artifact deals damage equal to the tapped creature's power to target attacking or blocking creature with flying."
+  },
+  {
+    "name": "Viashino Heretic",
+    "mana_cost": "{2}{R}",
+    "type_line": "Creature — Lizard",
+    "power": "1",
+    "toughness": "3",
+    "oracle_text": "{1}{R}, {T}: Destroy target artifact. This creature deals damage to that artifact's controller equal to the artifact's mana value."
+  },
+  {
+    "name": "Compel Brutality",
+    "mana_cost": "{1}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Choose one —\n• Target creature you control deals damage equal to its power to target creature or planeswalker an opponent controls.\n• Target planeswalker you control deals damage equal to its loyalty to target creature or planeswalker an opponent controls."
+  }
+]

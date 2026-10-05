@@ -4438,6 +4438,7 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         | KeywordAction::BattleCry
         | KeywordAction::Dethrone
         | KeywordAction::Evolve
+        | KeywordAction::Increment
         | KeywordAction::Ingest
         | KeywordAction::Mentor => None,
         KeywordAction::Skulk => Some(StaticAbility::skulk()),

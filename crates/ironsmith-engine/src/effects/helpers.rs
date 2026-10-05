@@ -4272,6 +4272,7 @@ mod tests {
             colorless: 2,
             ..ManaPool::default()
         };
+        snapshot.caster_mana_spent_to_cast = Some(2);
         let event = TriggerEvent::new_with_provenance(
             SpellCastEvent::new_with_snapshot(spell_id, alice, Zone::Hand, snapshot),
             ProvNodeId::default(),
@@ -4282,6 +4283,12 @@ mod tests {
             resolve_value(&game, &Value::ManaSpentToCastTriggeringObject, &ctx).unwrap(),
             5
         );
+        assert_eq!(resolve_value(&game, &Value::CasterManaSpentToCastTriggeringObject, &ctx).unwrap(), 2);
+        let mut unknown = ObjectSnapshot::for_testing(spell_id, alice, "Legacy payment");
+        unknown.mana_spent_to_cast.colorless = 7;
+        let unknown_event = TriggerEvent::new_with_provenance(SpellCastEvent::new_with_snapshot(spell_id, alice, Zone::Hand, unknown), ProvNodeId::default());
+        let unknown_ctx = ExecutionContext::new_default(source_id, alice).with_triggering_event(unknown_event);
+        assert!(resolve_value(&game, &Value::CasterManaSpentToCastTriggeringObject, &unknown_ctx).is_err(), "total payment cannot substitute for missing payer evidence");
     }
 
     #[test]

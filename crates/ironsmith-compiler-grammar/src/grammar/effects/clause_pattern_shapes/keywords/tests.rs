@@ -153,3 +153,15 @@ fn parses_harness_with_named_source_tail() {
         Some(KeywordMechanicShape::Harness)
     ));
 }
+
+#[test]
+fn explicit_exchange_has_two_complete_filter_domains() {
+    let tokens=lex_line("Simultaneously, all phased-out artifacts you control phase in and all creatures with phasing phase out.",0).unwrap();
+    let Some(KeywordMechanicShape::PhaseExchange { phase_in,phase_out })=parse_keyword_mechanic_tokens(&tokens) else {panic!("typed exchange");};
+    assert_eq!(TokenWordView::new(phase_in).word_refs(),["artifacts","you","control"]);
+    assert_eq!(TokenWordView::new(phase_out).word_refs(),["creatures","with","phasing"]);
+    for text in [
+        "Simultaneously, all phased-out creatures phase in and all creatures with phasing phase out and draw a card.",
+        "Simultaneously, all phased-out creatures phase in and all creatures with phasing.",
+    ] {assert!(parse_keyword_mechanic_tokens(&lex_line(text,0).unwrap()).is_none(),"{text}");}
+}

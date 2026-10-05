@@ -261,6 +261,16 @@ pub(super) fn read_keyword_mechanic(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    // Simultaneity belongs to the complete phase instruction, before generic
+    // conjunction splitting. Unknown multi-action shapes must not lose it.
+    if tokens.first().is_some_and(|token| token.is_word("simultaneously"))
+        && tokens.iter().any(|token| token.is_any_word(&["phase", "phases"]))
+    {
+        return match parse_keyword_mechanic_clause(tokens)? {
+            Some(effect) => Ok(Some(vec![effect])),
+            None => Err(CardTextError::ParseError("unsupported simultaneous phasing clause".into())),
+        };
+    }
     // Numeric die-result branches also have the surface shape
     // "for each <noun phrase>, <effect>".  Route the typed keyword shape
     // before the generic object iterator so "odd/even result" is not sent to

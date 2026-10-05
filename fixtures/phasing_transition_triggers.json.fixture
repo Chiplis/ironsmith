@@ -42,7 +42,7 @@
     "source": "https://scryfall.com/card/who/772/the-war-doctor?utm_source=api",
     "baseline_content_hash": "57a426174bc0e3b8b876825113df2275120c1a4cdefa8b1b3005b9d50bb58ca4",
     "baseline_diagnostic": "unsupported triggered line: 'Whenever one or more other permanents phase out and whenever one or more other cards are put into exile from anywhere, put a time counter on The War Doctor.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever one or more other permanents phase out and whenever one or more other cards are put into exile from anywhere, put a time counter on The War Doctor.' [rule-path=statement-line > triggered-line]",
-    "proposed_complete": false,
-    "remaining_runtime_gap": "Time and Tide still lowers its simultaneous exchange to sequential phase-in and phase-out instructions; the newly phased-in observer must not observe phase-out using post-event discovery."
+    "proposed_complete": true,
+    "source_closure": "Explicit simultaneous phase exchange, including supported Time and Tide control; all validation deferred."
   }
 ]

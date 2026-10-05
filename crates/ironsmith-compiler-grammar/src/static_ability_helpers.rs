@@ -64,6 +64,7 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         | KeywordAction::BattleCry
         | KeywordAction::Dethrone
         | KeywordAction::Evolve
+        | KeywordAction::Increment
         | KeywordAction::Ingest
         | KeywordAction::Mentor => None,
         KeywordAction::Skulk => Some(CompilerStaticAbility::skulk()),

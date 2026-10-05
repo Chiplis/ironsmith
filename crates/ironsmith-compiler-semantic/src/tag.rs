@@ -3,6 +3,11 @@ use ironsmith_compiler_ast::symbols::{Cardinality, ObjectDomain, ReferenceRole};
 pub use ironsmith_core::TagKey;
 pub use ironsmith_core::tag::{TagKeyWalk, tag_keys_of};
 
+/// Compiler-only alias for the current object returned by an earlier
+/// instruction. Unlike an affected-object metric, this follows the explicit
+/// result-object contract of that return into its destination zone.
+pub const RETURNED_THIS_WAY_QUANTITY_TAG: &str = "__returned_this_way_quantity__";
+
 const SENTENCE_HELPER_ROOT: &str = "__sentence_helper_";
 
 pub fn sentence_helper_tag(purpose: &str, line: usize, start: usize, end: usize) -> TagRef {

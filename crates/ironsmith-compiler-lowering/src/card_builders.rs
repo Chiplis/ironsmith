@@ -666,6 +666,19 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    pub fn increment(self) -> Self {
+        let mut ability = crate::ability::Ability::triggered(
+            crate::triggers::Trigger::spell_cast(None, crate::target::PlayerFilter::You),
+            vec![crate::effect::Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne, 1, crate::target::ChooseSpec::Source,
+            )],
+        );
+        if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
+            triggered.intervening_if = Some(crate::ConditionExpr::increment());
+        }
+        self.with_ability(ability)
+    }
+
     pub fn evolve(self) -> Self {
         // CR 702.100a: "Whenever a creature you control enters, if that
         // creature's power is greater than this creature's power and/or ..."

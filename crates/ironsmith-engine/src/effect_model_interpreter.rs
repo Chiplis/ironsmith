@@ -1509,9 +1509,9 @@ where
         return Ok(Effect::new(phase_out));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PhaseInEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::PhaseInEffect::with_spec(
-            payload.target.clone(),
-        )));
+        let mut phase_in = crate::effects::PhaseInEffect::with_spec(payload.target.clone());
+        phase_in.simultaneous_phase_out = payload.simultaneous_phase_out.clone();
+        return Ok(Effect::new(phase_in));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RemoveFromCombatEffect>(&effect) {
         return Ok(Effect::new(

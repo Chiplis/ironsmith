@@ -1010,12 +1010,18 @@ pub(super) fn compile_subject_verb_late(
             let effect = tag_object_target_effect(base_effect, &spec, ctx, "phased_in");
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter }) => {
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out }) => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
-            prelude.push(Effect::new(crate::effects::PhaseInEffect::with_spec(
-                ChooseSpec::all(resolved_filter),
-            )));
+            let (mut prelude, mut choices) = target_context_prelude_for_filter(&resolved_filter);
+            let effect = if let Some(out) = simultaneous_phase_out {
+                let out = resolve_it_tag(out, &current_reference_env(ctx))?;
+                let (out_prelude, out_choices) = target_context_prelude_for_filter(&out);
+                prelude.extend(out_prelude); choices.extend(out_choices);
+                crate::effects::PhaseInEffect::exchange(resolved_filter, out)
+            } else {
+                crate::effects::PhaseInEffect::with_spec(ChooseSpec::all(resolved_filter))
+            };
+            prelude.push(Effect::new(effect));
             Ok((prelude, choices))
         }
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target }) => {

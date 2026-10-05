@@ -126,3 +126,65 @@ fn prior_discard_shortfall_is_bound_to_the_discard_id_not_hand_size() {
     );
     assert!(!debug.contains("CardsInHand"), "{debug}");
 }
+
+#[test]
+fn returned_quantity_alias_is_required_and_survives_an_intervening_target() {
+    let amount = Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
+        crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG,
+    ))));
+    assert!(
+        crate::reference_helpers::resolve_value_it_tag(&amount, &ReferenceEnv::default()).is_err()
+    );
+    let target = TargetAst::Object(
+        ObjectFilter::creature().in_zone(crate::zone::Zone::Graveyard),
+        Some(crate::cards::TextSpan {
+            line: 0,
+            start: 0,
+            end: 10,
+        }),
+        None,
+    );
+    let effects = vec![
+        EffectAst::subject_verb_return_to_hand(target, false),
+        EffectAst::subject_verb_explicit_target_only(TargetAst::Object(
+            ObjectFilter::artifact(),
+            Some(crate::cards::TextSpan {
+                line: 1,
+                start: 0,
+                end: 10,
+            }),
+            None,
+        )),
+        EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::You, None)),
+    ];
+    let annotated = annotate_effect_sequence(
+        &effects,
+        &ReferenceImports::default(),
+        Default::default(),
+        Default::default(),
+    )
+    .unwrap();
+    let first = annotated.effects[0]
+        .out_env
+        .snapshot_tag_aliases
+        .iter()
+        .find(|(alias, _)| alias.as_str() == crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG)
+        .unwrap()
+        .1
+        .clone();
+    let resolved =
+        crate::reference_helpers::resolve_value_it_tag(&amount, &annotated.effects[2].in_env)
+            .unwrap();
+    assert!(
+        matches!(resolved, Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == &first))
+    );
+}
+
+#[test]
+fn existential_group_comparisons_do_not_invent_one_compared_opponent() {
+    for player in [PlayerAst::Opponent, PlayerAst::Any] {
+        let predicate =
+            PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { player });
+        assert!(predicate_comparison_operands(&predicate, &ReferenceEnv::default()).is_none());
+    }
+}

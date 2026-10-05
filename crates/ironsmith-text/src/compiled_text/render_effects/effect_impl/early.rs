@@ -5100,6 +5100,12 @@
         return format!("Phase out {target}");
     }
     if let Some(phase_in) = effect.downcast_ref::<crate::effects::PhaseInEffect>() {
+        if let Some(out) = &phase_in.simultaneous_phase_out {
+            let incoming = describe_choose_spec(&phase_in.spec);
+            let outgoing = describe_choose_spec(&ChooseSpec::all(out.clone()));
+            let incoming = incoming.strip_prefix("all ").unwrap_or(&incoming);
+            return format!("Simultaneously, all phased-out {incoming} phase in and {outgoing} phase out");
+        }
         if matches!(phase_in.spec.base(), ChooseSpec::All(_)) {
             let desc = describe_choose_spec(&phase_in.spec);
             let base = desc.strip_prefix("all ").unwrap_or(desc.as_str());
