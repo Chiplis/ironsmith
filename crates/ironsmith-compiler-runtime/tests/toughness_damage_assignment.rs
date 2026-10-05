@@ -232,6 +232,8 @@ impl DecisionMaker for Choices {
 }
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
+    // Checked execution already captures some triggers in the original observer frame.
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     for event in outcome.events {
         for entry in check_triggers(game, &event) {
             queue.add(entry);
@@ -275,7 +277,15 @@ fn cast(
         from_zone: Zone::Hand,
         casting_method: method,
     };
-    assert!(compute_legal_actions(game, A).unwrap().contains(&action));
+    assert!(
+        compute_legal_actions(game, A).unwrap().contains(&action),
+        "activation {:?}, legal {:?}, phase {:?}, priority {:?}, stack {}",
+        action,
+        compute_legal_actions(game, A).unwrap(),
+        game.turn.phase,
+        game.turn.priority_player,
+        game.stack.len()
+    );
     let mut queue = TriggerQueue::new();
     let mut state = PriorityLoopState::new(3);
     let mut progress = apply_priority_response_with_dm(
@@ -287,7 +297,7 @@ fn cast(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -295,7 +305,7 @@ fn cast(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()
@@ -307,11 +317,39 @@ fn cast(
     spell
 }
 fn activate(game: &mut GameState, source: ObjectId, ability_index: usize, dm: &mut Choices) {
+    let ordinal = game
+        .object(source)
+        .unwrap()
+        .abilities
+        .iter()
+        .take(ability_index)
+        .filter(|ability| matches!(ability.kind, ironsmith::ability::AbilityKind::Activated(_)))
+        .count();
+    let ability_index = game
+        .calculated_characteristics(source)
+        .unwrap()
+        .abilities
+        .iter()
+        .enumerate()
+        .filter(|(_, ability)| {
+            matches!(ability.kind, ironsmith::ability::AbilityKind::Activated(_))
+        })
+        .nth(ordinal)
+        .unwrap()
+        .0;
     let action = LegalAction::ActivateAbility {
         source,
         ability_index,
     };
-    assert!(compute_legal_actions(game, A).unwrap().contains(&action));
+    assert!(
+        compute_legal_actions(game, A).unwrap().contains(&action),
+        "activation {:?}, legal {:?}, phase {:?}, priority {:?}, stack {}",
+        action,
+        compute_legal_actions(game, A).unwrap(),
+        game.turn.phase,
+        game.turn.priority_player,
+        game.stack.len()
+    );
     let mut queue = TriggerQueue::new();
     let mut state = PriorityLoopState::new(3);
     let mut progress = apply_priority_response_with_dm(
@@ -495,7 +533,13 @@ fn static_filters_track_each_creatures_current_axes_controller_and_source_depart
                     source,
                     Effect::pump(6, 0, ChooseSpec::SpecificObject(own), Until::EndOfTurn),
                 );
-                assert!(!rule(&game, own));
+                assert!(
+                    !rule(&game, own),
+                    "{name} {:?}",
+                    game.calculated_characteristics(own)
+                        .unwrap()
+                        .static_abilities
+                );
                 assert_eq!(damage(&mut game, own, general), 8);
                 apply(
                     &mut game,

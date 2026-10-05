@@ -9,6 +9,31 @@ pub(crate) fn resolve_value_direct(
     controller: PlayerId,
     game: &crate::game_state::GameState,
 ) -> i32 {
+    resolve_value_direct_for_recipient(
+        value,
+        objects,
+        effects,
+        battlefield,
+        commanders,
+        source,
+        source,
+        controller,
+        game,
+    )
+}
+
+/// Resolve a Value to an i32 (direct version without CalculationContext).
+pub(crate) fn resolve_value_direct_for_recipient(
+    value: &Value,
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    source: ObjectId,
+    recipient: ObjectId,
+    controller: PlayerId,
+    game: &crate::game_state::GameState,
+) -> i32 {
     let mut effect_manager = ContinuousEffectManager::new();
     for effect in effects {
         effect_manager.add_effect(effect.clone());
@@ -18,7 +43,7 @@ pub(crate) fn resolve_value_direct(
         effects: &effect_manager,
         battlefield,
         game,
-        current_object: source,
+        current_object: recipient,
     };
     let layer = super::value_context::LayerValueContext::direct(
         &calculation,
@@ -200,10 +225,17 @@ pub(super) fn calculate_with_layers(
             };
 
             if effect.has_source_controller_context()
-                && !ctx.objects.contains_key(&effect.source_controller_context_host()) { continue; }
+                && !ctx
+                    .objects
+                    .contains_key(&effect.source_controller_context_host())
+            {
+                continue;
+            }
             let bound_effect = if needs_source_tracking && effect_active {
                 bind_effect_controller_to_layer_frame(effect, &source_state)
-            } else { std::borrow::Cow::Borrowed(effect) };
+            } else {
+                std::borrow::Cow::Borrowed(effect)
+            };
             let effect = bound_effect.as_ref();
             if needs_source_tracking && effect_active {
                 advance_layer_source_state(
@@ -269,7 +301,12 @@ pub(super) fn calculate_with_layers(
                 }
                 Modification::SetTextBox(overlay) => {
                     chars.compiled_card_text = overlay.compiled_card_text.clone();
-                    replace_rules_text_abilities(&mut chars, overlay.abilities.to_vec(), Some(effect.into()), false);
+                    replace_rules_text_abilities(
+                        &mut chars,
+                        overlay.abilities.to_vec(),
+                        Some(effect.into()),
+                        false,
+                    );
                     chars.static_abilities = extract_static_abilities(&chars.abilities).into();
                 }
                 Modification::SetName(name) => {
@@ -406,10 +443,13 @@ pub(super) fn calculate_with_layers(
                     use crate::ability::AbilityKind;
                     // Reuse this derivation's effect set. Re-entering static
                     // effect generation here recursively rebuilds the board.
-                    let effects = all_effects.get_or_insert_with(||
-                        effects.iter().map(|effect| (**effect).clone()).collect());
-                    let donor_context = continuous_filter_context(ctx.game, effect.controller, effect.source);
-                    let mut candidate_ids = ability_copy_candidate_ids(ctx.objects, filter, &donor_context);
+                    let effects = all_effects.get_or_insert_with(|| {
+                        effects.iter().map(|effect| (**effect).clone()).collect()
+                    });
+                    let donor_context =
+                        continuous_filter_context(ctx.game, effect.controller, effect.source);
+                    let mut candidate_ids =
+                        ability_copy_candidate_ids(ctx.objects, filter, &donor_context);
                     candidate_ids.sort();
 
                     for candidate_id in candidate_ids {
@@ -440,7 +480,11 @@ pub(super) fn calculate_with_layers(
                         };
 
                         if !filter_matches_with_characteristics_in_context(
-                            filter, candidate, &candidate_chars, ctx.game, &donor_context,
+                            filter,
+                            candidate,
+                            &candidate_chars,
+                            ctx.game,
+                            &donor_context,
                         ) {
                             continue;
                         }
@@ -490,8 +534,9 @@ pub(super) fn calculate_with_layers(
                 } => {
                     // Reuse this derivation's effect set. Re-entering static
                     // effect generation here recursively rebuilds the board.
-                    let effects = all_effects.get_or_insert_with(||
-                        effects.iter().map(|effect| (**effect).clone()).collect());
+                    let effects = all_effects.get_or_insert_with(|| {
+                        effects.iter().map(|effect| (**effect).clone()).collect()
+                    });
                     copy_static_ability_variants_into(
                         &mut chars,
                         filter,
@@ -514,10 +559,13 @@ pub(super) fn calculate_with_layers(
                     use crate::ability::AbilityKind;
                     // Reuse this derivation's effect set. Re-entering static
                     // effect generation here recursively rebuilds the board.
-                    let effects = all_effects.get_or_insert_with(||
-                        effects.iter().map(|effect| (**effect).clone()).collect());
-                    let donor_context = continuous_filter_context(ctx.game, effect.controller, effect.source);
-                    let mut candidate_ids = ability_copy_candidate_ids(ctx.objects, filter, &donor_context);
+                    let effects = all_effects.get_or_insert_with(|| {
+                        effects.iter().map(|effect| (**effect).clone()).collect()
+                    });
+                    let donor_context =
+                        continuous_filter_context(ctx.game, effect.controller, effect.source);
+                    let mut candidate_ids =
+                        ability_copy_candidate_ids(ctx.objects, filter, &donor_context);
                     candidate_ids.sort();
 
                     for candidate_id in candidate_ids {
@@ -543,7 +591,11 @@ pub(super) fn calculate_with_layers(
                         };
 
                         if !filter_matches_with_characteristics_in_context(
-                            filter, candidate, &candidate_chars, ctx.game, &donor_context,
+                            filter,
+                            candidate,
+                            &candidate_chars,
+                            ctx.game,
+                            &donor_context,
                         ) {
                             continue;
                         }
@@ -821,10 +873,17 @@ pub(super) fn apply_layer_7_effects(
         };
 
         if effect.has_source_controller_context()
-            && !ctx.objects.contains_key(&effect.source_controller_context_host()) { continue; }
+            && !ctx
+                .objects
+                .contains_key(&effect.source_controller_context_host())
+        {
+            continue;
+        }
         let bound_effect = if needs_source_tracking && effect_active {
             bind_effect_controller_to_layer_frame(effect, &source_state)
-        } else { std::borrow::Cow::Borrowed(*effect) };
+        } else {
+            std::borrow::Cow::Borrowed(*effect)
+        };
         let effect = bound_effect.as_ref();
 
         if needs_source_tracking && effect_active {
@@ -853,7 +912,12 @@ pub(super) fn apply_layer_7_effects(
         if effect_sublayer == Some(PtSublayer::Modifying) && !counters_applied {
             // Apply counters before this effect if their timestamp is earlier
             if counter_timestamp.is_none_or(|ct| ct <= effect.timestamp) {
-                apply_counter_modifications(object, &mut power, &mut toughness, &mut chars.numeric_range_error);
+                apply_counter_modifications(
+                    object,
+                    &mut power,
+                    &mut toughness,
+                    &mut chars.numeric_range_error,
+                );
                 counters_applied = true;
                 chars.power = power;
                 chars.toughness = toughness;
@@ -864,7 +928,12 @@ pub(super) fn apply_layer_7_effects(
         // If we're past sublayer 7c (now in 7d Switching) and counters weren't applied,
         // apply them now (at the end of 7c)
         if effect_sublayer == Some(PtSublayer::Switching) && !counters_applied {
-            apply_counter_modifications(object, &mut power, &mut toughness, &mut chars.numeric_range_error);
+            apply_counter_modifications(
+                object,
+                &mut power,
+                &mut toughness,
+                &mut chars.numeric_range_error,
+            );
             counters_applied = true;
             chars.power = power;
             chars.toughness = toughness;
@@ -907,17 +976,37 @@ pub(super) fn apply_layer_7_effects(
                 ));
             }
             Modification::ModifyPower(delta) => {
-                add_pt_checked(&mut power, i128::from(*delta), &mut chars.numeric_range_error, "power");
+                add_pt_checked(
+                    &mut power,
+                    i128::from(*delta),
+                    &mut chars.numeric_range_error,
+                    "power",
+                );
             }
             Modification::ModifyToughness(delta) => {
-                add_pt_checked(&mut toughness, i128::from(*delta), &mut chars.numeric_range_error, "toughness");
+                add_pt_checked(
+                    &mut toughness,
+                    i128::from(*delta),
+                    &mut chars.numeric_range_error,
+                    "toughness",
+                );
             }
             Modification::ModifyPowerToughness {
                 power: dp,
                 toughness: dt,
             } => {
-                add_pt_checked(&mut power, i128::from(*dp), &mut chars.numeric_range_error, "power");
-                add_pt_checked(&mut toughness, i128::from(*dt), &mut chars.numeric_range_error, "toughness");
+                add_pt_checked(
+                    &mut power,
+                    i128::from(*dp),
+                    &mut chars.numeric_range_error,
+                    "power",
+                );
+                add_pt_checked(
+                    &mut toughness,
+                    i128::from(*dt),
+                    &mut chars.numeric_range_error,
+                    "toughness",
+                );
             }
             Modification::ModifyPowerToughnessValue {
                 power: power_value,
@@ -931,22 +1020,43 @@ pub(super) fn apply_layer_7_effects(
                     effect.source,
                     effect.controller,
                 );
-                add_pt_checked(&mut power, i128::from(dp), &mut chars.numeric_range_error, "power");
-                add_pt_checked(&mut toughness, i128::from(dt), &mut chars.numeric_range_error, "toughness");
+                add_pt_checked(
+                    &mut power,
+                    i128::from(dp),
+                    &mut chars.numeric_range_error,
+                    "power",
+                );
+                add_pt_checked(
+                    &mut toughness,
+                    i128::from(dt),
+                    &mut chars.numeric_range_error,
+                    "toughness",
+                );
             }
             Modification::ModifyPowerToughnessByColorCount {
                 power_multiplier,
                 toughness_multiplier,
             } => {
                 let color_count = chars.colors.count() as i32;
-                add_pt_checked(&mut power, i128::from(*power_multiplier) * i128::from(color_count), &mut chars.numeric_range_error, "power");
-                add_pt_checked(&mut toughness, i128::from(*toughness_multiplier) * i128::from(color_count), &mut chars.numeric_range_error, "toughness");
+                add_pt_checked(
+                    &mut power,
+                    i128::from(*power_multiplier) * i128::from(color_count),
+                    &mut chars.numeric_range_error,
+                    "power",
+                );
+                add_pt_checked(
+                    &mut toughness,
+                    i128::from(*toughness_multiplier) * i128::from(color_count),
+                    &mut chars.numeric_range_error,
+                    "toughness",
+                );
             }
             Modification::SwitchPowerToughness => {
                 std::mem::swap(&mut power, &mut toughness);
             }
             Modification::CopyOf { .. }
-            | Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
+            | Modification::ChangeController(_)
+            | Modification::ChangeControllerToEffectController
             | Modification::ChangeText { .. }
             | Modification::SetTextBox(_)
             | Modification::SetName(_)
@@ -1001,7 +1111,12 @@ pub(super) fn apply_layer_7_effects(
     // If counters still haven't been applied (no 7c or 7d effects, or all 7c effects
     // had earlier timestamps), apply them now at the end of 7c
     if !counters_applied {
-        apply_counter_modifications(object, &mut power, &mut toughness, &mut chars.numeric_range_error);
+        apply_counter_modifications(
+            object,
+            &mut power,
+            &mut toughness,
+            &mut chars.numeric_range_error,
+        );
     }
 
     chars.power = power;
@@ -1012,7 +1127,9 @@ pub(super) fn apply_layer_7_effects(
 /// Apply P/T counter modifications to power and toughness.
 /// Per Rule 613.4c, these are part of sublayer 7c.
 pub(super) fn apply_counter_modifications(
-    object: &Object, power: &mut Option<i32>, toughness: &mut Option<i32>,
+    object: &Object,
+    power: &mut Option<i32>,
+    toughness: &mut Option<i32>,
     error: &mut Option<(&'static str, i128)>,
 ) {
     let (mut power_delta, mut toughness_delta) = (0i128, 0i128);
@@ -1044,7 +1161,14 @@ pub(super) fn effect_applies_to(
         return false;
     }
 
-    effect_target_applies_to_direct(effect, object, chars, ctx.objects, ctx.game, &std::cell::OnceCell::new())
+    effect_target_applies_to_direct(
+        effect,
+        object,
+        chars,
+        ctx.objects,
+        ctx.game,
+        &std::cell::OnceCell::new(),
+    )
 }
 
 pub(super) fn effect_applies_to_or_started(
@@ -1457,7 +1581,9 @@ pub(super) fn baseline_scope(effects: &[ContinuousEffect]) -> BaselineScope {
         ids: Vec::new(),
     };
     for effect in effects {
-        if effect.has_source_controller_context() && !scope.ids.contains(&effect.source_controller_context_host()) {
+        if effect.has_source_controller_context()
+            && !scope.ids.contains(&effect.source_controller_context_host())
+        {
             scope.ids.push(effect.source_controller_context_host());
         }
         match &effect.applies_to {
@@ -1615,16 +1741,18 @@ pub(super) fn layer_needs_source_activity_tracking<'a>(
     all_effects: impl IntoIterator<Item = &'a ContinuousEffect>,
     layer: Layer,
 ) -> bool {
-    let has_static_sources = layer_effects.iter().any(|effect|
-        effect.originating_static_ability.is_some());
-    has_static_sources && all_effects.into_iter().any(|effect| {
-        // Control affects the context read by a source's static abilities even
-        // when none of those abilities is removed. Track earlier-layer source
-        // facts as well when a later control effect exists.
-        effect.modification.layer() == Layer::Control
-            || (effect.modification.layer() <= layer
-                && effect_can_change_static_ability_presence(effect))
-    })
+    let has_static_sources = layer_effects
+        .iter()
+        .any(|effect| effect.originating_static_ability.is_some());
+    has_static_sources
+        && all_effects.into_iter().any(|effect| {
+            // Control affects the context read by a source's static abilities even
+            // when none of those abilities is removed. Track earlier-layer source
+            // facts as well when a later control effect exists.
+            effect.modification.layer() == Layer::Control
+                || (effect.modification.layer() <= layer
+                    && effect_can_change_static_ability_presence(effect))
+        })
 }
 
 /// Bind a regenerated static descriptor against a prepared layer frame.
@@ -1638,7 +1766,9 @@ pub(crate) fn bind_effect_controller_to_layer_frame<'a>(
         return std::borrow::Cow::Borrowed(effect);
     }
     let controller = frame[&effect.source_controller_context_host()].controller;
-    if controller == effect.controller { return std::borrow::Cow::Borrowed(effect); }
+    if controller == effect.controller {
+        return std::borrow::Cow::Borrowed(effect);
+    }
     let mut bound = effect.clone();
     bound.controller = controller;
     std::borrow::Cow::Owned(bound)
@@ -1649,7 +1779,9 @@ pub(super) fn tracked_source_ids_for_layer(
 ) -> HashSet<ObjectId> {
     let mut ids = HashSet::new();
     for effect in layer_effects {
-        if effect.originating_static_ability.is_some() { ids.insert(effect.source); }
+        if effect.originating_static_ability.is_some() {
+            ids.insert(effect.source);
+        }
         if effect.has_source_controller_context() {
             ids.insert(effect.source_controller_context_host());
         }
@@ -1666,10 +1798,38 @@ pub(super) fn effect_source_is_active(
     };
 
     source_state.get(&effect.source).is_some_and(|chars| {
-        chars
+        if chars
             .static_abilities
             .iter()
             .any(|ability| ability.instance_id() == originating_static_ability.instance_id())
+        {
+            return true;
+        }
+        // At the start of layer six, active level-tier abilities have not
+        // yet been appended. Their generating occurrence remains active
+        // while its paired level description survives the earlier layers.
+        if let Some(origin) = effect.originating_ability.as_deref()
+            && let AbilityOrigin::Level {
+                parent, tier, slot, ..
+            } = &origin.ability
+        {
+            return chars.abilities.iter().enumerate().any(|(index, ability)| {
+                if chars.abilities.origin(index) != Some(parent.as_ref()) {
+                    return false;
+                }
+                let AbilityKind::Static(description) = &ability.kind else {
+                    return false;
+                };
+                description
+                    .level_abilities()
+                    .and_then(|tiers| tiers.get(*tier))
+                    .and_then(|band| band.abilities.get(*slot))
+                    .is_some_and(|granted| {
+                        granted.instance_id() == originating_static_ability.instance_id()
+                    })
+            });
+        }
+        false
     })
 }
 
@@ -1780,9 +1940,13 @@ fn add_ability_from_counter(
             if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind {
                 chars.static_abilities.push(static_ability.clone());
             }
-            chars.abilities.push_with_origin(ability.clone(), super::AbilityOrigin::Counter {
-                occurrence: occurrence.origin.clone(), slot,
-            });
+            chars.abilities.push_with_origin(
+                ability.clone(),
+                super::AbilityOrigin::Counter {
+                    occurrence: occurrence.origin.clone(),
+                    slot,
+                },
+            );
         }
     }
 }
@@ -1860,16 +2024,24 @@ pub(super) fn add_temporary_static_ability_grants(
         // Materialize each registered grant as its own ability occurrence.
         // Equal definitions (including cloned runtime values) are not one
         // grant: their replacement effects can each apply to the same event.
-        let origin = object.temporary_static_ability_grants.origin(index)
-            .expect("temporary grant and origin remain paired").clone();
-        chars.abilities.push_with_origin(Ability::static_ability(ability.clone()),
-            super::AbilityOrigin::Temporary(origin));
+        let origin = object
+            .temporary_static_ability_grants
+            .origin(index)
+            .expect("temporary grant and origin remain paired")
+            .clone();
+        chars.abilities.push_with_origin(
+            Ability::static_ability(ability.clone()),
+            super::AbilityOrigin::Temporary(origin),
+        );
         chars.static_abilities.push(ability);
     }
 }
 
 /// Get P/T override from level abilities if applicable.
-pub(super) fn get_level_ability_pt(object: &Object, abilities: &CalculatedAbilities) -> Option<(i32, i32)> {
+pub(super) fn get_level_ability_pt(
+    object: &Object,
+    abilities: &CalculatedAbilities,
+) -> Option<(i32, i32)> {
     let level_count = object
         .counters
         .get(&CounterType::Level)
@@ -1898,24 +2070,44 @@ pub(super) fn apply_level_granted_abilities(
     object: &Object,
     chars: &mut CalculatedCharacteristics,
 ) {
-    let level = object.counters.get(&CounterType::Level).copied().unwrap_or(0);
+    let level = object
+        .counters
+        .get(&CounterType::Level)
+        .copied()
+        .unwrap_or(0);
     // Layer six owns which level descriptions survive. Snapshot them before
     // adding their tier abilities, keeping each independent paired occurrence.
-    let active = chars.abilities.iter().enumerate().filter_map(|(index, ability)| {
-        let AbilityKind::Static(ability) = &ability.kind else { return None; };
-        let tiers = ability.level_abilities()?;
-        let parent = chars.abilities.origin(index)?.clone();
-        let (tier, band) = tiers.iter().enumerate().rev()
-            .find(|(_, band)| band.applies_at_level(level))?;
-        Some((parent, tier, band.abilities.clone()))
-    }).collect::<Vec<_>>();
+    let active = chars
+        .abilities
+        .iter()
+        .enumerate()
+        .filter_map(|(index, ability)| {
+            let AbilityKind::Static(ability) = &ability.kind else {
+                return None;
+            };
+            let tiers = ability.level_abilities()?;
+            let parent = chars.abilities.origin(index)?.clone();
+            let (tier, band) = tiers
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, band)| band.applies_at_level(level))?;
+            Some((parent, tier, band.abilities.clone()))
+        })
+        .collect::<Vec<_>>();
     for (parent, tier, abilities) in active {
         for (slot, granted) in abilities.into_iter().enumerate() {
-            let origin = AbilityOrigin::Level { printed_face: object.card,
-                parent: Box::new(parent.clone()), tier, slot };
+            let origin = AbilityOrigin::Level {
+                printed_face: object.card,
+                parent: Box::new(parent.clone()),
+                tier,
+                slot,
+            };
             // Source-filtered inline carriers are materialized by their
             // generated continuous effect, once; they are not expanded here.
-            chars.abilities.push_with_origin(Ability::static_ability(granted.clone()), origin);
+            chars
+                .abilities
+                .push_with_origin(Ability::static_ability(granted.clone()), origin);
             chars.static_abilities.push(granted);
         }
     }

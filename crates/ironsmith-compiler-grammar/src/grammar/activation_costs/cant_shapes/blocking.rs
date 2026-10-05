@@ -114,7 +114,7 @@ fn parse_by_tail<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTail> {
     alt((
         parse_maximum_blockers,
         parse_power_threshold,
-        parse_flying_blockers,
+        parse_keyword_blockers,
         parse_color_blockers,
         parse_wall_blockers,
     ))
@@ -124,6 +124,7 @@ fn parse_by_tail<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTail> {
 fn parse_except_by_tail<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTail> {
     alt((
         parse_minimum_blockers,
+        parse_except_keyword_blockers,
         parse_except_color_blockers,
         parse_except_artifact_blockers,
         parse_except_wall_blockers,
@@ -204,11 +205,12 @@ fn parse_power_threshold<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantT
     Ok(BlockingCantTail::PowerThreshold(comparison))
 }
 
-fn parse_flying_blockers<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTail> {
+fn parse_keyword_blockers<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTail> {
     opt(parse_creature_noun).parse_next(input)?;
-    primitives::phrase(&["with", "flying"]).parse_next(input)?;
+    primitives::kw("with").parse_next(input)?;
+    let ability = parse_blocker_keyword.parse_next(input)?;
     Ok(BlockingCantTail::DisallowedBlockers(
-        ObjectFilter::creature().with_static_ability(StaticAbilityId::Flying),
+        ObjectFilter::creature().with_static_ability(ability),
     ))
 }
 
@@ -224,6 +226,28 @@ fn parse_wall_blockers<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTai
     parse_wall_noun.parse_next(input)?;
     Ok(BlockingCantTail::DisallowedBlockers(
         ObjectFilter::creature().with_subtype(Subtype::Wall),
+    ))
+}
+
+fn parse_blocker_keyword<'a>(input: &mut LexStream<'a>) -> WResult<StaticAbilityId> {
+    alt((
+        primitives::kw("defender").value(StaticAbilityId::Defender),
+        primitives::kw("flying").value(StaticAbilityId::Flying),
+        primitives::kw("reach").value(StaticAbilityId::Reach),
+        primitives::kw("trample").value(StaticAbilityId::Trample),
+        primitives::kw("vigilance").value(StaticAbilityId::Vigilance),
+        primitives::kw("haste").value(StaticAbilityId::Haste),
+        primitives::kw("deathtouch").value(StaticAbilityId::Deathtouch),
+    ))
+    .parse_next(input)
+}
+
+fn parse_except_keyword_blockers<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTail> {
+    parse_creature_noun.parse_next(input)?;
+    primitives::kw("with").parse_next(input)?;
+    let ability = parse_blocker_keyword.parse_next(input)?;
+    Ok(BlockingCantTail::DisallowedBlockers(
+        ObjectFilter::creature().without_static_ability(ability),
     ))
 }
 

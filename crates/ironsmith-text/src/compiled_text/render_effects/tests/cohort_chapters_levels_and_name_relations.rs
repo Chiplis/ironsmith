@@ -154,16 +154,24 @@ fn cohort_level_bands_gate_mana_and_grant_only_to_current_controllers_elves() {
                 4
             })
         );
-        let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+        let actions = crate::decision::compute_legal_actions(&game, alice)
+            .expect("fixture has complete replacement state");
         for (id, expected) in [(source, level >= 1), (elf, level >= 5), (human, false)] {
             assert_eq!(actions.iter().any(|a|matches!(a,crate::decision::LegalAction::ActivateManaAbility{source,..} if *source==id)),expected,"level={level} id={id:?}");
         }
         assert_eq!(mana_abilities(&game, enemy), 0);
         if level >= 5 {
             assert_eq!(mana_abilities(&game, elf), 1);
-            game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");
+            game.set_current_controller(source, bob)
+                .expect("finite controller fixture must refresh successfully");
             assert_eq!(mana_abilities(&game, elf), 0);
-            assert_eq!(mana_abilities(&game, enemy), 1);
+            assert_eq!(
+                mana_abilities(&game, enemy),
+                1,
+                "source controller={:?} effects={:#?}",
+                game.current_controller(source),
+                game.all_continuous_effects()
+            );
         }
     }
 }

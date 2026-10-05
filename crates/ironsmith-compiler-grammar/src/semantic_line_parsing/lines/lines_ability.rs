@@ -36,6 +36,15 @@ pub(super) fn parse_static_line_impl(
     parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
     let chosen_option = line.chosen_option.as_ref();
+    // A pronoun continuation of an attached subject owns the complete line.
+    // Read it before broad static leaves can claim a later loss clause and
+    // turn the carried subject into an unrestricted permanent filter.
+    if let Some(abilities) =
+        crate::keyword_static::parse_carried_attached_subject_line(parse_tokens)?
+    {
+        return wrap_chosen_option_static_chunk(LineAst::StaticAbilities(abilities), chosen_option);
+    }
+
     if parse_tokens.first().is_some_and(|token| token.is_word("∞")) {
         let mut body = &parse_tokens[1..];
         if body
@@ -139,7 +148,10 @@ pub(super) fn parse_static_line_impl(
         );
     }
     if let Some(ability) = crate::consumer_mana::spell_source_spending_ability(parse_tokens) {
-        return wrap_chosen_option_static_chunk(LineAst::StaticAbility(ability.into()), chosen_option);
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(ability.into()),
+            chosen_option,
+        );
     }
     if is_minimum_spell_total_mana_three_line_lexed(parse_tokens) {
         return wrap_chosen_option_static_chunk(

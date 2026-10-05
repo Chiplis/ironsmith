@@ -378,6 +378,7 @@ fn target_tail_can_parse(tokens: &[OwnedLexToken]) -> bool {
             matches!(
                 *word,
                 "any"
+                    | "defending"
                     | "each"
                     | "all"
                     | "it"

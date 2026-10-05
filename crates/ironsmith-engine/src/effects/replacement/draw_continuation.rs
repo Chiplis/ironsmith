@@ -76,7 +76,23 @@ impl Mode {
     }
 }
 
+fn life_action(effect: &Effect) -> bool {
+    effect
+        .downcast_ref::<crate::effects::GainLifeEffect>()
+        .is_some()
+        || effect
+            .downcast_ref::<crate::effects::LoseLifeEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::PayLifeEffect>()
+            .is_some()
+}
+
 fn contains_draw(effect: &Effect) -> bool {
+    // A nested life event may be replaced by a draw at runtime.
+    if life_action(effect) {
+        return true;
+    }
     if effect
         .downcast_ref::<crate::effects::DrawCardsEffect>()
         .is_some()
@@ -90,7 +106,8 @@ fn contains_draw(effect: &Effect) -> bool {
     found
 }
 fn supported(effect: &Effect) -> bool {
-    if !contains_draw(effect)
+    if life_action(effect)
+        || !contains_draw(effect)
         || effect
             .downcast_ref::<crate::effects::DrawCardsEffect>()
             .is_some()
@@ -132,6 +149,23 @@ fn supported(effect: &Effect) -> bool {
         return effect.0.transparent_child_effect().is_some_and(supported);
     }
     false
+}
+
+struct OriginalActionFrame {
+    original: EffectOutcome,
+    completion: Box<dyn SimultaneousEffectCompletion>,
+    context: ExecutionContextCheckpoint,
+}
+impl ReplacementResume for OriginalActionFrame {
+    fn resume(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.context.restore(ctx);
+        self.completion.freeze(game)?;
+        self.completion.complete(game, ctx, self.original)
+    }
 }
 
 struct PlayerActionFrame(crate::effects::ForPlayersDrawContinuation);
@@ -572,6 +606,22 @@ fn prepare_effect(
             })),
         });
     }
+    if life_action(effect) {
+        let mut proposal = effect.0.prepare_simultaneous_player_action(game, ctx)?;
+        proposal.prepare_original(game, ctx)?;
+        let committed = proposal.commit_original(game, ctx)?;
+        let resume = committed.completion.map(|completion| {
+            Box::new(OriginalActionFrame {
+                original: committed.outcome.clone(),
+                completion,
+                context: ExecutionContextCheckpoint::capture(ctx),
+            }) as Box<dyn ReplacementResume>
+        });
+        return Ok(PreparedReplacementChild {
+            prefix: committed.outcome,
+            resume,
+        });
+    }
     if !contains_draw(effect) {
         return crate::effects::execute_effect(game, effect, ctx)
             .map(PreparedReplacementChild::finished);
@@ -795,5 +845,13 @@ pub(crate) fn prepare_replacement_child(
     prepare_effect(game, ctx, effect)
 }
 pub(crate) fn replacement_effect_contains_draw(effect: &Effect) -> bool {
-    contains_draw(effect)
+    if effect
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .is_some()
+    {
+        return true;
+    }
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| found |= replacement_effect_contains_draw(child));
+    found
 }

@@ -1,5 +1,5 @@
-use crate::filter::TaggedOpbjectRelation;
 use super::*;
+use crate::filter::TaggedOpbjectRelation;
 
 pub(super) fn normalize_redundant_short_name_etb_surface(
     line: String,
@@ -511,13 +511,17 @@ fn describe_effect_cost_program(effect: &Effect) -> Option<String> {
     while index < sequence.effects.len() {
         let member = structural_unwrap_render_wrappers(&sequence.effects[index]);
         if let Some(choose) = member.downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && (choose.filter.distinct_names || choose.filter.shares_name || choose.filter.shares_color)
+            && (choose.filter.distinct_names
+                || choose.filter.shares_name
+                || choose.filter.shares_color)
             && choose.chooser == PlayerFilter::You
             && choose.count_value.is_none()
             && choose.aggregate_constraint.is_none()
-            && let Some(next) = sequence.effects.get(index + 1) {
+            && let Some(next) = sequence.effects.get(index + 1)
+        {
             let next = structural_unwrap_render_wrappers(next);
-            let reveal = next.downcast_ref::<crate::effects::RevealTaggedEffect>()
+            let reveal = next
+                .downcast_ref::<crate::effects::RevealTaggedEffect>()
                 .is_some_and(|reveal| reveal.tag == choose.tag);
             let discard = next.downcast_ref::<crate::effects::DiscardEffect>().is_some_and(|discard|
                 !discard.random && !discard.any_number && discard.player == PlayerFilter::You
@@ -528,8 +532,15 @@ fn describe_effect_cost_program(effect: &Effect) -> Option<String> {
             if reveal || discard {
                 let mut display = choose.clone();
                 display.filter.owner = None;
-                if discard { display.filter.zone = None; display.zone = None; }
-                parts.push(format!("{} {}", if reveal { "Reveal" } else { "Discard" }, describe_choose_selection(&display)));
+                if discard {
+                    display.filter.zone = None;
+                    display.zone = None;
+                }
+                parts.push(format!(
+                    "{} {}",
+                    if reveal { "Reveal" } else { "Discard" },
+                    describe_choose_selection(&display)
+                ));
                 compacted_choice = true;
                 index += 2;
                 continue;
@@ -797,9 +808,17 @@ pub(super) fn describe_simple_discard_cost(
         return None;
     };
     let count = count.max(0) as u32;
-    if count == 1 && discard.card_filter.as_ref().is_some_and(|filter|
-        *filter == ObjectFilter { zone: Some(Zone::Hand), owner: Some(PlayerFilter::You),
-            last_drawn_this_turn: Some(PlayerFilter::You), ..Default::default() }) {
+    if count == 1
+        && discard.card_filter.as_ref().is_some_and(|filter| {
+            *filter
+                == ObjectFilter {
+                    zone: Some(Zone::Hand),
+                    owner: Some(PlayerFilter::You),
+                    last_drawn_this_turn: Some(PlayerFilter::You),
+                    ..Default::default()
+                }
+        })
+    {
         return Some("Discard the last card you drew this turn".into());
     }
     if count == 1
@@ -1061,7 +1080,9 @@ fn describe_dynamic_mana_cost_with_target(
     dynamic: &ironsmith_core::DynamicManaCost,
     enclosing_target: Option<&ChooseSpec>,
 ) -> String {
-    if dynamic.mana_cost_of.is_some() { return dynamic.display(); }
+    if dynamic.mana_cost_of.is_some() {
+        return dynamic.display();
+    }
     if dynamic.source_mana_cost
         && dynamic.x_value.is_none()
         && dynamic.additional_generic.is_none()
@@ -1659,7 +1680,8 @@ fn describe_cost_component_parts_with_target(
             && let Some(untap) = costs[idx + 1]
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::UntapEffect>())
-            && let Some(compact) = describe_choose_then_tap_state_cost(choose, &untap.target, "Untap")
+            && let Some(compact) =
+                describe_choose_then_tap_state_cost(choose, &untap.target, "Untap")
         {
             parts.push(compact);
             idx += 2;
@@ -3195,7 +3217,7 @@ mod for_each_tagged_set_surface_tests {
         let debug = format!("{:#?}", definition.spell_effect);
         assert!(debug.contains("UnlessPaysEffect"), "{debug}");
         assert!(debug.contains("player: Opponent"), "{debug}");
-        assert!(debug.contains("LoseLifeEffect"), "{debug}");
+        assert!(debug.contains("PayLife"), "{debug}");
     }
 
     #[test]
@@ -5875,7 +5897,8 @@ pub(crate) fn describe_choose_then_sacrifice(
     // "sacrifice any number of creatures with total power 12 or greater"
     // (Phyrexian Dreadnought): the aggregate bound is part of what's chosen.
     if choose.aggregate_constraint.is_some() && !text.contains(" with total ") {
-        let suffix = super::player_and_zone_effects::describe_choice_aggregate_constraint_suffix(choose);
+        let suffix =
+            super::player_and_zone_effects::describe_choice_aggregate_constraint_suffix(choose);
         return Some(match text.strip_suffix('.') {
             Some(body) => format!("{body}{suffix}."),
             None => format!("{text}{suffix}"),
@@ -6109,6 +6132,9 @@ pub(super) fn describe_greatest_power_choice_filter(filter: &ObjectFilter) -> Op
 pub(super) fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String {
     let player = describe_player_filter(sacrifice.player);
     let verb = player_verb(&player, "sacrifice", "sacrifices");
+    if sacrifice.filter.source && sacrifice.count.unhinted() == &Value::Fixed(1) {
+        return format!("{player} {verb} it");
+    }
     if let Value::Count(count_filter) = sacrifice.count
         && count_filter == sacrifice.filter
     {
@@ -6930,14 +6956,23 @@ fn describe_choose_then_tap_state_cost(
         return None;
     }
     if choose.count.dynamic_x {
-        return Some(format!("{verb} X {}", pluralize_noun_phrase(&choose.filter.description())));
+        return Some(format!(
+            "{verb} X {}",
+            pluralize_noun_phrase(&choose.filter.description())
+        ));
     }
     if choose.count.is_single() {
-        return Some(format!("{verb} {}", with_indefinite_article(&choose.filter.description())));
+        return Some(format!(
+            "{verb} {}",
+            with_indefinite_article(&choose.filter.description())
+        ));
     }
     let exact = choose.count.max.filter(|max| *max == choose.count.min)?;
     let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
-    Some(format!("{verb} {count_text} {}", pluralize_noun_phrase(&choose.filter.description())))
+    Some(format!(
+        "{verb} {count_text} {}",
+        pluralize_noun_phrase(&choose.filter.description())
+    ))
 }
 
 pub(crate) fn exile_uses_chosen_tag(spec: &ChooseSpec, tag: &str) -> bool {
@@ -7307,16 +7342,28 @@ mod choice_slot_regression_tests {
 pub(super) fn describe_casting_price_payment(cost: &crate::cost::TotalCost) -> String {
     if let Some([component]) = cost.as_all() {
         if let Some(effect) = component.effect_ref() {
-            let amount = effect.downcast_ref::<crate::effects::PayLifeEffect>().map(|life| &life.amount)
-                .or_else(|| effect.downcast_ref::<crate::effects::LoseLifeEffect>().map(|life| &life.amount));
+            let amount = effect
+                .downcast_ref::<crate::effects::PayLifeEffect>()
+                .map(|life| &life.amount)
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<crate::effects::LoseLifeEffect>()
+                        .map(|life| &life.amount)
+                });
             if amount.is_some_and(|amount| matches!(amount.unhinted(), Value::ManaValueOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source))) {
                 return "paying life equal to the spell's mana value".into();
             }
         }
     }
     let payment = describe_total_cost_payment(cost);
-    for (verb, gerund) in [("Discard ", "discarding "), ("Sacrifice ", "sacrificing "), ("Exile ", "exiling ")] {
-        if let Some(tail) = payment.strip_prefix(verb) { return format!("{gerund}{tail}"); }
+    for (verb, gerund) in [
+        ("Discard ", "discarding "),
+        ("Sacrifice ", "sacrificing "),
+        ("Exile ", "exiling "),
+    ] {
+        if let Some(tail) = payment.strip_prefix(verb) {
+            return format!("{gerund}{tail}");
+        }
     }
     format!("paying {}", lowercase_first(&payment))
 }

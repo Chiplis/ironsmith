@@ -162,6 +162,19 @@ pub fn parse_draw(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    if let Some(then_index) = tokens.iter().position(|token| token.is_word("then"))
+        && crate::lexer::parser_token_word_refs(&tokens[then_index + 1..]) == ["discard", "one", "of", "them"]
+    {
+        let player = extract_subject_player(subject.clone()).unwrap_or(PlayerAst::Implicit);
+        let draw_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[..then_index]);
+        let draw = parse_draw(draw_tokens, subject)?;
+        let tag = crate::util::helper_tag_for_tokens(tokens, "drawn");
+        return Ok(EffectAst::Sequence { effects: vec![
+            EffectAst::TagAffected { tag: tag.clone(), effect: Box::new(draw) },
+            EffectAst::subject_verb_discard(player, Value::Fixed(1), false, false,
+                Some(ObjectFilter::tagged(tag).in_zone(Zone::Hand)), None),
+        ] });
+    }
     let clause_words = crate::lexer::token_word_refs(tokens);
     let head = zone_move_grammar::parse_draw_head_shape(tokens).map_err(|error| match error {
         zone_move_grammar::DrawHeadShapeError::MissingCount => CardTextError::ParseError(format!(
@@ -191,6 +204,18 @@ pub fn parse_draw(
     };
     let tail = head.tail_tokens;
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    if clause_words.starts_with(&["up", "to"]) && tail.is_empty() {
+        if let Value::Fixed(maximum) = count {
+            if let Ok(max) = u32::try_from(maximum) {
+                return Ok(EffectAst::Sequence { effects: vec![
+                    EffectAst::subject_verb(SubjectVerbRoleAst::Chooser, player.clone(),
+                        SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChooseNumber { min: 0, max })),
+                    subject_verb_player_resource_effect(SubjectVerbRoleAst::AffectedPlayer, player,
+                        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: Value::PendingEffectMetric { source: ironsmith_core::EffectMetricSource::Outcome, metric: ironsmith_core::EffectMetric::Count } })),
+                ] });
+            }
+        }
+    }
     // Preserve the source-zone restriction before the generic this-way
     // metric parser reduces the clause to an unqualified effect count.
     if let Some(hand_owner) = crate::grammar::effects::subject_verb_registry_shapes::parse_draw_for_exiled_hand_count_shape(tokens)

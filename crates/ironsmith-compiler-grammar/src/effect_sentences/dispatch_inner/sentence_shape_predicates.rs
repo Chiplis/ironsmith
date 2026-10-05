@@ -1,11 +1,11 @@
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::StatChangeActionAst;
-use crate::cards::builders::DamageActionAst;
-use crate::cards::builders::PermanentStateActionAst;
-use crate::cards::builders::ZoneMoveActionAst;
 use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::DamageActionAst;
 use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::PermanentStateActionAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use crate::effect_sentences::{
     SubjectVerbPrimitiveClause, parse_sentence_delayed_next_step_unless_pays,
     parse_sentence_delayed_timing_suffix,
@@ -70,19 +70,25 @@ fn is_loss_become_base_pt_coordinated_chain(effects: &[EffectAst]) -> bool {
     matches!(
         first,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. }),
+            action: SubjectVerbActionAst::StatChanges(
+                StatChangeActionAst::RemoveAbilitiesAll { .. }
+            ),
             ..
         })
     ) && matches!(
         second,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { .. }),
+            action: SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::AddSubtypes { .. }
+            ),
             ..
         })
     ) && matches!(
         third,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. }),
+            action: SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::SetBasePowerToughness { .. }
+            ),
             ..
         })
     )
@@ -394,15 +400,16 @@ pub fn lower_where_x_shape(
             filter.is_commander = true;
             filter.owner = Some(PlayerFilter::You);
             let tag = crate::tag::CompilerReferenceTag::WhereXCommanderManaValue.bind();
-            let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-                filter,
-                count: ChoiceCount::exactly(1),
-                count_value: None,
-                player: PlayerAst::You,
-                tag: tag.clone(),
-                zones: vec![Zone::Battlefield, Zone::Command],
-                search_mode: None,
-            });
+            let choice =
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                    filter,
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: PlayerAst::You,
+                    tag: tag.clone(),
+                    zones: vec![Zone::Battlefield, Zone::Command],
+                    search_mode: None,
+                });
             (
                 Some(choice),
                 Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(tag.key.clone()))),
@@ -430,15 +437,19 @@ pub fn lower_where_x_shape(
                 Reference::Target => crate::target::ChooseSpec::target(
                     crate::target::ChooseSpec::Object(ObjectFilter::default()),
                 ),
-                Reference::TaggedIt => {
-                    crate::target::ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
-                }
+                Reference::TaggedIt => crate::target::ChooseSpec::Tagged(
+                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                ),
                 Reference::Demonstrative(surface) => crate::target::ChooseSpec::Tagged(
                     (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 )
-                .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
-                    crate::target::SourceReferenceSurface::ThisPermanentType(surface.to_string()),
-                )),
+                .with_surface_hint(
+                    crate::target::ChooseSpecSurfaceHint::SourceReference(
+                        crate::target::SourceReferenceSurface::ThisPermanentType(
+                            surface.to_string(),
+                        ),
+                    ),
+                ),
             };
             let value = match (reference, metric) {
                 (Reference::Source, Metric::Power) => Value::SourcePower,
@@ -505,7 +516,9 @@ pub fn lower_where_x_shape(
             Value::Add(
                 Box::new(Value::Fixed(2)),
                 Box::new(Value::ManaValueOf(Box::new(
-                    crate::target::ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()),
+                    crate::target::ChooseSpec::Tagged(
+                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    ),
                 ))),
             ),
         ),
@@ -537,12 +550,14 @@ pub fn lower_where_x_shape(
                     ))),
                     counter_type,
                 ),
-                (Reference::TaggedIt | Reference::Demonstrative(_), counter_type) => Value::CountersOn(
-                    Box::new(ChooseSpec::Tagged(
-                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
-                    )),
-                    counter_type,
-                ),
+                (Reference::TaggedIt | Reference::Demonstrative(_), counter_type) => {
+                    Value::CountersOn(
+                        Box::new(ChooseSpec::Tagged(
+                            (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                        )),
+                        counter_type,
+                    )
+                }
             };
             (None, value)
         }
@@ -566,7 +581,8 @@ fn parse_tap_then_damage_for_number_tapped_this_way(
     let first_is_tap = matches!(
         &effects[0],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { .. }) | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. }),
+            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. }),
             ..
         })
     );
@@ -1016,10 +1032,12 @@ fn set_first_continuous_set_quantifier(
                     set_quantifier_surface,
                     ..
                 })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
-                    set_quantifier_surface,
-                    ..
-                })
+                | SubjectVerbActionAst::Characteristics(
+                    CharacteristicActionAst::SetBasePowerToughness {
+                        set_quantifier_surface,
+                        ..
+                    },
+                )
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
                     set_quantifier_surface,
                     ..
@@ -1095,13 +1113,15 @@ fn parse_bounded_x_mana_payment_sentence(tokens: &[OwnedLexToken]) -> Option<Vec
                 )],
             })
         }
-        effect_grammar::clause_dispatch_shapes::LeadingMayActorShape::Implicit => EffectAst::Permissions(PermissionEffectAst::May {
-            effects: vec![EffectAst::subject_verb_pay_mana_up_to(
-                PlayerAst::You,
-                payment_shape.cost,
-                maximum,
-            )],
-        }),
+        effect_grammar::clause_dispatch_shapes::LeadingMayActorShape::Implicit => {
+            EffectAst::Permissions(PermissionEffectAst::May {
+                effects: vec![EffectAst::subject_verb_pay_mana_up_to(
+                    PlayerAst::You,
+                    payment_shape.cost,
+                    maximum,
+                )],
+            })
+        }
     }])
 }
 
@@ -1110,7 +1130,9 @@ fn parse_complete_become_before_effect_chain(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     // Copy exceptions belong to one action even when separated by a comma.
     // Keep that action intact inside a conditional body before chain splitting.
-    if let Some(effect) = crate::effect_sentences::dispatch_entry::parse_complete_become_statement(tokens)? {
+    if let Some(effect) =
+        crate::effect_sentences::dispatch_entry::parse_complete_become_statement(tokens)?
+    {
         return Ok(vec![effect]);
     }
     super::parse_effect_chain_lexed(tokens)
@@ -1144,7 +1166,7 @@ mod sentence_shape_predicates_combat_programs;
 pub(super) use sentence_shape_predicates_combat_programs::parse_attacking_doesnt_tap_if_source_untapped;
 use sentence_shape_predicates_combat_programs::{
     parse_explicit_assign_no_combat_damage_followup, parse_required_damage_fanout,
-    rebind_plural_create_followup_damage_source, restore_authored_damage_source_surface,
+    rebind_plural_create_followup_damage_source,
 };
 #[path = "sentence_shape_predicates/sentence_shape_predicates_library.rs"]
 mod sentence_shape_predicates_library_programs;
@@ -1162,3 +1184,5 @@ use sentence_shape_predicates_object_action_programs::parse_create_token_then_co
 
 #[path = "sentence_shape_predicates/temporary_xy_pump.rs"]
 mod temporary_xy_pump;
+
+use crate::util::restore_authored_damage_source_surface;

@@ -165,7 +165,7 @@ fn cast(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -173,7 +173,7 @@ fn cast(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()
@@ -243,7 +243,7 @@ fn cast_existing(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -251,7 +251,7 @@ fn cast_existing(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()
@@ -597,10 +597,7 @@ fn burn_at_the_stake_scales_the_paid_tap_group_even_after_untap_control_and_zone
             };
             let spell = cast(&mut game, &definition, CastingMethod::Normal, &mut dm);
             if paid == 2 {
-                assert!(
-                    game.is_tapped(objects[0])
-                        && game.is_tapped(objects[1])
-                );
+                assert!(game.is_tapped(objects[0]) && game.is_tapped(objects[1]));
                 apply(
                     &mut game,
                     spell,

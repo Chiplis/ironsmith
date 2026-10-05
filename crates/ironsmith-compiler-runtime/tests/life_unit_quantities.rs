@@ -93,7 +93,12 @@ fn settle(game: &mut GameState, dm: &mut impl DecisionMaker) {
         resolve_stack_entry_with(game, dm).unwrap();
         pending(game, dm);
     }
-    panic!("life program did not settle");
+    panic!(
+        "life program did not settle: life={}, active={}, pending={}",
+        game.player(A).unwrap().life,
+        game.player(A).unwrap().is_in_game(),
+        game.stack.len()
+    );
 }
 fn action(game: &mut GameState, action: LegalAction, dm: &mut impl DecisionMaker) {
     let mut state = PriorityLoopState::new(game.players.len());

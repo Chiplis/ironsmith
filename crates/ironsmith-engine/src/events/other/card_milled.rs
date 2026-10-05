@@ -35,6 +35,9 @@ impl GameEventType for CardMilledEvent {
     fn object_id(&self) -> Option<ObjectId> {
         self.snapshot.as_ref().map(|_| self.card)
     }
+    fn player(&self) -> Option<PlayerId> {
+        Some(self.player)
+    }
     fn controller(&self) -> Option<PlayerId> {
         Some(self.player)
     }

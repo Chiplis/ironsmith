@@ -1849,8 +1849,8 @@ fn parse_persistent_exile_play_tax_bundle(tokens: &[OwnedLexToken]) -> Option<Ve
 #[path = "effect_composition/consult_bundles.rs"]
 mod consult_bundles;
 pub(super) use consult_bundles::parse_consult_disposition_bundle;
+pub(crate) use consult_bundles::parse_consult_then_put_matches_battlefield_rest_bottom_bundle;
 use consult_bundles::{
-    parse_consult_then_put_matches_battlefield_rest_bottom_bundle,
     parse_reveal_repeated_disposition_bundle, parse_reveal_until_land_put_all_graveyard_bundle,
 };
 

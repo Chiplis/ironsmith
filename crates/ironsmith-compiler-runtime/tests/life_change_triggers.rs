@@ -499,7 +499,7 @@ fn punishing_fire_keeps_its_real_paid_damage_spell_body() {
         )
         .unwrap();
         for _ in 0..30 {
-            if state.pending_cast.is_none() {
+            if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
                 break;
             }
             let ironsmith::GameProgress::NeedsDecisionCtx(context) = progress else {
@@ -510,7 +510,7 @@ fn punishing_fire_keeps_its_real_paid_damage_spell_body() {
             )
             .unwrap();
         }
-        assert!(state.pending_cast.is_none());
+        assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
         assert_eq!(game.stack.len(), 1);
         resolve_stack_entry_with(&mut game, &mut dm).unwrap();
         assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);

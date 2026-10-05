@@ -176,8 +176,7 @@ fn typed_attack_tax_static_ability(
     // "Each creature ... can't attack you ... unless its controller pays
     // {X}, where X is ... on that creature" (Nils): a per-attacker tax whose
     // amount reads the attacker being taxed.
-    let singular_payer = match crate::lexer::token_word_refs(&tokens[unless + 1..pays]).as_slice()
-    {
+    let singular_payer = match crate::lexer::token_word_refs(&tokens[unless + 1..pays]).as_slice() {
         ["their", "controller"] => false,
         ["its", "controller"] => true,
         _ => return Ok(None),
@@ -241,13 +240,11 @@ fn typed_attack_tax_static_ability(
     };
     if let Some(where_index) = where_index {
         let where_words = crate::lexer::token_word_refs(&tokens[where_index..]);
-        let names_taxed_attacker = crate::word_primitives::sequence_occurs(
-            &where_words,
-            &["counters", "on", "that", "creature"],
-        ) || crate::word_primitives::sequence_occurs(
-            &where_words,
-            &["counters", "on", "it"],
-        );
+        let names_taxed_attacker =
+            crate::word_primitives::sequence_occurs(
+                &where_words,
+                &["counters", "on", "that", "creature"],
+            ) || crate::word_primitives::sequence_occurs(&where_words, &["counters", "on", "it"]);
         let value = if singular_payer && names_taxed_attacker {
             // The attacker being taxed is bound under this tag when the
             // cost is locked in at declaration (CR 508.1d/h).
@@ -513,8 +510,7 @@ fn block_cost_static_ability(
         || crate::word_primitives::parse_any_sequence_complete(
             &action_words,
             &[&["block"], &["attack", "or", "block"]],
-        )
-    {
+        ) {
         ObjectFilter::creature()
     } else if crate::word_primitives::parse_sequence_prefix(&action_words, &["block"]) {
         let Some(block_token_index) =
@@ -895,8 +891,10 @@ fn parse_cant_clauses_unbound(
     // An announced player target plus a duration belongs to a resolving spell
     // or ability. Do not send it through object-only static target parsing.
     if let Some((neg_start, _)) = find_negation_span(tokens)
-        && super::activation_restriction_clauses::parse_player_restriction_subject(&tokens[..neg_start])?
-            .is_some_and(|(_, target)| target.is_some())
+        && super::activation_restriction_clauses::parse_player_restriction_subject(
+            &tokens[..neg_start],
+        )?
+        .is_some_and(|(_, target)| target.is_some())
         && parse_restriction_duration(tokens)?.is_some()
     {
         return Ok(None);
@@ -936,12 +934,21 @@ fn parse_cant_clauses_unbound(
     if let Some((_, neg_end)) = find_negation_span(tokens) {
         let tail_storage = normalize_cant_words(&tokens[neg_end..]);
         let tail = tail_storage.iter().map(String::as_str).collect::<Vec<_>>();
-        if crate::grammar::activation_restrictions::parse_compound_player_action_restriction_words(&tail).is_some()
-            && let Some(restrictions) = super::activation_restriction_clauses::parse_cant_restrictions(tokens)?
-            && restrictions.iter().all(|restriction| restriction.target.is_none())
+        if crate::grammar::activation_restrictions::parse_compound_player_action_restriction_words(
+            &tail,
+        )
+        .is_some()
+            && let Some(restrictions) =
+                super::activation_restriction_clauses::parse_cant_restrictions(tokens)?
+            && restrictions
+                .iter()
+                .all(|restriction| restriction.target.is_none())
         {
             return Ok(Some(vec![StaticAbility::restrictions(
-                restrictions.into_iter().map(|parsed| parsed.restriction).collect(),
+                restrictions
+                    .into_iter()
+                    .map(|parsed| parsed.restriction)
+                    .collect(),
                 format_negated_restriction_display(tokens),
             )]));
         }
@@ -1210,6 +1217,7 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
                 | crate::effect::Restriction::LoseLife(_)
                 | crate::effect::Restriction::ChangeLifeTotal(_)
                 | crate::effect::Restriction::LoseGame(_)
+                | crate::effect::Restriction::LoseGameForZeroLife(_)
                 | crate::effect::Restriction::WinGame(_)
                 | crate::effect::Restriction::PreventDamage
         )

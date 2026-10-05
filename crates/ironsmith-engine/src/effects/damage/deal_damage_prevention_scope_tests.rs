@@ -96,6 +96,8 @@ fn deferred_prevention_payloads_retain_parent_scope_and_source_lki() {
                 );
                 let mut events = outcome.events;
                 events.extend(game.take_pending_trigger_events());
+                let mut occurrences = std::collections::HashSet::new();
+                events.retain(|event| occurrences.insert(event.occurrence_key()));
                 assert!(
                     !events
                         .iter()

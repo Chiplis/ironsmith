@@ -5240,6 +5240,9 @@
     }
     if let Some(sacrifice_target) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>() {
         if let ChooseSpec::Object(filter) = sacrifice_target.target.unhinted() {
+            if filter_is_exactly_one_tagged_object(filter) {
+                return "Sacrifice it".to_string();
+            }
             let mut chosen_creature = filter.clone();
             let chosen_constraints = chosen_creature
                 .tagged_constraints

@@ -102,6 +102,24 @@ fn predicate_candidate_contains_search_action(tokens: &[OwnedLexToken]) -> bool 
 }
 
 fn predicate_candidate_contains_damage_action(tokens: &[OwnedLexToken]) -> bool {
+    if let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(tokens) {
+        fn is_damage_history(predicate: &PredicateAst) -> bool {
+            match predicate {
+                PredicateAst::ValueComparison {
+                    left: Value::DamageHistory(_),
+                    ..
+                } => true,
+                PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+                    is_damage_history(left) || is_damage_history(right)
+                }
+                PredicateAst::Not(inner) => is_damage_history(inner),
+                _ => false,
+            }
+        }
+        if is_damage_history(&predicate) {
+            return false;
+        }
+    }
     let Some(deal_idx) = crate::slice_primitives::select_position(tokens, |token| {
         structure_token_is_any(token, &["deal", "deals"])
     }) else {
@@ -798,11 +816,10 @@ fn parse_sentence_segment_len<'a>(
             }
             // `"..." this turn` continues the sentence; `"..." this creature
             // loses ...` (a normalized card name) starts a new one.
-            Some(token) if token.kind == TokenKind::Word && token.parser_text() == "this" => {
-                after.is_some_and(|after| {
+            Some(token) if token.kind == TokenKind::Word && token.parser_text() == "this" => after
+                .is_some_and(|after| {
                     after.kind == TokenKind::Word && matches!(after.parser_text(), "turn" | "way")
-                })
-            }
+                }),
             _ => false,
         }
     }
@@ -841,9 +858,8 @@ fn parse_sentence_segment_len<'a>(
         // A nested single-quoted rule closing right after its own period
         // ("...has '{T}: Add {G}.'") keeps the sentence-final period visible
         // to the enclosing double quote that closes next.
-        let closes_nested_quote = inside_quotes
-            && last_inner_token_was_period
-            && token.kind == TokenKind::Apostrophe;
+        let closes_nested_quote =
+            inside_quotes && last_inner_token_was_period && token.kind == TokenKind::Apostrophe;
         any.parse_next(input)?;
         if !closes_nested_quote {
             last_inner_token_was_period = false;

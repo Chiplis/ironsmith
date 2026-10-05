@@ -17,7 +17,16 @@ fn damage_effects(
     let [segment] = program.segments.as_slice() else {
         panic!("expected one spell segment: {program:#?}");
     };
-    let [default_effect] = segment.default_effects.as_slice() else {
+    let default_actions = segment
+        .default_effects
+        .iter()
+        .filter(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_none()
+        })
+        .collect::<Vec<_>>();
+    let [default_effect] = default_actions.as_slice() else {
         panic!("expected one default effect: {segment:#?}");
     };
     let default_damage =
@@ -26,17 +35,30 @@ fn damage_effects(
     let [replacement] = segment.self_replacements.as_slice() else {
         panic!("expected one self-replacement: {segment:#?}");
     };
-    let [replacement_effect] = replacement.replacement_effects.as_slice() else {
+    let replacement_actions = replacement
+        .replacement_effects
+        .iter()
+        .filter(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_none()
+        })
+        .collect::<Vec<_>>();
+    let [replacement_effect] = replacement_actions.as_slice() else {
         panic!("expected one replacement effect: {replacement:#?}");
     };
     let replacement_damage =
         super::find_nested_effect::<crate::effects::DealDamageEffect>(replacement_effect)
             .expect("expected replacement damage");
-    assert!(
-        super::find_nested_effect::<crate::effects::ExecuteWithSourceEffect>(replacement_effect)
-            .is_none(),
-        "an amount replacement must not make the old target the damage source: {replacement:#?}"
-    );
+    for source in super::find_all_nested_effects::<crate::effects::ExecuteWithSourceEffect>(
+        replacement_effect,
+    ) {
+        assert!(
+            matches!(source.source.base(), crate::target::ChooseSpec::Source)
+                || matches!(source.source.base(), crate::target::ChooseSpec::Object(filter) if filter.source),
+            "an amount replacement must retain its own source: {replacement:#?}"
+        );
+    }
     (default_damage, replacement_damage)
 }
 

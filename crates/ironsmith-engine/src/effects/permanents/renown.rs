@@ -143,10 +143,14 @@ mod tests {
                 .downcast::<KeywordActionEvent>()
                 .is_some_and(|action| action.action == KeywordActionKind::Renown)
         }));
-        // Destruction publishes departures through the game's pending queue;
-        // other payloads return their notifications in EffectOutcome.
-        let queued = game.take_pending_trigger_events();
-        let actual_events: Vec<_> = outcome.events.iter().chain(queued.iter()).collect();
+        // The replacement program captures departure triggers at its
+        // instruction boundary, before returning to the renown operation.
+        let actual_events: Vec<_> = game
+            .turn_store
+            .turn_history
+            .projected_records()
+            .map(|record| &record.event)
+            .collect();
         assert_eq!(
             actual_events
                 .iter()

@@ -427,6 +427,24 @@ pub fn parse_exile(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    if let Some(equal) = tokens.iter().position(|token| token.is_word("equal")) {
+        let tail = crate::lexer::token_word_refs(&tokens[equal..]);
+        if tail.as_slice() == ["equal", "to", "the", "difference"] {
+            let mut target = parse_target_phrase(&tokens[..equal])?;
+            apply_exile_subject_hand_owner_context(&mut target, subject.clone());
+            return Ok(with_exile_actor(
+                EffectAst::subject_verb_exile(
+                    TargetAst::WithCountValue(
+                        Box::new(target),
+                        crate::effect::ChoiceCount::dynamic_x(),
+                        Value::PendingComparisonDifference,
+                    ),
+                    false,
+                ),
+                subject,
+            ));
+        }
+    }
     if subject.is_none()
         && let Some(effect) = parse_exile_source_or_up_to_one_target(tokens)?
     {

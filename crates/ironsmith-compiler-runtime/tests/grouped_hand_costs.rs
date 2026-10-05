@@ -465,13 +465,15 @@ fn whole_group_is_an_intersection_and_stale_reveal_or_discard_tags_fail_closed()
     ctx.tagged_objects.insert("stale".into(), vec![snapshot]);
     let reveal = Cost::try_effect(Effect::new(ironsmith::effects::RevealTaggedEffect::new(
         "stale",
-    ))).unwrap();
+    )))
+    .unwrap();
     let discard = Cost::try_effect(Effect::new(DiscardEffect::new_with_filter(
         1,
         PlayerFilter::You,
         false,
         Some(ObjectFilter::tagged("stale").in_zone(Zone::Hand)),
-    ))).unwrap();
+    )))
+    .unwrap();
     assert!(reveal.can_pay(&game, &ctx).is_err());
     assert!(discard.can_pay(&game, &ctx).is_err());
     assert_eq!(game.object(returned).unwrap().zone, Zone::Hand);
@@ -504,7 +506,8 @@ fn existing_conditional_draw_bodies_keep_their_distinct_instead_boundaries() {
                 &format!("Type: Enchantment\n{body}"),
                 false
             )
-            .is_err()
+            .is_err(),
+            "accepted malformed body: {body}"
         );
     }
 }

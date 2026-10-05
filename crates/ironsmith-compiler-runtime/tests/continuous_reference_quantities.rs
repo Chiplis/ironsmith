@@ -192,6 +192,8 @@ fn resource(name: &str, types: &str) -> CardDefinition {
 }
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
+    // Checked execution already captures some triggers in the original observer frame.
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     for event in outcome.events {
         for entry in check_triggers(game, &event) {
             queue.add(entry);
@@ -247,7 +249,7 @@ fn cast(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -255,7 +257,7 @@ fn cast(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()
@@ -326,7 +328,7 @@ fn cast_existing(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -334,7 +336,7 @@ fn cast_existing(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()

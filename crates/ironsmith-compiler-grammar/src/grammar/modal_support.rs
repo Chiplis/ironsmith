@@ -553,9 +553,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters {
                 count: amount,
             })
-            | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters {
-                count: amount,
-            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { count: amount })
             | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count: amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {
@@ -737,7 +735,9 @@ fn replace_modal_header_x_in_effect_ast(
                 TurnStructureActionAst::SkipCombatPhasesThisTurn,
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled {
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
@@ -923,8 +923,12 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
                 ..
             })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite {
+                ..
+            })
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterManaSpendPermission { .. },
+            )
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 ..
             })
@@ -932,7 +936,8 @@ fn replace_modal_header_x_in_effect_ast(
                 ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
             )
             | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterDamageMultiplier { .. } | ReplacementActionAst::RegisterDamageAddition { .. },
+                ReplacementActionAst::RegisterDamageMultiplier { .. }
+                | ReplacementActionAst::RegisterDamageAddition { .. },
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
@@ -1120,7 +1125,17 @@ fn parse_modal_header_prefix_effects(
                 | IfResultPredicate::ExplicitDidNot
                 | IfResultPredicate::Otherwise => EffectPredicate::DidNotHappen,
                 IfResultPredicate::SearchedLibrary => EffectPredicate::SearchedLibrary,
-                IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
+                IfResultPredicate::DiesThisWay => EffectPredicate::PriorEffectResult(
+                    ironsmith_core::PriorEffectResultSurface::new(
+                        ironsmith_core::PriorEffectAction::Died,
+                        crate::filter::ObjectFilter {
+                            zone: None,
+                            ..crate::filter::ObjectFilter::creature()
+                        },
+                        ironsmith_core::PriorEffectResultActor::Passive,
+                        ironsmith_core::PriorEffectResultQuantifier::One,
+                    ),
+                ),
                 IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
                 IfResultPredicate::DealtDamageToPlayer => EffectPredicate::DealtDamageToPlayer,
                 IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
@@ -1164,18 +1179,22 @@ fn is_loyalty_shorthand_cost_text(text: &str) -> bool {
             .is_some_and(|tail| tail.eq_ignore_ascii_case("x") || tail.parse::<u32>().is_ok())
 }
 
-
 #[test]
 fn numeric_keyword_actions_preserve_modal_header_x_binding() {
     for mut effect in [
         EffectAst::subject_verb_collect_evidence(Value::X),
         EffectAst::subject_verb_empower_jace(Value::X),
     ] {
-        replace_modal_header_x_in_effect_ast(&mut effect, &Value::Fixed(3), "typed keyword action").unwrap();
-        let EffectAst::SubjectVerb(subject) = effect else { panic!("subject/verb action"); };
+        replace_modal_header_x_in_effect_ast(&mut effect, &Value::Fixed(3), "typed keyword action")
+            .unwrap();
+        let EffectAst::SubjectVerb(subject) = effect else {
+            panic!("subject/verb action");
+        };
         let amount = match subject.action {
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount }) => amount,
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount }) => {
+                amount
+            }
             _ => panic!("typed numeric keyword action"),
         };
         assert_eq!(amount, Value::Fixed(3));

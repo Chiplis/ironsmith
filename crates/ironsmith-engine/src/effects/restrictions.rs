@@ -100,11 +100,37 @@ fn collapse_tagged_filter_to_specific_objects(
     }
 }
 
+fn bind_restriction_target_players(
+    filter: &ObjectFilter,
+    ctx: &ExecutionContext,
+    game: &GameState,
+) -> ObjectFilter {
+    let mut resolved = filter.clone();
+    for player in [&mut resolved.controller, &mut resolved.owner] {
+        if let Some(
+            reference @ (crate::target::PlayerFilter::Target(_)
+            | crate::target::PlayerFilter::AliasedTarget(_)),
+        ) = player
+            && let Ok(id) = crate::effects::helpers::resolve_player_filter(game, reference, ctx)
+        {
+            *reference = crate::target::PlayerFilter::Specific(id);
+        }
+    }
+    resolved.any_of = resolved
+        .any_of
+        .iter()
+        .map(|branch| bind_restriction_target_players(branch, ctx, game))
+        .collect();
+    resolved
+}
+
 fn collapse_filter_to_current_matching_objects(
     filter: &ObjectFilter,
     ctx: &ExecutionContext,
     game: &GameState,
 ) -> ObjectFilter {
+    let resolved = bind_restriction_target_players(filter, ctx, game);
+    let filter = &resolved;
     if filter.tagged_constraints.is_empty() {
         return filter.clone();
     }
@@ -207,7 +233,7 @@ fn normalize_restriction_for_resolution(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
         Restriction::Attack(filter) if filter_has_not_tagged_constraint(filter) => {
-            Restriction::attack(filter.clone())
+            Restriction::attack(bind_restriction_target_players(filter, ctx, game))
         }
         Restriction::Attack(filter) => Restriction::attack(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
@@ -219,7 +245,7 @@ fn normalize_restriction_for_resolution(
             )
         }
         Restriction::Block(filter) if filter_has_not_tagged_constraint(filter) => {
-            Restriction::block(filter.clone())
+            Restriction::block(bind_restriction_target_players(filter, ctx, game))
         }
         Restriction::Block(filter) => Restriction::block(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
@@ -293,15 +319,13 @@ fn execute_cant_per_affected_object(
             .collect();
         let mut added = 0;
         for object_id in objects {
-            let Some(object_predicate) =
-                crate::effects::continuous::materialize_duration_predicate(
-                    predicate,
-                    &crate::continuous::EffectTarget::Specific(object_id),
-                    &None,
-                    game,
-                    ctx,
-                )
-            else {
+            let Some(object_predicate) = crate::effects::continuous::materialize_duration_predicate(
+                predicate,
+                &crate::continuous::EffectTarget::Specific(object_id),
+                &None,
+                game,
+                ctx,
+            ) else {
                 continue;
             };
             if !crate::continuous::continuous_duration_predicate_matches(&object_predicate, game) {
@@ -336,6 +360,7 @@ fn execute_cant_per_affected_object(
 fn restriction_object_subject(restriction: &Restriction) -> Option<&crate::target::ObjectFilter> {
     match restriction {
         Restriction::Attack(filter)
+        | Restriction::Untap(filter)
         | Restriction::Block(filter)
         | Restriction::AttackOrBlock(filter)
         | Restriction::AttackPlayerOrPlaneswalkersControlledBy {
@@ -354,6 +379,7 @@ fn restriction_with_object_subject(
 ) -> Option<Restriction> {
     Some(match restriction {
         Restriction::Attack(_) => Restriction::attack(subject),
+        Restriction::Untap(_) => Restriction::untap(subject),
         Restriction::Block(_) => Restriction::block(subject),
         Restriction::AttackOrBlock(_) => Restriction::attack_or_block(subject),
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { player, .. } => {
@@ -420,12 +446,17 @@ impl EffectExecutor for CantEffect {
                 | crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
                 | crate::target::PlayerFilter::IteratedPlayer
                 | crate::target::PlayerFilter::TaggedPlayer(_)
-                | crate::target::PlayerFilter::ChosenPlayer => crate::target::PlayerFilter::Specific(
-                    crate::effects::helpers::resolve_player_filter(game, &player, ctx)?),
+                | crate::target::PlayerFilter::ChosenPlayer => {
+                    crate::target::PlayerFilter::Specific(
+                        crate::effects::helpers::resolve_player_filter(game, &player, ctx)?,
+                    )
+                }
                 player => player,
             };
             Restriction::PlayLandsMatching(player, filter)
-        } else { restriction };
+        } else {
+            restriction
+        };
         if self.start == RestrictionStart::LastAddedCombatPhase {
             // A missing phase cannot turn a phase-bound restriction into an
             // immediate restriction on an unrelated combat.

@@ -224,7 +224,7 @@ fn parse_prevent_matching_permanents_shape(tokens: &[OwnedLexToken], noncombat: 
     {
         return false;
     }
-    !word_occurs(input, "turn")
+    !word_occurs(input, "turn") && !word_occurs(input, "combat") && !word_occurs(input, "target")
 }
 
 fn matches_exact_word_input(words: &[&str], expected: &[&str]) -> bool {

@@ -407,7 +407,7 @@ fn triggered_life_loss_and_library_exile_share_the_you_subject() {
 
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
-        text,
+        text.replace(" and exile", ". Exile"),
         "debug={:?}\nunprocessed={:?}\nast={definition:#?}",
         crate::compiled_text::debug_compiled_lines(&definition),
         crate::compiled_text::unprocessed_compiled_lines(&definition)

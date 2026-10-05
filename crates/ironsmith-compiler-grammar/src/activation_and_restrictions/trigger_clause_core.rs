@@ -534,15 +534,43 @@ fn parse_one_or_more_planeswalker_attack_target(
         // "an opponent attacks you and/or one or more planeswalkers you
         // control" (Cunning Rhetoric): one trigger per attack declaration
         // against you or your planeswalkers.
-        ["you", "and/or", "one", "or", "more", "planeswalkers", "you", "control"]
-        | ["you", "and", "or", "one", "or", "more", "planeswalkers", "you", "control"]
-        | ["you", "and", "/", "or", "one", "or", "more", "planeswalkers", "you", "control"] => {
-            Some(
-                ironsmith_core::AttackTargetRestriction::PlayerOrPlaneswalkerControlledBy(
-                    PlayerFilter::You,
-                ),
-            )
-        }
+        [
+            "you",
+            "and/or",
+            "one",
+            "or",
+            "more",
+            "planeswalkers",
+            "you",
+            "control",
+        ]
+        | [
+            "you",
+            "and",
+            "or",
+            "one",
+            "or",
+            "more",
+            "planeswalkers",
+            "you",
+            "control",
+        ]
+        | [
+            "you",
+            "and",
+            "/",
+            "or",
+            "one",
+            "or",
+            "more",
+            "planeswalkers",
+            "you",
+            "control",
+        ] => Some(
+            ironsmith_core::AttackTargetRestriction::PlayerOrPlaneswalkerControlledBy(
+                PlayerFilter::You,
+            ),
+        ),
         [
             "one",
             "or",
@@ -1936,7 +1964,9 @@ fn trigger_destination_name_from_tokens(tokens: &[OwnedLexToken]) -> Option<Stri
     // ("this creature, rekindled"). Any destination spelled from a self
     // reference names the face that has this ability, so keep only the self
     // reference ("this creature").
-    let self_reference = destination_words.first().is_some_and(|word| *word == "this");
+    let self_reference = destination_words
+        .first()
+        .is_some_and(|word| *word == "this");
 
     let mut out = String::new();
     for token in tokens {
@@ -2102,13 +2132,13 @@ fn parse_moved_or_cast_origin_condition(
         && !moved_origin.excluded
         && !cast_origin.excluded)
         .then_some(
-        ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom {
-            zone: moved_origin.zone,
-            zone_owner: moved_origin.owner,
-            caster,
-            subject_surface,
-        },
-    )
+            ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom {
+                zone: moved_origin.zone,
+                zone_owner: moved_origin.owner,
+                caster,
+                subject_surface,
+            },
+        )
 }
 
 use crate::recognition::ParseOutcome;
@@ -2948,8 +2978,12 @@ fn try_parse_repeated_intro_event_union_lexed(
     let left_clause = strip_leading_trigger_intro(&tokens[..separator]);
     // "When Ivora enters and whenever it deals combat damage": the pronoun
     // subject of the repeated intro names the left clause's source subject.
-    let right = if right_clause.first().is_some_and(|token| token.is_word("it"))
-        && left_clause.first().is_some_and(|token| token.is_word("this"))
+    let right = if right_clause
+        .first()
+        .is_some_and(|token| token.is_word("it"))
+        && left_clause
+            .first()
+            .is_some_and(|token| token.is_word("this"))
         && left_clause.len() > 2
     {
         let mut rebound = left_clause[..2].to_vec();
@@ -3019,21 +3053,34 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
         // The face-up alternative shares the complete entry subject. Derive
         // its typed filter from that arm instead of guessing a short noun
         // prefix (which loses long controller/characteristic qualifiers).
-        if matches!(right_words.as_slice(), ["is" | "are", "turned", "face", "up"]) {
+        if matches!(
+            right_words.as_slice(),
+            ["is" | "are", "turned", "face", "up"]
+        ) {
             fn face_up_arm(entry: &TriggerSpec) -> Option<TriggerSpec> {
                 match entry {
                     TriggerSpec::WithIntro { trigger, .. } => face_up_arm(trigger),
-                    TriggerSpec::EntersBattlefield { filter, cause_filter: None, origin_condition: None, during_turn: None } =>
-                        Some(TriggerSpec::TurnedFaceUp(filter.clone())),
-                    TriggerSpec::ThisEntersBattlefield { origin_condition: None }
-                    | TriggerSpec::ThisEntersBattlefieldWithSurface { origin_condition: None, .. } =>
-                        Some(TriggerSpec::ThisTurnedFaceUp),
+                    TriggerSpec::EntersBattlefield {
+                        filter,
+                        cause_filter: None,
+                        origin_condition: None,
+                        during_turn: None,
+                    } => Some(TriggerSpec::TurnedFaceUp(filter.clone())),
+                    TriggerSpec::ThisEntersBattlefield {
+                        origin_condition: None,
+                    }
+                    | TriggerSpec::ThisEntersBattlefieldWithSurface {
+                        origin_condition: None,
+                        ..
+                    } => Some(TriggerSpec::ThisTurnedFaceUp),
                     _ => None,
                 }
             }
             if let Ok(entry) = parse_trigger_clause_lexed_unstacked(left)
                 && let Some(face_up) = face_up_arm(&entry)
-            { return Some(TriggerSpec::Either(Box::new(entry), Box::new(face_up))); }
+            {
+                return Some(TriggerSpec::Either(Box::new(entry), Box::new(face_up)));
+            }
             continue;
         }
         // Only the exact "is put into exile" passive is unioned here — a
@@ -3051,13 +3098,57 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
         let Ok(left_spec) = parse_trigger_clause_lexed_unstacked(left) else {
             continue;
         };
+        if right_words.as_slice() == ["is", "put", "into", "exile", "from", "the", "battlefield"] {
+            fn exile_arm(trigger: &TriggerSpec) -> Option<TriggerSpec> {
+                match trigger {
+                    TriggerSpec::Either(left, right) => Some(TriggerSpec::Either(
+                        Box::new(exile_arm(left)?),
+                        Box::new(exile_arm(right)?),
+                    )),
+                    TriggerSpec::AnyOf(branches) => Some(TriggerSpec::AnyOf(
+                        branches.iter().map(exile_arm).collect::<Option<Vec<_>>>()?,
+                    )),
+                    TriggerSpec::PutIntoGraveyardFromZone {
+                        from,
+                        filter,
+                        cause_filter,
+                        one_or_more,
+                    } if *from == Zone::Battlefield => {
+                        let mut changed = crate::triggers::ZoneChangeTrigger::new();
+                        changed.from = Some(Zone::Battlefield);
+                        changed.to = Some(Zone::Exile);
+                        changed.filter = Some(filter.clone());
+                        changed.cause_filter = cause_filter.clone();
+                        if *one_or_more {
+                            return None;
+                        }
+                        Some(TriggerSpec::ZoneChange(changed))
+                    }
+                    _ => None,
+                }
+            }
+            if let Some(exile) = exile_arm(&left_spec) {
+                return Some(TriggerSpec::AnyOf(vec![left_spec, exile]));
+            }
+        }
         // A passive right half ("... or is put into exile") shares the whole
         // subject noun phrase, so try the LONGEST prefix first. An active-verb
         // right half ("... or discards a permanent card") only needs the bare
         // subject; longer prefixes there can join two verbs into one lenient
         // misparse ("sacrifices a discards a permanent card").
         let takes: Vec<usize> = if passive_right {
-            (0..=left.len().min(4)).rev().collect()
+            // A passive event shares the whole subject, including its `or`
+            // object alternatives and controller qualifiers. Bound it at the
+            // earlier passive verb instead of truncating it to four tokens.
+            let subject_end = left
+                .windows(3)
+                .position(|words| {
+                    (words[0].is_word("is") || words[0].is_word("are"))
+                        && words[1].is_word("put")
+                        && words[2].is_word("into")
+                })
+                .unwrap_or(left.len().min(4));
+            (0..=subject_end).rev().collect()
         } else {
             (0..=left.len().min(4)).collect()
         };

@@ -14,7 +14,8 @@ fn moratorium_stone_keeps_three_same_name_sets_in_one_clause() {
 
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
-        oracle
+        oracle,
+        "{definition:#?}"
     );
     let debug = format!("{definition:#?}");
     assert!(debug.contains("linked_fanout_primary_0"), "{debug}");

@@ -29,7 +29,7 @@ pub(super) fn parse_milling_trigger(
     {
         return Ok(None);
     }
-    let filter = if matches!(subject, ["card" | "cards"] | ["a", "card"]) {
+    let mut filter = if matches!(subject, ["card" | "cards"] | ["a", "card"]) {
         None
     } else {
         let start = trigger_word_token_start(tokens, start).unwrap_or(tokens.len());
@@ -40,6 +40,10 @@ pub(super) fn parse_milling_trigger(
             })?,
         )
     };
+    if let Some(filter) = &mut filter {
+        // A completed mill can end in any public replacement destination.
+        filter.zone = None;
+    }
     Ok(Some(TriggerSpec::CardsMilled {
         player,
         filter,

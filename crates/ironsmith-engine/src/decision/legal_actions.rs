@@ -1,9 +1,13 @@
-use crate::grant_registry::grant_usage_limit_allows;
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
+use crate::grant_registry::grant_usage_limit_allows;
 
 #[derive(Clone, Copy)]
-enum ActionScope { All, Globals, Source(ObjectId) }
+enum ActionScope {
+    All,
+    Globals,
+    Source(ObjectId),
+}
 thread_local! {
     static REQUESTED_ACTION_SOURCE: std::cell::Cell<ActionScope> = const { std::cell::Cell::new(ActionScope::All) };
 }
@@ -21,12 +25,19 @@ fn requested_global_actions() -> bool {
 /// Check one source without filtering the game: other objects still provide
 /// mana, targets, restrictions and grants. Global actions have their own job.
 pub fn compute_actions_for_source(
-    game: &GameState, player: PlayerId, source: Option<ObjectId>,
+    game: &GameState,
+    player: PlayerId,
+    source: Option<ObjectId>,
 ) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
-    compute_scoped_actions(game, player, source.map_or(ActionScope::All, ActionScope::Source))
+    compute_scoped_actions(
+        game,
+        player,
+        source.map_or(ActionScope::All, ActionScope::Source),
+    )
 }
 pub fn compute_global_actions(
-    game: &GameState, player: PlayerId,
+    game: &GameState,
+    player: PlayerId,
 ) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
     compute_scoped_actions(game, player, ActionScope::Globals)
 }
@@ -34,17 +45,25 @@ pub fn compute_global_actions(
 /// Timing/restrictions/targets are recomputed normally; this is never an oracle
 /// for execution or a way to introduce a newly seen action into the menu.
 pub fn compute_actions_assuming_mana_for_presentation(
-    game: &GameState, player: PlayerId, source: Option<ObjectId>,
+    game: &GameState,
+    player: PlayerId,
+    source: Option<ObjectId>,
 ) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
-    super::mana::with_assumed_mana_for_presentation(|| compute_actions_for_source(game, player, source))
+    super::mana::with_assumed_mana_for_presentation(|| {
+        compute_actions_for_source(game, player, source)
+    })
 }
 
 fn compute_scoped_actions(
-    game: &GameState, player: PlayerId, scope: ActionScope,
+    game: &GameState,
+    player: PlayerId,
+    scope: ActionScope,
 ) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
     struct Restore(ActionScope);
     impl Drop for Restore {
-        fn drop(&mut self) { REQUESTED_ACTION_SOURCE.with(|slot| slot.set(self.0)); }
+        fn drop(&mut self) {
+            REQUESTED_ACTION_SOURCE.with(|slot| slot.set(self.0));
+        }
     }
     let _restore = Restore(REQUESTED_ACTION_SOURCE.with(|slot| slot.replace(scope)));
     let mut actions = compute_legal_actions(game, player)?;
@@ -57,19 +76,34 @@ fn compute_scoped_actions(
 pub fn priority_analysis_sources(game: &GameState, player: PlayerId) -> Vec<ObjectId> {
     let mut sources = Vec::new();
     if let Some(p) = game.player(player) {
-        sources.extend(p.hand.iter().copied().filter(|id| game.object(*id).is_some_and(|o| o.is_land())));
+        sources.extend(
+            p.hand
+                .iter()
+                .copied()
+                .filter(|id| game.object(*id).is_some_and(|o| o.is_land())),
+        );
         sources.extend(p.hand.iter().copied());
     }
     sources.extend(game.battlefield.iter().copied());
-    if let Some(p) = game.player(player) { sources.extend(p.graveyard.iter().copied()); }
+    if let Some(p) = game.player(player) {
+        sources.extend(p.graveyard.iter().copied());
+    }
     // Land-play grants can refer to cards in another player's public zones.
-    for p in game.players.iter() { sources.extend(p.graveyard.iter().copied()); }
+    for p in game.players.iter() {
+        sources.extend(p.graveyard.iter().copied());
+    }
     sources.extend(game.exile.iter().copied());
     // Grants can refer to another player's top card, so include all tops.
-    for p in game.players.iter() { sources.extend(p.library.last().copied()); }
+    for p in game.players.iter() {
+        sources.extend(p.library.last().copied());
+    }
     sources.extend(game.command_zone.iter().copied());
-    if let Some(p) = game.player(player) { sources.extend(p.sideboard.iter().copied()); }
-    for p in game.players.iter() { sources.extend(p.sideboard.iter().copied()); }
+    if let Some(p) = game.player(player) {
+        sources.extend(p.sideboard.iter().copied());
+    }
+    for p in game.players.iter() {
+        sources.extend(p.sideboard.iter().copied());
+    }
     sources.extend(game.face_up_planar_objects().iter().copied());
     sources.extend(game.stack.iter().map(|entry| entry.object_id));
     let mut seen = std::collections::HashSet::new();
@@ -90,7 +124,6 @@ pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
     }
 }
 
-
 fn append_granted_play_from_actions_for_card(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -102,22 +135,27 @@ fn append_granted_play_from_actions_for_card(
 ) -> Result<(), crate::effects::ExecutionError> {
     let play_from_grants = view.granted_play_from_for_card(card_id, source_zone, player);
     for grant in play_from_grants {
-        if !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit) {
+        if !grant_usage_limit_allows(
+            game,
+            player,
+            grant.permission_identity.as_ref(),
+            grant.usage_limit,
+        ) {
             continue;
         }
         // PlayFrom (e.g., Yawgmoth's Will): can cast from zone as if from hand.
         let from_zone = grant.zone;
         let granted_alternatives =
             view.granted_alternative_casts_for_card(card_id, from_zone, player);
-        let has_same_source_granted_alternative = granted_alternatives
-            .iter()
-            .any(|granted_alt| granted_alt.source_id == grant.source_id
+        let has_same_source_granted_alternative = granted_alternatives.iter().any(|granted_alt| {
+            granted_alt.source_id == grant.source_id
                 // Separate static abilities on the same permanent do not
                 // make an ordinary permission require its other free cost.
                 && !matches!((&grant.permission_identity, &granted_alt.permission_identity),
                     (Some(crate::grant_registry::GrantPermissionIdentity::Static {..}),
                      Some(crate::grant_registry::GrantPermissionIdentity::Static {..}))
-                    if grant.permission_identity != granted_alt.permission_identity));
+                    if grant.permission_identity != granted_alt.permission_identity)
+        });
 
         if !has_same_source_granted_alternative
             && !card.is_land()
@@ -178,6 +216,14 @@ fn append_granted_play_from_actions_for_card(
         if source_zone != Zone::Graveyard {
             let base_alt_idx = card.alternative_casts.len();
             for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
+                if !grant_usage_limit_allows(
+                    game,
+                    player,
+                    granted_alt.permission_identity.as_ref(),
+                    granted_alt.usage_limit,
+                ) {
+                    continue;
+                }
                 if can_cast_spell_with_view(
                     game,
                     player,
@@ -209,16 +255,39 @@ fn append_granted_play_from_actions_for_card(
         let face = spell_view_for_face_down_cast(game, card);
         let face_game = crate::grant_registry::proposed_card_face_query(game, &face)?;
         let face_view = DerivedGameView::new(&face_game);
-        let face_card = face_game.object(card_id).ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
+        let face_card = face_game
+            .object(card_id)
+            .ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
         let cost = face_down_cast_mana_cost();
         for grant in face_view.granted_play_from_for_card(card_id, source_zone, player) {
-            if !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit) { continue; }
-            let method = CastingMethod::FaceDownPlayFrom {source: grant.source_id, zone: grant.zone};
-            if can_cast_with_cost_with_view_for_casting_method(
-                &face_game, player, face_card, card_id, Some(&cost), None,
-                &AdditionalCastRequirements::default(), &method, &face_view,
+            if !grant_usage_limit_allows(
+                game,
+                player,
+                grant.permission_identity.as_ref(),
+                grant.usage_limit,
             ) {
-                actions.push(LegalAction::CastSpell {spell_id: card_id, from_zone: grant.zone, casting_method: method});
+                continue;
+            }
+            let method = CastingMethod::FaceDownPlayFrom {
+                source: grant.source_id,
+                zone: grant.zone,
+            };
+            if can_cast_with_cost_with_view_for_casting_method(
+                &face_game,
+                player,
+                face_card,
+                card_id,
+                Some(&cost),
+                None,
+                &AdditionalCastRequirements::default(),
+                &method,
+                &face_view,
+            ) {
+                actions.push(LegalAction::CastSpell {
+                    spell_id: card_id,
+                    from_zone: grant.zone,
+                    casting_method: method,
+                });
             }
         }
     }
@@ -228,7 +297,9 @@ fn append_granted_play_from_actions_for_card(
     };
     let face_game = crate::grant_registry::proposed_card_face_query(game, &adventure_view)?;
     let face_view = DerivedGameView::new(&face_game);
-    let face_card = face_game.object(card_id).ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
+    let face_card = face_game
+        .object(card_id)
+        .ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
     let adventure_play_from_grants =
         face_view.granted_play_from_for_card(card_id, source_zone, player);
     let face_alternatives =
@@ -238,23 +309,38 @@ fn append_granted_play_from_actions_for_card(
             .granted_alternative_casts_for_card(card_id, source_zone, player)
             .len();
     for grant in adventure_play_from_grants {
-        if !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit) {
+        if !grant_usage_limit_allows(
+            game,
+            player,
+            grant.permission_identity.as_ref(),
+            grant.usage_limit,
+        ) {
             continue;
         }
-        let has_same_source_alternative = face_alternatives
-            .iter()
-            .any(|alternative| alternative.source_id == grant.source_id
+        let has_same_source_alternative = face_alternatives.iter().any(|alternative| {
+            alternative.source_id == grant.source_id
                 && !matches!((&grant.permission_identity, &alternative.permission_identity),
                     (Some(crate::grant_registry::GrantPermissionIdentity::Static {..}),
                      Some(crate::grant_registry::GrantPermissionIdentity::Static {..}))
-                    if grant.permission_identity != alternative.permission_identity));
+                    if grant.permission_identity != alternative.permission_identity)
+        });
         let normal_face_permission = CastingMethod::SplitOtherHalfPlayFrom {
-            source: grant.source_id, zone: grant.zone, use_alternative: None,
+            source: grant.source_id,
+            zone: grant.zone,
+            use_alternative: None,
         };
         if !has_same_source_alternative
-            && can_cast_spell_with_view(&face_game, player, face_card,
-                &CastingMethod::PlayFrom { source: grant.source_id, zone: grant.zone, use_alternative: None },
-                &face_view)
+            && can_cast_spell_with_view(
+                &face_game,
+                player,
+                face_card,
+                &CastingMethod::PlayFrom {
+                    source: grant.source_id,
+                    zone: grant.zone,
+                    use_alternative: None,
+                },
+                &face_view,
+            )
         {
             actions.push(LegalAction::CastSpell {
                 spell_id: card_id,
@@ -263,6 +349,14 @@ fn append_granted_play_from_actions_for_card(
             });
         }
         for (offset, alternative) in face_alternatives.iter().enumerate() {
+            if !grant_usage_limit_allows(
+                game,
+                player,
+                alternative.permission_identity.as_ref(),
+                alternative.usage_limit,
+            ) {
+                continue;
+            }
             if alternative.source_id != grant.source_id {
                 continue;
             }
@@ -355,7 +449,12 @@ fn append_zone_granted_alternative_cast_actions_for_card(
     let base_alt_idx = card.alternative_casts.len();
     for (offset, grant) in granted_casts.into_iter().enumerate() {
         let method = &grant.method;
-        if !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit) {
+        if !grant_usage_limit_allows(
+            game,
+            player,
+            grant.permission_identity.as_ref(),
+            grant.usage_limit,
+        ) {
             continue;
         }
         let requirements = build_requirements_for_method(method);
@@ -437,7 +536,12 @@ fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
     for (offset, grant) in granted_casts.into_iter().enumerate() {
         let method = &grant.method;
         if method.cast_from_zone() != Zone::Graveyard
-            || !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit)
+            || !grant_usage_limit_allows(
+                game,
+                player,
+                grant.permission_identity.as_ref(),
+                grant.usage_limit,
+            )
         {
             continue;
         }
@@ -495,7 +599,12 @@ fn append_hand_granted_alternative_cast_actions_for_card(
 
     for (offset, grant) in granted_casts.iter().enumerate() {
         if grant.method.cast_from_zone() != Zone::Hand
-            || !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit)
+            || !grant_usage_limit_allows(
+                game,
+                player,
+                grant.permission_identity.as_ref(),
+                grant.usage_limit,
+            )
             || !can_cast_with_alternative_from_hand_with_view(
                 game,
                 player,
@@ -542,9 +651,10 @@ fn append_cast_actions_from_zone_for_card(
         );
     }
     if from_zone == Zone::Exile
-        && game
-            .plotted_cast_permission(card_id, from_zone, player)
-            .is_some()
+        && (zone_has_active_grants
+            || game
+                .plotted_cast_permission(card_id, from_zone, player)
+                .is_some())
     {
         append_zone_granted_alternative_cast_actions_for_card(
             game, actions, player, card_id, card, from_zone, view,
@@ -583,7 +693,9 @@ fn push_back_face_land_play_action(
         return Ok(());
     }
     let action = SpecialAction::PlayLandBackFace { card_id };
-    if special_action_is_legal(crate::special_actions::can_perform_check(&action, game, player))? {
+    if special_action_is_legal(crate::special_actions::can_perform_check(
+        &action, game, player,
+    ))? {
         actions.push(LegalAction::PlayLandBackFace { land_id: card_id });
     }
     Ok(())
@@ -597,7 +709,9 @@ fn append_granted_land_play_actions_from_public_zone(
     _view: &DerivedGameView<'_>,
 ) -> Result<(), crate::effects::ExecutionError> {
     for card_id in game.zone_ids(zone) {
-        if !requested_action_source(card_id) { continue; }
+        if !requested_action_source(card_id) {
+            continue;
+        }
         let Some(card) = game.object(card_id) else {
             continue;
         };
@@ -609,7 +723,9 @@ fn append_granted_land_play_actions_from_public_zone(
         // The authoritative owner evaluates the chosen land face. Filtering
         // only the front card here hides legal subtype-qualified MDFC backs.
         let action = SpecialAction::PlayLand { card_id };
-        if special_action_is_legal(crate::special_actions::can_perform_check(&action, game, player))? {
+        if special_action_is_legal(crate::special_actions::can_perform_check(
+            &action, game, player,
+        ))? {
             actions.push(LegalAction::PlayLand { land_id: card_id });
         }
         push_back_face_land_play_action(game, actions, player, card_id, card)?;
@@ -634,7 +750,9 @@ fn append_adventure_exiled_land_play_actions(
         }
 
         let action = SpecialAction::PlayLand { card_id };
-        if special_action_is_legal(crate::special_actions::can_perform_check(&action, game, player))? {
+        if special_action_is_legal(crate::special_actions::can_perform_check(
+            &action, game, player,
+        ))? {
             actions.push(LegalAction::PlayLand { land_id: card_id });
         }
         push_back_face_land_play_action(game, actions, player, card_id, card)?;
@@ -709,13 +827,7 @@ fn add_land_actions(
                     land_id: summary.card_id,
                 });
             }
-            push_back_face_land_play_action(
-                game,
-                actions,
-                player,
-                summary.card_id,
-                summary.card,
-            )?;
+            push_back_face_land_play_action(game, actions, player, summary.card_id, summary.card)?;
         }
     }
     if graveyard_has_active_grants {
@@ -728,7 +840,13 @@ fn add_land_actions(
         )?;
     }
     if exile_has_active_grants {
-        append_granted_land_play_actions_from_public_zone(game, actions, player, Zone::Exile, view)?;
+        append_granted_land_play_actions_from_public_zone(
+            game,
+            actions,
+            player,
+            Zone::Exile,
+            view,
+        )?;
     }
     append_adventure_exiled_land_play_actions(game, actions, player)?;
     if library_has_active_grants
@@ -859,10 +977,16 @@ fn add_library_cast_actions(
 
 /// Native exile designations authorize this exact card/copy for one player.
 /// They allow its normal face, never arbitrary cards or its Adventure again.
-pub(crate) fn native_exile_normal_cast_origin(game: &GameState, player: PlayerId, card_id: ObjectId) -> bool {
-    game.object(card_id).is_some_and(|card| card.zone == Zone::Exile
-        && (game.adventure_exiled_player(card_id) == Some(player)
-            || (game.is_prepared_spell_copy(card_id) && game.controller_of(card) == player)))
+pub(crate) fn native_exile_normal_cast_origin(
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+) -> bool {
+    game.object(card_id).is_some_and(|card| {
+        card.zone == Zone::Exile
+            && (game.adventure_exiled_player(card_id) == Some(player)
+                || (game.is_prepared_spell_copy(card_id) && game.controller_of(card) == player))
+    })
 }
 
 fn add_exile_cast_actions(
@@ -903,7 +1027,13 @@ fn add_exile_cast_actions(
         }
     }
     if exile_has_active_grants {
-        append_granted_land_play_actions_from_public_zone(game, actions, player, Zone::Exile, view)?;
+        append_granted_land_play_actions_from_public_zone(
+            game,
+            actions,
+            player,
+            Zone::Exile,
+            view,
+        )?;
     }
     Ok(())
 }
@@ -980,8 +1110,9 @@ fn add_hand_alternative_cast_actions(
     }
 }
 
-fn special_action_is_legal(result: Result<(), crate::special_actions::ActionError>)
-    -> Result<bool, crate::effects::ExecutionError> {
+fn special_action_is_legal(
+    result: Result<(), crate::special_actions::ActionError>,
+) -> Result<bool, crate::effects::ExecutionError> {
     match result {
         Ok(()) => Ok(true),
         Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => Err(error),
@@ -1037,7 +1168,8 @@ fn add_battlefield_actions(
     for &perm_id in controlled_battlefield {
         if game.is_face_down(perm_id) {
             for method in crate::special_actions::available_turn_face_up_methods(game, perm_id)
-                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)? {
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+            {
                 let action = SpecialAction::TurnFaceUp {
                     permanent_id: perm_id,
                     method,
@@ -1251,27 +1383,43 @@ fn add_non_battlefield_ability_actions(
     }
 }
 
-pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
-    with_complete_legality_query(game, |checked| compute_legal_actions_checked(checked, player))
+pub fn compute_legal_actions(
+    game: &GameState,
+    player: PlayerId,
+) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
+    with_complete_legality_query(game, |checked| {
+        compute_legal_actions_checked(checked, player)
+    })
 }
 
-pub(crate) fn with_complete_legality_query<T>(game: &GameState, compute: impl FnOnce(&GameState) -> Result<T, crate::effects::ExecutionError>) -> Result<T, crate::effects::ExecutionError> {
-    let mut checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+pub(crate) fn with_complete_legality_query<T>(
+    game: &GameState,
+    compute: impl FnOnce(&GameState) -> Result<T, crate::effects::ExecutionError>,
+) -> Result<T, crate::effects::ExecutionError> {
+    let mut checked = game
+        .continuous_query_snapshot()
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     // Legality is a read-only query, including when entered during an actual
     // payment. Its simulated token work must not consume the real operation's
     // allowance. The owned latch retains failures discarded by boolean cost
     // predicates until this Result-bearing boundary can surface them.
-    let scope = crate::effects::tokens::resources::TokenQueryScope::new(game.token_creation_limits());
+    let scope =
+        crate::effects::tokens::resources::TokenQueryScope::new(game.token_creation_limits());
     checked.bind_token_query_meter(scope.meter());
     let result = super::mana::with_checked_query(game, &checked, || compute(&checked));
-    if let Some(error) = super::mana::analysis_failure().or_else(|| checked.token_resource_failure()) {
+    if let Some(error) =
+        super::mana::analysis_failure().or_else(|| checked.token_resource_failure())
+    {
         game.record_token_resource_failure(&error);
         return Err(error);
     }
     result
 }
 
-fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
+fn compute_legal_actions_checked(
+    game: &GameState,
+    player: PlayerId,
+) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
     let total_started_at = PerfTimer::start();
     let mut perf = ComputeLegalActionsPerfMetrics::default();
     let empty_zone: &[ObjectId] = &[];
@@ -1335,40 +1483,46 @@ fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<V
 
     actions.push(LegalAction::PassPriority);
     if requested_global_actions() {
-    for delayed_trigger_index in 0..game.effect_store.delayed_triggers.len() {
-        let action = crate::special_actions::SpecialAction::PayDelayedTrigger {
-            delayed_trigger_index,
-        };
-        if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
-            actions.push(LegalAction::SpecialAction(action));
+        for delayed_trigger_index in 0..game.effect_store.delayed_triggers.len() {
+            let action = crate::special_actions::SpecialAction::PayDelayedTrigger {
+                delayed_trigger_index,
+            };
+            if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+                actions.push(LegalAction::SpecialAction(action));
+            }
         }
-    }
-    for action_index in 0..game.effect_store.repeatable_mana_payment_actions.len() {
-        let action = crate::special_actions::SpecialAction::PerformRepeatableManaPaymentAction {
-            action_index,
-        };
-        if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
-            actions.push(LegalAction::SpecialAction(action));
+        for action_index in 0..game.effect_store.repeatable_mana_payment_actions.len() {
+            let action =
+                crate::special_actions::SpecialAction::PerformRepeatableManaPaymentAction {
+                    action_index,
+                };
+            if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+                actions.push(LegalAction::SpecialAction(action));
+            }
         }
-    }
-    let planar_die_action = crate::special_actions::SpecialAction::RollPlanarDie;
-    if special_action_is_legal(crate::special_actions::can_perform_check(&planar_die_action, game, player))? {
-        actions.push(LegalAction::SpecialAction(planar_die_action));
-    }
-    if let Some(companion_id) = game.player(player).and_then(|state| state.companion) {
-        let companion_action = crate::special_actions::SpecialAction::Companion {
-            card_id: companion_id,
-        };
-        if crate::special_actions::can_perform_check(&companion_action, game, player).is_ok() {
-            actions.push(LegalAction::SpecialAction(companion_action));
+        let planar_die_action = crate::special_actions::SpecialAction::RollPlanarDie;
+        if special_action_is_legal(crate::special_actions::can_perform_check(
+            &planar_die_action,
+            game,
+            player,
+        ))? {
+            actions.push(LegalAction::SpecialAction(planar_die_action));
         }
-    }
-    for conspiracy_id in game.conspiracy_cards() {
-        let action = crate::special_actions::SpecialAction::TurnConspiracyFaceUp { conspiracy_id };
-        if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
-            actions.push(LegalAction::SpecialAction(action));
+        if let Some(companion_id) = game.player(player).and_then(|state| state.companion) {
+            let companion_action = crate::special_actions::SpecialAction::Companion {
+                card_id: companion_id,
+            };
+            if crate::special_actions::can_perform_check(&companion_action, game, player).is_ok() {
+                actions.push(LegalAction::SpecialAction(companion_action));
+            }
         }
-    }
+        for conspiracy_id in game.conspiracy_cards() {
+            let action =
+                crate::special_actions::SpecialAction::TurnConspiracyFaceUp { conspiracy_id };
+            if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+                actions.push(LegalAction::SpecialAction(action));
+            }
+        }
     }
 
     let lands_started_at = PerfTimer::start();
@@ -1451,15 +1605,36 @@ fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<V
     // Price grants supply no origins. Build the product of independently
     // authorized origins and eligible prices before ordinary affordability or
     // sorcery timing can filter out a newly payable/flash-enabled proposal.
-    if game.effect_store.grant_registry.active_grants(game).iter().any(|grant|
-        grant.player == player && matches!(grant.grantable, crate::grant::Grantable::AlternativePrice { .. }))
+    if game
+        .effect_store
+        .grant_registry
+        .active_grants(game)
+        .iter()
+        .any(|grant| {
+            grant.player == player
+                && matches!(
+                    grant.grantable,
+                    crate::grant::Grantable::AlternativePrice { .. }
+                )
+        })
     {
-        for id in priority_analysis_sources(game, player).into_iter().filter(|id| requested_action_source(*id)) {
-            let Some(card) = game.object(id) else { continue; };
-            if matches!(card.zone, Zone::Battlefield | Zone::Stack) { continue; }
+        for id in priority_analysis_sources(game, player)
+            .into_iter()
+            .filter(|id| requested_action_source(*id))
+        {
+            let Some(card) = game.object(id) else {
+                continue;
+            };
+            if matches!(card.zone, Zone::Battlefield | Zone::Stack) {
+                continue;
+            }
             for method in crate::alternative_cast::price_routes::candidates(game, player, card)? {
                 if can_cast_spell_with_view(game, player, card, &method, &view) {
-                    actions.push(LegalAction::CastSpell {spell_id: id, from_zone: card.zone, casting_method: method});
+                    actions.push(LegalAction::CastSpell {
+                        spell_id: id,
+                        from_zone: card.zone,
+                        casting_method: method,
+                    });
                 }
             }
         }
@@ -1570,12 +1745,16 @@ pub(crate) fn activation_timing_allows(
         }
         crate::ability::ActivationTiming::DuringYourTurn => game.is_active_player(controller),
         crate::ability::ActivationTiming::DuringOpponentsTurn => !game.is_active_player(controller),
-        crate::ability::ActivationTiming::AnyTimeByEnchantedCreatureController => {
-            game.object(source).and_then(|object| object.attached_to).and_then(|target| target.object_id())
-                .is_some_and(|host| game.object(host).is_some_and(|object| object.zone == Zone::Battlefield)
+        crate::ability::ActivationTiming::AnyTimeByEnchantedCreatureController => game
+            .object(source)
+            .and_then(|object| object.attached_to)
+            .and_then(|target| target.object_id())
+            .is_some_and(|host| {
+                game.object(host)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
                     && game.current_has_card_type(host, crate::CardType::Creature)
-                    && game.current_controller(host) == Some(controller))
-        }
+                    && game.current_controller(host) == Some(controller)
+            }),
         crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
             game.is_active_player(controller) && game.turn.phase != Phase::Ending
         }
@@ -1667,11 +1846,7 @@ pub(crate) fn turn_is_before_first_combat_step(
         Phase::Beginning | Phase::FirstMain => true,
         Phase::Combat => {
             game.turn_store.combat_phases_started_this_turn <= 1
-                && game
-                    .turn
-                    .step
-                    .map_or(0, combat_step_order)
-                    < combat_step_order(step)
+                && game.turn.step.map_or(0, combat_step_order) < combat_step_order(step)
         }
         Phase::NextMain | Phase::Ending => false,
     }
@@ -1950,7 +2125,7 @@ fn activation_cost_component_precheck_with_view(
     source: ObjectId,
     cost: &crate::costs::Cost,
     reason: crate::costs::PaymentReason,
-    _view: &DerivedGameView<'_>,
+    view: &DerivedGameView<'_>,
 ) -> bool {
     if let Some(amount) = cost.life_amount() {
         return game.can_pay_life_with_reason(controller, amount, reason);
@@ -1996,16 +2171,20 @@ fn activation_cost_component_precheck_with_view(
         return false;
     }
 
-    if cost.mana_cost_ref().is_some() {
-        // Mana is paid only after the activation has opened its mana-ability
-        // window. Keep the action visible here; the locked payment flow
-        // performs the exact affordability and restricted-mana checks.
-        return true;
+    if let Some(mana_cost) = cost.mana_cost_ref() {
+        // Modifiers are evaluated after the precheck. Otherwise require a
+        // payable plan using floating mana or legal mana abilities; opening
+        // the payment window cannot manufacture an unavailable resource.
+        return view.has_activated_ability_cost_modifiers()
+            || view.source_has_activated_ability_cost_modifiers(source)
+            || view.can_potentially_pay_with_reason(
+                controller,
+                Some(source),
+                mana_cost,
+                0,
+                reason,
+            );
     }
-    if cost.is_remove_counters() {
-        return true;
-    }
-
     let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
     crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
 }
@@ -2111,8 +2290,14 @@ fn activation_precheck_with_view(
         return None;
     }
 
-    if activated.is_loyalty_ability() && (controller != source_facts.controller
-        || game.effect_store.cant_effects.cant_activate_loyalty_abilities_of.contains(&source)) {
+    if activated.is_loyalty_ability()
+        && (controller != source_facts.controller
+            || game
+                .effect_store
+                .cant_effects
+                .cant_activate_loyalty_abilities_of
+                .contains(&source))
+    {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -2182,8 +2367,7 @@ fn activation_precheck_with_view(
         return None;
     }
 
-    if !exhaust_activation_allows(game, controller, source, ability_index, activated, view)
-    {
+    if !exhaust_activation_allows(game, controller, source, ability_index, activated, view) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -2239,14 +2423,23 @@ fn activation_precheck_with_view(
             }
             return None;
         }
-        if !total_cost_branch_is_payable_with_view(
+        if !crate::cost::prospective_references::activation_reference_preflight(
             game,
-            controller,
             source,
-            &activated.mana_cost,
-            reason,
-            view,
-        ) {
+            ability_index,
+            controller,
+            activated,
+        )
+        .unwrap_or_else(|| {
+            total_cost_branch_is_payable_with_view(
+                game,
+                controller,
+                source,
+                &activated.mana_cost,
+                reason,
+                view,
+            )
+        }) {
             if let Some(perf_ctx) = perf_ctx {
                 perf_ctx.add_precheck_ms(started_at.elapsed_ms());
             }
@@ -2332,10 +2525,23 @@ fn activation_precheck_with_view(
         }
         return None;
     }
-    if !crate::cost::prospective_references::activation_reference_preflight(game, source, ability_index, controller, activated)
-        .unwrap_or_else(|| total_cost_branch_is_payable_with_view(
-            game, controller, source, &activated.mana_cost, reason, view,
-        )) {
+    if !crate::cost::prospective_references::activation_reference_preflight(
+        game,
+        source,
+        ability_index,
+        controller,
+        activated,
+    )
+    .unwrap_or_else(|| {
+        total_cost_branch_is_payable_with_view(
+            game,
+            controller,
+            source,
+            &activated.mana_cost,
+            reason,
+            view,
+        )
+    }) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -2421,10 +2627,6 @@ fn activation_cost_is_payable_with_view(
     if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
         return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);
     }
-    if cost.is_remove_counters() {
-        return true;
-    }
-
     let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
     crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
 }
@@ -2527,10 +2729,6 @@ fn activation_cost_branch_is_payable_with_view(
     if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
         return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);
     }
-    if cost.is_remove_counters() {
-        return true;
-    }
-
     let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
     crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
 }
@@ -2642,8 +2840,14 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
     // The reference-aware preflight evaluates each public cost choice with
     // its own targets and fully modified price. Never redo it without tags.
     if let Some(payable) = crate::cost::prospective_references::activation_reference_preflight(
-        game, source, ability_index, controller, activated,
-    ) { return payable; }
+        game,
+        source,
+        ability_index,
+        controller,
+        activated,
+    ) {
+        return payable;
+    }
 
     let target_started_at = PerfTimer::start();
     let has_legal_targets =
@@ -2661,7 +2865,8 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
     let cost_started_at = PerfTimer::start();
     let has_activation_cost_modifiers = perf_ctx
         .map(BattlefieldAbilityContext::has_activation_cost_modifiers)
-        .unwrap_or_else(|| view.has_activated_ability_cost_modifiers());
+        .unwrap_or_else(|| view.has_activated_ability_cost_modifiers())
+        || view.source_has_activated_ability_cost_modifiers(source);
     if !has_activation_cost_modifiers {
         // The precheck already validated the printed activation costs, so when
         // nothing can modify them we can stop after target legality.
@@ -2678,7 +2883,9 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
             source,
             &activated.mana_cost,
             &[],
-            Some(ActivationCostAbility::of(game, controller, source, activated)),
+            Some(ActivationCostAbility::of(
+                game, controller, source, activated,
+            )),
             view,
         )
     };
@@ -2718,8 +2925,13 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
 ///
 /// These are kept separate from regular legal actions so they can be accessed
 /// via 'C' input rather than numeric indices.
-pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
-    with_complete_legality_query(game, |checked| Ok(compute_commander_actions_checked(checked, player)))
+pub fn compute_commander_actions(
+    game: &GameState,
+    player: PlayerId,
+) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
+    with_complete_legality_query(game, |checked| {
+        Ok(compute_commander_actions_checked(checked, player))
+    })
 }
 
 fn compute_commander_actions_checked(game: &GameState, player: PlayerId) -> Vec<LegalAction> {
@@ -2787,7 +2999,12 @@ fn compute_commander_actions_checked(game: &GameState, player: PlayerId) -> Vec<
                 for (offset, grant) in granted_casts.iter().enumerate() {
                     if grant.method.cast_from_zone() != Zone::Hand
                         || grant.method.requires_cast_from_hand()
-                        || !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit)
+                        || !grant_usage_limit_allows(
+                            game,
+                            player,
+                            grant.permission_identity.as_ref(),
+                            grant.usage_limit,
+                        )
                         || !can_cast_with_alternative_from_hand_with_view(
                             game,
                             player,
@@ -2834,8 +3051,8 @@ pub(crate) fn commander_action_indices(actions: &[LegalAction]) -> Vec<usize> {
 mod land_enumeration_failure_tests {
     use super::*;
     use crate::ability::{Ability, AbilityKind};
-    use crate::cards::CardDefinitionBuilder;
     use crate::card::LinkedFaceLayout;
+    use crate::cards::CardDefinitionBuilder;
     use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
     use crate::ids::CardId;
     use crate::static_abilities::{StaticAbility, StaticAbilityId, StaticAbilityKind};
@@ -2846,99 +3063,179 @@ mod land_enumeration_failure_tests {
     #[derive(Debug, Clone)]
     struct RegrantOnlyForBackFace;
     impl StaticAbilityKind for RegrantOnlyForBackFace {
-        fn id(&self) -> StaticAbilityId { StaticAbilityId::GrantObjectAbilityForFilter }
-        fn display(&self) -> String { "Back-face discovery failure fixture".into() }
-        fn generate_effects(&self, source: ObjectId, controller: PlayerId, game: &GameState) -> Vec<ContinuousEffect> {
-            if !game.objects_in_deterministic_order().iter().any(|object| object.name.as_str() == "Unbounded back") {
+        fn id(&self) -> StaticAbilityId {
+            StaticAbilityId::GrantObjectAbilityForFilter
+        }
+        fn display(&self) -> String {
+            "Back-face discovery failure fixture".into()
+        }
+        fn generate_effects(
+            &self,
+            source: ObjectId,
+            controller: PlayerId,
+            game: &GameState,
+        ) -> Vec<ContinuousEffect> {
+            if !game
+                .objects_in_deterministic_order()
+                .iter()
+                .any(|object| object.name.as_str() == "Unbounded back")
+            {
                 return Vec::new();
             }
-            let AbilityKind::Static(parent) = &game.object(source).unwrap().abilities[0].kind else { panic!("fixture parent"); };
-            vec![ContinuousEffect::new(source, controller, EffectTarget::Source, Modification::AddAbility(parent.clone()))]
+            let AbilityKind::Static(parent) = &game.object(source).unwrap().abilities[0].kind
+            else {
+                panic!("fixture parent");
+            };
+            vec![ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Source,
+                Modification::AddAbility(parent.clone()),
+            )]
         }
     }
 
     #[test]
-    fn every_land_origin_propagates_selected_face_discovery_failure_without_publishing_partial_actions() {
+    fn every_land_origin_propagates_selected_face_discovery_failure_without_publishing_partial_actions()
+     {
         // Authored only; no execution before the campaign validation gate.
-        for (zone, adventure) in [(Zone::Hand, false), (Zone::Graveyard, false),
-            (Zone::Exile, false), (Zone::Library, false), (Zone::OutsideGame, false), (Zone::Exile, true)] {
+        for (zone, adventure) in [
+            (Zone::Hand, false),
+            (Zone::Graveyard, false),
+            (Zone::Exile, false),
+            (Zone::Library, false),
+            (Zone::OutsideGame, false),
+            (Zone::Exile, true),
+        ] {
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
             let player = PlayerId::from_index(0);
-            game.turn.active_player = player; game.turn.priority_player = Some(player);
-            game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
+            game.turn.active_player = player;
+            game.turn.priority_player = Some(player);
+            game.turn.phase = crate::game_state::Phase::FirstMain;
+            game.turn.step = None;
             let host = CardDefinitionBuilder::new(CardId::new(), "Finite front query host")
                 .card_types(vec![crate::types::CardType::Artifact])
-                .with_ability(Ability::static_ability(StaticAbility::new(RegrantOnlyForBackFace)))
+                .with_ability(Ability::static_ability(StaticAbility::new(
+                    RegrantOnlyForBackFace,
+                )))
                 .build();
             game.create_object_from_definition(&host, player, Zone::Battlefield);
             if zone != Zone::Hand && !adventure {
-                let mut spec = crate::grant::GrantSpec::play_from_graveyard(); spec.zone = zone;
+                let mut spec = crate::grant::GrantSpec::play_from_graveyard();
+                spec.zone = zone;
                 let permission = CardDefinitionBuilder::new(CardId::new(), "Exact zone permission")
                     .card_types(vec![crate::types::CardType::Artifact])
-                    .with_ability(Ability::static_ability(StaticAbility::grants(spec))).build();
+                    .with_ability(Ability::static_ability(StaticAbility::grants(spec)))
+                    .build();
                 game.create_object_from_definition(&permission, player, Zone::Battlefield);
             }
-            let front_id = CardId::new(); let back_id = CardId::new();
+            let front_id = CardId::new();
+            let back_id = CardId::new();
             let front = CardDefinitionBuilder::new(front_id, "Finite front")
-                .card_types(vec![crate::types::CardType::Land]).other_face(back_id).other_face_name("Unbounded back")
-                .linked_face_layout(LinkedFaceLayout::TransformLike).build();
+                .card_types(vec![crate::types::CardType::Land])
+                .other_face(back_id)
+                .other_face_name("Unbounded back")
+                .linked_face_layout(LinkedFaceLayout::TransformLike)
+                .build();
             let back = CardDefinitionBuilder::new(back_id, "Unbounded back")
-                .card_types(vec![crate::types::CardType::Land]).other_face(front_id).other_face_name("Finite front")
-                .linked_face_layout(LinkedFaceLayout::TransformLike).build();
-            game.register_linked_face_definition(&front); game.register_linked_face_definition(&back);
+                .card_types(vec![crate::types::CardType::Land])
+                .other_face(front_id)
+                .other_face_name("Finite front")
+                .linked_face_layout(LinkedFaceLayout::TransformLike)
+                .build();
+            game.register_linked_face_definition(&front);
+            game.register_linked_face_definition(&back);
             let candidate = game.create_object_from_definition(&front, player, zone);
-            if adventure { game.set_adventure_exiled_for(candidate, player); }
-            game.continuous_query_snapshot().expect("unselected face is finite");
+            if adventure {
+                game.set_adventure_exiled_for(candidate, player);
+            }
+            game.continuous_query_snapshot()
+                .expect("unselected face is finite");
             for scoped in [false, true] {
-                let result = if scoped { compute_actions_for_source(&game, player, Some(candidate)) }
-                    else { compute_legal_actions(&game, player) };
+                let result = if scoped {
+                    compute_actions_for_source(&game, player, Some(candidate))
+                } else {
+                    compute_legal_actions(&game, player)
+                };
                 assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(
                     crate::static_ability_processor::StaticEffectDiscoveryError::RoundLimit { .. }))),
                     "zone={zone:?}, adventure={adventure}, scoped={scoped}: {result:?}");
-                assert_eq!(game.object(candidate).unwrap().name.as_str(), "Finite front");
+                assert_eq!(
+                    game.object(candidate).unwrap().name.as_str(),
+                    "Finite front"
+                );
                 assert_eq!(game.object(candidate).unwrap().zone, zone);
             }
         }
     }
     #[test]
     fn granted_spell_enumeration_propagates_selected_face_discovery_failure() {
-        for zone in [Zone::Graveyard, Zone::Exile, Zone::Library, Zone::OutsideGame] {
+        for zone in [
+            Zone::Graveyard,
+            Zone::Exile,
+            Zone::Library,
+            Zone::OutsideGame,
+        ] {
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
             let player = PlayerId::from_index(0);
-            game.turn.active_player = player; game.turn.priority_player = Some(player);
-            game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
+            game.turn.active_player = player;
+            game.turn.priority_player = Some(player);
+            game.turn.phase = crate::game_state::Phase::FirstMain;
+            game.turn.step = None;
             let host = CardDefinitionBuilder::new(CardId::new(), "Finite spell query host")
                 .card_types(vec![crate::types::CardType::Artifact])
-                .with_ability(Ability::static_ability(StaticAbility::new(RegrantOnlyForBackFace))).build();
+                .with_ability(Ability::static_ability(StaticAbility::new(
+                    RegrantOnlyForBackFace,
+                )))
+                .build();
             game.create_object_from_definition(&host, player, Zone::Battlefield);
             let mut spec = crate::grant::GrantSpec::play_from_graveyard();
-            spec.zone = zone; spec.filter = crate::target::ObjectFilter::creature();
+            spec.zone = zone;
+            spec.filter = crate::target::ObjectFilter::creature();
             spec.top_card_only = zone == Zone::Library;
             let permission = CardDefinitionBuilder::new(CardId::new(), "Chosen-face permission")
                 .card_types(vec![crate::types::CardType::Artifact])
-                .with_ability(Ability::static_ability(StaticAbility::grants(spec))).build();
+                .with_ability(Ability::static_ability(StaticAbility::grants(spec)))
+                .build();
             game.create_object_from_definition(&permission, player, Zone::Battlefield);
-            let front_id = CardId::new(); let back_id = CardId::new();
+            let front_id = CardId::new();
+            let back_id = CardId::new();
             let front = CardDefinitionBuilder::new(front_id, "Finite front")
-                .card_types(vec![crate::types::CardType::Artifact]).mana_cost(crate::ManaCost::new())
-                .other_face(back_id).other_face_name("Unbounded back")
-                .linked_face_layout(LinkedFaceLayout::TransformLike).build();
+                .card_types(vec![crate::types::CardType::Artifact])
+                .mana_cost(crate::ManaCost::new())
+                .other_face(back_id)
+                .other_face_name("Unbounded back")
+                .linked_face_layout(LinkedFaceLayout::TransformLike)
+                .build();
             let back = CardDefinitionBuilder::new(back_id, "Unbounded back")
-                .card_types(vec![crate::types::CardType::Creature]).mana_cost(crate::ManaCost::new())
+                .card_types(vec![crate::types::CardType::Creature])
+                .mana_cost(crate::ManaCost::new())
                 .power_toughness(crate::card::PowerToughness::fixed(2, 2))
-                .other_face(front_id).other_face_name("Finite front")
-                .linked_face_layout(LinkedFaceLayout::TransformLike).build();
-            game.register_linked_face_definition(&front); game.register_linked_face_definition(&back);
+                .other_face(front_id)
+                .other_face_name("Finite front")
+                .linked_face_layout(LinkedFaceLayout::TransformLike)
+                .build();
+            game.register_linked_face_definition(&front);
+            game.register_linked_face_definition(&back);
             let card = game.create_object_from_definition(&front, player, zone);
-            game.continuous_query_snapshot().expect("front query is finite");
+            game.continuous_query_snapshot()
+                .expect("front query is finite");
             for scoped in [false, true] {
-                let result = if scoped { compute_actions_for_source(&game, player, Some(card)) }
-                    else { compute_legal_actions(&game, player) };
-                assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(_))), "{zone:?}: {result:?}");
+                let result = if scoped {
+                    compute_actions_for_source(&game, player, Some(card))
+                } else {
+                    compute_legal_actions(&game, player)
+                };
+                assert!(
+                    matches!(
+                        result,
+                        Err(crate::effects::ExecutionError::ContinuousDiscovery(_))
+                    ),
+                    "{zone:?}: {result:?}"
+                );
                 assert_eq!(game.object(card).unwrap().name.as_str(), "Finite front");
                 assert_eq!(game.object(card).unwrap().zone, zone);
             }
         }
     }
-
 }

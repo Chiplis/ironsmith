@@ -2967,7 +2967,25 @@ pub(super) fn rewrite_lexed_top_library_permissions_preserve_cast_and_land_domai
 
     let unrestricted =
         parse_grant("You may play lands and cast spells from the top of your library.");
-    assert_eq!(unrestricted.filter, crate::target::ObjectFilter::default());
+    assert_eq!(
+        unrestricted.filter.owner,
+        Some(crate::target::PlayerFilter::You)
+    );
+    assert_eq!(unrestricted.filter.any_of.len(), 2);
+    assert!(
+        unrestricted
+            .filter
+            .any_of
+            .iter()
+            .any(|branch| branch.card_types == [CardType::Land])
+    );
+    assert!(
+        unrestricted
+            .filter
+            .any_of
+            .iter()
+            .any(|branch| branch.excluded_card_types.contains(&CardType::Land))
+    );
 }
 
 #[test]
@@ -2985,7 +3003,7 @@ pub(super) fn rewrite_lexed_permission_helpers_preserve_until_next_turn_flash_gr
             spec,
             lifetime: crate::permission_helpers::PermissionLifetime::UntilYourNextTurn,
         })) if spec.filter.card_types == vec![CardType::Sorcery]
-            && spec.zone == crate::zone::Zone::Hand
+            && spec.zone == crate::zone::Zone::Stack
     ));
 
     let effects = parse_effect_sentence_lexed(&tokens)
@@ -3002,7 +3020,7 @@ pub(super) fn rewrite_lexed_permission_helpers_preserve_until_next_turn_flash_gr
                         player: crate::cards::builders::PlayerAst::You,
                         duration: crate::grant::GrantDuration::UntilYourNextTurn,
                     }) if spec.filter.card_types == vec![CardType::Sorcery]
-                        && spec.zone == crate::zone::Zone::Hand
+                        && spec.zone == crate::zone::Zone::Stack
                 )
         )),
         "expected until-next-turn sorcery flash grant, got {effects:#?}"
@@ -4540,13 +4558,26 @@ pub(super) fn rewrite_simultaneous_phase_pair_keeps_both_all_subjects() {
         .iter()
         .find_map(|effect| super::find_nested_effect::<crate::effects::PhaseInEffect>(effect))
         .expect("simultaneous phasing should retain the phase-in action");
-    assert!(matches!(&phase_in.target, crate::target::ChooseSpec::All(_)));
-    assert!(phase_in.simultaneous_phase_out.as_ref().is_some_and(|filter| {
-        filter.card_types == vec![CardType::Creature]
-            && filter.static_abilities.contains(&StaticAbilityId::Phasing)
-    }), "both sets must belong to one typed exchange: {phase_in:#?}");
-    assert!(!effects.iter().any(|effect| super::find_nested_effect::<crate::effects::PhaseOutEffect>(effect).is_some()),
-        "separate phase-out instruction would observe the wrong event state");
+    assert!(matches!(
+        &phase_in.target,
+        crate::target::ChooseSpec::All(_)
+    ));
+    assert!(
+        phase_in
+            .simultaneous_phase_out
+            .as_ref()
+            .is_some_and(|filter| {
+                filter.card_types == vec![CardType::Creature]
+                    && filter.static_abilities.contains(&StaticAbilityId::Phasing)
+            }),
+        "both sets must belong to one typed exchange: {phase_in:#?}"
+    );
+    assert!(
+        !effects.iter().any(
+            |effect| super::find_nested_effect::<crate::effects::PhaseOutEffect>(effect).is_some()
+        ),
+        "separate phase-out instruction would observe the wrong event state"
+    );
 }
 
 #[test]

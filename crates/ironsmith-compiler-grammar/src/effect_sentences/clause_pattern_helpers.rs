@@ -412,29 +412,48 @@ pub fn parse_copy_spell_clause(
         crate::grammar::primitives::phrase(&["the", "controller", "of"]),
     ) {
         let copy_target_tokens = split_idx.map_or(tail, |index| &tail[..index]);
-        if matches!(clause_shapes::parse_copy_target_shape_tokens(trim_lexed_commas(copy_target_tokens)),
-            clause_shapes::CopyTargetShape::TaggedIt)
-        {
+        if matches!(
+            clause_shapes::parse_copy_target_shape_tokens(trim_lexed_commas(copy_target_tokens)),
+            clause_shapes::CopyTargetShape::TaggedIt
+        ) {
             let target = parse_counter_target_phrase(subject_target_tokens)?;
-            if !matches!(&target, TargetAst::Spell(Some(_)) | TargetAst::Object(_, Some(_), _)) {
-                return Err(CardTextError::ParseError("copy controller subject requires an explicit stack target".into()));
+            if !matches!(
+                &target,
+                TargetAst::Spell(Some(_)) | TargetAst::Object(_, Some(_), _)
+            ) {
+                return Err(CardTextError::ParseError(
+                    "copy controller subject requires an explicit stack target".into(),
+                ));
             }
-            let retarget = split_idx.map(|index| {
-                clause_shapes::parse_copy_retarget_shape_tokens(&tail[index + 1..])
-                    .filter(|retarget| retarget.has_new)
-                    .ok_or_else(|| CardTextError::ParseError("unsupported controller-copy retarget clause".into()))
-            }).transpose()?;
-            return Ok(Some(EffectAst::subject_verb_copy_spell(
-                target,
-                Value::Fixed(1),
-                PlayerAst::ItsController,
-                retarget.as_ref().is_some_and(|retarget| retarget.may_choose),
-                retarget.as_ref().is_some_and(|retarget| retarget.single_target),
-                removed_supertypes(&copy_shape),
-            ).with_copy_set_colors(set_colors)
-             .with_copy_added_card_types(added_card_types)
-             .with_copy_added_subtypes(added_subtypes)
-             .with_copy_set_base_power_toughness(set_base_power_toughness)));
+            let retarget = split_idx
+                .map(|index| {
+                    clause_shapes::parse_copy_retarget_shape_tokens(&tail[index + 1..])
+                        .filter(|retarget| retarget.has_new)
+                        .ok_or_else(|| {
+                            CardTextError::ParseError(
+                                "unsupported controller-copy retarget clause".into(),
+                            )
+                        })
+                })
+                .transpose()?;
+            return Ok(Some(
+                EffectAst::subject_verb_copy_spell(
+                    target,
+                    Value::Fixed(1),
+                    PlayerAst::ItsController,
+                    retarget
+                        .as_ref()
+                        .is_some_and(|retarget| retarget.may_choose),
+                    retarget
+                        .as_ref()
+                        .is_some_and(|retarget| retarget.single_target),
+                    removed_supertypes(&copy_shape),
+                )
+                .with_copy_set_colors(set_colors)
+                .with_copy_added_card_types(added_card_types)
+                .with_copy_added_subtypes(added_subtypes)
+                .with_copy_set_base_power_toughness(set_base_power_toughness),
+            ));
         }
     }
     if copy_shape.simple_reference {
@@ -1246,7 +1265,9 @@ fn parse_counter_ability_target_phrase(
     Ok(Some(wrap_target_count(target, shape.target_count)))
 }
 
-pub(crate) fn parse_prevention_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+pub(crate) fn parse_prevention_target_phrase(
+    tokens: &[OwnedLexToken],
+) -> Result<TargetAst, CardTextError> {
     if let Some(filter) = clause_shapes::parse_you_and_permanents_filter_tokens(tokens) {
         return Ok(TargetAst::ObjectOrPlayer(filter, PlayerFilter::You, None));
     }
@@ -1318,8 +1339,13 @@ pub fn parse_prevent_all_damage_clause(
             // creature you control" (Kry Shield): the source is a declared
             // target, so it must stay a target choice (and the antecedent of a
             // following "that creature"), protecting every recipient.
-            if source_tokens.windows(2).any(|pair| pair[0].is_word("other") && pair[1].is_word("than")) {
-                return Err(CardTextError::ParseError("all-damage source exclusion needs its own complete target binding".into()));
+            if source_tokens
+                .windows(2)
+                .any(|pair| pair[0].is_word("other") && pair[1].is_word("than"))
+            {
+                return Err(CardTextError::ParseError(
+                    "all-damage source exclusion needs its own complete target binding".into(),
+                ));
             }
             if source_tokens.iter().any(|token| token.is_word("target")) {
                 let source_target = parse_target_phrase(source_tokens)?;
@@ -1332,7 +1358,11 @@ pub fn parse_prevent_all_damage_clause(
                 ));
             }
             let (source_filter, of_chosen_color) = parse_damage_sources_filter(source_tokens)?;
-            if of_chosen_color { return Err(CardTextError::ParseError("chosen-color source must retain its explicit decision".into())); }
+            if of_chosen_color {
+                return Err(CardTextError::ParseError(
+                    "chosen-color source must retain its explicit decision".into(),
+                ));
+            }
             Ok(Some(
                 EffectAst::subject_verb_prevent_all_damage_from_source_filter(
                     source_filter,
@@ -1346,26 +1376,53 @@ pub fn parse_prevent_all_damage_clause(
         } => {
             // A relative "that" before an ordinary plural source set is
             // distinct from the referent in "that creature would deal".
-            let source_tokens = if source_tokens.first().is_some_and(|token| token.is_word("that"))
-                && (source_tokens.last().is_some_and(|token| token.is_word("sources"))
-                    || source_tokens.get(1).is_some_and(|token| token.is_any_word(&[
-                        "creatures", "permanents", "spells", "artifacts", "enchantments", "planeswalkers",
-                    ])))
-            { &source_tokens[1..] } else { source_tokens };
-            if source_tokens.windows(2).any(|pair| pair[0].is_word("other") && pair[1].is_word("than")) {
-                return Err(CardTextError::ParseError("all-damage source exclusion needs its own complete target binding".into()));
+            let source_tokens = if source_tokens
+                .first()
+                .is_some_and(|token| token.is_word("that"))
+                && (source_tokens
+                    .last()
+                    .is_some_and(|token| token.is_word("sources"))
+                    || source_tokens.get(1).is_some_and(|token| {
+                        token.is_any_word(&[
+                            "creatures",
+                            "permanents",
+                            "spells",
+                            "artifacts",
+                            "enchantments",
+                            "planeswalkers",
+                        ])
+                    })) {
+                &source_tokens[1..]
+            } else {
+                source_tokens
+            };
+            if source_tokens
+                .windows(2)
+                .any(|pair| pair[0].is_word("other") && pair[1].is_word("than"))
+            {
+                return Err(CardTextError::ParseError(
+                    "all-damage source exclusion needs its own complete target binding".into(),
+                ));
             }
             if source_tokens.iter().any(|token| token.is_word("target"))
-                || source_tokens.first().is_some_and(|token| token.is_any_word(&["this", "that", "those", "it", "them"]))
+                || source_tokens.first().is_some_and(|token| {
+                    token.is_any_word(&["this", "that", "those", "it", "them"])
+                })
             {
                 let source_target = parse_target_phrase(source_tokens)?;
                 let target = match target_tokens {
                     Some(tokens) => parse_prevention_target_phrase(tokens)?,
-                    None => TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None),
+                    None => {
+                        TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None)
+                    }
                 };
-                return Ok(Some(EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
-                    target, source_target, Until::EndOfTurn,
-                )));
+                return Ok(Some(
+                    EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
+                        target,
+                        source_target,
+                        Until::EndOfTurn,
+                    ),
+                ));
             }
             let (source_filter, of_chosen_color) = parse_damage_sources_filter(source_tokens)?;
             match target_tokens {
@@ -1440,8 +1497,14 @@ pub fn parse_prevent_all_damage_clause(
                     ))
                 }
                 clause_shapes::PreventAllDamageSourceShape::Filter(source_tokens) => {
-                    if source_tokens.windows(2).any(|pair| pair[0].is_word("other") && pair[1].is_word("than")) {
-                        return Err(CardTextError::ParseError("all-damage source exclusion needs its own complete target binding".into()));
+                    if source_tokens
+                        .windows(2)
+                        .any(|pair| pair[0].is_word("other") && pair[1].is_word("than"))
+                    {
+                        return Err(CardTextError::ParseError(
+                            "all-damage source exclusion needs its own complete target binding"
+                                .into(),
+                        ));
                     }
                     if source_tokens.iter().any(|token| token.is_word("target")) {
                         let source_target = parse_target_phrase(source_tokens)?;
@@ -1453,8 +1516,14 @@ pub fn parse_prevent_all_damage_clause(
                             ),
                         ));
                     }
-                    let (source_filter, of_chosen_color) = parse_damage_sources_filter(source_tokens)?;
-                    if of_chosen_color { return Err(CardTextError::ParseError("chosen-color target prevention needs its complete decision path".into())); }
+                    let (source_filter, of_chosen_color) =
+                        parse_damage_sources_filter(source_tokens)?;
+                    if of_chosen_color {
+                        return Err(CardTextError::ParseError(
+                            "chosen-color target prevention needs its complete decision path"
+                                .into(),
+                        ));
+                    }
                     Ok(Some(
                         EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
                             target,
@@ -1614,31 +1683,66 @@ pub fn parse_redirect_next_damage_sentence(
     let effect = match shape {
         clause_shapes::RedirectNextDamageShape::ScopedAll(shape) => {
             let recipient_words = crate::lexer::TokenWordView::new(&shape.recipient).word_refs();
-            let destination_words = crate::lexer::TokenWordView::new(&shape.destination).word_refs();
-            let (destination, target) = if crate::util::is_source_reference_words(&destination_words) {
-                (ironsmith_core::TimedDamageRedirectDestination::Source, TargetAst::Source(None))
-            } else if destination_words == ["you"] {
-                (ironsmith_core::TimedDamageRedirectDestination::Controller, TargetAst::Source(None))
-            } else if destination_words == ["its", "controller"] {
-                (ironsmith_core::TimedDamageRedirectDestination::DamageSourceController, TargetAst::Source(None))
-            } else {
-                (ironsmith_core::TimedDamageRedirectDestination::Target, parse_target_phrase(&shape.destination)?)
-            };
+            let destination_words =
+                crate::lexer::TokenWordView::new(&shape.destination).word_refs();
+            let (destination, target) =
+                if crate::util::is_source_reference_words(&destination_words) {
+                    (
+                        ironsmith_core::TimedDamageRedirectDestination::Source,
+                        TargetAst::Source(None),
+                    )
+                } else if destination_words == ["you"] {
+                    (
+                        ironsmith_core::TimedDamageRedirectDestination::Controller,
+                        TargetAst::Source(None),
+                    )
+                } else if destination_words == ["its", "controller"] {
+                    (
+                        ironsmith_core::TimedDamageRedirectDestination::DamageSourceController,
+                        TargetAst::Source(None),
+                    )
+                } else {
+                    (
+                        ironsmith_core::TimedDamageRedirectDestination::Target,
+                        parse_target_phrase(&shape.destination)?,
+                    )
+                };
             let dynamic_set = !shape.recipient.iter().any(|token| token.is_word("target"))
-                && (recipient_words == ["you"] || recipient_words.iter().any(|word| matches!(*word, "creatures" | "permanents")));
+                && (recipient_words == ["you"]
+                    || recipient_words
+                        .iter()
+                        .any(|word| matches!(*word, "creatures" | "permanents")));
             let (player_filter, object_filter, protected_target) = if dynamic_set {
-                let (players, objects) = crate::keyword_static::redirection_recipient_filters(&shape.recipient)?;
+                let (players, objects) =
+                    crate::keyword_static::redirection_recipient_filters(&shape.recipient)?;
                 (players, objects, None)
-            } else { (None, None, Some(parse_target_phrase(&shape.recipient)?)) };
+            } else {
+                (None, None, Some(parse_target_phrase(&shape.recipient)?))
+            };
             let (source_filter, source_target) = match &shape.source {
-                Some(source) if source.iter().any(|token| token.is_word("target")) => (ObjectFilter::default(), Some(parse_target_phrase(source)?)),
-                Some(source) => (crate::object_filters::parse_object_filter_lexed(source, false)?, None),
+                Some(source) if source.iter().any(|token| token.is_word("target")) => {
+                    (ObjectFilter::default(), Some(parse_target_phrase(source)?))
+                }
+                Some(source) => (
+                    crate::object_filters::parse_object_filter_lexed(source, false)?,
+                    None,
+                ),
                 None => (ObjectFilter::default(), None),
             };
-            EffectAst::subject_verb_scoped_damage_redirection(target, crate::model::ast::TimedDamageRedirectionAst {
-                source_filter, source_target, protected_target, player_filter, object_filter,
-                combat_only: shape.combat_only, destination, mode: shape.mode, display: clause_text.to_string(),
-            })
+            EffectAst::subject_verb_scoped_damage_redirection(
+                target,
+                crate::model::ast::TimedDamageRedirectionAst {
+                    source_filter,
+                    source_target,
+                    protected_target,
+                    player_filter,
+                    object_filter,
+                    combat_only: shape.combat_only,
+                    destination,
+                    mode: shape.mode,
+                    display: clause_text.to_string(),
+                },
+            )
         }
         clause_shapes::RedirectNextDamageShape::AllToYouAndPermanents {
             other,
@@ -1838,9 +1942,14 @@ pub fn parse_blocking_capacity_this_turn_clause(
     let Some(shape) = crate::grammar::blocking_permissions::parse_blocking_capacity(tokens) else {
         return Ok(None);
     };
-    if !shape.this_turn || shape.for_each_tokens.is_some() { return Ok(None); }
+    if !shape.this_turn || shape.for_each_tokens.is_some() {
+        return Ok(None);
+    }
     let target = if shape.subject_tokens.is_empty() {
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), Some(TextSpan::synthetic()))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            Some(TextSpan::synthetic()),
+        )
     } else {
         parse_target_phrase(shape.subject_tokens)?
     };
@@ -2190,6 +2299,37 @@ fn keyword_repeat_value(
 pub fn parse_keyword_mechanic_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // A keyword action can have a player actor, just as draw or sacrifice can.
+    // Keep the creature choice inside that player's scope; it is not a target.
+    if let Some(verb) = tokens.iter().position(|token| token.is_word("blights")) {
+        let player = match parse_target_phrase(&tokens[..verb])? {
+            TargetAst::Player(player, _) => player,
+            _ => return Ok(None),
+        };
+        let mut action_tokens = tokens[verb..].to_vec();
+        action_tokens[0] = OwnedLexToken::word("blight", action_tokens[0].span);
+        let Some(mut effect) = parse_keyword_mechanic_clause(&action_tokens)? else {
+            return Ok(None);
+        };
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCounters {
+                    target: TargetAst::Object(filter, ..),
+                    ..
+                }),
+            ..
+        }) = &mut effect
+        {
+            filter.controller = Some(PlayerFilter::IteratedPlayer);
+        }
+        return Ok(Some(EffectAst::ForEach(
+            ForEachEffectAst::ForEachTargetPlayers {
+                count: ChoiceCount::exactly(1),
+                filter: player,
+                effects: vec![effect],
+            },
+        )));
+    }
     let Some(shape) = clause_shapes::parse_keyword_mechanic_tokens(tokens) else {
         return Ok(None);
     };
@@ -2302,7 +2442,10 @@ pub fn parse_keyword_mechanic_clause(
                 effects: vec![action],
             })
         }
-        clause_shapes::KeywordMechanicShape::PhaseExchange { phase_in, phase_out } => {
+        clause_shapes::KeywordMechanicShape::PhaseExchange {
+            phase_in,
+            phase_out,
+        } => {
             let mut phase_in = parse_object_filter(phase_in, false)?;
             let mut phase_out = parse_object_filter(phase_out, false)?;
             phase_in.zone.get_or_insert(Zone::Battlefield);

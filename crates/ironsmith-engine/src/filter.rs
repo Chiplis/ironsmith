@@ -151,7 +151,8 @@ pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
     if name_is_nameless(lhs) || name_is_nameless(rhs) {
         return false;
     }
-    if lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
+    if lhs.eq_ignore_ascii_case(rhs)
+        || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
     {
         return true;
     }
@@ -426,7 +427,9 @@ pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32>;
     fn tail_abilities(&self) -> &[crate::ability::Ability];
     /// Frozen attached objects for a historical subject, including an empty set.
-    fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> { None }
+    fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> {
+        None
+    }
     fn tail_has_alternative_cast_kind(
         &self,
         kind: AlternativeCastKind,
@@ -457,7 +460,9 @@ impl TaggedConstraintSubject for Object {
         self.split_other_half_name()
     }
 
-    fn subject_owner(&self) -> PlayerId { self.owner }
+    fn subject_owner(&self) -> PlayerId {
+        self.owner
+    }
 
     fn subject_controller(&self) -> PlayerId {
         self.owner
@@ -569,7 +574,9 @@ impl TaggedConstraintSubject for LayeredSubject<'_> {
         self.object.split_other_half_name()
     }
 
-    fn subject_owner(&self) -> PlayerId { self.object.owner }
+    fn subject_owner(&self) -> PlayerId {
+        self.object.owner
+    }
 
     fn subject_controller(&self) -> PlayerId {
         self.chars.controller
@@ -687,7 +694,9 @@ impl TaggedConstraintSubject for ObjectSnapshot {
         self.split_other_half_name()
     }
 
-    fn subject_owner(&self) -> PlayerId { self.owner }
+    fn subject_owner(&self) -> PlayerId {
+        self.owner
+    }
 
     fn subject_controller(&self) -> PlayerId {
         self.controller
@@ -727,7 +736,9 @@ impl TaggedConstraintSubject for ObjectSnapshot {
 }
 
 impl TailMatchSubject for ObjectSnapshot {
-    fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> { Some(&self.attachment_snapshots) }
+    fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> {
+        Some(&self.attachment_snapshots)
+    }
     fn tail_object_id(&self) -> ObjectId {
         self.object_id
     }
@@ -854,7 +865,9 @@ fn filter_card_types<'a>(
     object: &'a Object,
     chars: Option<&'a CalculatedCharacteristics>,
 ) -> &'a [CardType] {
-    chars.map_or(object.zone_card_types(), |chars| chars.card_types.as_slice())
+    chars.map_or(object.zone_card_types(), |chars| {
+        chars.card_types.as_slice()
+    })
 }
 
 fn filter_subtypes<'a>(
@@ -868,7 +881,9 @@ fn filter_supertypes<'a>(
     object: &'a Object,
     chars: Option<&'a CalculatedCharacteristics>,
 ) -> &'a [Supertype] {
-    chars.map_or(object.zone_supertypes(), |chars| chars.supertypes.as_slice())
+    chars.map_or(object.zone_supertypes(), |chars| {
+        chars.supertypes.as_slice()
+    })
 }
 
 fn filter_colors(object: &Object, chars: Option<&CalculatedCharacteristics>) -> ColorSet {
@@ -1031,11 +1046,19 @@ pub(crate) fn object_current_mana_cost(
         })
 }
 
-pub(crate) fn calculated_mana_value_for_filter(object: &Object, chars: &CalculatedCharacteristics) -> i32 {
-    if let Some(value) = chars.linked_face_mana_value { return value as i32; }
+pub(crate) fn calculated_mana_value_for_filter(
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+) -> i32 {
+    if let Some(value) = chars.linked_face_mana_value {
+        return value as i32;
+    }
     chars.mana_cost.as_ref().map_or(0, |cost| {
-        if object.zone == Zone::Stack { cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32 }
-        else { cost.mana_value() as i32 }
+        if object.zone == Zone::Stack {
+            cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32
+        } else {
+            cost.mana_value() as i32
+        }
     })
 }
 
@@ -1082,8 +1105,11 @@ fn subject_shares_characteristic_with_object(
             subject.subject_mana_value() == object_current_mana_value_for_relation(object, game)
         }
         ObjectCharacteristic::Name => names_share(
-            subject.subject_name(), subject.subject_alternate_name(),
-            &game.current_name(object.id).unwrap_or_else(|| object.name.to_string()),
+            subject.subject_name(),
+            subject.subject_alternate_name(),
+            &game
+                .current_name(object.id)
+                .unwrap_or_else(|| object.name.to_string()),
             object.split_other_half_name(),
         ),
     }
@@ -1096,15 +1122,21 @@ fn characteristic_relation_matches_subject(
     game: &GameState,
 ) -> bool {
     let mut comparison_context = ctx.clone();
-    if relation.characteristics.contains(&ObjectCharacteristic::Name) {
-        comparison_context.filter_candidate_players = Some((subject.subject_controller(), subject.subject_owner()));
+    if relation
+        .characteristics
+        .contains(&ObjectCharacteristic::Name)
+    {
+        comparison_context.filter_candidate_players =
+            Some((subject.subject_controller(), subject.subject_owner()));
     }
     let shares = game
         .objects_in_deterministic_order()
         .into_iter()
         .any(|object| {
             (!relation.exclude_candidate || object.id != subject.subject_object_id())
-                && relation.comparison.matches(object, &comparison_context, game)
+                && relation
+                    .comparison
+                    .matches(object, &comparison_context, game)
                 && relation.characteristics.iter().any(|characteristic| {
                     subject_shares_characteristic_with_object(
                         subject,
@@ -1271,16 +1303,14 @@ fn tagged_constraint_matches_subject(
         // CR 201.2c: a nameless object never has a different name.
         TaggedOpbjectRelation::DifferentNameFromTagged => {
             !name_is_nameless(subject.subject_name())
-                && tagged_snapshots
-                    .iter()
-                    .all(|snapshot| {
-                        !names_share(
-                            &snapshot.name,
-                            snapshot.split_other_half_name(),
-                            subject.subject_name(),
-                            subject.subject_alternate_name(),
-                        )
-                    })
+                && tagged_snapshots.iter().all(|snapshot| {
+                    !names_share(
+                        &snapshot.name,
+                        snapshot.split_other_half_name(),
+                        subject.subject_name(),
+                        subject.subject_alternate_name(),
+                    )
+                })
         }
         TaggedOpbjectRelation::SameControllerAsTagged => tagged_snapshots
             .iter()
@@ -1766,10 +1796,13 @@ fn resolve_filter_comparison_rhs_value(
     ) -> Option<i64> {
         let object = game.object(object_id)?;
         if power {
-            game.calculated_power(object_id).or_else(|| object.power()).map(i64::from)
+            game.calculated_power(object_id)
+                .or_else(|| object.power())
+                .map(i64::from)
         } else {
             game.calculated_toughness(object_id)
-                .or_else(|| object.toughness()).map(i64::from)
+                .or_else(|| object.toughness())
+                .map(i64::from)
         }
     }
 
@@ -1792,8 +1825,10 @@ fn resolve_filter_comparison_rhs_value(
             // the pending-stack departure refresh. Prefer the exact departure
             // receipt (including a currently staged simultaneous move).
             let departure = crate::effects::helpers::latest_zone_change_snapshot_for_object(
-                game, snapshot.object_id,
-            ).filter(|departure| departure.zone == snapshot.zone);
+                game,
+                snapshot.object_id,
+            )
+            .filter(|departure| departure.zone == snapshot.zone);
             snapshot_pt(departure.as_ref().unwrap_or(snapshot), power)
         }
     }
@@ -1963,14 +1998,23 @@ fn resolve_filter_comparison_rhs_value(
             execution.x_value = ctx.x_value;
             crate::effects::helpers::resolve_value_wide(game, rhs, &execution).ok()
         }
-        Value::EffectValue(effect_id) => ctx
-            .effect_outcomes
-            .get(effect_id)
-            .and_then(|outcome| outcome.as_count()),
+        Value::EffectValue(effect_id) => ctx.effect_outcomes.get(effect_id).and_then(|outcome| {
+            outcome.as_count().or_else(|| {
+                outcome
+                    .explicit_objects()
+                    .map(|objects| objects.len() as i64)
+            })
+        }),
         Value::EffectValueOffset(effect_id, offset) => ctx
             .effect_outcomes
             .get(effect_id)
-            .and_then(|outcome| outcome.as_count())
+            .and_then(|outcome| {
+                outcome.as_count().or_else(|| {
+                    outcome
+                        .explicit_objects()
+                        .map(|objects| objects.len() as i64)
+                })
+            })
             .map(|value| value + i64::from(*offset)),
         Value::Add(left, right) => Some(
             resolve_filter_comparison_rhs_value(left, game, ctx, stack_entry)?
@@ -2104,7 +2148,11 @@ fn resolve_filter_comparison_rhs_value(
             game.objects_in_deterministic_order()
                 .into_iter()
                 .filter(|object| filter.matches(object, ctx, game))
-                .map(|object| i64::from(crate::effects::helpers::room_unlocked_door_count(game, object)))
+                .map(|object| {
+                    i64::from(crate::effects::helpers::room_unlocked_door_count(
+                        game, object,
+                    ))
+                })
                 .sum(),
         ),
         Value::DistinctManaValues(filter) => {
@@ -2221,13 +2269,15 @@ fn resolve_filter_comparison_rhs_value(
                 ChooseSpec::Source => ctx
                     .source
                     .and_then(live)
-                    .or_else(|| ctx.source_snapshot.as_ref().and_then(recorded)).map(i64::from),
+                    .or_else(|| ctx.source_snapshot.as_ref().and_then(recorded))
+                    .map(i64::from),
                 ChooseSpec::SpecificObject(id) => live(*id).map(i64::from),
                 ChooseSpec::Tagged(tag) => ctx
                     .tagged_objects
                     .get(tag)
                     .and_then(|objects| objects.first())
-                    .and_then(recorded).map(i64::from),
+                    .and_then(recorded)
+                    .map(i64::from),
                 ChooseSpec::Object(_) if spec.is_target() => {
                     ctx.target_objects.first().and_then(recorded).map(i64::from)
                 }
@@ -3375,9 +3425,7 @@ impl ObjectFilterExt for ObjectFilter {
         if self.has_tap_activated_ability && !subject.tail_has_tap_activated_ability() {
             return false;
         }
-        if self.has_non_mana_activated_ability
-            && !subject.tail_has_non_mana_activated_ability()
-        {
+        if self.has_non_mana_activated_ability && !subject.tail_has_non_mana_activated_ability() {
             return false;
         }
         if !self.could_produce_mana.is_empty()
@@ -3460,7 +3508,29 @@ impl ObjectFilterExt for ObjectFilter {
                 // targets for Kjeldoran Pride's "target creature other than
                 // enchanted creature") is the permanent the source is
                 // attached to, not any permanent with an Aura/Equipment.
-                if let Some(host) = source_attachment_host_for_tag(ctx.source, &constraint.tag, game)
+                if let Some(host) =
+                    source_attachment_host_for_tag(ctx.source, &constraint.tag, game).or_else(
+                        || {
+                            let source = ctx.source_snapshot.as_ref()?;
+                            let departed = ctx.source.is_some_and(|id| {
+                                game.object(id).is_none_or(|live| {
+                                    live.zone != source.zone || live.stable_id != source.stable_id
+                                })
+                            });
+                            let matching_attachment = match constraint.tag.as_str() {
+                                "equipped" => source.subtypes.contains(&Subtype::Equipment),
+                                "enchanted" => source.subtypes.contains(&Subtype::Aura),
+                                _ => false,
+                            };
+                            if !departed || !matching_attachment {
+                                return None;
+                            }
+                            match source.attached_to {
+                                Some(crate::object::AttachmentTarget::Object(host)) => Some(host),
+                                _ => None,
+                            }
+                        },
+                    )
                     && matches!(
                         constraint.relation,
                         TaggedOpbjectRelation::IsTaggedObject
@@ -3469,6 +3539,27 @@ impl ObjectFilterExt for ObjectFilter {
                 {
                     let is_host = subject.subject_object_id() == host;
                     if is_host != (constraint.relation == TaggedOpbjectRelation::IsTaggedObject) {
+                        return false;
+                    }
+                    continue;
+                }
+                // A source-relative attachment reference has no subject when
+                // that Aura or Equipment is unattached.
+                if matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                    && ctx
+                        .source
+                        .and_then(|source| game.object(source))
+                        .is_some_and(|source| {
+                            source.subtypes.contains(&crate::types::Subtype::Aura)
+                                || source.subtypes.contains(&crate::types::Subtype::Equipment)
+                        })
+                    && matches!(
+                        constraint.relation,
+                        TaggedOpbjectRelation::IsTaggedObject
+                            | TaggedOpbjectRelation::IsNotTaggedObject
+                    )
+                {
+                    if constraint.relation == TaggedOpbjectRelation::IsTaggedObject {
                         return false;
                     }
                     continue;
@@ -3568,13 +3659,18 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if let Some(with_attached_filter) = &self.with_attached_object {
-            let has_matching_attachment = if let Some(snapshots) = subject.tail_attachment_snapshots() {
-                snapshots.iter().any(|attachment| with_attached_filter.matches_snapshot(attachment, ctx, game))
-            } else {
-                subject.subject_attachments().iter().any(|&id| {
-                    game.object(id).is_some_and(|attachment| with_attached_filter.matches(attachment, ctx, game))
-                })
-            };
+            let has_matching_attachment =
+                if let Some(snapshots) = subject.tail_attachment_snapshots() {
+                    snapshots.iter().any(|attachment| {
+                        with_attached_filter.matches_snapshot(attachment, ctx, game)
+                    })
+                } else {
+                    subject.subject_attachments().iter().any(|&id| {
+                        game.object(id).is_some_and(|attachment| {
+                            with_attached_filter.matches(attachment, ctx, game)
+                        })
+                    })
+                };
             if !has_matching_attachment {
                 return false;
             }
@@ -3588,18 +3684,27 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if let Some(without_attached_filter) = &self.without_attached_object {
-            let has_forbidden_attachment = if let Some(snapshots) = subject.tail_attachment_snapshots() {
-                if subject.subject_attachments().iter().any(|id| !snapshots.iter().any(|snapshot| snapshot.object_id == *id)) {
-                    // A raw/legacy snapshot names an attachment but has no
-                    // historical characteristics for it. Unknown does not prove absence.
-                    return false;
-                }
-                snapshots.iter().any(|attachment| without_attached_filter.matches_snapshot(attachment, ctx, game))
-            } else {
-                subject.subject_attachments().iter().any(|&id| {
-                    game.object(id).is_some_and(|attachment| without_attached_filter.matches(attachment, ctx, game))
-                })
-            };
+            let has_forbidden_attachment =
+                if let Some(snapshots) = subject.tail_attachment_snapshots() {
+                    if subject
+                        .subject_attachments()
+                        .iter()
+                        .any(|id| !snapshots.iter().any(|snapshot| snapshot.object_id == *id))
+                    {
+                        // A raw/legacy snapshot names an attachment but has no
+                        // historical characteristics for it. Unknown does not prove absence.
+                        return false;
+                    }
+                    snapshots.iter().any(|attachment| {
+                        without_attached_filter.matches_snapshot(attachment, ctx, game)
+                    })
+                } else {
+                    subject.subject_attachments().iter().any(|&id| {
+                        game.object(id).is_some_and(|attachment| {
+                            without_attached_filter.matches(attachment, ctx, game)
+                        })
+                    })
+                };
             if has_forbidden_attachment {
                 return false;
             }
@@ -3953,7 +4058,13 @@ impl ObjectFilterExt for ObjectFilter {
         if self.goaded {
             parts.push("goaded".to_string());
         }
-        if self.ring_bearer && (!self.card_types.is_empty() || !self.all_card_types.is_empty() || !self.subtypes.is_empty() || !self.all_subtypes.is_empty() || self.token) {
+        if self.ring_bearer
+            && (!self.card_types.is_empty()
+                || !self.all_card_types.is_empty()
+                || !self.subtypes.is_empty()
+                || !self.all_subtypes.is_empty()
+                || self.token)
+        {
             post_noun_qualifiers.push("that is a Ring-bearer".to_string());
         }
 
@@ -4318,9 +4429,7 @@ impl ObjectFilterExt for ObjectFilter {
             ));
         }
         if let Some(card_name) = &self.name_noted_while_drafting_named {
-            post_noun_qualifiers.push(format!(
-                "with a name you noted for cards named {card_name}"
-            ));
+            post_noun_qualifiers.push(format!("with a name you noted for cards named {card_name}"));
         }
         if let Some(sticker) = self.sticker {
             let sticker = match sticker {
@@ -4379,9 +4488,12 @@ impl ObjectFilterExt for ObjectFilter {
             if relation.characteristics == [ObjectCharacteristic::Name] {
                 let phrase = match relation.kind {
                     ObjectCharacteristicRelationKind::SharesAny => "with the same name as",
-                    ObjectCharacteristicRelationKind::SharesNone => "that doesn't have the same name as",
+                    ObjectCharacteristicRelationKind::SharesNone => {
+                        "that doesn't have the same name as"
+                    }
                 };
-                post_noun_qualifiers.push(format!("{phrase} {}", relation.comparison_description()));
+                post_noun_qualifiers
+                    .push(format!("{phrase} {}", relation.comparison_description()));
                 continue;
             }
             let characteristics = relation
@@ -4728,7 +4840,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.blocked_this_turn {
             post_noun_qualifiers.push("that blocked this turn".to_string());
         }
-        if self.was_blocked_this_turn { post_noun_qualifiers.push("that was blocked this turn".to_string()); }
+        if self.was_blocked_this_turn {
+            post_noun_qualifiers.push("that was blocked this turn".to_string());
+        }
         if self.didnt_attack_this_turn {
             let clause = if self.could_have_attacked_this_turn {
                 "that didn't attack this turn, except for creatures that couldn't attack"
@@ -5297,10 +5411,14 @@ impl ObjectFilterExt for ObjectFilter {
             if let Some(operator) = self.power_comparison_to_base {
                 let relation = match operator {
                     crate::effect::ValueComparisonOperator::GreaterThan => "greater than",
-                    crate::effect::ValueComparisonOperator::GreaterThanOrEqual => "greater than or equal to",
+                    crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+                        "greater than or equal to"
+                    }
                     crate::effect::ValueComparisonOperator::Equal => "equal to",
                     crate::effect::ValueComparisonOperator::LessThan => "less than",
-                    crate::effect::ValueComparisonOperator::LessThanOrEqual => "less than or equal to",
+                    crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+                        "less than or equal to"
+                    }
                     crate::effect::ValueComparisonOperator::NotEqual => "different from",
                 };
                 parts.push(format!("with power {relation} its base power"));
@@ -5460,9 +5578,8 @@ impl ObjectFilterExt for ObjectFilter {
                 ParityRequirement::Chosen => {
                     parts.push("with a number of counters on it of the chosen quality".to_string())
                 }
-                ParityRequirement::NotChosen => parts.push(
-                    "without a number of counters on it of the chosen quality".to_string(),
-                ),
+                ParityRequirement::NotChosen => parts
+                    .push("without a number of counters on it of the chosen quality".to_string()),
             }
         }
         if let Some(kind) = self.alternative_cast {
@@ -5617,7 +5734,10 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push("drawn this turn".to_string());
         }
         if let Some(player) = &self.last_drawn_this_turn {
-            parts.push(format!("drawn last this turn by {}", describe_player_filter(player)));
+            parts.push(format!(
+                "drawn last this turn by {}",
+                describe_player_filter(player)
+            ));
         }
 
         parts.extend(chosen_trailing_qualifiers);
@@ -5871,11 +5991,20 @@ mod fewest_controller_set_tests {
             .unwrap(),
             vec![b]
         );
-        assert!(game.leave_game(b).expect("checked designation/departure fixture"));
+        assert!(
+            game.leave_game(b)
+                .expect("checked designation/departure fixture")
+        );
         assert_eq!(selected(&game), vec![a]);
-        assert!(game.leave_game(c).expect("checked designation/departure fixture"));
+        assert!(
+            game.leave_game(c)
+                .expect("checked designation/departure fixture")
+        );
         assert_eq!(selected(&game), vec![a]);
-        assert!(game.leave_game(a).expect("checked designation/departure fixture"));
+        assert!(
+            game.leave_game(a)
+                .expect("checked designation/departure fixture")
+        );
         assert!(selected(&game).is_empty());
     }
 }

@@ -1,8 +1,8 @@
-use crate::cards::builders::SourcePredicateAst;
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::TokenActionAst;
-use crate::cards::builders::DamageActionAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::TokenActionAst;
 
 /// Split an explicit no-combat-damage action from a preceding action whose
 /// object filter may itself contain an authored `and` list.
@@ -20,14 +20,18 @@ pub(super) fn parse_explicit_assign_no_combat_damage_followup(
             parse_explicit_assign_no_combat_damage_followup(prefix.trailing_tokens)?
     {
         return Ok(Some(vec![match prefix.kind {
-            LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: prefix.predicate,
-                effects,
-            }),
-            LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
-                predicate: prefix.predicate,
-                effects,
-            }),
+            LeadingResultPrefixKind::If => {
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                    predicate: prefix.predicate,
+                    effects,
+                })
+            }
+            LeadingResultPrefixKind::When => {
+                EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                    predicate: prefix.predicate,
+                    effects,
+                })
+            }
         }]));
     }
 
@@ -74,42 +78,6 @@ pub(super) fn parse_required_damage_fanout(
     })
 }
 
-pub(super) fn restore_authored_damage_source_surface(
-    effects: &mut [EffectAst],
-    surface: &crate::target::SourceReferenceSurface,
-) {
-    fn apply(target: &mut TargetAst, surface: &crate::target::SourceReferenceSurface) {
-        match target {
-            TargetAst::Source(span) => {
-                *target = TargetAst::Object(
-                    ObjectFilter::source_with_surface(surface.clone()),
-                    None,
-                    *span,
-                );
-            }
-            TargetAst::Object(filter, _, _) if filter.source => {
-                filter.source_surface = Some(surface.clone());
-            }
-            _ => {}
-        }
-    }
-
-    for effect in effects {
-        if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
-            match action {
-                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. })
-                | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { source, .. }) => {
-                    apply(source, surface);
-                }
-                _ => {}
-            }
-        }
-        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
-            restore_authored_damage_source_surface(nested, surface);
-        });
-    }
-}
-
 pub(in crate::effect_sentences) fn parse_attacking_doesnt_tap_if_source_untapped(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -133,10 +101,12 @@ pub(in crate::effect_sentences) fn parse_attacking_doesnt_tap_if_source_untapped
         ),
     ];
     if wrapped_if_result {
-        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: crate::cards::builders::IfResultPredicate::Did,
-            effects,
-        })]));
+        return Ok(Some(vec![EffectAst::Conditionals(
+            ConditionalEffectAst::IfResult {
+                predicate: crate::cards::builders::IfResultPredicate::Did,
+                effects,
+            },
+        )]));
     }
     Ok(Some(effects))
 }
@@ -154,7 +124,8 @@ pub(super) fn rebind_plural_create_followup_damage_source(effects: &mut [EffectA
             continue;
         }
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }),
+            action:
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }),
             ..
         }) = &mut effects[index]
         else {

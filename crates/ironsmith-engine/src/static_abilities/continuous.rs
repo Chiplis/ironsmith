@@ -1062,9 +1062,16 @@ impl AnthemValueRuntimeExt for AnthemValue {
             ),
             Self::PerCount { multiplier, count } => {
                 let resolved = resolve_anthem_count_expression(count, game, source, controller);
-                if matches!(count, AnthemCountExpression::UnspentMana { .. } | AnthemCountExpression::TotalUnspentMana(_)) {
-                    i32::try_from(i128::from(*multiplier) * i128::from(resolved)).expect("checked mana anthem modifier domain")
-                } else { multiplier * resolved }
+                if matches!(
+                    count,
+                    AnthemCountExpression::UnspentMana { .. }
+                        | AnthemCountExpression::TotalUnspentMana(_)
+                ) {
+                    i32::try_from(i128::from(*multiplier) * i128::from(resolved))
+                        .expect("checked mana anthem modifier domain")
+                } else {
+                    multiplier * resolved
+                }
             }
             Self::CappedPerCount {
                 multiplier,
@@ -1072,11 +1079,18 @@ impl AnthemValueRuntimeExt for AnthemValue {
                 maximum,
             } => {
                 let resolved = resolve_anthem_count_expression(count, game, source, controller);
-                if matches!(count, AnthemCountExpression::UnspentMana { .. } | AnthemCountExpression::TotalUnspentMana(_)) {
-                    let exact = (i128::from(*multiplier) * i128::from(resolved)).min(i128::from(*maximum));
+                if matches!(
+                    count,
+                    AnthemCountExpression::UnspentMana { .. }
+                        | AnthemCountExpression::TotalUnspentMana(_)
+                ) {
+                    let exact =
+                        (i128::from(*multiplier) * i128::from(resolved)).min(i128::from(*maximum));
                     i32::try_from(exact).expect("checked mana anthem modifier domain")
-                } else { (multiplier * resolved).min(*maximum) }
-            },
+                } else {
+                    (multiplier * resolved).min(*maximum)
+                }
+            }
         }
     }
 }
@@ -1086,7 +1100,10 @@ fn anthem_value_as_layer_value(value: &AnthemValue) -> Option<Value> {
         AnthemValue::Fixed(value) => Some(Value::Fixed(*value)),
         AnthemValue::Dynamic(value)
             if ironsmith_core::anthem_model::supports_controller_state_anthem_value(value)
-                || ironsmith_core::anthem_model::supports_scoped_reference_anthem_value(value) => Some(value.clone()),
+                || ironsmith_core::anthem_model::supports_scoped_reference_anthem_value(value) =>
+        {
+            Some(value.clone())
+        }
         // Legacy object-/resolution-relative Dynamic values retain their
         // original discovery path until their source/affected context is
         // explicitly supported by the layer adapter.
@@ -1341,7 +1358,9 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             crate::target::PlayerFilter::Any => "a player's speed".to_string(),
             _ => "that player's speed".to_string(),
         },
-        AnthemCountExpression::TotalUnspentMana(player) => format!("the unspent mana {} have", player.description()),
+        AnthemCountExpression::TotalUnspentMana(player) => {
+            format!("the unspent mana {} have", player.description())
+        }
         AnthemCountExpression::UnspentMana { player, symbol } => {
             format!(
                 "{} unspent {} mana",
@@ -1555,7 +1574,9 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
                 other.description()
             ),
         }),
-        AnthemCountExpression::TotalUnspentMana(player) => Some(format!("unspent mana {} have", player.description())),
+        AnthemCountExpression::TotalUnspentMana(player) => {
+            Some(format!("unspent mana {} have", player.description()))
+        }
         AnthemCountExpression::UnspentMana { player, symbol } => Some(format!(
             "unspent {} mana {} have",
             mana_symbol_word(*symbol),
@@ -1670,7 +1691,10 @@ fn describe_static_condition_value(value: &Value) -> String {
             describe_static_condition_value(right)
         ),
         Value::UnlockedDoorsAmong(filter) => {
-            format!("the number of unlocked doors among {}", filter.description())
+            format!(
+                "the number of unlocked doors among {}",
+                filter.description()
+            )
         }
         other => format!("{other:?}"),
     }
@@ -2708,19 +2732,41 @@ fn entered_battlefield_this_turn_count(
 }
 
 pub(crate) fn resolve_anthem_count_expression_checked(
-    count: &AnthemCountExpression, game: &GameState, source: ObjectId, controller: PlayerId,
+    count: &AnthemCountExpression,
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
 ) -> Result<i32, crate::effects::ExecutionError> {
     let (player_filter, symbol) = match count {
         AnthemCountExpression::TotalUnspentMana(player) => (player, None),
         AnthemCountExpression::UnspentMana { player, symbol } => (player, Some(*symbol)),
-        _ => return Ok(resolve_anthem_count_expression(count, game, source, controller)),
+        _ => {
+            return Ok(resolve_anthem_count_expression(
+                count, game, source, controller,
+            ));
+        }
     };
     let context = game.filter_context_for(controller, Some(source));
-    let exact = game.players.iter().filter(|player| player.is_in_game()
-        && crate::filter::player_filter_matches_game(player_filter, player.id, game, &context))
-        .map(|player| symbol.map_or_else(|| u128::from(player.mana_pool.total_wide()),
-            |symbol| u128::from(player.mana_pool.amount(symbol)))).sum();
-    crate::events::damage::checked_damage_count(exact, "unspent mana count")
+    let exact = game
+        .players
+        .iter()
+        .filter(|player| {
+            player.is_in_game()
+                && crate::filter::player_filter_matches_game(
+                    player_filter,
+                    player.id,
+                    game,
+                    &context,
+                )
+        })
+        .map(|player| {
+            symbol.map_or_else(
+                || u128::from(player.mana_pool.total_wide()),
+                |symbol| u128::from(player.mana_pool.amount(symbol)),
+            )
+        })
+        .sum();
+    crate::events::damage::checked_scalar_count(exact, "unspent mana count")
 }
 
 pub(crate) fn resolve_anthem_count_expression(
@@ -2901,16 +2947,41 @@ pub(crate) fn resolve_anthem_count_expression(
             })
             .map(|player| game.player_speed(player.id).unwrap_or(0) as i32)
             .sum(),
-        AnthemCountExpression::TotalUnspentMana(player_filter) => i32::try_from(game.players.iter()
-            .filter(|player| player.is_in_game() && crate::filter::player_filter_matches_game(
-                player_filter, player.id, game, &filter_ctx))
-            .map(|player| u128::from(player.mana_pool.total_wide())).sum::<u128>())
-            .expect("checked mana scalar domain"),
-        AnthemCountExpression::UnspentMana { player: player_filter, symbol } => i32::try_from(game.players.iter()
-            .filter(|player| player.is_in_game() && crate::filter::player_filter_matches_game(
-                player_filter, player.id, game, &filter_ctx))
-            .map(|player| u128::from(player.mana_pool.amount(*symbol))).sum::<u128>())
-            .expect("checked mana scalar domain"),
+        AnthemCountExpression::TotalUnspentMana(player_filter) => i32::try_from(
+            game.players
+                .iter()
+                .filter(|player| {
+                    player.is_in_game()
+                        && crate::filter::player_filter_matches_game(
+                            player_filter,
+                            player.id,
+                            game,
+                            &filter_ctx,
+                        )
+                })
+                .map(|player| u128::from(player.mana_pool.total_wide()))
+                .sum::<u128>(),
+        )
+        .expect("checked mana scalar domain"),
+        AnthemCountExpression::UnspentMana {
+            player: player_filter,
+            symbol,
+        } => i32::try_from(
+            game.players
+                .iter()
+                .filter(|player| {
+                    player.is_in_game()
+                        && crate::filter::player_filter_matches_game(
+                            player_filter,
+                            player.id,
+                            game,
+                            &filter_ctx,
+                        )
+                })
+                .map(|player| u128::from(player.mana_pool.amount(*symbol)))
+                .sum::<u128>(),
+        )
+        .expect("checked mana scalar domain"),
     }
 }
 
@@ -3254,23 +3325,35 @@ impl StaticAbilityKind for Anthem {
                 if power == toughness =>
             {
                 let (sign, basis) = signed_dynamic_anthem_basis(power);
-                format!("{subject} {verb} {sign}X/{sign}X, where X is {}", crate::runtime_display::describe_value(basis))
+                format!(
+                    "{subject} {verb} {sign}X/{sign}X, where X is {}",
+                    crate::runtime_display::describe_value(basis)
+                )
             }
             (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness)) => {
                 let (power_sign, power_basis) = signed_dynamic_anthem_basis(power);
                 let (toughness_sign, toughness_basis) = signed_dynamic_anthem_basis(toughness);
-                format!("{subject} {verb} {power_sign}X/{toughness_sign}Y, where X is {}, and Y is {}",
+                format!(
+                    "{subject} {verb} {power_sign}X/{toughness_sign}Y, where X is {}, and Y is {}",
                     crate::runtime_display::describe_value(power_basis),
-                    crate::runtime_display::describe_value(toughness_basis))
+                    crate::runtime_display::describe_value(toughness_basis)
+                )
             }
             (AnthemValue::Dynamic(power), AnthemValue::Fixed(toughness)) => {
                 let (sign, basis) = signed_dynamic_anthem_basis(power);
                 let toughness = signed_toughness(if sign == "-" { -1 } else { 1 }, *toughness);
-                format!("{subject} {verb} {sign}X/{toughness}, where X is {}", crate::runtime_display::describe_value(basis))
+                format!(
+                    "{subject} {verb} {sign}X/{toughness}, where X is {}",
+                    crate::runtime_display::describe_value(basis)
+                )
             }
             (AnthemValue::Fixed(power), AnthemValue::Dynamic(toughness)) => {
                 let (sign, basis) = signed_dynamic_anthem_basis(toughness);
-                format!("{subject} {verb} {}/{sign}X, where X is {}", signed(*power), crate::runtime_display::describe_value(basis))
+                format!(
+                    "{subject} {verb} {}/{sign}X, where X is {}",
+                    signed(*power),
+                    crate::runtime_display::describe_value(basis)
+                )
             }
             (
                 AnthemValue::CappedPerCount {
@@ -3577,23 +3660,43 @@ impl StaticAbilityKind for Anthem {
         Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
-    fn validate_mana_scalar_ranges(&self, game: &GameState, source: ObjectId, controller: PlayerId)
-        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError>
-    {
+    fn validate_mana_scalar_ranges(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
         let mut needs_pt = false;
         for value in [&self.power, &self.toughness] {
             let (multiplier, count, cap) = match value {
                 AnthemValue::PerCount { multiplier, count } => (*multiplier, count, None),
-                AnthemValue::CappedPerCount { multiplier, count, maximum } => (*multiplier, count, Some(*maximum)),
+                AnthemValue::CappedPerCount {
+                    multiplier,
+                    count,
+                    maximum,
+                } => (*multiplier, count, Some(*maximum)),
                 _ => continue,
             };
-            if !matches!(count, AnthemCountExpression::UnspentMana { .. } | AnthemCountExpression::TotalUnspentMana(_)) { continue; }
+            if !matches!(
+                count,
+                AnthemCountExpression::UnspentMana { .. }
+                    | AnthemCountExpression::TotalUnspentMana(_)
+            ) {
+                continue;
+            }
             needs_pt = true;
-            let count = i128::from(resolve_anthem_count_expression(count, game, source, controller));
+            let count = i128::from(resolve_anthem_count_expression(
+                count, game, source, controller,
+            ));
             let exact = count * i128::from(multiplier);
             let exact = cap.map_or(exact, |cap| exact.min(i128::from(cap)));
             if i32::try_from(exact).is_err() {
-                return Err(crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange { resource: "mana anthem modifier", value: exact });
+                return Err(
+                    crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
+                        resource: "mana anthem modifier",
+                        value: exact,
+                    },
+                );
             }
         }
         Ok(needs_pt)
@@ -4096,7 +4199,9 @@ impl RemoveAllAbilitiesForFilter {
 impl StaticAbilityKind for RemoveAllAbilitiesForFilter {
     fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
         let Self { filter } = self;
-        Some(super::CompiledStaticAbility::remove_all_abilities(filter.clone()))
+        Some(super::CompiledStaticAbility::remove_all_abilities(
+            filter.clone(),
+        ))
     }
 
     fn id(&self) -> StaticAbilityId {
@@ -6172,8 +6277,7 @@ fn materialize_granting_source_unattach_costs(
                 .tagged_constraints
                 .retain(|constraint| constraint.tag.as_str() != crate::tag::GRANTING_SOURCE_TAG);
             choose.filter.specific = Some(source);
-            rebuilt[idx] =
-                crate::costs::Cost::validated_effect(crate::effect::Effect::new(choose));
+            rebuilt[idx] = crate::costs::Cost::validated_effect(crate::effect::Effect::new(choose));
             changed = true;
             continue;
         }

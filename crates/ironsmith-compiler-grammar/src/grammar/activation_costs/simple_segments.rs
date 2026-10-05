@@ -26,10 +26,24 @@ pub fn parse_bare_symbol_segment_tokens(
 pub fn parse_pay_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    if crate::lexer::parser_token_word_refs(tokens) == ["pay", "x"] {
+        return Err(crate::cards::builders::CardTextError::ParseError(
+            "pay X requires a resource or a mana symbol".into(),
+        ));
+    }
+
     let words = crate::lexer::parser_token_word_refs(tokens);
     let reference = match words.as_slice() {
-        ["pay", "its", "mana", "cost"] => Some(crate::target::ChooseSpec::tagged(crate::tag::CompilerReferenceTag::It.key())),
-        ["pay", "enchanted", "creatures" | "creature's", "mana", "cost"] => {
+        ["pay", "its", "mana", "cost"] => Some(crate::target::ChooseSpec::tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+        )),
+        [
+            "pay",
+            "enchanted",
+            "creatures" | "creature's",
+            "mana",
+            "cost",
+        ] => {
             let mut filter = crate::target::ObjectFilter::creature();
             filter.with_attached_object = Some(Box::new(crate::target::ObjectFilter::source()));
             Some(crate::target::ChooseSpec::Object(filter))
@@ -38,7 +52,9 @@ pub fn parse_pay_segment_tokens(
     };
     if let Some(reference) = reference {
         let mut cost = ironsmith_core::DynamicManaCost::from_object_mana_cost(reference);
-        if words.get(1) == Some(&"enchanted") { cost.display_hint = ironsmith_core::DynamicManaDisplayHint::EnchantedCreatureManaCost; }
+        if words.get(1) == Some(&"enchanted") {
+            cost.display_hint = ironsmith_core::DynamicManaDisplayHint::EnchantedCreatureManaCost;
+        }
         return Ok(ActivationCostSegmentCst::DynamicMana(cost));
     }
     parse_simple_segment(tokens, parse_pay_segment_lexed, "pay-cost")
@@ -65,26 +81,34 @@ pub fn parse_blight_segment_tokens(
 pub fn parse_forage_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
-    parse_simple_segment(tokens, |input: &mut LexStream<'_>| {
-        primitives::kw("forage").parse_next(input)?;
-        eof.parse_next(input)?;
-        Ok(ActivationCostSegmentCst::Forage)
-    }, "forage")
+    parse_simple_segment(
+        tokens,
+        |input: &mut LexStream<'_>| {
+            primitives::kw("forage").parse_next(input)?;
+            eof.parse_next(input)?;
+            Ok(ActivationCostSegmentCst::Forage)
+        },
+        "forage",
+    )
 }
 
 pub fn parse_collect_evidence_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
-    parse_simple_segment(tokens, |input: &mut LexStream<'_>| {
-        primitives::phrase(&["collect", "evidence"]).parse_next(input)?;
-        let amount = if opt(primitives::kw("x")).parse_next(input)?.is_some() {
-            Value::X
-        } else {
-            Value::Fixed(leaf::parse_leaf_number_prefix_lexed.parse_next(input)? as i32)
-        };
-        eof.parse_next(input)?;
-        Ok(ActivationCostSegmentCst::CollectEvidence { amount })
-    }, "collect-evidence")
+    parse_simple_segment(
+        tokens,
+        |input: &mut LexStream<'_>| {
+            primitives::phrase(&["collect", "evidence"]).parse_next(input)?;
+            let amount = if opt(primitives::kw("x")).parse_next(input)?.is_some() {
+                Value::X
+            } else {
+                Value::Fixed(leaf::parse_leaf_number_prefix_lexed.parse_next(input)? as i32)
+            };
+            eof.parse_next(input)?;
+            Ok(ActivationCostSegmentCst::CollectEvidence { amount })
+        },
+        "collect-evidence",
+    )
 }
 
 pub fn parse_exert_segment_tokens(
@@ -217,6 +241,17 @@ fn parse_life_payment<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSe
 
 fn complete_payment_multiplier(tokens: &[OwnedLexToken]) -> WResult<Value> {
     let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.iter().any(|word| {
+        matches!(
+            *word,
+            "draw" | "discard" | "then" | "pay" | "gain" | "lose" | "create"
+        )
+    }) {
+        return Err(primitives::backtrack_err(
+            "payment multiplier",
+            "complete quantity without an instruction tail",
+        ));
+    }
     let (value, used) = crate::util::parse_for_each_count_value_words(&words)
         .ok_or_else(|| primitives::backtrack_err("payment multiplier", "typed for-each amount"))?;
     if used != words.len() {
@@ -532,13 +567,24 @@ mod referenced_mana_cost_tests {
     fn referenced_mana_costs_are_typed_and_do_not_accept_partial_suffixes() {
         for text in ["Pay its mana cost", "Pay enchanted creature's mana cost"] {
             let tokens = crate::lexer::lex_line(text, 0).unwrap();
-            let ActivationCostSegmentCst::DynamicMana(cost) = parse_pay_segment_tokens(&tokens).unwrap() else { panic!("typed object mana cost expected"); };
+            let ActivationCostSegmentCst::DynamicMana(cost) =
+                parse_pay_segment_tokens(&tokens).unwrap()
+            else {
+                panic!("typed object mana cost expected");
+            };
             assert!(cost.mana_cost_of.is_some());
             assert!(!cost.source_mana_cost);
             assert!(cost.resolved_static_base().is_none());
         }
-        for text in ["Pay its mana", "Pay its mana cost banana", "Pay enchanted creature's mana cost banana"] {
-            assert!(parse_pay_segment_tokens(&crate::lexer::lex_line(text, 0).unwrap()).is_err(), "{text}");
+        for text in [
+            "Pay its mana",
+            "Pay its mana cost banana",
+            "Pay enchanted creature's mana cost banana",
+        ] {
+            assert!(
+                parse_pay_segment_tokens(&crate::lexer::lex_line(text, 0).unwrap()).is_err(),
+                "{text}"
+            );
         }
     }
 }

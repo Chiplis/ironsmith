@@ -1354,9 +1354,18 @@ impl ObjectCharacteristicRelation {
     pub fn comparison_description(&self) -> String {
         if self.comparison.zone == Some(Zone::Hand)
             && self.comparison.owner == Some(PlayerFilter::OwnerOf(ObjectRef::FilterCandidate))
-            && (ObjectFilter { zone: None, owner: None, ..self.comparison.clone() }) == ObjectFilter::default()
+            && (ObjectFilter {
+                zone: None,
+                owner: None,
+                ..self.comparison.clone()
+            }) == ObjectFilter::default()
         {
-            return if self.exclude_candidate { "another card in their hand" } else { "a card in their hand" }.into();
+            return if self.exclude_candidate {
+                "another card in their hand"
+            } else {
+                "a card in their hand"
+            }
+            .into();
         }
         if self.comparison.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -1367,7 +1376,10 @@ impl ObjectCharacteristicRelation {
 
         let description = self.comparison.description();
         if self.exclude_candidate {
-            let bare = description.strip_prefix("a ").or_else(|| description.strip_prefix("an ")).unwrap_or(&description);
+            let bare = description
+                .strip_prefix("a ")
+                .or_else(|| description.strip_prefix("an "))
+                .unwrap_or(&description);
             return format!("another {bare}");
         }
         let keep_bare_reference = self.comparison.tagged_constraints.iter().any(|constraint| {
@@ -1838,7 +1850,11 @@ impl PlayerFilter {
                     None => format!(
                         "an opponent of {} who has fewer {noun}{} than they do",
                         player.description(),
-                        if zone == Some(Zone::Exile) { " in exile" } else { "" },
+                        if zone == Some(Zone::Exile) {
+                            " in exile"
+                        } else {
+                            ""
+                        },
                     ),
                 }
             }
@@ -1878,7 +1894,9 @@ impl PlayerFilter {
             }
             Self::Target(inner) => format!("target {}", inner.description()),
             Self::AliasedTarget(_) => "that player".to_string(),
-            Self::Excluding { .. } if self.is_opponents_attacking_event_defender() => "an opponent attacking that player".into(),
+            Self::Excluding { .. } if self.is_opponents_attacking_event_defender() => {
+                "an opponent attacking that player".into()
+            }
             Self::Excluding { base, excluded } => {
                 format!(
                     "{} other than {}",
@@ -3672,7 +3690,12 @@ impl ObjectFilter {
     /// The unique current designation for the ability's controller. This
     /// noun remains meaningful if the designated permanent stops being a creature.
     pub fn your_ring_bearer() -> Self {
-        Self { ring_bearer: true, controller: Some(PlayerFilter::You), zone: Some(Zone::Battlefield), ..Self::default() }
+        Self {
+            ring_bearer: true,
+            controller: Some(PlayerFilter::You),
+            zone: Some(Zone::Battlefield),
+            ..Self::default()
+        }
     }
 
     pub fn ring_bearer(mut self) -> Self {
@@ -3915,7 +3938,8 @@ impl ObjectFilter {
             let not_you = ObjectFilter::default().controlled_by(PlayerFilter::NotYou);
             let mut nontoken = ObjectFilter::default();
             nontoken.nontoken = true;
-            if ((*left == not_you && *right == nontoken) || (*left == nontoken && *right == not_you))
+            if ((*left == not_you && *right == nontoken)
+                || (*left == nontoken && *right == not_you))
                 && self.controller.is_none()
                 && !self.token
                 && !self.nontoken
@@ -4114,7 +4138,13 @@ impl ObjectFilter {
         if self.goaded {
             parts.push("goaded".to_string());
         }
-        if self.ring_bearer && (!self.card_types.is_empty() || !self.all_card_types.is_empty() || !self.subtypes.is_empty() || !self.all_subtypes.is_empty() || self.token) {
+        if self.ring_bearer
+            && (!self.card_types.is_empty()
+                || !self.all_card_types.is_empty()
+                || !self.subtypes.is_empty()
+                || !self.all_subtypes.is_empty()
+                || self.token)
+        {
             post_noun_qualifiers.push("that is a Ring-bearer".to_string());
         }
 
@@ -4533,9 +4563,7 @@ impl ObjectFilter {
             ));
         }
         if let Some(card_name) = &self.name_noted_while_drafting_named {
-            post_noun_qualifiers.push(format!(
-                "with a name you noted for cards named {card_name}"
-            ));
+            post_noun_qualifiers.push(format!("with a name you noted for cards named {card_name}"));
         }
         if self.excluded_chosen_creature_type || self.excluded_any_chosen_creature_type {
             let qualifier = if self.has_chosen_type_this_way_surface() {
@@ -4564,9 +4592,12 @@ impl ObjectFilter {
             if relation.characteristics == [ObjectCharacteristic::Name] {
                 let phrase = match relation.kind {
                     ObjectCharacteristicRelationKind::SharesAny => "with the same name as",
-                    ObjectCharacteristicRelationKind::SharesNone => "that doesn't have the same name as",
+                    ObjectCharacteristicRelationKind::SharesNone => {
+                        "that doesn't have the same name as"
+                    }
                 };
-                post_noun_qualifiers.push(format!("{phrase} {}", relation.comparison_description()));
+                post_noun_qualifiers
+                    .push(format!("{phrase} {}", relation.comparison_description()));
                 continue;
             }
             let characteristics = relation
@@ -4621,7 +4652,7 @@ impl ObjectFilter {
                     // `other` already spells this exclusion adjectivally. The
                     // tagged form carries the executable identity, so naming
                     // both would read "another other creature".
-                    if !self.other {
+                    if !self.other && !parts.iter().any(|part| part == "other") {
                         parts.push("other".to_string());
                     }
                 }
@@ -4997,7 +5028,9 @@ impl ObjectFilter {
         if self.blocked_this_turn {
             post_noun_qualifiers.push("that blocked this turn".to_string());
         }
-        if self.was_blocked_this_turn { post_noun_qualifiers.push("that was blocked this turn".to_string()); }
+        if self.was_blocked_this_turn {
+            post_noun_qualifiers.push("that was blocked this turn".to_string());
+        }
         if self.didnt_attack_this_turn {
             let clause = if self.could_have_attacked_this_turn {
                 "that didn't attack this turn, except for creatures that couldn't attack"
@@ -5599,7 +5632,9 @@ impl ObjectFilter {
             if let Some(operator) = self.power_comparison_to_base {
                 let relation = match operator {
                     crate::ValueComparisonOperator::GreaterThan => "greater than",
-                    crate::ValueComparisonOperator::GreaterThanOrEqual => "greater than or equal to",
+                    crate::ValueComparisonOperator::GreaterThanOrEqual => {
+                        "greater than or equal to"
+                    }
                     crate::ValueComparisonOperator::Equal => "equal to",
                     crate::ValueComparisonOperator::LessThan => "less than",
                     crate::ValueComparisonOperator::LessThanOrEqual => "less than or equal to",
@@ -5797,9 +5832,8 @@ impl ObjectFilter {
                 ParityRequirement::Chosen => {
                     parts.push("with a number of counters on it of the chosen quality".to_string())
                 }
-                ParityRequirement::NotChosen => parts.push(
-                    "without a number of counters on it of the chosen quality".to_string(),
-                ),
+                ParityRequirement::NotChosen => parts
+                    .push("without a number of counters on it of the chosen quality".to_string()),
             }
         }
         if let Some(kind) = self.alternative_cast {
@@ -5984,7 +6018,10 @@ impl ObjectFilter {
             parts.push("drawn this turn".to_string());
         }
         if let Some(player) = &self.last_drawn_this_turn {
-            parts.push(format!("drawn last this turn by {}", describe_player_filter(player)));
+            parts.push(format!(
+                "drawn last this turn by {}",
+                describe_player_filter(player)
+            ));
         }
 
         parts.extend(chosen_trailing_qualifiers);
@@ -6414,7 +6451,10 @@ fn nonbattlefield_card_union_basis(filter: &ObjectFilter) -> Option<ObjectFilter
 }
 
 fn describe_nonbattlefield_card_union(filter: &ObjectFilter) -> Option<String> {
-    Some(format!("{} not on the battlefield", nonbattlefield_card_union_basis(filter)?.description()))
+    Some(format!(
+        "{} not on the battlefield",
+        nonbattlefield_card_union_basis(filter)?.description()
+    ))
 }
 
 /// Render an owner-scoped complete card domain without certifying a partial
@@ -6437,7 +6477,9 @@ pub fn describe_owned_nonbattlefield_card_union(filter: &ObjectFilter) -> Option
     if noun.is_empty() {
         Some("cards you own that aren't on the battlefield".to_string())
     } else {
-        Some(format!("{noun} cards you own that aren't on the battlefield"))
+        Some(format!(
+            "{noun} cards you own that aren't on the battlefield"
+        ))
     }
 }
 
@@ -7086,7 +7128,9 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller's".to_string()
         }
-        PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => "an opponent attacking that player's".into(),
+        PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => {
+            "an opponent attacking that player's".into()
+        }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             describe_possessive_player_filter(base),
@@ -7175,10 +7219,9 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 describe_player_filter(base)
             )
         }
-        PlayerFilter::OpponentWithMoreControlledObjectsThan { fewer: true, .. } => filter
-            .description()
-            .trim_start_matches("an ")
-            .to_string(),
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { fewer: true, .. } => {
+            filter.description().trim_start_matches("an ").to_string()
+        }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter, .. } => format!(
             "opponent of {} who controls more {} than they do",
             describe_player_filter(player),
@@ -7215,7 +7258,9 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller".to_string()
         }
-        PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => "opponent attacking that player".into(),
+        PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => {
+            "opponent attacking that player".into()
+        }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             describe_player_filter(base),
@@ -7588,10 +7633,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     return "the revealed card's mana value".to_string();
                 }
                 if hints.contains(&crate::ValueSurfaceHint::PriorEffectResult)
-                    && matches!(
-                        value.unhinted(),
-                        Value::EventValue(EventValueSpec::Amount)
-                    )
+                    && matches!(value.unhinted(), Value::EventValue(EventValueSpec::Amount))
                 {
                     return "the result".to_string();
                 }
@@ -7740,7 +7782,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     "the number of {scope} whose life total is less than half their starting life total"
                 )
             }
-            Value::LifeTotal(PlayerFilter::MostLifeTied) => "the highest life total among all players".to_string(),
+            Value::LifeTotal(PlayerFilter::MostLifeTied) => {
+                "the highest life total among all players".to_string()
+            }
             Value::LifeTotal(player) => {
                 format!("{} life total", describe_possessive_player_filter(player))
             }
@@ -7850,12 +7894,24 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 )
             }
             Value::EventValue(EventValueSpec::Amount) => "that damage".to_string(),
-            Value::EventValue(EventValueSpec::LifeChange { gained, for_controller }) => format!(
-                "the amount of life {} {}", if *for_controller { "you" } else { "that player" },
+            Value::EventValue(EventValueSpec::LifeChange {
+                gained,
+                for_controller,
+            }) => format!(
+                "the amount of life {} {}",
+                if *for_controller {
+                    "you"
+                } else {
+                    "that player"
+                },
                 if *gained { "gained" } else { "lost" },
             ),
-            Value::EventValue(EventValueSpec::DieBatchTotal) => "the total result of those dice".to_string(),
-            Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)) => format!("the number of those die results of {minimum} or higher"),
+            Value::EventValue(EventValueSpec::DieBatchTotal) => {
+                "the total result of those dice".to_string()
+            }
+            Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)) => {
+                format!("the number of those die results of {minimum} or higher")
+            }
             Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
             Value::EventValue(EventValueSpec::LifeAmount) => "that much life".to_string(),
             Value::EventValue(EventValueSpec::BlockersBeyondFirst { .. }) => {
@@ -8838,15 +8894,26 @@ mod nonbattlefield_union_rendering_tests {
     use super::*;
     fn owned_creature_cards() -> ObjectFilter {
         ObjectFilter {
-            any_of: [Zone::Hand, Zone::Library, Zone::Graveyard, Zone::Exile,
-                Zone::Command, Zone::Stack, Zone::Ante]
-                .into_iter().map(|zone| {
-                    let mut arm = ObjectFilter::creature().in_zone(zone);
-                    arm.owner = Some(PlayerFilter::You);
-                    arm.set_explicit_card_noun(true);
-                    if zone == Zone::Stack {arm.stack_kind = Some(StackObjectKind::Spell);}
-                    arm
-                }).collect(),
+            any_of: [
+                Zone::Hand,
+                Zone::Library,
+                Zone::Graveyard,
+                Zone::Exile,
+                Zone::Command,
+                Zone::Stack,
+                Zone::Ante,
+            ]
+            .into_iter()
+            .map(|zone| {
+                let mut arm = ObjectFilter::creature().in_zone(zone);
+                arm.owner = Some(PlayerFilter::You);
+                arm.set_explicit_card_noun(true);
+                if zone == Zone::Stack {
+                    arm.stack_kind = Some(StackObjectKind::Spell);
+                }
+                arm
+            })
+            .collect(),
             ..ObjectFilter::default()
         }
     }
@@ -8854,10 +8921,22 @@ mod nonbattlefield_union_rendering_tests {
     #[test]
     fn complete_owned_card_domain_preserves_owner_and_stack_spell_constraint() {
         let filter = owned_creature_cards();
-        assert_eq!(describe_owned_nonbattlefield_card_union(&filter),
-            Some("creature cards you own that aren't on the battlefield".to_string()));
-        assert_eq!(filter.description(), "creature cards you own that aren't on the battlefield");
-        for changed in ["stack ability", "duplicate zone", "different owner", "different predicate", "outer predicate", "outside-game arm"] {
+        assert_eq!(
+            describe_owned_nonbattlefield_card_union(&filter),
+            Some("creature cards you own that aren't on the battlefield".to_string())
+        );
+        assert_eq!(
+            filter.description(),
+            "creature cards you own that aren't on the battlefield"
+        );
+        for changed in [
+            "stack ability",
+            "duplicate zone",
+            "different owner",
+            "different predicate",
+            "outer predicate",
+            "outside-game arm",
+        ] {
             let mut altered = filter.clone();
             match changed {
                 "stack ability" => altered.any_of[5].stack_kind = Some(StackObjectKind::Ability),
@@ -8871,7 +8950,11 @@ mod nonbattlefield_union_rendering_tests {
                 }
                 _ => altered.tapped = true,
             }
-            assert_eq!(describe_owned_nonbattlefield_card_union(&altered), None, "{changed}");
+            assert_eq!(
+                describe_owned_nonbattlefield_card_union(&altered),
+                None,
+                "{changed}"
+            );
         }
     }
 
@@ -8879,8 +8962,11 @@ mod nonbattlefield_union_rendering_tests {
     fn partial_owned_card_union_cannot_claim_complete_nonbattlefield_scope() {
         let mut filter = owned_creature_cards();
         filter.any_of.truncate(5);
-        assert_eq!(describe_owned_nonbattlefield_card_union(&filter), None,
-            "missing stack and ante cards is a partial scope");
+        assert_eq!(
+            describe_owned_nonbattlefield_card_union(&filter),
+            None,
+            "missing stack and ante cards is a partial scope"
+        );
         let mut missing = owned_creature_cards();
         missing.any_of.remove(5);
         assert_eq!(describe_owned_nonbattlefield_card_union(&missing), None);
@@ -8889,13 +8975,28 @@ mod nonbattlefield_union_rendering_tests {
     #[test]
     fn controlled_battlefield_and_owned_cards_preserve_complete_distinct_domains() {
         let mut filter = owned_creature_cards();
-        let battlefield = ObjectFilter::creature().in_zone(Zone::Battlefield).you_control();
+        let battlefield = ObjectFilter::creature()
+            .in_zone(Zone::Battlefield)
+            .you_control();
         filter.any_of.insert(0, battlefield);
         filter.set_conjunctive_set_surface(true);
-        assert_eq!(describe_controlled_battlefield_and_owned_nonbattlefield_card_union(&filter),
-            Some("creatures you control and creature cards you own that aren't on the battlefield".to_string()));
-        assert_eq!(filter.description(), "creatures you control and creature cards you own that aren't on the battlefield");
-        for changed in ["partial", "stack ability", "different battlefield predicate", "different card owner"] {
+        assert_eq!(
+            describe_controlled_battlefield_and_owned_nonbattlefield_card_union(&filter),
+            Some(
+                "creatures you control and creature cards you own that aren't on the battlefield"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            filter.description(),
+            "creatures you control and creature cards you own that aren't on the battlefield"
+        );
+        for changed in [
+            "partial",
+            "stack ability",
+            "different battlefield predicate",
+            "different card owner",
+        ] {
             let mut altered = filter.clone();
             match changed {
                 "partial" => altered.any_of.truncate(6),
@@ -8903,7 +9004,11 @@ mod nonbattlefield_union_rendering_tests {
                 "different battlefield predicate" => altered.any_of[0].subtypes.push(Subtype::Elf),
                 _ => altered.any_of[2].owner = Some(PlayerFilter::Opponent),
             }
-            assert_eq!(describe_controlled_battlefield_and_owned_nonbattlefield_card_union(&altered), None, "{changed}");
+            assert_eq!(
+                describe_controlled_battlefield_and_owned_nonbattlefield_card_union(&altered),
+                None,
+                "{changed}"
+            );
         }
     }
 

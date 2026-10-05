@@ -231,17 +231,16 @@ fn committed_allocation_is_retained_separately_from_total_spent_and_announced_x(
     game.object_mut(spell).unwrap().mana_spent_on_x =
         Some(XManaAllocation([0, 0, i32::MAX as u32 + 1, 0, 0]));
     let context = ironsmith::effects::EffectContext::new(spell, A, &mut dm);
-    assert!(matches!(
-        ironsmith::effects::helpers::resolve_value(
+    assert_eq!(
+        ironsmith::effects::helpers::resolve_value_wide(
             &game,
             &ironsmith::effect::Value::ManaSpentOnX(Color::Black),
             &context
-        ),
-        Err(ironsmith::effects::ExecutionError::ResourceLimitExceeded {
-            resource: "actual mana spent on X",
-            ..
-        })
-    ));
+        )
+        .unwrap(),
+        i64::from(i32::MAX) + 1,
+        "wide amount evaluation retains the exact paid quantity",
+    );
     drop(context);
     game.object_mut(spell).unwrap().mana_spent_on_x = snapshot.mana_spent_on_x;
     game.move_object_by_effect(spell, ironsmith::Zone::Graveyard);
@@ -649,7 +648,7 @@ mod exact_cards {
                 cancel: true,
                 ..Default::default()
             };
-            assert!(announce(&mut game, activation, &mut choices).is_err());
+            announce(&mut game, activation, &mut choices).unwrap();
             assert!(!game.is_tapped(source));
             assert_eq!(game.player(A).unwrap().mana_pool.white, 3);
             assert_eq!(game.player(A).unwrap().life, 20);
@@ -1128,7 +1127,9 @@ fn capped_damage_metric_ignores_auxiliary_replacement_added_damage() {
 #[test]
 fn damage_added_type_removal_makes_live_and_departed_noncreature_toughness_zero() {
     use ironsmith::effect::{Effect, EffectId, EffectMetric, EffectMetricSource, Until, Value};
-    use ironsmith::effects::{ApplyContinuousEffect, EffectContext as ExecutionContext, execute_effect};
+    use ironsmith::effects::{
+        ApplyContinuousEffect, EffectContext as ExecutionContext, execute_effect,
+    };
     use ironsmith::replacement::{ReplacementAction, ReplacementEffect};
     use ironsmith::target::{ChooseSpec, ObjectFilter};
     for departed in [false, true] {

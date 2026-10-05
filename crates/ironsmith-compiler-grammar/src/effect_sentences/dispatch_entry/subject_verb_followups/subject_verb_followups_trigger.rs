@@ -64,8 +64,7 @@ pub(super) fn post_rule_reflexive_object_followup(
     _sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let references_reflexive_object =
-        crate::tag_support::effects_reference_it_tag(sentence_effects)
+    let references_reflexive_object = crate::tag_support::effects_reference_it_tag(sentence_effects)
             || crate::tag_support::effects_reference_its_controller(sentence_effects)
             // "..., where X is that creature's power. If ..., draw X cards":
             // the carried X names the reflexive trigger's object.
@@ -143,7 +142,7 @@ pub(super) fn post_rule_targeted_object_delayed_leave(
         }
         // A delayed watcher's explicit target declaration ("Whenever target
         // creature deals combat damage ... this turn").
-        EffectAst::TagAffected { effect, tag }
+        EffectAst::TagAffected { effect, tag } | EffectAst::TagReferenced { effect, tag, .. }
             if matches!(
                 effect.as_ref(),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -167,6 +166,46 @@ pub(super) fn post_rule_targeted_object_delayed_leave(
         }
     }
     Ok(Some(PostParseFollowupResult::Annotated))
+}
+
+/// A result-dependent continuation of a player loop is evaluated once per
+/// player, in the same frame as the action whose result it references.
+pub(super) fn post_rule_iterated_result_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    _sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    fn is_result(effects: &[EffectAst]) -> bool {
+        matches!(
+            effects,
+            [EffectAst::Conditionals(
+                ConditionalEffectAst::IfResult { .. } | ConditionalEffectAst::WhenResult { .. }
+            )]
+        ) || matches!(effects, [EffectAst::ControlFlow(control)]
+        if matches!(&control.node, crate::model::ControlFlowNodeAst::Condition {
+            condition: crate::model::ControlConditionAst {
+                predicate: crate::model::ControlPredicateAst::Result(_), ..
+            }, ..
+        }))
+    }
+    let Some(EffectAst::ForEach(loop_ast)) = state.effects.last_mut() else {
+        return Ok(None);
+    };
+    let body = match loop_ast {
+        ForEachEffectAst::ForEachOpponent { effects }
+        | ForEachEffectAst::ForEachPlayer { effects }
+        | ForEachEffectAst::ForEachPlayersFiltered { effects, .. } => effects,
+        _ => return Ok(None),
+    };
+    if !is_result(sentence_effects) {
+        return Ok(None);
+    }
+    body.append(sentence_effects);
+    Ok(Some(PostParseFollowupResult::Handled {
+        consumed_sentences: 1,
+    }))
 }
 
 pub(super) fn post_rule_delayed_trigger_result_followup(

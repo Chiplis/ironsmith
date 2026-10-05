@@ -513,7 +513,9 @@ impl SubjectStatusConditionAst {
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Modified) => {
                 let mut filter = ObjectFilter::default();
                 filter.modified = true;
-                Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)))
+                Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(
+                    filter,
+                )))
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Monstrous) => {
                 Some(PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous))
@@ -606,7 +608,10 @@ impl PlayerStatusConditionAst {
                 })
             }
             PlayerStatusAst::Poisoned => PredicateAst::ValueComparison {
-                left: Value::CountPlayersWithPoisonCountersAtLeast(unconditional_player_filter(self.player)?, 1),
+                left: Value::CountPlayersWithPoisonCountersAtLeast(
+                    unconditional_player_filter(self.player)?,
+                    1,
+                ),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
                 right: Value::Fixed(1),
             },
@@ -1243,9 +1248,10 @@ fn parse_object_descriptor_clause(clause: LexedClause<'_>) -> Option<ObjectDescr
             return Some(descriptor);
         }
     }
-    crate::grammar::primitives::probe_shape(
-        parse_object_filter_with_grammar_entrypoint(tokens, false),
-    ).map(ObjectDescriptorAst::Filter)
+    crate::grammar::primitives::probe_shape(parse_object_filter_with_grammar_entrypoint(
+        tokens, false,
+    ))
+    .map(ObjectDescriptorAst::Filter)
 }
 
 pub fn parse_player_status_condition(tokens: &[OwnedLexToken]) -> Option<PlayerStatusConditionAst> {
@@ -1885,6 +1891,12 @@ fn lower_player_status_subject_reference(reference: LeafPlayerReference) -> Opti
 }
 
 fn parse_player_has_quantity_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
+    match crate::lexer::token_word_refs(clause.tokens()).as_slice() {
+        ["its", "controller"] => return Some(PlayerAst::ItsController),
+        ["its", "owner"] => return Some(PlayerAst::ItsOwner),
+        _ => {}
+    }
+
     let reference = parse_leaf_player_reference_tokens(
         clause.tokens(),
         LeafPlayerReferenceMode::PlayerHasQuantitySubject,

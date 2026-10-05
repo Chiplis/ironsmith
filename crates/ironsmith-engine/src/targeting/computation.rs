@@ -70,7 +70,10 @@ fn spec_requires_shared_creature_type(spec: &ChooseSpec) -> bool {
 /// "... that share a creature type": one group per creature type among the
 /// legal targets (in first-seen order over the ordered legal targets, so
 /// identical on every peer); a legal set is any selection from one group.
-fn shared_creature_type_target_sets(game: &GameState, legal_targets: &[Target]) -> Vec<Vec<Target>> {
+fn shared_creature_type_target_sets(
+    game: &GameState,
+    legal_targets: &[Target],
+) -> Vec<Vec<Target>> {
     let mut by_type: Vec<(crate::types::Subtype, Vec<Target>)> = Vec::new();
     for target in legal_targets {
         let Target::Object(object_id) = target else {
@@ -80,7 +83,10 @@ fn shared_creature_type_target_sets(game: &GameState, legal_targets: &[Target]) 
             if !subtype.is_creature_type() {
                 continue;
             }
-            let index = match by_type.iter().position(|(existing, _)| *existing == subtype) {
+            let index = match by_type
+                .iter()
+                .position(|(existing, _)| *existing == subtype)
+            {
                 Some(index) => index,
                 None => {
                     by_type.push((subtype, Vec::new()));
@@ -436,12 +442,13 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     // zone, to either controller. A permission to ignore those abilities never
     // overrides a separate prohibition (e.g. Ground Seal or Dense Foliage).
     let targeting_with_ability = !view.is_casting_spell(source_id)
-        && (source_snapshot.is_some() || source.is_none_or(|source| {
-            !(source.is_live() && source.zone() == Zone::Stack)
-        }));
-    if !game.effect_store.cant_effects.can_target_object_from_subject(
-        game, target_id, source, targeting_with_ability, caster,
-    ) {
+        && (source_snapshot.is_some()
+            || source.is_none_or(|source| !(source.is_live() && source.zone() == Zone::Stack)));
+    if !game
+        .effect_store
+        .cant_effects
+        .can_target_object_from_subject(game, target_id, source, targeting_with_ability, caster)
+    {
         return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
     }
 
@@ -547,8 +554,10 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
 
     // Check for HexproofFrom. A permission to target "as though it didn't
     // have hexproof" also covers "hexproof from [quality]" (CR 702.11e).
-    if game.are_opponents(game.controller_of(target), source.protection_controller(game))
-        && !ignores_hexproof
+    if game.are_opponents(
+        game.controller_of(target),
+        source.protection_controller(game),
+    ) && !ignores_hexproof
         && !game
             .effect_store
             .cant_effects
@@ -619,9 +628,13 @@ pub fn has_protection_from_source(
 ///
 /// The targeting ability's exact kind isn't known here, so "activated" and
 /// "triggered" both match; no printed quality names only one of them.
-fn ability_kind_quality_filter(filter: &crate::target::ObjectFilter) -> Option<crate::target::ObjectFilter> {
+fn ability_kind_quality_filter(
+    filter: &crate::target::ObjectFilter,
+) -> Option<crate::target::ObjectFilter> {
     use crate::filter::StackObjectKind;
-    fn rewrite(filter: &crate::target::ObjectFilter) -> Option<(crate::target::ObjectFilter, bool)> {
+    fn rewrite(
+        filter: &crate::target::ObjectFilter,
+    ) -> Option<(crate::target::ObjectFilter, bool)> {
         let mut rewritten = filter.clone();
         let mut changed = false;
         match filter.stack_kind {
@@ -828,9 +841,11 @@ pub(crate) fn protection_from_subject_with_view(
             // "protection from each of the exiled card's card types" (Mirror
             // Golem): the linked collection is the protected permanent's,
             // not the source's being checked.
-            if filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
-            }) {
+            if filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+            {
                 let linked = game
                     .get_exiled_with_source_links(target_id)
                     .iter()
@@ -1644,6 +1659,14 @@ fn compute_object_targets_with_filter_context(
     // Build filter context
     let mut filter_ctx =
         execution_filter.unwrap_or_else(|| target_filter_context(game, caster, source_id));
+    if filter_ctx.source_snapshot.is_none() {
+        filter_ctx.source_snapshot = source_snapshot.cloned();
+    }
+    if filter_ctx.defending_player.is_none() && filter_ctx.defending_players.is_empty() {
+        let combat_filter = target_filter_context(game, caster, source_id);
+        filter_ctx.defending_player = combat_filter.defending_player;
+        filter_ctx.defending_players = combat_filter.defending_players;
+    }
     if game.source_snapshot_is_exempt_from_range(source_id, source_snapshot) {
         filter_ctx.players_in_range = None;
     }
@@ -1838,6 +1861,8 @@ fn apply_combat_target_filter_context(
     };
     filter_ctx.defending_player = Some(defending_player);
     filter_ctx.attacking_player = Some(attacking_player);
+    filter_ctx.defending_players.clear();
+    filter_ctx.attacking_players.clear();
     if game.shared_team_turns_enabled() {
         filter_ctx.defending_players = game.team_players_for(defending_player);
         filter_ctx.attacking_players = game.team_players_for(attacking_player);
@@ -2084,7 +2109,8 @@ mod tests {
                 game.create_object_from_card(&card, alice, Zone::Hand)
             })
             .collect::<Vec<_>>();
-        game.refresh_continuous_state().expect("finite prewarm fixture refresh");
+        game.refresh_continuous_state()
+            .expect("finite prewarm fixture refresh");
         game.object_mut(hand_ids[0])
             .expect("hand card should exist")
             .optional_costs_paid = Default::default();
@@ -2103,20 +2129,31 @@ mod tests {
             after.characteristics_full_recomputes, before.characteristics_full_recomputes,
             "nonbattlefield candidates should read their pass-local prewarmed characteristics"
         );
-        let total_sorts = after.dependency_sorts.checked_sub(before.dependency_sorts)
+        let total_sorts = after
+            .dependency_sorts
+            .checked_sub(before.dependency_sorts)
             .expect("dependency sort counter is monotonic");
-        let shadow_sorts = after.shadow_dependency_sorts.checked_sub(before.shadow_dependency_sorts)
+        let shadow_sorts = after
+            .shadow_dependency_sorts
+            .checked_sub(before.shadow_dependency_sorts)
             .expect("shadow sort counter is monotonic");
-        let production_sorts = total_sorts.checked_sub(shadow_sorts)
+        let production_sorts = total_sorts
+            .checked_sub(shadow_sorts)
             .expect("reference sorts are included in the total counter");
         assert!(
             production_sorts <= 1,
             "nonbattlefield filter matching should sort the type layer once, not once per card: before={before:?}, after={after:?}"
         );
         #[cfg(feature = "shadow-continuous")]
-        assert!(shadow_sorts > 0, "this fixture must exercise reference validation");
+        assert!(
+            shadow_sorts > 0,
+            "this fixture must exercise reference validation"
+        );
         #[cfg(not(feature = "shadow-continuous"))]
-        assert_eq!(shadow_sorts, 0, "reference work is absent without the shadow feature");
+        assert_eq!(
+            shadow_sorts, 0,
+            "reference work is absent without the shadow feature"
+        );
     }
 
     #[test]

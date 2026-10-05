@@ -796,7 +796,7 @@ fn parse_relation_phrase(
     }
     for expected in phrase {
         let word: &str = any.parse_next(input)?;
-        if word != *expected {
+        if word != *expected && !(word == "planeswalker's" && *expected == "planeswalkers") {
             return Err(primitives::backtrack_err(
                 "player-relation phrase",
                 "expected phrase word",

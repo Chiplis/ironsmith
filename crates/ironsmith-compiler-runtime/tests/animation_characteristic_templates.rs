@@ -340,10 +340,13 @@ fn shadow_attack_retains_the_triggering_flyers_prior_color_and_creature_type() {
         let source_power = game.current_power(s);
         event(
             &mut game,
-            TriggerEvent::new(ironsmith::events::combat::CreatureAttackedEvent::new(
-                target,
-                ironsmith::triggers::event::AttackEventTarget::Player(B),
-            ), Default::default()),
+            TriggerEvent::new(
+                ironsmith::events::combat::CreatureAttackedEvent::new(
+                    target,
+                    ironsmith::triggers::event::AttackEventTarget::Player(B),
+                ),
+                Default::default(),
+            ),
         );
         assert_eq!(game.current_power(target), Some(4));
         assert!(
@@ -367,11 +370,24 @@ fn shadow_attack_retains_the_triggering_flyers_prior_color_and_creature_type() {
 fn cacophony_preserves_enchantment_and_figure_grants_opponent_protection_in_final_form() {
     for definition in definitions("Cacophony Unleashed") {
         let mut game = game();
-        let s = source(&mut game, &definition);
-        event(
-            &mut game,
-            TriggerEvent::new({ let mut event = ironsmith::events::EnterBattlefieldEvent::new(s, Zone::Hand); event.enters_tapped =  false; event.enters_with_counters =  vec![]; event }, Default::default()),
-        );
+        // Keep the actual entry events emitted by the engine. The compiler's
+        // native entry matcher observes zone changes, not a synthetic legacy
+        // EnterBattlefieldEvent after the producer events were discarded.
+        let card = game.create_object_from_definition(&definition, A, Zone::Hand);
+        let s = game
+            .move_object(
+                card,
+                Zone::Battlefield,
+                ironsmith::events::cause::EventCause::effect(),
+            )
+            .unwrap();
+        let mut queue = TriggerQueue::new();
+        put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut SelectFirstDecisionMaker)
+            .unwrap();
+        while !game.stack_is_empty() {
+            resolve_stack_entry_with(&mut game, &mut SelectFirstDecisionMaker).unwrap();
+        }
+        game.refresh_continuous_state().unwrap();
         assert_eq!(game.current_power(s), Some(6));
         assert!(legendary(&game, s));
         assert!(game.object_has_card_type(s, CardType::Enchantment));

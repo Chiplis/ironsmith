@@ -549,6 +549,43 @@ pub fn parse_sentence_target_player_reveals_random_card_from_hand(
     }
 
     let subject_tokens = subject_clause.trim();
+    let subject_text = crate::lexer::render_token_slice(&subject_tokens);
+    if let Some(object_text) = subject_text
+        .strip_suffix(" controller")
+        .and_then(|text| text.strip_suffix("'s"))
+    {
+        let object_tokens = crate::lexer::lex_line(object_text, 0)?;
+        if object_tokens
+            .first()
+            .is_some_and(|token| token.is_word("target"))
+            && choice_shapes::is_random_card_descriptor_shape(
+                &SubjectVerbPrimitiveClause::new(shape.descriptor_tokens).word_refs(),
+            )
+            && is_hand_reference_clause(SubjectVerbPrimitiveClause::new(shape.hand_tokens))
+        {
+            let target = parse_target_phrase(&object_tokens)?;
+            let target_tag = crate::util::helper_tag_for_tokens(clause.tokens(), "targeted");
+            let revealed_tag = helper_tag_for_tokens(clause.tokens(), "revealed");
+            return Ok(Some(vec![
+                EffectAst::TagAffected {
+                    effect: Box::new(EffectAst::subject_verb_target_only(target)),
+                    tag: target_tag.clone(),
+                },
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    filter: ObjectFilter::default().in_zone(Zone::Hand).owned_by(
+                        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(
+                            target_tag.into(),
+                        )),
+                    ),
+                    count: ChoiceCount::exactly(1).at_random(),
+                    count_value: None,
+                    player: PlayerAst::ItsController,
+                    tag: crate::tag::TagRef::of(revealed_tag.clone()),
+                }),
+                EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(revealed_tag)),
+            ]));
+        }
+    }
     let SubjectAst::Player(player) = parse_subject(&subject_tokens) else {
         return Ok(None);
     };

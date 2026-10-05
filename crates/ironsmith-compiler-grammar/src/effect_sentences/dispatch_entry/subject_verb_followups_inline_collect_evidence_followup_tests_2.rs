@@ -34,6 +34,16 @@ fn optional_self_exile_collects_a_real_aggregate_evidence_set() {
             tag: moved_evidence_tag,
             zone: Zone::Exile,
         },
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::KeywordActions(
+                    crate::cards::builders::KeywordActionAst::EmitKeywordAction {
+                        action: crate::events::KeywordActionKind::CollectEvidence,
+                        amount: 4,
+                    },
+                ),
+            ..
+        }),
     ] = optional.as_slice()
     else {
         panic!("expected choose, source exile, and evidence exile: {optional:#?}");

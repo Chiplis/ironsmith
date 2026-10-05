@@ -83,7 +83,11 @@ fn creature(game: &mut GameState, controller: usize, p: i32, t: i32, keywords: &
         false,
     )
     .unwrap();
-    game.create_object_from_definition(&card, PlayerId::from_index(controller.try_into().unwrap()), Zone::Battlefield)
+    game.create_object_from_definition(
+        &card,
+        PlayerId::from_index(controller.try_into().unwrap()),
+        Zone::Battlefield,
+    )
 }
 fn tokens(game: &GameState, subtype: Subtype) -> Vec<ObjectId> {
     game.battlefield
@@ -125,16 +129,21 @@ impl DecisionMaker for Choices {
         if self.targets.is_empty() {
             return SelectFirstDecisionMaker.decide_targets(game, ctx);
         }
-        ctx.requirements
-            .iter()
-            .map(|requirement| {
-                *self
-                    .targets
-                    .iter()
-                    .find(|target| requirement.legal_targets.contains(target))
-                    .unwrap_or_else(|| panic!("missing legal requested target: {requirement:?}"))
-            })
-            .collect()
+        let mut selected = Vec::new();
+        for requirement in &ctx.requirements {
+            let target = self
+                .targets
+                .iter()
+                .copied()
+                .find(|target| {
+                    requirement.legal_targets.contains(target) && !selected.contains(target)
+                })
+                .unwrap_or_else(|| {
+                    panic!("missing distinct legal requested target: {requirement:?}")
+                });
+            selected.push(target);
+        }
+        selected
     }
     fn decide_boolean(&mut self, _game: &GameState, ctx: &BooleanContext) -> bool {
         // Discover chooses the hand; Bolg accepts its sacrifice.
@@ -185,7 +194,7 @@ fn cast(game: &mut GameState, definition: &CardDefinition, dm: &mut Choices) {
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     assert_eq!(game.stack.len(), 1);
 }
 fn resolve(game: &mut GameState, dm: &mut Choices) {
@@ -203,6 +212,8 @@ fn apply(game: &mut GameState, source: ObjectId, effect: Effect) -> EffectOutcom
 }
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) -> usize {
     let mut queue = TriggerQueue::new();
+    // Checked execution already captures some triggers in the original observer frame.
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     for event in outcome.events {
         for entry in check_triggers(game, &event) {
             queue.add(entry);
@@ -548,7 +559,7 @@ fn excess_event_binding_survives_body_actions_but_a_local_result_branch_wins() {
         let text = format!(
             "Type: Enchantment\nWhenever a creature an opponent controls is dealt excess noncombat damage, {body}"
         );
-        for definition in definitions_text("Excess context probe", &text) {
+        for definition in definitions_text("Local damage context", &text) {
             let mut game = game();
             game.create_object_from_definition(
                 &definition,

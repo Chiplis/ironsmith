@@ -360,12 +360,17 @@ fn parse_turn_history_intervening_predicate(
         shape.extend_from_slice(negation);
         shape.extend_from_slice(&["activate", "a", "loyalty", "ability"]);
         let bare = [shape.as_slice(), &["this", "turn"][..]].concat();
-        let of_planeswalker =
-            [shape.as_slice(), &["of", "a", "planeswalker", "this", "turn"][..]].concat();
+        let of_planeswalker = [
+            shape.as_slice(),
+            &["of", "a", "planeswalker", "this", "turn"][..],
+        ]
+        .concat();
         if surface::exact_words(&words, &bare) || surface::exact_words(&words, &of_planeswalker) {
-            return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
-                TurnHistoryPredicateAst::PlayerActivatedLoyaltyAbilityThisTurn(PlayerAst::You),
-            )))));
+            return Ok(Some(PredicateAst::Not(Box::new(
+                PredicateAst::TurnHistory(
+                    TurnHistoryPredicateAst::PlayerActivatedLoyaltyAbilityThisTurn(PlayerAst::You),
+                ),
+            ))));
         }
     }
     if surface::exact_words(&words, &["it", "didnt", "die"])
@@ -725,9 +730,9 @@ pub(super) fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFi
                 crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
             ),
         )),
-        PlayerAst::SourceOwner => Some(PlayerFilter::OwnerOf(
-            crate::filter::ObjectRef::tagged(ironsmith_core::SOURCE_OBJECT_TAG),
-        )),
+        PlayerAst::SourceOwner => Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
+            ironsmith_core::SOURCE_OBJECT_TAG,
+        ))),
         PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => None,
     }
 }
@@ -751,7 +756,16 @@ pub(super) fn player_ast_from_status_player_filter(player: PlayerFilter) -> Opti
 pub(super) fn parse_player_status_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let status = crate::grammar::conditions::parse_player_status_condition(tokens)?;
     match status.status {
-        crate::grammar::conditions::PlayerStatusAst::Poisoned => Some(PredicateAst::ValueComparison { left: Value::PlayerCounters(crate::grammar::conditions::unconditional_player_filter(status.player)?, crate::object::CounterType::Poison), operator: crate::effect::ValueComparisonOperator::GreaterThan, right: Value::Fixed(0) }),
+        crate::grammar::conditions::PlayerStatusAst::Poisoned => {
+            Some(PredicateAst::ValueComparison {
+                left: Value::PlayerCounters(
+                    crate::grammar::conditions::unconditional_player_filter(status.player)?,
+                    crate::object::CounterType::Poison,
+                ),
+                operator: crate::effect::ValueComparisonOperator::GreaterThan,
+                right: Value::Fixed(0),
+            })
+        }
         crate::grammar::conditions::PlayerStatusAst::Monarch => {
             Some(PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch {
                 player: player_ast_from_status_player_filter(
@@ -1660,7 +1674,9 @@ pub(super) fn parse_controlled_creatures_total_power_predicate(
 pub(super) fn parse_value_reference_comparison_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
-    if let Some(predicate) = extrema::parse(tokens) { return Some(predicate); }
+    if let Some(predicate) = extrema::parse(tokens) {
+        return Some(predicate);
+    }
     let words = crate::lexer::parser_token_word_refs(tokens);
     let words = words.strip_prefix(&["the"]).unwrap_or(&words);
     let comparison = match words {
@@ -1722,7 +1738,7 @@ pub(super) fn parse_value_reference_comparison_predicate(
             left,
             Value::ManaSpentToCast(_)
                 | Value::ManaSpentToCastTriggeringObject
-        | Value::CasterManaSpentToCastTriggeringObject
+                | Value::CasterManaSpentToCastTriggeringObject
                 | Value::ManaValueOf(_)
         ) && comparison_tokens
             .first()
@@ -1816,13 +1832,14 @@ fn mark_demonstrative_characteristic_subject(value: &mut Value, subject: &[Owned
     if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
         return;
     }
-    **spec = (**spec).clone().with_surface_hint(
-        crate::target::ChooseSpecSurfaceHint::SourceReference(
-            crate::target::SourceReferenceSurface::ThisPermanentType(
-                surface.phrase().to_string(),
-            ),
-        ),
-    );
+    **spec =
+        (**spec)
+            .clone()
+            .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType(
+                    surface.phrase().to_string(),
+                ),
+            ));
 }
 
 /// "its power is greater than each other creature's power" (Selvala): the
@@ -1890,7 +1907,7 @@ pub(super) fn is_predicate_reference_value(value: &Value) -> bool {
             | Value::SourceToughness
             | Value::ManaSpentToCast(_)
             | Value::ManaSpentToCastTriggeringObject
-        | Value::CasterManaSpentToCastTriggeringObject
+            | Value::CasterManaSpentToCastTriggeringObject
     )
 }
 
@@ -3443,21 +3460,19 @@ pub(super) fn parse_mana_symbol_spent_to_cast_shape(
     for symbol in symbol_clause.tokens().iter().filter_map(|token| {
         crate::grammar::primitives::probe_shape(parse_mana_symbol(token.parser_text()))
     }) {
-        if let Some((_, amount)) = grouped
-            .iter_mut()
-            .find(|(existing, _)| *existing == symbol)
-        {
+        if let Some((_, amount)) = grouped.iter_mut().find(|(existing, _)| *existing == symbol) {
             *amount += 1;
         } else {
             grouped.push((symbol, 1u32));
         }
     }
-    let mut predicates = grouped.into_iter().map(|(symbol, amount)| {
-        PredicateAst::ManaSpentToCastThisSpellAtLeast {
-            amount,
-            symbol: Some(symbol),
-        }
-    });
+    let mut predicates =
+        grouped.into_iter().map(
+            |(symbol, amount)| PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                amount,
+                symbol: Some(symbol),
+            },
+        );
     let first = predicates.next()?;
     Some(predicates.fold(first, |left, right| {
         PredicateAst::And(Box::new(left), Box::new(right))
@@ -3758,12 +3773,17 @@ fn parse_unattached_from_source_shape(tokens: &[OwnedLexToken]) -> Option<Predic
     if rest.is_empty() {
         return None;
     }
-    let filter_start = TokenWordView::new(tokens).token_start_indices().get(4).copied()?;
+    let filter_start = TokenWordView::new(tokens)
+        .token_start_indices()
+        .get(4)
+        .copied()?;
     let filter = crate::grammar::primitives::probe_shape(parse_object_filter(
         &tokens[filter_start..],
         false,
     ))?;
-    Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)))
+    Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(
+        filter,
+    )))
 }
 
 pub(super) fn parse_tagged_state_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4029,7 +4049,10 @@ pub(super) fn parse_implicit_object_present_state_shape(
     if filter.attacking
         && filter.blocking
         && filter.any_of.is_empty()
-        && descriptor_clause.tokens().iter().any(|token| token.is_word("or"))
+        && descriptor_clause
+            .tokens()
+            .iter()
+            .any(|token| token.is_word("or"))
     {
         filter.attacking = false;
         filter.blocking = false;
@@ -4181,7 +4204,9 @@ pub(super) fn graveyard_possessive_matches_subject(
 
 pub(super) fn comparison_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
     let word_len = clause.word_len();
-    if word_len == 2 && surface::exact(clause, THAT_PLAYER_SUBJECT_PREFIX) {
+    if word_len == 1 && surface::exact_any(clause, &[&["they"], &["he"], &["she"]]) {
+        Some(PlayerAst::That)
+    } else if word_len == 2 && surface::exact(clause, THAT_PLAYER_SUBJECT_PREFIX) {
         Some(PlayerAst::That)
     } else if word_len == 2 && surface::exact(clause, TARGET_PLAYER_SUBJECT_PREFIX) {
         Some(PlayerAst::Target)
@@ -5737,9 +5762,11 @@ fn parse_you_control_shared_creature_type_count_predicate(
     }
     let token_start = view.map_word_to_token_boundary(filter_word_start)?;
     let token_end = view.map_word_to_token_boundary(filter_word_end)?;
-    let mut filter = crate::grammar::primitives::probe_shape(
-        crate::object_filters::parse_object_filter_lexed(tokens.get(token_start..token_end)?, false),
-    )?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(crate::object_filters::parse_object_filter_lexed(
+            tokens.get(token_start..token_end)?,
+            false,
+        ))?;
     if filter.controller.is_none() {
         filter.controller = Some(PlayerFilter::You);
     }
@@ -5751,14 +5778,18 @@ fn parse_you_control_shared_creature_type_count_predicate(
 }
 
 pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
-    let monarch_words=non_article_token_word_refs(tokens);
-    if let Some(subject)=monarch_words.strip_suffix(&["monarch","as","turn","began"]) {
-        let player=match subject {
-            ["you","were"]=>Some(PlayerAst::You),
-            ["that","player","was"]|["they","were"]=>Some(PlayerAst::That),
-            _=>None,
+    let monarch_words = non_article_token_word_refs(tokens);
+    if let Some(subject) = monarch_words.strip_suffix(&["monarch", "as", "turn", "began"]) {
+        let player = match subject {
+            ["you", "were"] => Some(PlayerAst::You),
+            ["that", "player", "was"] | ["they", "were"] => Some(PlayerAst::That),
+            _ => None,
         };
-        if let Some(player)=player {return Ok(PredicateAst::Player(PlayerPredicateAst::PlayerWasMonarchAtTurnStart{player}));}
+        if let Some(player) = player {
+            return Ok(PredicateAst::Player(
+                PlayerPredicateAst::PlayerWasMonarchAtTurnStart { player },
+            ));
+        }
     }
 
     let predicate_tokens = if token_slice_first_is(tokens, "if") {
@@ -5766,12 +5797,25 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     } else {
         tokens
     };
+    if let Some(predicate) = parse_player_cards_in_hand_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+    // Historical damage conditions carry a completed-event query. A generic
+    // tagged-state reading of the same words must not replace that query.
+    if let Some(predicate) = parse_player_controls_fewer_than_you_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = damage_history::parse(predicate_tokens) {
+        return Ok(predicate);
+    }
     if let Some(predicate) =
         parse_you_control_shared_creature_type_count_predicate(predicate_tokens)
     {
         return Ok(predicate);
     }
-    if let Some(predicate) = super::parse_completed_die_result_predicate(predicate_tokens) { return Ok(predicate); }
+    if let Some(predicate) = super::parse_completed_die_result_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
     let input = predicate_readings::Predicate {
         tokens,
         predicate_tokens,

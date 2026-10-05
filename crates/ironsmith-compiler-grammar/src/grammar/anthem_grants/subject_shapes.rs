@@ -4,8 +4,8 @@ use winnow::prelude::*;
 use winnow::token::{any, rest};
 
 use crate::{
-    CardType, ObjectFilter, PlayerFilter, TagKey, TaggedObjectConstraint, TaggedOpbjectRelation,
-    Zone,
+    CardType, ObjectFilter, PlayerFilter, Subtype, TagKey, TaggedObjectConstraint,
+    TaggedOpbjectRelation, Zone,
 };
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
@@ -177,10 +177,12 @@ fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<
         .iter()
         .map(|tag| {
             let mut branch = base_filter.clone();
-            branch.tagged_constraints.push(TaggedObjectConstraint {
-                tag: tag.bind().into(),
-                relation: TaggedOpbjectRelation::IsTaggedObject,
+            let mut attachment = ObjectFilter::default();
+            attachment.subtypes.push(match tag {
+                crate::tag::CompilerReferenceTag::Enchanted => Subtype::Aura,
+                _ => Subtype::Equipment,
             });
+            branch.with_attached_object = Some(Box::new(attachment));
             branch
         })
         .collect::<Vec<_>>();

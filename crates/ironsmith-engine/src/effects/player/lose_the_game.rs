@@ -45,19 +45,28 @@ impl EffectExecutor for LoseTheGameEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
+            let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
-        let Some((_, outcome)) = crate::events::processing::process_player_loss_with_context(
-            game, player_id, ctx, &std::collections::HashMap::new(),
-        )? else { return Ok(EffectOutcome::count(0)); };
-        Ok(outcome)
+            let Some((_, outcome)) = crate::events::processing::process_player_loss_with_context(
+                game,
+                player_id,
+                ctx,
+                &std::collections::HashMap::new(),
+            )?
+            else {
+                return Ok(EffectOutcome::count(0));
+            };
+            Ok(outcome)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint; context_checkpoint.restore(ctx);
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
         }
         result
     }
@@ -153,7 +162,9 @@ mod tests {
 
         let mut dm = ChooseReplacement(0);
         assert_eq!(
-            crate::events::processing::process_player_loss(&mut game, alice, &mut dm).expect("replacement operation must finish without execution error").expect("synchronous loss verdict must be committed"),
+            crate::events::processing::process_player_loss(&mut game, alice, &mut dm)
+                .expect("replacement operation must finish without execution error")
+                .expect("synchronous loss verdict must be committed"),
             crate::events::processing::PlayerLossOutcome::Replaced
         );
         assert!(game.player(alice).expect("alice").is_in_game());
@@ -183,7 +194,9 @@ mod tests {
         game.player_mut(alice).expect("alice").life = 0;
 
         let mut dm = ChooseSecondFor(alice);
-        crate::events::processing::process_player_loss(&mut game, alice, &mut dm).expect("replacement operation must finish without execution error").expect("synchronous loss verdict must be committed");
+        crate::events::processing::process_player_loss(&mut game, alice, &mut dm)
+            .expect("replacement operation must finish without execution error")
+            .expect("synchronous loss verdict must be committed");
 
         assert_eq!(game.player(alice).expect("alice").life, 9);
         assert!(game.player(alice).expect("alice").is_in_game());
@@ -200,11 +213,15 @@ mod tests {
             ReplacementAction::Instead(vec![Effect::set_life_total(5)]),
         )
         .optional();
-        let registered = game.effect_store
+        let registered = game
+            .effect_store
             .replacement_effects
             .add_resolution_effect(replacement);
-        let decline = game.effect_store.replacement_effects
-            .get_effect(registered).unwrap()
+        let decline = game
+            .effect_store
+            .replacement_effects
+            .get_effect(registered)
+            .unwrap()
             .optional_decline_effect()
             .expect("optional replacement has decline choice");
         game.effect_store
@@ -213,7 +230,9 @@ mod tests {
 
         let mut dm = ChooseReplacement(1);
         assert_eq!(
-            crate::events::processing::process_player_loss(&mut game, alice, &mut dm).expect("replacement operation must finish without execution error").expect("synchronous loss verdict must be committed"),
+            crate::events::processing::process_player_loss(&mut game, alice, &mut dm)
+                .expect("replacement operation must finish without execution error")
+                .expect("synchronous loss verdict must be committed"),
             crate::events::processing::PlayerLossOutcome::Lost
         );
         assert!(!game.player(alice).expect("alice").is_in_game());
@@ -227,7 +246,9 @@ mod tests {
 
         let mut dm = ChooseReplacement(0);
         assert_eq!(
-            crate::events::processing::process_player_loss(&mut game, alice, &mut dm).expect("replacement operation must finish without execution error").expect("synchronous loss verdict must be committed"),
+            crate::events::processing::process_player_loss(&mut game, alice, &mut dm)
+                .expect("replacement operation must finish without execution error")
+                .expect("synchronous loss verdict must be committed"),
             crate::events::processing::PlayerLossOutcome::Replaced
         );
         assert!(game.player(alice).expect("alice").is_in_game());
@@ -254,7 +275,9 @@ mod tests {
         game.player_mut(alice).expect("alice").life = 0;
 
         let mut dm = ChooseReplacement(0);
-        crate::events::processing::process_player_loss(&mut game, alice, &mut dm).expect("replacement operation must finish without execution error").expect("synchronous loss verdict must be committed");
+        crate::events::processing::process_player_loss(&mut game, alice, &mut dm)
+            .expect("replacement operation must finish without execution error")
+            .expect("synchronous loss verdict must be committed");
 
         assert_eq!(game.player(alice).expect("alice").life, 4);
         assert!(game.objects_in_zone(Zone::Exile).iter().any(|object_id| {
@@ -278,73 +301,218 @@ mod replacement_loss_owner_contract_tests {
     #[derive(Debug, Clone)]
     struct LossOf(PlayerId);
     impl crate::events::ReplacementMatcher for LossOf {
-        fn matches_prepared_event(&self, event: &dyn crate::events::GameEventType, _: &crate::events::context::PreparedEventContext) -> bool {
-            event.as_any().downcast_ref::<crate::events::PlayerLosesGameEvent>().is_some_and(|event| event.player == self.0)
+        fn matches_prepared_event(
+            &self,
+            event: &dyn crate::events::GameEventType,
+            _: &crate::events::context::PreparedEventContext,
+        ) -> bool {
+            event
+                .as_any()
+                .downcast_ref::<crate::events::PlayerLosesGameEvent>()
+                .is_some_and(|event| event.player == self.0)
         }
-        fn display(&self) -> String { "Fixture loss".into() }
+        fn display(&self) -> String {
+            "Fixture loss".into()
+        }
     }
-    struct Answers { alice: PlayerId, source: ObjectId, pause: bool, pending: bool, calls: usize, instead: bool }
+    struct Answers {
+        alice: PlayerId,
+        source: ObjectId,
+        pause: bool,
+        pending: bool,
+        calls: usize,
+        instead: bool,
+    }
     impl DecisionMaker for Answers {
-        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+        fn decide_boolean(
+            &mut self,
+            game: &GameState,
+            _: &crate::decisions::context::BooleanContext,
+        ) -> bool {
             self.calls += 1;
             assert_eq!(game.player(self.alice).unwrap().is_in_game(), self.instead);
             assert_eq!(game.object(self.source).is_some(), self.instead);
-            self.pending = self.pause; !self.pending
+            self.pending = self.pause;
+            !self.pending
         }
-        fn awaiting_choice(&self) -> bool { self.pending }
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
     }
-    fn perform(game: &mut GameState, queue: &mut crate::triggers::TriggerQueue, alice: PlayerId, parent: ObjectId, sba: bool, dm: &mut Answers) -> Result<(), String> {
-        if sba { crate::game_loop::check_and_apply_sbas_with(game, queue, dm).map_err(|error| format!("{error:?}")) }
-        else {
+    fn perform(
+        game: &mut GameState,
+        queue: &mut crate::triggers::TriggerQueue,
+        alice: PlayerId,
+        parent: ObjectId,
+        sba: bool,
+        dm: &mut Answers,
+    ) -> Result<(), String> {
+        if sba {
+            crate::game_loop::check_and_apply_sbas_with(game, queue, dm)
+                .map_err(|error| format!("{error:?}"))
+        } else {
             let mut ctx = ExecutionContext::new(parent, alice, dm);
-            LoseTheGameEffect::you().execute(game, &mut ctx).map(|_| ()).map_err(|error| format!("{error:?}"))
+            LoseTheGameEffect::you()
+                .execute(game, &mut ctx)
+                .map(|_| ())
+                .map_err(|error| format!("{error:?}"))
         }
     }
     fn check(sba: bool, mode: u8) {
-        let mut game = crate::tests::test_helpers::setup_two_player_game(); let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
-        let parent = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Parent").card_types(vec![CardType::Artifact]).build(), bob, Zone::Battlefield);
-        let source = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Loss replacement").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2, 3)).build(), alice, Zone::Battlefield);
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let parent = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Parent")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            bob,
+            Zone::Battlefield,
+        );
+        let source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Loss replacement")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 3))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
         game.player_mut(alice).unwrap().life = 0;
         let effects = match mode {
             1 | 4 => vec![Effect::gain_life(3), Effect::lose_life(Value::X)],
-            3 => vec![Effect::gain_life(Value::SourcePower), Effect::may(vec![Effect::gain_life(0)])],
-            _ => vec![Effect::gain_life(3), Effect::may(vec![Effect::gain_life(4)])],
+            3 => vec![
+                Effect::gain_life(Value::SourcePower),
+                Effect::may(vec![Effect::gain_life(0)]),
+            ],
+            _ => vec![
+                Effect::gain_life(3),
+                Effect::may(vec![Effect::gain_life(4)]),
+            ],
         };
-        let action = if mode >= 4 { ReplacementAction::Instead(effects) } else { ReplacementAction::Additionally(effects) };
-        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, bob, LossOf(alice), action));
-        game.take_pending_trigger_events(); let ids = game.next_object_id_counter(); let objects = game.objects_in_deterministic_order().len();
+        let action = if mode >= 4 {
+            ReplacementAction::Instead(effects)
+        } else {
+            ReplacementAction::Additionally(effects)
+        };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            ReplacementEffect::with_matcher(source, bob, LossOf(alice), action),
+        );
+        game.take_pending_trigger_events();
+        let ids = game.next_object_id_counter();
+        let objects = game.objects_in_deterministic_order().len();
         let mut queue = crate::triggers::TriggerQueue::new();
-        let mut dm = Answers { alice, source, pause: mode == 2 || mode == 5, pending: false, calls: 0, instead: mode >= 4 };
+        let mut dm = Answers {
+            alice,
+            source,
+            pause: mode == 2 || mode == 5,
+            pending: false,
+            calls: 0,
+            instead: mode >= 4,
+        };
         let result = perform(&mut game, &mut queue, alice, parent, sba, &mut dm);
-        if mode == 1 || mode == 4 { assert!(result.is_err(), "surface loss replacement error"); assert!(result.unwrap_err().contains("UnresolvableValue")); }
-        else if mode == 2 || mode == 5 { assert!(dm.awaiting_choice()); assert!(result.is_ok()); }
-        else {
-            assert!(result.is_ok()); assert!(!game.player(alice).unwrap().is_in_game()); assert!(game.object(source).is_none());
-            assert_eq!(game.player(bob).unwrap().life, if mode == 3 { 22 } else { 27 });
-            assert_eq!(dm.calls, 1); assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
-            if !sba { let events = game.take_pending_trigger_events(); assert_eq!(events.iter().filter(|event| event.kind() == crate::events::EventKind::PlayerLosesGame).count(), 1); }
+        if mode == 1 || mode == 4 {
+            assert!(result.is_err(), "surface loss replacement error");
+            assert!(result.unwrap_err().contains("UnresolvableValue"));
+        } else if mode == 2 || mode == 5 {
+            assert!(dm.awaiting_choice());
+            assert!(result.is_ok());
+        } else {
+            assert!(result.is_ok());
+            assert!(!game.player(alice).unwrap().is_in_game());
+            assert!(game.object(source).is_none());
+            assert_eq!(
+                game.player(bob).unwrap().life,
+                if mode == 3 { 22 } else { 27 }
+            );
+            assert_eq!(dm.calls, 1);
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(shield)
+                    .is_none()
+            );
+            if !sba {
+                assert_eq!(
+                    game.turn_store
+                        .turn_history
+                        .event_kind_count(crate::events::EventKind::PlayerLosesGame),
+                    1
+                );
+            }
         }
         if mode == 1 || mode == 2 || mode == 4 || mode == 5 {
-            assert!(game.player(alice).unwrap().is_in_game()); assert_eq!(game.player(alice).unwrap().life, 0);
-            assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield); assert_eq!(game.player(bob).unwrap().life, 20);
-            assert_eq!(game.next_object_id_counter(), ids); assert_eq!(game.objects_in_deterministic_order().len(), objects);
-            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty()); assert!(queue.entries.is_empty());
+            assert!(game.player(alice).unwrap().is_in_game());
+            assert_eq!(game.player(alice).unwrap().life, 0);
+            assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
+            assert_eq!(game.player(bob).unwrap().life, 20);
+            assert_eq!(game.next_object_id_counter(), ids);
+            assert_eq!(game.objects_in_deterministic_order().len(), objects);
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(shield)
+                    .is_some()
+            );
+            assert!(game.take_pending_trigger_events().is_empty());
+            assert!(queue.entries.is_empty());
         }
-        if mode == 2 { dm.pause = false; dm.pending = false;
+        if mode == 2 {
+            dm.pause = false;
+            dm.pending = false;
             assert!(perform(&mut game, &mut queue, alice, parent, sba, &mut dm).is_ok());
-            assert!(!game.player(alice).unwrap().is_in_game()); assert!(game.object(source).is_none()); assert_eq!(game.player(bob).unwrap().life, 27); assert_eq!(dm.calls, 2); assert!(!dm.awaiting_choice());
+            assert!(!game.player(alice).unwrap().is_in_game());
+            assert!(game.object(source).is_none());
+            assert_eq!(game.player(bob).unwrap().life, 27);
+            assert_eq!(dm.calls, 2);
+            assert!(!dm.awaiting_choice());
         }
     }
-    #[test] fn effect_additions_follow_loss_commit() { check(false, 0); }
-    #[test] fn effect_added_error_restores_loss() { check(false, 1); }
-    #[test] fn effect_added_pending_replays_once() { check(false, 2); }
-    #[test] fn effect_addition_retains_departed_source_snapshot() { check(false, 3); }
-    #[test] fn effect_instead_error_restores_loss() { check(false, 4); }
-    #[test] fn effect_instead_pending_restores_loss() { check(false, 5); }
-    #[test] fn sba_additions_follow_loss_commit() { check(true, 0); }
-    #[test] fn sba_added_error_restores_loss() { check(true, 1); }
-    #[test] fn sba_added_pending_replays_once() { check(true, 2); }
-    #[test] fn sba_addition_retains_departed_source_snapshot() { check(true, 3); }
-    #[test] fn sba_instead_error_restores_loss() { check(true, 4); }
-    #[test] fn sba_instead_pending_restores_loss() { check(true, 5); }
+    #[test]
+    fn effect_additions_follow_loss_commit() {
+        check(false, 0);
+    }
+    #[test]
+    fn effect_added_error_restores_loss() {
+        check(false, 1);
+    }
+    #[test]
+    fn effect_added_pending_replays_once() {
+        check(false, 2);
+    }
+    #[test]
+    fn effect_addition_retains_departed_source_snapshot() {
+        check(false, 3);
+    }
+    #[test]
+    fn effect_instead_error_restores_loss() {
+        check(false, 4);
+    }
+    #[test]
+    fn effect_instead_pending_restores_loss() {
+        check(false, 5);
+    }
+    #[test]
+    fn sba_additions_follow_loss_commit() {
+        check(true, 0);
+    }
+    #[test]
+    fn sba_added_error_restores_loss() {
+        check(true, 1);
+    }
+    #[test]
+    fn sba_added_pending_replays_once() {
+        check(true, 2);
+    }
+    #[test]
+    fn sba_addition_retains_departed_source_snapshot() {
+        check(true, 3);
+    }
+    #[test]
+    fn sba_instead_error_restores_loss() {
+        check(true, 4);
+    }
+    #[test]
+    fn sba_instead_pending_restores_loss() {
+        check(true, 5);
+    }
 }

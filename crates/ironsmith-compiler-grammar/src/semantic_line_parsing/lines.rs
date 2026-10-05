@@ -1018,10 +1018,17 @@ fn wrap_future_draw_replacement_effects(
 ) -> Vec<EffectAst> {
     // The strict instruction owner already captured the complete future
     // program, including its later permission sentences. Do not defer twice.
-    if matches!(effects.as_slice(), [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::Replacements(
-            crate::model::ast::ReplacementActionAst::RegisterDrawReplacement { .. }), ..
-    })]) { return effects; }
+    if matches!(
+        effects.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Replacements(
+                crate::model::ast::ReplacementActionAst::RegisterDrawReplacement { .. }
+            ),
+            ..
+        })]
+    ) {
+        return effects;
+    }
     let Some(player) =
         semantic_grammar::parse_next_draw_replacement_player_tokens(full_parse_tokens)
     else {
@@ -1362,6 +1369,16 @@ fn parse_statement_to_chunks_impl(
     parse_tokens: &[OwnedLexToken],
     parse_groups: &[Vec<OwnedLexToken>],
 ) -> Result<Vec<LineAst>, CardTextError> {
+    if let Some(assertion) =
+        crate::grammar::effects::characteristic_assertions::parse(&line.info.source_tokens)
+        && !assertion
+            .subject
+            .iter()
+            .any(|token| token.is_word("target"))
+        && let Some(abilities) = parse_static_ability_ast_line_lexed(&line.info.source_tokens)?
+    {
+        return Ok(vec![LineAst::StaticAbilities(abilities)]);
+    }
     let authored_words = crate::lexer::parser_token_word_refs(&line.info.source_tokens);
     if crate::word_primitives::parse_sequence_complete(
         &authored_words,
@@ -1502,6 +1519,16 @@ fn parse_statement_to_chunks_impl(
     {
         return Ok(vec![LineAst::Statement { effects }]);
     }
+    let authored_sentences = split_lexed_sentences(&line.info.source_tokens);
+    if let [consult, disposition] = authored_sentences.as_slice()
+        && let Some(effects) =
+            crate::effect_sentences::parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
+                consult,
+                disposition,
+            )?
+    {
+        return Ok(vec![LineAst::Statement { effects }]);
+    }
     // These registered sequence rules own an authored relationship across
     // sentence boundaries. Statement grouping is a presentation concern and
     // must not commit either sentence independently before the typed rule can
@@ -1522,6 +1549,19 @@ fn parse_statement_to_chunks_impl(
     if effect_grammar::parse_kicked_counter_replacement_tokens(parse_tokens).is_some() {
         let effects = parse_effect_sentences_preserving_source_boundaries(parse_tokens)?;
         return Ok(vec![LineAst::Statement { effects }]);
+    }
+    // A linked static permission owns its exile rider. Keep the complete
+    // authored production ahead of independent static sentence partitioning.
+    let authored = &line.info.source_tokens;
+    let authored_words = crate::lexer::token_word_refs(authored);
+    if authored_words.contains(&"cast")
+        && authored_words.contains(&"instead")
+        && let Ok(Some(abilities)) = parse_static_ability_ast_line_lexed(authored)
+    {
+        return Ok(vec![LineAst::StaticAbilities(abilities)]);
+    }
+    if let Some(abilities) = crate::keyword_static::parse_carried_attached_subject_line(authored)? {
+        return Ok(vec![LineAst::StaticAbilities(abilities)]);
     }
     // An attached-object characteristic sentence followed by an `It ...`
     // restriction is one continuous rule. Classify the complete source line
@@ -2435,16 +2475,16 @@ use lines_trigger_programs::{
     triggered_line_source_text_keeps_raw_do_this_only_once_suffix,
     triggered_semantic_split_keeps_effect_backed_static_surfaces_in_resolution,
 };
+pub use lines_trigger_programs::{
+    conditional_life_total_set, is_exact_correlated_trigger_effect_bundle,
+    parse_special_triggered_line, parse_triggered_line, try_parse_optional_cost_with_cast_trigger,
+};
 use lines_trigger_programs::{
     hoist_delayed_copy_retargeting_in_line, lower_special_rewrite_triggered_divvy,
     lower_special_rewrite_triggered_head, lower_special_rewrite_triggered_oath,
     lower_special_rewrite_triggered_tail, lower_spell_or_activated_ability_x_cost_trigger,
     mark_non_mana_activated_trigger, parse_triggered_ability_line_impl, parse_triggered_line_impl,
     recognize_triggered_effect_surfaces,
-};
-pub use lines_trigger_programs::{
-    is_exact_correlated_trigger_effect_bundle, parse_special_triggered_line, parse_triggered_line,
-    try_parse_optional_cost_with_cast_trigger,
 };
 #[path = "lines/lines_object_action.rs"]
 mod lines_object_action_programs;

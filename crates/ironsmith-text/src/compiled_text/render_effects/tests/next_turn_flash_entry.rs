@@ -32,14 +32,14 @@ fn next_turn_flash_entry_expires_at_actual_next_turn_start() {
         assert!(game.effect_store.grant_registry.card_has_granted_ability(
             &game,
             hand,
-            Zone::Hand,
+            Zone::Stack,
             alice,
             &flash
         ));
         assert!(!game.effect_store.grant_registry.card_has_granted_ability(
             &game,
             opposing,
-            Zone::Hand,
+            Zone::Stack,
             bob,
             &flash
         ));
@@ -59,7 +59,7 @@ fn next_turn_flash_entry_expires_at_actual_next_turn_start() {
                 game.effect_store.grant_registry.card_has_granted_ability(
                     &game,
                     hand,
-                    Zone::Hand,
+                    Zone::Stack,
                     alice,
                     &flash
                 ),
@@ -98,7 +98,9 @@ fn next_turn_entry_counter_rule_applies_to_future_entries_without_flash_antecede
             let object = game.create_object_from_card(&creature, owner, zone);
             let mut decisions = crate::decision::SelectFirstDecisionMaker;
             let entered = game
-                .move_object_with_etb_processing_with_dm(object, Zone::Battlefield, &mut decisions).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
+                .move_object_with_etb_processing_with_dm(object, Zone::Battlefield, &mut decisions)
+                .map(require_plain_entry_for_test)
+                .expect("entry execution must succeed in this scenario")
                 .unwrap()
                 .new_id;
             assert_eq!(
@@ -125,9 +127,13 @@ fn next_turn_flash_entry_shares_correct_start_duration_in_text() {
 
 // These fixtures expect a plain completed entry. Reject a continuation or
 // retained added instructions rather than silently projecting them away.
-fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
-    -> Option<crate::game_state::EntersResult> {
+fn require_plain_entry_for_test(
+    receipt: crate::game_state::EntryCommitResult,
+) -> Option<crate::game_state::EntersResult> {
     assert!(!receipt.pending, "fixture requires completed entry");
-    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    assert!(
+        receipt.programs.is_empty(),
+        "fixture must finish retained entry replacement programs"
+    );
     receipt.original.into_result()
 }

@@ -206,21 +206,39 @@ pub(crate) fn tagged_object_follow_permitted(
     snapshot: &ObjectSnapshot,
     current_id: ObjectId,
 ) -> bool {
-    if let Some(discard) = ctx.triggering_event.as_ref()
+    if let Some(discard) = ctx
+        .triggering_event
+        .as_ref()
         .and_then(|event| event.downcast::<crate::events::other::CardDiscardedEvent>())
     {
-        if ctx.resolution_object_id_floor.is_some_and(|floor| current_id.0 >= floor.0) { return true; }
-        return discard.destinations.iter().any(|receipt|
+        if ctx
+            .resolution_object_id_floor
+            .is_some_and(|floor| current_id.0 >= floor.0)
+        {
+            return true;
+        }
+        return discard.destinations.iter().any(|receipt| {
             receipt.object == Some(current_id)
-                && (receipt.card == snapshot.object_id || receipt.object == Some(snapshot.object_id)));
+                && (receipt.card == snapshot.object_id
+                    || receipt.object == Some(snapshot.object_id))
+        });
     }
-    if ctx.triggering_event.as_ref().is_some_and(|event|
-        matches!(event.kind(), crate::events::EventKind::Transformed | crate::events::EventKind::Mutated | crate::events::EventKind::TurnedFaceUp)
-            || event.downcast::<crate::events::KeywordActionEvent>().is_some_and(|action| action.action == crate::events::KeywordActionKind::Renown)) {
+    if ctx.triggering_event.as_ref().is_some_and(|event| {
+        matches!(
+            event.kind(),
+            crate::events::EventKind::Transformed
+                | crate::events::EventKind::Mutated
+                | crate::events::EventKind::TurnedFaceUp
+        ) || event
+            .downcast::<crate::events::KeywordActionEvent>()
+            .is_some_and(|action| action.action == crate::events::KeywordActionKind::Renown)
+    }) {
         // A status/characteristic change did not move its participant. Only
         // an explicit move made by this resolution can introduce a successor.
         return current_id == snapshot.object_id
-            || ctx.resolution_object_id_floor.is_some_and(|floor| current_id.0 >= floor.0);
+            || ctx
+                .resolution_object_id_floor
+                .is_some_and(|floor| current_id.0 >= floor.0);
     }
     let Some(floor) = ctx.resolution_object_id_floor else {
         return true;
@@ -331,7 +349,12 @@ pub(crate) fn pin_tagged_objects_to_current(
     ctx: &ExecutionContext,
     tagged_objects: &mut HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
 ) {
-    for snapshots in tagged_objects.values_mut() {
+    for (tag, snapshots) in tagged_objects.iter_mut() {
+        if tag.as_str().starts_with("__paid_departure__")
+            || tag.as_str().starts_with("__pre_move_history__")
+        {
+            continue;
+        }
         for snapshot in snapshots.iter_mut() {
             if let Some(current) = game.find_object_by_stable_id(snapshot.stable_id)
                 && current != snapshot.object_id
@@ -353,26 +376,59 @@ fn aura_source_graveyard_incarnation(
     ctx: &ExecutionContext,
     trigger: &crate::events::ZoneChangeEvent,
 ) -> Option<ObjectId> {
-    if trigger.from != Zone::Battlefield { return None; }
+    if trigger.from != Zone::Battlefield {
+        return None;
+    }
     let attached_sources = trigger.object_tags.get("attached_source");
-    let snapshot = ctx.source_snapshot.as_ref()
+    let snapshot = ctx
+        .source_snapshot
+        .as_ref()
         .filter(|snapshot| snapshot.object_id == ctx.source)
-        .or_else(|| attached_sources.and_then(|sources| sources.iter().find(|snapshot| snapshot.object_id == ctx.source)))?;
-    if snapshot.zone != Zone::Battlefield || !snapshot.subtypes.contains(&crate::types::Subtype::Aura) { return None; }
-    let was_attached = snapshot.attached_to.as_ref().and_then(|target| target.object_id())
+        .or_else(|| {
+            attached_sources.and_then(|sources| {
+                sources
+                    .iter()
+                    .find(|snapshot| snapshot.object_id == ctx.source)
+            })
+        })?;
+    if snapshot.zone != Zone::Battlefield
+        || !snapshot.subtypes.contains(&crate::types::Subtype::Aura)
+    {
+        return None;
+    }
+    let was_attached = snapshot
+        .attached_to
+        .as_ref()
+        .and_then(|target| target.object_id())
         .is_some_and(|host| trigger.objects.contains(&host))
-        || attached_sources.is_some_and(|sources| sources.iter().any(|source| source.object_id == ctx.source && source.stable_id == snapshot.stable_id));
-    if !was_attached { return None; }
-    let transition = game.turn_store.turn_history.event_records.iter()
+        || attached_sources.is_some_and(|sources| {
+            sources.iter().any(|source| {
+                source.object_id == ctx.source && source.stable_id == snapshot.stable_id
+            })
+        });
+    if !was_attached {
+        return None;
+    }
+    let transition = game
+        .turn_store
+        .turn_history
+        .event_records
+        .iter()
         .chain(game.turn_store.turn_history.staged_event_records.iter())
         .filter_map(|record| record.event.downcast::<crate::events::ZoneChangeEvent>())
         .find(|event| event.from == Zone::Battlefield && event.objects.contains(&ctx.source))?;
-    if transition.to != Zone::Graveyard || transition.cause.cause_type != crate::events::cause::CauseType::StateBasedAction {
+    if transition.to != Zone::Graveyard
+        || transition.cause.cause_type != crate::events::cause::CauseType::StateBasedAction
+    {
         return None;
     }
-    transition.result_objects.iter().copied().find(|id| game.object(*id).is_some_and(|object| {
-        object.zone == Zone::Graveyard && object.owner == snapshot.owner && object.stable_id == snapshot.stable_id
-    }))
+    transition.result_objects.iter().copied().find(|id| {
+        game.object(*id).is_some_and(|object| {
+            object.zone == Zone::Graveyard
+                && object.owner == snapshot.owner
+                && object.stable_id == snapshot.stable_id
+        })
+    })
 }
 
 pub(crate) fn resolve_source_object_id(
@@ -385,13 +441,26 @@ pub(crate) fn resolve_source_object_id(
     // Self-discard triggers can find exactly the public arrival made by
     // that discard, including when scheduling a later return. Never follow a
     // card that left that arrival before the registration resolved.
-    if let Some(discard) = ctx.triggering_event.as_ref()
+    if let Some(discard) = ctx
+        .triggering_event
+        .as_ref()
         .and_then(|event| event.downcast::<crate::events::other::CardDiscardedEvent>())
         && discard.card == ctx.source
     {
-        return discard.destination(ctx.source).filter(|receipt| receipt.zone.is_public())
-            .and_then(|receipt| receipt.object.filter(|id| game.object(*id).is_some_and(|object|
-                object.zone == receipt.zone && discard.snapshot.as_ref().is_none_or(|origin| origin.stable_id == object.stable_id))));
+        return discard
+            .destination(ctx.source)
+            .filter(|receipt| receipt.zone.is_public())
+            .and_then(|receipt| {
+                receipt.object.filter(|id| {
+                    game.object(*id).is_some_and(|object| {
+                        object.zone == receipt.zone
+                            && discard
+                                .snapshot
+                                .as_ref()
+                                .is_none_or(|origin| origin.stable_id == object.stable_id)
+                    })
+                })
+            });
     }
     // A zone-change trigger may refer to the new object created by that
     // transition. Its recorded destination identity is authoritative: after
@@ -432,7 +501,9 @@ pub(crate) fn resolve_source_object_id(
     {
         return None;
     }
-    if let Some(event) = ctx.triggering_event.as_ref()
+    if let Some(event) = ctx
+        .triggering_event
+        .as_ref()
         .and_then(|event| event.downcast::<crate::events::ZoneChangeEvent>())
     {
         // Preserve the existing in-resolution movement permission used by
@@ -464,6 +535,17 @@ pub(crate) fn resolve_source_object_id(
     ctx.source_snapshot
         .as_ref()
         .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
+        .filter(|id| {
+            ctx.resolution_object_id_floor.map_or_else(
+                || {
+                    ctx.triggering_event.is_none()
+                        && game.object(*id).is_some_and(|object| {
+                            matches!(object.zone, Zone::Graveyard | Zone::Exile)
+                        })
+                },
+                |floor| id.0 >= floor.0,
+            )
+        })
         .or(Some(ctx.source))
 }
 
@@ -639,7 +721,9 @@ fn resolve_effect_metric(
             .sum(),
         EffectMetric::DamageDealtCappedByRecipient => {
             if source != EffectMetricSource::Outcome {
-                return Err(ExecutionError::UnresolvableValue("capped damage requires an instruction outcome".into()));
+                return Err(ExecutionError::UnresolvableValue(
+                    "capped damage requires an instruction outcome".into(),
+                ));
             }
             return resolve_capped_damage_result(game, outcome);
         }
@@ -756,47 +840,99 @@ fn resolve_effect_metric(
     Ok(resolved)
 }
 
-fn resolve_capped_damage_result(game: &GameState, outcome: &EffectOutcome) -> Result<i64, ExecutionError> {
+fn resolve_capped_damage_result(
+    game: &GameState,
+    outcome: &EffectOutcome,
+) -> Result<i64, ExecutionError> {
     let original = outcome.instruction_result();
-    let mut amount = original.events_of_type::<DamageEvent>().map(|event| u128::from(event.amount)).sum::<u128>();
-    if amount == 0 { return Ok(0); }
-    let recipients = original.execution_facts.iter().filter_map(|fact| match fact {
-        crate::effect::ExecutionFact::DamageRecipientBefore(receipt) => Some(receipt), _ => None,
-    }).collect::<Vec<_>>();
+    let mut amount = original
+        .events_of_type::<DamageEvent>()
+        .map(|event| u128::from(event.amount))
+        .sum::<u128>();
+    if amount == 0 {
+        return Ok(0);
+    }
+    let recipients = original
+        .execution_facts
+        .iter()
+        .filter_map(|fact| match fact {
+            crate::effect::ExecutionFact::DamageRecipientBefore(receipt) => Some(receipt),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     let [recipient] = recipients.as_slice() else {
-        return Err(ExecutionError::UnresolvableValue("capped damage requires one exact original-recipient receipt".into()));
+        return Err(ExecutionError::UnresolvableValue(
+            "capped damage requires one exact original-recipient receipt".into(),
+        ));
     };
     match recipient {
-        crate::effect::DamageRecipientBefore::Player { life, .. } => amount = amount.min((*life).max(0) as u128),
-        crate::effect::DamageRecipientBefore::Object { object, was_creature, loyalty } => {
-            if let Some(loyalty) = loyalty { amount = amount.min(u128::from(*loyalty)); }
+        crate::effect::DamageRecipientBefore::Player { life, .. } => {
+            amount = amount.min((*life).max(0) as u128)
+        }
+        crate::effect::DamageRecipientBefore::Object {
+            object,
+            was_creature,
+            loyalty,
+        } => {
+            if let Some(loyalty) = loyalty {
+                amount = amount.min(u128::from(*loyalty));
+            }
             if *was_creature {
                 // CR 608.2h: the printed creature-toughness cap is current
                 // information, unlike the explicitly pre-damage life/loyalty.
-                let toughness = if game.object(*object).is_some_and(|object| object.zone == Zone::Battlefield)
-                    && !game.is_phased_out(*object) {
-                    let checked = game.continuous_query_snapshot().map_err(ExecutionError::ContinuousDiscovery)?;
-                    let frame = checked.try_current_characteristics(*object)
+                let toughness = if game
+                    .object(*object)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
+                    && !game.is_phased_out(*object)
+                {
+                    let checked = game
+                        .continuous_query_snapshot()
+                        .map_err(ExecutionError::ContinuousDiscovery)?;
+                    let frame = checked
+                        .try_current_characteristics(*object)
                         .map_err(ExecutionError::ContinuousDiscovery)?
-                        .ok_or_else(|| ExecutionError::UnresolvableValue(
-                            "original damaged creature has no available current frame".into()))?;
+                        .ok_or_else(|| {
+                            ExecutionError::UnresolvableValue(
+                                "original damaged creature has no available current frame".into(),
+                            )
+                        })?;
                     if frame.card_types.contains(&CardType::Creature) {
-                        frame.toughness.ok_or_else(|| ExecutionError::UnresolvableValue(
-                            "original damaged creature has no current toughness evidence".into()))?
-                    } else { 0 }
+                        frame.toughness.ok_or_else(|| {
+                            ExecutionError::UnresolvableValue(
+                                "original damaged creature has no current toughness evidence"
+                                    .into(),
+                            )
+                        })?
+                    } else {
+                        0
+                    }
                 } else {
-                    let snapshot = game.turn_store.turn_history.source_last_known_snapshot(*object)
-                        .ok_or_else(|| ExecutionError::UnresolvableValue("original damaged creature has no exact departure LKI".into()))?;
+                    let snapshot = game
+                        .turn_store
+                        .turn_history
+                        .source_last_known_snapshot(*object)
+                        .ok_or_else(|| {
+                            ExecutionError::UnresolvableValue(
+                                "original damaged creature has no exact departure LKI".into(),
+                            )
+                        })?;
                     if snapshot.card_types.contains(&CardType::Creature) {
-                        snapshot.toughness.ok_or_else(|| ExecutionError::UnresolvableValue(
-                            "original damaged creature has no retained toughness evidence".into()))?
-                    } else { 0 }
+                        snapshot.toughness.ok_or_else(|| {
+                            ExecutionError::UnresolvableValue(
+                                "original damaged creature has no retained toughness evidence"
+                                    .into(),
+                            )
+                        })?
+                    } else {
+                        0
+                    }
                 };
                 amount = amount.min(toughness.max(0) as u128);
             }
         }
     }
-    crate::events::damage::checked_damage_count(amount, "recipient-capped damage result").map(i64::from)
+    crate::events::damage::checked_damage_count(amount, "recipient-capped damage result")
+        .map(i64::from)
 }
 
 fn resolve_prior_effect_metric(
@@ -810,7 +946,9 @@ fn resolve_prior_effect_metric(
     }
 
     if query.metric == EffectMetric::DamageDealtCappedByRecipient {
-        return Err(ExecutionError::UnresolvableValue("recipient-capped damage does not accept a memory filter".into()));
+        return Err(ExecutionError::UnresolvableValue(
+            "recipient-capped damage does not accept a memory filter".into(),
+        ));
     }
 
     let Some(outcome) = ctx.get_outcome(effect_id) else {
@@ -823,23 +961,62 @@ fn resolve_prior_effect_metric(
         .map(|player| resolve_player_filter_to_list(game, player, &filter_ctx, ctx))
         .transpose()?;
 
+    if query.action == Some(ironsmith_core::PriorEffectAction::Drawn)
+        && query.filter.is_none()
+        && matches!(
+            query.metric,
+            EffectMetric::Count | EffectMetric::AffectedCount
+        )
+    {
+        return outcome
+            .events_of_type::<crate::events::CardsDrawnEvent>()
+            .filter(|event| {
+                selected_players
+                    .as_ref()
+                    .is_none_or(|players| players.contains(&event.player))
+            })
+            .try_fold(0i64, |sum, event| {
+                sum.checked_add(i64::from(event.amount())).ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("draw metric exceeds supported range".into())
+                })
+            });
+    }
+
     if query.source == EffectMetricSource::Outcome
-        && matches!(query.metric, EffectMetric::LifeGained | EffectMetric::LifeLost)
+        && matches!(
+            query.metric,
+            EffectMetric::LifeGained | EffectMetric::LifeLost
+        )
     {
         if query.filter.is_some() {
-            return Err(ExecutionError::UnresolvableValue("life metrics cannot apply an object filter".into()));
+            return Err(ExecutionError::UnresolvableValue(
+                "life metrics cannot apply an object filter".into(),
+            ));
         }
-        let accepts = |player| selected_players.as_ref().is_none_or(|players| players.contains(&player));
+        let accepts = |player| {
+            selected_players
+                .as_ref()
+                .is_none_or(|players| players.contains(&player))
+        };
         let mut amounts = outcome.events.iter().filter_map(|event| {
             if query.metric == EffectMetric::LifeGained {
-                event.downcast::<LifeGainEvent>().filter(|life| accepts(life.player)).map(|life| life.amount)
+                event
+                    .downcast::<LifeGainEvent>()
+                    .filter(|life| accepts(life.player))
+                    .map(|life| life.amount)
             } else {
-                event.downcast::<LifeLossEvent>().filter(|life| accepts(life.player)).map(|life| life.amount)
+                event
+                    .downcast::<LifeLossEvent>()
+                    .filter(|life| accepts(life.player))
+                    .map(|life| life.amount)
             }
         });
         return amounts.try_fold(0i64, |sum, amount| {
-            Some(i64::from(amount)).and_then(|amount| sum.checked_add(amount))
-                .ok_or_else(|| ExecutionError::UnresolvableValue("life metric exceeds supported range".into()))
+            Some(i64::from(amount))
+                .and_then(|amount| sum.checked_add(amount))
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("life metric exceeds supported range".into())
+                })
         });
     }
 
@@ -879,18 +1056,29 @@ fn resolve_prior_effect_metric(
         EffectMetric::Count | EffectMetric::ChosenCount | EffectMetric::AffectedCount => {
             memory.len() as i64
         }
-        EffectMetric::FirstPower => memory.iter().find_map(|object| object.power.map(i64::from)).unwrap_or(0),
+        EffectMetric::FirstPower => memory
+            .iter()
+            .find_map(|object| object.power.map(i64::from))
+            .unwrap_or(0),
         EffectMetric::FirstToughness => memory
             .iter()
             .find_map(|object| object.toughness.map(i64::from))
             .unwrap_or(0),
-        EffectMetric::FirstManaValue => memory.first().map_or(0, |object| i64::from(object.mana_value)),
-        EffectMetric::TotalPower => memory.iter().map(|object| i64::from(object.power.unwrap_or(0))).sum(),
+        EffectMetric::FirstManaValue => memory
+            .first()
+            .map_or(0, |object| i64::from(object.mana_value)),
+        EffectMetric::TotalPower => memory
+            .iter()
+            .map(|object| i64::from(object.power.unwrap_or(0)))
+            .sum(),
         EffectMetric::TotalToughness => memory
             .iter()
             .map(|object| i64::from(object.toughness.unwrap_or(0)))
             .sum(),
-        EffectMetric::TotalManaValue => memory.iter().map(|object| i64::from(object.mana_value)).sum(),
+        EffectMetric::TotalManaValue => memory
+            .iter()
+            .map(|object| i64::from(object.mana_value))
+            .sum(),
         EffectMetric::GreatestPower => memory
             .iter()
             .filter_map(|object| object.power.map(i64::from))
@@ -1071,21 +1259,46 @@ pub(crate) fn room_unlocked_door_count(game: &GameState, object: &crate::object:
 
 /// Resolve a Value to a concrete i32.
 /// Resolve a numeric quantity without truncating prior instruction counts.
-pub fn resolve_value_wide(game: &GameState, value: &Value, ctx: &ExecutionContext) -> Result<i64, ExecutionError> {
-    value_eval::resolve_wide(value, &value_eval::EvaluationContext::execution_context(game,ctx))
+pub fn resolve_value_wide(
+    game: &GameState,
+    value: &Value,
+    ctx: &ExecutionContext,
+) -> Result<i64, ExecutionError> {
+    value_eval::resolve_wide(
+        value,
+        &value_eval::EvaluationContext::execution_context(game, ctx),
+    )
 }
 
 /// Convert a nonnegative instruction quantity into an unsigned event field.
-pub fn resolve_nonnegative_u32(game: &GameState, value: &Value, ctx: &ExecutionContext) -> Result<u32, ExecutionError> {
-    u32::try_from(resolve_value_wide(game,value,ctx)?.max(0)).map_err(|_|
-        ExecutionError::UnresolvableValue("resolved quantity exceeds the unsigned event range".into()))
+pub fn resolve_nonnegative_u32(
+    game: &GameState,
+    value: &Value,
+    ctx: &ExecutionContext,
+) -> Result<u32, ExecutionError> {
+    u32::try_from(resolve_value_wide(game, value, ctx)?.max(0)).map_err(|_| {
+        ExecutionError::UnresolvableValue(
+            "resolved quantity exceeds the unsigned event range".into(),
+        )
+    })
 }
 
 /// Resolve a requested quantity for an operation bounded by available resources.
 /// Clamp in the wide domain before narrowing the resulting event quantity.
-pub fn resolve_bounded_nonnegative_u32(game: &GameState, value: &Value, ctx: &ExecutionContext, available: u32) -> Result<u32, ExecutionError> {
-    let quantity = resolve_value_wide(game, value, ctx)?.max(0).min(i64::from(available));
-    u32::try_from(quantity).map_err(|_| ExecutionError::InternalError("bounded quantity exceeded its unsigned resource range".into()))
+pub fn resolve_bounded_nonnegative_u32(
+    game: &GameState,
+    value: &Value,
+    ctx: &ExecutionContext,
+    available: u32,
+) -> Result<u32, ExecutionError> {
+    let quantity = resolve_value_wide(game, value, ctx)?
+        .max(0)
+        .min(i64::from(available));
+    u32::try_from(quantity).map_err(|_| {
+        ExecutionError::InternalError(
+            "bounded quantity exceeded its unsigned resource range".into(),
+        )
+    })
 }
 
 pub fn resolve_value(
@@ -1152,7 +1365,9 @@ fn object_lki_snapshot<'a>(
         .filter(|snapshot| snapshot.object_id == object_id)
         .or_else(|| ctx.target_snapshots.get(&object_id))
         .or_else(|| {
-            ctx.tagged_objects.values().flatten()
+            ctx.tagged_objects
+                .values()
+                .flatten()
                 .find(|snapshot| snapshot.object_id == object_id)
         })
 }
@@ -1194,8 +1409,7 @@ fn latest_tagged_lki_snapshot<'a>(
             // CR 400.7: a later incarnation of the same physical card is not
             // this tagged object. Authorized movement links update the tag
             // separately; LKI lookup must not invent such permission.
-            snapshot.zone == tagged_snapshot.zone
-                && snapshot.object_id == tagged_snapshot.object_id
+            snapshot.zone == tagged_snapshot.zone && snapshot.object_id == tagged_snapshot.object_id
         })
 }
 
@@ -1600,9 +1814,7 @@ fn combat_attacking_player(game: &GameState, ctx: &ExecutionContext) -> Option<P
             event
                 .downcast::<DamageEvent>()
                 .is_some_and(|damage| damage.is_combat)
-                || event
-                    .downcast::<crate::CombatDamageEvent>()
-                    .is_some()
+                || event.downcast::<crate::CombatDamageEvent>().is_some()
         });
         (combat_damage_trigger || game.turn.phase == crate::game_state::Phase::Combat)
             .then_some(game.turn.active_player)
@@ -1777,9 +1989,28 @@ pub fn resolve_player_filter(
                 })
         }
         PlayerFilter::Target(_) => {
-            for target in &ctx.targets {
+            let targets = if ctx.targets.is_empty() && !ctx.targets_are_cost_choices {
+                ctx.announced_targets.as_deref().unwrap_or(&ctx.targets)
+            } else {
+                &ctx.targets
+            };
+            for target in targets {
                 if let ResolvedTarget::Player(id) = target {
                     return Ok(*id);
+                }
+            }
+            if !ctx.targets_are_cost_choices {
+                if let Some(player) = ctx
+                    .announced_targets
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .find_map(|target| match target {
+                        ResolvedTarget::Player(player) => Some(*player),
+                        _ => None,
+                    })
+                {
+                    return Ok(player);
                 }
             }
             Err(ExecutionError::InvalidTarget)
@@ -1975,11 +2206,25 @@ fn resolve_controller_of(
                         ) && (object.id == snapshot.object_id || object.zone != snapshot.zone)
                     })
                     .map(|object| game.controller_of(object));
-                let departure_controller = ctx.triggering_event.as_ref()
-                    .filter(|event| matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped | crate::events::EventKind::ObjectBecameAttached | crate::events::EventKind::ObjectBecameUnattached | crate::events::EventKind::PermanentPhasedIn | crate::events::EventKind::PermanentPhasedOut))
+                let departure_controller = ctx
+                    .triggering_event
+                    .as_ref()
+                    .filter(|event| {
+                        matches!(
+                            event.kind(),
+                            crate::events::EventKind::PermanentTapped
+                                | crate::events::EventKind::PermanentUntapped
+                                | crate::events::EventKind::ObjectBecameAttached
+                                | crate::events::EventKind::ObjectBecameUnattached
+                                | crate::events::EventKind::PermanentPhasedIn
+                                | crate::events::EventKind::PermanentPhasedOut
+                        )
+                    })
                     .and_then(|_| latest_zone_change_snapshot_for_object(game, snapshot.object_id))
                     .map(|departed| departed.controller);
-                Ok(live_controller.or(departure_controller).unwrap_or(snapshot.controller))
+                Ok(live_controller
+                    .or(departure_controller)
+                    .unwrap_or(snapshot.controller))
             } else if let Some(player) = ctx
                 .get_tagged_players(tag.as_str())
                 .and_then(|players| players.first().copied())
@@ -2387,8 +2632,7 @@ pub fn validate_target(
             player_filter_matches_game(filter, *id, game, &filter_ctx)
         }
         (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => {
-            (game.object(*id).is_some()
-                && game.current_has_card_type(*id, CardType::Planeswalker))
+            (game.object(*id).is_some() && game.current_has_card_type(*id, CardType::Planeswalker))
                 || ctx
                     .target_snapshots
                     .get(id)
@@ -2616,8 +2860,7 @@ pub fn resolve_objects_for_effect_with_choice_description(
                 candidates.truncate(max);
             }
             if filter.one_per_card_type {
-                candidates =
-                    normalize_chosen_one_per_card_type(
+                candidates = normalize_chosen_one_per_card_type(
                     game,
                     candidates,
                     &[],
@@ -2838,9 +3081,12 @@ pub fn resolve_single_object_for_effect(
 /// Returns `None` only when neither a live object nor a tagged snapshot
 /// exists.
 pub(crate) fn resolve_effect_source_with_lki(
-    game: &mut GameState, ctx: &mut ExecutionContext, spec: &ChooseSpec,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
 ) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
-    let live = resolve_single_object_for_effect(game, ctx, spec).ok()
+    let live = resolve_single_object_for_effect(game, ctx, spec)
+        .ok()
         .filter(|id| game.object(*id).is_some());
     retain_effect_source_lki(game, ctx, spec, live)
 }
@@ -2848,18 +3094,40 @@ pub(crate) fn resolve_effect_source_with_lki(
 /// Immutable source specifications refer to announced/locked objects. Share
 /// the same LKI precedence with the chooser-bearing live resolver.
 pub(crate) fn resolve_effect_source_from_spec_with_lki(
-    game: &GameState, ctx: &ExecutionContext, spec: &ChooseSpec,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    spec: &ChooseSpec,
 ) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
-    let live = resolve_single_object_from_spec(game, spec, ctx).ok()
+    let live = resolve_single_object_from_spec(game, spec, ctx)
+        .ok()
         .filter(|id| game.object(*id).is_some());
     retain_effect_source_lki(game, ctx, spec, live)
 }
 
 fn retain_effect_source_lki(
-    game: &GameState, ctx: &ExecutionContext, spec: &ChooseSpec, live: Option<ObjectId>,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    spec: &ChooseSpec,
+    live: Option<ObjectId>,
 ) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
-    let tagged = match spec.base() {ChooseSpec::Tagged(tag) => ctx.get_tagged(tag).cloned(), _ => None};
-    let departed = tagged_lki_when_object_left(game, ctx, spec).cloned();
+    let tagged = match spec.base() {
+        ChooseSpec::Tagged(tag) => ctx
+            .get_tagged(format!("__pre_move_history__{}", tag.as_str()))
+            .or_else(|| ctx.get_tagged(tag))
+            .cloned(),
+        _ => None,
+    };
+    let departed = tagged
+        .as_ref()
+        .filter(|snapshot| {
+            game.object(snapshot.object_id)
+                .is_none_or(|object| object.zone != snapshot.zone)
+        })
+        .map(|snapshot| {
+            latest_tagged_lki_snapshot(game, snapshot)
+                .unwrap_or(snapshot)
+                .clone()
+        });
     match (live, tagged) {
         // The tagged object left the zone it was tagged in before this
         // resolution: its new incarnation is a new object (CR 400.7), so the
@@ -2894,6 +3162,9 @@ pub(crate) fn tagged_lki_when_object_left<'a>(
     let ChooseSpec::Tagged(tag) = spec.base() else {
         return None;
     };
+    if let Some(snapshot) = ctx.get_tagged(format!("__paid_departure__{}", tag.as_str())) {
+        return Some(snapshot);
+    }
     let snapshot = ctx.get_tagged(tag)?;
     game.object(snapshot.object_id)
         .is_none_or(|object| object.zone != snapshot.zone)
@@ -3067,7 +3338,13 @@ pub(crate) fn normalize_chosen_distinct_mana_values(
 /// batch, state-based actions) is reused.
 pub(crate) fn begin_simultaneous_zone_change_lookback(game: &mut GameState) -> bool {
     if game.simultaneous_event_lookback().is_some()
-        || !game.may_have_triggered_abilities_for_event_kind(crate::events::EventKind::ZoneChange)
+        || ![
+            crate::events::EventKind::ZoneChange,
+            crate::events::EventKind::Destroy,
+            crate::events::EventKind::Sacrifice,
+        ]
+        .into_iter()
+        .any(|kind| game.may_have_triggered_abilities_for_event_kind(kind))
     {
         return false;
     }
@@ -3105,49 +3382,63 @@ pub fn apply_to_selected_objects_with_choice_description(
     ) -> Result<bool, ExecutionError>,
 ) -> Result<ObjectApplyResult, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(ObjectApplyResult { selected_count: 0, applied_count: 0, outcome: EffectOutcome::count(0) });
-    }
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = (|| -> Result<ObjectApplyResult, ExecutionError> {
-    let objects =
-        resolve_objects_for_effect_with_choice_description(game, ctx, spec, choice_description)?;
-    if ctx.decision_maker.awaiting_choice() {
         return Ok(ObjectApplyResult {
             selected_count: 0,
             applied_count: 0,
             outcome: EffectOutcome::count(0),
         });
     }
-    let selected_count = objects.len();
-    let mut applied_count = 0usize;
-
-    for object_id in objects {
-        let applied = apply(game, ctx, object_id)?;
-        // A callback can suspend inside a replacement program. Do not invoke
-        // later object callbacks or report an uncommitted successful prefix.
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let result = (|| -> Result<ObjectApplyResult, ExecutionError> {
+        let objects = resolve_objects_for_effect_with_choice_description(
+            game,
+            ctx,
+            spec,
+            choice_description,
+        )?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(ObjectApplyResult { selected_count: 0, applied_count: 0, outcome: EffectOutcome::count(0) });
+            return Ok(ObjectApplyResult {
+                selected_count: 0,
+                applied_count: 0,
+                outcome: EffectOutcome::count(0),
+            });
         }
-        if applied { applied_count += 1; }
-    }
+        let selected_count = objects.len();
+        let mut applied_count = 0usize;
 
-    let outcome = match result_policy {
-        ObjectApplyResultPolicy::CountApplied => EffectOutcome::count(applied_count as i32),
-        ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid => {
-            if selected_count > 0 {
-                EffectOutcome::resolved()
-            } else {
-                EffectOutcome::target_invalid()
+        for object_id in objects {
+            let applied = apply(game, ctx, object_id)?;
+            // A callback can suspend inside a replacement program. Do not invoke
+            // later object callbacks or report an uncommitted successful prefix.
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(ObjectApplyResult {
+                    selected_count: 0,
+                    applied_count: 0,
+                    outcome: EffectOutcome::count(0),
+                });
+            }
+            if applied {
+                applied_count += 1;
             }
         }
-    };
 
-    Ok(ObjectApplyResult {
-        selected_count,
-        applied_count,
-        outcome,
-    })
+        let outcome = match result_policy {
+            ObjectApplyResultPolicy::CountApplied => EffectOutcome::count(applied_count as i32),
+            ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid => {
+                if selected_count > 0 {
+                    EffectOutcome::resolved()
+                } else {
+                    EffectOutcome::target_invalid()
+                }
+            }
+        };
+
+        Ok(ObjectApplyResult {
+            selected_count,
+            applied_count,
+            outcome,
+        })
     })();
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
         *game = checkpoint;
@@ -3340,7 +3631,8 @@ pub fn resolve_objects_from_spec(
                     .iter()
                     .filter_map(|t| {
                         if let ResolvedTarget::Object(id) = t
-                            && validate_target(game, t, spec, ctx) {
+                            && validate_target(game, t, spec, ctx)
+                        {
                             Some(*id)
                         } else {
                             None
@@ -3684,8 +3976,12 @@ pub(crate) fn resolve_player_filter_to_list(
             .map(|player| player.id)
             .collect()),
         PlayerFilter::Target(_) => {
-            let players = ctx
-                .targets
+            let targets = if ctx.targets.is_empty() && !ctx.targets_are_cost_choices {
+                ctx.announced_targets.as_deref().unwrap_or(&ctx.targets)
+            } else {
+                &ctx.targets
+            };
+            let players = targets
                 .iter()
                 .filter_map(|target| match target {
                     ResolvedTarget::Player(id) => Some(*id),
@@ -3929,13 +4225,11 @@ pub(crate) fn resolve_player_filter_to_list(
                     ExecutionError::UnresolvableValue("DefendingPlayer not set".to_string())
                 })
         }
-        PlayerFilter::Attacking => {
-            combat_attacking_player(game, ctx)
-                .map(|id| vec![id])
-                .ok_or_else(|| {
-                    ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())
-                })
-        }
+        PlayerFilter::Attacking => combat_attacking_player(game, ctx)
+            .map(|id| vec![id])
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())
+            }),
         PlayerFilter::DamagedPlayer => {
             if let Some(triggering_event) = &ctx.triggering_event
                 && let Some(damage_event) = triggering_event.downcast::<DamageEvent>()
@@ -4482,12 +4776,27 @@ mod tests {
             resolve_value(&game, &Value::ManaSpentToCastTriggeringObject, &ctx).unwrap(),
             5
         );
-        assert_eq!(resolve_value(&game, &Value::CasterManaSpentToCastTriggeringObject, &ctx).unwrap(), 2);
+        assert_eq!(
+            resolve_value(&game, &Value::CasterManaSpentToCastTriggeringObject, &ctx).unwrap(),
+            2
+        );
         let mut unknown = ObjectSnapshot::for_testing(spell_id, alice, "Legacy payment");
         unknown.mana_spent_to_cast.colorless = 7;
-        let unknown_event = TriggerEvent::new_with_provenance(SpellCastEvent::new_with_snapshot(spell_id, alice, Zone::Hand, unknown), ProvNodeId::default());
-        let unknown_ctx = ExecutionContext::new_default(source_id, alice).with_triggering_event(unknown_event);
-        assert!(resolve_value(&game, &Value::CasterManaSpentToCastTriggeringObject, &unknown_ctx).is_err(), "total payment cannot substitute for missing payer evidence");
+        let unknown_event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new_with_snapshot(spell_id, alice, Zone::Hand, unknown),
+            ProvNodeId::default(),
+        );
+        let unknown_ctx =
+            ExecutionContext::new_default(source_id, alice).with_triggering_event(unknown_event);
+        assert!(
+            resolve_value(
+                &game,
+                &Value::CasterManaSpentToCastTriggeringObject,
+                &unknown_ctx
+            )
+            .is_err(),
+            "total payment cannot substitute for missing payer evidence"
+        );
     }
 
     #[test]
@@ -5223,36 +5532,62 @@ mod tests {
     #[test]
     fn constrained_player_filters_do_not_accept_unqualified_context_players() {
         let mut game = new_test_game();
-        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
         let mut ctx = ExecutionContext::new_default(game.new_object_id(), bob);
-        for targets in [vec![bob], vec![bob, alice], vec![alice, bob], vec![PlayerId::from_index(99), alice]] {
+        for targets in [
+            vec![bob],
+            vec![bob, alice],
+            vec![alice, bob],
+            vec![PlayerId::from_index(99), alice],
+        ] {
             ctx.targets = targets.into_iter().map(ResolvedTarget::Player).collect();
-            assert_eq!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(), alice);
+            assert_eq!(
+                resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(),
+                alice
+            );
         }
         ctx.targets = vec![ResolvedTarget::Player(bob)];
-        assert_eq!(resolve_player_filter(&game, &PlayerFilter::Any, &ctx).unwrap(), bob,
-            "unconstrained affected-player bindings remain available");
+        assert_eq!(
+            resolve_player_filter(&game, &PlayerFilter::Any, &ctx).unwrap(),
+            bob,
+            "unconstrained affected-player bindings remain available"
+        );
         for target in [alice, bob] {
             ctx.targets = vec![ResolvedTarget::Player(target)];
-            assert!(matches!(resolve_player_filter(&game, &PlayerFilter::Teammate, &ctx),
-                Err(ExecutionError::UnresolvableValue(_))), "no teammate exists in this game");
+            assert!(
+                matches!(
+                    resolve_player_filter(&game, &PlayerFilter::Teammate, &ctx),
+                    Err(ExecutionError::UnresolvableValue(_))
+                ),
+                "no teammate exists in this game"
+            );
         }
     }
 
     #[test]
     fn constrained_opponent_context_retains_multiplayer_choice_and_valid_targets() {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
-        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
         let carol = PlayerId::from_index(2);
         let mut ctx = ExecutionContext::new_default(game.new_object_id(), bob);
         ctx.targets = vec![ResolvedTarget::Player(bob)];
-        assert!(matches!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx),
-            Err(ExecutionError::UnresolvableValue(ref detail)) if detail == AN_OPPONENT_CHOICE_REQUIRED));
+        assert!(
+            matches!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx),
+            Err(ExecutionError::UnresolvableValue(ref detail)) if detail == AN_OPPONENT_CHOICE_REQUIRED)
+        );
         ctx.set_tagged_players(AN_OPPONENT_CHOICE_TAG, vec![carol]);
-        assert_eq!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(), carol);
+        assert_eq!(
+            resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(),
+            carol
+        );
         ctx.targets = vec![ResolvedTarget::Player(bob), ResolvedTarget::Player(alice)];
-        assert_eq!(resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(), alice,
-            "a valid explicit context target still takes precedence");
+        assert_eq!(
+            resolve_player_filter(&game, &PlayerFilter::Opponent, &ctx).unwrap(),
+            alice,
+            "a valid explicit context target still takes precedence"
+        );
     }
 
     #[test]
@@ -5821,88 +6156,219 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod additional_callback_owner_contract_tests {
     use super::*;
-    use crate::target::ObjectFilter;
     use crate::effect::{Effect, Value};
     use crate::ids::{CardId, PlayerId};
-    struct Answers { pending: bool, pause: bool, pause_selection: bool, selections: usize }
+    use crate::target::ObjectFilter;
+    struct Answers {
+        pending: bool,
+        pause: bool,
+        pause_selection: bool,
+        selections: usize,
+    }
     impl crate::decision::DecisionMaker for Answers {
-        fn decide_objects(&mut self, _: &GameState, context: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+        fn decide_objects(
+            &mut self,
+            _: &GameState,
+            context: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
             self.selections += 1;
-            if self.pending || self.pause_selection { self.pending = true; Vec::new() }
-            else { context.candidates.iter().filter(|c| c.legal).map(|c| c.id).take(context.min.max(1)).collect() }
+            if self.pending || self.pause_selection {
+                self.pending = true;
+                Vec::new()
+            } else {
+                context
+                    .candidates
+                    .iter()
+                    .filter(|c| c.legal)
+                    .map(|c| c.id)
+                    .take(context.min.max(1))
+                    .collect()
+            }
         }
-        fn decide_boolean(&mut self, _: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+        fn decide_boolean(
+            &mut self,
+            _: &GameState,
+            _: &crate::decisions::context::BooleanContext,
+        ) -> bool {
             self.pending = self.pause;
             !self.pause
         }
-        fn awaiting_choice(&self) -> bool { self.pending }
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
     }
-    fn run_callbacks(game: &mut GameState, ctx: &mut ExecutionContext, spec: &ChooseSpec, mode: u8, calls: &mut Vec<ObjectId>) -> Result<ObjectApplyResult, ExecutionError> {
-        apply_to_selected_objects(game, ctx, spec, ObjectApplyResultPolicy::CountApplied, |game, ctx, object| {
-            calls.push(object);
-            ctx.set_tagged_objects("callback", vec![crate::snapshot::ObjectSnapshot::from_object(game.object(object).unwrap(), game)]);
-            let outcome = crate::effects::execute_effect(game, &Effect::gain_life(2), ctx)?;
-            for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
-            if mode == 1 { crate::effects::execute_effect(game, &Effect::lose_life(Value::X), ctx)?; }
-            let outcome = crate::effects::execute_effect(game, &Effect::may(vec![Effect::gain_life(4)]), ctx)?;
-            for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
-            Ok(true)
-        })
+    fn run_callbacks(
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        spec: &ChooseSpec,
+        mode: u8,
+        calls: &mut Vec<ObjectId>,
+    ) -> Result<ObjectApplyResult, ExecutionError> {
+        apply_to_selected_objects(
+            game,
+            ctx,
+            spec,
+            ObjectApplyResultPolicy::CountApplied,
+            |game, ctx, object| {
+                calls.push(object);
+                ctx.set_tagged_objects(
+                    "callback",
+                    vec![crate::snapshot::ObjectSnapshot::from_object(
+                        game.object(object).unwrap(),
+                        game,
+                    )],
+                );
+                let outcome = crate::effects::execute_effect(game, &Effect::gain_life(2), ctx)?;
+                for event in outcome.events {
+                    game.queue_trigger_event(event.provenance(), event);
+                }
+                if mode == 1 {
+                    crate::effects::execute_effect(game, &Effect::lose_life(Value::X), ctx)?;
+                }
+                let outcome = crate::effects::execute_effect(
+                    game,
+                    &Effect::may(vec![Effect::gain_life(4)]),
+                    ctx,
+                )?;
+                for event in outcome.events {
+                    game.queue_trigger_event(event.provenance(), event);
+                }
+                Ok(true)
+            },
+        )
     }
     fn check_callbacks(mode: u8) {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
-        let creature = crate::card::CardBuilder::new(CardId::new(), "Callback object").card_types(vec![crate::types::CardType::Creature]).build();
-        for _ in 0..2 { game.create_object_from_card(&creature, alice, Zone::Battlefield); }
-        let card = crate::card::CardBuilder::new(CardId::new(), "Callback source").card_types(vec![crate::types::CardType::Artifact]).build();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature = crate::card::CardBuilder::new(CardId::new(), "Callback object")
+            .card_types(vec![crate::types::CardType::Creature])
+            .build();
+        for _ in 0..2 {
+            game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        }
+        let card = crate::card::CardBuilder::new(CardId::new(), "Callback source")
+            .card_types(vec![crate::types::CardType::Artifact])
+            .build();
         let source = game.create_object_from_card(&card, bob, Zone::Battlefield);
-        let sentinel = crate::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        let sentinel =
+            crate::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
         game.take_pending_trigger_events();
-        let spec = if mode >= 3 { ChooseSpec::Object(ObjectFilter::creature().you_control()) }
-            else { ChooseSpec::all(ObjectFilter::creature().you_control()) };
-        let mut dm = Answers { pending: mode == 4, pause: mode == 2, pause_selection: mode == 3, selections: 0 };
+        let spec = if mode >= 3 {
+            ChooseSpec::Object(ObjectFilter::creature().you_control())
+        } else {
+            ChooseSpec::all(ObjectFilter::creature().you_control())
+        };
+        let mut dm = Answers {
+            pending: mode == 4,
+            pause: mode == 2,
+            pause_selection: mode == 3,
+            selections: 0,
+        };
         let mut ctx = ExecutionContext::new(source, alice, &mut dm);
         ctx.set_tagged_objects("callback", vec![sentinel.clone()]);
         let mut calls = Vec::new();
         let result = run_callbacks(&mut game, &mut ctx, &spec, mode, &mut calls);
-        if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
-        else {
+        if mode == 1 {
+            assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_))));
+        } else {
             let receipt = result.unwrap();
             if mode >= 2 {
                 assert!(ctx.decision_maker.awaiting_choice());
-                assert_eq!(calls.len(), if mode == 2 { 1 } else { 0 }, "a suspended callback/selection cannot execute later callbacks");
-                assert_eq!(receipt.applied_count, 0); assert_eq!(receipt.outcome.count_or_zero(), 0);
-            } else { assert_eq!(receipt.selected_count, 2); assert_eq!(receipt.applied_count, 2); assert_eq!(receipt.outcome.count_or_zero(), 2); }
+                assert_eq!(
+                    calls.len(),
+                    if mode == 2 { 1 } else { 0 },
+                    "a suspended callback/selection cannot execute later callbacks"
+                );
+                assert_eq!(receipt.applied_count, 0);
+                assert_eq!(receipt.outcome.count_or_zero(), 0);
+            } else {
+                assert_eq!(receipt.selected_count, 2);
+                assert_eq!(receipt.applied_count, 2);
+                assert_eq!(receipt.outcome.count_or_zero(), 2);
+            }
         }
         if mode != 0 {
-            assert_eq!(game.player(alice).unwrap().life, 20, "callback/selection failures restore the entire original helper operation");
-            assert_eq!(ctx.get_tagged_all("callback").unwrap()[0].object_id, sentinel.object_id);
+            assert_eq!(
+                game.player(alice).unwrap().life,
+                20,
+                "callback/selection failures restore the entire original helper operation"
+            );
+            assert_eq!(
+                ctx.get_tagged_all("callback").unwrap()[0].object_id,
+                sentinel.object_id
+            );
             assert!(game.take_pending_trigger_events().is_empty());
         } else {
             assert_eq!(game.player(alice).unwrap().life, 32);
-            assert_eq!(game.take_pending_trigger_events().iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).map(|e| e.amount).collect::<Vec<_>>(), vec![2,4,2,4]);
+            assert_eq!(
+                game.take_pending_trigger_events()
+                    .iter()
+                    .filter_map(|e| e.downcast::<crate::events::LifeGainEvent>())
+                    .map(|e| e.amount)
+                    .collect::<Vec<_>>(),
+                vec![2, 4, 2, 4]
+            );
         }
-        assert_eq!(ctx.source, source); assert_eq!(ctx.controller, alice); drop(ctx);
-        if mode == 4 { assert_eq!(dm.selections, 0, "an already pending parent cannot be asked another selection"); }
-        if mode == 3 { assert_eq!(dm.selections, 1); }
+        assert_eq!(ctx.source, source);
+        assert_eq!(ctx.controller, alice);
+        drop(ctx);
+        if mode == 4 {
+            assert_eq!(
+                dm.selections, 0,
+                "an already pending parent cannot be asked another selection"
+            );
+        }
+        if mode == 3 {
+            assert_eq!(dm.selections, 1);
+        }
         if mode == 2 {
-            let mut dm = Answers { pending: false, pause: false, pause_selection: false, selections: 0 };
-            let mut ctx = ExecutionContext::new(source, alice, &mut dm); let mut calls = Vec::new();
+            let mut dm = Answers {
+                pending: false,
+                pause: false,
+                pause_selection: false,
+                selections: 0,
+            };
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            let mut calls = Vec::new();
             let receipt = run_callbacks(&mut game, &mut ctx, &spec, 0, &mut calls).unwrap();
-            assert_eq!(receipt.applied_count, 2); assert!(!ctx.decision_maker.awaiting_choice());
-            assert_eq!(game.player(alice).unwrap().life, 32); assert_eq!(calls.len(), 2);
-            assert_eq!(game.take_pending_trigger_events().iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).map(|e| e.amount).collect::<Vec<_>>(), vec![2,4,2,4]);
+            assert_eq!(receipt.applied_count, 2);
+            assert!(!ctx.decision_maker.awaiting_choice());
+            assert_eq!(game.player(alice).unwrap().life, 32);
+            assert_eq!(calls.len(), 2);
+            assert_eq!(
+                game.take_pending_trigger_events()
+                    .iter()
+                    .filter_map(|e| e.downcast::<crate::events::LifeGainEvent>())
+                    .map(|e| e.amount)
+                    .collect::<Vec<_>>(),
+                vec![2, 4, 2, 4]
+            );
         }
     }
-    #[test] fn callback_success_retains_original_count_and_observations() { check_callbacks(0); }
-    #[test] fn callback_error_restores_game_context_and_queued_prefix() { check_callbacks(1); }
-    #[test] fn callback_pending_stops_later_objects_and_replays_once() { check_callbacks(2); }
-    #[test] fn callback_pending_selection_does_not_execute_objects() { check_callbacks(3); }
-    #[test] fn callback_already_pending_parent_does_not_ask_again() { check_callbacks(4); }
+    #[test]
+    fn callback_success_retains_original_count_and_observations() {
+        check_callbacks(0);
+    }
+    #[test]
+    fn callback_error_restores_game_context_and_queued_prefix() {
+        check_callbacks(1);
+    }
+    #[test]
+    fn callback_pending_stops_later_objects_and_replays_once() {
+        check_callbacks(2);
+    }
+    #[test]
+    fn callback_pending_selection_does_not_execute_objects() {
+        check_callbacks(3);
+    }
+    #[test]
+    fn callback_already_pending_parent_does_not_ask_again() {
+        check_callbacks(4);
+    }
 }
 
 #[cfg(test)]
@@ -5912,37 +6378,90 @@ mod replacement_object_selection_contract_tests {
     fn setup() -> (GameState, ObjectId, ObjectId, ObjectId, PlayerId) {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
-        let artifact = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Selection artifact")
-            .card_types(vec![crate::types::CardType::Artifact]).build();
-        let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Selection creature")
-            .card_types(vec![crate::types::CardType::Creature])
-            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        let artifact =
+            crate::card::CardBuilder::new(crate::ids::CardId::new(), "Selection artifact")
+                .card_types(vec![crate::types::CardType::Artifact])
+                .build();
+        let creature =
+            crate::card::CardBuilder::new(crate::ids::CardId::new(), "Selection creature")
+                .card_types(vec![crate::types::CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .build();
         let first = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
         let second = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
         let selected = game.create_object_from_card(&creature, alice, Zone::Battlefield);
         (game, first, second, selected, alice)
     }
-    #[test] fn non_target_specific_filter_intersects_supplied_objects() {
+    #[test]
+    fn non_target_specific_filter_intersects_supplied_objects() {
         let (game, first, second, selected, alice) = setup();
-        let ctx = ExecutionContext::new_default(first, alice).with_targets(vec![first, second, selected]
-            .into_iter().map(ResolvedTarget::Object).collect());
-        assert_eq!(resolve_objects_from_spec(&game, &ChooseSpec::Object(ObjectFilter::specific(selected)), &ctx).unwrap(), vec![selected]);
+        let ctx = ExecutionContext::new_default(first, alice).with_targets(
+            vec![first, second, selected]
+                .into_iter()
+                .map(ResolvedTarget::Object)
+                .collect(),
+        );
+        assert_eq!(
+            resolve_objects_from_spec(
+                &game,
+                &ChooseSpec::Object(ObjectFilter::specific(selected)),
+                &ctx
+            )
+            .unwrap(),
+            vec![selected]
+        );
     }
-    #[test] fn non_target_type_filter_intersects_supplied_objects() {
+    #[test]
+    fn non_target_type_filter_intersects_supplied_objects() {
         let (game, first, second, selected, alice) = setup();
-        let ctx = ExecutionContext::new_default(first, alice).with_targets(vec![first, second, selected]
-            .into_iter().map(ResolvedTarget::Object).collect());
-        assert_eq!(resolve_objects_from_spec(&game, &ChooseSpec::Object(ObjectFilter::creature()), &ctx).unwrap(), vec![selected]);
+        let ctx = ExecutionContext::new_default(first, alice).with_targets(
+            vec![first, second, selected]
+                .into_iter()
+                .map(ResolvedTarget::Object)
+                .collect(),
+        );
+        assert_eq!(
+            resolve_objects_from_spec(&game, &ChooseSpec::Object(ObjectFilter::creature()), &ctx)
+                .unwrap(),
+            vec![selected]
+        );
     }
-    #[test] fn regeneration_specific_filter_does_not_shield_other_supplied_objects() {
+    #[test]
+    fn regeneration_specific_filter_does_not_shield_other_supplied_objects() {
         let (mut game, first, second, selected, alice) = setup();
-        let mut ctx = ExecutionContext::new_default(first, alice).with_targets(vec![first, second, selected]
-            .into_iter().map(ResolvedTarget::Object).collect());
-        crate::effects::execute_effect(&mut game, &crate::effect::Effect::regenerate(
-            ChooseSpec::Object(ObjectFilter::specific(selected)), crate::effect::Until::EndOfTurn), &mut ctx).unwrap();
-        assert_eq!(game.effect_store.replacement_effects.count_one_shot_effects_from_source(selected), 1);
-        assert_eq!(game.effect_store.replacement_effects.count_one_shot_effects_from_source(first), 0);
-        assert_eq!(game.effect_store.replacement_effects.count_one_shot_effects_from_source(second), 0);
+        let mut ctx = ExecutionContext::new_default(first, alice).with_targets(
+            vec![first, second, selected]
+                .into_iter()
+                .map(ResolvedTarget::Object)
+                .collect(),
+        );
+        crate::effects::execute_effect(
+            &mut game,
+            &crate::effect::Effect::regenerate(
+                ChooseSpec::Object(ObjectFilter::specific(selected)),
+                crate::effect::Until::EndOfTurn,
+            ),
+            &mut ctx,
+        )
+        .unwrap();
+        assert_eq!(
+            game.effect_store
+                .replacement_effects
+                .count_one_shot_effects_from_source(selected),
+            1
+        );
+        assert_eq!(
+            game.effect_store
+                .replacement_effects
+                .count_one_shot_effects_from_source(first),
+            0
+        );
+        assert_eq!(
+            game.effect_store
+                .replacement_effects
+                .count_one_shot_effects_from_source(second),
+            0
+        );
     }
 }
 
@@ -5964,59 +6483,142 @@ mod aura_source_incarnation_tests {
     fn setup() -> (GameState, ObjectId, ObjectId, ObjectId, ObjectSnapshot) {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let owner = PlayerId(0);
-        let host = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Attached host").card_types(vec![CardType::Creature]).build(), owner, Zone::Battlefield);
-        let aura = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Source Aura").card_types(vec![CardType::Enchantment]).subtypes(vec![Subtype::Aura]).build(), owner, Zone::Battlefield);
+        let host = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Attached host")
+                .card_types(vec![CardType::Creature])
+                .build(),
+            owner,
+            Zone::Battlefield,
+        );
+        let aura = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Source Aura")
+                .card_types(vec![CardType::Enchantment])
+                .subtypes(vec![Subtype::Aura])
+                .build(),
+            owner,
+            Zone::Battlefield,
+        );
         game.object_mut(aura).unwrap().attached_to = Some(AttachmentTarget::Object(host));
         let snapshot = ObjectSnapshot::from_object(game.object(aura).unwrap(), &game);
         let graveyard = game.move_object_by_effect(aura, Zone::Graveyard).unwrap();
         // Unit fixture supplies a canonical completed SBA receipt. The full
         // Ghoulish integration scenario separately uses real native SBAs.
-        game.turn_store.turn_history.event_records.clear(); game.turn_store.turn_history.staged_event_records.clear();
+        game.turn_store.turn_history.event_records.clear();
+        game.turn_store.turn_history.staged_event_records.clear();
         (game, host, aura, graveyard, snapshot)
     }
-    fn record(game: &mut GameState, source: ObjectId, graveyard: ObjectId, snapshot: ObjectSnapshot, cause: EventCause) {
-        game.turn_store.turn_history.event_records.push(TurnEventRecord {
-            event: TriggerEvent::new_with_provenance(ZoneChangeEvent::with_results(source, vec![graveyard], Zone::Battlefield, Zone::Graveyard, cause, Some(snapshot)), Default::default()),
-            object_snapshot: None, source_snapshot: None,
-        });
+    fn record(
+        game: &mut GameState,
+        source: ObjectId,
+        graveyard: ObjectId,
+        snapshot: ObjectSnapshot,
+        cause: EventCause,
+    ) {
+        game.turn_store
+            .turn_history
+            .event_records
+            .push(TurnEventRecord {
+                event: TriggerEvent::new_with_provenance(
+                    ZoneChangeEvent::with_results(
+                        source,
+                        vec![graveyard],
+                        Zone::Battlefield,
+                        Zone::Graveyard,
+                        cause,
+                        Some(snapshot),
+                    ),
+                    Default::default(),
+                ),
+                object_snapshot: None,
+                source_snapshot: None,
+            });
     }
     fn trigger(host: ObjectId) -> TriggerEvent {
-        TriggerEvent::new_with_provenance(ZoneChangeEvent::with_cause(host, Zone::Battlefield, Zone::Graveyard, EventCause::from_game_rule(), None), Default::default())
+        TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                host,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                EventCause::from_game_rule(),
+                None,
+            ),
+            Default::default(),
+        )
     }
     #[test]
     fn aura_exception_returns_the_recorded_sba_arrival_never_an_exile_return() {
         let (mut game, host, source, graveyard, snapshot) = setup();
-        record(&mut game, source, graveyard, snapshot.clone(), EventCause::from_sba());
-        let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(trigger(host));
+        record(
+            &mut game,
+            source,
+            graveyard,
+            snapshot.clone(),
+            EventCause::from_sba(),
+        );
+        let ctx = ExecutionContext::new_default(source, PlayerId(0))
+            .with_source_snapshot(snapshot)
+            .with_triggering_event(trigger(host));
         assert_eq!(resolve_source_object_id(&game, &ctx), Some(graveyard));
         let exiled = game.move_object_by_effect(graveyard, Zone::Exile).unwrap();
         let returned = game.move_object_by_effect(exiled, Zone::Graveyard).unwrap();
-        assert_ne!(returned, graveyard); assert_eq!(resolve_source_object_id(&game, &ctx), None);
+        assert_ne!(returned, graveyard);
+        assert_eq!(resolve_source_object_id(&game, &ctx), None);
     }
     #[test]
     fn unrelated_move_or_unrelated_attachment_does_not_authorize_source_following() {
         for sba in [false, true] {
             let (mut game, host, source, graveyard, mut snapshot) = setup();
-            if sba { snapshot.attached_to = Some(AttachmentTarget::Object(ObjectId::from_raw(90909))); }
-            record(&mut game, source, graveyard, snapshot.clone(), if sba { EventCause::from_sba() } else { EventCause::from_game_rule() });
-            let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(trigger(host));
+            if sba {
+                snapshot.attached_to = Some(AttachmentTarget::Object(ObjectId::from_raw(90909)));
+            }
+            record(
+                &mut game,
+                source,
+                graveyard,
+                snapshot.clone(),
+                if sba {
+                    EventCause::from_sba()
+                } else {
+                    EventCause::from_game_rule()
+                },
+            );
+            let ctx = ExecutionContext::new_default(source, PlayerId(0))
+                .with_source_snapshot(snapshot)
+                .with_triggering_event(trigger(host));
             assert_eq!(resolve_source_object_id(&game, &ctx), None);
         }
     }
     #[test]
     fn batched_source_departure_retains_the_existing_exact_event_exception() {
         let (game, host, source, graveyard, snapshot) = setup();
-        let mut event = ZoneChangeEvent::with_results(source, vec![graveyard], Zone::Battlefield, Zone::Graveyard, EventCause::from_game_rule(), Some(snapshot.clone()));
+        let mut event = ZoneChangeEvent::with_results(
+            source,
+            vec![graveyard],
+            Zone::Battlefield,
+            Zone::Graveyard,
+            EventCause::from_game_rule(),
+            Some(snapshot.clone()),
+        );
         event.objects.push(host);
-        let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(TriggerEvent::new_with_provenance(event, Default::default()));
+        let ctx = ExecutionContext::new_default(source, PlayerId(0))
+            .with_source_snapshot(snapshot)
+            .with_triggering_event(TriggerEvent::new_with_provenance(event, Default::default()));
         assert_eq!(resolve_source_object_id(&game, &ctx), Some(graveyard));
     }
     #[test]
     fn copied_aura_can_lose_its_aura_type_in_graveyard_without_losing_the_proven_arrival() {
         let (mut game, host, source, graveyard, snapshot) = setup();
-        record(&mut game, source, graveyard, snapshot.clone(), EventCause::from_sba());
+        record(
+            &mut game,
+            source,
+            graveyard,
+            snapshot.clone(),
+            EventCause::from_sba(),
+        );
         game.object_mut(graveyard).unwrap().subtypes.clear();
-        let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(trigger(host));
+        let ctx = ExecutionContext::new_default(source, PlayerId(0))
+            .with_source_snapshot(snapshot)
+            .with_triggering_event(trigger(host));
         assert_eq!(resolve_source_object_id(&game, &ctx), Some(graveyard));
     }
 }
@@ -6077,33 +6679,63 @@ mod shared_player_list_team_tests {
 mod discarded_incarnation_receipt_tests {
     use super::*;
     use crate::card::CardBuilder;
-    use crate::ids::CardId;
     use crate::effects::EffectExecutor;
+    use crate::ids::CardId;
     #[test]
     fn self_and_group_discard_references_find_only_the_recorded_arrival() {
-        let mut game=crate::tests::test_helpers::setup_two_player_game();let a=PlayerId::from_index(0);
-        let card=CardBuilder::new(CardId::new(),"Discarded source").build();
-        let origin=game.create_object_from_card(&card,a,Zone::Hand);
-        let before=ObjectSnapshot::from_object_with_calculated_characteristics(game.object(origin).unwrap(),&game);
-        let grave=game.move_object_by_effect(origin,Zone::Graveyard).unwrap();
-        let event=crate::events::other::CardDiscardedEvent::new(a,origin).with_snapshot(before.clone())
-            .with_batch(vec![origin],vec![before.clone()],0)
-            .with_destinations(vec![crate::events::other::DiscardedCardDestination {card:origin,object:Some(grave),zone:Zone::Graveyard}]);
-        let mut ctx=ExecutionContext::new_default(origin,a).with_source_snapshot(before.clone());
-        ctx.triggering_event=Some(crate::triggers::TriggerEvent::new_with_provenance(event,Default::default()));
-        ctx.set_tagged_objects(ironsmith_core::ZONE_CHANGE_GROUP_TAG,vec![before]);
-        assert_eq!(resolve_source_object_id(&game,&ctx),Some(grave));
-        crate::effects::TagTriggeringObjectEffect::new("discarded").execute(&mut game,&mut ctx).unwrap();
-        let snapshot=ctx.get_tagged_all("discarded").unwrap()[0].clone();assert_eq!(snapshot.object_id,grave);
-        assert_eq!(resolve_tagged_object_id(&game,&ctx,&snapshot),Some(grave));
-        let exile=game.move_object_by_effect(grave,Zone::Exile).unwrap();let later=game.move_object_by_effect(exile,Zone::Graveyard).unwrap();
-        assert_ne!(grave,later);
-        assert_eq!(resolve_source_object_id(&game,&ctx),None,"registration cannot pin a later graveyard incarnation");
-        assert_eq!(resolve_tagged_object_id(&game,&ctx,&snapshot),None,"group return cannot chase the physical card");
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Discarded source").build();
+        let origin = game.create_object_from_card(&card, a, Zone::Hand);
+        let before = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(origin).unwrap(),
+            &game,
+        );
+        let grave = game.move_object_by_effect(origin, Zone::Graveyard).unwrap();
+        let event = crate::events::other::CardDiscardedEvent::new(a, origin)
+            .with_snapshot(before.clone())
+            .with_batch(vec![origin], vec![before.clone()], 0)
+            .with_destinations(vec![crate::events::other::DiscardedCardDestination {
+                card: origin,
+                object: Some(grave),
+                zone: Zone::Graveyard,
+            }]);
+        let mut ctx = ExecutionContext::new_default(origin, a).with_source_snapshot(before.clone());
+        ctx.triggering_event = Some(crate::triggers::TriggerEvent::new_with_provenance(
+            event,
+            Default::default(),
+        ));
+        ctx.set_tagged_objects(ironsmith_core::ZONE_CHANGE_GROUP_TAG, vec![before]);
+        assert_eq!(resolve_source_object_id(&game, &ctx), Some(grave));
+        crate::effects::TagTriggeringObjectEffect::new("discarded")
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        let snapshot = ctx.get_tagged_all("discarded").unwrap()[0].clone();
+        assert_eq!(snapshot.object_id, grave);
+        assert_eq!(
+            resolve_tagged_object_id(&game, &ctx, &snapshot),
+            Some(grave)
+        );
+        let exile = game.move_object_by_effect(grave, Zone::Exile).unwrap();
+        let later = game.move_object_by_effect(exile, Zone::Graveyard).unwrap();
+        assert_ne!(grave, later);
+        assert_eq!(
+            resolve_source_object_id(&game, &ctx),
+            None,
+            "registration cannot pin a later graveyard incarnation"
+        );
+        assert_eq!(
+            resolve_tagged_object_id(&game, &ctx, &snapshot),
+            None,
+            "group return cannot chase the physical card"
+        );
         // Re-running the prelude preserves historical data rather than naming
         // the later card; source/body movement still finds no eligible arrival.
-        crate::effects::TagTriggeringObjectEffect::new("discarded").execute(&mut game,&mut ctx).unwrap();
-        let retained=&ctx.get_tagged_all("discarded").unwrap()[0];assert_eq!(retained.object_id,origin);
-        assert_eq!(resolve_tagged_object_id(&game,&ctx,retained),None);
+        crate::effects::TagTriggeringObjectEffect::new("discarded")
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        let retained = &ctx.get_tagged_all("discarded").unwrap()[0];
+        assert_eq!(retained.object_id, origin);
+        assert_eq!(resolve_tagged_object_id(&game, &ctx, retained), None);
     }
 }

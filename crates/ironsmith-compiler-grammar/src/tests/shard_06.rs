@@ -378,7 +378,7 @@ pub(super) fn arcee_acrobatic_coupe_binds_that_many_to_qualifying_spell_targets(
         "{debug}"
     );
     assert!(
-        debug.contains("any_of: [\n"),
+        debug.contains("type_or_subtype_union: true"),
         "the canonical spell filter should preserve the creature-or-Vehicle target union: {debug}"
     );
     assert!(

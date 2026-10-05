@@ -357,7 +357,7 @@ impl TriggeredSplitCandidate {
             full_parse_tokens: full_parse_tokens.to_vec(),
             trigger_parse_tokens: self.trigger_parse_tokens,
             effect_parse_tokens: self.effect_parse_tokens,
-            intervening_if: self.intervening_if,
+            intervening_if: self.intervening_if.map(Box::new),
             presentation: trigger_presentation_from_preprocessed_line(line),
             max_triggers_per_turn: self.max_triggers_per_turn,
             chosen_option: None,
@@ -957,9 +957,9 @@ fn trigger_presentation_from_preprocessed_line(
 pub(super) fn activated_presentation_from_preprocessed_line(
     line: &PreprocessedLine,
 ) -> Option<PresentationLabel> {
-    let (label, _, _) = split_label_prefix_lexed(&line.info.source_tokens)
+    let (label, label_tokens, _) = split_label_prefix_lexed(&line.info.source_tokens)
         .or_else(|| split_label_prefix_lexed(&line.tokens))?;
-    Some(PresentationLabel::AbilityWord(label))
+    Some(trigger_presentation(label_tokens, &label))
 }
 
 fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {
@@ -1278,14 +1278,16 @@ fn quoted_attachment_grant_token_replacements(
     tokens: &[OwnedLexToken],
 ) -> Vec<Option<&'static str>> {
     let mut replacements = vec![None; tokens.len()];
-    let host_for_head = |head: &[OwnedLexToken]| {
-        match crate::lexer::parser_token_word_refs(head).as_slice() {
+    let host_for_head =
+        |head: &[OwnedLexToken]| match crate::lexer::parser_token_word_refs(head).as_slice() {
             ["equipped" | "enchanted", "creature", .., "has" | "have"] => {
                 Some(crate::preprocess::GRANTING_SOURCE_SURFACE)
             }
+            [head @ .., "has" | "have"] if !head.is_empty() => {
+                Some(crate::preprocess::GRANTING_SOURCE_SURFACE)
+            }
             _ => None,
-        }
-    };
+        };
     if !tokens.iter().any(|token| token.kind == TokenKind::Quote) {
         // A grant clause whose quotation marks were already stripped
         // ("equipped creature gets +1/+1 and has whenever this creature
@@ -1372,6 +1374,24 @@ fn replace_named_source_alias_tokens(
             word_idx += 1;
             continue;
         }
+        if alias_words.len() == 1
+            && alias_words[0] == "excess"
+            && pieces
+                .get(word_idx + 1)
+                .is_some_and(|next| next.text == "damage")
+        {
+            word_idx += 1;
+            continue;
+        }
+        if alias_words.len() == 1
+            && alias_words[0] == "jace"
+            && word_idx
+                .checked_sub(1)
+                .is_some_and(|previous| pieces[previous].text == "empower")
+        {
+            word_idx += 1;
+            continue;
+        }
         let overlaps_preserved_longer_alias = all_alias_words.iter().any(|longer_words| {
             longer_words.len() > alias_words.len()
                 && source_alias_word_span_matches(&pieces, word_idx, longer_words)
@@ -1415,26 +1435,34 @@ fn replace_named_source_alias_tokens(
             });
         let preserve_surface = attachment_replacement.is_none()
             && (alias_is_strict_prefix_of_compound_subtype
-            || source_alias_occurrence_looks_like_effect_verb_lexed(&pieces, word_idx, end_word)
-            || source_alias_occurrence_is_name_override_surface_lexed(&pieces, word_idx, end_word)
-            || source_alias_occurrence_is_created_token_name_lexed(&pieces, word_idx, end_word)
-            || source_alias_occurrence_is_meld_result_name_lexed(&pieces, word_idx)
-            || source_alias_occurrence_is_typed_subtype_noun_lexed(&pieces, word_idx, end_word)
-            || source_alias_occurrence_is_rules_term_lexed(&pieces, word_idx, end_word)
-            || (!pieces[end_word - 1].possessive
-                && matches!(
-                    pieces.get(end_word).map(|piece| piece.text),
-                    Some("counter" | "counters")
-                ))
-            || (preserve_surface_hints
-                && source_alias_occurrence_should_preserve_surface_lexed(
+                || source_alias_occurrence_looks_like_effect_verb_lexed(
                     &pieces, word_idx, end_word,
-                ))
-            || (quoted_characteristic_pt_tokens
-                .get(piece_tokens[word_idx])
-                .copied()
-                .unwrap_or(false)
-                && alias_occurrence_is_counters_on_operand(&pieces, word_idx)));
+                )
+                || source_alias_occurrence_is_name_override_surface_lexed(
+                    &pieces, word_idx, end_word,
+                )
+                || source_alias_occurrence_is_created_token_name_lexed(
+                    &pieces, word_idx, end_word,
+                )
+                || source_alias_occurrence_is_meld_result_name_lexed(&pieces, word_idx)
+                || source_alias_occurrence_is_typed_subtype_noun_lexed(
+                    &pieces, word_idx, end_word,
+                )
+                || source_alias_occurrence_is_rules_term_lexed(&pieces, word_idx, end_word)
+                || (!pieces[end_word - 1].possessive
+                    && matches!(
+                        pieces.get(end_word).map(|piece| piece.text),
+                        Some("counter" | "counters")
+                    ))
+                || (preserve_surface_hints
+                    && source_alias_occurrence_should_preserve_surface_lexed(
+                        &pieces, word_idx, end_word,
+                    ))
+                || (quoted_characteristic_pt_tokens
+                    .get(piece_tokens[word_idx])
+                    .copied()
+                    .unwrap_or(false)
+                    && alias_occurrence_is_counters_on_operand(&pieces, word_idx)));
         if preserve_surface {
             word_idx += 1;
             continue;
@@ -1622,6 +1650,21 @@ fn source_alias_occurrence_is_rules_term_lexed(
         .then(|| pieces.get(start_word).map(|piece| piece.text))
         .flatten();
 
+    if matched_word == Some("base") && matches!(next_word, Some("power" | "toughness")) {
+        return true;
+    }
+
+    if matched_word == Some("starting")
+        && pieces
+            .get(end_word)
+            .is_some_and(|piece| piece.text == "life")
+        && pieces
+            .get(end_word + 1)
+            .is_some_and(|piece| piece.text == "total")
+    {
+        return true;
+    }
+
     // A keyword used as the object of has/gains is an ability, even if a
     // card happens to share its name. Keep named object references elsewhere.
     if matches!(
@@ -1689,15 +1732,17 @@ fn source_alias_occurrence_is_typed_subtype_noun_lexed(
     if matches!(previous_word, Some("each" | "another")) {
         return true;
     }
+    if subtype.is_planeswalker_subtype()
+        && matches!(next_word, Some("planeswalker" | "planeswalkers"))
+    {
+        return true;
+    }
     if !subtype.is_creature_type() {
         return false;
     }
     // "for each other attacking Aurochs" on Aurochs: a combat-state or
     // `other` adjective before the bare subtype names the class.
-    if matches!(
-        previous_word,
-        Some("other" | "attacking" | "blocking")
-    ) {
+    if matches!(previous_word, Some("other" | "attacking" | "blocking")) {
         return true;
     }
 
@@ -2507,6 +2552,36 @@ fn is_attack_group_combat_damage_followup_sentence(tokens: &[OwnedLexToken]) -> 
         && grammar::has_phrase(tokens, &["this", "combat"])
 }
 
+fn is_delayed_state_transition_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    if !tokens.first().is_some_and(|token| token.is_word("when")) {
+        return false;
+    }
+    let Some(comma) = tokens.iter().position(|token| token.is_comma()) else {
+        return false;
+    };
+    let Ok(trigger) =
+        crate::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &tokens[1..comma],
+        )
+    else {
+        return false;
+    };
+    fn is_transition(trigger: &crate::cards::builders::TriggerSpec) -> bool {
+        use crate::cards::builders::TriggerSpec;
+        match trigger {
+            TriggerSpec::ThisBecomesUntapped
+            | TriggerSpec::PermanentBecomesUntapped { .. }
+            | TriggerSpec::ControlChanged(_) => true,
+            TriggerSpec::Either(left, right) => is_transition(left) && is_transition(right),
+            TriggerSpec::AnyOf(branches) => {
+                !branches.is_empty() && branches.iter().all(is_transition)
+            }
+            _ => false,
+        }
+    }
+    is_transition(&trigger)
+}
+
 fn split_trigger_sentence_chunks_rewrite_lexed(
     tokens: &[OwnedLexToken],
 ) -> Vec<Vec<OwnedLexToken>> {
@@ -2527,8 +2602,7 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
 
     for sentence_tokens in sentence_tokens {
         let sentence_starts_with_trigger = line_starts_with_trigger_intro_tokens(sentence_tokens);
-        let sentence_is_delayed_followup =
-            is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens)
+        let sentence_is_delayed_followup = is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens)
                 || is_delayed_when_that_leaves_battlefield_followup_sentence(sentence_tokens)
                 || is_delayed_next_end_step_followup_sentence(sentence_tokens)
                 // CR 603.7: a "When/Whenever ... this turn, ..." or "When you
@@ -2539,7 +2613,8 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
                     sentence_tokens,
                 )
                 .is_some()
-                || document_grammar::parse_next_cast_trigger_surface(sentence_tokens).is_some();
+                || document_grammar::parse_next_cast_trigger_surface(sentence_tokens).is_some()
+                || is_delayed_state_transition_followup_sentence(sentence_tokens);
         let sentence_is_attack_group_followup =
             is_attack_group_combat_damage_followup_sentence(sentence_tokens);
         if !current.is_empty()
@@ -2712,7 +2787,7 @@ fn try_parse_labeled_line_dispatch(
                 full_parse_tokens: body_line.tokens.clone(),
                 trigger_parse_tokens: spec.trigger_tokens.to_vec(),
                 effect_parse_tokens: spec.effects_tokens.to_vec(),
-                intervening_if: Some(spec.predicate),
+                intervening_if: Some(Box::new(spec.predicate)),
                 max_triggers_per_turn: None,
                 chosen_option: None,
                 presentation: Some(PresentationLabel::AbilityWord("Eminence".to_string())),
@@ -2743,7 +2818,8 @@ fn try_parse_labeled_line_dispatch(
         // labeled dispatch below instead of treating it as presentation only.
         if looks_like_ability_word_label(label_tokens, false)
             && !label.eq_ignore_ascii_case("max speed")
-            && !looks_like_leading_conditional_self_replacement(&body_line.tokens)
+            && (!looks_like_leading_conditional_self_replacement(&body_line.tokens)
+                || is_case_ability_label(label_tokens))
             && !split_activation_text_tokens_lexed(&body_line.tokens)
                 .is_some_and(|(cost, _)| looks_like_activation_cost_prefix(&cost))
         {
@@ -2752,15 +2828,15 @@ fn try_parse_labeled_line_dispatch(
             // body when self-reference replacement changed token widths.
             let builder_aware_static =
                 normalize_named_source_tokens_for_builder(&preprocessed.card, body_tokens)
-                .map(|mut body| {
-                    for token in &mut body {
-                        token.lowercase_word();
-                    }
-                    rewrite_line_tokens(line, &body)
-                })
-                .map(|body_line| recognize_static_line(&body_line))
-                .transpose()?
-                .flatten();
+                    .map(|mut body| {
+                        for token in &mut body {
+                            token.lowercase_word();
+                        }
+                        rewrite_line_tokens(line, &body)
+                    })
+                    .map(|body_line| recognize_static_line(&body_line))
+                    .transpose()?
+                    .flatten();
             let mut labeled_static = builder_aware_static;
             if labeled_static.is_none() {
                 labeled_static = recognize_static_line(line)?;
@@ -2779,7 +2855,7 @@ fn try_parse_labeled_line_dispatch(
                     .info
                     .semantic_facts
                     .static_ability
-                    .presentation_label = Some(PresentationLabel::from_ability_word(label));
+                    .presentation_label = Some(trigger_presentation(label_tokens, &label));
                 return Ok(Some(LineDispatchResult::single(
                     RecognizedLine::Static(static_line),
                     idx + 1,
@@ -2842,7 +2918,7 @@ fn try_parse_labeled_line_dispatch(
             full_parse_tokens: body_line.tokens.clone(),
             trigger_parse_tokens: trigger_with_intro[1..].to_vec(),
             effect_parse_tokens: effect_tokens.to_vec(),
-            intervening_if: Some(source_zone_condition),
+            intervening_if: Some(Box::new(source_zone_condition)),
             max_triggers_per_turn: None,
             chosen_option: None,
             presentation: Some(PresentationLabel::AbilityWord("Eminence".to_string())),
@@ -3552,6 +3628,18 @@ pub fn parse_text_to_semantic_document_with_context(
             PreprocessedItem::Line(line) => line.info.source_tokens.as_slice(),
         })
         .collect();
+    for tokens in &authored_lines {
+        let sentences = split_lexed_sentences(tokens);
+        let words =
+            crate::lexer::parser_token_word_refs(sentences.first().copied().unwrap_or(tokens));
+        if words.starts_with(&["if", "you", "would", "draw", "a", "card", "while"])
+            && words.iter().filter(|word| **word == "instead").count() != 1
+        {
+            return Err(CardTextError::ParseError(
+                "conditional draw replacement requires exactly one instead marker".into(),
+            ));
+        }
+    }
     if let Some(err) = preflight_invalid_payment_keyword_lines(&authored_lines) {
         return Err(err);
     }
@@ -3757,9 +3845,7 @@ pub fn recognize_document_with_context(
                 }
                 if let Some(abilities) = parse_named_attachment_counter_release(line_context, line)?
                     .map(Ok)
-                    .or_else(|| {
-                        parse_named_attachment_damage_grant(line_context, line).transpose()
-                    })
+                    .or_else(|| parse_named_attachment_damage_grant(line_context, line).transpose())
                     .transpose()?
                 {
                     lines.push(RecognizedLine::Static(RecognizedStaticLine {
@@ -4547,9 +4633,18 @@ fn try_push_complete_typed_statement(
     } else {
         crate::effect_sentences::parse_complete_composable_fight_program(&line.tokens)?
     };
-    let Some(parsed_effects) = parsed_effects else {
+    let Some(mut parsed_effects) = parsed_effects else {
         return Ok(false);
     };
+    // Complete typed statements bypass the contextual sentence dispatcher.
+    // Preserve the authored name on their already-proven damage source too.
+    let context = crate::parse_context_for_builder(card, &line.info.raw_line, false);
+    if let Some(surface) = crate::util::authored_named_source_reference_surface(
+        context.view(),
+        &line.info.source_tokens,
+    ) {
+        crate::util::restore_authored_damage_source_surface(&mut parsed_effects, &surface);
+    }
     let recognized = RecognizedLine::Statement(RecognizedStatementLine {
         info: line.info.clone(),
         text: line.info.normalized.normalized.clone(),
@@ -4666,9 +4761,7 @@ fn parse_named_attachment_damage_grant(
     {
         return Ok(None);
     }
-    let Some(normalized) =
-        normalize_named_source_tokens_with_context(context, &line.tokens)
-    else {
+    let Some(normalized) = normalize_named_source_tokens_with_context(context, &line.tokens) else {
         return Ok(None);
     };
     let Some(mut abilities) =
@@ -4676,7 +4769,10 @@ fn parse_named_attachment_damage_grant(
     else {
         return Ok(None);
     };
-    fn name_source(target: &mut TargetAst, surface: &crate::target::SourceReferenceSurface) -> bool {
+    fn name_source(
+        target: &mut TargetAst,
+        surface: &crate::target::SourceReferenceSurface,
+    ) -> bool {
         match target {
             TargetAst::Source(span) => {
                 *target = TargetAst::Object(
@@ -4711,9 +4807,7 @@ fn parse_named_attachment_damage_grant(
                     subject.action =
                         SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                             source: TargetAst::Object(
-                                crate::target::ObjectFilter::source_with_surface(
-                                    surface.clone(),
-                                ),
+                                crate::target::ObjectFilter::source_with_surface(surface.clone()),
                                 None,
                                 None,
                             ),
@@ -4760,7 +4854,8 @@ fn parse_named_attachment_damage_grant(
     }
     // Keep the authored surface ("Shuriken deals ...") rather than the
     // normalized self-reference in the grant's display.
-    if let Ok(Some(authored)) = crate::keyword_static::parse_filter_has_granted_ability_line(&line.tokens)
+    if let Ok(Some(authored)) =
+        crate::keyword_static::parse_filter_has_granted_ability_line(&line.tokens)
         && authored.len() == abilities.len()
     {
         for (ability, authored) in abilities.iter_mut().zip(authored) {
@@ -6985,7 +7080,7 @@ mod tests {
         );
         assert!(
             matches!(
-                parsed.intervening_if,
+                parsed.intervening_if.as_deref(),
                 Some(crate::cards::builders::PredicateAst::ValueComparison { .. })
             ),
             "expected controller-qualified death predicate, got {:?}",
@@ -7016,7 +7111,7 @@ mod tests {
             let line = single_preprocessed_line(text);
             let parsed = recognize_triggered_line(&line)
                 .unwrap_or_else(|err| panic!("negative attack gate should parse: {err}"));
-            assert_eq!(parsed.intervening_if, Some(expected), "{text}");
+            assert_eq!(parsed.intervening_if.as_deref(), Some(&expected), "{text}");
         }
     }
 
@@ -7038,8 +7133,8 @@ mod tests {
             "it gains haste until end of turn."
         );
         assert_eq!(
-            parsed.intervening_if,
-            Some(crate::cards::builders::PredicateAst::Not(Box::new(
+            parsed.intervening_if.as_deref(),
+            Some(&crate::cards::builders::PredicateAst::Not(Box::new(
                 crate::cards::builders::PredicateAst::ThisSpellPaidLabel("Tribute".into()),
             ))),
         );
@@ -7670,7 +7765,8 @@ mod tests {
     fn statement_ownership_probe_binds_a_named_planeswalker_before_static_reading() {
         let card = CardBuilder::new(CardId::from_raw(1), "Nicol Bolas, Dragon-God")
             .card_types(vec![CardType::Planeswalker]);
-        let text = "Nicol Bolas has all loyalty abilities of all other planeswalkers on the battlefield.";
+        let text =
+            "Nicol Bolas has all loyalty abilities of all other planeswalkers on the battlefield.";
         let preprocessed = preprocess_document(card, text).unwrap();
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected a static line");
@@ -8095,13 +8191,27 @@ mod tests {
             ("Lizard, Connors's Curse", "Lizard", "green"),
             ("Goblin, Expert Transmuter", "Goblin", "red"),
         ] {
-            let card = CardBuilder::new(CardId::from_raw(1), name)
-                .card_types(vec![CardType::Creature]);
-            let text = format!("When {name} enters, target creature becomes a {color} {subtype} creature with base power and toughness 4/4.");
+            let card =
+                CardBuilder::new(CardId::from_raw(1), name).card_types(vec![CardType::Creature]);
+            let text = format!(
+                "When {name} enters, target creature becomes a {color} {subtype} creature with base power and toughness 4/4."
+            );
             let rewritten = normalize_named_source_trigger_for_builder(&card, &text).unwrap();
-            assert!(rewritten.starts_with("when this creature enters,"), "{rewritten}");
-            assert!(rewritten.contains(&format!("a {color} {} creature", subtype.to_ascii_lowercase())), "{rewritten}");
-            assert!(!rewritten.contains(&format!("a {color} this")), "{rewritten}");
+            assert!(
+                rewritten.starts_with("when this creature enters,"),
+                "{rewritten}"
+            );
+            assert!(
+                rewritten.contains(&format!(
+                    "a {color} {} creature",
+                    subtype.to_ascii_lowercase()
+                )),
+                "{rewritten}"
+            );
+            assert!(
+                !rewritten.contains(&format!("a {color} this")),
+                "{rewritten}"
+            );
         }
     }
 
@@ -8353,15 +8463,15 @@ mod tests {
             [super::RecognizedLine::Triggered(triggered)] => {
                 assert_eq!(
                     triggered.full_text,
-                    "When this creature enters, draw a card"
+                    "when a creature is championed with this creature, draw a card."
                 );
                 assert_eq!(
                     render_token_slice(&triggered.trigger_parse_tokens),
-                    "this creature enters"
+                    "a creature is championed with this creature"
                 );
                 assert_eq!(
                     render_token_slice(&triggered.effect_parse_tokens),
-                    "draw a card"
+                    "draw a card."
                 );
             }
             other => panic!("expected rewritten championed-with-this trigger, got {other:?}"),

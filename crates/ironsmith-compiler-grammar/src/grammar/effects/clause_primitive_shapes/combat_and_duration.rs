@@ -86,18 +86,23 @@ fn attack_suffix<'a>(input: &mut LexStream<'a>) -> WResult<CombatRequirementDura
         .parse_next(input)
 }
 
-fn must_be_blocked_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+fn must_be_blocked_suffix<'a>(input: &mut LexStream<'a>) -> WResult<CombatRequirementDuration> {
     (
         alt((
-            primitives::phrase(&["must", "be", "blocked", "if", "able"]),
-            primitives::phrase(&["must", "be", "blocked", "this", "turn", "if", "able"]),
+            primitives::phrase(&["must", "be", "blocked", "if", "able"])
+                .value(CombatRequirementDuration::Turn),
+            primitives::phrase(&["must", "be", "blocked", "this", "turn", "if", "able"])
+                .value(CombatRequirementDuration::Turn),
             primitives::phrase(&[
                 "must", "be", "blocked", "each", "combat", "this", "turn", "if", "able",
-            ]),
+            ])
+            .value(CombatRequirementDuration::Turn),
+            primitives::phrase(&["must", "be", "blocked", "this", "combat", "if", "able"])
+                .value(CombatRequirementDuration::Combat),
         )),
         primitives::sentence_end(),
     )
-        .void()
+        .map(|(duration, _)| duration)
         .parse_next(input)
 }
 
@@ -132,10 +137,10 @@ fn combat_requirement<'a>(input: &mut LexStream<'a>) -> WResult<CombatRequiremen
                 .map(|((), _duration)| ())
                 .take()
                 .parse_next(input)?;
-            must_be_blocked_suffix.parse_next(input)?;
+            let duration = must_be_blocked_suffix.parse_next(input)?;
             Ok(CombatRequirementShape {
                 kind: CombatRequirementKind::MustBeBlocked,
-                duration: CombatRequirementDuration::Turn,
+                duration,
                 subject_tokens: trim_shape_edges(subject_tokens),
             })
         },

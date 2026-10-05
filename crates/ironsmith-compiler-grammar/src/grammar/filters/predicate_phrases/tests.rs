@@ -3741,11 +3741,20 @@ fn parse_predicate_supports_source_has_keyword() -> Result<(), CardTextError> {
 
         let mut expected_filter = ObjectFilter::default();
         expected_filter.static_abilities.push(ability);
-        assert_eq!(
-            parsed,
-            PredicateAst::Source(SourcePredicateAst::SourceMatches(expected_filter)),
-            "{text}"
-        );
+        if text == "If it has defender" {
+            let PredicateAst::ItMatches(filter) = parsed else {
+                panic!("{parsed:#?}");
+            };
+            assert_eq!(filter.static_abilities, vec![ability]);
+            assert!(filter.card_types.is_empty());
+            assert_eq!(filter.controller, None);
+        } else {
+            assert_eq!(
+                parsed,
+                PredicateAst::Source(SourcePredicateAst::SourceMatches(expected_filter)),
+                "{text}"
+            );
+        }
     }
     Ok(())
 }
@@ -4173,20 +4182,43 @@ fn strict_hand_comparison_retains_the_authored_operand_for_difference() {
 #[test]
 fn strict_hand_comparisons_preserve_existential_player_group_scopes() {
     let tokens = lex_line("If an opponent has fewer than three cards in hand", 0).unwrap();
-    assert!(matches!(parse_predicate(&predicate_tokens_after_if(&tokens)).unwrap(),
-        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer { player: PlayerAst::Opponent, count: 2 })));
+    assert!(matches!(
+        parse_predicate(&predicate_tokens_after_if(&tokens)).unwrap(),
+        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer {
+            player: PlayerAst::Opponent,
+            count: 2
+        })
+    ));
 }
 
 #[test]
 fn a_ring_choice_predicate_authenticates_the_source_and_keeps_historical_choice_semantics() {
     for (name, text) in [
-        ("Aragorn, Company Leader", "you chose a creature other than Aragorn as your Ring-bearer"),
-        ("Gandalf, Friend of the Shire", "you chose a creature other than Gandalf as your Ring-bearer"),
-        ("Ring witness", "you chose a creature other than this creature as your Ring-bearer"),
+        (
+            "Aragorn, Company Leader",
+            "you chose a creature other than Aragorn as your Ring-bearer",
+        ),
+        (
+            "Gandalf, Friend of the Shire",
+            "you chose a creature other than Gandalf as your Ring-bearer",
+        ),
+        (
+            "Ring witness",
+            "you chose a creature other than this creature as your Ring-bearer",
+        ),
     ] {
-        assert_eq!(parse_predicate_for_source(name, text).unwrap(), PredicateAst::Triggering(TriggeringPredicateAst::YouChoseAnotherRingBearer));
+        assert_eq!(
+            parse_predicate_for_source(name, text).unwrap(),
+            PredicateAst::Triggering(TriggeringPredicateAst::YouChoseAnotherRingBearer)
+        );
     }
-    assert!(parse_predicate_for_source("Ring witness", "you chose a creature other than Unknown Creature as your Ring-bearer").is_err());
+    assert!(
+        parse_predicate_for_source(
+            "Ring witness",
+            "you chose a creature other than Unknown Creature as your Ring-bearer"
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -4246,14 +4278,16 @@ fn dynamic_life_conditions_keep_strictness_offsets_and_article_player_scope() {
 
 #[test]
 fn ring_bearer_control_predicate_keeps_the_typed_designation() {
-    let predicate = parse_predicate_for_source("Dúnedain Rangers", "you don't control a Ring-bearer").unwrap();
+    let predicate =
+        parse_predicate_for_source("Dúnedain Rangers", "you don't control a Ring-bearer").unwrap();
     let debug = format!("{predicate:?}");
     assert!(debug.contains("ring_bearer: true"), "{debug}");
     assert!(debug.contains("PlayerControlsNo"), "{debug}");
 }
 
 #[test]
-fn referenced_characteristics_keep_current_and_historical_frames_distinct() -> Result<(), CardTextError> {
+fn referenced_characteristics_keep_current_and_historical_frames_distinct()
+-> Result<(), CardTextError> {
     let cases = [
         ("that creature is 1/1", false),
         ("it had no counters on it", true),
@@ -4266,25 +4300,36 @@ fn referenced_characteristics_keep_current_and_historical_frames_distinct() -> R
         let tokens = lex_line(text, 0)?;
         let parsed = parse_predicate(&tokens)?;
         let filter = match (&parsed, past) {
-            (PredicateAst::ItMatches(filter), false) | (PredicateAst::ItMatchedLastKnown(filter), true) => filter,
+            (PredicateAst::ItMatches(filter), false)
+            | (PredicateAst::ItMatchedLastKnown(filter), true) => filter,
             _ => panic!("wrong time frame for {text}: {parsed:?}"),
         };
         if text.contains("1/1") {
             assert_eq!(filter.power, Some(crate::filter::Comparison::Equal(1)));
             assert_eq!(filter.toughness, Some(crate::filter::Comparison::Equal(1)));
         } else if text.contains("no counters") {
-            assert_eq!(filter.without_counter, Some(crate::filter::CounterConstraint::Any));
+            assert_eq!(
+                filter.without_counter,
+                Some(crate::filter::CounterConstraint::Any)
+            );
         } else if text.contains("decayed") {
             assert_eq!(filter.excluded_ability_markers, vec!["decayed".to_string()]);
         } else if text.contains("base power") {
-            assert_eq!(filter.power_comparison_to_base, Some(ValueComparisonOperator::NotEqual));
+            assert_eq!(
+                filter.power_comparison_to_base,
+                Some(ValueComparisonOperator::NotEqual)
+            );
         } else if text.contains("Aura") {
             let attachment = filter.with_attached_object.as_ref().unwrap();
             assert_eq!(attachment.controller, Some(PlayerFilter::You));
             assert!(attachment.subtypes.contains(&Subtype::Aura));
         }
     }
-    for text in ["that creature is 1/unknown", "its power was different from their life", "they were a player"] {
+    for text in [
+        "that creature is 1/unknown",
+        "its power was different from their life",
+        "they were a player",
+    ] {
         let tokens = lex_line(text, 0)?;
         assert!(parse_predicate(&tokens).is_err(), "{text}");
     }
@@ -4292,12 +4337,18 @@ fn referenced_characteristics_keep_current_and_historical_frames_distinct() -> R
 }
 
 #[test]
-fn passive_was_blocked_history_does_not_mean_the_object_declared_a_block() -> Result<(), CardTextError> {
+fn passive_was_blocked_history_does_not_mean_the_object_declared_a_block()
+-> Result<(), CardTextError> {
     let tokens = lex_line("it was blocked this turn", 0)?;
-    let PredicateAst::ItMatches(filter) = parse_predicate(&tokens)? else { panic!("past combat query") };
+    let PredicateAst::ItMatches(filter) = parse_predicate(&tokens)? else {
+        panic!("past combat query")
+    };
     assert!(filter.was_blocked_this_turn);
     assert!(!filter.blocked_this_turn);
-    assert!(!filter.blocked, "current combat state is insufficient after combat ends");
+    assert!(
+        !filter.blocked,
+        "current combat state is insufficient after combat ends"
+    );
     Ok(())
 }
 
@@ -4317,16 +4368,36 @@ fn untyped_counter_absence_preserves_present_or_past_tense() -> Result<(), CardT
             | (PredicateAst::ItMatchedLastKnown(filter), "past") => filter,
             _ => panic!("wrong frame for {text}: {predicate:?}"),
         };
-        assert_eq!(filter.without_counter, Some(crate::filter::CounterConstraint::Any));
+        assert_eq!(
+            filter.without_counter,
+            Some(crate::filter::CounterConstraint::Any)
+        );
     }
     Ok(())
 }
 
 #[test]
-fn monarch_at_turn_begin_is_a_historical_predicate_not_current_designation(){
-    for (text,player) in [("you were the monarch as the turn began",PlayerAst::You),("that player was the monarch as the turn began",PlayerAst::That)]{
-        let tokens=crate::lexer::lex_line(text,0).unwrap();assert_eq!(parse_predicate(&tokens).unwrap(),PredicateAst::Player(PlayerPredicateAst::PlayerWasMonarchAtTurnStart{player}));
+fn monarch_at_turn_begin_is_a_historical_predicate_not_current_designation() {
+    for (text, player) in [
+        ("you were the monarch as the turn began", PlayerAst::You),
+        (
+            "that player was the monarch as the turn began",
+            PlayerAst::That,
+        ),
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        assert_eq!(
+            parse_predicate(&tokens).unwrap(),
+            PredicateAst::Player(PlayerPredicateAst::PlayerWasMonarchAtTurnStart { player })
+        );
     }
-    let tokens=crate::lexer::lex_line("you are the monarch",0).unwrap();assert_eq!(parse_predicate(&tokens).unwrap(),PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch{player:PlayerAst::You}));
-    let tokens=crate::lexer::lex_line("you were the monarch during an unknown time",0).unwrap();assert!(parse_predicate(&tokens).is_err());
+    let tokens = crate::lexer::lex_line("you are the monarch", 0).unwrap();
+    assert_eq!(
+        parse_predicate(&tokens).unwrap(),
+        PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch {
+            player: PlayerAst::You
+        })
+    );
+    let tokens = crate::lexer::lex_line("you were the monarch during an unknown time", 0).unwrap();
+    assert!(parse_predicate(&tokens).is_err());
 }

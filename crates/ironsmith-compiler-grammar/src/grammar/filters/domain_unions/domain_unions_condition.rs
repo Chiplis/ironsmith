@@ -51,6 +51,9 @@ pub(super) fn propagate_leading_shared_set_modifiers(
         ) || crate::util::parse_card_type(word).is_some()
     });
     if !first_arm_has_head_noun
+        && leading_words
+            .iter()
+            .any(|word| crate::util::parse_subtype_flexible(word).is_some())
         && let Some(first) = branches.first()
         && !first.supertypes.is_empty()
         && first.supertypes.iter().all(|supertype| {

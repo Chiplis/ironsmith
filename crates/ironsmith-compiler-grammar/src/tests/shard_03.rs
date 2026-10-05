@@ -2657,36 +2657,67 @@ pub(super) fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         super::super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
             &graveyard_or_exile_from_battlefield_tokens,
         );
-    assert!(
-        matches!(
-            graveyard_or_exile_from_battlefield,
-            Ok(crate::cards::builders::TriggerSpec::Either(ref left, ref right))
-                if matches!(
-                    left.as_ref(),
-                    crate::cards::builders::TriggerSpec::PutIntoGraveyardFromZone {
-                        from: crate::zone::Zone::Battlefield,
-                        filter,
-                        ..
-                    } if filter.source
-                        && filter.card_types == vec![crate::types::CardType::Artifact]
-                        && filter.nontoken
-                        && filter.controller == Some(crate::target::PlayerFilter::You)
+    fn leaves<'a>(trigger: &'a TriggerSpec, out: &mut Vec<&'a TriggerSpec>) {
+        match trigger {
+            TriggerSpec::AnyOf(branches) => {
+                for branch in branches {
+                    leaves(branch, out);
+                }
+            }
+            TriggerSpec::Either(left, right) => {
+                leaves(left, out);
+                leaves(right, out);
+            }
+            _ => out.push(trigger),
+        }
+    }
+    let trigger = graveyard_or_exile_from_battlefield.unwrap();
+    let mut branches = Vec::new();
+    leaves(&trigger, &mut branches);
+    assert_eq!(branches.len(), 4, "{trigger:#?}");
+    let mut signatures = Vec::new();
+    for branch in branches {
+        let (zone, filter) = match branch {
+            TriggerSpec::PutIntoGraveyardFromZone { from, filter, .. } => {
+                assert_eq!(*from, Zone::Battlefield);
+                (Zone::Graveyard, filter)
+            }
+            TriggerSpec::PutIntoExileFromZones { from, filter, .. } => {
+                assert_eq!(from, &[Zone::Battlefield]);
+                (Zone::Exile, filter)
+            }
+            TriggerSpec::ZoneChange(changed)
+                if changed.from == Some(Zone::Battlefield) && changed.to == Some(Zone::Exile) =>
+            {
+                (
+                    Zone::Exile,
+                    changed.filter.as_ref().expect("shared object filter"),
                 )
-                    && matches!(
-                        right.as_ref(),
-                        crate::cards::builders::TriggerSpec::PutIntoExileFromZones {
-                            from,
-                            filter,
-                            ..
-                        } if *from == vec![crate::zone::Zone::Battlefield]
-                            && filter.source
-                            && filter.card_types == vec![crate::types::CardType::Artifact]
-                            && filter.nontoken
-                            && filter.controller == Some(crate::target::PlayerFilter::You)
-                    )
-        ),
-        "expected graveyard-or-exile battlefield trigger pair, got {graveyard_or_exile_from_battlefield:?}"
-    );
+            }
+            _ => panic!("{branch:#?}"),
+        };
+        if filter.source {
+            assert!(
+                filter.card_types.is_empty() || filter.card_types == vec![CardType::Artifact],
+                "{filter:#?}"
+            );
+        } else {
+            assert_eq!(filter.card_types, vec![CardType::Artifact]);
+        }
+        if !filter.source {
+            assert!(filter.nontoken && filter.other, "{filter:#?}");
+            assert_eq!(filter.controller, Some(crate::target::PlayerFilter::You));
+        }
+        signatures.push((zone, filter.source));
+    }
+    for signature in [
+        (Zone::Graveyard, true),
+        (Zone::Graveyard, false),
+        (Zone::Exile, true),
+        (Zone::Exile, false),
+    ] {
+        assert!(signatures.contains(&signature), "{signatures:?}");
+    }
     assert!(matches!(
         super::super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
             &combat_tokens,
@@ -4171,10 +4202,28 @@ fn owned_exile_origin_union_preserves_owner_and_batch_count() {
 pub(super) fn grouped_decimal_counter_state_trigger_retains_threshold_and_both_instructions() {
     let tokens = lex_line("When there are 1,000 or more time counters on this artifact, sacrifice it and each opponent loses 1,000 life.", 0).unwrap();
     let parsed = super::super::clause_support::parse_triggered_line_lexed(&tokens).unwrap();
-    let crate::cards::builders::LineAst::Triggered { trigger, effects, .. } = parsed else { panic!("expected state trigger") };
+    let crate::cards::builders::LineAst::Triggered {
+        trigger, effects, ..
+    } = parsed
+    else {
+        panic!("expected state trigger")
+    };
     let trigger_debug = format!("{trigger:?}");
     let effects_debug = format!("{effects:?}");
-    assert!(matches!(trigger, crate::cards::builders::TriggerSpec::StateBased { .. }));
-    assert!(trigger_debug.contains("SourceHasCounterAtLeast") && trigger_debug.contains("count: 1000") && trigger_debug.to_ascii_lowercase().contains("time"), "{trigger_debug}");
-    assert!(effects_debug.contains("Sacrifice") && effects_debug.contains("LoseLife") && effects_debug.contains("1000"), "{effects_debug}");
+    assert!(matches!(
+        trigger,
+        crate::cards::builders::TriggerSpec::StateBased { .. }
+    ));
+    assert!(
+        trigger_debug.contains("SourceHasCounterAtLeast")
+            && trigger_debug.contains("count: 1000")
+            && trigger_debug.to_ascii_lowercase().contains("time"),
+        "{trigger_debug}"
+    );
+    assert!(
+        effects_debug.contains("Sacrifice")
+            && effects_debug.contains("LoseLife")
+            && effects_debug.contains("1000"),
+        "{effects_debug}"
+    );
 }

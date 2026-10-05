@@ -207,13 +207,22 @@ fn elided_subtype_noun_arms(segments: &[&[OwnedLexToken]]) -> Option<Vec<Vec<Own
         return None;
     }
     let tail = &last[tail_start..];
-    let shares_noun = tail.first().and_then(OwnedLexToken::as_word).is_some_and(|word| {
-        matches!(
-            word,
-            "permanent" | "permanents" | "card" | "cards" | "creature" | "creatures"
-                | "spell" | "spells"
-        )
-    });
+    let shares_noun = tail
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        .is_some_and(|word| {
+            matches!(
+                word,
+                "permanent"
+                    | "permanents"
+                    | "card"
+                    | "cards"
+                    | "creature"
+                    | "creatures"
+                    | "spell"
+                    | "spells"
+            )
+        });
     if !shares_noun {
         return None;
     }
@@ -329,7 +338,7 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
         segment
             .iter()
             .find_map(OwnedLexToken::as_word)
-            .is_some_and(|word| matches!(word, "a" | "an"))
+            .is_some_and(|word| matches!(word, "a" | "an" | "each"))
     });
 
     let shared_colors = leading_shared_domain_colors(&segments);
@@ -348,12 +357,12 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
             // instant, or sorcery card from an opponent's graveyard") keep it.
             !elided_card_noun_arms.get(index).copied().unwrap_or(false)
                 && segments.get(index + 1).is_some_and(|next| {
-                is_elided_card_noun_type_arm(segment)
-                    && TokenWordView::new(next)
-                        .word_refs()
-                        .iter()
-                        .any(|word| matches!(*word, "card" | "cards"))
-            })
+                    is_elided_card_noun_type_arm(segment)
+                        && TokenWordView::new(next)
+                            .word_refs()
+                            .iter()
+                            .any(|word| matches!(*word, "card" | "cards"))
+                })
         })
         .collect::<Vec<_>>();
 
@@ -549,7 +558,10 @@ pub fn parse_domain_union_object_filter_lexed(
     // `artifact and enchantment cards from all graveyards`: a leading bare
     // type adjective shares the final arm's noun and domain, so the list is
     // one selector, not a union of independently scoped domains.
-    if elided_card_noun_type_arms(&segments).into_iter().any(|elided| elided) {
+    if elided_card_noun_type_arms(&segments)
+        .into_iter()
+        .any(|elided| elided)
+    {
         return None;
     }
 

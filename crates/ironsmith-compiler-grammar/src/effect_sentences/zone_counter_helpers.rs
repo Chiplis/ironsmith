@@ -347,7 +347,10 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     let coordination_tokens = if tokens.first().is_some_and(|token| token.is_word("put")) {
         tokens
     } else {
-        headed_tokens.push(OwnedLexToken::word("put".to_string(), TextSpan::synthetic()));
+        headed_tokens.push(OwnedLexToken::word(
+            "put".to_string(),
+            TextSpan::synthetic(),
+        ));
         headed_tokens.extend_from_slice(tokens);
         headed_tokens.as_slice()
     };
@@ -386,7 +389,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         }
     }
     if let Some(effects) = super::subject_verb_primitives::parse_put_counter_choice_sequence(
-        super::SubjectVerbPrimitiveClause::new(tokens),
+        super::SubjectVerbPrimitiveClause::new(coordination_tokens),
     )? {
         return Ok(EffectAst::Sequence { effects });
     }
@@ -481,9 +484,9 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
                     render_clause_words(tokens)
                 ))
             })?;
-        return Ok(wrap_conditional(EffectAst::subject_verb_put_referenced_counters(
-            from, target,
-        )));
+        return Ok(wrap_conditional(
+            EffectAst::subject_verb_put_referenced_counters(from, target),
+        ));
     }
 
     // The descriptor belongs to the first counter noun. A later count

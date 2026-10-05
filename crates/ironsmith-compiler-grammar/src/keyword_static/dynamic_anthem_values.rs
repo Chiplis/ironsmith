@@ -33,7 +33,7 @@ mod tests {
             ),
             (
                 "Creatures you control get +X/+X, where X is the number of cards you've drawn this turn.",
-                "TurnHistoryCount",
+                "MaxCardsDrawnThisTurn",
             ),
         ] {
             let tokens = lex_line(text, 0).unwrap();

@@ -252,6 +252,7 @@ const LABELED_ABILITY_EXACT_PHRASES: &[&[&str]] = &[
     &["flurry", "of", "blows"],
     &["gust", "of", "wind"],
     &["reverberating", "summons"],
+    &["would", "you", "like", "a"],
 ];
 const LABELED_ABILITY_FIRST_WORDS: &[&str] = &[
     "adamant",
@@ -715,6 +716,7 @@ pub fn preserve_labeled_ability_prefix_for_parse_tokens(prefix: &[OwnedLexToken]
             | "partner"
             | "replicate"
             | "reinforce"
+            | "reconfigure"
             | "renew"
             | "spectacle"
             | "strive"
@@ -1057,24 +1059,45 @@ pub fn parse_prevent_damage_sentence_lexed(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = trim_edge_punctuation_tokens(tokens);
     let words = parser_token_word_refs(tokens);
+    if words
+        .iter()
+        .any(|word| matches!(*word, "unless" | "pays" | "pay"))
+    {
+        return Ok(None);
+    }
     if primitives::parse_prefix(tokens, primitives::phrase(PREVENT_ALL_COMBAT_DAMAGE_PREFIX))
         .is_none()
     {
         return Ok(None);
     }
 
-    if tokens.iter().enumerate().any(|(index, token)| token.kind == TokenKind::Period && index + 1 != tokens.len()) {
-        return Err(CardTextError::ParseError("combat prevention must consume one complete sentence".into()));
+    if tokens
+        .iter()
+        .enumerate()
+        .any(|(index, token)| token.kind == TokenKind::Period && index + 1 != tokens.len())
+    {
+        return Err(CardTextError::ParseError(
+            "combat prevention must consume one complete sentence".into(),
+        ));
     }
     let clause = LexedClause::new(tokens);
-    let durations = words.windows(2).enumerate().filter_map(|(index, pair)| {
-        if pair == ["this", "turn"] { Some((index, crate::effect::Until::EndOfTurn)) }
-        else if pair == ["this", "combat"] { Some((index, crate::effect::Until::EndOfCombat)) }
-        else { None }
-    }).collect::<Vec<_>>();
+    let durations = words
+        .windows(2)
+        .enumerate()
+        .filter_map(|(index, pair)| {
+            if pair == ["this", "turn"] {
+                Some((index, crate::effect::Until::EndOfTurn))
+            } else if pair == ["this", "combat"] {
+                Some((index, crate::effect::Until::EndOfCombat))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
     let [(this_turn_idx, duration)] = durations.as_slice() else {
         return Err(CardTextError::ParseError(format!(
-            "expected one complete combat-prevention duration (clause: '{}')", words.join(" ")
+            "expected one complete combat-prevention duration (clause: '{}')",
+            words.join(" ")
         )));
     };
     let this_turn_idx = *this_turn_idx;
@@ -1215,18 +1238,21 @@ pub fn parse_prevent_damage_sentence_lexed(
             return Ok(None);
         };
         let source_tokens = source_clause.tokens();
-        let damage_tail = core_clause.after_words(would_idx + 2)
-            .map(|part| trim_edge_punctuation_tokens(part.tokens())).unwrap_or(&[]);
+        let damage_tail = core_clause
+            .after_words(would_idx + 2)
+            .map(|part| trim_edge_punctuation_tokens(part.tokens()))
+            .unwrap_or(&[]);
         if !damage_tail.is_empty() && !prevent_damage_shares_color_clause_lexed(damage_tail) {
-            return Err(CardTextError::ParseError("combat source prevention cannot omit a recipient or trailing condition".into()));
+            return Err(CardTextError::ParseError(
+                "combat source prevention cannot omit a recipient or trailing condition".into(),
+            ));
         }
         // "a creature of your choice would deal": one chosen matching source,
         // not every object the filter describes.
         let source_words = crate::lexer::token_word_refs(source_tokens);
         if source_words.len() > 3
             && source_words.ends_with(&["of", "your", "choice"])
-            && let Some(chosen_tokens) =
-                source_tokens.get(..source_tokens.len().saturating_sub(3))
+            && let Some(chosen_tokens) = source_tokens.get(..source_tokens.len().saturating_sub(3))
             && !chosen_tokens.iter().any(|token| token.is_word("source"))
             && !is_prevent_damage_explicit_target_source(chosen_tokens)
             && let Ok(source_filter) = parse_object_filter(chosen_tokens, false)
@@ -1324,15 +1350,9 @@ fn prevent_damage_effect_with_optional_condition(
         _ => None,
     };
     let prevent = if source_would_deal_surface {
-        EffectAst::subject_verb_prevent_all_combat_damage_source_would_deal(
-            source,
-            duration,
-        )
+        EffectAst::subject_verb_prevent_all_combat_damage_source_would_deal(source, duration)
     } else {
-        EffectAst::subject_verb_prevent_all_combat_damage_from_source(
-            source,
-            duration,
-        )
+        EffectAst::subject_verb_prevent_all_combat_damage_from_source(source, duration)
     };
     if has_color_condition {
         let predicate = condition_filter.map_or_else(
@@ -1407,21 +1427,20 @@ pub fn parse_prevent_damage_target_scope_lexed(
             .is_some_and(|word| matches!(*word, "player" | "players"))
     {
         return Ok(Some(
-            EffectAst::subject_verb_prevent_all_combat_damage_to_players(
-                duration,
-            ),
+            EffectAst::subject_verb_prevent_all_combat_damage_to_players(duration),
         ));
     }
     if target_words.len() == 1 && target_words.first().is_some_and(|word| *word == "you") {
         return Ok(Some(
-            EffectAst::subject_verb_prevent_all_combat_damage_to_you(
-                duration,
-            ),
+            EffectAst::subject_verb_prevent_all_combat_damage_to_you(duration),
         ));
     }
 
-    let target = crate::effect_sentences::clause_pattern_helpers::parse_prevention_target_phrase(tokens)?;
-    Ok(Some(EffectAst::subject_verb_prevent_all_combat_damage_to_target(target, duration)))
+    let target =
+        crate::effect_sentences::clause_pattern_helpers::parse_prevention_target_phrase(tokens)?;
+    Ok(Some(
+        EffectAst::subject_verb_prevent_all_combat_damage_to_target(target, duration),
+    ))
 }
 
 fn conditional_sentence_family_head<'a>(
@@ -1546,7 +1565,13 @@ pub fn parse_persistent_no_maximum_hand_size_lexed(
     let rest = &words[subject_words..];
     if !crate::word_primitives::parse_choice_sequence_prefix(
         rest,
-        &[&["have", "has"], &["no"], &["maximum"], &["hand"], &["size"]],
+        &[
+            &["have", "has"],
+            &["no"],
+            &["maximum"],
+            &["hand"],
+            &["size"],
+        ],
     ) {
         return None;
     }

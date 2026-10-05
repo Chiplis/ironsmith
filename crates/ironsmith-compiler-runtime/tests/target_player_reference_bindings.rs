@@ -406,7 +406,14 @@ fn roiling_terrain_uses_departed_controller_not_owner_and_does_not_require_destr
             };
             cast(&mut game, &definition, &mut dm);
             resolve(&mut game, &mut dm);
-            assert_eq!(game.player(B).unwrap().life, 18);
+            assert_eq!(
+                game.player(B).unwrap().life,
+                18,
+                "indestructible {indestructible}, life A {} B {} C {}",
+                game.player(A).unwrap().life,
+                game.player(B).unwrap().life,
+                game.player(C).unwrap().life
+            );
             assert_eq!(game.player(A).unwrap().life, 20);
             assert_eq!(game.player(C).unwrap().life, 20);
             assert_eq!(game.object(land).is_some(), indestructible);
@@ -578,7 +585,11 @@ fn cellar_door_moves_only_the_bottom_of_the_target_library_and_creates_for_the_a
                 })
                 .collect();
             assert_eq!(zombies.len(), usize::from(creature_bottom));
-            assert!(zombies.iter().all(|object| game.current_controller(object.id) == Some(A)));
+            assert!(
+                zombies
+                    .iter()
+                    .all(|object| game.current_controller(object.id) == Some(A))
+            );
         }
     }
 }

@@ -248,7 +248,13 @@ fn pay(
     for symbol in symbols {
         mana(game, player, *symbol, 1);
     }
-    let action = activation(game, player, source, ordinal).unwrap();
+    let action = activation(game, player, source, ordinal).unwrap_or_else(|| {
+        panic!(
+            "no activation for {} ordinal {ordinal}, abilities={:?}",
+            game.object(source).unwrap().name,
+            game.current_abilities(source)
+        )
+    });
     announce(
         game,
         action,
@@ -274,6 +280,16 @@ fn colored(game: &mut GameState, owner: PlayerId, color: ColorSet, power: i32) -
 }
 #[test]
 fn fourteen_frozen_complete_cards_strict_compile_and_round_trip_typed_modifiers() {
+    fn retains_pricing(model: &ironsmith::static_abilities::CompiledStaticAbility) -> bool {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction { .. }
+            | ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease { .. } => true,
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
+                retains_pricing(ability)
+            }
+            _ => false,
+        }
+    }
     let fixture: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../fixtures/typed_activation_modifiers.json.fixture"
     ))
@@ -282,14 +298,9 @@ fn fourteen_frozen_complete_cards_strict_compile_and_round_trip_typed_modifiers(
     for row in fixture {
         for definition in definitions(row["name"].as_str().unwrap()) {
             assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
-            let game = {
-                let mut game = game();
-                game.create_object_from_definition(&definition, A, Zone::Battlefield);
-                game
-            };
-            assert!(game.battlefield.iter().any(|id| game.current_abilities(*id).unwrap().iter().any(|ability| {
-                matches!(&ability.kind, AbilityKind::Static(modifier) if modifier.activated_ability_cost_reduction().is_some() || modifier.activated_ability_cost_increase().is_some())
-            })), "{} has executable pricing", row["name"]);
+            assert!(definition.abilities.iter().any(|ability| {
+                matches!(&ability.kind, AbilityKind::Static(modifier) if modifier.activated_ability_cost_reduction().is_some() || modifier.activated_ability_cost_increase().is_some() || modifier.compiled_model().is_some_and(retains_pricing))
+            }), "{} retains executable pricing", row["name"]);
         }
     }
 }
@@ -362,7 +373,10 @@ fn equipment_reductions_price_the_actual_target_and_only_the_equip_ability() {
                 Some(Target::Object(eligible)),
                 &[ManaSymbol::Colorless],
             );
-            assert_eq!(game.object(equipment).unwrap().attached_to, Some(ironsmith::object::AttachmentTarget::Object(eligible)));
+            assert_eq!(
+                game.object(equipment).unwrap().attached_to,
+                Some(ironsmith::object::AttachmentTarget::Object(eligible))
+            );
             assert_eq!(
                 game.current_power(eligible),
                 Some(if name == "Belt of Giant Strength" {
@@ -484,7 +498,8 @@ fn source_conditional_counts_and_monarch_gate_change_prices_before_real_payment(
             let before = price(&game, source, 0, &[Target::Object(target)]).mana_value();
             let payment = match name {
                 "Crown of Gondor" => {
-                    game.set_monarch(Some(A)).expect("checked designation/departure fixture");
+                    game.set_monarch(Some(A))
+                        .expect("checked designation/departure fixture");
                     vec![ManaSymbol::Colorless]
                 }
                 "Esquire of the King" => {
@@ -529,10 +544,16 @@ fn source_conditional_counts_and_monarch_gate_change_prices_before_real_payment(
                 &payment,
             );
             match name {
-                "Crown of Gondor" => assert_eq!(game.object(source).unwrap().attached_to, Some(ironsmith::object::AttachmentTarget::Object(target))),
+                "Crown of Gondor" => assert_eq!(
+                    game.object(source).unwrap().attached_to,
+                    Some(ironsmith::object::AttachmentTarget::Object(target))
+                ),
                 "Esquire of the King" => assert_eq!(game.current_power(target), Some(3)),
                 "Starport Security" => assert!(game.is_tapped(target)),
-                _ => assert!(game.current_abilities(source).unwrap().iter().any(|ability| matches!(&ability.kind, AbilityKind::Static(ability) if ability.id() == ironsmith::static_abilities::StaticAbilityId::Unblockable))),
+                _ => {
+                    game.update_cant_effects();
+                    assert!(!game.can_be_blocked(source));
+                }
             }
         }
     }

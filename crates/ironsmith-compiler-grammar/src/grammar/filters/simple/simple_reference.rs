@@ -158,7 +158,7 @@ pub(super) fn parse_simple_object_filter_suffix(
             return Some((suffix, suffix_len));
         }
     }
-    for suffix_len in (2..=7).rev() {
+    for suffix_len in (2..=9).rev() {
         let Some(tail) = suffix_tail(words, suffix_len) else {
             continue;
         };
@@ -179,6 +179,7 @@ pub(super) fn parse_simple_object_filter_suffix(
 
 pub(super) fn parse_controller_player(input: &mut WordInput<'_>) -> WResult<PlayerFilter> {
     alt((
+        parse_target_player_or_planeswalker_controller,
         alt((
             word_phrase(&["another", "target", "player"]).value(PlayerFilter::Target(Box::new(
                 PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::target_player()),
@@ -196,12 +197,16 @@ pub(super) fn parse_controller_player(input: &mut WordInput<'_>) -> WResult<Play
                 ))
                 .value(PlayerFilter::IteratedPlayer),
                 word_phrase(&["your", "team"]).map(|()| PlayerFilter::your_team()),
-                primitives::word_slice_exact("opponents").value(PlayerFilter::Opponent),
+                alt((
+                    word_phrase(&["your", "opponents"]),
+                    word_phrase(&["your", "opponent"]),
+                    primitives::word_slice_exact("opponents").void(),
+                ))
+                .value(PlayerFilter::Opponent),
                 primitives::word_slice_exact("opponent").value(PlayerFilter::Opponent),
                 primitives::word_slice_exact("you").value(PlayerFilter::You),
             )),
         )),
-        parse_target_player_or_planeswalker_controller,
     ))
     .parse_next(input)
 }

@@ -27,7 +27,7 @@ fn fixture() -> (GameState, ObjectId) {
     let source = game.create_object_from_definition(&card, A, Zone::Battlefield);
     (game, source)
 }
-fn poison_history(game: &mut GameState) {
+fn seed_wide_history(game: &mut GameState) {
     let id = game
         .provenance_graph_mut()
         .alloc_root_event(EventKind::LifeLoss);
@@ -204,39 +204,35 @@ fn each_player_payment_publishes_after_all_originals_and_before_following_action
     }
 }
 #[test]
-fn incomplete_life_history_restores_direct_and_bulk_mana_payments() {
+fn wide_life_history_preserves_direct_and_bulk_mana_payments() {
     let (mut game, source) = fixture();
-    poison_history(&mut game);
-    let prior = game.provenance_graph().node_count();
-    let error = game.pay_life(A, 2).unwrap_err();
-    assert!(error.is_incomplete_execution());
-    assert_eq!(game.player(A).unwrap().life, 20);
-    assert_eq!(game.provenance_graph().node_count(), prior);
-    assert!(game.effect_store.pending_trigger_entries.is_empty());
+    seed_wide_history(&mut game);
+    assert!(game.pay_life(A, 2).unwrap());
+    assert_eq!(game.player(A).unwrap().life, 18);
+    assert_eq!(game.effect_store.pending_trigger_entries.len(), 1);
     game.player_mut(A)
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Blue, 1);
     let cost = ManaCost::from_symbols(vec![ManaSymbol::Blue, ManaSymbol::Life(2)]);
-    let error = game
-        .try_pay_mana_cost(A, Some(source), &cost, 0)
-        .unwrap_err();
-    assert!(matches!(
-        error,
-        ExecutionError::ResourceLimitExceeded { .. }
-    ));
-    assert_eq!(game.player(A).unwrap().mana_pool.blue, 1);
-    assert_eq!(game.player(A).unwrap().life, 20);
-    assert!(game.take_pending_trigger_events().is_empty());
-    assert!(game.effect_store.pending_trigger_entries.is_empty());
+    assert!(game.try_pay_mana_cost(A, Some(source), &cost, 0).unwrap());
+    assert_eq!(game.player(A).unwrap().mana_pool.blue, 0);
+    assert_eq!(game.player(A).unwrap().life, 16);
+    assert_eq!(game.effect_store.pending_trigger_entries.len(), 2);
+    assert_eq!(
+        game.turn_store
+            .turn_history
+            .total_life_lost_for_players(&[A, B]),
+        i32::MAX as u32 + 4
+    );
 }
 #[test]
-fn speculative_exact_payment_failure_is_typed_and_never_false_affordability() {
+fn speculative_exact_payment_accepts_wide_history_without_mutating_the_original() {
     let (mut game, source) = fixture();
-    poison_history(&mut game);
+    seed_wide_history(&mut game);
     let cost = ManaCost::from_symbols(vec![ManaSymbol::Life(2)]);
-    let error = game
-        .mana_cost_with_payable_continuation(
+    assert!(
+        game.mana_cost_with_payable_continuation(
             A,
             Some(source),
             &cost,
@@ -248,19 +244,16 @@ fn speculative_exact_payment_failure_is_typed_and_never_false_affordability() {
             true,
             |_, _| true,
         )
-        .unwrap_err();
-    assert!(error.is_incomplete_execution());
+        .unwrap()
+        .is_some()
+    );
     let request = crate::mana_payment::ManaPaymentRequest::new(
         A,
         source,
         crate::costs::PaymentReason::CastSpell,
         cost,
     );
-    let error = crate::mana_payment::plan_mana_payment(&game, &request).unwrap_err();
-    assert!(matches!(
-        error,
-        crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(_)
-    ));
+    assert!(crate::mana_payment::plan_mana_payment(&game, &request).is_ok());
     assert_eq!(game.player(A).unwrap().life, 20);
     assert!(game.effect_store.pending_trigger_entries.is_empty());
 }
@@ -736,7 +729,7 @@ fn cost_mana_and_pay_mana_keep_temporary_replacement_scope() {
         } else {
             let cost = crate::costs::Cost::mana(cost);
             let mut dm = SelectFirstDecisionMaker;
-    let mut ctx = crate::costs::CostContext::new(source, A, &mut dm);
+            let mut ctx = crate::costs::CostContext::new(source, A, &mut dm);
             ctx.replacement
                 .additional_replacement_effects
                 .push(temporary);

@@ -4274,7 +4274,7 @@ fn plain_type_setting_animation_omits_addition_surface() {
     );
     assert_eq!(
         describe_apply_continuous_effect(&reset).as_deref(),
-        Some("this source becomes an enchantment")
+        Some("This source becomes an enchantment")
     );
 
     let mut land_reset = crate::effects::ApplyContinuousEffect::with_spec(

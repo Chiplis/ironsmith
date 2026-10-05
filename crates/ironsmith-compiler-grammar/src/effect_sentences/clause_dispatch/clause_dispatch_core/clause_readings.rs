@@ -69,12 +69,26 @@ pub(super) const CLAUSE_REGISTRY: RuleId = RuleId::new("clause-reading-registry"
 
 /// The readings, in the order they were ranked.
 const CLAUSE_READINGS: &[Reading] = &[
-    Reading { id:RuleId::new("ability-loss-object-template"),head:HeadDiscriminator::Any,admits:|_|true,
-        read:|input|input.outcome(crate::effect_sentences::ability_loss_templates::parse(input.tokens)) },
-
-    Reading { id:RuleId::new("negative-characteristic-assertion"),head:HeadDiscriminator::Any,admits:|_|true,
-        read:|input|input.outcome(crate::effect_sentences::characteristic_assertions::parse(input.tokens)) },
-
+    Reading {
+        id: RuleId::new("ability-loss-object-template"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            input.outcome(crate::effect_sentences::ability_loss_templates::parse(
+                input.tokens,
+            ))
+        },
+    },
+    Reading {
+        id: RuleId::new("negative-characteristic-assertion"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            input.outcome(crate::effect_sentences::characteristic_assertions::parse(
+                input.tokens,
+            ))
+        },
+    },
     Reading {
         id: RuleId::new("any-player-or-opponent-may"),
         head: HeadDiscriminator::Any,
@@ -561,7 +575,11 @@ const CLAUSE_READINGS: &[Reading] = &[
         id: RuleId::new("assigns-combat-damage-using-toughness"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
-        read: |input| input.outcome(crate::effect_sentences::toughness_assignment::parse(input.tokens)),
+        read: |input| {
+            input.outcome(crate::effect_sentences::toughness_assignment::parse(
+                input.tokens,
+            ))
+        },
     },
     Reading {
         id: RuleId::new("assigns-no-combat-damage"),
@@ -599,6 +617,7 @@ const CLAUSE_READINGS: &[Reading] = &[
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("clause-primitives")
                 && !input.read_by("has-base-power")
+                && !input.read_by("negative-characteristic-assertion")
                 && !input.read_by("target-player-choose-objects-with-count")
         },
         read: |input| input.outcome(part_3::read_target_only(input)),

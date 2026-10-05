@@ -212,6 +212,8 @@ fn queue_event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) -> u
 }
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
+    // Checked execution already captures some triggers in the original observer frame.
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     for event in outcome.events {
         for entry in check_triggers(game, &event) {
             queue.add(entry);

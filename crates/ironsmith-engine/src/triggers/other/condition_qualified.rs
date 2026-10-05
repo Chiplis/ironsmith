@@ -50,6 +50,7 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
                         }),
                     filter_source: Some(ctx.source_id),
                     triggering_event: Some(event),
+                    iterated_player: event.trigger_player().or_else(|| event.player()),
                     trigger_identity: ctx.trigger_identity,
                     ..Default::default()
                 },
@@ -61,14 +62,22 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
     }
 
     fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
-        if self.matches(event, ctx) { self.trigger.trigger_count_with_context(event, ctx) } else { 0 }
+        if self.matches(event, ctx) {
+            self.trigger.trigger_count_with_context(event, ctx)
+        } else {
+            0
+        }
     }
 
     fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
-        self.matches(event, ctx).then(|| self.trigger.event_value_amount(event, ctx)).flatten()
+        self.matches(event, ctx)
+            .then(|| self.trigger.event_value_amount(event, ctx))
+            .flatten()
     }
 
-    fn uses_snapshot(&self) -> bool { self.trigger.uses_snapshot() }
+    fn uses_snapshot(&self) -> bool {
+        self.trigger.uses_snapshot()
+    }
 
     fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
         self.trigger.looks_back_for_source(event)

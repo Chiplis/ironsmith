@@ -91,6 +91,15 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
     if !tail.is_empty() && !single_source {
         return Ok(None);
     }
+    // Unqualified passive player receipts have an existing grouped matcher.
+    // That production groups sources and preserves "one or more" recipients.
+    if minimum.is_none()
+        && !single_source
+        && combat == Some(false)
+        && parse_trigger_subject_player_filter(&words[..index]).is_some()
+    {
+        return Ok(None);
+    }
     let generic_self = source_reference_surface_for_trigger_subject(&tokens[..end]).is_some()
         && words[..index] != ["this", "creature"]
         && words[..index] != ["this"];

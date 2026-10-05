@@ -88,6 +88,7 @@ mod tests {
             target_distributions: vec![],
             spliced_cards: vec![],
             x_value: None,
+            iteration: Default::default(),
             activation_cost_has_x: false,
             activation_cost_has_tap: false,
             mana_spent_on_activation: Default::default(),

@@ -14,7 +14,9 @@ fn total_cost_contains_tap(cost: &crate::cost::TotalCost) -> bool {
 }
 
 pub(super) fn stage_after_activation_announcements(pending: &PendingActivation) -> ActivationStage {
-    if !pending.cost_references_ready { return ActivationStage::ChoosingCostReferences; }
+    if !pending.cost_references_ready {
+        return ActivationStage::ChoosingCostReferences;
+    }
     if !pending.remaining_requirements.is_empty() {
         ActivationStage::ChoosingTargets
     } else if !pending.pending_target_distributions.is_empty() {
@@ -103,19 +105,31 @@ pub fn apply_priority_response_with_dm(
     response: &PriorityResponse,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    if !decision_maker.awaiting_choice() { game.clear_pending_decision_controllers(); }
+    if !decision_maker.awaiting_choice() {
+        game.clear_pending_decision_controllers();
+    }
     // Entry and activation can suspend inside replacement programs. Their
     // priority actor and loop bookkeeping are part of the same operation.
-    let checkpoint = matches!(response,
-        PriorityResponse::PriorityAction(LegalAction::PlayLand { .. } | LegalAction::PlayLandBackFace { .. } | LegalAction::ActivateManaAbility { .. } | LegalAction::ActivateAbility { .. })
-        | PriorityResponse::NextCostChoice(_)
-        | PriorityResponse::SacrificeTarget(_)
-        | PriorityResponse::CardCostChoice(_)
-    ).then(|| (game.clone(), trigger_queue.clone(), state.clone()));
-    let result = apply_priority_response_with_dm_inner(game, trigger_queue, state, response, decision_maker);
+    let checkpoint = matches!(
+        response,
+        PriorityResponse::PriorityAction(
+            LegalAction::PlayLand { .. }
+                | LegalAction::PlayLandBackFace { .. }
+                | LegalAction::ActivateManaAbility { .. }
+                | LegalAction::ActivateAbility { .. }
+        ) | PriorityResponse::NextCostChoice(_)
+            | PriorityResponse::SacrificeTarget(_)
+            | PriorityResponse::CardCostChoice(_)
+    )
+    .then(|| (game.clone(), trigger_queue.clone(), state.clone()));
+    let result =
+        apply_priority_response_with_dm_inner(game, trigger_queue, state, response, decision_maker);
     if let Some((game_before, queue_before, state_before)) = checkpoint {
         if result.is_err() || decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(game_before, result.is_ok() && decision_maker.awaiting_choice());
+            game.restore_execution_checkpoint(
+                game_before,
+                result.is_ok() && decision_maker.awaiting_choice(),
+            );
             *trigger_queue = queue_before;
             *state = state_before;
         }
@@ -129,231 +143,260 @@ pub fn apply_priority_response_with_dm(
 /// Prepare one mana activation for its actual payer. Explicit payment state
 /// keeps completed child activations outside an unfinished parent's replay.
 pub(super) fn begin_mana_ability_activation(
-    game: &mut GameState, trigger_queue: &mut TriggerQueue, state: &mut PriorityLoopState,
-    source: &ObjectId, ability_index: &usize, player: PlayerId,
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    source: &ObjectId,
+    ability_index: &usize,
+    player: PlayerId,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
     let mut saved_root_checkpoint = false;
     let result = (|| -> Result<GameProgress, GameLoopError> {
-    if game.object(*source).is_some()
-        && let Some(ability) = game.current_ability(*source, *ability_index)
-        && let AbilityKind::Activated(mana_ability) = &ability.kind
-        && mana_ability.is_runtime_mana_ability(game, *source, player)
-    {
-        // A root mana announcement can be canceled before paying. Its
-        // checkpoint must precede exhaust and visibility registration alike.
-        if state.checkpoint.is_none() {
-            state.save_checkpoint(game);
-            saved_root_checkpoint = true;
-        }
-        let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
-        let effects_to_run = mana_ability.effects.clone();
-        let base_cost = mana_ability.mana_cost.clone();
-        let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
-        let mana_source_chosen_creature_type = game.chosen_creature_type(*source);
-        let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
-            game,
-            player,
-            *source,
-            &base_cost,
-            &[],
-            Some(crate::decision::ActivationCostAbility::of(
+        if game.object(*source).is_some()
+            && let Some(ability) = game.current_ability(*source, *ability_index)
+            && let AbilityKind::Activated(mana_ability) = &ability.kind
+            && mana_ability.is_runtime_mana_ability(game, *source, player)
+        {
+            // A root mana announcement can be canceled before paying. Its
+            // checkpoint must precede exhaust and visibility registration alike.
+            if state.checkpoint.is_none() {
+                state.save_checkpoint(game);
+                saved_root_checkpoint = true;
+            }
+            let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
+            let effects_to_run = mana_ability.effects.clone();
+            let base_cost = mana_ability.mana_cost.clone();
+            let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
+            let mana_source_chosen_creature_type = game.chosen_creature_type(*source);
+            let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
                 game,
                 player,
                 *source,
-                mana_ability,
-            )),
-        );
-        let activation_cost_has_tap = cost.costs().iter().any(|cost| cost.requires_tap());
-        let mana_production_provenance =
-            crate::special_actions::mana_production_provenance_for_activation_cost(&cost);
-
-        // Separate mana costs from other costs
-        let mut mana_cost: Option<crate::mana::ManaCost> = None;
-        let mut other_costs: Vec<crate::costs::Cost> = Vec::new();
-
-        for c in cost.costs() {
-            if let Some(mc) = c.processing_mode().mana_cost() {
-                mana_cost = Some(mc.clone());
-            } else {
-                other_costs.push(c.clone());
-            }
-        }
-
-        // CR 602.2b / 601.2f: an {X} in a mana ability's activation
-        // cost (Wizard's Rockets) is announced before the cost is
-        // paid; the ability's effect then refers to that X.
-        let mut announced_x: Option<u32> = None;
-        if let Some(mc) = mana_cost.as_ref()
-            && mc.has_x()
-        {
-            let policy = game.mana_spend_policy(player, Some(*source));
-            let allow_black_life = crate::decision::mana_cost_has_black_symbol(mc)
-                && game.player_can_pay_black_with_life_for_reason(
-                    player,
-                    Some(*source),
-                    crate::costs::PaymentReason::ActivateManaAbility,
-                );
-            let max_x = crate::decision::compute_potential_mana(game, player)
-                .max_x_for_cost_with_mana_spend_policy_and_black_life(
-                    mc,
-                    &policy,
-                    allow_black_life,
-                );
-            let x_ctx =
-                crate::decisions::context::NumberContext::x_value(player, *source, max_x);
-            let x = decision_maker.decide_number(game, &x_ctx).min(max_x);
-            if decision_maker.awaiting_choice() {
-                return Ok(GameProgress::Continue);
-            }
-            announced_x = Some(x);
-            let locked =
-                crate::decision::mana_cost_with_locked_x_and_generic_reduction(mc, x, 0);
-            mana_cost = (!locked.pips().is_empty()).then_some(locked);
-        }
-
-        let mana_ability_provenance =
-            game.provenance_graph_mut()
-                .alloc_root(ProvenanceNodeKind::EffectExecution {
-                    source: *source,
-                    controller: player,
-                });
-        game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(mana_ability_provenance));
-        // Continuous effects have to be part of the snapshot: an
-        // animated land (earthbend, Awaken, ...) is a creature only in
-        // its calculated characteristics, and "whenever you tap a
-        // creature for mana" matches against this snapshot.
-        let source_snapshot = game.object(*source).map(|obj| {
-            ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-        });
-
-        let view = crate::derived_view::DerivedGameView::new(game);
-        if !crate::decision::exhaust_activation_allows(
-            game, player, *source, *ability_index, mana_ability, &view,
-        ) {
-            return Err(GameLoopError::InvalidState("Exhaust ability was already activated".into()));
-        }
-        let exhaust_announcement = if mana_ability.is_exhaust_ability() {
-            if state.checkpoint.is_none() { state.save_checkpoint(game); }
-            game.announce_exhaust_activation(*source, *ability_index)
-        } else { None };
-
-        if mana_cost.is_none() {
-            // Pay all costs immediately
-            let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
-                .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
-                .with_provenance(mana_ability_provenance);
-            cost_ctx.x_value = announced_x;
-            let cost_summary =
-                crate::special_actions::pay_total_cost_without_preflight_with_choice(
+                &base_cost,
+                &[],
+                Some(crate::decision::ActivationCostAbility::of(
                     game,
-                    &cost,
-                    &mut cost_ctx,
-                )
-                .map_err(super::priority_mana::activation_cost_error)?;
-            let x_value_from_costs = cost_summary.x_value;
-            // The effects may refer to objects the costs chose
-            // ("the exiled creature's mana value", Food Chain).
-            let cost_tagged_objects = cost_ctx.tagged_objects.clone();
-            drop(cost_ctx);
+                    player,
+                    *source,
+                    mana_ability,
+                )),
+            );
+            let activation_cost_has_tap = cost.costs().iter().any(|cost| cost.requires_tap());
+            let mana_production_provenance =
+                crate::special_actions::mana_production_provenance_for_activation_cost(&cost);
 
-            if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
-            game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(mana_ability_provenance));
-            drain_pending_trigger_events(game, trigger_queue);
+            // Separate mana costs from other costs
+            let mut mana_cost: Option<crate::mana::ManaCost> = None;
+            let mut other_costs: Vec<crate::costs::Cost> = Vec::new();
 
-            let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
-                .with_provenance(mana_ability_provenance)
-                .with_mana_usage_restrictions(mana_usage_restrictions.clone())
-                .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
-                .with_mana_production_provenance(mana_production_provenance)
-                .with_tagged_objects(cost_tagged_objects.clone());
-            if let Some(snapshot) = source_snapshot.clone() { mana_ctx = mana_ctx.with_source_snapshot(snapshot); }
-            if let Some(x) = x_value_from_costs { mana_ctx = mana_ctx.with_x(x); }
-            let outcome = crate::effects::EffectExecutor::execute(
-                &crate::effects::AddManaEffect::new(mana_to_add.clone(), crate::target::PlayerFilter::Specific(player)),
-                game, &mut mana_ctx,
-            )?;
-            if mana_ctx.decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
-            drop(mana_ctx);
-            queue_triggers_for_events(game, trigger_queue, outcome.events);
+            for c in cost.costs() {
+                if let Some(mc) = c.processing_mode().mana_cost() {
+                    mana_cost = Some(mc.clone());
+                } else {
+                    other_costs.push(c.clone());
+                }
+            }
 
-            // Execute additional effects (for complex mana abilities)
-            if !effects_to_run.is_empty() {
-                let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+            // CR 602.2b / 601.2f: an {X} in a mana ability's activation
+            // cost (Wizard's Rockets) is announced before the cost is
+            // paid; the ability's effect then refers to that X.
+            let mut announced_x: Option<u32> = None;
+            if let Some(mc) = mana_cost.as_ref()
+                && mc.has_x()
+            {
+                let policy = game.mana_spend_policy(player, Some(*source));
+                let allow_black_life = crate::decision::mana_cost_has_black_symbol(mc)
+                    && game.player_can_pay_black_with_life_for_reason(
+                        player,
+                        Some(*source),
+                        crate::costs::PaymentReason::ActivateManaAbility,
+                    );
+                let max_x = crate::decision::compute_potential_mana(game, player)
+                    .max_x_for_cost_with_mana_spend_policy_and_black_life(
+                        mc,
+                        &policy,
+                        allow_black_life,
+                    );
+                let x_ctx =
+                    crate::decisions::context::NumberContext::x_value(player, *source, max_x);
+                let x = decision_maker.decide_number(game, &x_ctx).min(max_x);
+                if decision_maker.awaiting_choice() {
+                    return Ok(GameProgress::Continue);
+                }
+                announced_x = Some(x);
+                let locked =
+                    crate::decision::mana_cost_with_locked_x_and_generic_reduction(mc, x, 0);
+                mana_cost = (!locked.pips().is_empty()).then_some(locked);
+            }
+
+            let mana_ability_provenance =
+                game.provenance_graph_mut()
+                    .alloc_root(ProvenanceNodeKind::EffectExecution {
+                        source: *source,
+                        controller: player,
+                    });
+            game.begin_library_top_announcement(
+                crate::game_state::LibraryTopAnnouncement::Activation(mana_ability_provenance),
+            );
+            // Continuous effects have to be part of the snapshot: an
+            // animated land (earthbend, Awaken, ...) is a creature only in
+            // its calculated characteristics, and "whenever you tap a
+            // creature for mana" matches against this snapshot.
+            let source_snapshot = game
+                .object(*source)
+                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+
+            let view = crate::derived_view::DerivedGameView::new(game);
+            if !crate::decision::exhaust_activation_allows(
+                game,
+                player,
+                *source,
+                *ability_index,
+                mana_ability,
+                &view,
+            ) {
+                return Err(GameLoopError::InvalidState(
+                    "Exhaust ability was already activated".into(),
+                ));
+            }
+            let exhaust_announcement = if mana_ability.is_exhaust_ability() {
+                if state.checkpoint.is_none() {
+                    state.save_checkpoint(game);
+                }
+                game.announce_exhaust_activation(*source, *ability_index)
+            } else {
+                None
+            };
+
+            if mana_cost.is_none() {
+                // Pay all costs immediately
+                let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
+                    .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
+                    .with_provenance(mana_ability_provenance);
+                cost_ctx.x_value = announced_x;
+                let cost_summary =
+                    crate::special_actions::pay_total_cost_without_preflight_with_choice(
+                        game,
+                        &cost,
+                        &mut cost_ctx,
+                    )
+                    .map_err(super::priority_mana::activation_cost_error)?;
+                let x_value_from_costs = cost_summary.x_value;
+                // The effects may refer to objects the costs chose
+                // ("the exiled creature's mana value", Food Chain).
+                let cost_tagged_objects = cost_ctx.tagged_objects.clone();
+                drop(cost_ctx);
+
+                if decision_maker.awaiting_choice() {
+                    return Ok(GameProgress::Continue);
+                }
+                game.finish_library_top_announcement(
+                    crate::game_state::LibraryTopAnnouncement::Activation(mana_ability_provenance),
+                );
+                drain_pending_trigger_events(game, trigger_queue);
+
+                let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
                     .with_provenance(mana_ability_provenance)
                     .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                     .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
-                    .with_mana_production_provenance(mana_production_provenance);
+                    .with_mana_production_provenance(mana_production_provenance)
+                    .with_tagged_objects(cost_tagged_objects.clone());
                 if let Some(snapshot) = source_snapshot.clone() {
-                    ctx = ctx.with_source_snapshot(snapshot);
+                    mana_ctx = mana_ctx.with_source_snapshot(snapshot);
                 }
                 if let Some(x) = x_value_from_costs {
-                    ctx = ctx.with_x(x);
+                    mana_ctx = mana_ctx.with_x(x);
                 }
-                ctx = ctx.with_tagged_objects(cost_tagged_objects);
-                let mut emitted_events = Vec::new();
-
-                for effect in &effects_to_run {
-                    let outcome = execute_effect(game, effect, &mut ctx)?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
-                    emitted_events.extend(outcome.events);
-                }
-                queue_triggers_for_events(game, trigger_queue, emitted_events);
-                drain_pending_trigger_events(game, trigger_queue);
-            }
-
-            game.record_ability_activation(*source, *ability_index);
-
-            queue_ability_activated_event(
-                game,
-                trigger_queue,
-                &mut *decision_maker,
-                *source,
-                player,
-                true,
-                None,
-                activation_cost_has_tap,
-            );
-
-            // Player retains priority after activating mana ability
-            return advance_priority_with_dm(game, trigger_queue, decision_maker);
-        } else {
-            // Need to tap lands / activate mana abilities to pay the mana cost
-            // Create a pending mana ability and show PayMana decision
-            let source_name = game
-                .object(*source)
-                .map(|o| o.name.to_string())
-                .unwrap_or_else(|| "Unknown".to_string());
-            let context = format!("{}'s ability", source_name);
-
-            let pending = PendingManaAbility {
-                source: *source,
-                ability_index: *ability_index,
-                activator: player,
-                provenance: mana_ability_provenance,
-                mana_cost: mana_cost.unwrap_or_default(),
-                other_costs,
-                mana_to_add,
-                effects: effects_to_run,
-                mana_usage_restrictions,
-                mana_source_chosen_creature_type,
-                mana_production_provenance,
-                undo_locked_by_mana: !mana_ability_is_undo_safe(
+                let outcome = crate::effects::EffectExecutor::execute(
+                    &crate::effects::AddManaEffect::new(
+                        mana_to_add.clone(),
+                        crate::target::PlayerFilter::Specific(player),
+                    ),
                     game,
-                    *source,
-                    *ability_index,
-                ),
-                pending_mana_payment: None,
-                x_value: announced_x,
-                exhaust_announcement,
-            };
-            return prompt_pending_mana_ability_payment(game, state, pending, context);
-        }
-    }
+                    &mut mana_ctx,
+                )?;
+                if mana_ctx.decision_maker.awaiting_choice() {
+                    return Ok(GameProgress::Continue);
+                }
+                drop(mana_ctx);
+                queue_triggers_for_events(game, trigger_queue, outcome.events);
 
-    // Player retains priority after activating mana ability
-    advance_priority_with_dm(game, trigger_queue, decision_maker)
+                // Execute additional effects (for complex mana abilities)
+                if !effects_to_run.is_empty() {
+                    let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+                        .with_provenance(mana_ability_provenance)
+                        .with_mana_usage_restrictions(mana_usage_restrictions.clone())
+                        .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
+                        .with_mana_production_provenance(mana_production_provenance);
+                    if let Some(snapshot) = source_snapshot.clone() {
+                        ctx = ctx.with_source_snapshot(snapshot);
+                    }
+                    if let Some(x) = x_value_from_costs {
+                        ctx = ctx.with_x(x);
+                    }
+                    ctx = ctx.with_tagged_objects(cost_tagged_objects);
+                    let mut emitted_events = Vec::new();
+
+                    for effect in &effects_to_run {
+                        let outcome = execute_effect(game, effect, &mut ctx)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(GameProgress::Continue);
+                        }
+                        emitted_events.extend(outcome.events);
+                    }
+                    queue_triggers_for_events(game, trigger_queue, emitted_events);
+                    drain_pending_trigger_events(game, trigger_queue);
+                }
+
+                game.record_ability_activation(*source, *ability_index);
+
+                queue_ability_activated_event(
+                    game,
+                    trigger_queue,
+                    &mut *decision_maker,
+                    *source,
+                    player,
+                    true,
+                    None,
+                    activation_cost_has_tap,
+                );
+
+                // Player retains priority after activating mana ability
+                return advance_priority_with_dm(game, trigger_queue, decision_maker);
+            } else {
+                // Need to tap lands / activate mana abilities to pay the mana cost
+                // Create a pending mana ability and show PayMana decision
+                let source_name = game
+                    .object(*source)
+                    .map(|o| o.name.to_string())
+                    .unwrap_or_else(|| "Unknown".to_string());
+                let context = format!("{}'s ability", source_name);
+
+                let pending = PendingManaAbility {
+                    source: *source,
+                    ability_index: *ability_index,
+                    activator: player,
+                    provenance: mana_ability_provenance,
+                    mana_cost: mana_cost.unwrap_or_default(),
+                    other_costs,
+                    mana_to_add,
+                    effects: effects_to_run,
+                    mana_usage_restrictions,
+                    mana_source_chosen_creature_type,
+                    mana_production_provenance,
+                    undo_locked_by_mana: !mana_ability_is_undo_safe(game, *source, *ability_index),
+                    pending_mana_payment: None,
+                    x_value: announced_x,
+                    exhaust_announcement,
+                };
+                return prompt_pending_mana_ability_payment(game, state, pending, context);
+            }
+        }
+
+        // Player retains priority after activating mana ability
+        advance_priority_with_dm(game, trigger_queue, decision_maker)
     })();
     if result.is_err() || decision_maker.awaiting_choice() {
         *game = checkpoint.0;
@@ -587,113 +630,148 @@ fn apply_priority_response_with_dm_inner(
             let checkpoint = game.clone();
             let trigger_checkpoint = trigger_queue.clone();
             let instruction = (|| -> Result<(), GameLoopError> {
-            // Play the land with ETB replacement handling
-            let player = game
-                .turn
-                .priority_player
-                .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
+                // Play the land with ETB replacement handling
+                let player = game
+                    .turn
+                    .priority_player
+                    .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
 
-            // CR 712.12: the land face chosen for a modal DFC.
-            let back_face = matches!(action, LegalAction::PlayLandBackFace { .. });
-            let action = if back_face {
-                crate::special_actions::SpecialAction::PlayLandBackFace { card_id: *land_id }
-            } else {
-                crate::special_actions::SpecialAction::PlayLand { card_id: *land_id }
-            };
-
-            // Validate that the player can play the land
-            crate::special_actions::can_perform(&action, game, player, &mut *decision_maker)
-                .map_err(|e| GameLoopError::InvalidState(format!("Cannot play land: {e}")))?;
-
-            let old_zone = game.object(*land_id).map(|o| o.zone).unwrap_or(Zone::Hand);
-            game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Land(*land_id));
-            crate::special_actions::apply_land_play_face(game, *land_id, back_face);
-            let permission = crate::special_actions::choose_land_play_permission(game, player, *land_id, decision_maker)?;
-            if decision_maker.awaiting_choice() { return Ok(()); }
-            permission.reserve(game, player)?;
-            let permission_forces_tapped = permission.enters_tapped;
-            let result = game.move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
-                *land_id,
-                Zone::Battlefield,
-                crate::events::cause::EventCause::from_special_action(Some(*land_id), player),
-                decision_maker,
-                Some(player),
-                permission_forces_tapped,
-                true,
-            )?;
-            if decision_maker.awaiting_choice() {
-                return Ok(());
-            }
-            if result.pending { return Err(GameLoopError::ResolutionFailed("land entry pending without an outstanding choice".into())); }
-            let original_entry = match &result.original {
-                crate::events::processing::EventOutcome::Proceed(entry) => Some(entry.clone()),
-                crate::events::processing::EventOutcome::Prevented | crate::events::processing::EventOutcome::Replaced => None,
-                crate::events::processing::EventOutcome::NotApplicable => return Err(GameLoopError::InvalidState("Failed to move land".into())),
-            };
-            // Check for ETB triggers only if the land entered the battlefield.
-            if let Some(entry) = original_entry
-                && game.object(entry.new_id).is_some_and(|object| object.zone == Zone::Battlefield)
-            {
-                let new_id = entry.new_id;
-
-                let etb_event_provenance = game
-                    .provenance_graph_mut()
-                    .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-                let etb_event = if entry.enters_tapped {
-                    TriggerEvent::new_with_provenance(
-                        EnterBattlefieldEvent::tapped(new_id, old_zone),
-                        etb_event_provenance,
-                    )
+                // CR 712.12: the land face chosen for a modal DFC.
+                let back_face = matches!(action, LegalAction::PlayLandBackFace { .. });
+                let action = if back_face {
+                    crate::special_actions::SpecialAction::PlayLandBackFace { card_id: *land_id }
                 } else {
-                    TriggerEvent::new_with_provenance(
-                        EnterBattlefieldEvent::new(new_id, old_zone),
-                        etb_event_provenance,
-                    )
+                    crate::special_actions::SpecialAction::PlayLand { card_id: *land_id }
                 };
-                let mut etb_event = game.ensure_trigger_event_provenance(etb_event);
-                game.freeze_completed_entry_events(std::iter::once(&mut etb_event))
-                    .map_err(GameLoopError::ExecutionFailed)?;
-                drain_pending_trigger_events(game, trigger_queue);
-                let etb_triggers = check_triggers(game, &etb_event);
-                for trigger in etb_triggers {
-                    trigger_queue.add(trigger);
-                }
 
-                let land_play_event_provenance = game
-                    .provenance_graph_mut()
-                    .alloc_root_event(crate::events::EventKind::LandPlayed);
-                let land_play_event =
-                    game.ensure_trigger_event_provenance(TriggerEvent::new_with_provenance(
-                        crate::events::LandPlayedEvent::new(new_id, player, old_zone),
-                        land_play_event_provenance,
+                // Validate that the player can play the land
+                crate::special_actions::can_perform(&action, game, player, &mut *decision_maker)
+                    .map_err(|e| GameLoopError::InvalidState(format!("Cannot play land: {e}")))?;
+
+                let old_zone = game.object(*land_id).map(|o| o.zone).unwrap_or(Zone::Hand);
+                game.begin_library_top_announcement(
+                    crate::game_state::LibraryTopAnnouncement::Land(*land_id),
+                );
+                crate::special_actions::apply_land_play_face(game, *land_id, back_face);
+                let permission = crate::special_actions::choose_land_play_permission(
+                    game,
+                    player,
+                    *land_id,
+                    decision_maker,
+                )?;
+                if decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
+                permission.reserve(game, player)?;
+                let permission_forces_tapped = permission.enters_tapped;
+                let result = game
+                    .move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
+                        *land_id,
+                        Zone::Battlefield,
+                        crate::events::cause::EventCause::from_special_action(
+                            Some(*land_id),
+                            player,
+                        ),
+                        decision_maker,
+                        Some(player),
+                        permission_forces_tapped,
+                        true,
+                    )?;
+                if decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
+                if result.pending {
+                    return Err(GameLoopError::ResolutionFailed(
+                        "land entry pending without an outstanding choice".into(),
                     ));
-                let land_play_triggers = check_triggers(game, &land_play_event);
-                for trigger in land_play_triggers {
-                    trigger_queue.add(trigger);
+                }
+                let original_entry = match &result.original {
+                    crate::events::processing::EventOutcome::Proceed(entry) => Some(entry.clone()),
+                    crate::events::processing::EventOutcome::Prevented
+                    | crate::events::processing::EventOutcome::Replaced => None,
+                    crate::events::processing::EventOutcome::NotApplicable => {
+                        return Err(GameLoopError::InvalidState("Failed to move land".into()));
+                    }
+                };
+                // Check for ETB triggers only if the land entered the battlefield.
+                if let Some(entry) = original_entry
+                    && game
+                        .object(entry.new_id)
+                        .is_some_and(|object| object.zone == Zone::Battlefield)
+                {
+                    let new_id = entry.new_id;
+
+                    let etb_event_provenance = game
+                        .provenance_graph_mut()
+                        .alloc_root_event(crate::events::EventKind::EnterBattlefield);
+                    let etb_event = if entry.enters_tapped {
+                        TriggerEvent::new_with_provenance(
+                            EnterBattlefieldEvent::tapped(new_id, old_zone),
+                            etb_event_provenance,
+                        )
+                    } else {
+                        TriggerEvent::new_with_provenance(
+                            EnterBattlefieldEvent::new(new_id, old_zone),
+                            etb_event_provenance,
+                        )
+                    };
+                    let mut etb_event = game.ensure_trigger_event_provenance(etb_event);
+                    game.freeze_completed_entry_events(std::iter::once(&mut etb_event))
+                        .map_err(GameLoopError::ExecutionFailed)?;
+                    drain_pending_trigger_events(game, trigger_queue);
+                    let etb_triggers = check_triggers(game, &etb_event);
+                    for trigger in etb_triggers {
+                        trigger_queue.add(trigger);
+                    }
+
+                    let land_play_event_provenance = game
+                        .provenance_graph_mut()
+                        .alloc_root_event(crate::events::EventKind::LandPlayed);
+                    let land_play_event =
+                        game.ensure_trigger_event_provenance(TriggerEvent::new_with_provenance(
+                            crate::events::LandPlayedEvent::new(new_id, player, old_zone),
+                            land_play_event_provenance,
+                        ));
+                    let land_play_triggers = check_triggers(game, &land_play_event);
+                    for trigger in land_play_triggers {
+                        trigger_queue.add(trigger);
+                    }
+
+                    handle_saga_enters_battlefield(game, new_id, trigger_queue, decision_maker)
+                        .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
+                    if decision_maker.awaiting_choice() {
+                        return Ok(());
+                    }
                 }
 
-                handle_saga_enters_battlefield(game, new_id, trigger_queue, decision_maker).map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
-                if decision_maker.awaiting_choice() { return Ok(()); }
-            }
+                // Mark that the player has played a land this turn
+                if let Some(player_data) = game.player_mut(player) {
+                    player_data.record_land_play();
+                }
 
-            // Mark that the player has played a land this turn
-            if let Some(player_data) = game.player_mut(player) {
-                player_data.record_land_play();
-            }
-
-            crate::special_actions::finish_land_play_receipt(game, *land_id, player, result, decision_maker)
+                crate::special_actions::finish_land_play_receipt(
+                    game,
+                    *land_id,
+                    player,
+                    result,
+                    decision_maker,
+                )
                 .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
-            if decision_maker.awaiting_choice() { return Ok(()); }
-            permission.complete(game);
-            drain_pending_trigger_events(game, trigger_queue);
-            Ok(())
+                if decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
+                permission.complete(game);
+                drain_pending_trigger_events(game, trigger_queue);
+                Ok(())
             })();
             if instruction.is_err() || decision_maker.awaiting_choice() {
                 *game = checkpoint;
                 *trigger_queue = trigger_checkpoint;
             }
             instruction?;
-            if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+            if decision_maker.awaiting_choice() {
+                return Ok(GameProgress::Continue);
+            }
             // Player retains priority after playing a land
             advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
@@ -910,7 +988,11 @@ fn apply_priority_response_with_dm_inner(
                 .turn
                 .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
-            let needs_cost_references = crate::cost::prospective_references::needs_activation_reference_context(&base_cost, effects.flattened_default_effects());
+            let needs_cost_references =
+                crate::cost::prospective_references::needs_activation_reference_context(
+                    &base_cost,
+                    effects.flattened_default_effects(),
+                );
             let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
                 game,
                 player,
@@ -932,7 +1014,9 @@ fn apply_priority_response_with_dm_inner(
                         controller: player,
                     });
 
-            game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance));
+            game.begin_library_top_announcement(
+                crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance),
+            );
             // Defer non-mana activation costs until after target selection.
             let mut mana_cost_to_pay: Option<crate::mana::ManaCost> = None;
             let mut remaining_cost_steps = Vec::new();
@@ -945,7 +1029,9 @@ fn apply_priority_response_with_dm_inner(
             );
             for cost_component in flat_components {
                 if let Some(dynamic_mana) = cost_component.dynamic_mana_cost_ref() {
-                    if needs_cost_references && dynamic_mana.mana_cost_of.is_some() { continue; }
+                    if needs_cost_references && dynamic_mana.mana_cost_of.is_some() {
+                        continue;
+                    }
                     let mut execution_ctx =
                         ExecutionContext::new(*source, player, &mut *decision_maker)
                             .with_provenance(activation_provenance);
@@ -1027,11 +1113,7 @@ fn apply_priority_response_with_dm_inner(
                 };
 
                 let mut granting_source_tags = std::collections::HashMap::new();
-                game.insert_granting_source_tag(
-                    *source,
-                    *ability_index,
-                    &mut granting_source_tags,
-                );
+                game.insert_granting_source_tag(*source, *ability_index, &mut granting_source_tags);
                 let mut pending = PendingActivation::new(
                     *source,
                     *ability_index,
@@ -1065,19 +1147,28 @@ fn apply_priority_response_with_dm_inner(
                 if needs_cost_references {
                     pending.cost_reference_base = Some(base_cost.clone());
                     pending.cost_references_ready = false;
-                    pending.tagged_objects = crate::cost::prospective_references::activation_reference_context(game, *source, *ability_index);
-                    pending.cost_reference_choices = crate::cost::prospective_references::activation_reference_choices(&base_cost, pending.effects.flattened_default_effects())
-                        .map_err(|error| GameLoopError::InvalidState(format!("cost reference announcement: {error:?}")))?;
+                    pending.tagged_objects =
+                        crate::cost::prospective_references::activation_reference_context(
+                            game,
+                            *source,
+                            *ability_index,
+                        );
+                    pending.cost_reference_choices =
+                        crate::cost::prospective_references::activation_reference_choices(
+                            &base_cost,
+                            pending.effects.flattened_default_effects(),
+                        )
+                        .map_err(|error| {
+                            GameLoopError::InvalidState(format!(
+                                "cost reference announcement: {error:?}"
+                            ))
+                        })?;
                 }
                 continue_activation(game, trigger_queue, state, pending, &mut *decision_maker)
             } else {
                 // No choices needed - put ability on stack directly
                 let mut granting_source_tags = std::collections::HashMap::new();
-                game.insert_granting_source_tag(
-                    *source,
-                    *ability_index,
-                    &mut granting_source_tags,
-                );
+                game.insert_granting_source_tag(*source, *ability_index, &mut granting_source_tags);
                 game.record_ability_activation(*source, *ability_index);
                 if is_loyalty_ability {
                     game.record_loyalty_ability_activation(*source);
@@ -1095,7 +1186,9 @@ fn apply_priority_response_with_dm_inner(
                     )
                     .with_tagged_objects(granting_source_tags);
                 game.push_to_stack(entry);
-                game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance));
+                game.finish_library_top_announcement(
+                    crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance),
+                );
                 queue_ability_activated_event(
                     game,
                     trigger_queue,
@@ -1111,10 +1204,23 @@ fn apply_priority_response_with_dm_inner(
                 advance_priority_with_dm(game, trigger_queue, decision_maker)
             }
         }
-        LegalAction::ActivateManaAbility { source, ability_index } => {
-            let player = game.turn.priority_player
+        LegalAction::ActivateManaAbility {
+            source,
+            ability_index,
+        } => {
+            let player = game
+                .turn
+                .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
-            begin_mana_ability_activation(game, trigger_queue, state, source, ability_index, player, decision_maker)
+            begin_mana_ability_activation(
+                game,
+                trigger_queue,
+                state,
+                source,
+                ability_index,
+                player,
+                decision_maker,
+            )
         }
         LegalAction::TurnFaceUp {
             creature_id,
@@ -1215,7 +1321,10 @@ pub(super) fn apply_replacement_choice_response(
     chosen_index: usize,
     _decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    let pending = game.effect_store.pending_replacement_choice.as_ref()
+    let pending = game
+        .effect_store
+        .pending_replacement_choice
+        .as_ref()
         .ok_or_else(|| GameLoopError::InvalidState("No pending replacement choice".into()))?;
     if pending.applicable_effects.get(chosen_index).is_none() {
         return Err(GameLoopError::InvalidState(format!(
@@ -1274,23 +1383,42 @@ pub(super) fn apply_targets_response(
             // X was announced before targets (CR 602.2b, 601.2b); price the
             // cost with it locked so reductions apply to the X part too.
             let base_cost = match pending.x_value.and_then(|x| u32::try_from(x).ok()) {
-                Some(x) => super::priority_cast::activation_cost_with_locked_x(
-                    &activated.mana_cost,
-                    x,
-                ),
+                Some(x) => {
+                    super::priority_cast::activation_cost_with_locked_x(&activated.mana_cost, x)
+                }
                 None => activated.mana_cost.clone(),
             };
             let base_cost = if pending.cost_reference_base.is_some() {
                 match base_cost.as_one_of() {
-                    Some(branches) => branches.get(pending.selected_alternative_cost.ok_or_else(|| GameLoopError::InvalidState("reference price has no announced branch".into()))?)
-                        .cloned().ok_or_else(|| GameLoopError::InvalidState("announced reference branch is absent".into()))?,
+                    Some(branches) => branches
+                        .get(pending.selected_alternative_cost.ok_or_else(|| {
+                            GameLoopError::InvalidState(
+                                "reference price has no announced branch".into(),
+                            )
+                        })?)
+                        .cloned()
+                        .ok_or_else(|| {
+                            GameLoopError::InvalidState(
+                                "announced reference branch is absent".into(),
+                            )
+                        })?,
                     None => base_cost,
                 }
-            } else { base_cost };
+            } else {
+                base_cost
+            };
             let base_cost = crate::cost::prospective_references::lock_activation_reference_cost(
-                game, pending.source, pending.activator, &base_cost, &pending.tagged_objects,
-                &pending.announced_cost_objects, pending.x_value.map(|x| x as u32),
-            ).map_err(|error| GameLoopError::InvalidState(format!("activation reference pricing: {error:?}")))?;
+                game,
+                pending.source,
+                pending.activator,
+                &base_cost,
+                &pending.tagged_objects,
+                &pending.announced_cost_objects,
+                pending.x_value.map(|x| x as u32),
+            )
+            .map_err(|error| {
+                GameLoopError::InvalidState(format!("activation reference pricing: {error:?}"))
+            })?;
             let repriced = crate::decision::calculate_effective_activation_total_cost_for_ability(
                 game,
                 pending.activator,
@@ -1571,18 +1699,12 @@ pub(super) fn apply_x_value_response(
         obj.x_value = Some(x_value);
     }
 
-    // A self-replacement conditioned on X ("If X is 6 or more, ... instead")
-    // can change what is targeted or divided; X is announced before targets
-    // (CR 601.2b-d), so re-read the requirements now that it is known.
+    // X can change a target's filter as well as a self-replacement's target
+    // requirements. Re-read the complete program after announcing X and before
+    // announcing targets (CR 601.2b-d).
     if let Some(requirements) = game
         .object(pending.spell_id)
         .and_then(|spell| spell.spell_effect.as_ref())
-        .filter(|program| {
-            program
-                .segments
-                .iter()
-                .any(|segment| !segment.self_replacements.is_empty())
-        })
         .map(|program| {
             extract_target_requirements_from_program_with_modes(
                 game,
@@ -1665,46 +1787,114 @@ pub(super) fn apply_creature_type_announcement_response(
 #[cfg(test)]
 mod replacement_ownerless_choice_contract_tests {
     use super::*;
-    fn fixture(payload: bool) -> (GameState, TriggerQueue, PlayerId, crate::replacement::ReplacementEffectId) {
+    fn fixture(
+        payload: bool,
+    ) -> (
+        GameState,
+        TriggerQueue,
+        PlayerId,
+        crate::replacement::ReplacementEffectId,
+    ) {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let alice = PlayerId::from_index(0);
         let source = game.create_object_from_card(
-            &crate::card::CardBuilder::new(crate::ids::CardId::new(), "Legacy choice diagnostic source")
-                .card_types(vec![crate::types::CardType::Enchantment]).build(), alice, crate::zone::Zone::Battlefield,
+            &crate::card::CardBuilder::new(
+                crate::ids::CardId::new(),
+                "Legacy choice diagnostic source",
+            )
+            .card_types(vec![crate::types::CardType::Enchantment])
+            .build(),
+            alice,
+            crate::zone::Zone::Battlefield,
         );
-        let action = if payload { crate::replacement::ReplacementAction::Instead(vec![
-            crate::effect::Effect::gain_life(2), crate::effect::Effect::lose_life(crate::effect::Value::X),
-        ]) } else { crate::replacement::ReplacementAction::Double };
+        let action = if payload {
+            crate::replacement::ReplacementAction::Instead(vec![
+                crate::effect::Effect::gain_life(2),
+                crate::effect::Effect::lose_life(crate::effect::Value::X),
+            ])
+        } else {
+            crate::replacement::ReplacementAction::Double
+        };
         let shield = game.effect_store.replacement_effects.add_one_shot_effect(
-            crate::replacement::ReplacementEffect::with_matcher(source, alice,
-                crate::events::cards::matchers::WouldDrawCardMatcher::you(), action),
+            crate::replacement::ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                action,
+            ),
         );
-        game.effect_store.pending_replacement_choice = Some(crate::game_state::PendingReplacementChoice {
-            event: crate::events::Event::draw(alice, 1, true), applicable_effects: vec![shield],
-            applied_effects: Default::default(), applied_effect_keys: Default::default(), player: alice,
-        });
+        game.effect_store.pending_replacement_choice =
+            Some(crate::game_state::PendingReplacementChoice {
+                event: crate::events::Event::draw(alice, 1, true),
+                applicable_effects: vec![shield],
+                applied_effects: Default::default(),
+                applied_effect_keys: Default::default(),
+                player: alice,
+            });
         game.take_pending_trigger_events();
         (game, TriggerQueue::new(), alice, shield)
     }
     fn check_response(index: usize, payload: bool) {
         let (mut game, mut queue, alice, shield) = fixture(payload);
         let ids = game.next_object_id_counter();
-        let result = apply_replacement_choice_response(&mut game, &mut queue, index, &mut crate::decision::SelectFirstDecisionMaker);
-        assert!(matches!(result, Err(GameLoopError::InvalidState(_))), "an ownerless choice must not report successful event application");
-        assert!(game.effect_store.pending_replacement_choice.is_some(), "preserve invalid continuation for diagnosis and recovery");
-        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
-        assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.next_object_id_counter(), ids);
-        assert!(game.take_pending_trigger_events().is_empty()); assert!(queue.entries.is_empty());
+        let result = apply_replacement_choice_response(
+            &mut game,
+            &mut queue,
+            index,
+            &mut crate::decision::SelectFirstDecisionMaker,
+        );
+        assert!(
+            matches!(result, Err(GameLoopError::InvalidState(_))),
+            "an ownerless choice must not report successful event application"
+        );
+        assert!(
+            game.effect_store.pending_replacement_choice.is_some(),
+            "preserve invalid continuation for diagnosis and recovery"
+        );
+        assert!(
+            game.effect_store
+                .replacement_effects
+                .get_effect(shield)
+                .is_some()
+        );
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.next_object_id_counter(), ids);
+        assert!(game.take_pending_trigger_events().is_empty());
+        assert!(queue.entries.is_empty());
     }
-    #[test] fn resolved_ownerless_event_is_rejected_without_consumption() { check_response(0, false); }
-    #[test] fn ownerless_payload_cannot_execute_or_swallow_errors() { check_response(0, true); }
-    #[test] fn invalid_option_retains_pending_event() { check_response(1, false); }
-    #[test] fn priority_cannot_offer_an_unresumable_choice() {
+    #[test]
+    fn resolved_ownerless_event_is_rejected_without_consumption() {
+        check_response(0, false);
+    }
+    #[test]
+    fn ownerless_payload_cannot_execute_or_swallow_errors() {
+        check_response(0, true);
+    }
+    #[test]
+    fn invalid_option_retains_pending_event() {
+        check_response(1, false);
+    }
+    #[test]
+    fn priority_cannot_offer_an_unresumable_choice() {
         let (mut game, mut queue, alice, shield) = fixture(false);
-        let result = advance_priority_with_dm(&mut game, &mut queue, &mut crate::decision::SelectFirstDecisionMaker);
-        assert!(matches!(result, Err(GameLoopError::InvalidState(_))), "a pending event without an operation owner must fail before offering a choice");
+        let result = advance_priority_with_dm(
+            &mut game,
+            &mut queue,
+            &mut crate::decision::SelectFirstDecisionMaker,
+        );
+        assert!(
+            matches!(result, Err(GameLoopError::InvalidState(_))),
+            "a pending event without an operation owner must fail before offering a choice"
+        );
         assert!(game.effect_store.pending_replacement_choice.is_some());
-        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert_eq!(game.player(alice).unwrap().life, 20);
-        assert!(game.take_pending_trigger_events().is_empty()); assert!(queue.entries.is_empty());
+        assert!(
+            game.effect_store
+                .replacement_effects
+                .get_effect(shield)
+                .is_some()
+        );
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert!(game.take_pending_trigger_events().is_empty());
+        assert!(queue.entries.is_empty());
     }
 }

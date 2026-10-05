@@ -525,9 +525,9 @@ fn turn_history_values_require_complete_supported_provenance_surfaces() {
             .is_none()
         );
     assert!(
-        parse_turn_history_count_value(&lex_words("Treasure tokens you created this turn"))
-            .is_none(),
-        "typed created-token counts require a token-filter/creator-aware model"
+        matches!(parse_turn_history_count_value(&lex_words("Treasure tokens you created this turn")),
+        Some(Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::EnteredBattlefield(filter)))
+        if filter.token && filter.subtypes.contains(&crate::types::Subtype::Treasure) && filter.controller == Some(crate::target::PlayerFilter::You))
     );
 }
 
@@ -647,8 +647,11 @@ fn equal_to_party_count_plus_fixed_keeps_typed_party_value() {
 fn qualified_hand_count_does_not_erase_the_card_color_into_hand_size() {
     let value = parse_equal_to_number_of_filter_value(&lex_words(
         "equal to the number of white cards in their hand",
-    )).expect("qualified hand count");
-    let Value::Count(filter) = value.unhinted() else { panic!("{value:?}"); };
+    ))
+    .expect("qualified hand count");
+    let Value::Count(filter) = value.unhinted() else {
+        panic!("{value:?}");
+    };
     assert_eq!(filter.zone, Some(crate::zone::Zone::Hand));
     assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
     assert_eq!(filter.colors, Some(crate::color::ColorSet::WHITE));

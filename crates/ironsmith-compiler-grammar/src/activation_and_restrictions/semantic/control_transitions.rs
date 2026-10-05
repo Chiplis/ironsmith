@@ -45,6 +45,15 @@ pub(super) fn parse_control_transition_trigger(
     let subject = &tokens[start..end];
     let filter = if let Some(surface) = source_reference_surface_for_trigger_subject(subject) {
         ObjectFilter::source_with_surface(surface)
+    } else if subject
+        .first()
+        .is_some_and(|token| token.is_word("that") || token.is_word("those"))
+        && subject.len() > 1
+    {
+        parse_object_filter_lexed(&subject[1..], false)?.match_tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        )
     } else if let Some(filter) = parse_trigger_subject_filter_lexed(subject)? {
         filter
     } else {

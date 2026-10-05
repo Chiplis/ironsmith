@@ -180,13 +180,16 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 ReplacementActionAst::RegisterFutureZoneReplacement { .. }
             )
             | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterManaReplacement { .. } | ReplacementActionAst::RegisterManaRewrite { .. } | ReplacementActionAst::RegisterManaSpendPermission { .. }
+                ReplacementActionAst::RegisterManaReplacement { .. }
+                    | ReplacementActionAst::RegisterManaRewrite { .. }
+                    | ReplacementActionAst::RegisterManaSpendPermission { .. }
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterCounterPlacementReplacement { .. }
             )
             | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterDamageMultiplier { .. } | ReplacementActionAst::RegisterDamageAddition { .. }
+                ReplacementActionAst::RegisterDamageMultiplier { .. }
+                    | ReplacementActionAst::RegisterDamageAddition { .. }
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterEnterWithCountersReplacement { .. }
@@ -380,7 +383,9 @@ pub(super) fn compile_clash(
             // clash publishes the opponent it chose (CR 701.30a) as the
             // player antecedent for later clauses.
             ctx.last_player_filter = Some(PlayerFilter::TaggedPlayer(
-                crate::tag::CompilerReferenceTag::ClashOpponent.bind().into(),
+                crate::tag::CompilerReferenceTag::ClashOpponent
+                    .bind()
+                    .into(),
             ));
             (
                 vec![Effect::new(
@@ -873,16 +878,15 @@ pub(super) fn compile_subject_verb_early(
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-            let Value::Fixed(token_size) = amount.clone() else {
-                return Err(CardTextError::ParseError(
-                    "unsupported variable endure token size".to_string(),
-                ));
+            let token_size = match &amount {
+                Value::Fixed(value) if *value < 0 => {
+                    return Err(CardTextError::ParseError(
+                        "unsupported negative endure count".into(),
+                    ));
+                }
+                Value::Fixed(value) => *value,
+                _ => 0,
             };
-            if token_size < 0 {
-                return Err(CardTextError::ParseError(
-                    "unsupported negative endure count".to_string(),
-                ));
-            }
             let token = CardDefinitionBuilder::new(CardId::new(), "Spirit")
                 .token()
                 .card_types(vec![CardType::Creature])
@@ -912,7 +916,20 @@ pub(super) fn compile_subject_verb_early(
                 ),
                 crate::effect::EffectMode::new(
                     token_description,
-                    vec![Effect::create_tokens(token, Value::Fixed(1))],
+                    vec![if matches!(amount, Value::Fixed(_)) {
+                        Effect::create_tokens(token, Value::Fixed(1))
+                    } else {
+                        let tag = ctx.next_tag("endure_spirit");
+                        Effect::new(crate::effects::SequenceEffect::new(vec![
+                            Effect::create_tokens(token, Value::Fixed(1)).tag(tag.clone()),
+                            Effect::set_base_power_toughness(
+                                amount.clone(),
+                                amount.clone(),
+                                ChooseSpec::Tagged(tag),
+                                Until::Forever,
+                            ),
+                        ]))
+                    }],
                 ),
             ];
             Ok((vec![Effect::choose_one_endure(modes)], choices))
@@ -1191,7 +1208,11 @@ pub(super) fn compile_subject_verb_early(
         }
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min, max }) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
-                Effect::new(crate::effects::ChooseNumberEffect::new(subject.into_player_filter(), *min, *max))
+                Effect::new(crate::effects::ChooseNumberEffect::new(
+                    subject.into_player_filter(),
+                    *min,
+                    *max,
+                ))
             })
         }
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { options }) => {
@@ -1817,10 +1838,15 @@ pub(super) fn compile_subject_verb_early(
             let player_filter = player.clone();
             let mut choices = Vec::new();
             let player_target = if let Some(target) = player_target {
-                let (spec, added) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-                for choice in added { push_choice(&mut choices, choice); }
+                let (spec, added) =
+                    resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                for choice in added {
+                    push_choice(&mut choices, choice);
+                }
                 Some(spec)
-            } else { None };
+            } else {
+                None
+            };
             let (replacement_effects, replacement_choices) =
                 compile_effects(replacement_effects, ctx)?;
             for choice in replacement_choices {
@@ -1837,14 +1863,19 @@ pub(super) fn compile_subject_verb_early(
                     crate::effects::ReplacementApplyMode::Resolution
                 }
             };
-            let mut registration = crate::effects::RegisterDrawReplacementEffect::new(player_filter, replacement_effects, mode);
+            let mut registration = crate::effects::RegisterDrawReplacementEffect::new(
+                player_filter,
+                replacement_effects,
+                mode,
+            );
             registration.player_target = player_target;
             registration.display = display.clone();
             let effect = Effect::new(registration);
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) =>
-            Ok((vec![Effect::new(spec.clone())], Vec::new())),
+        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition {
+            spec,
+        }) => Ok((vec![Effect::new(spec.clone())], Vec::new())),
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
             spec,
         }) => Ok((vec![Effect::new(spec.clone())], Vec::new())),
@@ -1856,26 +1887,52 @@ pub(super) fn compile_subject_verb_early(
                 mode,
             },
         ) => {
-            let effect = Effect::new(crate::effects::RegisterCounterPlacementReplacementEffect::new(
-                filter.clone(),
-                *counter_type,
-                *additional,
-                *mode,
-            ));
+            let effect = Effect::new(
+                crate::effects::RegisterCounterPlacementReplacementEffect::new(
+                    filter.clone(),
+                    *counter_type,
+                    *additional,
+                    *mode,
+                ),
+            );
             Ok((vec![effect], Vec::new()))
         }
-        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { permission, until, display }) =>
-            Ok((vec![Effect::new(crate::effects::RegisterManaSpendPermissionEffect {
-                permission: permission.clone(), until: until.clone(), display: display.clone(),
-            })], Vec::new())),
-        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { rule, target, mode, display }) => {
+        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission {
+            permission,
+            until,
+            display,
+        }) => Ok((
+            vec![Effect::new(
+                crate::effects::RegisterManaSpendPermissionEffect {
+                    permission: permission.clone(),
+                    until: until.clone(),
+                    display: display.clone(),
+                },
+            )],
+            Vec::new(),
+        )),
+        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite {
+            rule,
+            target,
+            mode,
+            display,
+        }) => {
             let (target, choices) = if let Some(target) = target {
-                let (target, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                let (target, choices) =
+                    resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
                 (Some(target), choices)
-            } else { (None, Vec::new()) };
-            Ok((vec![Effect::new(crate::effects::RegisterManaRewriteEffect {
-                rule: rule.clone(), target, mode: *mode, display: display.clone(),
-            })], choices))
+            } else {
+                (None, Vec::new())
+            };
+            Ok((
+                vec![Effect::new(crate::effects::RegisterManaRewriteEffect {
+                    rule: rule.clone(),
+                    target,
+                    mode: *mode,
+                    display: display.clone(),
+                })],
+                choices,
+            ))
         }
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
             source_filter,
@@ -2687,9 +2744,10 @@ pub(super) fn compile_subject_verb_early(
                     (crate::effects::PreventNextTimeDamageTarget::You, Vec::new())
                 }
                 PreventNextTimeDamageTargetAst::YouAndPermanents(filter) => (
-                    crate::effects::PreventNextTimeDamageTarget::YouAndPermanents(
-                        resolve_it_tag(filter, &current_reference_env(ctx))?,
-                    ),
+                    crate::effects::PreventNextTimeDamageTarget::YouAndPermanents(resolve_it_tag(
+                        filter,
+                        &current_reference_env(ctx),
+                    )?),
                     Vec::new(),
                 ),
                 PreventNextTimeDamageTargetAst::Target(target) => {
@@ -2882,7 +2940,9 @@ pub(super) fn compile_subject_verb_early(
             };
             let damage_filter = if *combat_only {
                 ironsmith_core::DamageFilter::combat()
-            } else { ironsmith_core::DamageFilter::all() };
+            } else {
+                ironsmith_core::DamageFilter::all()
+            };
             if let Some(source_target) = source_target {
                 let (source_spec, choices) =
                     resolve_target_spec_with_choices(source_target, &current_reference_env(ctx))?;
@@ -2907,7 +2967,8 @@ pub(super) fn compile_subject_verb_early(
                 }
                 // Record the targeted source so a following "that creature"
                 // (Kry Shield) reads the chosen object.
-                let effect = tag_object_target_effect(Effect::new(effect), &source_spec, ctx, "source");
+                let effect =
+                    tag_object_target_effect(Effect::new(effect), &source_spec, ctx, "source");
                 return Ok(Some((vec![effect], choices)));
             }
             if *source_of_your_choice
@@ -2964,8 +3025,11 @@ pub(super) fn compile_subject_verb_early(
                     ));
                 }
                 compile_effect_for_target(target, ctx, |spec| {
-                    let mut prevent = crate::effects::PreventAllDamageToTargetEffect::new(spec, duration.clone());
-                    if *combat_only { prevent = prevent.combat_only(); }
+                    let mut prevent =
+                        crate::effects::PreventAllDamageToTargetEffect::new(spec, duration.clone());
+                    if *combat_only {
+                        prevent = prevent.combat_only();
+                    }
                     Effect::new(prevent)
                 })
             }
@@ -3245,27 +3309,53 @@ pub(super) fn compile_subject_verb_early(
             if let Some(scope) = scope {
                 let refs = current_reference_env(ctx);
                 let mut choices = Vec::new();
-                let mut compile_optional = |target: &Option<TargetAst>| -> Result<Option<ChooseSpec>, CardTextError> {
-                    let Some(target) = target else { return Ok(None); };
-                    let (spec, added) = resolve_target_spec_with_choices(target, &refs)?;
-                    for choice in added { push_choice(&mut choices, choice); }
-                    Ok(Some(spec))
-                };
+                let mut compile_optional =
+                    |target: &Option<TargetAst>| -> Result<Option<ChooseSpec>, CardTextError> {
+                        let Some(target) = target else {
+                            return Ok(None);
+                        };
+                        let (spec, added) = resolve_target_spec_with_choices(target, &refs)?;
+                        for choice in added {
+                            push_choice(&mut choices, choice);
+                        }
+                        Ok(Some(spec))
+                    };
                 let source_target = compile_optional(&scope.source_target)?;
                 let protected_target = compile_optional(&scope.protected_target)?;
                 let (destination, added) = resolve_target_spec_with_choices(target, &refs)?;
-                for choice in added { push_choice(&mut choices, choice); }
-                let targeting_count = source_target.iter().chain(protected_target.iter()).filter(|spec| spec.is_target()).count()
-                    + usize::from(scope.destination == ironsmith_core::TimedDamageRedirectDestination::Target && destination.is_target());
+                for choice in added {
+                    push_choice(&mut choices, choice);
+                }
+                let targeting_count = source_target
+                    .iter()
+                    .chain(protected_target.iter())
+                    .filter(|spec| spec.is_target())
+                    .count()
+                    + usize::from(
+                        scope.destination == ironsmith_core::TimedDamageRedirectDestination::Target
+                            && destination.is_target(),
+                    );
                 if targeting_count > 1 {
                     return Err(CardTextError::ParseError("scoped damage redirection with multiple independent target slots is not yet represented".into()));
                 }
-                let mut effect = crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(player_filter.clone(), object_filter.clone(), destination);
+                let mut effect = crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(
+                    player_filter.clone(),
+                    object_filter.clone(),
+                    destination,
+                );
                 effect.scope = Some(ironsmith_core::TimedDamageRedirectionScope {
-                    source_filter: resolve_it_tag(&scope.source_filter, &refs)?, source_target, protected_target,
+                    source_filter: resolve_it_tag(&scope.source_filter, &refs)?,
+                    source_target,
+                    protected_target,
                     player_filter: scope.player_filter.clone(),
-                    object_filter: scope.object_filter.as_ref().map(|filter| resolve_it_tag(filter, &refs)).transpose()?,
-                    combat_only: scope.combat_only, destination: scope.destination, mode: scope.mode,
+                    object_filter: scope
+                        .object_filter
+                        .as_ref()
+                        .map(|filter| resolve_it_tag(filter, &refs))
+                        .transpose()?,
+                    combat_only: scope.combat_only,
+                    destination: scope.destination,
+                    mode: scope.mode,
                     display: scope.display.clone(),
                 });
                 return Ok(Some((vec![Effect::new(effect)], choices)));

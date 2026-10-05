@@ -1,4 +1,5 @@
 use super::*;
+use crate::PlayerFilter;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -30,16 +31,20 @@ pub fn check_and_apply_sbas_with(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
-    if decision_maker.awaiting_choice() { return Ok(()); }
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
     let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.clone();
     let result = check_and_apply_sbas_with_inner(game, trigger_queue, decision_maker);
     let pending = decision_maker.awaiting_choice();
     // Sector answers are an uncommitted choice continuation, not sector state.
     let pending_sectors = (pending && result.is_ok())
-        .then(|| game.take_pending_sector_designations()).flatten();
+        .then(|| game.take_pending_sector_designations())
+        .flatten();
     if result.is_err() || pending {
-        *game = checkpoint; *trigger_queue = queue_checkpoint;
+        *game = checkpoint;
+        *trigger_queue = queue_checkpoint;
         if let Some(choices) = pending_sectors {
             game.set_pending_sector_designations(choices);
         }
@@ -202,7 +207,8 @@ fn check_and_apply_sbas_with_inner(
             &legend_keeps,
             all_effects.as_slice(),
             decision_maker,
-        ).map_err(GameLoopError::ExecutionFailed)?;
+        )
+        .map_err(GameLoopError::ExecutionFailed)?;
         if decision_maker.awaiting_choice() {
             return Ok(());
         }
@@ -555,7 +561,8 @@ fn stack_trigger_pass(
         return false;
     }
 
-    let Some(triggers) = choose_delayed_trigger_events(game, decision_maker, triggers, trigger_queue)
+    let Some(triggers) =
+        choose_delayed_trigger_events(game, decision_maker, triggers, trigger_queue)
     else {
         return true;
     };
@@ -910,8 +917,13 @@ fn choose_delayed_trigger_events(
             .or_else(|| game.find_object_by_stable_id(trigger.source_stable_id))
             .unwrap_or(trigger.source);
         let spec = crate::decisions::ChoiceSpec::new(source, options, 1, 1);
-        let response: Vec<usize> =
-            crate::decisions::make_decision(game, decision_maker, trigger.controller, Some(source), spec);
+        let response: Vec<usize> = crate::decisions::make_decision(
+            game,
+            decision_maker,
+            trigger.controller,
+            Some(source),
+            spec,
+        );
         if decision_maker.awaiting_choice() {
             for trigger in chosen
                 .into_iter()
@@ -1091,7 +1103,7 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     apply_keyword_payment_tags_for_resolution(game, &entry, &mut ctx);
 
     let (valid_targets, valid_target_assignments, all_targets_invalid) =
-        validate_stack_entry_targets_with_context(game, &entry,Some(&ctx))?;
+        validate_stack_entry_targets_with_context(game, &entry, Some(&ctx))?;
     if !entry.targets.is_empty() && all_targets_invalid {
         return Ok(());
     }
@@ -1159,7 +1171,9 @@ pub(crate) fn resolve_pending_mana_triggers(
     let mut queue = TriggerQueue::default();
     drain_pending_trigger_events(game, &mut queue);
     let result = resolve_triggered_mana_abilities_with_dm(game, &mut queue, decision_maker);
-    game.effect_store.pending_trigger_entries.extend(queue.take_all());
+    game.effect_store
+        .pending_trigger_entries
+        .extend(queue.take_all());
     result
 }
 
@@ -1544,10 +1558,11 @@ fn target_requirements_from_explicit_choices(
         .into_iter()
         .map(|target_spec| {
             let count = target_spec.count();
-            let resolved_target_spec = super::targeting::choose_spec_with_recorded_players_from_event(
-                target_spec,
-                entry.triggering_event.as_ref(),
-            );
+            let resolved_target_spec =
+                super::targeting::choose_spec_with_recorded_players_from_event(
+                    target_spec,
+                    entry.triggering_event.as_ref(),
+                );
             let legal_targets = compute_legal_targets_with_tagged_objects_combat_context_and_view(
                 game,
                 &resolved_target_spec,
@@ -1617,6 +1632,25 @@ fn target_requirements_cover_existing(
     true
 }
 
+fn trigger_target_count_value(
+    effect: &crate::effect::Effect,
+    spec: &crate::target::ChooseSpec,
+) -> Option<crate::effect::Value> {
+    if let Some(profile) = super::targeting::extract_target_spec(effect)
+        && profile.spec == spec
+        && let Some(value) = profile.count_value
+    {
+        return Some(value.clone());
+    }
+    let mut found = None;
+    effect.visit_child_effects(&mut |child| {
+        if found.is_none() {
+            found = trigger_target_count_value(child, spec);
+        }
+    });
+    found
+}
+
 fn refresh_trigger_program_target_requirements(
     game: &GameState,
     trigger: &TriggeredAbilityEntry,
@@ -1637,21 +1671,49 @@ fn refresh_trigger_program_target_requirements(
         .map(|attacker| game.controller_of(attacker));
 
     for requirement in requirements {
+        if requirement.spec.count().is_dynamic_x()
+            && let Some(value) = trigger
+                .ability
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| trigger_target_count_value(effect, &requirement.spec))
+        {
+            let mut dm = crate::decision::SelectFirstDecisionMaker;
+            let mut ctx =
+                crate::effects::ExecutionContext::new(trigger.source, trigger.controller, &mut dm)
+                    .with_triggering_event(trigger.triggering_event.clone());
+            ctx.event_value_amount = trigger.event_value_amount;
+            ctx.tagged_objects = entry.tagged_objects.clone();
+            ctx.x_value = entry.x_value;
+            if let Ok(count) = crate::effects::helpers::resolve_value(game, &value, &ctx) {
+                let count = count.max(0) as usize;
+                requirement.min_targets = if requirement.spec.count().is_up_to_dynamic_x() {
+                    0
+                } else {
+                    count
+                };
+                requirement.max_targets = Some(count);
+            }
+        }
         let spec = super::targeting::choose_spec_with_recorded_players_from_event(
             &requirement.spec,
             entry.triggering_event.as_ref(),
         );
+        let mut ctx =
+            crate::effects::ExecutionContext::new_default(trigger.source, trigger.controller)
+                .with_triggering_event(trigger.triggering_event.clone());
+        ctx.source_snapshot = entry.source_snapshot.clone();
+        ctx.tagged_objects = entry.tagged_objects.clone();
+        ctx.x_value = entry.x_value;
+        ctx.effect_outcomes = entry.effect_outcomes.clone();
+        ctx.event_value_amount = entry.event_value_amount;
+        ctx.iteration = entry.iteration;
+        ctx.combat.defending_player = entry.defending_player;
+        ctx.combat.attacking_player = attacking_player;
         requirement.legal_targets =
-            compute_legal_targets_with_tagged_objects_combat_context_and_view(
-                game,
-                &spec,
-                trigger.controller,
-                Some(trigger.source),
-                entry.source_snapshot.as_ref(),
-                tagged_objects,
-                entry.defending_player,
-                attacking_player,
-                &view,
+            crate::targeting::compute_legal_targets_with_execution_context_and_view(
+                game, &spec, &ctx, &view,
             );
         requirement.legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, &spec, &requirement.legal_targets);
@@ -1796,6 +1858,27 @@ fn choose_trigger_targets_with_one_chooser(
     Some((selected_targets, assignments))
 }
 
+pub(super) fn trigger_target_depends_on_selected_player(spec: &ChooseSpec) -> bool {
+    fn player(filter: &PlayerFilter) -> bool {
+        match filter {
+            PlayerFilter::Target(_)
+            | PlayerFilter::AliasedTarget(_)
+            | PlayerFilter::TaggedPlayer(_) => true,
+            PlayerFilter::Excluding { base, excluded } => player(base) || player(excluded),
+            _ => false,
+        }
+    }
+    fn object(filter: &crate::filter::ObjectFilter) -> bool {
+        filter.controller.as_ref().is_some_and(player)
+            || filter.owner.as_ref().is_some_and(player)
+            || filter.any_of.iter().any(object)
+    }
+    match spec.base() {
+        ChooseSpec::Object(filter) | ChooseSpec::ObjectOrPlayer(filter, _) => object(filter),
+        _ => false,
+    }
+}
+
 fn choose_trigger_targets(
     game: &GameState,
     trigger: &TriggeredAbilityEntry,
@@ -1807,10 +1890,10 @@ fn choose_trigger_targets(
         return Some((Vec::new(), Vec::new()));
     }
 
-    if requirements
-        .iter()
-        .any(|requirement| requirement.legal_targets.len() < requirement.min_targets)
-    {
+    if requirements.iter().any(|requirement| {
+        !trigger_target_depends_on_selected_player(&requirement.spec)
+            && requirement.legal_targets.len() < requirement.min_targets
+    }) {
         return None;
     }
 
@@ -1821,7 +1904,11 @@ fn choose_trigger_targets(
         })
         .collect::<Option<Vec<_>>>()?;
     let first_chooser = *choosers.first()?;
-    if choosers.iter().all(|chooser| *chooser == first_chooser) {
+    if choosers.iter().all(|chooser| *chooser == first_chooser)
+        && !requirements
+            .iter()
+            .any(|r| trigger_target_depends_on_selected_player(&r.spec))
+    {
         return choose_trigger_targets_with_one_chooser(
             game,
             trigger,
@@ -1841,6 +1928,34 @@ fn choose_trigger_targets(
         let mut requirement_ctx =
             trigger_target_requirement_contexts(std::slice::from_ref(requirement));
         let context = requirement_ctx.first_mut()?;
+        if trigger_target_depends_on_selected_player(&requirement.spec) {
+            let mut fallback = crate::decision::SelectFirstDecisionMaker;
+            let mut execution = crate::effects::ExecutionContext::new(
+                trigger.source,
+                trigger.controller,
+                &mut fallback,
+            )
+            .with_triggering_event(trigger.triggering_event.clone());
+            execution.source_snapshot = entry.source_snapshot.clone();
+            execution.tagged_objects = entry.tagged_objects.clone();
+            execution.targets = selected_targets
+                .iter()
+                .map(|target| match target {
+                    Target::Object(id) => crate::ResolvedTarget::Object(*id),
+                    Target::Player(id) => crate::ResolvedTarget::Player(*id),
+                })
+                .collect();
+            context.legal_targets = crate::targeting::compute_legal_targets_with_execution_context(
+                game,
+                &requirement.spec,
+                &execution,
+            );
+            context.legal_target_sets = crate::targeting::legal_target_sets_for_spec(
+                game,
+                &requirement.spec,
+                &context.legal_targets,
+            );
+        }
         if !game.source_snapshot_is_exempt_from_range(
             Some(trigger.source),
             trigger.source_snapshot.as_ref(),
@@ -1935,7 +2050,9 @@ pub(super) fn create_triggered_stack_entry_with_targets(
         return None;
     }
 
-    let explicit_requirements = target_requirements_from_explicit_choices(game, trigger, &entry);
+    let mut explicit_requirements =
+        target_requirements_from_explicit_choices(game, trigger, &entry);
+    refresh_trigger_program_target_requirements(game, trigger, &entry, &mut explicit_requirements);
     let mut program_requirements = extract_target_requirements_from_program_with_modes(
         game,
         &trigger.ability.effects,
@@ -2764,7 +2881,10 @@ mod tests {
         ))
         .build();
         game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
-        assert!(game.mark_player_lost(bob).expect("checked designation/departure fixture"));
+        assert!(
+            game.mark_player_lost(bob)
+                .expect("checked designation/departure fixture")
+        );
         let event = game
             .take_pending_trigger_events()
             .into_iter()
@@ -2775,7 +2895,10 @@ mod tests {
             trigger_queue.add(trigger);
         }
         assert_eq!(trigger_queue.entries.len(), 1);
-        assert!(game.leave_game(alice).expect("checked designation/departure fixture"));
+        assert!(
+            game.leave_game(alice)
+                .expect("checked designation/departure fixture")
+        );
         let mut dm = crate::decision::AutoPassDecisionMaker;
 
         put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
@@ -2972,7 +3095,10 @@ mod tests {
                 crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm)
                     .expect("the limited ability resolves");
             } else {
-                assert!(game.stack.is_empty(), "no trigger after the action was taken");
+                assert!(
+                    game.stack.is_empty(),
+                    "no trigger after the action was taken"
+                );
             }
             expected.push((dm.prompts, life(&game)));
         }

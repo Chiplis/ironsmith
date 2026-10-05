@@ -34,16 +34,20 @@ fn parse_each_player_with_life_clause(
         ["exactly", amount, "life", ..] => {
             (crate::effect::ValueComparisonOperator::Equal, *amount, 3)
         }
-        [amount, "or", "less" | "fewer", "life", ..] => {
-            (crate::effect::ValueComparisonOperator::LessThanOrEqual, *amount, 4)
-        }
-        [amount, "or", "more", "life", ..] => {
-            (crate::effect::ValueComparisonOperator::GreaterThanOrEqual, *amount, 4)
-        }
+        [amount, "or", "less" | "fewer", "life", ..] => (
+            crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            *amount,
+            4,
+        ),
+        [amount, "or", "more", "life", ..] => (
+            crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            *amount,
+            4,
+        ),
         _ => return Ok(None),
     };
-    let Some(amount) = crate::util::parse_number_word_u32(amount)
-        .or_else(|| crate::util::decimal_count(amount))
+    let Some(amount) =
+        crate::util::parse_number_word_u32(amount).or_else(|| crate::util::decimal_count(amount))
     else {
         return Ok(None);
     };
@@ -114,6 +118,9 @@ pub(super) fn parse_effect_clause_unstacked(
         return Ok(EffectAst::Sequence { effects });
     }
     if let Some(effect) = parse_each_player_with_life_clause(tokens)? {
+        return Ok(effect);
+    }
+    if let Some(effect) = crate::effect_sentences::clause_pattern_helpers::parse_can_attack_as_though_no_defender_clause(tokens)? {
         return Ok(effect);
     }
     let input = clause_readings::Clause {
@@ -565,6 +572,17 @@ pub(super) fn parse_effect_clause_unstacked(
     {
         if matches!(verb, Verb::Deal) {
             bind_quantified_damage_actor(&mut effect, span_from_tokens(subject_tokens));
+        }
+        if let EffectAst::SubjectVerb(subject_verb) = &mut effect
+            && let SubjectVerbActionAst::StatChanges(
+                crate::cards::builders::StatChangeActionAst::Pump { target, .. },
+            ) = &mut subject_verb.action
+            && matches!(target, TargetAst::Source(_))
+        {
+            *target = TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                span_from_tokens(subject_tokens),
+            );
         }
         effect = EffectAst::ForEach(ForEachEffectAst::ForEachObject {
             filter,

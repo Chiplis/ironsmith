@@ -231,8 +231,30 @@ fn rhox_treasure_rule_belongs_only_to_its_chosen_alternative_and_includes_taxes(
             };
             cast(&mut game, spell, alternative);
             assert!(treasures.iter().all(|id| !game.battlefield.contains(id)));
-            assert!(lands.iter().all(|id| game.is_tapped(*id) != alternative));
-            assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
+            let tapped_lands = lands.iter().filter(|id| game.is_tapped(**id)).count() as u32;
+            if !alternative {
+                assert_eq!(tapped_lands, 4);
+            }
+            // The first legal plan need not minimize extra activations. Every
+            // ordinary land mana remains unspent under the Treasure-only price.
+            assert_eq!(
+                game.player(A).unwrap().mana_pool.total(),
+                if alternative { tapped_lands } else { 0 }
+            );
+            let paid = game
+                .battlefield
+                .iter()
+                .filter_map(|id| game.object(*id))
+                .find(|object| object.name == "Security Rhox")
+                .unwrap();
+            assert_eq!(
+                paid.mana_spent_to_cast.total(),
+                if alternative {
+                    if taxed { 3 } else { 2 }
+                } else {
+                    4
+                }
+            );
         }
     }
 }

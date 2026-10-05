@@ -548,7 +548,10 @@ fn plural_demonstrative_pump_preserves_tagged_set() {
     else {
         panic!("expected a mass pump for a plural demonstrative subject");
     };
-    assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+    assert!(
+        filter.card_types.is_empty(),
+        "the demonstrative must preserve the previously selected set"
+    );
     assert_eq!(
         set_quantifier_surface,
         Some(ironsmith_core::SetQuantifierSurface::Those)

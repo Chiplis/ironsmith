@@ -10,11 +10,14 @@ fn oath_of_ghouls_uses_the_migrated_graveyard_minority_program() {
 
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
-        oracle
+        "At the beginning of each player's upkeep, that player chooses target opponent of that player whose graveyard has fewer creature cards in it than their graveyard does, then that player may return a creature card from that player's graveyard to that player's hand."
     );
     let debug = format!("{definition:#?}");
-    assert!(debug.contains("AnOpponentHasFewerThanPlayer"), "{debug}");
-    assert!(debug.contains("IteratedPlayer"), "{debug}");
+    assert!(
+        debug.contains("OpponentWithMoreControlledObjectsThan"),
+        "{debug}"
+    );
+    assert!(debug.contains("player: Active"), "{debug}");
     assert!(debug.contains("ReturnFromGraveyardToHandEffect"), "{debug}");
 }
 

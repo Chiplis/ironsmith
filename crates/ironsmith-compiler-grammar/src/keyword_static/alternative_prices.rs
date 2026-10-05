@@ -13,18 +13,60 @@ pub fn parse_independent_alternative_price_line(
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let starts = view.token_start_indices();
-    if words == ["rather", "than", "pay", "the", "mana", "cost", "for", "a", "spell", "its", "controller", "may", "discard", "a", "card", "that", "shares", "a", "color", "with", "that", "spell"] {
+    if words
+        == [
+            "rather",
+            "than",
+            "pay",
+            "the",
+            "mana",
+            "cost",
+            "for",
+            "a",
+            "spell",
+            "its",
+            "controller",
+            "may",
+            "discard",
+            "a",
+            "card",
+            "that",
+            "shares",
+            "a",
+            "color",
+            "with",
+            "that",
+            "spell",
+        ]
+    {
         let mut discard = ObjectFilter::default();
-        discard.zone = Some(Zone::Hand); discard.other = true;
-        discard.characteristic_relations.push(ironsmith_core::ObjectCharacteristicRelation::shares(
-            vec![ironsmith_core::ObjectCharacteristic::Color], ObjectFilter::source()));
+        discard.zone = Some(Zone::Hand);
+        discard.other = true;
+        discard.characteristic_relations.push(
+            ironsmith_core::ObjectCharacteristicRelation::shares(
+                vec![ironsmith_core::ObjectCharacteristic::Color],
+                ObjectFilter::source(),
+            ),
+        );
         let cost = crate::model::CompilerCost::Discard {
-            count: 1, card_types: Vec::new(), supertypes: Vec::new(), filter: Some(discard),
-            random: false, name: None, other: true, binding: None,
+            count: 1,
+            card_types: Vec::new(),
+            supertypes: Vec::new(),
+            filter: Some(discard),
+            random: false,
+            name: None,
+            other: true,
+            binding: None,
         };
         let mut spec = crate::model::CompilerGrantSpecCore::new(
-            crate::model::CompilerGrantableCore::AlternativePrice { costs: vec![cost], origin: None },
-            ObjectFilter::nonland(), Zone::Hand).with_beneficiary(PlayerFilter::Any);
+            crate::model::CompilerGrantableCore::AlternativePrice {
+                costs: vec![cost],
+                origin: None,
+            },
+            ObjectFilter::nonland(),
+            Zone::Hand,
+        )
+        .with_beneficiary(PlayerFilter::Any);
         spec.filtered_zone_surface = Some("Rather than pay the mana cost for a spell, its controller may discard a card that shares a color with that spell".into());
         return Ok(Some(StaticAbility::grants(spec)));
     }
@@ -133,8 +175,9 @@ pub fn parse_independent_alternative_price_line(
             token.replace_word("cards");
         }
     }
-    let mut filter = parse_complete_cost_count_filter(&subject)?
-        .ok_or_else(|| error("unrepresented spell filter"))?;
+    let mut filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+        &subject, false,
+    )?;
     filter.zone = None;
     if origin == Some(Zone::Hand) {
         filter.owner = Some(PlayerFilter::You);

@@ -623,11 +623,24 @@ fn parse_direct_quoted_object_restriction(
             StaticAbilityAst::Static(StaticAbility::cant_attack_its_owner()),
         ))]));
     }
-    let Some(parsed) = crate::activation_and_restrictions::activation_restriction_clauses::
+    let Some(mut parsed) = crate::activation_and_restrictions::activation_restriction_clauses::
         parse_negated_object_restriction_clause(ability_tokens)?
     else {
         return Ok(None);
     };
+    // The possessive in an ability being granted names its receiving object,
+    // which becomes that ability's source. It is not an outer resolution tag.
+    if crate::lexer::token_word_refs(ability_tokens).starts_with(&["its", "activated", "abilities"])
+    {
+        match &mut parsed.restriction {
+            crate::effect::Restriction::ActivateAbilitiesOf(filter)
+            | crate::effect::Restriction::ActivateNonManaAbilitiesOf(filter)
+            | crate::effect::Restriction::ActivateTapAbilitiesOf(filter) => {
+                *filter = ObjectFilter::source();
+            }
+            _ => {}
+        }
+    }
     let display = display_text_for_tokens(ability_tokens);
     Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
         StaticAbilityAst::Static(StaticAbility::restriction(parsed.restriction, display)),
@@ -716,8 +729,15 @@ fn parse_granted_ability_component_for_gain(
     }
     // "protection from the colors of target permanent you control" (Samite
     // Elder): the colors of one targeted object, locked in on resolution.
-    if let ["protection", "from", "the", "colors", "of", "target", filter_words @ ..] =
-        ability_words.as_slice()
+    if let [
+        "protection",
+        "from",
+        "the",
+        "colors",
+        "of",
+        "target",
+        filter_words @ ..,
+    ] = ability_words.as_slice()
         && !filter_words.is_empty()
         && ability_tokens.len() == ability_words.len()
         && let Ok(filter) = parse_object_filter(&ability_tokens[6..], false)
@@ -747,14 +767,16 @@ fn parse_granted_ability_component_for_gain(
                 matches!(noun, "permanent" | "creature" | "card" | "spell" | "object")
             }),
         ["protection", "from", "the", "colors", "of", "that", noun] => {
-            matches!(*noun, "permanent" | "creature" | "card" | "spell" | "object")
+            matches!(
+                *noun,
+                "permanent" | "creature" | "card" | "spell" | "object"
+            )
         }
         _ => true,
     };
     if references_prior_object_colors {
-        let spec = crate::target::ChooseSpec::Tagged(
-            crate::tag::CompilerReferenceTag::It.bind().into(),
-        );
+        let spec =
+            crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind().into());
         return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
             StaticAbilityAst::Static(StaticAbility::protection(
                 crate::ability::ProtectionFrom::ColorsOf(Box::new(spec)),
@@ -1273,7 +1295,8 @@ pub fn parse_granted_abilities_for_token_definition(
     // it mirrors what token-definition reminder merging already lowered from
     // those same words ("When Smaug dies, create fourteen Treasure tokens").
     let authored_ability_tokens = ability_tokens;
-    let renamed_trigger_tokens = named_token_trigger_subject_as_this_token(definition, ability_tokens);
+    let renamed_trigger_tokens =
+        named_token_trigger_subject_as_this_token(definition, ability_tokens);
     let ability_tokens = renamed_trigger_tokens.as_deref().unwrap_or(ability_tokens);
     // A mixed `It has <keyword>, "<rule>," and <activation>` sentence is a
     // list of independent abilities.  A compact token-rule probe can match
@@ -1765,24 +1788,41 @@ fn named_source_target_from_granted_ability_surface(
 /// absence of a duration (a lasting layer-7b assignment).
 fn parse_complete_source_base_pt_assignment(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let shape = gain_shapes::parse_simple_gain_ability_shape(tokens)?;
-    if !shape.complete { return None; }
+    if !shape.complete {
+        return None;
+    }
     let ability_tokens = trim_edge_punctuation(shape.ability_tokens);
     let words = GainAbilityWordView::new(&ability_tokens).to_word_refs();
     let base = gain_shapes::parse_gain_base_pt_after_has_shape(&words).ok()??;
     let subject = trim_commas(shape.subject_tokens);
+    // A preceding transformation is a separate instruction on the same
+    // subject; do not swallow it as part of a size assignment's noun phrase.
+    if subject
+        .iter()
+        .any(|token| token.is_any_word(&["become", "becomes"]))
+    {
+        return None;
+    }
     let words = GainAbilityWordView::new(&subject).to_word_refs();
     let target = source_target_from_subject_tokens(&subject).or_else(|| {
         let facts = gain_shapes::classify_gain_subject(&words);
         (facts.pronoun || facts.demonstrative_object).then(|| tagged_subject_target(&subject))
     })?;
-    Some(EffectAst::subject_verb_set_base_power_toughness(base.power, base.toughness, target, shape.duration))
+    Some(EffectAst::subject_verb_set_base_power_toughness(
+        base.power,
+        base.toughness,
+        target,
+        shape.duration,
+    ))
 }
 
 fn parse_simple_ability_modifier_clause_lexed(
     tokens: &[OwnedLexToken],
     losing: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if !losing && let Some(effect) = parse_complete_source_base_pt_assignment(tokens) { return Ok(Some(effect)); }
+    if !losing && let Some(effect) = parse_complete_source_base_pt_assignment(tokens) {
+        return Ok(Some(effect));
+    }
     if tokens
         .first()
         .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))
@@ -1968,10 +2008,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     // Tyrant): the plural names both the referenced spell and its copy.
     if !losing
         && !is_choice
-        && crate::word_primitives::parse_sequence_complete(
-            &subject_word_refs,
-            &["those", "spells"],
-        )
+        && crate::word_primitives::parse_sequence_complete(&subject_word_refs, &["those", "spells"])
     {
         let span = span_from_lexed_tokens(subject_tokens);
         return Ok(Some(EffectAst::Sequence {
@@ -2055,7 +2092,8 @@ fn parse_simple_ability_modifier_clause_lexed(
     // reference so reference resolution can bind it to that object.
     if !is_choice
         && is_definite_singular_object_subject(&subject_word_refs)
-        && let Ok(target @ TargetAst::Object(_, None, Some(_))) = parse_target_phrase(subject_tokens)
+        && let Ok(target @ TargetAst::Object(_, None, Some(_))) =
+            parse_target_phrase(subject_tokens)
     {
         return Ok(Some(if losing {
             EffectAst::subject_verb_remove_abilities_from_target(target, abilities, duration)
@@ -2228,7 +2266,9 @@ pub fn parse_gain_ability_sentence(
 fn parse_complete_simple_source_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if let Some(effect) = parse_complete_source_base_pt_assignment(tokens) { return Ok(Some(vec![effect])); }
+    if let Some(effect) = parse_complete_source_base_pt_assignment(tokens) {
+        return Ok(Some(vec![effect]));
+    }
     if tokens
         .first()
         .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))
@@ -2510,18 +2550,29 @@ mod lasting_base_pt_assignment_tests {
     use super::*;
     #[test]
     fn source_base_pt_assignment_retains_x_and_exact_duration() {
-        for (line, duration) in [("This creature has base power and toughness X/X.", "Forever"),
-            ("This creature has base power and toughness 5/7 until end of turn.", "EndOfTurn")] {
+        for (line, duration) in [
+            ("This creature has base power and toughness X/X.", "Forever"),
+            (
+                "This creature has base power and toughness 5/7 until end of turn.",
+                "EndOfTurn",
+            ),
+        ] {
             let tokens = crate::lexer::lex_line(line, 0).unwrap();
             let effect = parse_complete_source_base_pt_assignment(&tokens).expect(line);
             let debug = format!("{effect:?}");
             assert!(debug.contains("SetBasePowerToughness"), "{debug}");
             assert!(debug.contains(duration), "{debug}");
         }
-        for line in ["This creature has base power and toughness X/X beyond time.",
+        for line in [
+            "This creature has base power and toughness X/X beyond time.",
             "This creature has base power and toughness X/X and unmodeled nonsense.",
-            "This creature loses base power and toughness X/X."] {
-            assert!(parse_complete_source_base_pt_assignment(&crate::lexer::lex_line(line, 0).unwrap()).is_none(), "{line}");
+            "This creature loses base power and toughness X/X.",
+        ] {
+            assert!(
+                parse_complete_source_base_pt_assignment(&crate::lexer::lex_line(line, 0).unwrap())
+                    .is_none(),
+                "{line}"
+            );
         }
     }
 }

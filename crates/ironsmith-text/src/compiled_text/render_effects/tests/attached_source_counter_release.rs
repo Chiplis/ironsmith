@@ -37,7 +37,9 @@ fn run_attached_source_counter_release(capture_granting_source: bool) {
             let attacker = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
             let task = crate::CounterType::Named("task".into());
             let aura = game
-                .move_object_with_etb_processing(aura, Zone::Battlefield).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario")
+                .move_object_with_etb_processing(aura, Zone::Battlefield)
+                .map(require_plain_entry_for_test)
+                .expect("entry execution must succeed in this scenario")
                 .unwrap()
                 .new_id;
             assert_eq!(
@@ -70,18 +72,57 @@ fn run_attached_source_counter_release(capture_granting_source: bool) {
                         _ => None,
                     })
                     .expect("enchanted creature must retain its granted release ability");
-                let mut entry = crate::game_state::StackEntry::ability(
-                    captive, bob, activated.effects,
-                ).with_ability_index(index);
+                let mut entry =
+                    crate::game_state::StackEntry::ability(captive, bob, activated.effects)
+                        .with_ability_index(index);
                 if capture_granting_source {
                     let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
                         game.object(aura).expect("granting Aura exists"), &game,
                     );
-                    entry = entry.with_tagged_objects(std::collections::HashMap::from([
-                        (crate::tag::TagKey::from(crate::tag::GRANTING_SOURCE_TAG), vec![snapshot]),
-                    ]));
+                    entry = entry.with_tagged_objects(std::collections::HashMap::from([(
+                        crate::tag::TagKey::from(crate::tag::GRANTING_SOURCE_TAG),
+                        vec![snapshot],
+                    )]));
                 }
-                game.push_to_stack(entry);
+                if capture_granting_source {
+                    game.push_to_stack(entry);
+                } else {
+                    game.turn.active_player = bob;
+                    game.turn.priority_player = Some(bob);
+                    game.turn.phase = crate::game_state::Phase::FirstMain;
+                    game.turn.step = None;
+                    game.remove_summoning_sickness(captive);
+                    game.untap(captive);
+                    let action = crate::decision::compute_legal_actions(&game, bob).unwrap().into_iter()
+                        .find(|action| matches!(action, crate::decision::LegalAction::ActivateAbility { source, ability_index, .. } if *source == captive && *ability_index == index))
+                        .expect("granted release ability must be legally activatable");
+                    let mut state =
+                        crate::game_loop::PriorityLoopState::new(game.players_in_game());
+                    let mut queue = crate::triggers::TriggerQueue::new();
+                    let mut dm = crate::decision::SelectFirstDecisionMaker;
+                    let mut progress = crate::game_loop::apply_priority_response_with_dm(
+                        &mut game,
+                        &mut queue,
+                        &mut state,
+                        &crate::game_loop::PriorityResponse::PriorityAction(action),
+                        &mut dm,
+                    )
+                    .unwrap();
+                    for _ in 0..15 {
+                        if !game.stack.is_empty() {
+                            break;
+                        }
+                        let crate::decision::GameProgress::NeedsDecisionCtx(choice) = progress
+                        else {
+                            panic!("activation stalled: {progress:?}");
+                        };
+                        progress = crate::game_loop::apply_decision_context_with_dm(
+                            &mut game, &mut queue, &mut state, &choice, &mut dm,
+                        )
+                        .unwrap();
+                    }
+                    assert!(!game.stack.is_empty());
+                }
                 crate::game_loop::resolve_stack_entry(&mut game).unwrap();
                 assert_eq!(
                     game.object(captive)
@@ -136,9 +177,13 @@ fn attached_source_counter_release_retains_named_grant_and_shared_predicates() {
 
 // These fixtures expect a plain completed entry. Reject a continuation or
 // retained added instructions rather than silently projecting them away.
-fn require_plain_entry_for_test(receipt: crate::game_state::EntryCommitResult)
-    -> Option<crate::game_state::EntersResult> {
+fn require_plain_entry_for_test(
+    receipt: crate::game_state::EntryCommitResult,
+) -> Option<crate::game_state::EntersResult> {
     assert!(!receipt.pending, "fixture requires completed entry");
-    assert!(receipt.programs.is_empty(), "fixture must finish retained entry replacement programs");
+    assert!(
+        receipt.programs.is_empty(),
+        "fixture must finish retained entry replacement programs"
+    );
     receipt.original.into_result()
 }

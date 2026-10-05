@@ -173,6 +173,8 @@ fn queue_event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) -> u
 }
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
+    // Checked execution already captures some triggers in the original observer frame.
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     for event in outcome.events {
         for entry in check_triggers(game, &event) {
             queue.add(entry);
@@ -226,7 +228,7 @@ fn cast(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -234,7 +236,7 @@ fn cast(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()
@@ -331,6 +333,13 @@ fn destruction_quantities_read_calculated_departure_power_only_when_the_creature
                     ..Default::default()
                 };
                 let source = cast(&mut game, &definition, CastingMethod::Normal, &mut dm);
+                if name == "Kaervek's Purge" {
+                    assert_eq!(game.stack.last().unwrap().x_value, Some(3));
+                    assert_eq!(
+                        game.stack.last().unwrap().targets,
+                        vec![Target::Object(victim)]
+                    );
+                }
                 apply(
                     &mut game,
                     source,
@@ -346,8 +355,6 @@ fn destruction_quantities_read_calculated_departure_power_only_when_the_creature
                 }
                 resolve_all(&mut game, &mut dm);
                 let deals = !indestructible && (white || name == "Kaervek's Purge");
-                assert_eq!(game.player(B).unwrap().life, if deals { 13 } else { 20 });
-                assert_eq!(game.player(A).unwrap().life, 20, "controller, not owner");
                 let current = game.find_object_by_stable_id(stable).unwrap();
                 assert_eq!(
                     game.object(current).unwrap().zone,
@@ -357,6 +364,8 @@ fn destruction_quantities_read_calculated_departure_power_only_when_the_creature
                         Zone::Graveyard
                     }
                 );
+                assert_eq!(game.player(B).unwrap().life, if deals { 13 } else { 20 });
+                assert_eq!(game.player(A).unwrap().life, 20, "controller, not owner");
             }
         }
     }

@@ -956,8 +956,8 @@ fn sacrifice_qualified_token_self_replacement_keeps_its_prior_action_gate() {
     let tokens = lex_line(
         "Create a Blood token. If you sacrificed an Angel this way, create a number of Blood tokens equal to its toughness instead.", 0,
     ).unwrap();
-    let effects =
-        parse_typed_effect_bundle_lexed(&tokens).expect("typed sacrifice self-replacement");
+    let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+        .expect("typed sacrifice self-replacement");
     let [
         EffectAst::SelfReplacement {
             predicate,

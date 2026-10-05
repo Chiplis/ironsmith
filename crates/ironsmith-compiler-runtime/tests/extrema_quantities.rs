@@ -170,10 +170,9 @@ impl DecisionMaker for Choices {
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
     for event in outcome.events {
-        for entry in check_triggers(game, &event) {
-            queue.add(entry);
-        }
+        game.queue_trigger_event(Default::default(), event);
     }
+    ironsmith::game_loop::check_and_apply_sbas_with(game, &mut queue, dm).unwrap();
     put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
 }
 fn apply(game: &mut GameState, source: ObjectId, effect: Effect) -> EffectOutcome {
@@ -224,7 +223,7 @@ fn cast(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -232,7 +231,7 @@ fn cast(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()

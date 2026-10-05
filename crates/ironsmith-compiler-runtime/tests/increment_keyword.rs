@@ -120,7 +120,7 @@ fn announce(
     )
     .unwrap();
     for _ in 0..40 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let ironsmith::GameProgress::NeedsDecisionCtx(context) = progress else {
@@ -129,7 +129,7 @@ fn announce(
         progress =
             apply_decision_context_with_dm(game, &mut queue, &mut state, &context, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
     game.find_object_by_stable_id(stable).unwrap()
 }

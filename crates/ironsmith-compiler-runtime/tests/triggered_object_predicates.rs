@@ -142,7 +142,7 @@ fn cast_creature_from_hand(game: &mut GameState, hand: ObjectId) -> ObjectId {
     )
     .unwrap();
     for _ in 0..24 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let ironsmith::GameProgress::NeedsDecisionCtx(context) = progress else {
@@ -151,7 +151,7 @@ fn cast_creature_from_hand(game: &mut GameState, hand: ObjectId) -> ObjectId {
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &context, &mut dm)
             .unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     resolve_stack_entry_with(game, &mut dm).unwrap();
     game.find_object_by_stable_id(stable).unwrap()
 }

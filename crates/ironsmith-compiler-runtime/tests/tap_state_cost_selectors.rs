@@ -199,7 +199,7 @@ fn frozen_selector_family_strictly_compiles_and_transports_real_costs() {
             .iter()
             .filter(|c| c["proposed_coverage"] == "complete")
             .count(),
-        7
+        9
     );
     for card in cards {
         for definition in definitions(card["name"].as_str().unwrap()) {
@@ -424,10 +424,12 @@ fn tagged_tap_state_cost_preflight_is_fail_closed_and_does_not_change_state() {
     let mut ctx = CostContext::new(source, alice, &mut dm);
     let untap = Cost::try_effect(Effect::new(UntapEffect::with_spec(ChooseSpec::Tagged(
         "cost_objects".into(),
-    )))).unwrap();
+    ))))
+    .unwrap();
     let tap = Cost::try_effect(Effect::new(TapEffect::with_spec(ChooseSpec::Tagged(
         "cost_objects".into(),
-    )))).unwrap();
+    ))))
+    .unwrap();
     let life = game.player(alice).unwrap().life;
     let mana = game.player(alice).unwrap().mana_pool.total();
     assert!(

@@ -165,9 +165,12 @@ fn sacrifice_fraction_rounded_shape_preserves_denominator_and_controlled_filter(
 }
 
 #[test]
-fn sacrifice_fraction_shape_requires_a_rounding_surface_and_valid_unit_fraction() {
+fn sacrifice_fraction_shape_defaults_down_and_requires_a_valid_unit_fraction() {
+    let default = lex_line("a tenth of the creatures they control of their choice", 0).unwrap();
+    let shape = parse_sacrifice_fraction_rounded_shape(&default).unwrap();
+    assert_eq!(shape.denominator, 10);
+    assert!(!shape.rounded_up);
     for text in [
-        "a tenth of the creatures they control of their choice",
         "a first of the creatures they control of their choice, rounded up",
         "a tenth creatures they control of their choice, rounded up",
     ] {

@@ -130,7 +130,15 @@ fn gain_verb<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::Moda
 pub fn parse_simple_gain_ability_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SimpleGainAbilityShape<'_>> {
-    let (gain_token_idx, _, _) = primitives::find_prefix(tokens, || gain_verb)?;
+    let (gain_token_idx, _, _) = primitives::find_prefix(tokens, || gain_verb).or_else(|| {
+        primitives::find_prefix(tokens, || {
+            (
+                alt((primitives::kw("has"), primitives::kw("have"))),
+                primitives::phrase(&["base", "power", "and", "toughness"]),
+            )
+                .void()
+        })
+    })?;
     let subject_tokens = tokens.get(..gain_token_idx)?;
     if subject_tokens
         .iter()

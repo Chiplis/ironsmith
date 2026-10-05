@@ -355,7 +355,7 @@ pub(super) fn chandras_fury_full_card_keeps_player_or_planeswalker_controller_fa
     };
     let target_damage = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::DealDamageEffect>())
+        .find_map(|effect| super::find_nested_effect::<crate::effects::DealDamageEffect>(effect))
         .expect("Chandra's Fury should deal damage to its target");
     assert_eq!(target_damage.amount, Value::Fixed(4));
     let target_is_player_or_planeswalker = match target_damage.target.unhinted() {
@@ -373,8 +373,12 @@ pub(super) fn chandras_fury_full_card_keeps_player_or_planeswalker_controller_fa
 
     let fanout = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::ForEachObject>())
-        .expect("Chandra's Fury should fan out over the chosen player's creatures");
+        .find_map(|effect| {
+            super::find_nested_effect::<crate::effects::DealDamageEachEffect>(effect)
+        })
+        .unwrap_or_else(|| {
+            panic!("Chandra's Fury should fan out over the chosen player's creatures: {effects:#?}")
+        });
     assert_eq!(fanout.filter.card_types, vec![CardType::Creature]);
     assert_eq!(
         fanout.filter.controller,

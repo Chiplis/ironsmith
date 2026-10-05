@@ -37,7 +37,10 @@ pub(super) fn read_restriction_duration_cant(
             false,
         ),
     };
-    if has_restriction_duration
+    if (has_restriction_duration
+        || crate::grammar::activation_restrictions::parse_possessive_activated_ability_subject_tokens(
+            &restriction_clause_tokens,
+        ).is_some())
         && find_negation_span(&restriction_clause_tokens).is_some()
         && let Some(restrictions) = parse_cant_restrictions(&restriction_clause_tokens)?
         && let [parsed] = restrictions.as_slice()

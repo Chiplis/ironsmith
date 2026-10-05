@@ -239,7 +239,9 @@ fn split_conditional_grant_list(line: &str) -> Option<Vec<String>> {
     if subject.contains(',') || subject.contains('"') {
         return None;
     }
-    let rest = line[has_index + " has ".len()..].trim_end().trim_end_matches('.');
+    let rest = line[has_index + " has ".len()..]
+        .trim_end()
+        .trim_end_matches('.');
     // Split on top-level commas only (never inside a quoted ability).
     let mut segments = Vec::new();
     let mut in_quote = false;
@@ -820,8 +822,29 @@ fn replace_names_with_map(
             })
     }
 
+    // A starting-life adjective describes a player quantity even when it
+    // coincides with the source's short name.
+    fn is_starting_life_descriptor(bytes: &[u8], idx: usize, len: usize) -> bool {
+        bytes[idx..idx + len].eq_ignore_ascii_case(b"starting")
+            && bytes
+                .get(idx + len..)
+                .is_some_and(|tail| tail.starts_with(b" life total"))
+    }
+
+    fn is_base_characteristic_descriptor(bytes: &[u8], idx: usize, len: usize) -> bool {
+        bytes[idx..idx + len].eq_ignore_ascii_case(b"base")
+            && bytes
+                .get(idx + len..)
+                .is_some_and(|tail| tail.starts_with(b" power") || tail.starts_with(b" toughness"))
+    }
+
     // The planeswalker type in the named keyword action is not a self
     // reference, even on a source with that short name (CR 701.71).
+    fn is_excess_damage_descriptor(bytes: &[u8], idx: usize, len: usize) -> bool {
+        bytes[idx..idx + len].eq_ignore_ascii_case(b"excess")
+            && next_word(bytes, idx + len) == Some(b"damage".as_slice())
+    }
+
     fn is_empower_jace_subtype(bytes: &[u8], idx: usize, len: usize) -> bool {
         previous_word(bytes, idx) == Some(b"empower".as_slice())
             && bytes[idx..idx + len].eq_ignore_ascii_case(b"jace")
@@ -831,14 +854,23 @@ fn replace_names_with_map(
     /// name spelled as a subtype between a selecting word and a type noun
     /// describes a class of objects, not this object.
     fn is_subtype_descriptor_usage(bytes: &[u8], idx: usize, len: usize) -> bool {
+        if next_word(bytes, idx + len)
+            .is_some_and(|word| matches!(word, b"planeswalker" | b"planeswalkers"))
+            && std::str::from_utf8(&bytes[idx..idx + len])
+                .ok()
+                .and_then(crate::util::parse_subtype_flexible)
+                .is_some_and(|subtype| subtype.is_planeswalker_subtype())
+        {
+            return true;
+        }
         // "for each other attacking Aurochs" on Aurochs: a name spelled as a
         // creature subtype after a combat-state or `other` adjective, ending
         // the phrase, is the class of objects.
-        if previous_word(bytes, idx).is_some_and(|word| {
-            matches!(word, b"attacking" | b"blocking" | b"other" | b"another")
-        }) && bytes
-            .get(idx + len)
-            .is_none_or(|byte| matches!(*byte, b'.' | b',' | b';'))
+        if previous_word(bytes, idx)
+            .is_some_and(|word| matches!(word, b"attacking" | b"blocking" | b"other" | b"another"))
+            && bytes
+                .get(idx + len)
+                .is_none_or(|byte| matches!(*byte, b'.' | b',' | b';'))
             && std::str::from_utf8(&bytes[idx..idx + len])
                 .ok()
                 .is_some_and(|name| {
@@ -926,12 +958,15 @@ fn replace_names_with_map(
     fn is_attachment_grant_action_object(bytes: &[u8], idx: usize, len: usize) -> bool {
         // "where X is the number of arrow counters on Archery Training"
         // (an Aura's granted ability): the counters sit on the attachment.
-        let counters_on_name = previous_word(bytes, idx).is_some_and(|word| word == b"on")
-            && {
-                let before_on = bytes[..idx]
-                    .iter()
-                    .rposition(|byte| byte.is_ascii_alphanumeric())
-                    .map_or(0, |end| end.saturating_sub(1));
+        let counters_on_name =
+            previous_word(bytes, idx).is_some_and(|word| matches!(word, b"on" | b"from")) && {
+                let mut before_on = idx;
+                while before_on > 0 && !bytes[before_on - 1].is_ascii_alphanumeric() {
+                    before_on -= 1;
+                }
+                while before_on > 0 && bytes[before_on - 1].is_ascii_alphanumeric() {
+                    before_on -= 1;
+                }
                 previous_word(bytes, before_on)
                     .is_some_and(|word| matches!(word, b"counter" | b"counters"))
             };
@@ -939,7 +974,18 @@ fn replace_names_with_map(
             return true;
         }
         let Some(verb) = previous_word(bytes, idx).filter(|word| {
-            matches!(*word, b"sacrifice" | b"return" | b"exile" | b"destroy" | b"tap" | b"untap")
+            matches!(
+                *word,
+                b"sacrifice"
+                    | b"return"
+                    | b"exile"
+                    | b"destroy"
+                    | b"remove"
+                    | b"tap"
+                    | b"untap"
+                    | b"fight"
+                    | b"fights"
+            )
         }) else {
             return false;
         };
@@ -951,7 +997,10 @@ fn replace_names_with_map(
             return true;
         }
         let rest = &bytes[idx + len..];
-        let quote_end = rest.iter().position(|byte| *byte == b'"').unwrap_or(rest.len());
+        let quote_end = rest
+            .iter()
+            .position(|byte| *byte == b'"')
+            .unwrap_or(rest.len());
         !rest[..quote_end].contains(&b':')
     }
 
@@ -960,9 +1009,8 @@ fn replace_names_with_map(
         if quotes_before % 2 == 0 {
             return None;
         }
-        let open = crate::slice_primitives::select_last_position(&bytes[..idx], |byte| {
-            *byte == b'"'
-        })?;
+        let open =
+            crate::slice_primitives::select_last_position(&bytes[..idx], |byte| *byte == b'"')?;
         let head_start = crate::slice_primitives::select_last_position(&bytes[..open], |byte| {
             matches!(*byte, b'.' | b';' | b'"')
         })
@@ -974,11 +1022,7 @@ fn replace_names_with_map(
         if !(head.ends_with(" has") || head.ends_with(" have")) {
             return None;
         }
-        if head.starts_with("equipped creature ") || head.starts_with("enchanted creature ") {
-            Some((GRANTING_SOURCE_SURFACE, labeled))
-        } else {
-            None
-        }
+        Some((GRANTING_SOURCE_SURFACE, labeled))
     }
 
     let lower = line.to_ascii_lowercase();
@@ -1043,6 +1087,9 @@ fn replace_names_with_map(
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
             && !is_empower_jace_subtype(bytes, idx, full_bytes.len())
+            && !is_excess_damage_descriptor(bytes, idx, full_bytes.len())
+            && !is_starting_life_descriptor(bytes, idx, full_bytes.len())
+            && !is_base_characteristic_descriptor(bytes, idx, full_bytes.len())
             && !is_subtype_descriptor_usage(bytes, idx, full_bytes.len())
             && !(preserve_source_surfaces
                 && should_preserve_source_surface_context(
@@ -1089,6 +1136,9 @@ fn replace_names_with_map(
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
             && !is_empower_jace_subtype(bytes, idx, short_bytes.len())
+            && !is_excess_damage_descriptor(bytes, idx, short_bytes.len())
+            && !is_starting_life_descriptor(bytes, idx, short_bytes.len())
+            && !is_base_characteristic_descriptor(bytes, idx, short_bytes.len())
             && (is_short_name_self_reference_context(bytes, idx, short_bytes.len())
                 || is_result_optional_companion_short_name_context(
                     bytes,
@@ -1710,7 +1760,6 @@ fn is_ignorable_unparsed_line(line: &str) -> bool {
         preprocess_grammar::parse_ignorable_parenthetical_line_tokens(&tokens)
     })
 }
-
 
 /// Surface the preprocess writes for the card's own name inside an ability an
 /// Equipment or Aura grants (`Equipped creature has "... Return Trusty
@@ -2392,13 +2441,27 @@ mod tests {
     fn preprocess_preserves_empower_jace_keyword_subtype_on_a_jace_source() {
         let line = normalize_line_for_parse_text(
             "Empower Jace X, where X is the number of Islands you control.",
-            "jace, reality sculptor", "jace", false,
-        ).unwrap();
-        assert!(line.normalized.starts_with("empower jace x"), "{}", line.normalized);
+            "jace, reality sculptor",
+            "jace",
+            false,
+        )
+        .unwrap();
+        assert!(
+            line.normalized.starts_with("empower jace x"),
+            "{}",
+            line.normalized
+        );
         let ordinary = normalize_line_for_parse_text(
-            "Put a loyalty counter on Jace.", "jace, reality sculptor", "jace", false,
-        ).unwrap();
-        assert!(!ordinary.normalized.contains("on jace"), "ordinary source references still normalize");
+            "Put a loyalty counter on Jace.",
+            "jace, reality sculptor",
+            "jace",
+            false,
+        )
+        .unwrap();
+        assert!(
+            !ordinary.normalized.contains("on jace"),
+            "ordinary source references still normalize"
+        );
     }
 
     #[test]

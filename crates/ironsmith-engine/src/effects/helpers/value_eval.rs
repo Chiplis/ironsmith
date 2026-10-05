@@ -14,9 +14,35 @@ pub(crate) fn resolve_continuous(value: &Value, layer: LayerValueContext<'_, '_>
         .unwrap_or_else(|error| panic!("unsupported continuous-effect value {value:?}: {error:?}"))
 }
 
-pub(crate) fn resolve(value: &Value, context: &EvaluationContext<'_, '_>) -> Result<i32, ExecutionError> {
-    i32::try_from(resolve_wide(value,context)?).map_err(|_|
-        ExecutionError::UnresolvableValue("resolved value exceeds the signed characteristic or cost range".into()))
+pub(crate) fn resolve(
+    value: &Value,
+    context: &EvaluationContext<'_, '_>,
+) -> Result<i32, ExecutionError> {
+    let resolved = resolve_wide(value, context)?;
+    i32::try_from(resolved).map_err(|_| {
+        if matches!(
+            value.unhinted(),
+            Value::UnspentMana(_)
+                | Value::EventValue(
+                    crate::effect::EventValueSpec::Amount
+                        | crate::effect::EventValueSpec::LifeAmount
+                )
+        ) {
+            ExecutionError::ResourceLimitExceeded {
+                resource: if matches!(value.unhinted(), Value::UnspentMana(_)) {
+                    "unspent mana scalar"
+                } else {
+                    "effect scalar"
+                },
+                requested: resolved.max(0) as u128,
+                maximum: i32::MAX as u128,
+            }
+        } else {
+            ExecutionError::UnresolvableValue(
+                "resolved value exceeds the signed characteristic or cost range".into(),
+            )
+        }
+    })
 }
 
 pub(crate) fn resolve_wide(
@@ -27,40 +53,77 @@ pub(crate) fn resolve_wide(
     match value {
         Value::SurfaceHinted { value, .. } => resolve_wide(value, context),
         Value::Fixed(n) => Ok(i64::from(*n)),
-        Value::Add(left, right) => resolve_wide(left,context)?.checked_add(resolve_wide(right,context)?).ok_or_else(|| ExecutionError::UnresolvableValue("numeric addition exceeds the wide value range".into())),
+        Value::Add(left, right) => resolve_wide(left, context)?
+            .checked_add(resolve_wide(right, context)?)
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "numeric addition exceeds the wide value range".into(),
+                )
+            }),
         Value::X => context.x(),
-        Value::XTimes(multiplier) => context.x()?.checked_mul(i64::from(*multiplier)).ok_or_else(|| ExecutionError::UnresolvableValue("numeric multiplication exceeds the wide value range".into())),
-        Value::Scaled(value, multiplier) => resolve_wide(value,context)?.checked_mul(i64::from(*multiplier)).ok_or_else(|| ExecutionError::UnresolvableValue("numeric multiplication exceeds the wide value range".into())),
+        Value::XTimes(multiplier) => {
+            context
+                .x()?
+                .checked_mul(i64::from(*multiplier))
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "numeric multiplication exceeds the wide value range".into(),
+                    )
+                })
+        }
+        Value::Scaled(value, multiplier) => resolve_wide(value, context)?
+            .checked_mul(i64::from(*multiplier))
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "numeric multiplication exceeds the wide value range".into(),
+                )
+            }),
         Value::DividedRoundedDown(value, divisor) => {
             if *divisor == 0 {
                 return context.division_by_zero(value);
             }
-            resolve_wide(value,context)?.checked_div_euclid(i64::from(*divisor)).ok_or_else(|| ExecutionError::UnresolvableValue("numeric division exceeds the wide value range".into()))
+            resolve_wide(value, context)?
+                .checked_div_euclid(i64::from(*divisor))
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "numeric division exceeds the wide value range".into(),
+                    )
+                })
         }
-        Value::Min(left, right) => Ok(i64::from(resolve_wide(left, context)?.min(resolve_wide(right, context)?))),
+        Value::Min(left, right) => Ok(i64::from(
+            resolve_wide(left, context)?.min(resolve_wide(right, context)?),
+        )),
         Value::DamageHistory(query) => {
             if let Some(execution) = context.execution() {
                 damage_history::resolve_damage_history_for_comparison(game, query, execution)
             } else {
-                damage_history::resolve_damage_history_for_comparison(game, query, &ExecutionContext::new_default(context.source, context.controller))
+                damage_history::resolve_damage_history_for_comparison(
+                    game,
+                    query,
+                    &ExecutionContext::new_default(context.source, context.controller),
+                )
             }
-        },
+        }
         Value::Count(filter) if filter_reads_source_devoured(filter) => {
             Ok(i64::from(count_source_devoured(filter, context)))
         }
         Value::Count(filter) => Ok(i64::from(context.count_objects(filter, true))),
-        Value::PlayersWhoControl { players, filter } => Ok(i64::from(context
-            .matching_player_ids(players)
-            .into_iter()
-            .filter(|player| context.controlled_object_count(filter, *player) > 0)
-            .count() as i64)),
-        Value::PlayersWhoControlMoreThanYou { players, filter } => {
-            let yours = context.controlled_object_count(filter, context.controller);
-            Ok(i64::from(context
+        Value::PlayersWhoControl { players, filter } => Ok(i64::from(
+            context
                 .matching_player_ids(players)
                 .into_iter()
-                .filter(|player| context.controlled_object_count(filter, *player) > yours)
-                .count() as i64))
+                .filter(|player| context.controlled_object_count(filter, *player) > 0)
+                .count() as i64,
+        )),
+        Value::PlayersWhoControlMoreThanYou { players, filter } => {
+            let yours = context.controlled_object_count(filter, context.controller);
+            Ok(i64::from(
+                context
+                    .matching_player_ids(players)
+                    .into_iter()
+                    .filter(|player| context.controlled_object_count(filter, *player) > yours)
+                    .count() as i64,
+            ))
         }
         Value::PlayersWhoControlAtLeastMoreThanYou {
             players,
@@ -68,34 +131,46 @@ pub(crate) fn resolve_wide(
             minimum_difference,
         } => {
             let yours = context.controlled_object_count(filter, context.controller);
-            Ok(i64::from(context
-                .matching_player_ids(players)
-                .into_iter()
-                .filter(|player| {
-                    context
-                        .controlled_object_count(filter, *player)
-                        .saturating_sub(yours)
-                        >= *minimum_difference as usize
-                })
-                .count() as i64))
+            Ok(i64::from(
+                context
+                    .matching_player_ids(players)
+                    .into_iter()
+                    .filter(|player| {
+                        context
+                            .controlled_object_count(filter, *player)
+                            .saturating_sub(yours)
+                            >= *minimum_difference as usize
+                    })
+                    .count() as i64,
+            ))
         }
-        Value::CountScaled(filter, multiplier) => {
-            Ok(i64::from(i64::from(context.count_objects(filter, false)) * i64::from(*multiplier)))
+        Value::CountScaled(filter, multiplier) => Ok(i64::from(
+            i64::from(context.count_objects(filter, false)) * i64::from(*multiplier),
+        )),
+        Value::GreatestCount(filter) => {
+            Ok(i64::from(context.greatest_per_controller(filter, false)))
         }
-        Value::GreatestCount(filter) => Ok(i64::from(context.greatest_per_controller(filter, false))),
         Value::GreatestSharedCreatureTypeCount(filter) => {
             Ok(i64::from(context.greatest_per_controller(filter, true)))
         }
-        Value::GreatestSharedNameCount(filter) => Ok(i64::from(context.greatest_shared_name_count(filter))),
-        Value::TotalPower(filter) => {
-            Ok(i64::from(context.aggregate(filter, NumericProperty::Power, Reduction::Sum)))
+        Value::GreatestSharedNameCount(filter) => {
+            Ok(i64::from(context.greatest_shared_name_count(filter)))
         }
-        Value::TotalToughness(filter) => {
-            Ok(i64::from(context.aggregate(filter, NumericProperty::Toughness, Reduction::Sum)))
-        }
-        Value::TotalManaValue(filter) => {
-            Ok(i64::from(context.aggregate(filter, NumericProperty::ManaValue, Reduction::Sum)))
-        }
+        Value::TotalPower(filter) => Ok(i64::from(context.aggregate(
+            filter,
+            NumericProperty::Power,
+            Reduction::Sum,
+        ))),
+        Value::TotalToughness(filter) => Ok(i64::from(context.aggregate(
+            filter,
+            NumericProperty::Toughness,
+            Reduction::Sum,
+        ))),
+        Value::TotalManaValue(filter) => Ok(i64::from(context.aggregate(
+            filter,
+            NumericProperty::ManaValue,
+            Reduction::Sum,
+        ))),
         Value::AnnouncedTargetTotal(metric) => {
             let Some(ctx) = context.execution() else {
                 return Ok(i64::from(0));
@@ -112,36 +187,51 @@ pub(crate) fn resolve_wide(
                 game, ids, *metric,
             )))
         }
-        Value::GreatestPower(filter) => {
-            Ok(i64::from(context.aggregate(filter, NumericProperty::Power, Reduction::Max)))
-        }
-        Value::GreatestToughness(filter) => {
-            Ok(i64::from(context.aggregate(filter, NumericProperty::Toughness, Reduction::Max)))
-        }
+        Value::GreatestPower(filter) => Ok(i64::from(context.aggregate(
+            filter,
+            NumericProperty::Power,
+            Reduction::Max,
+        ))),
+        Value::GreatestToughness(filter) => Ok(i64::from(context.aggregate(
+            filter,
+            NumericProperty::Toughness,
+            Reduction::Max,
+        ))),
         Value::GreatestManaValue(filter) => {
             if filter.cast_this_turn && filter.zone == Some(Zone::Stack) {
                 let filter_ctx = context.filter_context(game);
-                return Ok(i64::from(game
-                    .turn_store
-                    .turn_history
-                    .spell_cast_snapshot_history()
-                    .iter()
-                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
-                    .map(crate::filter::snapshot_mana_value_for_filter)
-                    .max()
-                    .unwrap_or(0)));
+                return Ok(i64::from(
+                    game.turn_store
+                        .turn_history
+                        .spell_cast_snapshot_history()
+                        .iter()
+                        .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                        .map(crate::filter::snapshot_mana_value_for_filter)
+                        .max()
+                        .unwrap_or(0),
+                ));
             }
-            Ok(i64::from(context.aggregate(filter, NumericProperty::ManaValue, Reduction::Max)))
+            Ok(i64::from(context.aggregate(
+                filter,
+                NumericProperty::ManaValue,
+                Reduction::Max,
+            )))
         }
-        Value::LeastPower(filter) => {
-            Ok(i64::from(context.aggregate(filter, NumericProperty::Power, Reduction::Min)))
-        }
-        Value::LeastToughness(filter) => {
-            Ok(i64::from(context.aggregate(filter, NumericProperty::Toughness, Reduction::Min)))
-        }
-        Value::LeastManaValue(filter) => {
-            Ok(i64::from(context.aggregate(filter, NumericProperty::ManaValue, Reduction::Min)))
-        }
+        Value::LeastPower(filter) => Ok(i64::from(context.aggregate(
+            filter,
+            NumericProperty::Power,
+            Reduction::Min,
+        ))),
+        Value::LeastToughness(filter) => Ok(i64::from(context.aggregate(
+            filter,
+            NumericProperty::Toughness,
+            Reduction::Min,
+        ))),
+        Value::LeastManaValue(filter) => Ok(i64::from(context.aggregate(
+            filter,
+            NumericProperty::ManaValue,
+            Reduction::Min,
+        ))),
         Value::BasicLandTypesAmong(filter) => {
             let mut seen = HashSet::new();
             context.visit_current_subtypes(filter, |subtypes| {
@@ -245,7 +335,9 @@ pub(crate) fn resolve_wide(
                 else {
                     return;
                 };
-                doors += i64::from(crate::effects::helpers::room_unlocked_door_count(game, object));
+                doors += i64::from(crate::effects::helpers::room_unlocked_door_count(
+                    game, object,
+                ));
             });
             Ok(i64::from(doors))
         }
@@ -258,18 +350,21 @@ pub(crate) fn resolve_wide(
             });
             Ok(i64::from(seen.len() as i64))
         }
-        Value::TurnHistoryCount(query) => Ok(i64::from(crate::turn_history::resolve_turn_history_count(
-            game,
-            query,
-            &context.filter_context(game),
-            context
-                .execution()
-                .and_then(|ctx| ctx.triggering_event.as_ref()),
-        ))),
-        Value::CreaturesDiedThisTurn => Ok(i64::from(game
-            .turn_store
-            .turn_history
-            .total_creatures_died_this_turn() as i64)),
+        Value::TurnHistoryCount(query) => {
+            Ok(i64::from(crate::turn_history::resolve_turn_history_count(
+                game,
+                query,
+                &context.filter_context(game),
+                context
+                    .execution()
+                    .and_then(|ctx| ctx.triggering_event.as_ref()),
+            )))
+        }
+        Value::CreaturesDiedThisTurn => Ok(i64::from(
+            game.turn_store
+                .turn_history
+                .total_creatures_died_this_turn() as i64,
+        )),
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
             let filter_ctx = context.filter_context(game);
             let mut total = 0i64;
@@ -284,42 +379,46 @@ pub(crate) fn resolve_wide(
             }
             Ok(i64::from(total))
         }
-        Value::PlayersBeingAttacked => Ok(i64::from(game
-            .combat
-            .as_ref()
-            .map(crate::combat_state::defending_players)
-            .map(|players| players.len() as i64)
-            .unwrap_or(0))),
-        Value::CountPlayers(player_filter) => {
-            Ok(i64::from(context.matching_player_ids(player_filter).len() as i64))
-        }
-        Value::CountPlayersWithPoisonCountersAtLeast(player_filter, minimum) => Ok(i64::from(context
-            .matching_player_ids(player_filter)
-            .into_iter()
-            .filter(|id| {
-                game.player(*id)
-                    .is_some_and(|player| player.poison_counters >= *minimum)
-            })
-            .count()
-            as i64)),
-        Value::CountPlayersWithCardsInHandAtLeast(player_filter, minimum) => Ok(i64::from(context
-            .matching_player_ids(player_filter)
-            .into_iter()
-            .filter(|id| {
-                game.player(*id)
-                    .is_some_and(|player| player.hand.len() >= *minimum as usize)
-            })
-            .count()
-            as i64)),
-        Value::CountPlayersWithCardsInGraveyardAtLeast(player_filter, minimum) => Ok(i64::from(context
-            .matching_player_ids(player_filter)
-            .into_iter()
-            .filter(|id| {
-                game.player(*id)
-                    .is_some_and(|player| player.graveyard.len() >= *minimum as usize)
-            })
-            .count()
-            as i64)),
+        Value::PlayersBeingAttacked => Ok(i64::from(
+            game.combat
+                .as_ref()
+                .map(crate::combat_state::defending_players)
+                .map(|players| players.len() as i64)
+                .unwrap_or(0),
+        )),
+        Value::CountPlayers(player_filter) => Ok(i64::from(
+            context.matching_player_ids(player_filter).len() as i64,
+        )),
+        Value::CountPlayersWithPoisonCountersAtLeast(player_filter, minimum) => Ok(i64::from(
+            context
+                .matching_player_ids(player_filter)
+                .into_iter()
+                .filter(|id| {
+                    game.player(*id)
+                        .is_some_and(|player| player.poison_counters >= *minimum)
+                })
+                .count() as i64,
+        )),
+        Value::CountPlayersWithCardsInHandAtLeast(player_filter, minimum) => Ok(i64::from(
+            context
+                .matching_player_ids(player_filter)
+                .into_iter()
+                .filter(|id| {
+                    game.player(*id)
+                        .is_some_and(|player| player.hand.len() >= *minimum as usize)
+                })
+                .count() as i64,
+        )),
+        Value::CountPlayersWithCardsInGraveyardAtLeast(player_filter, minimum) => Ok(i64::from(
+            context
+                .matching_player_ids(player_filter)
+                .into_iter()
+                .filter(|id| {
+                    game.player(*id)
+                        .is_some_and(|player| player.graveyard.len() >= *minimum as usize)
+                })
+                .count() as i64,
+        )),
         Value::PartySize(player_filter) => {
             if let Some(ctx) = context.execution() {
                 {
@@ -331,24 +430,30 @@ pub(crate) fn resolve_wide(
             }
         }
         Value::SourcePower => context.source_number(NumericProperty::Power).map(i64::from),
-        Value::SourceToughness => context.source_number(NumericProperty::Toughness).map(i64::from),
-        Value::PowerOf(target_spec) => context.object_number(target_spec, NumericProperty::Power).map(i64::from),
-        Value::BasePowerOf(target_spec) => context.object_number(target_spec, NumericProperty::BasePower).map(i64::from),
-        Value::ToughnessOf(target_spec) => {
-            context.object_number(target_spec, NumericProperty::Toughness).map(i64::from)
-        }
-        Value::KicksPaidOf(target_spec) => {
-            context.object_number(target_spec, NumericProperty::KickerCount).map(i64::from)
-        }
-        Value::ManaSpentToCast(target_spec) => {
-            context.object_number(target_spec, NumericProperty::ManaSpent).map(i64::from)
-        }
-        Value::ManaValueOf(target_spec) => {
-            context.object_number(target_spec, NumericProperty::ManaValue).map(i64::from)
-        }
-        Value::ColorsOf(target_spec) => {
-            context.object_number(target_spec, NumericProperty::ColorCount).map(i64::from)
-        }
+        Value::SourceToughness => context
+            .source_number(NumericProperty::Toughness)
+            .map(i64::from),
+        Value::PowerOf(target_spec) => context
+            .object_number(target_spec, NumericProperty::Power)
+            .map(i64::from),
+        Value::BasePowerOf(target_spec) => context
+            .object_number(target_spec, NumericProperty::BasePower)
+            .map(i64::from),
+        Value::ToughnessOf(target_spec) => context
+            .object_number(target_spec, NumericProperty::Toughness)
+            .map(i64::from),
+        Value::KicksPaidOf(target_spec) => context
+            .object_number(target_spec, NumericProperty::KickerCount)
+            .map(i64::from),
+        Value::ManaSpentToCast(target_spec) => context
+            .object_number(target_spec, NumericProperty::ManaSpent)
+            .map(i64::from),
+        Value::ManaValueOf(target_spec) => context
+            .object_number(target_spec, NumericProperty::ManaValue)
+            .map(i64::from),
+        Value::ColorsOf(target_spec) => context
+            .object_number(target_spec, NumericProperty::ColorCount)
+            .map(i64::from),
         Value::ManaSymbolsInManaCostOf {
             spec: target_spec,
             color,
@@ -364,12 +469,14 @@ pub(crate) fn resolve_wide(
                     };
 
                     if matches!(target_spec.base(), ChooseSpec::All(_)) {
-                        return Ok(i64::from(resolve_objects_from_spec(game, target_spec, ctx)?
-                            .into_iter()
-                            .filter_map(|id| game.object(id))
-                            .filter_map(|object| object.mana_cost.as_deref())
-                            .map(count_symbols)
-                            .sum::<i64>()));
+                        return Ok(i64::from(
+                            resolve_objects_from_spec(game, target_spec, ctx)?
+                                .into_iter()
+                                .filter_map(|id| game.object(id))
+                                .filter_map(|object| object.mana_cost.as_deref())
+                                .map(count_symbols)
+                                .sum::<i64>(),
+                        ));
                     }
 
                     let target_id =
@@ -438,14 +545,16 @@ pub(crate) fn resolve_wide(
                     }
                 }
             } else {
-                Ok(i64::from(context
-                    .layer()
-                    .mana_symbols_in_mana_cost_of(value, target_spec, color)))
+                Ok(i64::from(context.layer().mana_symbols_in_mana_cost_of(
+                    value,
+                    target_spec,
+                    color,
+                )))
             }
         }
-        Value::NameStickerCharacterCountOnSource { character, .. } => {
-            Ok(i64::from(game.name_sticker_character_count_on_object(context.source, *character) as i64))
-        }
+        Value::NameStickerCharacterCountOnSource { character, .. } => Ok(i64::from(
+            game.name_sticker_character_count_on_object(context.source, *character) as i64,
+        )),
         Value::MaximumLifeTotal(players) => Ok(context
             .aggregate_player_ids(value, players)?
             .into_iter()
@@ -547,10 +656,12 @@ pub(crate) fn resolve_wide(
                 );
             };
             let players = context.player_ids(value, player_spec)?;
-            Ok(i64::from(players
-                .into_iter()
-                .map(|id| game.devotion_to_color(id, chosen) as i64)
-                .sum::<i64>()))
+            Ok(i64::from(
+                players
+                    .into_iter()
+                    .map(|id| game.devotion_to_color(id, chosen) as i64)
+                    .sum::<i64>(),
+            ))
         }
         Value::LifeGainedThisTurn(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
@@ -578,10 +689,11 @@ pub(crate) fn resolve_wide(
         }
         Value::AttractionsVisitedThisTurn(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
-            Ok(i64::from(game
-                .turn_store
-                .turn_history
-                .total_attractions_visited_for_players(&player_ids) as i64))
+            Ok(i64::from(
+                game.turn_store
+                    .turn_history
+                    .total_attractions_visited_for_players(&player_ids) as i64,
+            ))
         }
         Value::DamageDealtToPlayersThisTurn(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
@@ -630,10 +742,11 @@ pub(crate) fn resolve_wide(
                     "MaxCardsDrawnThisTurn requires a matching player".to_string(),
                 ));
             }
-            Ok(i64::from(game
-                .turn_store
-                .turn_history
-                .max_cards_drawn_for_players(&player_ids) as i64))
+            Ok(i64::from(
+                game.turn_store
+                    .turn_history
+                    .max_cards_drawn_for_players(&player_ids) as i64,
+            ))
         }
         Value::MaxDiceRolledThisTurn(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
@@ -642,17 +755,19 @@ pub(crate) fn resolve_wide(
                     "MaxDiceRolledThisTurn requires a matching player".to_string(),
                 ));
             }
-            Ok(i64::from(game
-                .turn_store
-                .turn_history
-                .max_die_rolls_for_players(&player_ids) as i64))
+            Ok(i64::from(
+                game.turn_store
+                    .turn_history
+                    .max_die_rolls_for_players(&player_ids) as i64,
+            ))
         }
         Value::LandsEnteredBattlefieldThisTurn(player_spec) => {
             let player_ids = context.counter_player_ids(value, player_spec)?;
-            Ok(i64::from(game
-                .turn_store
-                .turn_history
-                .total_lands_entered_for_players(&player_ids) as i64))
+            Ok(i64::from(
+                game.turn_store
+                    .turn_history
+                    .total_lands_entered_for_players(&player_ids) as i64,
+            ))
         }
         Value::CardsInGraveyard(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
@@ -672,10 +787,11 @@ pub(crate) fn resolve_wide(
         }
         Value::SpellsCastThisTurn(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
-            Ok(i64::from(game
-                .turn_store
-                .turn_history
-                .total_spells_cast_for_players(&player_ids) as i64))
+            Ok(i64::from(
+                game.turn_store
+                    .turn_history
+                    .total_spells_cast_for_players(&player_ids) as i64,
+            ))
         }
         Value::SpellsCastBeforeThisTurn(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
@@ -741,30 +857,38 @@ pub(crate) fn resolve_wide(
         }
         Value::CommanderCastCount(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
-            Ok(i64::from(player_ids
-                .into_iter()
-                .map(|player_id| game.commander_cast_count_for_player(player_id) as i64)
-                .sum::<i64>()))
+            Ok(i64::from(
+                player_ids
+                    .into_iter()
+                    .map(|player_id| game.commander_cast_count_for_player(player_id) as i64)
+                    .sum::<i64>(),
+            ))
         }
         Value::CommanderColorIdentityColors(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
-            Ok(i64::from(player_ids
-                .into_iter()
-                .map(|player_id| game.get_commander_color_identity(player_id).count() as i64)
-                .sum::<i64>()))
+            Ok(i64::from(
+                player_ids
+                    .into_iter()
+                    .map(|player_id| game.get_commander_color_identity(player_id).count() as i64)
+                    .sum::<i64>(),
+            ))
         }
         Value::ThisAbilityResolvedThisTurnCount => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
             {
                 if let Some(ability_index) = ctx.ability_index {
-                    return Ok(i64::from(game
-                        .activated_ability_resolution_count_this_turn(ctx.source, ability_index)
-                        as i64));
+                    return Ok(i64::from(
+                        game.activated_ability_resolution_count_this_turn(ctx.source, ability_index)
+                            as i64,
+                    ));
                 }
                 if let Some(trigger_identity) = ctx.trigger_identity {
-                    return Ok(i64::from(game
-                        .triggered_ability_resolution_count_this_turn(ctx.source, trigger_identity)
-                        as i64));
+                    return Ok(i64::from(
+                        game.triggered_ability_resolution_count_this_turn(
+                            ctx.source,
+                            trigger_identity,
+                        ) as i64,
+                    ));
                 }
                 Err(ExecutionError::UnresolvableValue(
                     "this ability resolution count requires a resolving ability context"
@@ -772,17 +896,21 @@ pub(crate) fn resolve_wide(
                 ))
             }
         }
-        Value::SourceRegeneratedThisTurnCount => {
-            Ok(i64::from(game.regenerated_this_turn_count(context.source) as i64))
-        }
+        Value::SourceRegeneratedThisTurnCount => Ok(i64::from(
+            game.regenerated_this_turn_count(context.source) as i64,
+        )),
         Value::SourceMutationCount => Ok(i64::from(game.mutation_count(context.source) as i64)),
-        Value::SourceDevouredCreatureCount => Ok(i64::from(game.devoured_count(context.source) as i64)),
+        Value::SourceDevouredCreatureCount => {
+            Ok(i64::from(game.devoured_count(context.source) as i64))
+        }
         Value::DamageDealtThisTurnByTaggedSpellCast(tag) => {
             let id = context.tagged_spell_id(value, tag)?;
-            Ok(i64::from(game
-                .turn_store
-                .turn_history
-                .damage_dealt_by_spell_this_turn(game.provenance_graph(), id) as i64))
+            Ok(i64::from(
+                game.turn_store
+                    .turn_history
+                    .damage_dealt_by_spell_this_turn(game.provenance_graph(), id)
+                    as i64,
+            ))
         }
         Value::CardTypesInGraveyard(player_spec) => {
             let player_ids = context.counter_player_ids(value, player_spec)?;
@@ -831,20 +959,30 @@ pub(crate) fn resolve_wide(
             let allocation = if let Some(source) = game.object(context.source) {
                 source.mana_spent_on_x
             } else {
-                context.execution().and_then(|ctx| ctx.source_snapshot.as_ref())
+                context
+                    .execution()
+                    .and_then(|ctx| ctx.source_snapshot.as_ref())
                     .and_then(|snapshot| snapshot.mana_spent_on_x)
-            }.ok_or_else(|| ExecutionError::UnresolvableValue(
-                "actual mana allocated to X was not retained".into()))?;
+            }
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "actual mana allocated to X was not retained".into(),
+                )
+            })?;
             let amount = allocation.of_color(*color);
             i64::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
-                resource: "actual mana spent on X", requested: u128::from(amount), maximum: i64::MAX as u128,
+                resource: "actual mana spent on X",
+                requested: u128::from(amount),
+                maximum: i64::MAX as u128,
             })
         }
         Value::ManaSymbolSpentToCastThisSpell { symbol, .. } => {
             let Some(source_obj) = game.object(context.source) else {
                 return Ok(i64::from(0));
             };
-            Ok(i64::from(source_obj.mana_spent_to_cast.amount(*symbol) as i64))
+            Ok(i64::from(
+                source_obj.mana_spent_to_cast.amount(*symbol) as i64
+            ))
         }
         Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
@@ -867,33 +1005,45 @@ pub(crate) fn resolve_wide(
                         return Ok(i64::from(0));
                     };
                     let filter_ctx = ctx.filter_context(game);
-                    Ok(i64::from(snapshots
-                        .iter()
-                        .filter(|snapshot| {
-                            source_filter.matches_snapshot(snapshot, &filter_ctx, game)
-                        })
-                        .count() as i64))
+                    Ok(i64::from(
+                        snapshots
+                            .iter()
+                            .filter(|snapshot| {
+                                source_filter.matches_snapshot(snapshot, &filter_ctx, game)
+                            })
+                            .count() as i64,
+                    ))
                 }
             } else {
-                Ok(i64::from(context
-                    .layer()
-                    .mana_from_source_spent_to_cast_this_spell(value, source_filter)))
+                Ok(i64::from(
+                    context
+                        .layer()
+                        .mana_from_source_spent_to_cast_this_spell(value, source_filter),
+                ))
             }
         }
         Value::CasterManaSpentToCastTriggeringObject => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
-            let spent = ctx.triggering_event.as_ref()
+            let spent = ctx
+                .triggering_event
+                .as_ref()
                 .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
                 .and_then(|cast| match &cast.snapshot {
                     Some(snapshot) => snapshot.caster_mana_spent_to_cast,
-                    None => game.object(cast.spell).and_then(|object| object.caster_mana_spent_to_cast),
+                    None => game
+                        .object(cast.spell)
+                        .and_then(|object| object.caster_mana_spent_to_cast),
                 });
-            let spent = spent.ok_or_else(|| ExecutionError::UnresolvableValue(
-                "triggering spell has no captured caster payment evidence".into(),
-            ))?;
-            i64::try_from(spent).map_err(|_| ExecutionError::UnresolvableValue(
-                "triggering spell caster payment exceeds the integer value range".into(),
-            ))
+            let spent = spent.ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "triggering spell has no captured caster payment evidence".into(),
+                )
+            })?;
+            i64::try_from(spent).map_err(|_| {
+                ExecutionError::UnresolvableValue(
+                    "triggering spell caster payment exceeds the integer value range".into(),
+                )
+            })
         }
         Value::ManaSpentToCastTriggeringObject => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
@@ -908,10 +1058,11 @@ pub(crate) fn resolve_wide(
                 if let Some(snapshot) = spell_cast.snapshot.as_ref() {
                     return Ok(i64::from(snapshot.mana_spent_to_cast.total() as i64));
                 }
-                Ok(i64::from(game
-                    .object(spell_cast.spell)
-                    .map(|object| object.mana_spent_to_cast.total() as i64)
-                    .unwrap_or(0)))
+                Ok(i64::from(
+                    game.object(spell_cast.spell)
+                        .map(|object| object.mana_spent_to_cast.total() as i64)
+                        .unwrap_or(0),
+                ))
             }
         }
         Value::UnspentMana(player) => {
@@ -944,14 +1095,16 @@ pub(crate) fn resolve_wide(
             let _ctx = context.require_execution(value, RESOLUTION_ONLY);
             Ok(i64::from(0))
         }
-        Value::DraftRemovedCardCount { card_name } => Ok(i64::from(game
-            .draft_removed_card_count(context.controller, card_name)
-            .try_into()
-            .unwrap_or(i32::MAX))),
-        Value::DraftNotedHighestNumber { card_name } => Ok(i64::from(game
-            .draft_noted_highest_number(context.controller, card_name)
-            .try_into()
-            .unwrap_or(i32::MAX))),
+        Value::DraftRemovedCardCount { card_name } => Ok(i64::from(
+            game.draft_removed_card_count(context.controller, card_name)
+                .try_into()
+                .unwrap_or(i32::MAX),
+        )),
+        Value::DraftNotedHighestNumber { card_name } => Ok(i64::from(
+            game.draft_noted_highest_number(context.controller, card_name)
+                .try_into()
+                .unwrap_or(i32::MAX),
+        )),
         Value::LastNotedLifeTotal => game
             .noted_life_total_for_source(context.source)
             .or_else(|| {
@@ -987,18 +1140,30 @@ pub(crate) fn resolve_wide(
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
             {
                 // "That many" of an instruction that never ran is zero.
-                Ok(i64::from(ctx
-                    .get_outcome(*effect_id)
-                    .map_or(0, |outcome| outcome.count_or_zero())))
+                Ok(i64::from(ctx.get_outcome(*effect_id).map_or(
+                    0,
+                    |outcome| {
+                        outcome.as_count().unwrap_or_else(|| {
+                            outcome
+                                .explicit_objects()
+                                .map_or(0, |objects| objects.len() as i64)
+                        })
+                    },
+                )))
             }
         }
         Value::EffectValueOffset(effect_id, offset) => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
             {
-                Ok(i64::from(ctx
-                    .get_outcome(*effect_id)
-                    .map_or(0, |outcome| outcome.count_or_zero())
-                    + i64::from(*offset)))
+                Ok(i64::from(
+                    ctx.get_outcome(*effect_id).map_or(0, |outcome| {
+                        outcome.as_count().unwrap_or_else(|| {
+                            outcome
+                                .explicit_objects()
+                                .map_or(0, |objects| objects.len() as i64)
+                        })
+                    }) + i64::from(*offset),
+                ))
             }
         }
         Value::EffectMetric {
@@ -1016,7 +1181,10 @@ pub(crate) fn resolve_wide(
             offset,
         } => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
-            Ok(i64::from(resolve_effect_metric(game, ctx, *effect_id, *source, *metric)? + i64::from(*offset)))
+            Ok(i64::from(
+                resolve_effect_metric(game, ctx, *effect_id, *source, *metric)?
+                    + i64::from(*offset),
+            ))
         }
         Value::PriorEffectMetric { effect_id, query } => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
@@ -1051,11 +1219,13 @@ pub(crate) fn resolve_wide(
             context.require_execution(value, RESOLUTION_ONLY),
             spec,
         ),
-        Value::EventValueOffset(spec, offset) => Ok(i64::from(resolve_event_value(
-            game,
-            context.require_execution(value, RESOLUTION_ONLY),
-            spec,
-        )? + i64::from(*offset))),
+        Value::EventValueOffset(spec, offset) => Ok(i64::from(
+            resolve_event_value(
+                game,
+                context.require_execution(value, RESOLUTION_ONLY),
+                spec,
+            )? + i64::from(*offset),
+        )),
         Value::WasKicked => {
             // Check if kicker or multikicker was paid
             // First check ctx, then fall back to source object (for ETB triggers)
@@ -1112,18 +1282,21 @@ pub(crate) fn resolve_wide(
                         .is_none_or(|team| seen_teams.insert(team))
                 });
             }
-            Ok(i64::from(player_ids
-                .into_iter()
-                .filter_map(|player_id| game.player(player_id))
-                .map(|player| player.counter_count(*counter_type) as i64)
-                .sum::<i64>()))
+            Ok(i64::from(
+                player_ids
+                    .into_iter()
+                    .filter_map(|player_id| game.player(player_id))
+                    .map(|player| player.counter_count(*counter_type) as i64)
+                    .sum::<i64>(),
+            ))
         }
         // Only meaningful while an enclosing object filter binds its
         // candidate (see `Comparison::bind_filter_candidate_counters`).
         Value::CountersOnFilterCandidate(_) => Ok(i64::from(0)),
         Value::CountersOnSource(counter_type) => {
             if let Some(ctx) = context.execution() {
-                let amount = if let Some(snapshot) = source_lki_for_moved_current_object(game, ctx) {
+                let amount = if let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
+                {
                     snapshot.counters.get(counter_type).copied().unwrap_or(0)
                 } else if let Some(source) = game.object(ctx.source) {
                     source.counters.get(counter_type).copied().unwrap_or(0)
@@ -1131,41 +1304,50 @@ pub(crate) fn resolve_wide(
                     snapshot.counters.get(counter_type).copied().unwrap_or(0)
                 } else {
                     return Err(ExecutionError::UnresolvableValue(
-                        "counter source has neither current nor retained characteristics".into()));
+                        "counter source has neither current nor retained characteristics".into(),
+                    ));
                 };
                 Ok(i64::from(amount))
             } else {
-                Ok(i64::from(context.layer().counters_on_source(value, counter_type)))
+                Ok(i64::from(
+                    context.layer().counters_on_source(value, counter_type),
+                ))
             }
         }
         Value::CountersOn(spec, counter_type) => {
-            if matches!(spec.base(), ChooseSpec::Source) && let Some(kind) = counter_type {
+            if matches!(spec.base(), ChooseSpec::Source)
+                && let Some(kind) = counter_type
+            {
                 return resolve_wide(&Value::CountersOnSource(*kind), context);
             }
             // Counters on players ("each counter among players and
             // permanents", Lumbering Megasloth, CR 122.1).
             if let ChooseSpec::EachPlayer(player_filter) = spec.base() {
                 let player_ids = context.counter_player_ids(value, player_filter)?;
-                return Ok(i64::from(player_ids
-                    .into_iter()
-                    .filter_map(|player_id| game.player(player_id))
-                    .map(|player| match counter_type {
-                        Some(counter_type) => player.counter_count(*counter_type) as i64,
-                        None => player
-                            .counter_types_with_counters()
-                            .into_iter()
-                            .map(|counter_type| player.counter_count(counter_type) as i64)
-                            .sum::<i64>(),
-                    })
-                    .sum::<i64>()));
+                return Ok(i64::from(
+                    player_ids
+                        .into_iter()
+                        .filter_map(|player_id| game.player(player_id))
+                        .map(|player| match counter_type {
+                            Some(counter_type) => player.counter_count(*counter_type) as i64,
+                            None => player
+                                .counter_types_with_counters()
+                                .into_iter()
+                                .map(|counter_type| player.counter_count(counter_type) as i64)
+                                .sum::<i64>(),
+                        })
+                        .sum::<i64>(),
+                ));
             }
             if let Some(ctx) = context.execution() {
                 {
                     if let Some(snapshots) = tagged_snapshots_for_choose_spec(ctx, spec) {
-                        return Ok(i64::from(snapshots
-                            .iter()
-                            .map(|snapshot| snapshot_counter_total(snapshot, counter_type))
-                            .sum::<i64>()));
+                        return Ok(i64::from(
+                            snapshots
+                                .iter()
+                                .map(|snapshot| snapshot_counter_total(snapshot, counter_type))
+                                .sum::<i64>(),
+                        ));
                     }
 
                     if matches!(spec.base(), ChooseSpec::Source)
@@ -1179,7 +1361,11 @@ pub(crate) fn resolve_wide(
                         let total = if let Some(counter_type) = counter_type {
                             snapshot.counters.get(counter_type).copied().unwrap_or(0) as i64
                         } else {
-                            snapshot.counters.values().map(|count| *count as i64).sum::<i64>()
+                            snapshot
+                                .counters
+                                .values()
+                                .map(|count| *count as i64)
+                                .sum::<i64>()
                         };
                         return Ok(i64::from(total));
                     }
@@ -1195,19 +1381,30 @@ pub(crate) fn resolve_wide(
                                 if let Some(counter_type) = counter_type {
                                     snapshot.counters.get(counter_type).copied().unwrap_or(0) as i64
                                 } else {
-                                    snapshot.counters.values().map(|count| *count as i64).sum::<i64>()
+                                    snapshot
+                                        .counters
+                                        .values()
+                                        .map(|count| *count as i64)
+                                        .sum::<i64>()
                                 }
                             } else if let Some(obj) = game.object(id) {
                                 if let Some(counter_type) = counter_type {
                                     obj.counters.get(counter_type).copied().unwrap_or(0) as i64
                                 } else {
-                                    obj.counters.values().map(|count| *count as i64).sum::<i64>()
+                                    obj.counters
+                                        .values()
+                                        .map(|count| *count as i64)
+                                        .sum::<i64>()
                                 }
                             } else if let Some(snapshot) = object_lki_snapshot(ctx, id) {
                                 if let Some(counter_type) = counter_type {
                                     snapshot.counters.get(counter_type).copied().unwrap_or(0) as i64
                                 } else {
-                                    snapshot.counters.values().map(|count| *count as i64).sum::<i64>()
+                                    snapshot
+                                        .counters
+                                        .values()
+                                        .map(|count| *count as i64)
+                                        .sum::<i64>()
                                 }
                             } else {
                                 0
@@ -1217,7 +1414,11 @@ pub(crate) fn resolve_wide(
                     Ok(i64::from(total))
                 }
             } else {
-                Ok(i64::from(context.layer().counters_on(value, spec, counter_type)))
+                Ok(i64::from(context.layer().counters_on(
+                    value,
+                    spec,
+                    counter_type,
+                )))
             }
         }
         Value::TaggedCount => {
@@ -1237,41 +1438,44 @@ pub(crate) fn resolve_wide(
         Value::VoteCount(option) => {
             let ctx =
                 context.require_execution(value, "vote totals require a resolving vote context");
-            Ok(i64::from(ctx
-                .vote_results
-                .get(&ctx.source)
-                .map(|result| result.count_for_option(option) as i64)
-                .unwrap_or(0)))
+            Ok(i64::from(
+                ctx.vote_results
+                    .get(&ctx.source)
+                    .map(|result| result.count_for_option(option) as i64)
+                    .unwrap_or(0),
+            ))
         }
         Value::ObjectVoteCount(spec) => {
             let ctx =
                 context.require_execution(value, "vote totals require a resolving vote context");
             let object_ids = resolve_objects_from_spec(game, spec, ctx)?;
-            Ok(i64::from(ctx
-                .vote_results
-                .get(&ctx.source)
-                .map(|result| {
-                    object_ids
-                        .iter()
-                        .map(|id| result.object_counts.get(id).copied().unwrap_or(0) as i64)
-                        .sum::<i64>()
-                })
-                .unwrap_or(0)))
+            Ok(i64::from(
+                ctx.vote_results
+                    .get(&ctx.source)
+                    .map(|result| {
+                        object_ids
+                            .iter()
+                            .map(|id| result.object_counts.get(id).copied().unwrap_or(0) as i64)
+                            .sum::<i64>()
+                    })
+                    .unwrap_or(0),
+            ))
         }
         Value::PlayerVoteCount(filter) => {
             let ctx =
                 context.require_execution(value, "vote totals require a resolving vote context");
             {
                 let resolved_filter = resolve_player_filter(game, filter, ctx)?;
-                Ok(i64::from(ctx
-                    .vote_results
-                    .get(&ctx.source)
-                    .map(|result| {
-                        result.count_for_player_filter(&crate::target::PlayerFilter::Specific(
-                            resolved_filter,
-                        )) as i64
-                    })
-                    .unwrap_or(0)))
+                Ok(i64::from(
+                    ctx.vote_results
+                        .get(&ctx.source)
+                        .map(|result| {
+                            result.count_for_player_filter(&crate::target::PlayerFilter::Specific(
+                                resolved_filter,
+                            )) as i64
+                        })
+                        .unwrap_or(0),
+                ))
             }
         }
     }
@@ -1285,35 +1489,63 @@ fn resolve_event_value(
     spec: &EventValueSpec,
 ) -> Result<i64, ExecutionError> {
     match spec {
-        EventValueSpec::LifeChange { gained, for_controller } => {
-            let event = ctx.triggering_event.as_ref().ok_or_else(|| ExecutionError::UnresolvableValue("life quantity requires its triggering event".into()))?;
+        EventValueSpec::LifeChange {
+            gained,
+            for_controller,
+        } => {
+            let event = ctx.triggering_event.as_ref().ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "life quantity requires its triggering event".into(),
+                )
+            })?;
             let (player, amount) = if *gained {
-                let life = event.downcast::<LifeGainEvent>().ok_or_else(|| ExecutionError::UnresolvableValue("life-gain quantity requires a life-gain event".into()))?;
+                let life = event.downcast::<LifeGainEvent>().ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "life-gain quantity requires a life-gain event".into(),
+                    )
+                })?;
                 (life.player, life.amount)
             } else {
-                let life = event.downcast::<LifeLossEvent>().ok_or_else(|| ExecutionError::UnresolvableValue("life-loss quantity requires a life-loss event".into()))?;
+                let life = event.downcast::<LifeLossEvent>().ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "life-loss quantity requires a life-loss event".into(),
+                    )
+                })?;
                 (life.player, life.amount)
             };
             if *for_controller && player != ctx.controller {
-                return Err(ExecutionError::UnresolvableValue("life quantity names another participant".into()));
+                return Err(ExecutionError::UnresolvableValue(
+                    "life quantity names another participant".into(),
+                ));
             }
             crate::events::damage::checked_damage_count(
                 u128::from(amount),
                 "life-change event scalar",
-            ).map(i64::from)
+            )
+            .map(i64::from)
         }
         EventValueSpec::DieBatchTotal | EventValueSpec::DieResultsAtLeast(_) => {
-            let roll = ctx.triggering_event.as_ref()
+            let roll = ctx
+                .triggering_event
+                .as_ref()
                 .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
-                .ok_or_else(||ExecutionError::UnresolvableValue("die batch value requires its completed roll event".into()))?;
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "die batch value requires its completed roll event".into(),
+                    )
+                })?;
             let amount: u128 = match spec {
                 EventValueSpec::DieBatchTotal => roll.numeric_batch_results().map(u128::from).sum(),
-                EventValueSpec::DieResultsAtLeast(minimum) => roll.numeric_batch_results()
-                    .filter(|result| i64::from(*result) >= i64::from(*minimum)).count() as u128,
+                EventValueSpec::DieResultsAtLeast(minimum) => roll
+                    .numeric_batch_results()
+                    .filter(|result| i64::from(*result) >= i64::from(*minimum))
+                    .count() as u128,
                 _ => unreachable!(),
             };
-            i64::try_from(amount).map_err(|_|ExecutionError::ResourceLimitExceeded {
-                resource: "die-roll batch quantity", requested: amount, maximum: i64::MAX as u128,
+            i64::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
+                resource: "die-roll batch quantity",
+                requested: amount,
+                maximum: i64::MAX as u128,
             })
         }
         EventValueSpec::DieResult => {
@@ -1344,7 +1576,11 @@ fn resolve_event_value(
                 ));
             };
             if let Some(payment) = triggering_event.downcast::<crate::events::LifePaidEvent>() {
-                return crate::events::damage::checked_damage_count(u128::from(payment.amount), "life payment event amount").map(i64::from);
+                return crate::events::damage::checked_damage_count(
+                    u128::from(payment.amount),
+                    "life payment event amount",
+                )
+                .map(i64::from);
             }
             if let Some(life_loss_event) = triggering_event.downcast::<LifeLossEvent>() {
                 return Ok(i64::from(life_loss_event.amount as i64));
@@ -1360,9 +1596,13 @@ fn resolve_event_value(
             {
                 return Ok(i64::from(prevented_event.amount as i64));
             }
-            if let Some(placement) = triggering_event.downcast::<crate::events::PutCountersEvent>() {
-                return i64::try_from(placement.count).map_err(|_| ExecutionError::UnresolvableValue(
-                    "counter placement amount exceeds the supported value range".into()));
+            if let Some(placement) = triggering_event.downcast::<crate::events::PutCountersEvent>()
+            {
+                return i64::try_from(placement.count).map_err(|_| {
+                    ExecutionError::UnresolvableValue(
+                        "counter placement amount exceeds the supported value range".into(),
+                    )
+                });
             }
             if let Some(markers_event) = triggering_event.downcast::<MarkersChangedEvent>() {
                 return Ok(i64::from(markers_event.amount as i64));
@@ -1377,8 +1617,11 @@ fn resolve_event_value(
                 return Ok(i64::from(keyword_action_event.amount as i64));
             }
             if let Some(created) = triggering_event.downcast::<crate::events::CreateTokensEvent>() {
-                return i64::try_from(created.total_count()).map_err(|_| ExecutionError::UnresolvableValue(
-                    "token creation amount exceeds the supported value range".into()));
+                return i64::try_from(created.total_count()).map_err(|_| {
+                    ExecutionError::UnresolvableValue(
+                        "token creation amount exceeds the supported value range".into(),
+                    )
+                });
             }
             Err(ExecutionError::UnresolvableValue(
                 "EventValue(Amount) requires a numeric triggering event".to_string(),
@@ -1430,7 +1673,10 @@ fn filter_reads_source_devoured(filter: &crate::filter::ObjectFilter) -> bool {
 /// "the number of Goblins it devoured" (Voracious Dragon): count the
 /// permanents the source sacrificed to its devour ability, as they last
 /// existed on the battlefield (CR 702.82b).
-fn count_source_devoured(filter: &crate::filter::ObjectFilter, context: &EvaluationContext<'_, '_>) -> i64 {
+fn count_source_devoured(
+    filter: &crate::filter::ObjectFilter,
+    context: &EvaluationContext<'_, '_>,
+) -> i64 {
     use crate::filter::ObjectFilterExt as _;
     let game = context.game;
     let mut residual = filter.clone();

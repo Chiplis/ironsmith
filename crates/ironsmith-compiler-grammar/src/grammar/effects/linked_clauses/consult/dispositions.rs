@@ -104,7 +104,12 @@ pub fn parse_consult_matched_move_shape(
         ConsultMoveSelectionShape::AnyNumberOfMatched
     } else if matches_complete_content_sequence(
         reference,
-        &[&["that", "card"], &["it"], &["those", "cards"]],
+        &[
+            &["that", "card"],
+            &["it"],
+            &["those", "cards"],
+            &["nonland", "card"],
+        ],
     ) || (starts_content_sequence(reference, &[&["those"]])
         && !starts_content_sequence(reference, &[&["those", "other"]])
         && ends_content_sequence(reference, &[&["cards"]]))
@@ -293,6 +298,19 @@ fn parse_remainder_shape(tokens: &[OwnedLexToken]) -> Option<ConsultRemainderDis
 fn split_terminal_remainder(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, ConsultRemainderDispositionShape)> {
+    // Coordinated destinations share the opening verb: "put that card into
+    // your hand and the rest on the bottom ...".
+    if tokens.first().is_some_and(|token| token.is_word("put")) {
+        for (index, token) in tokens.iter().enumerate() {
+            if token.is_word("and") && starts_content_sequence(&tokens[index + 1..], &[&["rest"]]) {
+                let mut remainder_tokens = vec![tokens[0].clone()];
+                remainder_tokens.extend_from_slice(&tokens[index + 1..]);
+                if let Some(remainder) = parse_remainder_shape(&remainder_tokens) {
+                    return Some((trimmed(&tokens[..index]).to_vec(), remainder));
+                }
+            }
+        }
+    }
     if let Some(remainder) = parse_remainder_shape(tokens) {
         return Some((Vec::new(), remainder));
     }
@@ -388,6 +406,21 @@ mod tests {
     fn parse(raw: &str) -> ConsultDispositionSequenceShape {
         let tokens = lex_line(raw, 0).unwrap();
         parse_consult_disposition_sequence_shape(&tokens).expect(raw)
+    }
+
+    #[test]
+    fn coordinated_hand_and_remainder_destinations_keep_the_shared_verb() {
+        let shape = parse(
+            "Reveal cards from the top of your library until you reveal a nonland card. This spell deals damage equal to that card's mana value to that permanent or player. Put the nonland card into your hand and the rest on the bottom of your library in any order.",
+        );
+        let ConsultMiddleShape::Generic(clauses) = shape.middle else {
+            panic!("{shape:?}");
+        };
+        assert_eq!(clauses.len(), 2);
+        assert_eq!(
+            parse_consult_matched_move_shape(&clauses[1]).unwrap().zone,
+            Zone::Hand
+        );
     }
 
     #[test]

@@ -283,7 +283,9 @@ pub(super) fn describe_look_exile_one_rest_bottom_cast_else_hand(
     if !conditional.if_false.is_empty() {
         return None;
     }
-    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+    let cast = cast_effect
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     if condition_tag != &choose.tag
         || cast.tag != choose.tag
         || cast.player != PlayerFilter::You
@@ -338,7 +340,9 @@ pub(super) fn describe_target_opponent_look_exile_one_rest_bottom_cast(
         unwrap_basic_tag_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
     let rest =
         rest_effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+    let grant = grant_effect
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
 
     let targets_opponent = matches!(
         &target.target,
@@ -1316,7 +1320,11 @@ pub(super) fn filter_is_exactly_tagged(filter: &ObjectFilter, tag: &crate::TagKe
 pub(super) fn filter_is_exactly_one_tagged_object(filter: &ObjectFilter) -> bool {
     filter.tagged_constraints.len() == 1
         && filter.tagged_constraints.iter().any(|constraint| {
-            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    | crate::filter::TaggedOpbjectRelation::SameObjectId
+            )
         })
         && filter.zone.is_none()
         && filter.controller.is_none()
@@ -2859,7 +2867,8 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
     };
     let cast_result_tag = wrapped_effect_tag(cast_effect);
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag != choose.tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -2997,7 +3006,8 @@ pub(super) fn describe_reflexive_targeted_graveyard_cast_with_replacement(
         return None;
     };
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
 
     // Reflexive-trigger `choices` are target declarations by construction.
     // Older lowering stores only that declaration; the public multi-sentence
@@ -3063,7 +3073,8 @@ fn describe_duration_scoped_targeted_graveyard_cast_replacement(
     let card_types_text = describe_graveyard_cast_card_types(&card_types)?;
 
     let grant = structural_unwrap_render_wrappers(grant_effect)
-        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     let surface = grant.surface.as_ref()?;
     if &grant.tag != target_tag
         || grant.player != PlayerFilter::You
@@ -3210,7 +3221,8 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
     let cast_effect = &may.effects[0];
     let cast_spell_tag = wrapped_effect_tag(cast_effect)?;
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     if &cast.tag != target_tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -3339,7 +3351,8 @@ fn describe_immediate_targeted_graveyard_any_type_cast(effects: &[&Effect]) -> O
         return None;
     };
     let cast = structural_unwrap_render_wrappers(cast_effect)
-        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     if &cast.tag != target_tag
         || cast.player != PlayerFilter::You
         || cast.allow_land
@@ -3787,8 +3800,16 @@ pub(super) fn describe_for_players_choose_land_of_each_basic_land_type_then_rest
     {
         return None;
     }
-    let verb = if subject == "You" { "choose" } else { "chooses" };
-    let sacrifice_verb = if subject == "You" { "sacrifice" } else { "sacrifices" };
+    let verb = if subject == "You" {
+        "choose"
+    } else {
+        "chooses"
+    };
+    let sacrifice_verb = if subject == "You" {
+        "sacrifice"
+    } else {
+        "sacrifices"
+    };
     let pronoun = if subject == "You" { "you" } else { "they" };
     Some(format!(
         "{subject} {verb} from among the lands {pronoun} control a land of each basic land type, then {sacrifice_verb} the rest"
@@ -4322,16 +4343,16 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
     let counts_exiled = |count: &Value| {
         is_effect_count_reference(count, Some(exile_effect_id))
             || matches!(count.unhinted(), Value::Count(filter)
-                if exile_tag.is_some_and(|tag| {
-                    let mut rest = filter.clone();
-                    rest.zone = None;
-                    let constraints = std::mem::take(&mut rest.tagged_constraints);
-                    rest == ObjectFilter::default()
-                        && matches!(constraints.as_slice(), [constraint]
-                            if &constraint.tag == tag
-                                && constraint.relation
-                                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
-                }))
+            if exile_tag.is_some_and(|tag| {
+                let mut rest = filter.clone();
+                rest.zone = None;
+                let constraints = std::mem::take(&mut rest.tagged_constraints);
+                rest == ObjectFilter::default()
+                    && matches!(constraints.as_slice(), [constraint]
+                        if &constraint.tag == tag
+                            && constraint.relation
+                                == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+            }))
     };
 
     let consult = unwrap_effect(consult_effect)
@@ -4524,7 +4545,9 @@ pub(super) fn describe_reveal_top_opponent_exiles_rest_hand_then_may_cast(
     {
         return None;
     }
-    let cast = may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+    let cast = may.effects[0]
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     if cast.tag != choose.tag
         || cast.player != expected_opponent
         || cast.allow_land
@@ -5427,12 +5450,17 @@ pub(super) fn describe_for_players_simple_iterated_action(
             if subject == "You" { "your" } else { "their" }
         ));
     }
-    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>()
+    let damage_carrier = structural_unwrap_render_wrappers(effect);
+    let damage_carrier = damage_carrier
+        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        .map_or(damage_carrier, |with_source| {
+            structural_unwrap_render_wrappers(&with_source.effect)
+        });
+    if let Some(damage) = damage_carrier.downcast_ref::<crate::effects::DealDamageEffect>()
         && matches!(
-            damage.target,
+            damage.target.base(),
             ChooseSpec::Player(PlayerFilter::IteratedPlayer)
         )
-        && matches!(damage.amount, Value::Fixed(_))
     {
         let text = describe_effect(effect)
             .replace(" to that player", &format!(" to {}", subject_lower))

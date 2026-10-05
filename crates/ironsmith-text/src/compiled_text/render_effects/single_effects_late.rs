@@ -32,38 +32,42 @@ pub(super) fn describe_delayed_targeted_source_damage(
     let [source_effect, damage_effect] = schedule.effects.flattened_default_effects() else {
         return None;
     };
+    let source_effect = source_effect
+        .downcast_ref::<crate::effects::WithIdEffect>()
+        .map_or(source_effect, |effect| &effect.effect);
     let tagged_source = source_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let source_target = tagged_source
-        .effect
+    let source_target = structural_unwrap_render_wrappers(&tagged_source.effect)
         .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
     let ChooseSpec::Object(_source_filter) = source_target.target.base() else {
         return None;
     };
     if source_target.chooser.is_some()
-        || source_target.explicit_declaration
         || !matches!(source_target.target.unhinted(), ChooseSpec::Target(_))
     {
         return None;
     }
 
-    let with_source = damage_effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+    let with_source = structural_unwrap_render_wrappers(damage_effect)
+        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
     if !matches!(&with_source.source, ChooseSpec::Tagged(tag) if tag == &tagged_source.tag) {
         return None;
     }
-    let damage = with_source
-        .effect
+    let damage = structural_unwrap_render_wrappers(&with_source.effect)
         .downcast_ref::<crate::effects::DealDamageEffect>()?;
-    let ChooseSpec::Object(recipient_filter) = damage.target.base() else {
-        return None;
+    let recipient_tag = match damage.target.base() {
+        ChooseSpec::Tagged(tag) => tag,
+        ChooseSpec::Object(filter) => {
+            let [constraint] = filter.tagged_constraints.as_slice() else {
+                return None;
+            };
+            if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+                return None;
+            }
+            &constraint.tag
+        }
+        _ => return None,
     };
-    let [recipient_tag] = recipient_filter.tagged_constraints.as_slice() else {
-        return None;
-    };
-    if damage.source_is_combat
-        || damage.unpreventable
-        || recipient_tag.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
-        || recipient_tag.tag == tagged_source.tag
-    {
+    if damage.source_is_combat || damage.unpreventable || *recipient_tag == tagged_source.tag {
         return None;
     }
 
@@ -1076,7 +1080,9 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::OncePerTurn => Some("Activate only once each turn"),
         ActivationTiming::DuringYourTurn => Some("Activate only during your turn"),
         ActivationTiming::DuringOpponentsTurn => Some("Activate only during an opponent's turn"),
-        ActivationTiming::AnyTimeByEnchantedCreatureController => Some("Only the controller of the enchanted creature may activate this ability"),
+        ActivationTiming::AnyTimeByEnchantedCreatureController => {
+            Some("Only the controller of the enchanted creature may activate this ability")
+        }
         ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => Some(
             "Any player may activate this ability but only during their turn before the end step",
         ),
@@ -1616,7 +1622,9 @@ pub(super) fn describe_mana_usage_restriction(
                 return Some("Spend this mana only on costs that contain {X}".to_string());
             }
             if on_spend.is_empty()
-                && let Some(text) = restriction.as_ref().and_then(describe_payment_action_predicate)
+                && let Some(text) = restriction
+                    .as_ref()
+                    .and_then(describe_payment_action_predicate)
             {
                 return Some(format!("Spend this mana only to {text}"));
             }
@@ -1820,7 +1828,11 @@ fn describe_mana_usage_x_cost_spell_filter(filter: &ObjectFilter) -> Option<Stri
         if described.contains("{X}") {
             return None;
         }
-        let qualifier = if filter.no_x_in_cost { "without" } else { "with" };
+        let qualifier = if filter.no_x_in_cost {
+            "without"
+        } else {
+            "with"
+        };
         return Some(format!("{described} {qualifier} {{X}} in its mana cost"));
     }
     None
@@ -1834,7 +1846,14 @@ pub(super) fn describe_mana_usage_spell_filter_target_with_options(
         return Some(x_cost);
     }
     if filter == &ObjectFilter::default().face_down() {
-        return Some(if pluralize_origin_spell { "face-down spells" } else { "a face-down spell" }.to_string());
+        return Some(
+            if pluralize_origin_spell {
+                "face-down spells"
+            } else {
+                "a face-down spell"
+            }
+            .to_string(),
+        );
     }
     if let Some(special) =
         describe_special_mana_usage_spell_filter_target(filter, pluralize_origin_spell)
@@ -1902,11 +1921,24 @@ pub(super) fn describe_mana_usage_ability_source_filter(filter: &ObjectFilter) -
             .iter()
             .map(|card_type| card_type.name().to_string()),
     );
-    let outlaw = [crate::types::Subtype::Assassin, crate::types::Subtype::Mercenary,
-        crate::types::Subtype::Pirate, crate::types::Subtype::Rogue, crate::types::Subtype::Warlock];
+    let outlaw = [
+        crate::types::Subtype::Assassin,
+        crate::types::Subtype::Mercenary,
+        crate::types::Subtype::Pirate,
+        crate::types::Subtype::Rogue,
+        crate::types::Subtype::Warlock,
+    ];
     let includes_outlaw = outlaw.iter().all(|kind| filter.subtypes.contains(kind));
-    if includes_outlaw { descriptors.push("outlaw".to_string()); }
-    descriptors.extend(filter.subtypes.iter().filter(|kind| !includes_outlaw || !outlaw.contains(kind)).map(|kind| kind.to_string()));
+    if includes_outlaw {
+        descriptors.push("outlaw".to_string());
+    }
+    descriptors.extend(
+        filter
+            .subtypes
+            .iter()
+            .filter(|kind| !includes_outlaw || !outlaw.contains(kind))
+            .map(|kind| kind.to_string()),
+    );
 
     if descriptors.is_empty() {
         return Some("a source".to_string());
@@ -3655,7 +3687,9 @@ pub(super) fn describe_structural_cumulative_upkeep_keyword(
         return None;
     }
     let cumulative = cumulative.downcast_ref::<crate::effects::CumulativeUpkeepEffect>()?;
-    if cumulative.player != PlayerFilter::You || cumulative.kind != ironsmith_core::effect::UpkeepPaymentKind::Cumulative {
+    if cumulative.player != PlayerFilter::You
+        || cumulative.kind != ironsmith_core::effect::UpkeepPaymentKind::Cumulative
+    {
         return None;
     }
     let payment = cumulative_upkeep_payment_text(&cumulative.payment)?;
@@ -5914,37 +5948,74 @@ mod next_turn_draw_surface_tests {
     }
 }
 
-
 /// Render only complete known transaction predicates. No predicate may be
 /// dropped merely because one branch has a familiar payment purpose.
-fn describe_payment_action_predicate(predicate: &crate::ability::ManaPaymentPredicate) -> Option<String> {
+fn describe_payment_action_predicate(
+    predicate: &crate::ability::ManaPaymentPredicate,
+) -> Option<String> {
     use crate::ability::{ManaPaymentPredicate as P, ManaPaymentPurpose as Purpose};
     match predicate {
         P::AnyOf(parts) if !parts.is_empty() => {
-            let parts = parts.iter().map(describe_payment_action_predicate).collect::<Option<Vec<_>>>()?;
+            let parts = parts
+                .iter()
+                .map(describe_payment_action_predicate)
+                .collect::<Option<Vec<_>>>()?;
             Some(join_with_or(&parts))
         }
-        P::CostContains(symbol) => Some(format!("pay a cost that contains {}", crate::mana::ManaCost::from_symbols(vec![*symbol]).to_oracle())),
+        P::CostContains(symbol) => Some(format!(
+            "pay a cost that contains {}",
+            crate::mana::ManaCost::from_symbols(vec![*symbol]).to_oracle()
+        )),
         P::All(parts) => {
-            let [purpose, P::SourceMatches(filter)] = parts.as_slice() else { return None; };
+            let [purpose, P::SourceMatches(filter)] = parts.as_slice() else {
+                return None;
+            };
             if purpose == &P::Purpose(Purpose::CastSpell) {
-                return Some(format!("cast {}", describe_mana_usage_spell_filter_target_with_options(filter, false)?));
+                return Some(format!(
+                    "cast {}",
+                    describe_mana_usage_spell_filter_target_with_options(filter, false)?
+                ));
             }
             if purpose == &P::Purpose(Purpose::TurnFaceUp) {
                 let mut rest = filter.clone();
-                if rest.zone.take() != Some(Zone::Battlefield) || rest.face_down.take() != Some(true) { return None; }
+                if rest.zone.take() != Some(Zone::Battlefield)
+                    || rest.face_down.take() != Some(true)
+                {
+                    return None;
+                }
                 let types = std::mem::take(&mut rest.card_types);
-                if rest != ObjectFilter::default() { return None; }
-                let noun = if types.is_empty() { "permanents" } else if types == [crate::types::CardType::Creature] { "creatures" } else { return None; };
+                if rest != ObjectFilter::default() {
+                    return None;
+                }
+                let noun = if types.is_empty() {
+                    "permanents"
+                } else if types == [crate::types::CardType::Creature] {
+                    "creatures"
+                } else {
+                    return None;
+                };
                 return Some(format!("turn {noun} face up"));
             }
-            let P::AnyOf(purposes) = purpose else { return None; };
-            if purposes.len() != 2 || !purposes.contains(&P::Purpose(Purpose::ActivateAbility)) || !purposes.contains(&P::Purpose(Purpose::ActivateManaAbility)) { return None; }
+            let P::AnyOf(purposes) = purpose else {
+                return None;
+            };
+            if purposes.len() != 2
+                || !purposes.contains(&P::Purpose(Purpose::ActivateAbility))
+                || !purposes.contains(&P::Purpose(Purpose::ActivateManaAbility))
+            {
+                return None;
+            }
             let mut filter = filter.clone();
             let battlefield = filter.zone == Some(Zone::Battlefield);
-            if battlefield { filter.zone = None; }
+            if battlefield {
+                filter.zone = None;
+            }
             let mut source = describe_mana_usage_ability_source_filter(&filter)?;
-            if battlefield { source = source.strip_suffix(" source").map(|s| format!("{s} permanent"))?; }
+            if battlefield {
+                source = source
+                    .strip_suffix(" source")
+                    .map(|s| format!("{s} permanent"))?;
+            }
             Some(format!("activate an ability of {source}"))
         }
         _ => None,

@@ -4,10 +4,10 @@
 //! attack requirements, etc.
 
 use super::{AttackTaxTargetKind, StaticAbilityId, StaticAbilityKind};
+use crate::decision::DecisionMaker;
 use crate::effect::Restriction;
 use crate::effect::RestrictionExt as _;
 use crate::effects::EffectExecutor;
-use crate::decision::DecisionMaker;
 use crate::events::permanents::SacrificeEvent;
 use crate::events::processing::{EventOutcome, process_zone_change};
 use crate::events::{EventKind, KeywordActionEvent, KeywordActionKind};
@@ -132,9 +132,11 @@ impl ImposedAttackCost {
         if let Some(attacker) = game.object(self.attacker) {
             ctx.set_tagged_objects(
                 ironsmith_core::TAXED_ATTACKER_TAG,
-                vec![crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                    attacker, game,
-                )],
+                vec![
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        attacker, game,
+                    ),
+                ],
             );
         }
         self.cost.clone().try_map(|component| {
@@ -433,6 +435,18 @@ macro_rules! define_combat_ability {
         impl StaticAbilityKind for $name {
             fn id(&self) -> StaticAbilityId {
                 StaticAbilityId::$id
+            }
+
+            fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+                Some(super::CompiledStaticAbility {
+                    id: Some(StaticAbilityId::$id),
+                    label: $display.to_owned(),
+                    payload: ironsmith_core::StaticAbilityPayload::None,
+                })
+            }
+
+            fn may_generate_continuous_effects(&self) -> bool {
+                false
             }
 
             fn display(&self) -> String {
@@ -912,20 +926,37 @@ pub struct CanBlockAdditionalForEach {
 }
 
 impl StaticAbilityKind for CanBlockAdditionalForEach {
-    fn id(&self) -> StaticAbilityId { StaticAbilityId::CanBlockAdditionalForEach }
-
-    fn display(&self) -> String {
-        let count = if self.additional == 1 { "an additional creature".to_string() }
-            else { format!("{} additional creatures", self.additional) };
-        format!("Can block {count} each combat for each {}", self.filter.description())
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanBlockAdditionalForEach
     }
 
-    fn additional_blockable_attackers_for_source(&self, game: &GameState, source: ObjectId) -> Option<usize> {
+    fn display(&self) -> String {
+        let count = if self.additional == 1 {
+            "an additional creature".to_string()
+        } else {
+            format!("{} additional creatures", self.additional)
+        };
+        format!(
+            "Can block {count} each combat for each {}",
+            self.filter.description()
+        )
+    }
+
+    fn additional_blockable_attackers_for_source(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+    ) -> Option<usize> {
         let controller = game.controller_of_id(source)?;
         let context = game.filter_context_for(controller, Some(source));
-        let count = game.battlefield.iter().filter(|id| {
-            game.object(**id).is_some_and(|object| self.filter.matches(object, &context, game))
-        }).count();
+        let count = game
+            .battlefield
+            .iter()
+            .filter(|id| {
+                game.object(**id)
+                    .is_some_and(|object| self.filter.matches(object, &context, game))
+            })
+            .count();
         Some(count.saturating_mul(self.additional as usize))
     }
 }
@@ -2214,58 +2245,126 @@ impl CantAttackUnlessCondition {
         }
     }
 
-    fn pay_sacrifice_attack_cost(game: &mut GameState, source: ObjectId, controller: PlayerId, count: u32, filter: &ObjectFilter) -> Result<(), String> {
+    fn pay_sacrifice_attack_cost(
+        game: &mut GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        count: u32,
+        filter: &ObjectFilter,
+    ) -> Result<(), String> {
         Self::pay_zone_attack_cost(game, source, controller, count, filter, true)
     }
 
-    fn pay_return_permanents_attack_cost(game: &mut GameState, source: ObjectId, controller: PlayerId, filter: &ObjectFilter, count: u32) -> Result<(), String> {
+    fn pay_return_permanents_attack_cost(
+        game: &mut GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        filter: &ObjectFilter,
+        count: u32,
+    ) -> Result<(), String> {
         Self::pay_zone_attack_cost(game, source, controller, count, filter, false)
     }
 
-    fn pay_zone_attack_cost(game: &mut GameState, source: ObjectId, controller: PlayerId, count: u32, filter: &ObjectFilter, sacrifice: bool) -> Result<(), String> {
+    fn pay_zone_attack_cost(
+        game: &mut GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        count: u32,
+        filter: &ObjectFilter,
+        sacrifice: bool,
+    ) -> Result<(), String> {
         let checkpoint = game.clone();
         let mut dm = crate::decision::SelectFirstDecisionMaker;
         let result = (|| {
-            let candidates = Self::eligible_permanents_for_controller(game, controller, filter, sacrifice);
-            if candidates.len() < count as usize { return Err("Cannot pay required attack cost".to_string()); }
-            let chosen = candidates.into_iter().take(count as usize).collect::<Vec<_>>();
-            let cause = crate::events::cause::EventCause::from_cost(source, controller);
-            if sacrifice && chosen.iter().any(|id| !game.can_be_sacrificed_with_cause(*id, &cause)) {
+            let candidates =
+                Self::eligible_permanents_for_controller(game, controller, filter, sacrifice);
+            if candidates.len() < count as usize {
                 return Err("Cannot pay required attack cost".to_string());
             }
-            let destination = if sacrifice { Zone::Graveyard } else { Zone::Hand };
+            let chosen = candidates
+                .into_iter()
+                .take(count as usize)
+                .collect::<Vec<_>>();
+            let cause = crate::events::cause::EventCause::from_cost(source, controller);
+            if sacrifice
+                && chosen
+                    .iter()
+                    .any(|id| !game.can_be_sacrificed_with_cause(*id, &cause))
+            {
+                return Err("Cannot pay required attack cost".to_string());
+            }
+            let destination = if sacrifice {
+                Zone::Graveyard
+            } else {
+                Zone::Hand
+            };
             let mut prepared = Vec::new();
             for id in chosen {
-                let snapshot = game.object(id).map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game));
-                let proposal = process_zone_change(game, id, Zone::Battlefield, destination, cause.clone(), &mut dm)
-                    .map_err(|error| error.to_string())?;
-                if dm.awaiting_choice() { return Err("Awaiting attack cost replacement".to_string()); }
+                let snapshot = game.object(id).map(|object| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                });
+                let proposal = process_zone_change(
+                    game,
+                    id,
+                    Zone::Battlefield,
+                    destination,
+                    cause.clone(),
+                    &mut dm,
+                )
+                .map_err(|error| error.to_string())?;
+                if dm.awaiting_choice() {
+                    return Err("Awaiting attack cost replacement".to_string());
+                }
                 prepared.push((id, snapshot, proposal));
             }
             let mut receipts = Vec::new();
             for (id, snapshot, proposal) in prepared {
-                let receipt = crate::effects::zones::commit_zone_change_proposal(game, id, proposal, &mut dm)
-                    .map_err(|error| error.to_string())?;
-                if dm.awaiting_choice() { return Err("Awaiting attack cost commitment".to_string()); }
-                if sacrifice && matches!(&receipt.original, EventOutcome::Proceed(change) if !change.new_object_ids.is_empty()) {
-                    let player = snapshot.as_ref().map(|snapshot| snapshot.controller).or(Some(controller));
-                    game.queue_trigger_event(crate::provenance::ProvNodeId::default(), TriggerEvent::new_with_provenance(
-                        SacrificeEvent::new(id, Some(source)).with_snapshot(snapshot, player), crate::provenance::ProvNodeId::default(),
-                    ));
+                let receipt =
+                    crate::effects::zones::commit_zone_change_proposal(game, id, proposal, &mut dm)
+                        .map_err(|error| error.to_string())?;
+                if dm.awaiting_choice() {
+                    return Err("Awaiting attack cost commitment".to_string());
+                }
+                if sacrifice
+                    && matches!(&receipt.original, EventOutcome::Proceed(change) if !change.new_object_ids.is_empty())
+                {
+                    let player = snapshot
+                        .as_ref()
+                        .map(|snapshot| snapshot.controller)
+                        .or(Some(controller));
+                    game.queue_trigger_event(
+                        crate::provenance::ProvNodeId::default(),
+                        TriggerEvent::new_with_provenance(
+                            SacrificeEvent::new(id, Some(source)).with_snapshot(snapshot, player),
+                            crate::provenance::ProvNodeId::default(),
+                        ),
+                    );
                 }
                 receipts.push((id, receipt));
             }
             // Legally started payments remain paid through prevention,
             // redirection and replacement; performed events are separate.
-            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm).with_cause(cause);
-            let mut outcome = crate::effects::zones::finish_zone_change_receipts(game, &mut ctx, crate::effect::EffectOutcome::resolved(), receipts)
-                .map_err(|error| error.to_string())?;
-            if ctx.decision_maker.awaiting_choice() { return Err("Awaiting attack cost added program".to_string()); }
+            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm)
+                .with_cause(cause);
+            let mut outcome = crate::effects::zones::finish_zone_change_receipts(
+                game,
+                &mut ctx,
+                crate::effect::EffectOutcome::resolved(),
+                receipts,
+            )
+            .map_err(|error| error.to_string())?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Err("Awaiting attack cost added program".to_string());
+            }
             crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-            for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+            for event in outcome.events {
+                game.queue_trigger_event(event.provenance(), event);
+            }
             Ok(())
         })();
-        if result.is_err() || dm.awaiting_choice() { *game = checkpoint; }
+        if result.is_err() || dm.awaiting_choice() {
+            *game = checkpoint;
+        }
         result
     }
 
@@ -2983,7 +3082,8 @@ mod tests {
             ability.can_attack_specific_defender(&game, ObjectId::new(), alice, bob),
             Some(false)
         );
-        game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
+        game.set_monarch(Some(bob))
+            .expect("checked designation/departure fixture");
         assert_eq!(
             ability.can_attack_specific_defender(&game, ObjectId::new(), alice, bob),
             Some(true)
@@ -3147,52 +3247,195 @@ mod replacement_attack_zone_cost_owner_contract_tests {
     use crate::target::ChooseSpec;
     use crate::types::CardType;
     fn check(sacrifice: bool, mode: u8) {
-        let mut game = crate::tests::test_helpers::setup_two_player_game(); let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
-        let artifact = CardBuilder::new(CardId::new(), "Cost source").card_types(vec![CardType::Artifact]).build();
-        let source = game.create_object_from_card(&artifact, alice, Zone::Battlefield); let replacement = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
-        let card = CardBuilder::new(CardId::new(), "Cost victim").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2, 2)).build();
-        let originals = (0..2).map(|_| game.create_object_from_card(&card, alice, Zone::Battlefield)).collect::<Vec<_>>();
-        let stable = originals.iter().map(|id| game.object(*id).unwrap().stable_id).collect::<Vec<_>>();
-        let destination = if sacrifice { Zone::Graveyard } else { Zone::Hand };
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let artifact = CardBuilder::new(CardId::new(), "Cost source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+        let replacement = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
+        let card = CardBuilder::new(CardId::new(), "Cost victim")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let originals = (0..2)
+            .map(|_| game.create_object_from_card(&card, alice, Zone::Battlefield))
+            .collect::<Vec<_>>();
+        let stable = originals
+            .iter()
+            .map(|id| game.object(*id).unwrap().stable_id)
+            .collect::<Vec<_>>();
+        let destination = if sacrifice {
+            Zone::Graveyard
+        } else {
+            Zone::Hand
+        };
         let action = match mode {
-            1 => ReplacementAction::Additionally(vec![Effect::gain_life(3), Effect::lose_life(Value::X)]),
-            2 => ReplacementAction::Additionally(vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne, 1, ChooseSpec::tagged("it")))]),
+            1 => ReplacementAction::Additionally(vec![
+                Effect::gain_life(3),
+                Effect::lose_life(Value::X),
+            ]),
+            2 => ReplacementAction::Additionally(vec![Effect::new(
+                crate::effects::PutCountersEffect::new(
+                    CounterType::PlusOnePlusOne,
+                    1,
+                    ChooseSpec::tagged("it"),
+                ),
+            )]),
             3 => ReplacementAction::Prevent,
             4 => ReplacementAction::ChangeDestination(Zone::Exile),
             5 => ReplacementAction::Instead(vec![Effect::gain_life(3)]),
             _ => ReplacementAction::Additionally(vec![Effect::gain_life(3)]),
         };
-        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(replacement, bob,
-            crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(originals[0]), Some(Zone::Battlefield), Some(destination)), action));
-        game.take_pending_trigger_events(); let ids = game.next_object_id_counter(); let objects = game.objects_in_deterministic_order().len();
-        let result = if sacrifice { CantAttackUnlessCondition::pay_sacrifice_attack_cost(&mut game, source, alice, 2, &ObjectFilter::creature()) }
-            else { CantAttackUnlessCondition::pay_return_permanents_attack_cost(&mut game, source, alice, &ObjectFilter::creature(), 2) };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            ReplacementEffect::with_matcher(
+                replacement,
+                bob,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                    ObjectFilter::specific(originals[0]),
+                    Some(Zone::Battlefield),
+                    Some(destination),
+                ),
+                action,
+            ),
+        );
+        game.take_pending_trigger_events();
+        let ids = game.next_object_id_counter();
+        let objects = game.objects_in_deterministic_order().len();
+        let result = if sacrifice {
+            CantAttackUnlessCondition::pay_sacrifice_attack_cost(
+                &mut game,
+                source,
+                alice,
+                2,
+                &ObjectFilter::creature(),
+            )
+        } else {
+            CantAttackUnlessCondition::pay_return_permanents_attack_cost(
+                &mut game,
+                source,
+                alice,
+                &ObjectFilter::creature(),
+                2,
+            )
+        };
         if mode == 1 {
-            assert!(result.is_err(), "surface replacement program error"); assert!(result.unwrap_err().contains('X'));
-            assert!(originals.iter().all(|id| game.object(*id).is_some_and(|object| object.zone == Zone::Battlefield)));
-            assert_eq!(game.player(bob).unwrap().life, 20); assert_eq!(game.next_object_id_counter(), ids); assert_eq!(game.objects_in_deterministic_order().len(), objects);
-            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty()); return;
+            assert!(result.is_err(), "surface replacement program error");
+            assert!(result.unwrap_err().contains('X'));
+            assert!(originals.iter().all(|id| {
+                game.object(*id)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
+            }));
+            assert_eq!(game.player(bob).unwrap().life, 20);
+            assert_eq!(game.next_object_id_counter(), ids);
+            assert_eq!(game.objects_in_deterministic_order().len(), objects);
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(shield)
+                    .is_some()
+            );
+            assert!(game.take_pending_trigger_events().is_empty());
+            return;
         }
-        assert!(result.is_ok(), "legally started payment remains paid through replacement");
+        assert!(
+            result.is_ok(),
+            "legally started payment remains paid through replacement"
+        );
         for (index, id) in stable.iter().enumerate() {
-            let arrival = game.objects_in_deterministic_order().into_iter().find(|object| object.stable_id == *id).unwrap();
-            assert_eq!(arrival.zone, if index == 0 { match mode { 3 | 5 => Zone::Battlefield, 4 => Zone::Exile, _ => destination } } else { destination });
-            if mode == 2 && index == 0 { assert_eq!(game.counter_count(arrival.id, CounterType::PlusOnePlusOne), 1); }
+            let arrival = game
+                .objects_in_deterministic_order()
+                .into_iter()
+                .find(|object| object.stable_id == *id)
+                .unwrap();
+            assert_eq!(
+                arrival.zone,
+                if index == 0 {
+                    match mode {
+                        3 | 5 => Zone::Battlefield,
+                        4 => Zone::Exile,
+                        _ => destination,
+                    }
+                } else {
+                    destination
+                }
+            );
+            if mode == 2 && index == 0 {
+                assert_eq!(
+                    game.counter_count(arrival.id, CounterType::PlusOnePlusOne),
+                    1
+                );
+            }
         }
-        assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.player(bob).unwrap().life, if mode == 0 || mode == 5 { 23 } else { 20 });
-        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
-        let events = game.take_pending_trigger_events(); assert_eq!(events.iter().filter(|event| event.kind() == crate::events::EventKind::Sacrifice).count(), if sacrifice { if mode == 3 || mode == 5 { 1 } else { 2 } } else { 0 });
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(
+            game.player(bob).unwrap().life,
+            if mode == 0 || mode == 5 { 23 } else { 20 }
+        );
+        assert!(
+            game.effect_store
+                .replacement_effects
+                .get_effect(shield)
+                .is_none()
+        );
+        assert_eq!(
+            game.turn_store
+                .turn_history
+                .event_kind_count(crate::events::EventKind::Sacrifice),
+            if sacrifice {
+                if mode == 3 || mode == 5 { 1 } else { 2 }
+            } else {
+                0
+            }
+        );
     }
-    #[test] fn sacrifice_additions_after_payment() { check(true, 0); }
-    #[test] fn sacrifice_error_restores_payment() { check(true, 1); }
-    #[test] fn sacrifice_addition_binds_arrival() { check(true, 2); }
-    #[test] fn sacrifice_prevented_cost_still_paid() { check(true, 3); }
-    #[test] fn sacrifice_redirected_cost_still_paid() { check(true, 4); }
-    #[test] fn sacrifice_instead_cost_still_paid() { check(true, 5); }
-    #[test] fn return_additions_after_payment() { check(false, 0); }
-    #[test] fn return_error_restores_payment() { check(false, 1); }
-    #[test] fn return_addition_binds_arrival() { check(false, 2); }
-    #[test] fn return_prevented_cost_still_paid() { check(false, 3); }
-    #[test] fn return_redirected_cost_still_paid() { check(false, 4); }
-    #[test] fn return_instead_cost_still_paid() { check(false, 5); }
+    #[test]
+    fn sacrifice_additions_after_payment() {
+        check(true, 0);
+    }
+    #[test]
+    fn sacrifice_error_restores_payment() {
+        check(true, 1);
+    }
+    #[test]
+    fn sacrifice_addition_binds_arrival() {
+        check(true, 2);
+    }
+    #[test]
+    fn sacrifice_prevented_cost_still_paid() {
+        check(true, 3);
+    }
+    #[test]
+    fn sacrifice_redirected_cost_still_paid() {
+        check(true, 4);
+    }
+    #[test]
+    fn sacrifice_instead_cost_still_paid() {
+        check(true, 5);
+    }
+    #[test]
+    fn return_additions_after_payment() {
+        check(false, 0);
+    }
+    #[test]
+    fn return_error_restores_payment() {
+        check(false, 1);
+    }
+    #[test]
+    fn return_addition_binds_arrival() {
+        check(false, 2);
+    }
+    #[test]
+    fn return_prevented_cost_still_paid() {
+        check(false, 3);
+    }
+    #[test]
+    fn return_redirected_cost_still_paid() {
+        check(false, 4);
+    }
+    #[test]
+    fn return_instead_cost_still_paid() {
+        check(false, 5);
+    }
 }

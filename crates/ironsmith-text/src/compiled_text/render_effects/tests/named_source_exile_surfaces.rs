@@ -117,7 +117,7 @@ fn named_source_copy_keeps_the_complete_copy_exception_bundle() {
         rendered.contains("legendary 4/4 human villain creature"),
         "{rendered}"
     );
-    assert!(rendered.contains("and he has vigilance"), "{rendered}");
+    assert!(rendered.contains("and it has vigilance"), "{rendered}");
     assert!(!rendered.contains("choose up to one target"), "{rendered}");
     assert!(
         !rendered.contains("and this creature gains vigilance"),

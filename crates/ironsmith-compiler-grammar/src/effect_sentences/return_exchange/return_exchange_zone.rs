@@ -10,7 +10,9 @@ fn split_articled_card_pair_return(
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
     let is_article = |token: &OwnedLexToken| token.is_any_word(&["a", "an"]);
     if !tokens.first().is_some_and(is_article)
-        || tokens.iter().any(|token| token.is_any_word(&["target", "targets"]))
+        || tokens
+            .iter()
+            .any(|token| token.is_any_word(&["target", "targets"]))
     {
         return None;
     }
@@ -103,6 +105,27 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         {
             filter.owner = Some(PlayerFilter::You);
             applied = true;
+        }
+        fn bind_owned_target(target: &mut TargetAst) -> bool {
+            match target {
+                TargetAst::Object(filter, ..) => {
+                    filter.owner = Some(PlayerFilter::You);
+                    true
+                }
+                TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+                    bind_owned_target(inner)
+                }
+                _ => false,
+            }
+        }
+        if let EffectAst::SubjectVerb(subject) = &mut effect
+            && let SubjectVerbActionAst::ZoneMoves(
+                ZoneMoveActionAst::ReturnToHand { target, .. }
+                | ZoneMoveActionAst::ReturnToBattlefield { target, .. }
+                | ZoneMoveActionAst::MoveToZone { target, .. },
+            ) = &mut subject.action
+        {
+            applied |= bind_owned_target(target);
         }
         if applied {
             return Ok(effect);
@@ -288,9 +311,8 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             // "Return all exiled cards with aegis counters on them" (Livio):
             // without a source link, a counter-qualified set is every such
             // card in exile, not the cards this source exiled.
-            let counter_qualified_global_set = !has_explicit_source_link
-                && !omitted_exiled_set
-                && filter.with_counter.is_some();
+            let counter_qualified_global_set =
+                !has_explicit_source_link && !omitted_exiled_set && filter.with_counter.is_some();
             // "The exiled cards" can appear in a later ability of the same
             // source. Do not let its generic `it` placeholder bind to an
             // unrelated local action (for example, a sacrifice immediately
@@ -473,14 +495,17 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             // owners' hands" (Scarab of the Unseen): the host is a real
             // target. Declare it, then relate the returned objects to it.
             let attached_target_split = filter_tokens.windows(3).position(|window| {
-                window[0].is_word("attached") && window[1].is_word("to") && window[2].is_word("target")
+                window[0].is_word("attached")
+                    && window[1].is_word("to")
+                    && window[2].is_word("target")
             });
             let mut attachment_target_prelude = None;
             let mut filter = if let Some(split) = attached_target_split {
                 let head_tokens = trim_commas(&filter_tokens[..split]);
                 let host_tokens = trim_commas(&filter_tokens[split + 2..]);
                 let host = parse_target_phrase(&host_tokens)?;
-                let host_tag = crate::util::helper_tag_for_tokens(&host_tokens, "attachment_target");
+                let host_tag =
+                    crate::util::helper_tag_for_tokens(&host_tokens, "attachment_target");
                 attachment_target_prelude = Some(EffectAst::TagAffected {
                     effect: Box::new(EffectAst::subject_verb_explicit_target_only(host)),
                     tag: host_tag.clone(),

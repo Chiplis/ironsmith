@@ -335,9 +335,8 @@ fn end_combat_symmetric_counter_and_destroy_bodies_restrict_the_source_partner()
                         assert!(
                             board
                                 .game
-                                .object(current)
+                                .current_abilities(current)
                                 .unwrap()
-                                .abilities
                                 .iter()
                                 .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
                             "the same recipient must gain the counter-removal ability"

@@ -55,6 +55,7 @@ impl KeywordDispatchHint {
         match self {
             Self::AdditionalCostFamily => &["as"],
             Self::AlternativeOrExertFamily => &[
+                "as",
                 "you",
                 "if",
                 "prowl",
@@ -114,6 +115,12 @@ pub fn parse_keyword_dispatch_hint_tokens(tokens: &[OwnedLexToken]) -> Option<Ke
 
     let words = primitives::TokenWordView::new(tokens).word_refs();
     let first = words.first().copied()?;
+    if words.starts_with(&["as", "long", "as"])
+        && super::permission_shapes::find_words(&words, &["you", "may", "cast", "this"]).is_some()
+        && super::permission_shapes::find_words(&words, &["rather", "than"]).is_some()
+    {
+        return Some(KeywordDispatchHint::AlternativeOrExertFamily);
+    }
     if words.starts_with(&["emerge", "from"]) {
         return Some(KeywordDispatchHint::AlternativeOrExertFamily);
     }

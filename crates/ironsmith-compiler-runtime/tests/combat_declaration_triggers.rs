@@ -7,7 +7,7 @@ use ironsmith::decision::{DecisionMaker, LegalAction, SelectFirstDecisionMaker};
 use ironsmith::decisions::context::{
     BooleanContext, SelectObjectsContext, SelectOptionsContext, TargetsContext,
 };
-use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext};
+use ironsmith::effects::{EffectContext as ExecutionContext, EffectExecutor};
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
     apply_priority_response_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with,
@@ -540,9 +540,9 @@ fn yuriko_combat_restriction_preserves_mana_abilities_and_expires_with_the_phase
                 !combat
             );
             assert!(
-                actions
-                    .iter()
-                    .any(|a| matches!(a,LegalAction::ActivateAbility{source,..} if *source==mana))
+                actions.iter().any(
+                    |a| matches!(a,LegalAction::ActivateManaAbility{source,..} if *source==mana)
+                )
             );
         }
     }
@@ -643,7 +643,8 @@ fn righteous_retains_its_untargeted_buff_on_a_blocker_that_stops_being_a_creatur
         blocks(&mut g, &mut combat, &mut q, &[(land, red)]);
         let mut dm = Choices::default();
         assert_eq!(put(&mut g, &mut q, &mut dm), 1);
-        g.move_object_by_effect(animation_source, Zone::Graveyard).unwrap();
+        g.move_object_by_effect(animation_source, Zone::Graveyard)
+            .unwrap();
         g.refresh_continuous_state().unwrap();
         assert!(!g.current_is_creature(land));
         settle(&mut g, &mut dm);

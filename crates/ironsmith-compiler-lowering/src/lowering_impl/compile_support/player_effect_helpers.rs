@@ -309,7 +309,12 @@ impl LoweredSubject {
     }
 
     pub fn apply_player_refs_to_value(&self, value: &mut Value, ctx: &EffectLoweringContext) {
-        if !ctx.iterated_player {
+        if !ctx.iterated_player
+            || matches!(
+                self.player_filter,
+                PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)
+            )
+        {
             bind_relative_iterated_player_in_value_to_player_filter(value, &self.player_filter);
         }
     }
@@ -319,7 +324,12 @@ impl LoweredSubject {
         filter: &mut ObjectFilter,
         ctx: &EffectLoweringContext,
     ) {
-        if !ctx.iterated_player {
+        if !ctx.iterated_player
+            || matches!(
+                self.player_filter,
+                PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)
+            )
+        {
             bind_relative_iterated_player_filters_to_chooser(filter, &self.player_filter);
         }
     }

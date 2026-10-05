@@ -6,7 +6,7 @@ use ironsmith::decisions::context::{
     BooleanContext, SelectObjectsContext, SelectOptionsContext, TargetsContext,
 };
 use ironsmith::effects::{
-    EffectExecutor, EffectContext as ExecutionContext, RollDiceChooseResultEffect, RollDieEffect,
+    EffectContext as ExecutionContext, EffectExecutor, RollDiceChooseResultEffect, RollDieEffect,
 };
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
@@ -333,11 +333,16 @@ fn replacement_order_and_tied_lowest_choices_suspend_atomically_and_replay_same_
                     .any(|option| option.description.starts_with("Ignore die"))
             }));
             if replacement_count == 2 {
-                assert!(
+                // Display text may be redacted at the decision boundary;
+                // both replacement occurrences still need independent choices.
+                assert_eq!(
                     dm.contexts[0]
                         .options
                         .iter()
-                        .all(|option| option.description.starts_with("Apply "))
+                        .filter(|option| option.legal)
+                        .map(|option| option.index)
+                        .collect::<Vec<_>>(),
+                    vec![0, 1]
                 );
             }
             // Native restore also retains the same original attempt inputs.
@@ -509,18 +514,21 @@ fn replacement_history_is_not_reapplied_when_a_modifier_rerolls_the_same_origina
 #[test]
 fn replacement_count_overflow_is_a_typed_atomic_resource_error_before_randomness() {
     let mut g = game();
-    let d = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Large replacement")
-        .card_types(vec![ironsmith::CardType::Artifact])
-        .with_ability(ironsmith::ability::Ability::static_ability(
-            ironsmith::static_abilities::StaticAbility::from_model(
-                ironsmith::static_abilities::CompiledStaticAbility::extra_die_ignore_lowest(
-                    PlayerFilter::You,
-                    u32::MAX,
-                    "large replacement",
-                ),
+    let d = ironsmith::cards::builders::CardDefinitionBuilder::new(
+        ironsmith::CardId::new(),
+        "Large replacement",
+    )
+    .card_types(vec![ironsmith::CardType::Artifact])
+    .with_ability(ironsmith::ability::Ability::static_ability(
+        ironsmith::static_abilities::StaticAbility::from_model(
+            ironsmith::static_abilities::CompiledStaticAbility::extra_die_ignore_lowest(
+                PlayerFilter::You,
+                u32::MAX,
+                "large replacement",
             ),
-        ))
-        .build();
+        ),
+    ))
+    .build();
     let source = g.create_object_from_definition(&d, A, Zone::Battlefield);
     force(&mut g, &[6]);
     let before = g.irreversible_random_count();
@@ -544,13 +552,15 @@ fn real_attraction_rolls_use_the_retained_die_and_planar_rolls_ignore_numeric_re
     for pixie in definitions("Pixie Guide") {
         let mut g = game();
         let source = g.create_object_from_definition(&pixie, A, Zone::Battlefield);
-        let attraction =
-            ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Visit on six")
-                .card_types(vec![ironsmith::CardType::Artifact])
-                .subtypes(vec![ironsmith::types::Subtype::Attraction])
-                .attraction_lights(vec![6])
-                .with_spell_effect(vec![ironsmith::Effect::gain_life(1)])
-                .build();
+        let attraction = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            ironsmith::CardId::new(),
+            "Visit on six",
+        )
+        .card_types(vec![ironsmith::CardType::Artifact])
+        .subtypes(vec![ironsmith::types::Subtype::Attraction])
+        .attraction_lights(vec![6])
+        .with_spell_effect(vec![ironsmith::Effect::gain_life(1)])
+        .build();
         g.enable_attractions(vec![(
             A,
             ironsmith::game_state::AttractionDeckFormat::Limited,
@@ -619,12 +629,14 @@ fn duplicate_ability_occurrences_on_one_source_are_not_coalesced_by_shared_model
             ),
         ),
     );
-    let d =
-        ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Two static occurrences")
-            .card_types(vec![ironsmith::CardType::Artifact])
-            .with_ability(ability.clone())
-            .with_ability(ability)
-            .build();
+    let d = ironsmith::cards::builders::CardDefinitionBuilder::new(
+        ironsmith::CardId::new(),
+        "Two static occurrences",
+    )
+    .card_types(vec![ironsmith::CardType::Artifact])
+    .with_ability(ability.clone())
+    .with_ability(ability)
+    .build();
     let source = g.create_object_from_definition(&d, A, Zone::Battlefield);
     let mut dm = Choices::default();
     force(&mut g, &[1, 3, 6]);

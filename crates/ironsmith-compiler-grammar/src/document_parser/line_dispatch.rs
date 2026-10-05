@@ -961,7 +961,7 @@ pub(super) fn attach_compiler_trigger_facts(
                     crate::tag::TagRef::of(created_tag),
                     Some(crate::TextSpan::synthetic()),
                 );
-                triggered.intervening_if = Some(crate::host::PredicateAst::And(
+                triggered.intervening_if = Some(Box::new(crate::host::PredicateAst::And(
                     Box::new(crate::host::PredicateAst::TurnEvents(
                         crate::host::TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(
                             controlled_lands.clone(),
@@ -970,7 +970,7 @@ pub(super) fn attach_compiler_trigger_facts(
                     Box::new(crate::host::PredicateAst::ValueIsPrime(
                         crate::Value::Count(controlled_lands),
                     )),
-                ));
+                )));
                 Some((
                     trigger,
                     vec![EffectAst::CommaThen {
@@ -1089,6 +1089,10 @@ pub(super) fn attach_compiler_trigger_facts(
                     &triggered.effect_parse_tokens,
                 )?;
                 let effects = linked_token_effects
+                .or_else(|| crate::semantic_line_parsing::conditional_life_total_set(
+                    triggered.intervening_if.as_deref(),
+                    &triggered.effect_parse_tokens,
+                ))
                 .or_else(|| crate::semantic_line_parsing::exact_atomic_return_as_aura_bundle(
                     &triggered.effect_parse_tokens,
                 ))
@@ -1184,7 +1188,7 @@ pub(super) fn attach_compiler_trigger_facts(
                 },
                 trigger,
                 effects,
-                triggered.intervening_if.clone(),
+                triggered.intervening_if.as_deref().cloned(),
                 triggered.max_triggers_per_turn,
                 functional_zones,
             )?;

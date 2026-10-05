@@ -440,11 +440,12 @@ fn old_dynamic_mana_payloads_default_the_reference_off() {
 
 fn queue_outcome(game: &mut GameState, outcome: ironsmith::effect::EffectOutcome) {
     let mut queue = TriggerQueue::new();
+    // Publish reported receipts through the native queue, which deduplicates
+    // aliases of observations that the instruction already queued.
     for event in outcome.events {
-        for trigger in check_triggers(game, &event) {
-            queue.add(trigger);
-        }
+        game.queue_trigger_event(event.provenance(), event);
     }
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     put_triggers_on_stack_with_dm(game, &mut queue, &mut SelectFirstDecisionMaker).unwrap();
 }
 #[test]

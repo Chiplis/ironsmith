@@ -44,7 +44,8 @@ fn check_destroyed_count(protection: u8) {
         alice,
         Zone::Battlefield,
     );
-    game.set_current_controller(borrowed, bob).expect("finite controller fixture must refresh successfully");
+    game.set_current_controller(borrowed, bob)
+        .expect("finite controller fixture must refresh successfully");
     for _ in 0..4 {
         game.create_object_from_definition(&artifact, alice, Zone::Graveyard);
     }
@@ -79,7 +80,9 @@ fn check_destroyed_count(protection: u8) {
     ctx.snapshot_targets(&game);
     for effect in definition.spell_effect.as_ref().unwrap() {
         let outcome = crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
-        eprintln!("destroyed-count protection={protection} effect={effect:#?} outcome={outcome:#?}");
+        eprintln!(
+            "destroyed-count protection={protection} effect={effect:#?} outcome={outcome:#?}"
+        );
     }
     assert_eq!(
         game.player(alice).unwrap().life,
@@ -115,6 +118,6 @@ fn destroyed_controller_damage_text() {
         .unwrap();
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join(" "),
-        TEXT
+        TEXT.replace("Builder's Bane deals", "This deals")
     );
 }

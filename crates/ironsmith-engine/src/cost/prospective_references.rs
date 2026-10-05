@@ -273,11 +273,9 @@ pub(crate) fn activation_reference_preflight(
         return None;
     }
     if effects.iter().any(target_has_exact_mana_x)
-        && activated.mana_cost.costs().iter().any(|component| {
-            component
-                .mana_cost_ref()
-                .is_some_and(crate::mana::ManaCost::has_x)
-        })
+        && game
+            .object(source)
+            .is_some_and(|object| object.x_value.is_none())
     {
         // Equality to a target's mana value has a finite complete set of X
         // witnesses. Price those announcements on isolated game copies; an
@@ -350,9 +348,15 @@ pub(crate) fn activation_reference_preflight(
                         visit(game, source, payer, activated, cost, tags, rest, &selected)
                     });
             }
-            let Ok(locked) =
-                lock_activation_reference_cost(game, source, payer, cost, tags, selected, None)
-            else {
+            let Ok(locked) = lock_activation_reference_cost(
+                game,
+                source,
+                payer,
+                cost,
+                tags,
+                selected,
+                game.object(source).and_then(|object| object.x_value),
+            ) else {
                 return false;
             };
             let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
@@ -389,6 +393,7 @@ pub(crate) fn activation_reference_preflight(
             }
             let mut exec =
                 ExecutionContext::new_default(source, payer).with_tagged_objects(context);
+            exec.x_value = game.object(source).and_then(|object| object.x_value);
             crate::special_actions::can_pay_total_cost_with_reason_in_context(
                 game,
                 payer,

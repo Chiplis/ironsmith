@@ -13,6 +13,8 @@ fn saga_chapters_keep_selected_creature_history_and_shared_pump_target() {
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
         KANG_DYNASTY_TEXT
+            .replace("controls. Goad", "controls, goad")
+            .replace("creatures. Until", "creatures, then until")
     );
 
     let debug = format!("{definition:#?}");

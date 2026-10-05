@@ -659,35 +659,37 @@ fn parse_inline_token_granted_abilities(
         // Cragflame "has vigilance, trample, haste, and vigilance").
         let equipment_rule_owned = merged
             && matches!(
-            &*definition,
-            crate::model::token_definition::TokenDefinitionSpec::Artifact(artifact)
-                if artifact.equipment_rules.is_some()
-        ) && crate::word_primitives::parse_sequence_prefix(
-            &rule_words,
-            &["equipped", "creature"],
-        ) && rule_words
-            .iter()
-            .position(|word| *word == "has")
-            .is_some_and(|has| {
-                let granted = &rule_words[has + 1..];
-                !granted.is_empty()
-                    && granted.iter().all(|word| {
-                        matches!(
-                            *word,
-                            "and"
-                                | "vigilance"
-                                | "trample"
-                                | "haste"
-                                | "flying"
-                                | "lifelink"
-                                | "deathtouch"
-                                | "menace"
-                                | "reach"
-                                | "hexproof"
-                                | "indestructible"
-                        )
-                    })
-            });
+                &*definition,
+                crate::model::token_definition::TokenDefinitionSpec::Artifact(artifact)
+                    if artifact.equipment_rules.is_some()
+            )
+            && crate::word_primitives::parse_sequence_prefix(
+                &rule_words,
+                &["equipped", "creature"],
+            )
+            && rule_words
+                .iter()
+                .position(|word| *word == "has")
+                .is_some_and(|has| {
+                    let granted = &rule_words[has + 1..];
+                    !granted.is_empty()
+                        && granted.iter().all(|word| {
+                            matches!(
+                                *word,
+                                "and"
+                                    | "vigilance"
+                                    | "trample"
+                                    | "haste"
+                                    | "flying"
+                                    | "lifelink"
+                                    | "deathtouch"
+                                    | "menace"
+                                    | "reach"
+                                    | "hexproof"
+                                    | "indestructible"
+                            )
+                        })
+                });
         let filtered_grant_probe = (!starts_triggered_rule
             && !starts_intrinsic_self_rule
             && !equipment_rule_owned
@@ -1292,7 +1294,10 @@ pub fn lower_complete_simple_create_shape(
     let definition =
         token_definition_grammar::parse_token_definition_shape_tokens(head.name_tokens)
             .ok_or_else(|| {
-                CardTextError::ParseError(format!("unsupported token definition '{name}'"))
+                CardTextError::ParseError(format!(
+                    "unsupported token definition '{name}' (tokens: '{}')",
+                    crate::lexer::render_token_slice(head.name_tokens)
+                ))
             })?;
     Ok(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
@@ -1327,6 +1332,25 @@ pub fn parse_create(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    if let Some(index) = tokens.iter().position(|token| token.is_word("if")) {
+        let predicate_words = crate::lexer::parser_token_word_refs(&tokens[index + 1..]);
+        if predicate_words == ["you", "revealed", "it", "this", "way"] {
+            let effect = parse_create(
+                crate::util::trim_edge_punctuation_tokens(&tokens[..index]),
+                subject,
+            )?;
+            let surface = ironsmith_core::PriorEffectResultSurface::new(
+                ironsmith_core::PriorEffectAction::Revealed,
+                ObjectFilter::default(),
+                ironsmith_core::PriorEffectResultActor::You,
+                ironsmith_core::PriorEffectResultQuantifier::One,
+            );
+            return Ok(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: crate::cards::builders::IfResultPredicate::PriorEffectResult(surface),
+                effects: vec![effect],
+            }));
+        }
+    }
     // Capture the authored actor before imperative/chain normalization can
     // turn an implicit create action into the same semantic `PlayerAst::You`.
     let actor_surface_explicit = matches!(
@@ -1420,7 +1444,9 @@ pub fn parse_create(
     // CR 509.4: "... token that's blocking that creature" (Brimaz) names the
     // attacker the token enters blocking.
     let mut blocking_target: Option<TargetAst> = None;
-    if let Some(blocking_idx) = tail_tokens.iter().rposition(|token| token.is_word("blocking"))
+    if let Some(blocking_idx) = tail_tokens
+        .iter()
+        .rposition(|token| token.is_word("blocking"))
         && blocking_idx + 1 < tail_tokens.len()
     {
         let modifier_start = if blocking_idx >= 1
@@ -1896,7 +1922,10 @@ pub fn parse_create(
                     .map(|_| crate::model::token_definition::TokenDefinitionSpec::PriorCreated)
             })
             .ok_or_else(|| {
-                CardTextError::ParseError(format!("unsupported token definition '{name}'"))
+                CardTextError::ParseError(format!(
+                    "unsupported token definition '{name}' (tokens: '{}')",
+                    crate::lexer::render_token_slice(&definition_tokens)
+                ))
             })?;
     if has_raw_name_override {
         match &mut definition {
@@ -3361,7 +3390,7 @@ mod tests {
             panic!("expected a dynamic named-card count, got {count:#?}");
         };
 
-        assert_eq!(filter.name.as_deref(), Some("Undead Servant"));
+        assert_eq!(filter.name.as_deref(), Some("undead servant"));
         assert_eq!(filter.zone, Some(crate::Zone::Graveyard));
         assert_eq!(filter.owner, Some(PlayerFilter::You));
     }

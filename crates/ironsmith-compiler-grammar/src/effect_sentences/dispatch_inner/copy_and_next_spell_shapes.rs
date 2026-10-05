@@ -518,6 +518,29 @@ pub fn parse_sentence_delayed_trigger_this_turn(
     if let Some(effects) = parse_next_activation_with_mana_spent_delayed_sentence(tokens)? {
         return Ok(Some(effects));
     }
+    // A delayed source-state trigger survives beyond the current turn.
+    // Preserve its trigger instead of treating its body as an immediate action.
+    if tokens.first().is_some_and(|token| token.is_word("when"))
+        && let Some(comma) = tokens.iter().position(|token| token.is_comma())
+        && let Ok(trigger) = parse_trigger_clause_lexed(&tokens[1..comma])
+    {
+        fn is_state_transition(trigger: &TriggerSpec) -> bool {
+            match trigger {
+                TriggerSpec::ThisBecomesUntapped | TriggerSpec::PermanentBecomesUntapped { .. }
+                | TriggerSpec::ControlChanged(_) => true,
+                TriggerSpec::Either(left, right) => is_state_transition(left) && is_state_transition(right),
+                TriggerSpec::AnyOf(branches) => !branches.is_empty() && branches.iter().all(is_state_transition),
+                _ => false,
+            }
+        }
+        if is_state_transition(&trigger) {
+            let effects = parse_effect_chain(&tokens[comma + 1..])?;
+            return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+                trigger, effects, one_shot: true, duration: crate::effect::Until::Forever,
+                either_of_watched_objects: false, while_any_tagged_object_in_zone: None,
+            })]));
+        }
+    }
     let clause = LexedClause::new(tokens).trimmed();
     let clause_display = crate::lexer::render_token_slice(clause.tokens());
     if let Some(effects) = parse_next_cast_single_opponent_or_permanent_copy_loop(tokens) {

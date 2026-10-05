@@ -172,7 +172,7 @@ fn announce(game: &mut GameState, action: LegalAction, choices: &mut Choices) {
     )
     .unwrap();
     for _ in 0..40 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(context) = progress else {
@@ -181,7 +181,7 @@ fn announce(game: &mut GameState, action: LegalAction, choices: &mut Choices) {
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &context, choices)
             .unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     assert_eq!(game.stack.len(), before + 1);
 }
 fn cast(
@@ -511,11 +511,31 @@ fn artifact_and_green_entry_history_use_actual_event_characteristics_and_complet
                         ..Default::default()
                     },
                 );
-                assert!(game.is_tapped(first) && game.is_tapped(second));
+                assert!(
+                    game.is_tapped(first) && game.is_tapped(second),
+                    "first={:?} second={:?} stack={:?}",
+                    game.object(first).map(|o| o.zone),
+                    game.object(second).map(|o| o.zone),
+                    game.stack
+                        .iter()
+                        .map(|e| (e.object_id, &e.targets))
+                        .collect::<Vec<_>>()
+                );
                 main(&mut game, B);
+                game.turn.phase = Phase::Beginning;
+                game.turn.step = Some(ironsmith::game_state::Step::Untap);
                 ironsmith::turn::execute_untap_step_with(&mut game, &mut SelectFirstDecisionMaker)
                     .unwrap();
-                assert!(game.is_tapped(first) && game.is_tapped(second));
+                assert!(
+                    game.is_tapped(first) && game.is_tapped(second),
+                    "first={:?} second={:?} stack={:?}",
+                    game.object(first).map(|o| o.zone),
+                    game.object(second).map(|o| o.zone),
+                    game.stack
+                        .iter()
+                        .map(|e| (e.object_id, &e.targets))
+                        .collect::<Vec<_>>()
+                );
             }
             assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
         }
@@ -622,7 +642,8 @@ fn countered_creature_must_be_the_exact_spell_cast_by_you_and_the_counter_must_b
             announce(&mut game, cast_action, &mut Choices::default());
             let stack_spell = game.stack.last().unwrap().object_id;
             if stolen {
-                game.set_current_controller(stack_spell, if caster == A { C } else { A }).unwrap();
+                game.set_current_controller(stack_spell, if caster == A { C } else { A })
+                    .unwrap();
             }
             let counter = printed(
                 &mut game,
@@ -978,24 +999,22 @@ fn color_setter(
     zone: Zone,
     creature: bool,
 ) -> ObjectId {
-    let card = CardBuilder::new(CardId::new(), name)
-        .card_types(vec![if creature {
-            CardType::Creature
-        } else {
-            CardType::Enchantment
-        }])
-        .power_toughness(PowerToughness::fixed(2, 2))
-        .build();
-    let id = game.create_object_from_card(&card, B, zone);
-    game.object_mut(id)
-        .unwrap()
-        .abilities_mut()
+    let type_line = if creature { "Creature" } else { "Enchantment" };
+    let mut definition = compile_to_runtime_definition(
+        name,
+        &format!("Type: {type_line}\nPower/Toughness: 2/2"),
+        false,
+    )
+    .unwrap();
+    definition
+        .abilities
         .push(ironsmith::ability::Ability::static_ability(
             ironsmith::static_abilities::StaticAbility::set_colors(
                 ironsmith::target::ObjectFilter::creature(),
                 color,
             ),
         ));
+    let id = game.create_object_from_definition(&definition, B, zone);
     id
 }
 fn green_entries(game: &GameState, source: ObjectId) -> i32 {
@@ -1326,7 +1345,8 @@ fn arrow_volley_keeps_announced_shares_and_commits_all_allocations_before_additi
             let spell = game.stack.last().unwrap().object_id;
             if illegal_first {
                 let moved = game.move_object_by_effect(ids[0], Zone::Exile).unwrap();
-                game.move_object_by_effect(moved, Zone::Battlefield).unwrap();
+                game.move_object_by_effect(moved, Zone::Battlefield)
+                    .unwrap();
             } else {
                 game.effect_store.replacement_effects.add_one_shot_effect(
                     ironsmith::replacement::ReplacementEffect::with_matcher(

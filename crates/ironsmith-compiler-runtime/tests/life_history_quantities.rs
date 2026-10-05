@@ -104,7 +104,8 @@ impl DecisionMaker for Choices {
 
     fn decide_options(&mut self, game: &GameState, context: &SelectOptionsContext) -> Vec<usize> {
         if let Some(mode) = self.mode
-            && context.description.starts_with("Choose mode for")
+            && (context.description.starts_with("Choose mode for")
+                || context.description == "Choose a mode")
         {
             assert!(
                 context
@@ -173,6 +174,8 @@ fn queue_event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) -> u
 }
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
+    // Checked execution already captures some triggers in the original observer frame.
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     for event in outcome.events {
         for entry in check_triggers(game, &event) {
             queue.add(entry);
@@ -192,6 +195,7 @@ fn apply(game: &mut GameState, source: ObjectId, effect: Effect) -> EffectOutcom
 }
 fn resolve(game: &mut GameState, dm: &mut Choices) {
     resolve_stack_entry_with(game, dm).unwrap();
+    put_triggers_on_stack_with_dm(game, &mut TriggerQueue::new(), dm).unwrap();
 }
 fn resolve_all(game: &mut GameState, dm: &mut Choices) {
     for _ in 0..30 {
@@ -226,7 +230,7 @@ fn cast(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -234,7 +238,7 @@ fn cast(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()

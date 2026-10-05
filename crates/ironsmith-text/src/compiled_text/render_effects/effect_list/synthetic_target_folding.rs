@@ -265,6 +265,7 @@ fn restriction_references_identity(
         | Restriction::DamageReduceLifeBelowOne(player)
         | Restriction::ChangeLifeTotal(player)
         | Restriction::LoseGame(player)
+        | Restriction::LoseGameForZeroLife(player)
         | Restriction::WinGame(player)
         | Restriction::BecomeMonarch(player)
         | Restriction::LoseUnspentMana(player, _)
@@ -327,7 +328,9 @@ fn restriction_references_identity(
         | Restriction::AttackOrBlockAlone(filter) => {
             object_filter_references_identity(filter, identity)
         }
-        Restriction::PreventDamageFrom { sources, .. } => object_filter_references_identity(sources, identity),
+        Restriction::PreventDamageFrom { sources, .. } => {
+            object_filter_references_identity(sources, identity)
+        }
         Restriction::PreventDamage
         | Restriction::PreventCombatDamage
         | Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => false,
@@ -390,7 +393,10 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
         return choose_spec_references_identity(&execute.source, identity)
             || effect_references_identity(&execute.effect, identity);
     }
-    if let Some(cast) = effect.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none()) {
+    if let Some(cast) = effect
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())
+    {
         return identity.tag.is_some_and(|tag| cast.tag == *tag)
             || player_filter_references_identity(&cast.player, identity);
     }
@@ -402,7 +408,10 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
         return value_references_identity(&create.count, identity)
             || player_filter_references_identity(&create.controller, identity);
     }
-    if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none()) {
+    if let Some(grant) = effect
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())
+    {
         return identity.tag.is_some_and(|tag| grant.tag == *tag)
             || player_filter_references_identity(&grant.player, identity);
     }
@@ -784,7 +793,8 @@ fn effect_tree_has_same_name_reference(effect: &Effect, tag: &TagKey) -> bool {
 fn effect_tree_casts_tag(effect: &Effect, tag: &TagKey) -> bool {
     let effect = structural_unwrap_render_wrappers(effect);
     if effect
-        .downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())
         .is_some_and(|cast| cast.tag == *tag)
     {
         return true;

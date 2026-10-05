@@ -1,5 +1,5 @@
-use crate::cards::builders::DamageActionAst;
 use super::super::grammar::effects::combat_shapes as combat_grammar;
+use crate::cards::builders::DamageActionAst;
 use crate::recognition::{ParseOutcome, RuleId};
 use crate::registry::{
     HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
@@ -46,14 +46,17 @@ fn combat_player_damage_target_effect(
     target: combat_grammar::CombatPlayerDamageTargetShape,
 ) -> EffectAst {
     match target {
-        combat_grammar::CombatPlayerDamageTargetShape::EachPlayer => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-            effects: vec![EffectAst::subject_verb_damage(
-                amount,
-                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-            )],
-        }),
+        combat_grammar::CombatPlayerDamageTargetShape::EachPlayer => {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects: vec![EffectAst::subject_verb_damage(
+                    amount,
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
+            })
+        }
         combat_grammar::CombatPlayerDamageTargetShape::EachOtherPlayer => {
-            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
                 filter: PlayerFilter::NotYou,
                 effects: vec![EffectAst::subject_verb_damage(
                     amount,
@@ -61,12 +64,14 @@ fn combat_player_damage_target_effect(
                 )],
             })
         }
-        combat_grammar::CombatPlayerDamageTargetShape::EachOpponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
-            effects: vec![EffectAst::subject_verb_damage(
-                amount,
-                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-            )],
-        }),
+        combat_grammar::CombatPlayerDamageTargetShape::EachOpponent => {
+            EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                effects: vec![EffectAst::subject_verb_damage(
+                    amount,
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
+            })
+        }
         combat_grammar::CombatPlayerDamageTargetShape::EachOtherOpponent => {
             damage_each_other_opponent(amount)
         }
@@ -109,7 +114,8 @@ fn combat_simple_damage_target_ast(
 }
 
 fn damage_each_other_opponent(amount: Value) -> EffectAst {
-    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        sequential: false,
         filter: PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::DamagedPlayer),
         effects: vec![EffectAst::subject_verb_damage(
             amount,
@@ -282,10 +288,8 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             }
             let object = parse_attach_object_phrase(object_tokens)?;
             if !target_is_tagged
-                && let Some(target) = attach_to_another_permanent_of_attached_host_type(
-                    &object,
-                    target_tokens,
-                )
+                && let Some(target) =
+                    attach_to_another_permanent_of_attached_host_type(&object, target_tokens)
             {
                 return Ok(EffectAst::subject_verb_attach(object, target));
             }
@@ -344,12 +348,12 @@ fn attach_to_another_permanent_of_attached_host_type(
     current_host.with_attached_object = Some(Box::new(attached_target.clone()));
     let mut destination = ObjectFilter::permanent().in_zone(Zone::Battlefield);
     destination.card_types = host_types;
-    destination.characteristic_relations.push(
-        crate::target::ObjectCharacteristicRelation::shares(
+    destination
+        .characteristic_relations
+        .push(crate::target::ObjectCharacteristicRelation::shares(
             vec![crate::target::ObjectCharacteristic::CardType],
             current_host,
-        ),
-    );
+        ));
     destination.without_attached_object = Some(Box::new(attached_target));
     Some(TargetAst::Object(destination, None, None))
 }
@@ -496,7 +500,10 @@ pub fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { unpreventable, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { unpreventable, .. }) => {
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                unpreventable,
+                ..
+            }) => {
                 *unpreventable = true;
             }
             _ => {}
@@ -510,6 +517,14 @@ pub fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {
 }
 
 pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if let Some(and) = tokens.windows(3).position(|window|
+        window[0].is_word("and") && window[1].is_word("you")
+            && window[2].is_any_word(&["gain", "lose"]))
+    {
+        let mut effects = vec![parse_deal_damage(&tokens[..and])?];
+        effects.extend(crate::effect_sentences::chain_carry::parse_effect_chain_lexed(&tokens[and + 1..])?);
+        return Ok(EffectAst::Sequence { effects });
+    }
     let has_unpreventable_rider = damage_clause_has_terminal_unpreventable_rider(tokens);
     let parse_tokens = if has_unpreventable_rider {
         strip_terminal_unpreventable_damage_rider(tokens)
@@ -540,7 +555,7 @@ fn parse_damage_each_filter(
     if let Some(shape) = combat_grammar::parse_combat_except_filter_shape_lexed(filter_tokens) {
         let mut included = parse_object_filter(shape.included_filter_tokens, false)?;
         let excluded = parse_object_filter(shape.excluded_filter_tokens, false)?;
-        if excluded.controller == Some(PlayerFilter::You)
+        if excluded.controller.is_some()
             && excluded.static_abilities.len() == 1
             && excluded.excluded_static_abilities.is_empty()
         {
@@ -550,7 +565,16 @@ fn parse_damage_each_filter(
             excluded_basis.union_surface = included.union_surface.clone();
             if excluded_basis == included {
                 included.any_of = vec![
-                    ObjectFilter::default().controlled_by(PlayerFilter::NotYou),
+                    ObjectFilter::default().controlled_by(
+                        if excluded.controller == Some(PlayerFilter::You) {
+                            PlayerFilter::NotYou
+                        } else {
+                            PlayerFilter::excluding(
+                                PlayerFilter::Any,
+                                excluded.controller.clone().unwrap(),
+                            )
+                        },
+                    ),
                     ObjectFilter::default().without_static_ability(excluded.static_abilities[0]),
                 ];
                 return Ok(included);
@@ -697,9 +721,8 @@ fn parse_divided_damage_equal_to_amount(
 /// `equal to <n> plus the number of <spells cast ...> this turn` sums a fixed
 /// base with a typed turn-history count.
 fn parse_fixed_plus_turn_history_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let equal_idx = (0..tokens.len().saturating_sub(3)).find(|&idx| {
-        tokens[idx].is_word("equal") && tokens[idx + 1].is_word("to")
-    })?;
+    let equal_idx = (0..tokens.len().saturating_sub(3))
+        .find(|&idx| tokens[idx].is_word("equal") && tokens[idx + 1].is_word("to"))?;
     let base_token = tokens.get(equal_idx + 2)?;
     let base_word = base_token.parser_word_pieces().first()?.text.as_str();
     let base = crate::util::parse_number_word_u32(base_word)?;

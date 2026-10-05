@@ -58,7 +58,7 @@ pub fn split_segments_on_comma_effect_head_tokens(
             if facts.preserve_boundary {
                 continue;
             }
-            if facts.before_has_verb && facts.after_starts_effect {
+            if (facts.before_has_verb || crate::grammar::effects::clause_pattern_shapes::parse_can_attack_no_defender_subject_tokens(before).is_some()) && facts.after_starts_effect {
                 if std::env::var_os("IRONSMITH_CHOICE_TRACE").is_some() {
                     eprintln!(
                         "comma-effect-head split: before='{}' after='{}'",

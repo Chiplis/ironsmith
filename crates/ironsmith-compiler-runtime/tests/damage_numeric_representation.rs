@@ -1,6 +1,8 @@
 //! Explicit representation failures roll back damage, never cap gameplay.
 //! Source-authored regressions; no execution in the implementation campaign.
-use ironsmith::effects::{DealDamageEffect, EffectExecutor, EffectContext as ExecutionContext, ExecutionError};
+use ironsmith::effects::{
+    DealDamageEffect, EffectContext as ExecutionContext, EffectExecutor, ExecutionError,
+};
 use ironsmith::replacement::{EventModification, ReplacementAction, ReplacementEffect};
 use ironsmith::target::{ChooseSpec, ObjectFilter};
 use ironsmith::{GameState, ObjectId, PlayerId, Zone};
@@ -114,8 +116,42 @@ fn exact_supported_damage_boundary_and_one_larger_result() {
     assert_eq!(game.player(B).unwrap().life, 30 - i32::MAX);
     let (mut game, source) = setup("");
     add(&mut game, source, ReplacementAction::Double);
-    incomplete(damage(&mut game, source, 1 << 30, ChooseSpec::SpecificPlayer(B)).unwrap_err());
-    assert_eq!(game.player(B).unwrap().life, 30);
+    assert_eq!(
+        damage(&mut game, source, 1 << 30, ChooseSpec::SpecificPlayer(B))
+            .unwrap()
+            .as_count(),
+        Some(1_i64 << 31)
+    );
+    assert_eq!(i64::from(game.player(B).unwrap().life), 30 - (1_i64 << 31));
+
+    // Damage events and marked damage use unsigned 32-bit values; outcomes
+    // remain wide. Exceeding that actual boundary must still roll back.
+    let (mut game, source) = setup("");
+    add(
+        &mut game,
+        source,
+        ReplacementAction::Modify(EventModification::SetTo(u32::MAX)),
+    );
+    assert_eq!(
+        damage(&mut game, source, 1, ChooseSpec::SpecificObject(source))
+            .unwrap()
+            .as_count(),
+        Some(i64::from(u32::MAX))
+    );
+    assert_eq!(game.damage_on(source), u32::MAX);
+    game.set_damage_marked(source, 0);
+    add(
+        &mut game,
+        source,
+        ReplacementAction::Modify(EventModification::SetTo(u32::MAX)),
+    );
+    add(
+        &mut game,
+        source,
+        ReplacementAction::Modify(EventModification::Add(1)),
+    );
+    incomplete(damage(&mut game, source, 1, ChooseSpec::SpecificObject(source)).unwrap_err());
+    assert_eq!(game.damage_on(source), 0);
 }
 #[test]
 fn signed_life_lifelink_counter_and_marked_damage_state_bounds_roll_back() {
@@ -129,7 +165,14 @@ fn signed_life_lifelink_counter_and_marked_damage_state_bounds_roll_back() {
     assert_eq!(game.player(A).unwrap().life, i32::MAX);
     assert_eq!(game.player(B).unwrap().life, 30);
     let (mut game, source) = setup("Infect");
-    game.add_player_counters_with_source(B, ironsmith::CounterType::Poison, u32::MAX - 1, None, None).unwrap();
+    game.add_player_counters_with_source(
+        B,
+        ironsmith::CounterType::Poison,
+        u32::MAX - 1,
+        None,
+        None,
+    )
+    .unwrap();
     incomplete(damage(&mut game, source, 2, ChooseSpec::SpecificPlayer(B)).unwrap_err());
     assert_eq!(
         game.player(B)
@@ -189,7 +232,7 @@ fn combat_representation_error_restores_whole_step_and_replacement() {
 }
 
 #[test]
-fn another_action_cannot_wrap_a_current_turn_damage_query() {
+fn another_action_preserves_wide_current_turn_damage_history() {
     let (mut game, source) = setup("");
     damage(
         &mut game,
@@ -200,10 +243,24 @@ fn another_action_cannot_wrap_a_current_turn_damage_query() {
     .unwrap();
     // Marked damage is reset separately here; the completed turn history remains.
     game.set_damage_marked(source, 0);
-    incomplete(damage(&mut game, source, 1, ChooseSpec::SpecificObject(source)).unwrap_err());
-    assert_eq!(game.damage_on(source), 0);
+    assert_eq!(
+        damage(&mut game, source, 1, ChooseSpec::SpecificObject(source))
+            .unwrap()
+            .as_count(),
+        Some(1)
+    );
+    assert_eq!(game.damage_on(source), 1);
     assert_eq!(
         game.trigger_event_kind_count_this_turn(ironsmith::events::EventKind::Damage),
-        1
+        2
     );
+    let history = &game.turn_store.turn_history;
+    let total: u64 = history
+        .event_records
+        .iter()
+        .chain(history.staged_event_records.iter())
+        .filter_map(|record| record.event.downcast::<ironsmith::events::DamageEvent>())
+        .map(|event| u64::from(event.amount))
+        .sum();
+    assert_eq!(total, i32::MAX as u64 + 1);
 }

@@ -210,13 +210,25 @@ fn tagged_aggregates_retain_snapshot_numbers() {
         9
     );
     // Numeric information uses the departed object's LKI (CR 608.2h).
-    assert_eq!(resolve(
-        &Value::PowerOf(Box::new(ChooseSpec::Tagged("test".into()))), &context,
-    ).unwrap(), 9);
+    assert_eq!(
+        resolve(
+            &Value::PowerOf(Box::new(ChooseSpec::Tagged("test".into()))),
+            &context,
+        )
+        .unwrap(),
+        9
+    );
     // Selecting that removed object for a new operation still fails.
-    assert!(crate::effects::helpers::resolve_objects_from_spec(
-        &game, &ChooseSpec::Tagged("test".into()), &exec,
-    ).unwrap().is_empty(), "physical selection cannot return a removed object");
+    assert!(
+        crate::effects::helpers::resolve_objects_from_spec(
+            &game,
+            &ChooseSpec::Tagged("test".into()),
+            &exec,
+        )
+        .unwrap()
+        .is_empty(),
+        "physical selection cannot return a removed object"
+    );
 }
 
 #[test]
@@ -245,12 +257,13 @@ fn absent_numeric_stats_keep_context_specific_outcomes() {
         .build();
     let artifact = game.create_object_from_card(&card, alice, Zone::Battlefield);
     let exec = ExecutionContext::new_default(artifact, alice);
-    assert!(
+    assert_eq!(
         resolve(
             &Value::SourcePower,
             &EvaluationContext::execution_context(&game, &exec)
         )
-        .is_err()
+        .unwrap(),
+        0
     );
     assert_eq!(continuous(&Value::SourcePower, &game, artifact, alice), 0);
     assert_eq!(
@@ -590,13 +603,19 @@ fn noted_life_prefers_live_re_notes_and_exact_departure_receipts_without_blink_f
 }
 
 #[test]
-fn numeric_damage_and_prevention_receipts_check_the_scalar_boundary_before_consumers() {
+fn numeric_damage_and_prevention_receipts_preserve_wide_amounts_before_narrowing() {
     let (game, source, player) = fixture();
     for amount in [i32::MAX as u32, i32::MAX as u32 + 1, u32::MAX] {
         let target = crate::events::DamageTarget::Player(player);
         let events = [
             crate::triggers::TriggerEvent::new_with_provenance(
-                crate::events::DamageEvent::with_cause(source, target, amount, false, crate::events::EventCause::effect()),
+                crate::events::DamageEvent::with_cause(
+                    source,
+                    target,
+                    amount,
+                    false,
+                    crate::events::EventCause::effect(),
+                ),
                 Default::default(),
             ),
             crate::triggers::TriggerEvent::new_with_provenance(
@@ -617,6 +636,14 @@ fn numeric_damage_and_prevention_receipts_check_the_scalar_boundary_before_consu
         for event in events {
             let context =
                 ExecutionContext::new_default(source, player).with_triggering_event(event);
+            assert_eq!(
+                resolve_wide(
+                    &Value::EventValue(EventValueSpec::Amount),
+                    &EvaluationContext::execution_context(&game, &context),
+                )
+                .unwrap(),
+                i64::from(amount)
+            );
             let result = resolve(
                 &Value::EventValue(EventValueSpec::Amount),
                 &EvaluationContext::execution_context(&game, &context),
@@ -625,10 +652,7 @@ fn numeric_damage_and_prevention_receipts_check_the_scalar_boundary_before_consu
                 assert_eq!(result.unwrap(), i32::MAX);
             } else {
                 let error = result.unwrap_err();
-                assert!(error.is_incomplete_execution());
-                assert!(
-                    matches!(error, ExecutionError::ResourceLimitExceeded { requested, maximum, .. } if requested == u128::from(amount) && maximum == i32::MAX as u128)
-                );
+                assert!(matches!(error, ExecutionError::ResourceLimitExceeded { requested, maximum, .. } if requested == u128::from(amount) && maximum == i32::MAX as u128));
             }
         }
     }

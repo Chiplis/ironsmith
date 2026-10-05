@@ -244,6 +244,26 @@ pub fn parse_has_base_power_clause(
 pub fn parse_has_base_power_toughness_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // Coordinate a source's color/type change with its size assignment.
+    if let Some(and_index) = tokens
+        .windows(2)
+        .position(|pair| pair[0].is_word("and") && pair[1].is_any_word(&["has", "have"]))
+        && let Some(become_index) = tokens[..and_index]
+            .iter()
+            .position(|token| token.is_any_word(&["becomes", "become"]))
+    {
+        let mut size_tokens = tokens[..become_index].to_vec();
+        size_tokens.extend_from_slice(&tokens[and_index + 1..]);
+        if let Some(size) = parse_has_base_power_toughness_clause(&size_tokens)? {
+            let change = super::clause_dispatch::parse_become_clause(
+                &tokens[..become_index],
+                &tokens[become_index + 1..and_index],
+            )?;
+            return Ok(Some(EffectAst::Sequence {
+                effects: vec![change, size],
+            }));
+        }
+    }
     // Copular animation clauses such as "Each of them is a 1/1 Spirit in
     // addition to its other types" carry type/subtype semantics beyond the
     // P/T assignment. Leave those for the complete animation parser instead
@@ -360,8 +380,12 @@ pub fn parse_get_for_each_count_value(
             "missing filter after 'for each' in gets clause".to_string(),
         ));
     };
-    if crate::effect_sentences::life_unit_programs::is_life_unit_count(&value) && used != words.len() {
-        return Err(CardTextError::ParseError("unconsumed per-unit life quantity qualification".into()));
+    if crate::effect_sentences::life_unit_programs::is_life_unit_count(&value)
+        && used != words.len()
+    {
+        return Err(CardTextError::ParseError(
+            "unconsumed per-unit life quantity qualification".into(),
+        ));
     }
     let exact_surface_filter = |original: ObjectFilter| {
         let Some(authored) = authored_filter.clone() else {

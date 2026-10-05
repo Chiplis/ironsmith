@@ -43,9 +43,9 @@ use super::effect_ast_traversal::{
 };
 use super::reference_helpers::{
     as_followup_player_alias, choose_spec_targets_object, is_noun_restricted_object_result_tag,
-    is_sacrificed_object_reference_tag,
-    is_you_player_filter, object_filter_as_tagged_reference, player_filter_from_object_filter,
-    resolve_it_tag, resolve_non_target_player_filter, resolve_target_spec_with_choices,
+    is_sacrificed_object_reference_tag, is_you_player_filter, object_filter_as_tagged_reference,
+    player_filter_from_object_filter, resolve_it_tag, resolve_non_target_player_filter,
+    resolve_target_spec_with_choices,
 };
 use crate::model::reference_state::{
     AnnotatedEffect, AnnotatedEffectSequence, ObjectTargetBinding, RefState, ReferenceEnv,
@@ -67,10 +67,13 @@ pub struct EffectReferenceResolutionConfig {
     pub allow_excess_damage_event_value: bool,
     pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
     pub dice_event_grouped: Option<bool>,
-    pub life_event_binding: Option<std::sync::Arc<ironsmith_compiler_semantic::trigger_references::LifeEventBinding>>,
-    pub life_amount_producers: std::sync::Arc<Vec<ironsmith_compiler_semantic::trigger_references::LifeAmountProducer>>,
+    pub life_event_binding:
+        Option<std::sync::Arc<ironsmith_compiler_semantic::trigger_references::LifeEventBinding>>,
+    pub life_amount_producers:
+        std::sync::Arc<Vec<ironsmith_compiler_semantic::trigger_references::LifeAmountProducer>>,
     pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
+    pub has_announced_x: bool,
     pub initial_last_effect_id: Option<EffectId>,
     pub initial_iterated_player: bool,
     pub force_auto_tag_object_targets: bool,
@@ -108,10 +111,13 @@ struct EffectReferenceResolutionState<'a> {
     allow_excess_damage_event_value: bool,
     milling_event_filter: Option<&'a ObjectFilter>,
     dice_event_grouped: Option<bool>,
-    life_event_binding: Option<&'a ironsmith_compiler_semantic::trigger_references::LifeEventBinding>,
-    life_amount_producers: &'a [ironsmith_compiler_semantic::trigger_references::LifeAmountProducer],
+    life_event_binding:
+        Option<&'a ironsmith_compiler_semantic::trigger_references::LifeEventBinding>,
+    life_amount_producers:
+        &'a [ironsmith_compiler_semantic::trigger_references::LifeAmountProducer],
     die_result_producers: &'a [Option<EffectId>],
     bind_unbound_x_to_last_effect: bool,
+    has_announced_x: bool,
     /// Inside a delayed trigger's body: the result id of the registering
     /// instruction's last producer. The delayed ability resolves later with
     /// its own outcome table, so a "this way" metric of that producer must
@@ -122,7 +128,8 @@ struct EffectReferenceResolutionState<'a> {
 
 fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
     match trigger {
-        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_amount(trigger),
+        TriggerSpec::WithIntro { trigger, .. }
+        | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_amount(trigger),
         TriggerSpec::SpellCast {
             filter: Some(filter),
             ..
@@ -217,6 +224,7 @@ pub fn annotate_effect_sequence_owned(
         config.bind_unbound_x_to_last_effect,
         config.initial_last_effect_id,
     );
+    env.has_announced_x = config.has_announced_x;
     env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     env.milling_event_filter = config.milling_event_filter.clone();
     env.dice_event_grouped = config.dice_event_grouped;
@@ -435,16 +443,31 @@ fn track_effect_player(
 
 fn predicate_bound_player_filter(predicate: &PredicateAst) -> Option<PlayerFilter> {
     match predicate {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou {
+            player: PlayerAst::Target,
+        }) => Some(PlayerFilter::target_player()),
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou {
+            player: PlayerAst::TargetOpponent,
+        }) => Some(PlayerFilter::target_opponent()),
         PredicateAst::Player(PlayerPredicateAst::PlayerWouldBeginExtraTurn {
             player: PlayerAst::Opponent,
         }) => Some(PlayerFilter::Opponent),
         PredicateAst::ValueComparison { left, .. } => match left.unhinted() {
             Value::CardsInHand(player) | Value::LifeTotal(player)
-                if matches!(player, PlayerFilter::ControllerOf(_) | PlayerFilter::OwnerOf(_)
-                    | PlayerFilter::AliasedControllerOf(_) | PlayerFilter::AliasedOwnerOf(_)
-                    | PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)
-                    | PlayerFilter::TaggedPlayer(_) | PlayerFilter::ChosenPlayer) =>
-                Some(as_followup_player_alias(player.clone())),
+                if matches!(
+                    player,
+                    PlayerFilter::ControllerOf(_)
+                        | PlayerFilter::OwnerOf(_)
+                        | PlayerFilter::AliasedControllerOf(_)
+                        | PlayerFilter::AliasedOwnerOf(_)
+                        | PlayerFilter::Target(_)
+                        | PlayerFilter::AliasedTarget(_)
+                        | PlayerFilter::TaggedPlayer(_)
+                        | PlayerFilter::ChosenPlayer
+                ) =>
+            {
+                Some(as_followup_player_alias(player.clone()))
+            }
             _ => None,
         },
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
@@ -535,9 +558,12 @@ fn resolved_explicit_target_player_filter(spec: &ChooseSpec) -> Option<PlayerFil
 }
 
 fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceFrame) {
-    if player_filter_from_object_filter(filter).as_ref()
+    if player_filter_from_object_filter(filter)
+        .as_ref()
         .is_some_and(PlayerFilter::mentions_iterated_player)
-        && frame.last_player_filter.as_ref()
+        && frame
+            .last_player_filter
+            .as_ref()
             .is_some_and(|player| !player.mentions_iterated_player())
     {
         // "their hand" rementions the established participant. A movement
@@ -569,7 +595,8 @@ fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceF
     );
     if names_player_target && frame.last_object_tag.is_some() {
         // Refer back to the announced target rather than re-declaring it.
-        frame.last_player_filter = player_filter_from_object_filter(filter).map(as_followup_player_alias);
+        frame.last_player_filter =
+            player_filter_from_object_filter(filter).map(as_followup_player_alias);
         return;
     }
     if let Some(tag) = frame.last_object_tag.as_ref()
@@ -1541,6 +1568,10 @@ fn advance_effects_in_iterated_player_context(
 ) -> Result<(), CardTextError> {
     let saved = frame.clone();
     let mut nested = saved.clone();
+    // A loop-local tap result can be consumed by its own reflexive body
+    // even when the enclosing loop has no following object reference.
+    nested.auto_tag_object_targets |=
+        effects_reference_tag(effects, crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG);
     // Participant loops normally start without an outer numeric producer.
     // Typed partitioned back-references are the narrow exceptions. A removed
     // counter metric must survive player/object fanout, and an explicitly
@@ -1579,7 +1610,9 @@ fn advance_effects_in_iterated_player_context(
     if let Some(nested_chosen) = nested_chosen
         && Some(&nested_chosen) != saved_chosen.as_ref()
     {
-        frame.snapshot_tag_aliases.retain(|(alias, _)| alias != &chosen);
+        frame
+            .snapshot_tag_aliases
+            .retain(|(alias, _)| alias != &chosen);
         frame.snapshot_tag_aliases.push(nested_chosen);
     }
     // "Each player puts a vow counter on a creature they control and
@@ -1594,7 +1627,9 @@ fn advance_effects_in_iterated_player_context(
             .cloned()
         && !saved.snapshot_tag_aliases.contains(&nested_prior)
     {
-        frame.snapshot_tag_aliases.retain(|(alias, _)| alias != &prior);
+        frame
+            .snapshot_tag_aliases
+            .retain(|(alias, _)| alias != &prior);
         frame.snapshot_tag_aliases.push(nested_prior);
     }
     Ok(())
@@ -1757,7 +1792,8 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
                     }
                 }
-                SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { .. }) => {
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount }) => {
+                    frame.has_announced_x |= matches!(amount.unhinted(), Value::X);
                     if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "exiled"));
                     }
@@ -1944,7 +1980,11 @@ fn advance_reference_frame_for_effect(
                     // spell/controller that introduced the actor.
                     track_player_from_object_filter(filter, frame);
                     if frame.auto_tag_object_targets {
-                        frame.last_object_tag = Some(next_reference_tag(id_gen, "tapped"));
+                        let tapped = next_reference_tag(id_gen, "tapped");
+                        frame.last_object_tag = Some(tapped.clone());
+                        let alias = TagKey::from(crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG);
+                        frame.snapshot_tag_aliases.retain(|(existing, _)| existing != &alias);
+                        frame.snapshot_tag_aliases.push((alias, tapped));
                     }
                 }
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { filter }) => {
@@ -3438,12 +3478,13 @@ fn advance_reference_frame_for_effect(
         // Mirrors lowering: the looked-at cards become the object antecedent
         // ("..., then puts them back in any order").
         EffectAst::PlayerLooksAtTopCardsOfLibrary { tag, .. } => {
-            frame.last_object_tag =
-                Some(if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+            frame.last_object_tag = Some(
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                     next_reference_tag(id_gen, "revealed")
                 } else {
                     tag.clone().into()
-                });
+                },
+            );
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::SolveCase
@@ -3520,6 +3561,45 @@ pub fn predicate_comparison_operands(
                 Value::CardsInHand(PlayerFilter::You),
             )
         }
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
+            player,
+            filter,
+            count,
+        })
+        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly {
+            player,
+            filter,
+            count,
+        }) => {
+            let player = match player {
+                PlayerAst::Opponent | PlayerAst::Any => return None,
+                PlayerAst::Target => PlayerFilter::target_player(),
+                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                player => resolve_non_target_player_filter(*player, env).ok()?,
+            };
+            let mut counted = filter.clone();
+            counted.zone = Some(crate::zone::Zone::Battlefield);
+            counted.controller = Some(player);
+            (
+                Value::Count(counted),
+                Value::Fixed(i32::try_from(*count).ok()?),
+            )
+        }
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou { player, filter }) => {
+            let player = match player {
+                PlayerAst::Opponent | PlayerAst::Any => return None,
+                PlayerAst::Target => PlayerFilter::target_player(),
+                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                player => resolve_non_target_player_filter(*player, env).ok()?,
+            };
+            let mut theirs = filter.clone();
+            theirs.zone = Some(crate::zone::Zone::Battlefield);
+            theirs.controller = Some(player);
+            let mut yours = filter.clone();
+            yours.zone = Some(crate::zone::Zone::Battlefield);
+            yours.controller = Some(PlayerFilter::You);
+            (Value::Count(theirs), Value::Count(yours))
+        }
         _ => return None,
     };
     if [&values.0, &values.1].iter().any(|value| {
@@ -3582,14 +3662,32 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
         life_amount_producers: &env.life_amount_producers,
         die_result_producers: &env.die_result_producers,
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
+        has_announced_x: env.has_announced_x,
         delayed_registration_effect_id: None,
     }
 }
 
 /// Shared typed boundary for value helpers that resolve before the sequence
 /// result-ID pass. Life queries must never use their generic last-result fallback.
-pub(crate) fn resolve_dice_quantity_query(query: &ironsmith_core::PriorEffectMetricQuery, env: &ReferenceEnv) -> Option<Result<Value, CardTextError>> {
-    dice_result_bindings::is_die_query(query).then(||dice_result_bindings::bind_die_query(query,effect_reference_resolution_state(env)))
+pub(crate) fn resolve_dice_quantity_query(
+    query: &ironsmith_core::PriorEffectMetricQuery,
+    env: &ReferenceEnv,
+) -> Option<Result<Value, CardTextError>> {
+    dice_result_bindings::is_die_query(query).then(|| {
+        dice_result_bindings::bind_die_query(query, effect_reference_resolution_state(env))
+    })
+}
+
+pub(crate) fn resolve_cost_quantity_query(
+    query: &ironsmith_core::PriorEffectMetricQuery,
+    env: &ReferenceEnv,
+) -> Option<Value> {
+    cost_tag_index_from_env(env, "sacrifice_cost_")
+        .and_then(|index| resolve_sacrifice_cost_tagged_metric(query, index))
+        .or_else(|| {
+            cost_tag_index_from_env(env, "exile_cost_")
+                .and_then(|index| resolve_exile_cost_tagged_metric(query, index))
+        })
 }
 
 pub(crate) fn resolve_life_quantity_query(
@@ -3799,30 +3897,31 @@ fn annotate_effect_sequence_with_env_internal(
         // "If you win the flip, exile this permanent ... If you lose the
         // flip, sacrifice it" (Frenetic Sliver): a negative branch is the
         // alternative to the positive one in the same way.
-        let is_otherwise_fallback = matches!(
-            &effect,
-            EffectAst::Conditionals(
-                ConditionalEffectAst::IfResult {
-                    predicate: IfResultPredicate::Otherwise
-                        | IfResultPredicate::DidNot
-                        | IfResultPredicate::ExplicitDidNot,
-                    ..
-                } | ConditionalEffectAst::ResolvedIfResult {
-                    predicate: IfResultPredicate::Otherwise
-                        | IfResultPredicate::DidNot
-                        | IfResultPredicate::ExplicitDidNot,
-                    ..
-                }
-            )
-        ) || result_gate_surface(&effect).is_some_and(|(predicate, reflexive)| {
-            !reflexive
-                && matches!(
-                    predicate,
-                    IfResultPredicate::Otherwise
-                        | IfResultPredicate::DidNot
-                        | IfResultPredicate::ExplicitDidNot
+        let is_otherwise_fallback =
+            matches!(
+                &effect,
+                EffectAst::Conditionals(
+                    ConditionalEffectAst::IfResult {
+                        predicate: IfResultPredicate::Otherwise
+                            | IfResultPredicate::DidNot
+                            | IfResultPredicate::ExplicitDidNot,
+                        ..
+                    } | ConditionalEffectAst::ResolvedIfResult {
+                        predicate: IfResultPredicate::Otherwise
+                            | IfResultPredicate::DidNot
+                            | IfResultPredicate::ExplicitDidNot,
+                        ..
+                    }
                 )
-        });
+            ) || result_gate_surface(&effect).is_some_and(|(predicate, reflexive)| {
+                !reflexive
+                    && matches!(
+                        predicate,
+                        IfResultPredicate::Otherwise
+                            | IfResultPredicate::DidNot
+                            | IfResultPredicate::ExplicitDidNot
+                    )
+            });
         if is_otherwise_fallback
             && let Some(gate) = annotated.last()
             && (result_gate_surface(&gate.effect).is_some()
@@ -3886,7 +3985,7 @@ fn annotate_effect_sequence_with_env_internal(
         // stale comparison from an earlier instruction. The values themselves
         // are still evaluated at resolution by the consuming effect.
         if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })
-            | EffectAst::SelfReplacement { predicate, .. } = &effect
+        | EffectAst::SelfReplacement { predicate, .. } = &effect
             && let Some(player) = predicate_bound_player_filter(predicate)
         {
             // The tested participant introduces "they/their" in the
@@ -3980,7 +4079,8 @@ fn annotate_effect_sequence_with_env_internal(
         let suppress_force_auto_tag_object_targets = suppress_for_power_self_damage
             || copy_spell_without_followup_reference
             || (effect_exports_damage_each_object_set(&effect) && !auto_tag_object_targets_for_env);
-        let assigned_effect_id = maybe_assign_effect_result_id(&effect, remaining, id_gen, config.clone());
+        let assigned_effect_id =
+            maybe_assign_effect_result_id(&effect, remaining, id_gen, config.clone());
 
         let comparison_antecedent = effect_comparison_operands(&effect, &resolution_env);
         let mut out_env = advance_reference_env_for_effect(
@@ -4107,10 +4207,16 @@ fn annotate_effect_sequence_with_env_internal(
 
         if let Some(id) = assigned_effect_id {
             life_amount_bindings::remember_life_producer(
-                std::sync::Arc::make_mut(&mut out_env.life_amount_producers), id, &effect,
+                std::sync::Arc::make_mut(&mut out_env.life_amount_producers),
+                id,
+                &effect,
             );
         }
-        dice_result_bindings::remember_producer(std::sync::Arc::make_mut(&mut out_env.die_result_producers), assigned_effect_id, &effect);
+        dice_result_bindings::remember_producer(
+            std::sync::Arc::make_mut(&mut out_env.die_result_producers),
+            assigned_effect_id,
+            &effect,
+        );
         current_env = out_env.clone();
         annotated.push(AnnotatedEffect {
             effect,
@@ -4396,6 +4502,11 @@ fn gated_branch_declared_target_player(gate: &EffectAst) -> Option<PlayerFilter>
 
 fn result_gate_surface(effect: &EffectAst) -> Option<(&IfResultPredicate, bool)> {
     match effect {
+        EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
+            if effects.len() == 1 =>
+        {
+            result_gate_surface(&effects[0])
+        }
         EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, .. })
         | EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { predicate, .. }) => {
             Some((predicate, false))
@@ -4627,7 +4738,8 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
     if !effect_references_event_derived_amount(consumer) {
         return false;
     }
-    if let Some(compatible) = life_amount_bindings::supplies_requested_life_metric(effect, consumer) {
+    if let Some(compatible) = life_amount_bindings::supplies_requested_life_metric(effect, consumer)
+    {
         return compatible;
     }
     if effect_references_only_other_number_metric(consumer) {
@@ -4809,7 +4921,13 @@ fn replace_delayed_prevention_metric_with_event_value(effect: &mut EffectAst) {
 
 fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectAction) -> bool {
     if action == PriorEffectAction::ChosenNumber {
-        return matches!(effect, EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. }), .. }));
+        return matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. }),
+                ..
+            })
+        );
     }
     if let EffectAst::MoveTaggedGroupToZone { zone, .. } = effect {
         return matches!(
@@ -4818,7 +4936,10 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                 PriorEffectAction::PutOntoBattlefield,
                 crate::zone::Zone::Battlefield
             ) | (PriorEffectAction::Exiled, crate::zone::Zone::Exile)
-                | (PriorEffectAction::Returned | PriorEffectAction::PutIntoHand, crate::zone::Zone::Hand)
+                | (
+                    PriorEffectAction::Returned | PriorEffectAction::PutIntoHand,
+                    crate::zone::Zone::Hand
+                )
         );
     }
     if action == PriorEffectAction::Chosen {
@@ -4854,7 +4975,12 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
         return false;
     };
     match action {
-        PriorEffectAction::Rolled => matches!(producer_action, SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. })),
+        PriorEffectAction::Rolled => matches!(
+            producer_action,
+            SubjectVerbActionAst::Random(
+                RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. }
+            )
+        ),
         PriorEffectAction::Destroyed => matches!(
             producer_action,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
@@ -4959,8 +5085,22 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
         PriorEffectAction::PutIntoHand => matches!(
             producer_action,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
-                zone: crate::zone::Zone::Hand, ..
+                zone: crate::zone::Zone::Hand,
+                ..
             })
+        ),
+        PriorEffectAction::Died => matches!(
+            producer_action,
+            SubjectVerbActionAst::ZoneMoves(
+                ZoneMoveActionAst::Destroy { .. }
+                    | ZoneMoveActionAst::DestroyAll { .. }
+                    | ZoneMoveActionAst::Sacrifice { .. }
+                    | ZoneMoveActionAst::SacrificeAll { .. }
+                    | ZoneMoveActionAst::MoveToZone {
+                        zone: crate::zone::Zone::Graveyard,
+                        ..
+                    }
+            )
         ),
         PriorEffectAction::PutIntoGraveyard => matches!(
             producer_action,
@@ -5148,9 +5288,15 @@ fn value_references_only_other_number_metric(value: &Value) -> bool {
 
 fn visit_dice_predicate_values(predicate: &PredicateAst, visit: &mut impl FnMut(&Value)) {
     match predicate {
-        PredicateAst::ValueComparison { left, right, .. } => { visit(left); visit(right); }
+        PredicateAst::ValueComparison { left, right, .. } => {
+            visit(left);
+            visit(right);
+        }
         PredicateAst::Not(inner) => visit_dice_predicate_values(inner, visit),
-        PredicateAst::And(a,b) | PredicateAst::Or(a,b) => { visit_dice_predicate_values(a,visit); visit_dice_predicate_values(b,visit); }
+        PredicateAst::And(a, b) | PredicateAst::Or(a, b) => {
+            visit_dice_predicate_values(a, visit);
+            visit_dice_predicate_values(b, visit);
+        }
         _ => {}
     }
 }
@@ -5177,9 +5323,14 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
                 visit(count_value);
             }
         }
-        EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }
-            | ConditionalEffectAst::TrailingIf { predicate, .. } | ConditionalEffectAst::TrailingUnless { predicate, .. })
-        | EffectAst::SelfReplacement { predicate, .. } => visit_dice_predicate_values(predicate, visit),
+        EffectAst::Conditionals(
+            ConditionalEffectAst::Conditional { predicate, .. }
+            | ConditionalEffectAst::TrailingIf { predicate, .. }
+            | ConditionalEffectAst::TrailingUnless { predicate, .. },
+        )
+        | EffectAst::SelfReplacement { predicate, .. } => {
+            visit_dice_predicate_values(predicate, visit)
+        }
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, .. }) => visit(count),
         _ => {}
     }
@@ -5232,8 +5383,9 @@ fn visit_comparison_values(comparison: &crate::filter::Comparison, visit: &mut i
 fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut impl FnMut(&Value)) {
     // A granted entry-counter amount ("This creature enters with X +1/+1
     // counters on it, where X is ... this way") reads an earlier result.
-    if let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { abilities, .. }) =
-        action
+    if let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+        abilities, ..
+    }) = action
     {
         for ability in abilities {
             if let crate::cards::builders::GrantedAbilityAst::StaticAbility(static_ability) =
@@ -5278,7 +5430,9 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             count, ..
         })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount: count })
-        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount: count })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence {
+            amount: count,
+        })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount: count })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount: count, .. })
         | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount: count })
@@ -5460,9 +5614,14 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             filter,
             ..
         }) => visit_filter_values(filter, visit),
-        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out }) => {
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll {
+            filter,
+            simultaneous_phase_out,
+        }) => {
             visit_filter_values(filter, visit);
-            if let Some(out) = simultaneous_phase_out { visit_filter_values(out, visit); }
+            if let Some(out) = simultaneous_phase_out {
+                visit_filter_values(out, visit);
+            }
         }
         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             count,
@@ -5614,6 +5773,7 @@ fn resolve_effect_references_in_effect(
                 life_amount_producers: state.life_amount_producers,
                 die_result_producers: state.die_result_producers,
                 bind_unbound_x_to_last_effect: predicate != IfResultPredicate::AcceptedChoice,
+                has_announced_x: state.has_announced_x,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
             },
         )?;
@@ -5653,6 +5813,7 @@ fn resolve_effect_references_in_effect(
                 life_amount_producers: state.life_amount_producers,
                 die_result_producers: state.die_result_producers,
                 bind_unbound_x_to_last_effect: true,
+                has_announced_x: state.has_announced_x,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
             },
         )?;
@@ -5718,6 +5879,7 @@ fn resolve_effect_references_in_effect(
             life_amount_producers: &[],
             die_result_producers: &[],
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
+            has_announced_x: state.has_announced_x,
             delayed_registration_effect_id: state.delayed_registration_effect_id,
         };
         resolve_effect_sequence_references_with_state_in_place(effects, id_gen, nested_state)?;
@@ -5733,8 +5895,10 @@ fn resolve_effect_references_in_effect(
         ..
     }) = effect
     {
-        let milling_event_filter = ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter(trigger);
-        let life_event_binding = ironsmith_compiler_semantic::trigger_references::trigger_life_event_binding(trigger);
+        let milling_event_filter =
+            ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter(trigger);
+        let life_event_binding =
+            ironsmith_compiler_semantic::trigger_references::trigger_life_event_binding(trigger);
         let nested_state = EffectReferenceResolutionState {
             last_effect_id: state.last_effect_id,
             pinned_effect_metric_id: state.pinned_effect_metric_id,
@@ -5749,11 +5913,13 @@ fn resolve_effect_references_in_effect(
                     trigger,
                 ),
             milling_event_filter: milling_event_filter.as_deref(),
-            dice_event_grouped: ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(trigger),
+            dice_event_grouped:
+                ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(trigger),
             life_event_binding: life_event_binding.as_deref(),
             life_amount_producers: &[],
             die_result_producers: &[],
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
+            has_announced_x: state.has_announced_x,
             delayed_registration_effect_id: state.pinned_effect_metric_id.or(state.last_effect_id),
         };
         resolve_effect_sequence_references_with_state_in_place(effects, id_gen, nested_state)?;
@@ -5847,11 +6013,15 @@ fn resolve_effect_sequence_references_with_state_in_place(
                 ..Default::default()
             },
         );
-        resolve_effect_references_in_effect(effect, id_gen, EffectReferenceResolutionState {
-            life_amount_producers: &life_producers,
-            die_result_producers: &die_producers,
-            ..state
-        })?;
+        resolve_effect_references_in_effect(
+            effect,
+            id_gen,
+            EffectReferenceResolutionState {
+                life_amount_producers: &life_producers,
+                die_result_producers: &die_producers,
+                ..state
+            },
+        )?;
         if let Some(id) = assigned_effect_id {
             life_amount_bindings::remember_life_producer(&mut life_producers, id, effect);
         }
@@ -6055,6 +6225,7 @@ fn advance_reference_env_for_effect(
                     life_amount_producers: env.life_amount_producers.clone(),
                     die_result_producers: env.die_result_producers.clone(),
                     bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
+                    has_announced_x: env.has_announced_x,
                 });
             }
 
@@ -6095,6 +6266,7 @@ fn advance_reference_env_for_effect(
                 life_amount_producers: env.life_amount_producers.clone(),
                 die_result_producers: env.die_result_producers.clone(),
                 bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
+                has_announced_x: env.has_announced_x,
             })
         }
         EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })
@@ -6230,7 +6402,10 @@ fn remember_off_battlefield_card_antecedent(
     if !from_off_battlefield_zone {
         return;
     }
-    let Some(previous) = frame.last_object_tag.clone().filter(|previous| previous != result)
+    let Some(previous) = frame
+        .last_object_tag
+        .clone()
+        .filter(|previous| previous != result)
     else {
         return;
     };
@@ -6270,8 +6445,12 @@ fn resolve_effect_result_values_in_fields(
         state: EffectReferenceResolutionState,
     ) -> Result<(), CardTextError> {
         match value {
-            Value::PendingPriorEffectMetric(query) if dice_result_bindings::is_die_query(query) => resolve_effect_result_value(value, state),
-            Value::EventValue(EventValueSpec::DieResultsAtLeast(_) | EventValueSpec::DieBatchTotal) => resolve_effect_result_value(value, state),
+            Value::PendingPriorEffectMetric(query) if dice_result_bindings::is_die_query(query) => {
+                resolve_effect_result_value(value, state)
+            }
+            Value::EventValue(
+                EventValueSpec::DieResultsAtLeast(_) | EventValueSpec::DieBatchTotal,
+            ) => resolve_effect_result_value(value, state),
             Value::PendingComparisonLeft
             | Value::PendingComparisonRight
             | Value::PendingComparisonDifference => resolve_effect_result_value(value, state),
@@ -6307,7 +6486,8 @@ fn resolve_effect_result_values_in_fields(
         ConditionalEffectAst::Conditional { predicate, .. }
         | ConditionalEffectAst::TrailingIf { predicate, .. }
         | ConditionalEffectAst::TrailingUnless { predicate, .. },
-    ) | EffectAst::SelfReplacement { predicate, .. } = effect
+    )
+    | EffectAst::SelfReplacement { predicate, .. } = effect
     {
         comparison_predicate(predicate, state)?;
     }
@@ -6354,7 +6534,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
-        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate {
@@ -6415,9 +6595,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters {
                 count: amount,
             })
-            | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters {
-                count: amount,
-            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { count: amount })
             | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count: amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {
@@ -6566,7 +6744,9 @@ fn resolve_effect_result_values_in_fields(
                 TurnStructureActionAst::SkipCombatPhasesThisTurn,
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled {
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
@@ -6750,8 +6930,12 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
                 ..
             })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite {
+                ..
+            })
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterManaSpendPermission { .. },
+            )
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 ..
             })
@@ -7029,7 +7213,9 @@ fn resolve_effect_result_values_in_fields(
             }) => {
                 resolve_effect_result_value(power, state)?;
             }
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => {
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition {
+                spec,
+            }) => {
                 resolve_effect_result_value(&mut spec.delta, state)?;
             }
             SubjectVerbActionAst::Replacements(
@@ -7176,7 +7362,7 @@ fn resolve_effect_result_value(
             };
         }
 
-        Value::X if state.bind_unbound_x_to_last_effect => {
+        Value::X if state.bind_unbound_x_to_last_effect && !state.has_announced_x => {
             let id = state
                 .pinned_effect_metric_id
                 .or(state.last_effect_id)
@@ -7222,9 +7408,15 @@ fn resolve_effect_result_value(
                 if let Some(id) = state.pinned_effect_metric_id.or(state.last_effect_id) {
                     **value = Value::EffectValue(id);
                 } else if let Some(grouped) = state.dice_event_grouped {
-                    **value = Value::EventValue(if grouped { EventValueSpec::DieBatchTotal } else { EventValueSpec::DieResult });
+                    **value = Value::EventValue(if grouped {
+                        EventValueSpec::DieBatchTotal
+                    } else {
+                        EventValueSpec::DieResult
+                    });
                 } else {
-                    return Err(CardTextError::ParseError("prior-effect result requires a compatible prior effect".into()));
+                    return Err(CardTextError::ParseError(
+                        "prior-effect result requires a compatible prior effect".into(),
+                    ));
                 }
             } else {
                 resolve_effect_result_value(value, state)?;
@@ -7243,9 +7435,18 @@ fn resolve_effect_result_value(
                 // trigger even after an unrelated body instruction. Explicit
                 // "this way" values use PendingPriorEffectMetric instead.
                 *value = Value::EventValue(EventValueSpec::Amount);
-            } else if producer_id.is_none() && state.dice_event_grouped.is_some()
-                && matches!((*source, *metric), (EffectMetricSource::Outcome, EffectMetric::Count)) {
-                *value = Value::EventValue(if state.dice_event_grouped == Some(true) { EventValueSpec::DieBatchTotal } else { EventValueSpec::DieResult });
+            } else if producer_id.is_none()
+                && state.dice_event_grouped.is_some()
+                && matches!(
+                    (*source, *metric),
+                    (EffectMetricSource::Outcome, EffectMetric::Count)
+                )
+            {
+                *value = Value::EventValue(if state.dice_event_grouped == Some(true) {
+                    EventValueSpec::DieBatchTotal
+                } else {
+                    EventValueSpec::DieResult
+                });
             } else if producer_id.is_none()
                 && state.allow_life_event_value
                 && matches!(
@@ -7293,7 +7494,8 @@ fn resolve_effect_result_value(
             *value = dice_result_bindings::bind_die_query(query, state)?;
         }
         Value::EventValue(EventValueSpec::DieResultsAtLeast(_) | EventValueSpec::DieBatchTotal)
-            if !state.die_result_producers.is_empty() || state.dice_event_grouped != Some(true) => {
+            if !state.die_result_producers.is_empty() || state.dice_event_grouped != Some(true) =>
+        {
             return Err(CardTextError::ParseError("grouped die results require a proven grouped trigger; a local result-set binding is not available".into()));
         }
         Value::PendingPriorEffectMetric(query) if life_amount_bindings::is_life_query(query) => {
@@ -7310,7 +7512,10 @@ fn resolve_effect_result_value(
                 // compile time. Once bound, this unfiltered numeric fact has
                 // the same runtime/rendering representation as legacy excess.
                 *value = if query.source == EffectMetricSource::Outcome
-                    && matches!(query.metric, EffectMetric::ExcessDamage | EffectMetric::DamageDealtCappedByRecipient)
+                    && matches!(
+                        query.metric,
+                        EffectMetric::ExcessDamage | EffectMetric::DamageDealtCappedByRecipient
+                    )
                     && query.action == Some(PriorEffectAction::DealtDamage)
                     && query.filter.is_none()
                     && query.player.is_none()
@@ -7375,8 +7580,34 @@ fn resolve_effect_result_value(
                 ));
             }
         }
-        Value::EventValue(EventValueSpec::Amount) if state.pinned_effect_metric_id.or(state.last_effect_id).is_none() && state.dice_event_grouped.is_some() => {
-            *value = Value::EventValue(if state.dice_event_grouped == Some(true) { EventValueSpec::DieBatchTotal } else { EventValueSpec::DieResult });
+        Value::EventValue(EventValueSpec::Amount)
+            if state
+                .pinned_effect_metric_id
+                .or(state.last_effect_id)
+                .is_none()
+                && state.dice_event_grouped.is_some() =>
+        {
+            *value = Value::EventValue(if state.dice_event_grouped == Some(true) {
+                EventValueSpec::DieBatchTotal
+            } else {
+                EventValueSpec::DieResult
+            });
+        }
+        // "If you control N or more ..., create that many ...": the
+        // demonstrative counts the tested objects at resolution. A combat-step
+        // event has no quantity, and a threshold is not the amount to create.
+        Value::EventValue(EventValueSpec::Amount)
+            if !state.allow_life_event_value
+                && state
+                    .pinned_effect_metric_id
+                    .or(state.last_effect_id)
+                    .is_none()
+                && state.last_value_comparison.is_some_and(|(left, right)| {
+                    matches!(left.unhinted(), Value::Count(_))
+                        && matches!(right.unhinted(), Value::Fixed(_))
+                }) =>
+        {
+            *value = state.last_value_comparison.unwrap().0.clone();
         }
         Value::EventValue(EventValueSpec::Amount)
             if state.pinned_effect_metric_id.is_some() || !state.allow_life_event_value =>
@@ -7692,7 +7923,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 TurnStructureActionAst::SkipCombatPhasesThisTurn,
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled {
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon {
@@ -7847,9 +8080,14 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PermanentState(
                 PermanentStateActionAst::ScalePowerToughnessAll { filter, .. },
             ) => bind_unresolved_it_in_filter(filter, seed_tag),
-            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter, simultaneous_phase_out }) => {
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll {
+                filter,
+                simultaneous_phase_out,
+            }) => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
-                    + simultaneous_phase_out.as_mut().map_or(0, |filter| bind_unresolved_it_in_filter(filter, seed_tag))
+                    + simultaneous_phase_out
+                        .as_mut()
+                        .map_or(0, |filter| bind_unresolved_it_in_filter(filter, seed_tag))
             }
             SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll {
                 tap_filter,
@@ -7985,9 +8223,11 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_value(amount, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
-            SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to, .. })
+            SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters {
+                from, to, ..
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to })
-                | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { from, to, .. }) => {
+            | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { from, to, .. }) => {
                 bind_unresolved_it_in_target(from, seed_tag)
                     + bind_unresolved_it_in_target(to, seed_tag)
             }
@@ -8075,18 +8315,33 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterFutureZoneReplacement { filter, .. },
             ) => bind_unresolved_it_in_filter(filter, seed_tag),
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { .. }) => 0,
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { rule, target, .. }) => {
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterManaSpendPermission { .. },
+            ) => 0,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite {
+                rule,
+                target,
+                ..
+            }) => {
                 bind_unresolved_it_in_filter(&mut rule.source_filter, seed_tag)
-                    + target.as_mut().map(|target| bind_unresolved_it_in_target(target, seed_tag)).unwrap_or(0)
+                    + target
+                        .as_mut()
+                        .map(|target| bind_unresolved_it_in_target(target, seed_tag))
+                        .unwrap_or(0)
             }
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 source_filter,
                 ..
             }) => bind_unresolved_it_in_filter(source_filter, seed_tag),
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => {
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition {
+                spec,
+            }) => {
                 bind_unresolved_it_in_filter(&mut spec.source_filter, seed_tag)
-                    + spec.target_object_filter.as_mut().map(|filter| bind_unresolved_it_in_filter(filter, seed_tag)).unwrap_or(0)
+                    + spec
+                        .target_object_filter
+                        .as_mut()
+                        .map(|filter| bind_unresolved_it_in_filter(filter, seed_tag))
+                        .unwrap_or(0)
                     + bind_unresolved_it_in_value(&mut spec.delta, seed_tag)
             }
             SubjectVerbActionAst::Replacements(
@@ -8102,9 +8357,19 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 ReplacementActionAst::RegisterCounterPlacementReplacement { filter, .. },
             ) => bind_unresolved_it_in_filter(filter, seed_tag),
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
-                replacement_effects, player_target, ..
-            }) => player_target.as_mut().map(|target| bind_unresolved_it_in_target(target, seed_tag)).unwrap_or(0)
-                + replacement_effects.iter_mut().map(|effect| bind_unresolved_it_in_effect(effect, seed_tag)).sum::<usize>(),
+                replacement_effects,
+                player_target,
+                ..
+            }) => {
+                player_target
+                    .as_mut()
+                    .map(|target| bind_unresolved_it_in_target(target, seed_tag))
+                    .unwrap_or(0)
+                    + replacement_effects
+                        .iter_mut()
+                        .map(|effect| bind_unresolved_it_in_effect(effect, seed_tag))
+                        .sum::<usize>()
+            }
             SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { filter, .. },
             ) => bind_unresolved_it_in_filter(filter, seed_tag),
@@ -8340,9 +8605,15 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_target(target, seed_tag);
                 if let Some(scope) = scope {
                     count += bind_unresolved_it_in_filter(&mut scope.source_filter, seed_tag);
-                    if let Some(filter) = &mut scope.object_filter { count += bind_unresolved_it_in_filter(filter, seed_tag); }
-                    if let Some(target) = &mut scope.source_target { count += bind_unresolved_it_in_target(target, seed_tag); }
-                    if let Some(target) = &mut scope.protected_target { count += bind_unresolved_it_in_target(target, seed_tag); }
+                    if let Some(filter) = &mut scope.object_filter {
+                        count += bind_unresolved_it_in_filter(filter, seed_tag);
+                    }
+                    if let Some(target) = &mut scope.source_target {
+                        count += bind_unresolved_it_in_target(target, seed_tag);
+                    }
+                    if let Some(target) = &mut scope.protected_target {
+                        count += bind_unresolved_it_in_target(target, seed_tag);
+                    }
                 }
                 count
             }
@@ -9106,7 +9377,9 @@ fn bind_unresolved_it_in_restriction(
                     .map_or(0, |source| bind_unresolved_it_in_filter(source, seed_tag))
         }
 
-        Restriction::PreventDamageFrom { sources: filter, .. }
+        Restriction::PreventDamageFrom {
+            sources: filter, ..
+        }
         | Restriction::PlayLandsMatching(_, filter)
         | Restriction::ActivateLoyaltyAbilitiesOf(filter)
         | Restriction::Attack(filter)
@@ -9803,6 +10076,7 @@ mod tests {
                 life_amount_producers: &[],
                 die_result_producers: &[],
                 bind_unbound_x_to_last_effect: false,
+                has_announced_x: false,
                 delayed_registration_effect_id: None,
             },
         )
@@ -9835,6 +10109,7 @@ mod tests {
                 life_amount_producers: &[],
                 die_result_producers: &[],
                 bind_unbound_x_to_last_effect: false,
+                has_announced_x: false,
                 delayed_registration_effect_id: None,
             },
         )
@@ -9868,6 +10143,7 @@ mod tests {
                 life_amount_producers: &[],
                 die_result_producers: &[],
                 bind_unbound_x_to_last_effect: false,
+                has_announced_x: false,
                 delayed_registration_effect_id: None,
             },
         )
@@ -11803,7 +12079,7 @@ mod excess_damage_binding_tests {
             last_library_search_effect_id: None,
             last_sacrifice_cost_tag_index: None,
             last_exile_cost_tag_index: None,
-        last_tap_cost_tag: None,
+            last_tap_cost_tag: None,
             allow_life_event_value: true,
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
@@ -11812,6 +12088,7 @@ mod excess_damage_binding_tests {
             life_amount_producers: &[],
             die_result_producers: &[],
             bind_unbound_x_to_last_effect: false,
+            has_announced_x: false,
             delayed_registration_effect_id: None,
         }
     }
@@ -11899,19 +12176,57 @@ mod tap_cost_quantity_tests;
 #[cfg(test)]
 #[test]
 fn definite_consult_match_survives_a_damage_recipient_and_keeps_reveal_set_separate() {
-    use crate::cards::builders::{LibraryConsultModeAst,LibraryConsultStopRuleAst,ReturnControllerAst};
-    let mut nonland=ObjectFilter::default();nonland.excluded_card_types.push(crate::types::CardType::Land);
-    let consult=EffectAst::subject_verb_consult_top_of_library(PlayerAst::You,LibraryConsultModeAst::Reveal,
-        nonland.clone(),LibraryConsultStopRuleAst::MatchCount(Value::Fixed(1)),
-        crate::tag::TagRef::of("consult_all"),crate::tag::TagRef::of("consult_hit"));
-    let damage=EffectAst::subject_verb_damage(Value::Fixed(5),TargetAst::AnyTarget(Some(crate::cards::builders::TextSpan::synthetic())));
-    let movement=EffectAst::subject_verb_move_to_zone(TargetAst::Object(nonland,None,Some(crate::cards::builders::TextSpan::synthetic())),
-        crate::zone::Zone::Hand,false,ReturnControllerAst::Owner,false,None);
-    let annotated=annotate_effect_sequence(&[consult,damage,movement],&ReferenceImports::default(),Default::default(),IdGenContext::default()).unwrap();
-    let EffectAst::SubjectVerb(subject)=&annotated.effects[2].effect else {panic!("{annotated:?}")};
-    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone{target,..})=&subject.action else {panic!("{subject:?}")};
-    assert!(matches!(target,TargetAst::Tagged(tag,_) if tag.as_str()=="consult_hit"),"{target:?}");
-    assert_ne!(format!("{target:?}"),"consult_all");
+    use crate::cards::builders::{
+        LibraryConsultModeAst, LibraryConsultStopRuleAst, ReturnControllerAst,
+    };
+    let mut nonland = ObjectFilter::default();
+    nonland
+        .excluded_card_types
+        .push(crate::types::CardType::Land);
+    let consult = EffectAst::subject_verb_consult_top_of_library(
+        PlayerAst::You,
+        LibraryConsultModeAst::Reveal,
+        nonland.clone(),
+        LibraryConsultStopRuleAst::MatchCount(Value::Fixed(1)),
+        crate::tag::TagRef::of("consult_all"),
+        crate::tag::TagRef::of("consult_hit"),
+    );
+    let damage = EffectAst::subject_verb_damage(
+        Value::Fixed(5),
+        TargetAst::AnyTarget(Some(crate::cards::builders::TextSpan::synthetic())),
+    );
+    let movement = EffectAst::subject_verb_move_to_zone(
+        TargetAst::Object(
+            nonland,
+            None,
+            Some(crate::cards::builders::TextSpan::synthetic()),
+        ),
+        crate::zone::Zone::Hand,
+        false,
+        ReturnControllerAst::Owner,
+        false,
+        None,
+    );
+    let annotated = annotate_effect_sequence(
+        &[consult, damage, movement],
+        &ReferenceImports::default(),
+        Default::default(),
+        IdGenContext::default(),
+    )
+    .unwrap();
+    let EffectAst::SubjectVerb(subject) = &annotated.effects[2].effect else {
+        panic!("{annotated:?}")
+    };
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. }) =
+        &subject.action
+    else {
+        panic!("{subject:?}")
+    };
+    assert!(
+        matches!(target,TargetAst::Tagged(tag,_) if tag.as_str()=="consult_hit"),
+        "{target:?}"
+    );
+    assert_ne!(format!("{target:?}"), "consult_all");
 }
 
 #[cfg(test)]
@@ -11921,23 +12236,46 @@ mod dice_event_count_tests;
 #[cfg(test)]
 mod hand_arrival_result_binding_tests {
     use super::*;
-    use ironsmith_core::{PriorEffectResultActor, PriorEffectResultQuantifier, PriorEffectResultSurface};
+    use ironsmith_core::{
+        PriorEffectResultActor, PriorEffectResultQuantifier, PriorEffectResultSurface,
+    };
     #[test]
     fn hand_result_uses_exact_move_before_unrelated_remainder() {
         let selected = ironsmith_compiler_semantic::tag::declared_key("selected_hand_card");
         let viewed = ironsmith_compiler_semantic::tag::declared_key("all_viewed_cards");
-        let hand = EffectAst::MoveTaggedGroupToZone { tag: selected.clone(), zone: crate::zone::Zone::Hand };
+        let hand = EffectAst::MoveTaggedGroupToZone {
+            tag: selected.clone(),
+            zone: crate::zone::Zone::Hand,
+        };
         let cleanup = EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            viewed, Some(selected), crate::cards::builders::LibraryBottomOrderAst::Random, PlayerAst::You);
-        let mut surface = PriorEffectResultSurface::new(PriorEffectAction::PutIntoHand,
-            ObjectFilter::default(), PriorEffectResultActor::You, PriorEffectResultQuantifier::One);
+            viewed,
+            Some(selected),
+            crate::cards::builders::LibraryBottomOrderAst::Random,
+            PlayerAst::You,
+        );
+        let mut surface = PriorEffectResultSurface::new(
+            PriorEffectAction::PutIntoHand,
+            ObjectFilter::default(),
+            PriorEffectResultActor::You,
+            PriorEffectResultQuantifier::One,
+        );
         surface.negated = true;
         let gate = EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: IfResultPredicate::PriorEffectResult(surface), effects: Vec::new(),
+            predicate: IfResultPredicate::PriorEffectResult(surface),
+            effects: Vec::new(),
         });
-        let annotated = annotate_effect_sequence(&[hand, cleanup, gate], &ReferenceImports::default(),
-            EffectReferenceResolutionConfig::default(), IdGenContext::default()).unwrap();
-        let id = annotated.effects[0].assigned_effect_id.expect("hand move must own the result");
-        assert!(matches!(&annotated.effects[2].effect, EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {condition, ..}) if *condition == id));
+        let annotated = annotate_effect_sequence(
+            &[hand, cleanup, gate],
+            &ReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .unwrap();
+        let id = annotated.effects[0]
+            .assigned_effect_id
+            .expect("hand move must own the result");
+        assert!(
+            matches!(&annotated.effects[2].effect, EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {condition, ..}) if *condition == id)
+        );
     }
 }

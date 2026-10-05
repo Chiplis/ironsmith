@@ -7,6 +7,12 @@ pub(super) fn parse_filtered_toughness_assignment_line(
     let Some(verb) = shape::assignment_verb(tokens) else {
         return Ok(None);
     };
+    if tokens[..verb]
+        .iter()
+        .any(|token| token.kind == TokenKind::Period)
+    {
+        return Ok(None);
+    }
     let Some(no_defender) = shape::assignment_body(&tokens[verb + 1..]) else {
         return Ok(None);
     };
@@ -23,6 +29,15 @@ pub(super) fn parse_filtered_toughness_assignment_line(
     }
     let (condition, subject_start) = parse_anthem_prefix_condition(tokens, verb)?;
     let subject_tokens = trim_commas(&tokens[subject_start..verb]);
+    // A modifier followed by assignment belongs to the complete anthem
+    // reader, which preserves both the P/T modifier and its granted rule.
+    if subject_tokens
+        .iter()
+        .any(|token| token.is_word("get") || token.is_word("gets"))
+    {
+        return Ok(None);
+    }
+
     let attached = (subject_start > 3 && tokens.first().is_some_and(|token| token.is_word("as")))
         .then(|| {
             let predicate_tokens = &tokens[3..subject_start];
@@ -39,7 +54,8 @@ pub(super) fn parse_filtered_toughness_assignment_line(
                 Some(ObjectFilter::tagged(tag.bind()))
             })
         })
-        .flatten();
+        .flatten()
+        .or_else(|| infer_attached_subject_filter_from_condition_expr(condition.as_ref()));
     let subject = parse_anthem_subject_with_attached_fallback(&subject_tokens, attached.as_ref())?;
     let lower = |ability: StaticAbility| match &subject {
         AnthemSubjectAst::Source => match &condition {
@@ -155,6 +171,20 @@ mod tests {
         );
         assert!(
             matches!(condition, Some(PredicateAst::AttachedToSourceMatches(filter)) if filter.power_toughness_relation == Some(ironsmith_core::PowerToughnessRelation::ToughnessGreaterThanPower))
+        );
+    }
+    #[test]
+    fn normalized_attached_ability_condition_keeps_its_pronoun_recipient() {
+        let tokens = crate::lexer::lex_line("As long as there is enchanted creature with vigilance, it assigns combat damage equal to its toughness rather than its power.", 0).unwrap();
+        let result = parse_filtered_toughness_assignment_line(&tokens)
+            .unwrap()
+            .unwrap();
+        let (filter, _) = grant(&result[0]);
+        assert!(
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == "enchanted")
         );
     }
     #[test]

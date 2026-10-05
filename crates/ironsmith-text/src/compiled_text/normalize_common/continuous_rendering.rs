@@ -1641,8 +1641,11 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             clauses.push("switches power and toughness".to_string());
         }
         crate::continuous::Modification::SetColors(colors) => {
-            let colors = if colors.count() == 5 { "all colors".to_string() }
-                else { describe_token_color_words(*colors, true) };
+            let colors = if colors.count() == 5 {
+                "all colors".to_string()
+            } else {
+                describe_token_color_words(*colors, true)
+            };
             clauses.push(format!("becomes {colors}"));
         }
         crate::continuous::Modification::AddColors(colors) => {
@@ -1749,8 +1752,17 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             }
         }
         crate::continuous::Modification::RemoveSupertypes(supertypes) => {
-            let names = supertypes.iter().map(|kind|kind.name().to_lowercase()).collect::<Vec<_>>();
-            if !names.is_empty() { clauses.push(format!("{} {}", if plural_target { "aren't" } else { "isn't" }, join_with_or(&names))); }
+            let names = supertypes
+                .iter()
+                .map(|kind| kind.name().to_lowercase())
+                .collect::<Vec<_>>();
+            if !names.is_empty() {
+                clauses.push(format!(
+                    "{} {}",
+                    if plural_target { "aren't" } else { "isn't" },
+                    join_with_or(&names)
+                ));
+            }
         }
         crate::continuous::Modification::RemoveCardTypes(card_types) => {
             let words = card_types
@@ -1954,7 +1966,8 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             }
         }
         crate::continuous::Modification::Restriction(restriction)
-            if restriction.kind() == crate::continuous::RestrictionKind::DoesntUntap => {
+            if restriction.kind() == crate::continuous::RestrictionKind::DoesntUntap =>
+        {
             clauses.push("can't untap".to_string());
         }
         _ => {}
@@ -2103,6 +2116,32 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                 clauses.push("has enchant restriction".to_string());
             }
         }
+    }
+
+    // A single animation adds both the card type and its subtype. Keep them
+    // in one copular clause so the compiled surface is itself parseable.
+    if matches!(&effect.modification, Some(crate::continuous::Modification::AddCardTypes(types)) if types.as_slice() == [CardType::Creature])
+        && let Some(crate::continuous::Modification::AddSubtypes(subtypes)) =
+            effect.additional_modifications.first()
+        && clauses.len() >= 2
+    {
+        let descriptor = format!(
+            "{} creature",
+            subtypes
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let combined = if plural_target {
+            format!("become {} in addition to their other types", descriptor)
+        } else {
+            format!(
+                "becomes {} in addition to its other types",
+                with_indefinite_article(&descriptor)
+            )
+        };
+        clauses.splice(..2, [combined]);
     }
 
     if clauses.len() > 1 {
@@ -2638,9 +2677,14 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             )
         });
     let is_creature_template = card_types.contains(&CardType::Creature);
-    let granted_self_subject = if is_creature_template { "this creature" } else if card_types.contains(&CardType::Artifact) { "this artifact" } else { "this permanent" };
-    if card_types.is_empty()
-        || (!effect.runtime_modifications.is_empty() && !removes_all_abilities)
+    let granted_self_subject = if is_creature_template {
+        "this creature"
+    } else if card_types.contains(&CardType::Artifact) {
+        "this artifact"
+    } else {
+        "this permanent"
+    };
+    if card_types.is_empty() || (!effect.runtime_modifications.is_empty() && !removes_all_abilities)
     {
         return None;
     }
@@ -2674,13 +2718,16 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 colors = Some(*candidate_colors);
             }
             crate::continuous::Modification::AddColors(candidate_colors) => {
-                colors = Some(*candidate_colors); preserves_other_colors = true;
+                colors = Some(*candidate_colors);
+                preserves_other_colors = true;
             }
             crate::continuous::Modification::AddSubtypes(candidate_subtypes) => {
                 subtypes.extend(candidate_subtypes.iter().copied());
             }
             crate::continuous::Modification::RemoveAllSubtypesOfFamily(_) => {}
-            crate::continuous::Modification::RemoveAllAbilities => { removes_other_abilities = true; }
+            crate::continuous::Modification::RemoveAllAbilities => {
+                removes_other_abilities = true;
+            }
             crate::continuous::Modification::AddAllSubtypesOfFamily(
                 crate::types::SubtypeFamily::Creature,
             ) => {
@@ -2784,7 +2831,8 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 .target_spec
                 .as_ref()
                 .is_some_and(choose_spec_is_returned_result_set));
-    let returned_artifact_creature_animation = is_creature_template && returned_permanent_animation
+    let returned_artifact_creature_animation = is_creature_template
+        && returned_permanent_animation
         && !replaces_other_types
         && effect.type_retention_surface.is_none()
         && card_types.contains(&CardType::Artifact);
@@ -3093,13 +3141,25 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     if render_as_addition_to_other_types && (explicitly_in_addition || !artifact_type_is_redundant)
     {
         if plural_target {
-            text.push_str(if preserves_other_colors { " in addition to their other colors and types" } else { " in addition to their other types" });
+            text.push_str(if preserves_other_colors {
+                " in addition to their other colors and types"
+            } else {
+                " in addition to their other types"
+            });
         } else {
-            text.push_str(if preserves_other_colors { " in addition to its other colors and types" } else { " in addition to its other types" });
+            text.push_str(if preserves_other_colors {
+                " in addition to its other colors and types"
+            } else {
+                " in addition to its other types"
+            });
         }
     }
     if removes_other_abilities {
-        text.push_str(if plural_target { " and lose all other abilities" } else { " and loses all other abilities" });
+        text.push_str(if plural_target {
+            " and lose all other abilities"
+        } else {
+            " and loses all other abilities"
+        });
     }
     let tail = describe_apply_continuous_tail(effect);
     let leading_duration = matches!(
@@ -3232,11 +3292,18 @@ pub(crate) fn describe_apply_continuous_effect(
         && effect.runtime_modifications.is_empty()
         && effect.until == Until::EndOfTurn
         && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
-        && matches!(ability.id(), crate::static_abilities::StaticAbilityId::CanBlockAnyNumber | crate::static_abilities::StaticAbilityId::CanBlockAdditionalCreatureEachCombat)
+        && matches!(
+            ability.id(),
+            crate::static_abilities::StaticAbilityId::CanBlockAnyNumber
+                | crate::static_abilities::StaticAbilityId::CanBlockAdditionalCreatureEachCombat
+        )
     {
         let (target, _) = describe_apply_continuous_target(effect);
         let rule = lowercase_first(&ability.display());
-        return Some(format!("{target} {} this turn", rule.trim_end_matches(" each combat")));
+        return Some(format!(
+            "{target} {} this turn",
+            rule.trim_end_matches(" each combat")
+        ));
     }
     if effect.condition.is_none()
         && effect.additional_modifications.is_empty()
@@ -4492,11 +4559,24 @@ pub(crate) fn describe_until(until: &Until) -> String {
         Until::ForAsLongAs(predicate) => describe_continuous_duration_predicate(predicate),
         Until::TurnsPass(turns) => format!("for {} turn(s)", describe_value(turns)),
         Until::ObjectIsCast { object, from_zone } => format!(
-            "until {} is cast from {}", match object {
-                ironsmith_core::ContinuousDurationObject::Tagged(tag) if tag.as_str() == ironsmith_core::tag::SOURCE_EXILED_SELF_TAG => "this card",
+            "until {} is cast from {}",
+            match object {
+                ironsmith_core::ContinuousDurationObject::Tagged(tag)
+                    if tag.as_str() == ironsmith_core::tag::SOURCE_EXILED_SELF_TAG =>
+                    "this card",
                 _ => describe_duration_object(object),
             },
-            match from_zone { Zone::Exile => "exile", Zone::Hand => "hand", Zone::Graveyard => "the graveyard", Zone::Library => "the library", Zone::Command => "the command zone", Zone::Battlefield => "the battlefield", Zone::Stack => "the stack", Zone::Ante => "ante", Zone::OutsideGame => "outside the game" }
+            match from_zone {
+                Zone::Exile => "exile",
+                Zone::Hand => "hand",
+                Zone::Graveyard => "the graveyard",
+                Zone::Library => "the library",
+                Zone::Command => "the command zone",
+                Zone::Battlefield => "the battlefield",
+                Zone::Stack => "the stack",
+                Zone::Ante => "ante",
+                Zone::OutsideGame => "outside the game",
+            }
         ),
     }
 }
@@ -5029,10 +5109,13 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             )
         }
         crate::effect::Restriction::PlayLandsMatching(player, filter) => format!(
-            "{} can't play {}", describe_player_set_filter(player), filter.description()
+            "{} can't play {}",
+            describe_player_set_filter(player),
+            filter.description()
         ),
         crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(filter) => format!(
-            "loyalty abilities of {} can't be activated", filter.description()
+            "loyalty abilities of {} can't be activated",
+            filter.description()
         ),
         crate::effect::Restriction::CastSpellsMatching(filter, spell_filter) => format!(
             "{} can't cast {}",
@@ -5158,6 +5241,12 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(filter)
             )
         }
+        crate::effect::Restriction::LoseGameForZeroLife(filter) => {
+            format!(
+                "{} don't lose the game for having 0 or less life",
+                describe_player_set_filter(filter)
+            )
+        }
         crate::effect::Restriction::LoseGame(filter) => {
             format!("{} can't lose the game", describe_player_set_filter(filter))
         }
@@ -5170,11 +5259,20 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(filter)
             )
         }
-        crate::effect::Restriction::PreventDamageFrom { sources, combat_only } => {
-            let kind = if *combat_only { "combat damage" } else { "damage" };
+        crate::effect::Restriction::PreventDamageFrom {
+            sources,
+            combat_only,
+        } => {
+            let kind = if *combat_only {
+                "combat damage"
+            } else {
+                "damage"
+            };
             let source = if let Some(surface) = sources.source_surface.as_ref() {
                 describe_source_reference_surface_text(surface)
-            } else { sources.description() };
+            } else {
+                sources.description()
+            };
             format!("{kind} that would be dealt by {source} can't be prevented")
         }
         crate::effect::Restriction::PreventDamage => "damage can't be prevented".to_string(),
@@ -5717,6 +5815,7 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
         crate::effect::PriorEffectAction::Countered => "counter",
         crate::effect::PriorEffectAction::CountersPut => "put counters on",
         crate::effect::PriorEffectAction::DealtDamage => "deal damage to",
+        crate::effect::PriorEffectAction::Died => "die",
         crate::effect::PriorEffectAction::Destroyed => "destroy",
         crate::effect::PriorEffectAction::Discarded => "discard",
         crate::effect::PriorEffectAction::Drawn => "draw",
@@ -5745,10 +5844,15 @@ fn describe_prior_effect_result_surface(
         && surface.actor == crate::effect::PriorEffectResultActor::You
         && surface.filter == ObjectFilter::default()
         && surface.quantifier == crate::effect::PriorEffectResultQuantifier::One
-        && surface.required_count.is_none() && surface.shared_characteristic.is_none()
+        && surface.required_count.is_none()
+        && surface.shared_characteristic.is_none()
     {
-        return if surface.negated { "you didn't put a card into your hand this way" }
-            else { "you put a card into your hand this way" }.to_string();
+        return if surface.negated {
+            "you didn't put a card into your hand this way"
+        } else {
+            "you put a card into your hand this way"
+        }
+        .to_string();
     }
     // A draw result counts cards, even without an object-type filter.
     if surface.action == crate::effect::PriorEffectAction::Drawn
@@ -5773,6 +5877,35 @@ fn describe_prior_effect_result_surface(
         if !phrase.is_empty() {
             return format!("{phrase} this way");
         }
+    }
+    if surface.action == crate::effect::PriorEffectAction::Died {
+        let mut filter = surface.filter.clone();
+        filter.zone = None;
+        filter.set_prior_effect_action_surface(None);
+        let base = strip_leading_article(&filter.description())
+            .trim()
+            .to_string();
+        let plural = surface.required_count.is_some()
+            || surface.quantifier == crate::effect::PriorEffectResultQuantifier::OneOrMore;
+        let mut object = if surface.negated {
+            format!("no {}", pluralize_relative_object_phrase(&base))
+        } else if let Some(count) = surface.required_count {
+            let count = small_number_word(count).unwrap_or_else(|| count.to_string());
+            format!("{count} {}", pluralize_relative_object_phrase(&base))
+        } else if plural {
+            format!("one or more {}", pluralize_relative_object_phrase(&base))
+        } else {
+            with_indefinite_article(&base)
+        };
+        if let Some(characteristic) = surface.shared_characteristic {
+            object.push_str(&format!(" that share {}", characteristic.sharing_phrase()));
+        }
+        let verb = if plural || surface.negated {
+            "die"
+        } else {
+            "dies"
+        };
+        return format!("{object} {verb} this way");
     }
     if surface.negated {
         let mut positive = surface.clone();

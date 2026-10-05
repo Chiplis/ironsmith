@@ -36,10 +36,12 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
             zones.push(Zone::Battlefield);
         }
     }
-    if facts.returns_self_from_graveyard && !trigger_references_attached_object(trigger) {
-        zones = vec![Zone::Graveyard];
-    } else if facts.discards_this_card {
+    // A self-discard trigger observes the card in hand, even when its
+    // resolution returns that card from the graveyard.
+    if facts.discards_this_card {
         zones = vec![Zone::Hand];
+    } else if facts.returns_self_from_graveyard && !trigger_references_attached_object(trigger) {
+        zones = vec![Zone::Graveyard];
     }
     zones
 }
@@ -922,10 +924,9 @@ fn rest_complement_producer(earlier: &[crate::effect::Effect]) -> Option<crate::
             while let Some(tagged) = unwrapped.downcast_ref::<crate::effects::TaggedEffect>() {
                 unwrapped = &tagged.effect;
             }
-            if unwrapped
-                .target_spec()
-                .is_some_and(|spec| picks_from_collection(spec.base()) || picks_from_collection(spec))
-            {
+            if unwrapped.target_spec().is_some_and(|spec| {
+                picks_from_collection(spec.base()) || picks_from_collection(spec)
+            }) {
                 return None;
             }
             if let Some(look) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -975,9 +976,12 @@ fn rest_complement_producer(earlier: &[crate::effect::Effect]) -> Option<crate::
             }
         }
         if let Some(choose) = inner.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
-            if let Some(member) = choose.filter.tagged_constraints.iter().find(|constraint| {
-                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-            }) {
+            if let Some(member) = choose
+                .filter
+                .tagged_constraints
+                .iter()
+                .find(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+            {
                 let zone = choose
                     .filter
                     .zone
@@ -1035,14 +1039,21 @@ fn bind_rest_complement_in_list(
         .iter()
         .position(|effect| debug_mentions_rest_tag(effect).1)?;
     // A modal spell's modes are separate instruction lists.
-    if let Some(modal) = effects[consumer_index].downcast_ref::<crate::effects::ChooseModeEffect>() {
+    if let Some(modal) = effects[consumer_index].downcast_ref::<crate::effects::ChooseModeEffect>()
+    {
         let mut modal = modal.clone();
         let mut earlier = outer_earlier.to_vec();
         earlier.extend(effects[..consumer_index].iter().cloned());
         let mut bound = false;
         for mode in &mut modal.modes {
-            if !mode.effects.iter().any(|effect| debug_mentions_rest_tag(effect).1)
-                || mode.effects.iter().any(|effect| debug_mentions_rest_tag(effect).0)
+            if !mode
+                .effects
+                .iter()
+                .any(|effect| debug_mentions_rest_tag(effect).1)
+                || mode
+                    .effects
+                    .iter()
+                    .any(|effect| debug_mentions_rest_tag(effect).0)
             {
                 continue;
             }
@@ -1054,8 +1065,7 @@ fn bind_rest_complement_in_list(
         effects[consumer_index] = crate::effect::Effect::new(modal);
         return Some(None);
     }
-    if let Some(sequence) =
-        effects[consumer_index].downcast_ref::<crate::effects::SequenceEffect>()
+    if let Some(sequence) = effects[consumer_index].downcast_ref::<crate::effects::SequenceEffect>()
     {
         let mut sequence = sequence.clone();
         let mut earlier = outer_earlier.to_vec();
@@ -1134,10 +1144,13 @@ fn exclude_kept_pick_from_rest(
     };
     earlier[index] = tagged;
     let mut tag_matching = tag_matching.clone();
-    tag_matching.filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: REST_KEPT_TAG.into(),
-        relation: TaggedOpbjectRelation::IsNotTaggedObject,
-    });
+    tag_matching
+        .filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: REST_KEPT_TAG.into(),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
     *producer = crate::effect::Effect::new(tag_matching);
 }
 
@@ -1210,7 +1223,10 @@ fn merge_whole_spell_instead_replacement(program: &mut crate::resolution::Resolu
     }
     // The spell's own object targets, in order.
     let mut target_specs: Vec<ChooseSpec> = Vec::new();
-    for effect in earlier.iter().flat_map(|segment| segment.default_effects.iter()) {
+    for effect in earlier
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+    {
         let inner = effect
             .downcast_ref::<crate::effects::TaggedEffect>()
             .map(|tagged| tagged.effect.as_ref())
@@ -1241,7 +1257,10 @@ fn merge_whole_spell_instead_replacement(program: &mut crate::resolution::Resolu
                     if text == "those cards"
             )
     }
-    fn rebind(effect: &crate::effect::Effect, targets: &[ChooseSpec]) -> Vec<crate::effect::Effect> {
+    fn rebind(
+        effect: &crate::effect::Effect,
+        targets: &[ChooseSpec],
+    ) -> Vec<crate::effect::Effect> {
         if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
             let mut sequence = sequence.clone();
             sequence.effects = sequence
@@ -1308,7 +1327,8 @@ fn map_effect_tree(
         return f(&rebuilt).unwrap_or(rebuilt);
     }
     if let Some(with_id) = effect.as_with_id() {
-        let rebuilt = crate::effect::Effect::with_id(with_id.id.0, map_effect_tree(&with_id.effect, f));
+        let rebuilt =
+            crate::effect::Effect::with_id(with_id.id.0, map_effect_tree(&with_id.effect, f));
         return f(&rebuilt).unwrap_or(rebuilt);
     }
     remap!(crate::effects::SequenceEffect, effects);
@@ -1337,14 +1357,19 @@ fn bind_unattach_to_attached_object(program: &mut crate::resolution::ResolutionP
     // destination is a tagged object, and an unattach of that tagged object.
     let mut attach_host: Option<TagKey> = None;
     let mut unattach_hosts: Vec<TagKey> = Vec::new();
-    fn scan(effect: &crate::effect::Effect, attach: &mut Option<TagKey>, unattach: &mut Vec<TagKey>) {
+    fn scan(
+        effect: &crate::effect::Effect,
+        attach: &mut Option<TagKey>,
+        unattach: &mut Vec<TagKey>,
+    ) {
         if let Some(attach_effect) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>()
             && matches!(attach_effect.objects.base(), ChooseSpec::Object(filter) if filter.tagged_constraints.is_empty())
             && let Some(tag) = host_tag(&attach_effect.target)
         {
             attach.get_or_insert(tag);
         }
-        if let Some(unattach_effect) = effect.downcast_ref::<crate::effects::UnattachObjectsEffect>()
+        if let Some(unattach_effect) =
+            effect.downcast_ref::<crate::effects::UnattachObjectsEffect>()
             && let Some(tag) = host_tag(&unattach_effect.objects)
         {
             unattach.push(tag);
@@ -1380,21 +1405,28 @@ fn bind_unattach_to_attached_object(program: &mut crate::resolution::ResolutionP
                         "the chosen object".to_string(),
                     ),
                 )]);
-            return Some(crate::effect::Effect::new(crate::effects::SequenceEffect::new(vec![
-                crate::effect::Effect::new(choose),
-                crate::effect::Effect::new(attach_effect),
-            ])));
+            return Some(crate::effect::Effect::new(
+                crate::effects::SequenceEffect::new(vec![
+                    crate::effect::Effect::new(choose),
+                    crate::effect::Effect::new(attach_effect),
+                ]),
+            ));
         }
-        if let Some(unattach_effect) = effect.downcast_ref::<crate::effects::UnattachObjectsEffect>()
+        if let Some(unattach_effect) =
+            effect.downcast_ref::<crate::effects::UnattachObjectsEffect>()
             && host_tag(&unattach_effect.objects).as_ref() == Some(&host)
         {
-            return Some(crate::effect::Effect::new(crate::effects::UnattachObjectsEffect::new(
-                ChooseSpec::Tagged(ATTACHED_BY_THIS_TAG.into()).with_surface_hints([
-                    crate::target::ChooseSpecSurfaceHint::SourceReference(
-                        crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
-                    ),
-                ]),
-            )));
+            return Some(crate::effect::Effect::new(
+                crate::effects::UnattachObjectsEffect::new(
+                    ChooseSpec::Tagged(ATTACHED_BY_THIS_TAG.into()).with_surface_hints([
+                        crate::target::ChooseSpecSurfaceHint::SourceReference(
+                            crate::target::SourceReferenceSurface::ThisPermanentType(
+                                "it".to_string(),
+                            ),
+                        ),
+                    ]),
+                ),
+            ));
         }
         None
     };
@@ -1419,7 +1451,8 @@ fn hoist_optional_target_declaration(program: &mut crate::resolution::Resolution
         let mut index = 0;
         while index < program.segments[segment_index].default_effects.len() {
             let effect = program.segments[segment_index].default_effects[index].clone();
-            let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+            let Some(may) =
+                effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
             else {
                 index += 1;
                 continue;
@@ -1563,10 +1596,13 @@ fn bind_bare_for_each_to_looked_cards(effects: &mut [crate::effect::Effect]) {
         }
         let mut for_each = for_each.clone();
         for_each.filter.zone = Some(Zone::Library);
-        for_each.filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag,
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
+        for_each
+            .filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag,
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
         effects[index] = crate::effect::Effect::new(for_each);
     }
 }
@@ -1634,7 +1670,9 @@ fn finalize_program_references(program: &mut crate::resolution::ResolutionProgra
 
 /// The same repairs for a bare instruction list (an opening-hand action's
 /// scheduled consequence).
-pub(crate) fn finalize_effect_list_references(effects: Vec<crate::effect::Effect>) -> Vec<crate::effect::Effect> {
+pub(crate) fn finalize_effect_list_references(
+    effects: Vec<crate::effect::Effect>,
+) -> Vec<crate::effect::Effect> {
     let mut program = crate::resolution::ResolutionProgram::from_effects(effects);
     finalize_program_references(&mut program);
     program

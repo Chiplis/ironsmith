@@ -1,7 +1,10 @@
 //! Damage events and matchers.
 
 mod amounts;
-pub(crate) use amounts::{checked_damage_amount, checked_damage_count, validate_damage_history_amounts};
+pub(crate) use amounts::{
+    checked_damage_amount, checked_damage_count, checked_scalar_count,
+    validate_damage_history_amounts,
+};
 mod damage_event;
 mod damage_prevented_event;
 mod receipt_amounts;

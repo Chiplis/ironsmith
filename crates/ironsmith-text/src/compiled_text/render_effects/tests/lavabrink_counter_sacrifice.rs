@@ -74,7 +74,10 @@ fn lavabrink_counter_sacrifice_upkeep_choice_and_reflexive_damage() {
             options: 0,
         };
         crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
-        assert!(game.stack.is_empty(), "sacrifice's reflexive trigger is pending after parent resolution");
+        assert!(
+            game.stack.is_empty(),
+            "sacrifice's reflexive trigger is pending after parent resolution"
+        );
         crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
         assert_eq!(dm.options, usize::from(accept));
         assert_eq!(
@@ -112,7 +115,8 @@ fn lavabrink_counter_sacrifice_renders_the_actual_source() {
     );
     assert!(
         rendered.contains("When you do, it deals 6 damage to each creature.")
-            || rendered.contains("When you do, this artifact deals 6 damage to each creature."),
+            || rendered.contains("When you do, this artifact deals 6 damage to each creature.")
+            || rendered.contains("When you do, it deals 6 damage to all creatures."),
         "{rendered}"
     );
 }

@@ -26,6 +26,8 @@ stacker = "0.1.23"
 
 [dev-dependencies]
 criterion = "0.7"
+serde_json = "1.0.149"
+ironsmith-core = { path = "../ironsmith-core", default-features = false, features = ["serde"] }
 
 [[bench]]
 name = "scale"

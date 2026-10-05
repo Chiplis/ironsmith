@@ -47,14 +47,17 @@ mod emperor;
 mod free_for_all;
 mod grand_melee;
 mod hidden_hand_choices;
-mod mana_and_permissions;
 mod life_payments;
+mod mana_and_permissions;
 pub(crate) use life_payments::PreparedLifePayment;
+mod announcement_visibility;
 mod monarch;
 mod object_state_and_events;
 mod opaque_library_epochs;
-mod announcement_visibility;
 pub(crate) use announcement_visibility::{LibraryTopAnnouncement, LibraryTopVisibilityBoundary};
+mod attachment_transitions;
+mod control_transitions;
+mod phasing_transitions;
 mod planechase;
 mod range_of_influence;
 mod restart;
@@ -66,9 +69,6 @@ mod turns_and_tracking;
 mod two_headed_giant;
 mod vanguard;
 mod zones_and_characteristics;
-mod attachment_transitions;
-mod control_transitions;
-mod phasing_transitions;
 pub use alternating_teams::AlternatingTeamsState;
 pub use attack_direction::AttackDirection;
 pub use attractions::AttractionVisitProfile;
@@ -93,7 +93,9 @@ pub use subgames::{SubgameCompletion, SubgameTransferKind};
 pub use team_game::{SharedTeamTurnsState, TeamState};
 pub use team_vs_team::TeamVsTeamState;
 pub use two_headed_giant::TwoHeadedGiantState;
-pub(crate) use zones_and_characteristics::{PreparedEntryComponent, PreparedEtbChoices, PreparedEtbEntry};
+pub(crate) use zones_and_characteristics::{
+    PreparedEntryComponent, PreparedEtbChoices, PreparedEtbEntry,
+};
 
 /// The two kinds of nontraditional cards allowed in a planar deck.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -206,9 +208,9 @@ pub struct ConspiracySetupCard {
 }
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod hidden_hand_regression_tests;
+#[cfg(test)]
+mod tests;
 
 /// Pending replacement effect choice when multiple effects apply to the same event.
 ///
@@ -267,8 +269,11 @@ pub struct EntryCommitResult {
 
 impl EntryCommitResult {
     fn pending() -> Self {
-        Self { original: crate::events::processing::EventOutcome::Prevented,
-            programs: Vec::new(), pending: true }
+        Self {
+            original: crate::events::processing::EventOutcome::Prevented,
+            programs: Vec::new(),
+            pending: true,
+        }
     }
 }
 
@@ -742,7 +747,11 @@ struct AuxiliaryTrackingState {
 
 fn delayed_alternative_key(
     entry: &crate::triggers::TriggeredAbilityEntry,
-) -> (StableId, crate::triggers::TriggerIdentity, crate::provenance::ProvNodeId) {
+) -> (
+    StableId,
+    crate::triggers::TriggerIdentity,
+    crate::provenance::ProvNodeId,
+) {
     (
         entry.source_stable_id,
         entry.trigger_identity,
@@ -966,7 +975,8 @@ pub struct TurnStore {
     /// previous turn.
     pub entered_battlefield_last_turn: Vec<ObjectSnapshot>,
     /// Exact permission instances whose once-per-turn casting use was consumed.
-    pub grant_cast_uses_this_turn: HashSet<(PlayerId, crate::grant_registry::GrantPermissionIdentity)>,
+    pub grant_cast_uses_this_turn:
+        HashSet<(PlayerId, crate::grant_registry::GrantPermissionIdentity)>,
     /// Last known information of each spell cast this turn, as it was put on
     /// the stack: its object and stack entry. Self-copy cast triggers (storm,
     /// casualty, replicate, conspire, demonstrate) still copy a spell that
@@ -1192,13 +1202,15 @@ struct EnterAsCopySourceCache {
     /// ability exists, so callers must use layered characteristics. `Some`
     /// contains the exact active printed/level/temporary abilities that can be
     /// inspected without entering the layer system.
-    sparse_candidates: Option<Arc<Vec<(ObjectId, crate::continuous::AbilityOrigin, StaticAbility)>>>,
+    sparse_candidates:
+        Option<Arc<Vec<(ObjectId, crate::continuous::AbilityOrigin, StaticAbility)>>>,
 }
 
 #[derive(Debug)]
 struct RuntimeCacheState {
     library_top_announcements: HashMap<LibraryTopAnnouncement, LibraryTopVisibilityBoundary>,
-    pending_grant_use_completions: HashMap<ObjectId, Vec<crate::grant_registry::GrantUseCompletion>>,
+    pending_grant_use_completions:
+        HashMap<ObjectId, Vec<crate::grant_registry::GrantUseCompletion>>,
     pending_land_permission_grants: HashMap<ObjectId, Vec<StaticAbility>>,
     token_creation_limits: crate::effects::tokens::TokenCreationLimits,
     token_creation_meter: Option<crate::effects::tokens::resources::SharedTokenCreationMeter>,
@@ -1209,9 +1221,11 @@ struct RuntimeCacheState {
     forced_die_rolls: RefCell<VecDeque<u32>>,
     transcript_random_seeds: RefCell<VecDeque<u64>>,
     transcript_library_shuffle_orders: RefCell<VecDeque<TranscriptLibraryShuffleOrder>>,
-    verified_hidden_library_epochs: RefCell<BTreeMap<u64, opaque_library_epochs::VerifiedHiddenLibraryEpoch>>,
+    verified_hidden_library_epochs:
+        RefCell<BTreeMap<u64, opaque_library_epochs::VerifiedHiddenLibraryEpoch>>,
     verified_hidden_library_epoch_error: RefCell<Option<String>>,
-    verified_hidden_replay_openings: RefCell<BTreeMap<(PlayerId, String), opaque_library_epochs::VerifiedHiddenReplayOpening>>,
+    verified_hidden_replay_openings:
+        RefCell<BTreeMap<(PlayerId, String), opaque_library_epochs::VerifiedHiddenReplayOpening>>,
     hidden_info_audit_log: RefCell<im::Vector<HiddenInfoOperation>>,
     continuous_state_dirty: Cell<bool>,
     continuous_state_revision: Cell<u64>,
@@ -1261,9 +1275,15 @@ impl Clone for RuntimeCacheState {
             transcript_library_shuffle_orders: RefCell::new(
                 self.transcript_library_shuffle_orders.borrow().clone(),
             ),
-            verified_hidden_library_epochs: RefCell::new(self.verified_hidden_library_epochs.borrow().clone()),
-            verified_hidden_library_epoch_error: RefCell::new(self.verified_hidden_library_epoch_error.borrow().clone()),
-            verified_hidden_replay_openings: RefCell::new(self.verified_hidden_replay_openings.borrow().clone()),
+            verified_hidden_library_epochs: RefCell::new(
+                self.verified_hidden_library_epochs.borrow().clone(),
+            ),
+            verified_hidden_library_epoch_error: RefCell::new(
+                self.verified_hidden_library_epoch_error.borrow().clone(),
+            ),
+            verified_hidden_replay_openings: RefCell::new(
+                self.verified_hidden_replay_openings.borrow().clone(),
+            ),
             hidden_info_audit_log: RefCell::new(self.hidden_info_audit_log.borrow().clone()),
             continuous_state_dirty: Cell::new(self.continuous_state_dirty.get()),
             continuous_state_revision: Cell::new(self.continuous_state_revision.get()),
@@ -1463,6 +1483,7 @@ impl CharacteristicsCache {
 #[derive(Debug, Clone)]
 struct ControllerCache {
     revision: u64,
+    context_revision: u64,
     turn_number: u32,
     active_player: PlayerId,
     phase: Phase,
@@ -1474,6 +1495,7 @@ struct ControllerCache {
 impl ControllerCache {
     fn matches_state(&self, game: &GameState) -> bool {
         self.revision == game.effect_store.continuous_effects.revision()
+            && self.context_revision == game.continuous_context_revision()
             && self.turn_number == game.turn.turn_number
             && self.active_player == game.turn.active_player
             && self.phase == game.turn.phase
@@ -1546,7 +1568,8 @@ impl WorkCounters {
         self.dependency_sorts
             .set(self.dependency_sorts.get().saturating_add(1));
         if self.shadow_characteristic_evaluation.get() {
-            self.shadow_dependency_sorts.set(self.shadow_dependency_sorts.get().saturating_add(1));
+            self.shadow_dependency_sorts
+                .set(self.shadow_dependency_sorts.get().saturating_add(1));
         }
     }
 
@@ -1554,7 +1577,8 @@ impl WorkCounters {
         self.dependency_pairs_probed
             .set(self.dependency_pairs_probed.get().saturating_add(1));
         if self.shadow_characteristic_evaluation.get() {
-            self.shadow_dependency_pairs_probed.set(self.shadow_dependency_pairs_probed.get().saturating_add(1));
+            self.shadow_dependency_pairs_probed
+                .set(self.shadow_dependency_pairs_probed.get().saturating_add(1));
         }
     }
 
@@ -1888,6 +1912,7 @@ pub struct CantEffectTracker {
     /// Players who can't lose the game.
     /// Example: Platinum Angel
     pub cant_lose_game: HashSet<PlayerId>,
+    pub cant_lose_game_for_zero_life: HashSet<PlayerId>,
 
     /// Players who can't win the game.
     /// Example: Angel's Grace preventing opponent's win
@@ -2008,12 +2033,16 @@ fn targeting_source_matches_restriction(
         if filter.stack_kind == Some(StackObjectKind::Spell) {
             qualities.has_mana_cost = false;
         }
-        if qualities.zone == Some(Zone::Stack) { qualities.zone = None; }
+        if qualities.zone == Some(Zone::Stack) {
+            qualities.zone = None;
+        }
     }
     if stack_subject {
         if let Some(required) = &qualities.controller
             && !crate::filter::player_filter_matches_game(required, controller, game, context)
-        { return false; }
+        {
+            return false;
+        }
         qualities.controller = None;
     }
     // Surface ordering is not a characteristic and must not require a live
@@ -2023,11 +2052,19 @@ fn targeting_source_matches_restriction(
         || qualities == crate::target::ObjectFilter::default(),
         |source| source.matches(&qualities, context, game),
     );
-    matches && (filter.any_of.is_empty() || filter.any_of.iter().any(|branch| {
-        targeting_source_matches_restriction(
-            branch, source, context, game, with_ability, controller, stack_subject,
-        )
-    }))
+    matches
+        && (filter.any_of.is_empty()
+            || filter.any_of.iter().any(|branch| {
+                targeting_source_matches_restriction(
+                    branch,
+                    source,
+                    context,
+                    game,
+                    with_ability,
+                    controller,
+                    stack_subject,
+                )
+            }))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2477,9 +2514,13 @@ impl CantEffectTracker {
             }
         }
         for (player, restrictions) in other.cant_play_land_filters {
-            self.cant_play_land_filters.entry(player).or_default().extend(restrictions);
+            self.cant_play_land_filters
+                .entry(player)
+                .or_default()
+                .extend(restrictions);
         }
-        self.cant_activate_loyalty_abilities_of.extend(other.cant_activate_loyalty_abilities_of);
+        self.cant_activate_loyalty_abilities_of
+            .extend(other.cant_activate_loyalty_abilities_of);
         self.cast_spells_only_as_sorcery
             .extend(other.cast_spells_only_as_sorcery);
         self.cant_activate_non_mana_abilities
@@ -2507,7 +2548,8 @@ impl CantEffectTracker {
             .extend(other.cant_have_counter_types_placed);
         self.damage_cant_be_prevented |= other.damage_cant_be_prevented;
         self.combat_damage_cant_be_prevented |= other.combat_damage_cant_be_prevented;
-        self.source_damage_cant_be_prevented.extend(other.source_damage_cant_be_prevented);
+        self.source_damage_cant_be_prevented
+            .extend(other.source_damage_cant_be_prevented);
         self.life_total_cant_change
             .extend(other.life_total_cant_change);
         self.cant_lose_life.extend(other.cant_lose_life);
@@ -2516,6 +2558,8 @@ impl CantEffectTracker {
         self.damage_cant_reduce_life_below_one
             .extend(other.damage_cant_reduce_life_below_one);
         self.cant_lose_game.extend(other.cant_lose_game);
+        self.cant_lose_game_for_zero_life
+            .extend(other.cant_lose_game_for_zero_life);
         self.cant_win_game.extend(other.cant_win_game);
         self.cant_become_monarch.extend(other.cant_become_monarch);
         self.cant_be_targeted.extend(other.cant_be_targeted);
@@ -2586,6 +2630,7 @@ impl CantEffectTracker {
         self.damage_cant_cause_life_loss.clear();
         self.damage_cant_reduce_life_below_one.clear();
         self.cant_lose_game.clear();
+        self.cant_lose_game_for_zero_life.clear();
         self.cant_win_game.clear();
         self.cant_become_monarch.clear();
         self.cant_be_targeted.clear();
@@ -2835,13 +2880,23 @@ impl CantEffectTracker {
         spell_filter: crate::target::ObjectFilter,
         source: Option<ObjectId>,
     ) {
-        self.add_scoped_cant_cast_filter(player, CastRestrictionFilter {
-            filter: spell_filter, source, controller: None, iterated_player: None,
-            tagged_objects: Default::default(),
-        });
+        self.add_scoped_cant_cast_filter(
+            player,
+            CastRestrictionFilter {
+                filter: spell_filter,
+                source,
+                controller: None,
+                iterated_player: None,
+                tagged_objects: Default::default(),
+            },
+        );
     }
 
-    pub fn add_scoped_cant_cast_filter(&mut self, player: PlayerId, restriction: CastRestrictionFilter) {
+    pub fn add_scoped_cant_cast_filter(
+        &mut self,
+        player: PlayerId,
+        restriction: CastRestrictionFilter,
+    ) {
         let filters = self.cant_cast_filters.entry(player).or_default();
         if !filters.iter().any(|existing| existing == &restriction) {
             filters.push(restriction);
@@ -2966,16 +3021,25 @@ impl CantEffectTracker {
         targeting_with_ability: bool,
         targeting_controller: PlayerId,
     ) -> bool {
-        !self.is_untargetable(object) && !self.cant_be_targeted_from.iter().any(|restriction| {
-            if restriction.object != object { return false; }
-            let filter_ctx = game.filter_context_for(
-                restriction.controller, source.map(|source| source.object_id()),
-            );
-            targeting_source_matches_restriction(
-                &restriction.source_filter, source, &filter_ctx, game,
-                targeting_with_ability, targeting_controller, false,
-            )
-        })
+        !self.is_untargetable(object)
+            && !self.cant_be_targeted_from.iter().any(|restriction| {
+                if restriction.object != object {
+                    return false;
+                }
+                let filter_ctx = game.filter_context_for(
+                    restriction.controller,
+                    source.map(|source| source.object_id()),
+                );
+                targeting_source_matches_restriction(
+                    &restriction.source_filter,
+                    source,
+                    &filter_ctx,
+                    game,
+                    targeting_with_ability,
+                    targeting_controller,
+                    false,
+                )
+            })
     }
 
     /// Check if a player can be targeted.
@@ -3146,7 +3210,10 @@ pub enum ManaSpendPermissionSource {
     /// An explicit end-of-turn instruction ends during cleanup, before a
     /// possible cleanup priority window. Legacy turn-bounded permissions may
     /// intentionally continue until the next turn starts.
-    UntilEndOfTurnEffect { source_id: ObjectId, turn: u32 },
+    UntilEndOfTurnEffect {
+        source_id: ObjectId,
+        turn: u32,
+    },
 }
 
 impl ManaSpendEffectTracker {
@@ -3231,7 +3298,8 @@ impl ActiveManaSpendPermission {
                 ..
             } if game.turn.turn_number > expires_end_of_turn
         ) || matches!(self.source,
-            ManaSpendPermissionSource::UntilEndOfTurnEffect { turn, .. } if game.turn.turn_number > turn) {
+            ManaSpendPermissionSource::UntilEndOfTurnEffect { turn, .. } if game.turn.turn_number > turn)
+        {
             return false;
         }
 
@@ -3474,7 +3542,10 @@ pub struct ScopedPlayerControlEffect {
 
 /// A target for spells or abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub enum Target {
     Object(ObjectId),
     Player(PlayerId),
@@ -3482,8 +3553,11 @@ pub enum Target {
 
 /// A chosen target requirement bound to a range within the flattened target list.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
-#[cfg_attr(feature="serialization",serde(deny_unknown_fields))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+#[cfg_attr(feature = "serialization", serde(deny_unknown_fields))]
 pub struct TargetAssignment {
     pub spec: ChooseSpec,
     pub range: Range<usize>,
@@ -3491,7 +3565,10 @@ pub struct TargetAssignment {
 
 /// A division announced for one target requirement while a spell or ability is proposed.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct TargetDistribution {
     pub spec: ChooseSpec,
     /// Range of target slots whose announced amounts this division follows.
@@ -3524,6 +3601,8 @@ pub struct StackEntry {
     pub target_assignments: Vec<TargetAssignment>,
     /// Divisions announced after targets are chosen (CR 601.2d / 602.2b).
     pub target_distributions: Vec<TargetDistribution>,
+    /// Participant references captured by an enclosing iterated instruction.
+    pub iteration: crate::effects::IterationContext,
     pub x_value: Option<u32>,
     /// For activated abilities, whether the activation cost contained X.
     pub activation_cost_has_x: bool,
@@ -3605,7 +3684,6 @@ pub struct StackEntry {
         std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
 }
 
-
 /// A mana ability granted to a player until end of turn.
 ///
 /// This models effects like Channel that temporarily give a player a mana ability
@@ -3634,6 +3712,7 @@ impl StackEntry {
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             x_value: None,
+            iteration: Default::default(),
             activation_cost_has_x: false,
             activation_cost_has_tap: false,
             mana_spent_on_activation: crate::player::ManaPool::default(),
@@ -3681,6 +3760,7 @@ impl StackEntry {
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             x_value: None,
+            iteration: Default::default(),
             activation_cost_has_x: false,
             activation_cost_has_tap: false,
             mana_spent_on_activation: crate::player::ManaPool::default(),
@@ -4083,7 +4163,9 @@ impl GameState {
 
     /// Apply CR 801.16 and clear the pending marker. Returns true only when no
     /// player remains and the whole game is a draw.
-    pub(crate) fn resolve_mandatory_loop_draw(&mut self) -> Result<bool,crate::effects::ExecutionError> {
+    pub(crate) fn resolve_mandatory_loop_draw(
+        &mut self,
+    ) -> Result<bool, crate::effects::ExecutionError> {
         let controllers = self
             .auxiliary_tracking
             .mandatory_loop_draw_controllers
@@ -4202,7 +4284,10 @@ impl GameState {
             return;
         }
         if lookback.is_none()
-            && self.auxiliary_tracking.simultaneous_action_scope.is_some_and(|scope| scope.opened_by_lookback)
+            && self
+                .auxiliary_tracking
+                .simultaneous_action_scope
+                .is_some_and(|scope| scope.opened_by_lookback)
         {
             self.finalize_milling_event_snapshots();
         }
@@ -4261,7 +4346,11 @@ impl GameState {
         &mut self,
         entry: Option<&crate::triggers::TriggeredAbilityEntry>,
     ) {
-        if self.auxiliary_tracking.delayed_trigger_alternatives.is_empty() {
+        if self
+            .auxiliary_tracking
+            .delayed_trigger_alternatives
+            .is_empty()
+        {
             return;
         }
         let key = entry.map(delayed_alternative_key);
@@ -4278,18 +4367,13 @@ impl GameState {
     /// performed until [`Self::close_simultaneous_action`] (CR 603.2c).
     /// Returns whether this call opened it; an enclosing action is reused.
     pub(crate) fn open_simultaneous_action(&mut self) -> bool {
-        if self
-            .auxiliary_tracking
-            .simultaneous_action_scope
-            .is_some()
-        {
+        if self.auxiliary_tracking.simultaneous_action_scope.is_some() {
             return false;
         }
-        self.auxiliary_tracking_mut().simultaneous_action_scope =
-            Some(SimultaneousActionScope {
-                batch: None,
-                opened_by_lookback: false,
-            });
+        self.auxiliary_tracking_mut().simultaneous_action_scope = Some(SimultaneousActionScope {
+            batch: None,
+            opened_by_lookback: false,
+        });
         true
     }
 
@@ -4300,18 +4384,13 @@ impl GameState {
         &mut self,
         batch: crate::provenance::ProvNodeId,
     ) -> bool {
-        if self
-            .auxiliary_tracking
-            .simultaneous_action_scope
-            .is_some()
-        {
+        if self.auxiliary_tracking.simultaneous_action_scope.is_some() {
             return false;
         }
-        self.auxiliary_tracking_mut().simultaneous_action_scope =
-            Some(SimultaneousActionScope {
-                batch: Some(batch),
-                opened_by_lookback: false,
-            });
+        self.auxiliary_tracking_mut().simultaneous_action_scope = Some(SimultaneousActionScope {
+            batch: Some(batch),
+            opened_by_lookback: false,
+        });
         true
     }
 
@@ -4324,9 +4403,7 @@ impl GameState {
 
     /// Identity of the open simultaneous action whose events are being
     /// produced, allocated on first use.
-    pub(crate) fn simultaneous_action_batch(
-        &mut self,
-    ) -> Option<crate::provenance::ProvNodeId> {
+    pub(crate) fn simultaneous_action_batch(&mut self) -> Option<crate::provenance::ProvNodeId> {
         let scope = self.auxiliary_tracking.simultaneous_action_scope?;
         if let Some(batch) = scope.batch {
             return Some(batch);
@@ -4357,7 +4434,9 @@ impl GameState {
     }
 
     pub(crate) fn resolving_mode_context(&self, source: ObjectId) -> Option<&str> {
-        self.choice_store.resolving_mode_context.as_ref()
+        self.choice_store
+            .resolving_mode_context
+            .as_ref()
             .filter(|(id, _)| *id == source)
             .map(|(_, text)| text.as_str())
     }
@@ -4386,7 +4465,10 @@ impl GameState {
 
     /// The player a permanent's own entering trigger targeted, if any.
     pub(crate) fn linked_trigger_player(&self, source: crate::ids::StableId) -> Option<PlayerId> {
-        self.choice_store.linked_trigger_players.get(&source).copied()
+        self.choice_store
+            .linked_trigger_players
+            .get(&source)
+            .copied()
     }
 
     fn cast_permission_flags_mut(&mut self) -> &mut CastPermissionFlags {
@@ -4616,7 +4698,11 @@ impl GameState {
     }
 
     /// How many cards `player` removed from the draft with cards of this name.
-    pub fn draft_removed_card_count(&self, player: PlayerId, with_cards_named: impl AsRef<str>) -> usize {
+    pub fn draft_removed_card_count(
+        &self,
+        player: PlayerId,
+        with_cards_named: impl AsRef<str>,
+    ) -> usize {
         let key = (
             player,
             normalize_draft_note_card_name(with_cards_named.as_ref()),
@@ -4943,9 +5029,9 @@ impl GameState {
                 .get()
                 .saturating_add(1),
         );
-        if self.runtime_cache.continuous_state_dirty.replace(true) {
-            return;
-        }
+        self.runtime_cache.continuous_state_dirty.set(true);
+        // A characteristic query can populate the cache while another refresh
+        // is pending. Every later context mutation must invalidate that view.
         self.runtime_cache.characteristics_cache.bump_epoch();
     }
 
@@ -5105,8 +5191,14 @@ impl GameState {
                 self.scope.set(self.previous);
             }
         }
-        let scope = &self.runtime_cache.work_counters.shadow_characteristic_evaluation;
-        let _restore = RestoreScope { scope, previous: scope.replace(true) };
+        let scope = &self
+            .runtime_cache
+            .work_counters
+            .shadow_characteristic_evaluation;
+        let _restore = RestoreScope {
+            scope,
+            previous: scope.replace(true),
+        };
         evaluation()
     }
 
@@ -5262,41 +5354,71 @@ impl GameState {
             P::Grants(spec) if matches!(spec.grantable, ironsmith_core::Grantable::PlayFrom) => {
                 Self::object_filter_is_tap_sensitive(&spec.filter)
             }
-            P::RuleRestriction { restriction, additional_restrictions, .. }
-                if std::iter::once(restriction).chain(additional_restrictions).all(|restriction| {
-                    matches!(restriction,
+            P::RuleRestriction {
+                restriction,
+                additional_restrictions,
+                ..
+            } if std::iter::once(restriction)
+                .chain(additional_restrictions)
+                .all(|restriction| {
+                    matches!(
+                        restriction,
                         crate::effect::Restriction::AdditionalLandPlays(_, _)
-                            | crate::effect::Restriction::NoMaximumHandSize(_))
-                }) => false,
+                            | crate::effect::Restriction::NoMaximumHandSize(_)
+                    )
+                }) =>
+            {
+                false
+            }
+            P::ManaProductionRewrite { rule, .. } => {
+                Self::object_filter_is_tap_sensitive(&rule.source_filter)
+            }
             P::Anthem(anthem) => {
-                anthem.condition.as_ref().is_some_and(Self::condition_is_mana_sensitive)
-                    || anthem.filter.as_ref().is_some_and(Self::object_filter_is_tap_sensitive)
+                anthem
+                    .condition
+                    .as_ref()
+                    .is_some_and(Self::condition_is_mana_sensitive)
+                    || anthem
+                        .filter
+                        .as_ref()
+                        .is_some_and(Self::object_filter_is_tap_sensitive)
                     || Self::anthem_value_is_mana_sensitive(&anthem.power)
                     || Self::anthem_value_is_mana_sensitive(&anthem.toughness)
             }
             // These payloads retain their filters in their generated effects.
             P::CopyActivatedAbilities(copy) => Self::object_filter_is_tap_sensitive(&copy.filter),
             P::CopyTriggeredAbilities(copy) => Self::object_filter_is_tap_sensitive(&copy.filter),
-            P::CopyStaticAbilityVariants(copy) => Self::object_filter_is_tap_sensitive(&copy.filter),
+            P::CopyStaticAbilityVariants(copy) => {
+                Self::object_filter_is_tap_sensitive(&copy.filter)
+            }
             // These fixed modifications retain their complete target filter;
             // no scalar dependency is hidden by effect generation.
-            P::MakeColorless(filter) | P::AddSubtypes { filter, .. } =>
-                Self::object_filter_is_tap_sensitive(filter),
+            P::MakeColorless(filter) | P::AddSubtypes { filter, .. } => {
+                Self::object_filter_is_tap_sensitive(filter)
+            }
             // A currently inactive wrapper may become active after production.
             P::Conditional { ability, condition } => {
                 Self::condition_is_mana_sensitive(condition)
-                    || Self::static_ability_is_mana_sensitive(&StaticAbility::from_model((**ability).clone()))
+                    || Self::static_ability_is_mana_sensitive(&StaticAbility::from_model(
+                        (**ability).clone(),
+                    ))
             }
             P::GrantObjectAbilityForFilter(grant) => {
                 Self::object_filter_is_tap_sensitive(&grant.filter)
-                    || grant.condition.as_ref().is_some_and(Self::condition_is_mana_sensitive)
-                    || std::iter::once(&grant.ability).chain(&grant.additional_abilities).any(|ability| {
-                        match &ability.kind {
-                            ironsmith_core::AbilityKind::Static(ability) =>
-                                Self::static_ability_is_mana_sensitive(&StaticAbility::from_model(ability.clone())),
+                    || grant
+                        .condition
+                        .as_ref()
+                        .is_some_and(Self::condition_is_mana_sensitive)
+                    || std::iter::once(&grant.ability)
+                        .chain(&grant.additional_abilities)
+                        .any(|ability| match &ability.kind {
+                            ironsmith_core::AbilityKind::Static(ability) => {
+                                Self::static_ability_is_mana_sensitive(&StaticAbility::from_model(
+                                    ability.clone(),
+                                ))
+                            }
                             _ => false,
-                        }
-                    })
+                        })
             }
             _ => ability.may_generate_continuous_effects(),
         }
@@ -5312,7 +5434,10 @@ impl GameState {
     }
 
     fn continuous_effect_is_tap_sensitive(effect: &ContinuousEffect) -> bool {
-        effect.condition.as_ref().is_some_and(Self::condition_is_mana_sensitive)
+        effect
+            .condition
+            .as_ref()
+            .is_some_and(Self::condition_is_mana_sensitive)
             || Self::effect_target_is_tap_sensitive(&effect.applies_to)
             || Self::modification_is_tap_sensitive(&effect.modification)
     }
@@ -5320,19 +5445,24 @@ impl GameState {
     fn condition_is_mana_sensitive(condition: &crate::ConditionExpr) -> bool {
         use crate::ConditionExpr;
         match condition {
-            ConditionExpr::And(left, right) | ConditionExpr::Or(left, right) =>
-                Self::condition_is_mana_sensitive(left) || Self::condition_is_mana_sensitive(right),
+            ConditionExpr::And(left, right) | ConditionExpr::Or(left, right) => {
+                Self::condition_is_mana_sensitive(left) || Self::condition_is_mana_sensitive(right)
+            }
             ConditionExpr::Not(inner) => Self::condition_is_mana_sensitive(inner),
-            ConditionExpr::ValueComparison { left, right, .. } =>
-                Self::value_is_tap_sensitive(left) || Self::value_is_tap_sensitive(right),
+            ConditionExpr::ValueComparison { left, right, .. } => {
+                Self::value_is_tap_sensitive(left) || Self::value_is_tap_sensitive(right)
+            }
             // A plain mana activation cannot advance the turn or change the
             // source's casting history. Unknown conditions remain dependencies.
             ConditionExpr::PlayerCardsInHandOrFewer {
-                player: crate::target::PlayerFilter::You, ..
+                player: crate::target::PlayerFilter::You,
+                ..
             } => false,
-            ConditionExpr::YourTurn | ConditionExpr::SourceWasCast
-                | ConditionExpr::ThisSpellEscaped | ConditionExpr::ThisSpellWasCastFromZone(_)
-                | ConditionExpr::ThisSpellWasCastFromNonHand => false,
+            ConditionExpr::YourTurn
+            | ConditionExpr::SourceWasCast
+            | ConditionExpr::ThisSpellEscaped
+            | ConditionExpr::ThisSpellWasCastFromZone(_)
+            | ConditionExpr::ThisSpellWasCastFromNonHand => false,
             _ => true,
         }
     }
@@ -5441,7 +5571,9 @@ impl GameState {
     /// invalidate history-reading numeric modifiers at publication as well.
     fn invalidate_continuous_history_modifiers(&self) {
         if !self.runtime_cache.continuous_state_dirty.get()
-            && self.cached_continuous_effects_snapshot_arc().iter()
+            && self
+                .cached_continuous_effects_snapshot_arc()
+                .iter()
                 .any(|effect| Self::modification_is_turn_context_sensitive(&effect.modification))
         {
             self.mark_continuous_state_dirty();
@@ -5869,14 +6001,21 @@ impl GameState {
             return;
         };
         let before_order = self.players[index].library.to_vec();
-        let input_commitments = before_order.iter().filter_map(|id| {
-            self.hidden_card_info(*id).map(|info| info.public_commitment.clone()
-                .unwrap_or_else(|| info.commitment.clone()))
-        }).collect();
+        let input_commitments = before_order
+            .iter()
+            .filter_map(|id| {
+                self.hidden_card_info(*id).map(|info| {
+                    info.public_commitment
+                        .clone()
+                        .unwrap_or_else(|| info.commitment.clone())
+                })
+            })
+            .collect();
         if self.apply_verified_hidden_library_epoch(player_id, random_count_before) {
             // A verified epoch creates anonymous slots directly. There is no
             // public permutation and no correspondence to retired objects.
-        } else if let Some(transcript_order) = self.take_transcript_library_shuffle_order(player_id) {
+        } else if let Some(transcript_order) = self.take_transcript_library_shuffle_order(player_id)
+        {
             let mut id_map = HashMap::with_capacity(before_order.len());
             if transcript_order.before_order.len() == before_order.len()
                 && transcript_order.after_order.len() == before_order.len()
@@ -6548,11 +6687,19 @@ impl GameState {
 
     /// A noncopiable granted ability survives only this object incarnation
     /// (plus the resolving permanent spell's Stack -> Battlefield transition).
-    pub(crate) fn grant_incarnation_static_ability(&mut self, object: ObjectId, ability: StaticAbility) {
+    pub(crate) fn grant_incarnation_static_ability(
+        &mut self,
+        object: ObjectId,
+        ability: StaticAbility,
+    ) {
         if let Some(object) = self.object_mut(object) {
-            object.temporary_static_ability_grants.push(crate::object::TemporaryStaticAbilityGrant {
-                ability: ability.id(), ability_payload: Some(ability), expires_end_of_turn: None,
-            });
+            object.temporary_static_ability_grants.push(
+                crate::object::TemporaryStaticAbilityGrant {
+                    ability: ability.id(),
+                    ability_payload: Some(ability),
+                    expires_end_of_turn: None,
+                },
+            );
         }
     }
 
@@ -6784,7 +6931,8 @@ impl GameState {
                 // including a copy/name-changing effect. Do not build a full
                 // calculated snapshot here: its goad fact re-enters this query.
                 if let Some(snapshots) = ctx.tagged_objects.get_mut(crate::tag::SOURCE_OBJECT_TAG)
-                    && let Some(snapshot) = snapshots.first_mut() {
+                    && let Some(snapshot) = snapshots.first_mut()
+                {
                     snapshot.name = chars.name.to_string();
                 }
                 if chars.static_abilities.iter().any(|ability| {
@@ -6850,10 +6998,14 @@ impl GameState {
         self.effect_store
             .delayed_triggers
             .retain(|trigger| !trigger.expires_at_end_of_combat);
-        let retained_prevention_metrics = self.effect_store.delayed_triggers.iter()
+        let retained_prevention_metrics = self
+            .effect_store
+            .delayed_triggers
+            .iter()
             .filter_map(|trigger| trigger.prevention_shield)
             .collect::<std::collections::HashSet<_>>();
-        self.effect_store.prevention_effects
+        self.effect_store
+            .prevention_effects
             .cleanup_end_of_combat_retaining_metrics(&retained_prevention_metrics);
     }
 
@@ -6913,15 +7065,21 @@ impl GameState {
                 object
                     .temporary_static_ability_grants
                     .iter()
-                    .any(|grant| grant.expires_end_of_turn.is_some_and(|end| end <= current_turn))
+                    .any(|grant| {
+                        grant
+                            .expires_end_of_turn
+                            .is_some_and(|end| end <= current_turn)
+                    })
                     .then_some(id)
             })
             .collect::<Vec<_>>();
         for id in ids {
             if let Some(object) = self.object_mut(id) {
-                object
-                    .temporary_static_ability_grants
-                    .retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > current_turn));
+                object.temporary_static_ability_grants.retain(|grant| {
+                    grant
+                        .expires_end_of_turn
+                        .is_none_or(|end| end > current_turn)
+                });
             }
         }
     }
@@ -6977,7 +7135,10 @@ impl GameState {
         if amount == 0 {
             return self.player(player).is_some();
         }
-        self.can_lose_life(player) && self.player(player).is_some_and(|p| i64::from(p.life) >= i64::from(amount))
+        self.can_lose_life(player)
+            && self
+                .player(player)
+                .is_some_and(|p| i64::from(p.life) >= i64::from(amount))
     }
 
     /// Returns true if a player can currently pay life for the given reason.
@@ -7047,7 +7208,8 @@ impl GameState {
         };
         if self.write_shared_life(
             player,
-            current.saturating_sub(i32::try_from(amount).unwrap_or(i32::MAX)),
+            (i64::from(current) - i64::from(amount)).clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                as i32,
         ) {
             amount
         } else {
@@ -7065,7 +7227,8 @@ impl GameState {
         };
         if self.write_shared_life(
             player,
-            current.saturating_add(i32::try_from(amount).unwrap_or(i32::MAX)),
+            (i64::from(current) + i64::from(amount)).clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                as i32,
         ) {
             amount
         } else {
@@ -7079,39 +7242,69 @@ impl GameState {
     }
 
     /// Marks a player (and a rules-linked team) as lost in one checked operation.
-    pub fn mark_player_lost(&mut self,player:PlayerId)->Result<bool,crate::effects::ExecutionError>{
-        self.mark_players_lost_simultaneously(&[player]).map(|lost|lost.contains(&player))
+    pub fn mark_player_lost(
+        &mut self,
+        player: PlayerId,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.mark_players_lost_simultaneously(&[player])
+            .map(|lost| lost.contains(&player))
     }
-    pub fn concede_game(&mut self,player:PlayerId)->Result<bool,crate::effects::ExecutionError>{self.mark_player_lost(player)}
+    pub fn concede_game(
+        &mut self,
+        player: PlayerId,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.mark_player_lost(player)
+    }
 
     /// Mark the complete losing group before departure and choose a monarch
     /// only among survivors of the whole operation, never a transient loser.
-    pub fn mark_players_lost_simultaneously(&mut self,players:&[PlayerId])->Result<Vec<PlayerId>,crate::effects::ExecutionError>{
-        if players.is_empty(){return Ok(Vec::new());}
-        let checkpoint=self.clone();
-        let result=(||{
-            self.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-            let mut losing=players.iter().copied().collect::<Vec<_>>();
-            let mut cursor=0;
-            while cursor<losing.len(){
-                let player=losing[cursor];cursor+=1;
-                if let Some(team)=self.emperor_team_members(player).or_else(||self.two_headed_giant_team_members(player)){
-                    for member in team {if !losing.contains(&member){losing.push(member);}}
+    pub fn mark_players_lost_simultaneously(
+        &mut self,
+        players: &[PlayerId],
+    ) -> Result<Vec<PlayerId>, crate::effects::ExecutionError> {
+        if players.is_empty() {
+            return Ok(Vec::new());
+        }
+        let checkpoint = self.clone();
+        let result = (|| {
+            self.refresh_continuous_state()
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            let mut losing = players.iter().copied().collect::<Vec<_>>();
+            let mut cursor = 0;
+            while cursor < losing.len() {
+                let player = losing[cursor];
+                cursor += 1;
+                if let Some(team) = self
+                    .emperor_team_members(player)
+                    .or_else(|| self.two_headed_giant_team_members(player))
+                {
+                    for member in team {
+                        if !losing.contains(&member) {
+                            losing.push(member);
+                        }
+                    }
                 }
             }
-            losing.retain(|player|self.player(*player).is_some_and(|p|p.is_in_game()));
-            losing.sort();losing.dedup();
+            losing.retain(|player| self.player(*player).is_some_and(|p| p.is_in_game()));
+            losing.sort();
+            losing.dedup();
             self.prepare_grand_melee_simultaneous_departures(&losing);
-            let lookback=self.trigger_source_lookback_snapshots();
+            let lookback = self.trigger_source_lookback_snapshots();
             for &player in &losing {
-                self.player_mut(player).expect("validated player").has_lost=true;
-                self.queue_trigger_event(crate::provenance::ProvNodeId::default(),
-                    crate::events::Event::player_loses_game(player).into_raw().with_lookback_source_snapshots(lookback.clone()));
+                self.player_mut(player).expect("validated player").has_lost = true;
+                self.queue_trigger_event(
+                    crate::provenance::ProvNodeId::default(),
+                    crate::events::Event::player_loses_game(player)
+                        .into_raw()
+                        .with_lookback_source_snapshots(lookback.clone()),
+                );
             }
             self.leave_game_group(&losing)?;
             Ok(losing)
         })();
-        if result.is_err(){self.restore_execution_checkpoint(checkpoint,false);}
+        if result.is_err() {
+            self.restore_execution_checkpoint(checkpoint, false);
+        }
         result
     }
 
@@ -7280,7 +7473,14 @@ impl GameState {
             && self.turn.step == Some(Step::Draw)
             && self.is_active_player(player)
         {
-            (true, self.turn_store.cards_drawn_this_draw_step.get(&player).copied().unwrap_or(0))
+            (
+                true,
+                self.turn_store
+                    .cards_drawn_this_draw_step
+                    .get(&player)
+                    .copied()
+                    .unwrap_or(0),
+            )
         } else {
             (false, 0)
         }
@@ -7290,7 +7490,11 @@ impl GameState {
     /// nothing; draws by nonactive players are not their own draw-step draws.
     pub fn record_cards_drawn_in_current_draw_step(&mut self, player: PlayerId, amount: u32) {
         if self.draw_step_context_for_player(player).0 && amount > 0 {
-            let count = self.turn_store.cards_drawn_this_draw_step.entry(player).or_default();
+            let count = self
+                .turn_store
+                .cards_drawn_this_draw_step
+                .entry(player)
+                .or_default();
             *count = count.saturating_add(amount);
         }
     }
@@ -7379,12 +7583,14 @@ impl GameState {
 
     /// Can the permanent untap during the specified player's untap step?
     pub fn can_untap_during_step(&self, permanent: ObjectId, untap_player: PlayerId) -> bool {
-        self.object(permanent).is_some_and(|object| {
-            self.effect_store.cant_effects.can_untap_during_step(
-                permanent,
-                self.controller_of(object),
-                untap_player,
-            )
+        self.continuous_query_snapshot().is_ok_and(|checked| {
+            checked.object(permanent).is_some_and(|object| {
+                checked.effect_store.cant_effects.can_untap_during_step(
+                    permanent,
+                    checked.controller_of(object),
+                    untap_player,
+                )
+            })
         })
     }
 
@@ -7408,24 +7614,36 @@ impl GameState {
         is_combat: bool,
         source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
     ) -> bool {
-        if !self.can_prevent_damage_of_kind(is_combat) { return false; }
-        self.effect_store.cant_effects.source_damage_cant_be_prevented.iter().all(|rule| {
-            if rule.combat_only && !is_combat { return true; }
-            let mut context = self.filter_context_for(rule.controller, rule.host)
-                .with_iterated_player(rule.iterated_player)
-                .with_tagged_objects(&rule.tagged_objects);
-            let matches = if let Some(object) = self.object(source).filter(|_| !self.is_phased_out(source)) {
-                // A resolving spell may already be popped from the stack's
-                // entry list while its card remains in the stack zone.
-                context.caster = Some(self.controller_of(object));
-                rule.sources.matches(object, &context, self)
-            } else {
-                source_snapshot.is_some_and(|snapshot| {
-                    snapshot.object_id == source && rule.sources.matches_snapshot(snapshot, &context, self)
-                })
-            };
-            !matches
-        })
+        if !self.can_prevent_damage_of_kind(is_combat) {
+            return false;
+        }
+        self.effect_store
+            .cant_effects
+            .source_damage_cant_be_prevented
+            .iter()
+            .all(|rule| {
+                if rule.combat_only && !is_combat {
+                    return true;
+                }
+                let mut context = self
+                    .filter_context_for(rule.controller, rule.host)
+                    .with_iterated_player(rule.iterated_player)
+                    .with_tagged_objects(&rule.tagged_objects);
+                let matches = if let Some(object) =
+                    self.object(source).filter(|_| !self.is_phased_out(source))
+                {
+                    // A resolving spell may already be popped from the stack's
+                    // entry list while its card remains in the stack zone.
+                    context.caster = Some(self.controller_of(object));
+                    rule.sources.matches(object, &context, self)
+                } else {
+                    source_snapshot.is_some_and(|snapshot| {
+                        snapshot.object_id == source
+                            && rule.sources.matches_snapshot(snapshot, &context, self)
+                    })
+                };
+                !matches
+            })
     }
 
     /// Can the permanent be destroyed?
@@ -7440,7 +7658,8 @@ impl GameState {
 
     /// Can the permanent be sacrificed?
     pub fn can_be_sacrificed(&self, permanent: ObjectId) -> bool {
-        self.object(permanent).is_some_and(|object| object.zone == Zone::Battlefield)
+        self.object(permanent)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
             && !self.is_phased_out(permanent)
             && self.effect_store.cant_effects.can_be_sacrificed(permanent)
     }
@@ -7654,7 +7873,9 @@ impl GameState {
         // Update zone indexes
         match zone {
             Zone::Battlefield => {
-                self.turn_store.came_under_control_since_last_upkeep.insert(id);
+                self.turn_store
+                    .came_under_control_since_last_upkeep
+                    .insert(id);
                 self.battlefield.push(id);
                 self.battlefield_flags_mut()
                     .controller_at_last_refresh
@@ -7704,7 +7925,8 @@ impl GameState {
         // Retain the physical definition at creation, before overlays or copies
         // change the live object's characteristics. Raw Card creation has no
         // authored program, so this is the exact original native definition.
-        self.object_store.shared_handles_for_definition(&crate::cards::CardDefinition::new(card.clone()));
+        self.object_store
+            .shared_handles_for_definition(&crate::cards::CardDefinition::new(card.clone()));
         self.prime_linked_face_lookup(card.other_face_name.as_deref(), card.other_face);
         let id = self.new_object_id();
         let mut object = Object::from_card(id, card, owner, zone);
@@ -7753,11 +7975,8 @@ impl GameState {
             let mut other_half_view = object.clone();
             other_half_view.apply_definition_face(&other_half);
             object.split_combined = Some(
-                crate::object::SplitCombinedCharacteristics::from_halves(
-                    &object,
-                    &other_half_view,
-                )
-                .into(),
+                crate::object::SplitCombinedCharacteristics::from_halves(&object, &other_half_view)
+                    .into(),
             );
         }
         if zone == Zone::Battlefield
@@ -7802,7 +8021,10 @@ impl GameState {
     /// Read physical metadata from this immutable store, never from a live
     /// object's copied/overlaid characteristics or a mutable name alias.
     pub fn retained_card_definition(&self, id: CardId) -> Option<&crate::cards::CardDefinition> {
-        self.object_store.card_shared.get(&id).map(|handles| handles.definition())
+        self.object_store
+            .card_shared
+            .get(&id)
+            .map(|handles| handles.definition())
     }
 
     /// Cache a linked-face definition for later runtime lookups.
@@ -7876,11 +8098,14 @@ impl GameState {
         // first commitment that independently authenticates this physical card.
         if let Some(existing) = self.hidden_card_info(id) {
             info.origin_slot = existing.origin_slot.or(Some(existing.slot));
-            info.origin_commitment = existing.origin_commitment.clone()
+            info.origin_commitment = existing
+                .origin_commitment
+                .clone()
                 .or_else(|| Some(existing.commitment.clone()));
         } else {
             info.origin_slot.get_or_insert(info.slot);
-            info.origin_commitment.get_or_insert_with(|| info.commitment.clone());
+            info.origin_commitment
+                .get_or_insert_with(|| info.commitment.clone());
         }
         self.auxiliary_tracking_mut().hidden_cards.insert(id, info);
     }
@@ -8235,9 +8460,13 @@ pub struct PendingTurnSkips {
     counts: std::collections::BTreeMap<PlayerId, u32>,
 }
 impl PendingTurnSkips {
-    pub fn insert(&mut self, player: PlayerId) { self.add(player, 1); }
+    pub fn insert(&mut self, player: PlayerId) {
+        self.add(player, 1);
+    }
     pub fn add(&mut self, player: PlayerId, amount: u32) {
-        if amount == 0 { return; }
+        if amount == 0 {
+            return;
+        }
         let count = self.counts.entry(player).or_default();
         *count = count.saturating_add(amount);
     }
@@ -8285,8 +8514,14 @@ impl FromIterator<PlayerId> for PendingTurnSkips {
 #[cfg(test)]
 impl EntryCommitResult {
     pub(crate) fn assert_completed_without_additions(self) -> Option<EntersResult> {
-        assert!(!self.pending, "fixture expected a completed entry, not a continuation");
-        assert!(self.programs.is_empty(), "fixture must finish its added replacement programs");
+        assert!(
+            !self.pending,
+            "fixture expected a completed entry, not a continuation"
+        );
+        assert!(
+            self.programs.is_empty(),
+            "fixture must finish its added replacement programs"
+        );
         self.original.into_result()
     }
 }
@@ -8305,13 +8540,19 @@ impl TurnStore {
 impl GameState {
     /// Set host computation limits. They are not serialized game rules and an
     /// exhausted operation reports incomplete execution without committing.
-    pub fn set_token_creation_limits(&mut self, limits: crate::effects::tokens::TokenCreationLimits) {
+    pub fn set_token_creation_limits(
+        &mut self,
+        limits: crate::effects::tokens::TokenCreationLimits,
+    ) {
         self.runtime_cache.token_creation_limits = limits;
     }
     pub(crate) fn token_creation_limits(&self) -> crate::effects::tokens::TokenCreationLimits {
         self.runtime_cache.token_creation_limits
     }
-    pub(crate) fn bind_token_query_meter(&mut self, meter: crate::effects::tokens::resources::SharedTokenCreationMeter) {
+    pub(crate) fn bind_token_query_meter(
+        &mut self,
+        meter: crate::effects::tokens::resources::SharedTokenCreationMeter,
+    ) {
         self.runtime_cache.token_creation_meter = Some(meter);
     }
     pub(crate) fn record_token_resource_failure(&self, error: &crate::effects::ExecutionError) {
@@ -8320,43 +8561,82 @@ impl GameState {
         }
     }
     pub(crate) fn token_resource_failure(&self) -> Option<crate::effects::ExecutionError> {
-        self.runtime_cache.token_creation_meter.as_ref().and_then(|meter| {
-            crate::effects::tokens::resources::failure(meter)
-        })
+        self.runtime_cache
+            .token_creation_meter
+            .as_ref()
+            .and_then(|meter| crate::effects::tokens::resources::failure(meter))
     }
-    pub(crate) fn begin_token_resource_scope(&mut self) -> (bool, crate::effects::tokens::resources::SharedTokenCreationMeter) {
+    pub(crate) fn begin_token_resource_scope(
+        &mut self,
+    ) -> (
+        bool,
+        crate::effects::tokens::resources::SharedTokenCreationMeter,
+    ) {
         if let Some(meter) = &self.runtime_cache.token_creation_meter
-            && crate::effects::tokens::resources::meter_is_active(meter) {
+            && crate::effects::tokens::resources::meter_is_active(meter)
+        {
             return (false, meter.clone());
         }
-        let meter = crate::effects::tokens::resources::new_meter(self.runtime_cache.token_creation_limits);
-        self.runtime_cache.token_creation_meter = Some(meter.clone()); (true, meter)
+        let meter =
+            crate::effects::tokens::resources::new_meter(self.runtime_cache.token_creation_limits);
+        self.runtime_cache.token_creation_meter = Some(meter.clone());
+        (true, meter)
     }
-    pub(crate) fn end_token_resource_scope(&mut self, root: bool, meter: &crate::effects::tokens::resources::SharedTokenCreationMeter) {
+    pub(crate) fn end_token_resource_scope(
+        &mut self,
+        root: bool,
+        meter: &crate::effects::tokens::resources::SharedTokenCreationMeter,
+    ) {
         if root {
             // Checkpoints can outlive this attempt. They share work while it is
             // active, but must open a fresh allowance when replayed later.
             crate::effects::tokens::resources::close_meter(meter);
-            if self.runtime_cache.token_creation_meter.as_ref().is_some_and(|active| std::sync::Arc::ptr_eq(active, meter)) {
+            if self
+                .runtime_cache
+                .token_creation_meter
+                .as_ref()
+                .is_some_and(|active| std::sync::Arc::ptr_eq(active, meter))
+            {
                 self.runtime_cache.token_creation_meter = None;
             }
         }
     }
-    pub(crate) fn reserve_token_creation(&mut self, requested: u128) -> Result<(), crate::effects::ExecutionError> {
+    pub(crate) fn reserve_token_creation(
+        &mut self,
+        requested: u128,
+    ) -> Result<(), crate::effects::ExecutionError> {
         let Some(meter) = &self.runtime_cache.token_creation_meter else {
-            return Err(crate::effects::ExecutionError::InternalError("token creation has no resource scope".into()));
+            return Err(crate::effects::ExecutionError::InternalError(
+                "token creation has no resource scope".into(),
+            ));
         };
-        crate::effects::tokens::resources::reserve_creation(meter, requested, self.object_store.objects.len())
+        crate::effects::tokens::resources::reserve_creation(
+            meter,
+            requested,
+            self.object_store.objects.len(),
+        )
     }
-    pub(crate) fn commit_token_resource_slot(&mut self) -> Result<(), crate::effects::ExecutionError> {
+    pub(crate) fn commit_token_resource_slot(
+        &mut self,
+    ) -> Result<(), crate::effects::ExecutionError> {
         let Some(meter) = &self.runtime_cache.token_creation_meter else {
-            return Err(crate::effects::ExecutionError::InternalError("token insertion has no resource scope".into()));
+            return Err(crate::effects::ExecutionError::InternalError(
+                "token insertion has no resource scope".into(),
+            ));
         };
-        crate::effects::tokens::resources::commit_materialization(meter, self.object_store.objects.len())
+        crate::effects::tokens::resources::commit_materialization(
+            meter,
+            self.object_store.objects.len(),
+        )
     }
-    pub(crate) fn reserve_token_repetition_work(&self, count: usize) -> Result<(), crate::effects::ExecutionError> {
+    pub(crate) fn reserve_token_repetition_work(
+        &self,
+        count: usize,
+    ) -> Result<(), crate::effects::ExecutionError> {
         let Some(meter) = &self.runtime_cache.token_creation_meter else {
-            return Err(crate::effects::ExecutionError::InternalError("token repetitions have no resource scope".into()));
+            return Err(crate::effects::ExecutionError::InternalError(
+                "token repetitions have no resource scope".into(),
+            ));
         };
         crate::effects::tokens::resources::reserve_repetition_work(meter, count)
     }

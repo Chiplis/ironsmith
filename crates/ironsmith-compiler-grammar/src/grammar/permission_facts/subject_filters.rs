@@ -86,6 +86,9 @@ pub fn parse_permission_subject_filter_tokens(
         if filter.all_card_types.is_empty()
             && filter.card_types.len() > 1
             && parse_subject_separator_fact(filter_tokens).is_none()
+            && !filter_tokens
+                .iter()
+                .any(|token| token.is_word("permanent") || token.is_word("permanents"))
         {
             filter.all_card_types = std::mem::take(&mut filter.card_types);
         }

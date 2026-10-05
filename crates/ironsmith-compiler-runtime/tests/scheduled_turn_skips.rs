@@ -59,7 +59,9 @@ fn creature(game: &mut GameState, player: PlayerId) -> ObjectId {
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
-    game.create_object_from_card(&card, player, Zone::Battlefield)
+    let id = game.create_object_from_card(&card, player, Zone::Battlefield);
+    game.set_summoning_sick(id);
+    id
 }
 struct ChooseBob;
 impl DecisionMaker for ChooseBob {
@@ -106,7 +108,7 @@ fn skip(game: &mut GameState, player: PlayerId, kind: K, count: u32) {
         kind,
         count,
     }
-    .execute(game, &mut EffectContext::new_default(source, A))
+    .execute(game, &mut EffectContext::new_default(source, player))
     .unwrap();
 }
 fn advance_combat(game: &mut GameState) -> TurnAction {
@@ -132,14 +134,32 @@ fn repeated_combat_skips_survive_turn_changes_and_consume_extra_combats_individu
         assert_eq!(
             event(
                 &mut game,
-                TriggerEvent::new({ let mut event = ironsmith::events::EnterBattlefieldEvent::new(source, Zone::Hand); event.enters_tapped =  false; event.enters_with_counters =  vec![]; event }, Default::default())
+                TriggerEvent::new(
+                    ironsmith::events::ZoneChangeEvent::with_cause(
+                        source,
+                        Zone::Hand,
+                        Zone::Battlefield,
+                        ironsmith::events::cause::EventCause::effect(),
+                        None
+                    ),
+                    Default::default()
+                )
             ),
             1
         );
         assert_eq!(
             event(
                 &mut game,
-                TriggerEvent::new({ let mut event = ironsmith::events::EnterBattlefieldEvent::new(source, Zone::Hand); event.enters_tapped =  false; event.enters_with_counters =  vec![]; event }, Default::default())
+                TriggerEvent::new(
+                    ironsmith::events::ZoneChangeEvent::with_cause(
+                        source,
+                        Zone::Hand,
+                        Zone::Battlefield,
+                        ironsmith::events::cause::EventCause::effect(),
+                        None
+                    ),
+                    Default::default()
+                )
             ),
             1
         );
@@ -161,10 +181,20 @@ fn eater_schedules_two_distinct_skips_and_skipped_extra_turn_does_not_cure_contr
         let mut game = game();
         game.establish_turn_start_continuous_control();
         let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        game.set_summoning_sick(source);
         assert_eq!(
             event(
                 &mut game,
-                TriggerEvent::new({ let mut event = ironsmith::events::EnterBattlefieldEvent::new(source, Zone::Hand); event.enters_tapped =  false; event.enters_with_counters =  vec![]; event }, Default::default())
+                TriggerEvent::new(
+                    ironsmith::events::ZoneChangeEvent::with_cause(
+                        source,
+                        Zone::Hand,
+                        Zone::Battlefield,
+                        ironsmith::events::cause::EventCause::effect(),
+                        None
+                    ),
+                    Default::default()
+                )
             ),
             1
         );
@@ -238,26 +268,32 @@ fn brine_is_all_opponents_while_combat_damage_skips_only_the_damaged_player() {
             assert_eq!(
                 event(
                     &mut game,
-                    TriggerEvent::new(ironsmith::events::DamageEvent::with_cause(
-                        source,
-                        DamageTarget::Player(B),
-                        1,
-                        false,
-                        EventCause::from_effect(source, A)
-                    ), Default::default())
+                    TriggerEvent::new(
+                        ironsmith::events::DamageEvent::with_cause(
+                            source,
+                            DamageTarget::Player(B),
+                            1,
+                            false,
+                            EventCause::from_effect(source, A)
+                        ),
+                        Default::default()
+                    )
                 ),
                 0
             );
             assert_eq!(
                 event(
                     &mut game,
-                    TriggerEvent::new(ironsmith::events::DamageEvent::with_cause(
-                        source,
-                        DamageTarget::Player(B),
-                        1,
-                        true,
-                        EventCause::from_effect(source, A)
-                    ), Default::default())
+                    TriggerEvent::new(
+                        ironsmith::events::DamageEvent::with_cause(
+                            source,
+                            DamageTarget::Player(B),
+                            1,
+                            true,
+                            EventCause::from_effect(source, A)
+                        ),
+                        Default::default()
+                    )
                 ),
                 1
             );
@@ -285,7 +321,10 @@ fn avizoa_full_activated_body_retains_pump_and_next_untap_skip() {
                 _ => None,
             })
             .unwrap();
-        assert!(!ability.activation_restrictions.is_empty());
+        assert_eq!(
+            ability.timing,
+            ironsmith::ability::ActivationTiming::OncePerTurn
+        );
         game.stack
             .push(StackEntry::ability(source, A, ability.effects.clone()));
         resolve_stack_entry_with(&mut game, &mut SelectFirstDecisionMaker).unwrap();
@@ -355,7 +394,22 @@ fn yosei_target_player_controls_the_separate_optional_permanent_target_group() {
                 game.object(source).unwrap(),
                 &game,
             );
-        assert_eq!(event(&mut game, TriggerEvent::new(ironsmith::events::ZoneChangeEvent::with_cause(source, Zone::Battlefield, Zone::Graveyard, ironsmith::events::cause::EventCause::from_effect(source, A), Some( snapshot)), Default::default())), 1);
+        assert_eq!(
+            event(
+                &mut game,
+                TriggerEvent::new(
+                    ironsmith::events::ZoneChangeEvent::with_cause(
+                        source,
+                        Zone::Battlefield,
+                        Zone::Graveyard,
+                        ironsmith::events::cause::EventCause::from_effect(source, A),
+                        Some(snapshot)
+                    ),
+                    Default::default()
+                )
+            ),
+            1
+        );
         assert!(game.is_tapped(bob));
         assert!(!game.is_tapped(carol));
         assert_eq!(game.pending_step_skips(B, Step::Untap), 1);
@@ -377,7 +431,16 @@ fn revenant_requires_actual_white_payment_not_just_printed_mana_cost() {
             assert_eq!(
                 event(
                     &mut game,
-                    TriggerEvent::new({ let mut event = ironsmith::events::EnterBattlefieldEvent::new(source, Zone::Stack); event.enters_tapped =  false; event.enters_with_counters =  vec![]; event }, Default::default())
+                    TriggerEvent::new(
+                        ironsmith::events::ZoneChangeEvent::with_cause(
+                            source,
+                            Zone::Stack,
+                            Zone::Battlefield,
+                            ironsmith::events::cause::EventCause::effect(),
+                            None
+                        ),
+                        Default::default()
+                    )
                 ),
                 usize::from(paid_white)
             );

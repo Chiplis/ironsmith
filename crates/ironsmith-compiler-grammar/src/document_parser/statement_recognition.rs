@@ -347,6 +347,22 @@ fn recognize_statement_line_general(
     line: &PreprocessedLine,
 ) -> Result<Option<RecognizedStatementLine>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
+    let sentences = split_lexed_sentences(&line.tokens);
+    if sentences.len() == 2
+        && sentences[0]
+            .first()
+            .is_some_and(|token| token.is_word("tap"))
+        && crate::lexer::parser_token_word_refs(sentences[1]).starts_with(&["they", "each", "deal"])
+    {
+        return Ok(Some(RecognizedStatementLine {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            parse_tokens: line.tokens.clone(),
+            parse_groups: sentences.iter().map(|tokens| tokens.to_vec()).collect(),
+            parsed_effects: None,
+        }));
+    }
+
     // This two-sentence instruction is one ordered resolution program.  The
     // first sentence quantifies an opponent choice and the second switches
     // back to the controller; probing either sentence as a standalone line
@@ -698,6 +714,14 @@ pub(super) fn extend_triggered_line_with_result_followups(
     let mut next_idx = idx + 1;
 
     while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        // A complete replacement ability has its own affected subject.
+        // Its trailing "instead" does not replace the preceding trigger.
+        if crate::keyword_static::parse_scoped_damage_redirection_line(&line.tokens)
+            .is_ok_and(|ability| ability.is_some())
+        {
+            break;
+        }
+
         // A following `... instead[ if ...]` line replaces the action this
         // statement performed. It carries no subject of its own, so keeping
         // it as a separate line strands the replacement as an independent

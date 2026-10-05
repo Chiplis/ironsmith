@@ -10,7 +10,7 @@ use crate::model::facts::MetadataLine;
 pub enum KeywordLinePayload {
     Ast(Box<LineAst>),
     Kicker {
-        cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
+        cost: Box<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
         label: Option<String>,
     },
 }
@@ -21,7 +21,10 @@ impl KeywordLinePayload {
     }
 
     pub fn kicker(cost: ironsmith_core::TotalCost<crate::model::CompilerCost>) -> Self {
-        Self::Kicker { cost, label: None }
+        Self::Kicker {
+            cost: Box::new(cost),
+            label: None,
+        }
     }
 
     pub fn set_kicker_label(&mut self, label: String) -> Result<(), String> {
@@ -41,8 +44,10 @@ impl KeywordLinePayload {
             Self::Ast(ast) => ast.as_ref().clone(),
             Self::Kicker { cost, label } => {
                 let cost = match label {
-                    Some(label) => crate::model::CompilerOptionalCost::custom(label, cost.clone()),
-                    None => crate::model::CompilerOptionalCost::kicker(cost.clone()),
+                    Some(label) => {
+                        crate::model::CompilerOptionalCost::custom(label, cost.as_ref().clone())
+                    }
+                    None => crate::model::CompilerOptionalCost::kicker(cost.as_ref().clone()),
                 };
                 LineAst::OptionalCost(cost)
             }
@@ -152,7 +157,7 @@ pub struct RecognizedTriggeredLine {
     pub full_parse_tokens: Vec<OwnedLexToken>,
     pub trigger_parse_tokens: Vec<OwnedLexToken>,
     pub effect_parse_tokens: Vec<OwnedLexToken>,
-    pub intervening_if: Option<PredicateAst>,
+    pub intervening_if: Option<Box<PredicateAst>>,
     pub max_triggers_per_turn: Option<u32>,
     pub chosen_option: Option<ChosenOptionContext>,
     pub presentation: Option<PresentationLabel>,

@@ -5,7 +5,8 @@ pub(in super::super) fn parse_object_filter_inner(
     other: bool,
     strict: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    if let Some(filter) = crate::grammar::filters::simple::parse_simple_object_filter_lexed(tokens, other)
+    if let Some(filter) =
+        crate::grammar::filters::simple::parse_simple_object_filter_lexed(tokens, other)
         && filter.ring_bearer
     {
         return Ok(filter);
@@ -43,7 +44,12 @@ pub(in super::super) fn parse_object_filter_inner(
     let source_relation_split = crate::object_filters::split_source_relation_phrases(tokens);
     let (attacking_same_defender_as_source, could_be_enchanted_by_source) = source_relation_split
         .as_ref()
-        .map(|split| (split.attacking_same_defender_as_source, split.could_be_enchanted_by_source))
+        .map(|split| {
+            (
+                split.attacking_same_defender_as_source,
+                split.could_be_enchanted_by_source,
+            )
+        })
         .unwrap_or((false, false));
     let tokens = source_relation_split
         .as_ref()
@@ -315,6 +321,24 @@ pub(in super::super) fn parse_object_filter_inner(
         base_tokens = head_tokens;
     }
 
+    // A cost-result exclusion refers to the selected object, not its type.
+    for index in 0..base_tokens.len() {
+        let tail = non_article_parser_word_refs(&base_tokens[index..]);
+        if tail.len() >= 6
+            && tail[..2] == ["other", "than"]
+            && parse_word_choice(tail[2], OBJECT_REFERENCE_NOUN_WORDS).is_some()
+            && tail[3..6] == ["tapped", "this", "way"]
+        {
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG.into(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+            // This trailing relation owns the complete reference phrase.
+            base_tokens.truncate(index);
+            break;
+        }
+    }
+
     // A chosen-object exclusion is an identity relation to the preceding
     // choice. Do not let the generic "other than <type>" pass reinterpret
     // the final noun as an excluded card type (for example, as
@@ -578,6 +602,13 @@ pub(in super::super) fn parse_object_filter_inner(
     };
 
     let mut all_words = non_article_word_refs(&all_words_with_articles);
+    let enchanted_set = all_words
+        .windows(3)
+        .any(|part| part == ["that", "are", "enchanted"])
+        || all_words
+            .windows(2)
+            .any(|part| part == ["enchanted", "creatures"]);
+
     let has_tap_activated_ability = has_tap_activated_ability_phrase(&all_words);
     let has_non_mana_activated_ability = has_non_mana_activated_ability_phrase(&all_words);
     if parse_phrase_whole(
@@ -644,6 +675,15 @@ pub(in super::super) fn parse_object_filter_inner(
     {
         filter.zone = Some(Zone::Stack);
         filter.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
+    }
+    if filter.stack_kind.is_none()
+        && crate::word_primitives::parse_any_sequence_prefix(
+            &ability_words,
+            &[&["ability"], &["abilities"]],
+        )
+    {
+        filter.zone = Some(Zone::Stack);
+        filter.stack_kind = Some(crate::filter::StackObjectKind::Ability);
     }
     if parse_phrase_choice_whole(
         &non_article_parser_word_refs(&base_tokens),
@@ -1279,12 +1319,11 @@ pub(in super::super) fn parse_object_filter_inner(
                 "triggering",
             )))
         };
-        filter.total_power_toughness = Some(crate::filter::Comparison::EqualExpr(Box::new(
-            Value::Add(
+        filter.total_power_toughness =
+            Some(crate::filter::Comparison::EqualExpr(Box::new(Value::Add(
                 Box::new(Value::PowerOf(triggering())),
                 Box::new(Value::ToughnessOf(triggering())),
-            ),
-        )));
+            ))));
     }
     for idx in 0..all_words.len() {
         let value_tokens = match all_words.get(idx..) {
@@ -2745,6 +2784,58 @@ pub(in super::super) fn parse_object_filter_inner(
         let input_words = non_article_parser_word_refs(tokens);
         let all_words = input_words.as_slice();
 
+        // A controller clause is complete at its verb. A following word must
+        // introduce a supported qualifier or another selector; an arbitrary
+        // noun cannot be silently discarded by the domain fallback.
+        for (index, words) in all_words.windows(2).enumerate() {
+            if words == ["you", "control"]
+                && let Some(next) = all_words.get(index + 2)
+                && !matches!(
+                    *next,
+                    "and"
+                        | "or"
+                        | "that"
+                        | "thats"
+                        | "that's"
+                        | "with"
+                        | "without"
+                        | "which"
+                        | "this"
+                        | "among"
+                        | "as"
+                        | "during"
+                        | "since"
+                        | "other"
+                        | "at"
+                        | "in"
+                        | "on"
+                        | "from"
+                        | "except"
+                        | "named"
+                        | "each"
+                        | "unless"
+                        | "if"
+                        | "when"
+                        | "have"
+                        | "has"
+                        | "are"
+                        | "is"
+                        | "whose"
+                        | "but"
+                        | "of"
+                        | "tapped"
+                        | "untapped"
+                        | "attacking"
+                        | "blocking"
+                )
+            {
+                return Err(CardTextError::ParseError(format!(
+                    "object filter has an unsupported controller qualifier '{}'",
+                    all_words[index + 2..].join(" "),
+                )));
+            }
+        }
+
         // "and each" / "and every" signals a compound count source when
         // the word after "each"/"every" introduces a new filter (type word,
         // zone word, etc.) rather than qualifying the current subject
@@ -2791,6 +2882,14 @@ pub(in super::super) fn parse_object_filter_inner(
         }
     }
 
+    if enchanted_set {
+        filter
+            .tagged_constraints
+            .retain(|constraint| constraint.tag.as_str() != "enchanted");
+        let mut aura = ObjectFilter::default();
+        aura.subtypes.push(crate::types::Subtype::Aura);
+        filter.with_attached_object = Some(Box::new(aura));
+    }
     Ok(filter)
 }
 

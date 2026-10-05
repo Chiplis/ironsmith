@@ -398,6 +398,49 @@ fn pre_followup_subject_verb_route(id: &str) -> &'static str {
     }
 }
 
+pub(super) fn parse_animation_size_replacement_document(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let Some(index) = sentences.iter().position(|sentence| {
+        let words = crate::lexer::parser_token_word_refs(sentence);
+        words.first() == Some(&"if")
+            && words.last() == Some(&"instead")
+            && words
+                .windows(6)
+                .any(|part| part == ["it", "has", "base", "power", "and", "toughness"])
+    }) else {
+        return Ok(None);
+    };
+    if index == 0 {
+        return Err(CardTextError::ParseError(
+            "animation size replacement lacks a preceding animation".into(),
+        ));
+    }
+    let mut effects = crate::effect_sentences::parse_effect_sentences_lexed(sentences[index - 1])?;
+    let mut carried_context = None;
+    let mut state = SentenceDispatchState {
+        effects: &mut effects,
+        carried_context: &mut carried_context,
+    };
+    if pre_rule_animation_base_pt_replacement(&mut state, &[], index, sentences[index])?.is_none() {
+        return Ok(None);
+    }
+    let mut prefix = Vec::new();
+    for sentence in &sentences[..index - 1] {
+        prefix.extend(crate::effect_sentences::parse_effect_sentences_lexed(
+            sentence,
+        )?);
+    }
+    prefix.extend(effects);
+    for sentence in &sentences[index + 1..] {
+        prefix.extend(crate::effect_sentences::parse_effect_sentences_lexed(
+            sentence,
+        )?);
+    }
+    Ok(Some(prefix))
+}
+
 pub(super) fn run_pre_parse_followup_registry(
     state: &mut SentenceDispatchState<'_>,
     sentences: &[SentenceInput],
@@ -851,9 +894,13 @@ fn pre_rule_optional_source_exile_and_collect_evidence(
         wrap_if_result: None,
         direct_effects: Some(vec![
             EffectAst::Permissions(PermissionEffectAst::May {
-                effects: vec![choose_evidence, exile_source, collect_evidence,
+                effects: vec![
+                    choose_evidence,
+                    exile_source,
+                    collect_evidence,
                     EffectAst::subject_verb_emit_keyword_action(
-                        crate::events::KeywordActionKind::CollectEvidence, amount,
+                        crate::events::KeywordActionKind::CollectEvidence,
+                        amount,
                     ),
                 ],
             }),
@@ -1186,7 +1233,10 @@ fn pre_rule_extremum_choice_followup(
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
     if super::super::chain_carry::bind_extremum_choice_followup(state.effects, sentence_tokens) {
-        return Ok(Some(PreParseFollowupResult::Handled { consumed_sentences: 1, route: None }));
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+            route: None,
+        }));
     }
     Ok(None)
 }
@@ -1534,9 +1584,39 @@ fn pre_rule_permission_payment_followup(
     let Some(tail) = words.strip_prefix(&["if", "you", "cast", "a", "spell", "this", "way"]) else {
         return Ok(None);
     };
-    let life = matches!(tail,
-        ["pay", "life", "equal", "to", "its", "mana", "value", "rather", "than", "pay" | "paying", "its", "mana", "cost"]
-        | ["pay", "life", "equal", "to", "that", "spells", "mana", "value", "rather", "than", "pay" | "paying", "its", "mana", "cost"]);
+    let life = matches!(
+        tail,
+        [
+            "pay",
+            "life",
+            "equal",
+            "to",
+            "its",
+            "mana",
+            "value",
+            "rather",
+            "than",
+            "pay" | "paying",
+            "its",
+            "mana",
+            "cost"
+        ] | [
+            "pay",
+            "life",
+            "equal",
+            "to",
+            "that",
+            "spells",
+            "mana",
+            "value",
+            "rather",
+            "than",
+            "pay" | "paying",
+            "its",
+            "mana",
+            "cost"
+        ]
+    );
     let mode = match tail {
         [
             "you",
@@ -1585,7 +1665,8 @@ fn pre_rule_permission_payment_followup(
     ) -> bool {
         if life {
             let price = crate::permission_helpers::effect_cast_prices::mana_value_life_price();
-            return crate::permission_helpers::effect_cast_prices::attach_price(effect, &price) == 1;
+            return crate::permission_helpers::effect_cast_prices::attach_price(effect, &price)
+                == 1;
         }
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Grants(grant),
@@ -1939,7 +2020,11 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         &["theyre", "they", "its", "it"],
         pre_rule_still_lands_followup
     ),
-    pre_followup_rule!("extremum-choice", &["if"], pre_rule_extremum_choice_followup),
+    pre_followup_rule!(
+        "extremum-choice",
+        &["if"],
+        pre_rule_extremum_choice_followup
+    ),
     pre_followup_rule!(
         "cant-be-regenerated",
         &[
@@ -2109,6 +2194,11 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
         post_rule_delayed_return_condition_followup
     ),
     post_followup_rule!(
+        "iterated-result-followup",
+        &["if", "when"],
+        post_rule_iterated_result_followup
+    ),
+    post_followup_rule!(
         "delayed-trigger-result-followup",
         &["if", "when"],
         post_rule_delayed_trigger_result_followup
@@ -2201,9 +2291,9 @@ use subject_verb_followups_trigger_programs::{
     append_copy_retarget_to_trailing_delayed_trigger,
     bind_demonstrative_land_match_to_triggering_object,
     post_rule_delayed_return_condition_followup, post_rule_delayed_trigger_copy_retarget_followup,
-    post_rule_delayed_trigger_result_followup, post_rule_reflexive_object_followup,
-    post_rule_targeted_object_delayed_leave, replace_event_amount_with_value,
-    trailing_delayed_trigger_effects_mut,
+    post_rule_delayed_trigger_result_followup, post_rule_iterated_result_followup,
+    post_rule_reflexive_object_followup, post_rule_targeted_object_delayed_leave,
+    replace_event_amount_with_value, trailing_delayed_trigger_effects_mut,
 };
 #[path = "subject_verb_followups/subject_verb_followups_object_action.rs"]
 mod subject_verb_followups_object_action_programs;

@@ -129,6 +129,7 @@ fn pending(game: &mut GameState, dm: &mut Choices) {
 }
 fn resolve(game: &mut GameState, dm: &mut Choices) {
     resolve_stack_entry_with(game, dm).unwrap();
+    ironsmith::game_loop::check_and_apply_sbas_with(game, &mut TriggerQueue::new(), dm).unwrap();
     pending(game, dm);
 }
 fn activation_index(definition: &CardDefinition) -> usize {

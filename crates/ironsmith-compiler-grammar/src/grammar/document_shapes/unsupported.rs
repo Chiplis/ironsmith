@@ -152,22 +152,6 @@ const RULES: &[UnsupportedRule] = &[
     },
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Exact,
-        phrase: &[
-            "target",
-            "creature",
-            "can",
-            "block",
-            "any",
-            "number",
-            "of",
-            "creatures",
-            "this",
-            "turn",
-        ],
-        kind: UnsupportedRewriteLineKind::TargetOnlyRestriction,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Exact,
         phrase: &["unleash", "while"],
         kind: UnsupportedRewriteLineKind::GenericLine,
     },
@@ -278,15 +262,24 @@ pub fn parse_unsupported_rewrite_line_kind(
         }
     }
 
-    let loss_template_supported=crate::grammar::effects::ability_loss_templates::parse(tokens).ok().flatten().is_some();
+    let loss_template_supported = crate::grammar::effects::ability_loss_templates::parse(tokens)
+        .ok()
+        .flatten()
+        .is_some();
     let mut input: WordSliceInput<'_> = &words;
     crate::grammar::primitives::take_leaf(
         &mut input,
         alt((
             parse_choose_leading_spell,
             |input: &mut WordSliceInput<'_>| {
-                if loss_template_supported { Err(primitives::backtrack_err("ability-loss template", "unsupported body")) }
-                else { parse_loses_abilities_becomes(input) }
+                if loss_template_supported {
+                    Err(primitives::backtrack_err(
+                        "ability-loss template",
+                        "unsupported body",
+                    ))
+                } else {
+                    parse_loses_abilities_becomes(input)
+                }
             },
             parse_for_as_long_as_permission,
             parse_multi_step_each_player,

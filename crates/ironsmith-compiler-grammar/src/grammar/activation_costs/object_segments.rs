@@ -87,7 +87,8 @@ pub fn parse_sacrifice_segment_tokens(
     if words.len() > 1
         && words.word_refs()[1..] == *crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS
     {
-        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::GrantingSource.key());
+        let mut filter =
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::GrantingSource.key());
         filter.zone = Some(Zone::Battlefield);
         return Ok(ActivationCostSegmentCst::SacrificeChosen {
             count: ChoiceCount::exactly(1),
@@ -119,8 +120,10 @@ pub fn parse_sacrifice_segment_tokens(
         }
         SacrificeCostShape::Chosen(shape) => {
             let filter_tokens = &tokens[shape.filter_first..];
-            let mut filter =
-                filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, shape.other)?;
+            let mut filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
+                filter_tokens,
+                shape.other,
+            )?;
             // "any number of creatures with total power 12 or greater"
             // (Phyrexian Dreadnought): the comparison bounds the chosen set,
             // not each creature (CR 118.3).
@@ -141,17 +144,32 @@ pub fn parse_sacrifice_segment_tokens(
 pub fn parse_discard_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
-    if let Some(group) = super::grouped_hand::parse_grouped_hand_cost(tokens, false) { return group; }
-    if crate::lexer::token_word_refs(tokens) == ["discard", "the", "last", "card", "you", "drew", "this", "turn"] {
+    if let Some(group) = super::grouped_hand::parse_grouped_hand_cost(tokens, false) {
+        return group;
+    }
+    if crate::lexer::parser_token_word_refs(tokens)
+        == [
+            "discard", "the", "last", "card", "you", "drew", "this", "turn",
+        ]
+    {
         return Ok(ActivationCostSegmentCst::DiscardFiltered {
-            count: 1, card_types: Vec::new(), supertypes: Vec::new(),
-            filter: Some(ObjectFilter { zone: Some(Zone::Hand), owner: Some(crate::target::PlayerFilter::You),
-                last_drawn_this_turn: Some(crate::target::PlayerFilter::You), ..Default::default() }),
-            random: false, name: None, other: false,
+            count: 1,
+            card_types: Vec::new(),
+            supertypes: Vec::new(),
+            filter: Some(ObjectFilter {
+                zone: Some(Zone::Hand),
+                owner: Some(crate::target::PlayerFilter::You),
+                last_drawn_this_turn: Some(crate::target::PlayerFilter::You),
+                ..Default::default()
+            }),
+            random: false,
+            name: None,
+            other: false,
         });
     }
 
-    let shape = match primitives::parse_all(tokens, parse_discard_cost_shape_lexed, "discard-cost") {
+    let shape = match primitives::parse_all(tokens, parse_discard_cost_shape_lexed, "discard-cost")
+    {
         Ok(shape) => shape,
         Err(_) => return parse_typed_discard_selector(tokens),
     };
@@ -212,7 +230,12 @@ pub fn parse_discard_segment_tokens(
             subtypes,
             random,
             other,
-        } if card_types.is_empty() && supertypes.is_empty() && subtypes.is_empty() && !random && !other => {
+        } if card_types.is_empty()
+            && supertypes.is_empty()
+            && subtypes.is_empty()
+            && !random
+            && !other =>
+        {
             ActivationCostSegmentCst::DiscardCard(count)
         }
         DiscardCostShape::Cards {
@@ -273,7 +296,9 @@ fn parse_typed_discard_selector(
         filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)?;
     // Relations across a selected set need a group-aware selector. The ordinary
     // discard executor must never silently treat them as per-card predicates.
-    if filter.shares_name || filter.shares_color || filter.distinct_names
+    if filter.shares_name
+        || filter.shares_color
+        || filter.distinct_names
         || filter.distinct_mana_values
         || filter.distinct_powers
         || filter.shares_land_type
@@ -369,7 +394,16 @@ pub fn parse_tap_chosen_segment_tokens(
         .map_err(|_| unsupported(tokens, "tap chosen"))?;
     let (filter_tokens, exclude_declared_combatants) =
         strip_not_declared_as_attacking_or_blocking_suffix(shape.filter_tokens);
+    if crate::lexer::parser_token_word_refs(filter_tokens)
+        .windows(2)
+        .any(|words| words == ["at", "random"])
+    {
+        return Err(unsupported(filter_tokens, "tap chosen random selection"));
+    }
     let mut filter = tap_state_cost_filter(filter_tokens, shape.other)?;
+    if filter.tapped {
+        return Err(unsupported(filter_tokens, "tap chosen contradictory state"));
+    }
     filter.untapped = true;
     if exclude_declared_combatants {
         filter.nonattacking = true;
@@ -388,13 +422,33 @@ pub fn parse_untap_chosen_segment_tokens(
         .map_err(|_| unsupported(tokens, "untap chosen"))?;
     let mut filter = tap_state_cost_filter(shape.filter_tokens, shape.other)?;
     filter.tapped = true;
-    Ok(ActivationCostSegmentCst::UntapChosen { count: shape.count, filter })
+    Ok(ActivationCostSegmentCst::UntapChosen {
+        count: shape.count,
+        filter,
+    })
 }
 
-fn tap_state_cost_filter(tokens: &[OwnedLexToken], other: bool) -> Result<ObjectFilter, CardTextError> {
+fn tap_state_cost_filter(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
+    let head = primitives::TokenWordView::new(tokens).word_refs();
+    if head.len() == 1 && head[0] == "tapped"
+        || head.first() == Some(&"enchanted")
+            && !head.get(1).is_some_and(|noun| {
+                matches!(
+                    *noun,
+                    "land" | "creature" | "artifact" | "permanent" | "enchantment"
+                )
+            })
+    {
+        return Err(unsupported(tokens, "tap-state object cost"));
+    }
+
     let words = primitives::TokenWordView::new(tokens);
     if words.word_refs() == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS {
-        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::GrantingSource.key());
+        let mut filter =
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::GrantingSource.key());
         filter.zone = Some(Zone::Battlefield);
         filter.other = other;
         return Ok(filter);
@@ -717,7 +771,9 @@ mod reference_programs;
 use reference_programs::parse_optional_object_count;
 #[path = "object_segments/choice.rs"]
 mod choice_programs;
-use choice_programs::{parse_tap_chosen_shape_lexed, parse_untap_chosen_shape_lexed, parse_unattach_chosen_tail_lexed};
+use choice_programs::{
+    parse_tap_chosen_shape_lexed, parse_unattach_chosen_tail_lexed, parse_untap_chosen_shape_lexed,
+};
 #[path = "object_segments/resource.rs"]
 mod resource_programs;
 use resource_programs::parse_unattach_cost_shape_lexed;

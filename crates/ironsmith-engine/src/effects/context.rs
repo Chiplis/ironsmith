@@ -68,33 +68,64 @@ pub enum ExecutionError {
     InternalError(String),
     /// The host could not compute the complete operation within its resource
     /// profile. This is not an impossible Magic action or a neutral outcome.
-    ResourceLimitExceeded { resource: &'static str, requested: u128, maximum: u128 },
-    ResourceAllocationFailed { resource: &'static str, requested: usize },
+    ResourceLimitExceeded {
+        resource: &'static str,
+        requested: u128,
+        maximum: u128,
+    },
+    ResourceAllocationFailed {
+        resource: &'static str,
+        requested: usize,
+    },
     /// A query cannot preselect another player's required decision. Native
     /// execution can request it; absence of an answer is not payment failure.
-    UnresolvedPlayerDecision { player: PlayerId, decision: &'static str },
+    UnresolvedPlayerDecision {
+        player: PlayerId,
+        decision: &'static str,
+    },
 }
 
 impl ExecutionError {
     pub fn is_resource_exhaustion(&self) -> bool {
-        matches!(self, Self::ResourceLimitExceeded { .. } | Self::ResourceAllocationFailed { .. })
+        matches!(
+            self,
+            Self::ResourceLimitExceeded { .. } | Self::ResourceAllocationFailed { .. }
+        )
     }
     /// An incomplete engine calculation must survive boolean affordability
     /// adapters; it is not proof that the Magic payment is impossible.
     pub fn is_incomplete_execution(&self) -> bool {
-        self.is_resource_exhaustion() || matches!(self, Self::ContinuousDiscovery(_) | Self::UnresolvedPlayerDecision { .. })
+        self.is_resource_exhaustion()
+            || matches!(
+                self,
+                Self::ContinuousDiscovery(_) | Self::UnresolvedPlayerDecision { .. }
+            )
     }
 }
 
 impl std::fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ExecutionError::ResourceLimitExceeded { resource, requested, maximum } => write!(f,
-                "Incomplete execution: {resource} requires {requested}, host limit is {maximum}"),
-            ExecutionError::ResourceAllocationFailed { resource, requested } => write!(f,
-                "Incomplete execution: allocator could not reserve {requested} items for {resource}"),
-            ExecutionError::UnresolvedPlayerDecision { player, decision } => write!(f,
-                "Incomplete calculation: {decision} requires a decision from player {:?}", player),
+            ExecutionError::ResourceLimitExceeded {
+                resource,
+                requested,
+                maximum,
+            } => write!(
+                f,
+                "Incomplete execution: {resource} requires {requested}, host limit is {maximum}"
+            ),
+            ExecutionError::ResourceAllocationFailed {
+                resource,
+                requested,
+            } => write!(
+                f,
+                "Incomplete execution: allocator could not reserve {requested} items for {resource}"
+            ),
+            ExecutionError::UnresolvedPlayerDecision { player, decision } => write!(
+                f,
+                "Incomplete calculation: {decision} requires a decision from player {:?}",
+                player
+            ),
             ExecutionError::InvalidTarget => write!(f, "Invalid target"),
             ExecutionError::OutOfRange => write!(f, "Subject is outside range of influence"),
             ExecutionError::UnresolvableValue(msg) => write!(f, "Cannot resolve value: {}", msg),
@@ -137,7 +168,10 @@ pub enum TargetError {
 
 /// A resolved target - either a specific object or player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub enum ResolvedTarget {
     Object(ObjectId),
     Player(PlayerId),
@@ -518,7 +552,6 @@ execution_context_checkpoint! {
     pending_entry_attachment: Option<crate::target::ChooseSpec>,
     created_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
 }
-
 
 impl std::fmt::Debug for ExecutionContext<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -987,10 +1020,15 @@ impl<'a> ExecutionContext<'a> {
         targets: Vec<ResolvedTarget>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
+        let original_announced = self.announced_targets.take();
+        self.announced_targets = original_announced
+            .clone()
+            .or_else(|| (!self.targets_are_cost_choices).then(|| self.targets.clone()));
         let original_targets = std::mem::replace(&mut self.targets, targets);
         let original_target_assignments = std::mem::take(&mut self.target_assignments);
         let result = f(self);
         self.targets = original_targets;
+        self.announced_targets = original_announced;
         self.target_assignments = original_target_assignments;
         result
     }
@@ -1122,10 +1160,12 @@ impl<'a> ExecutionContext<'a> {
             self.combat.attacking_player = Some(attack.attacker);
             self.combat.defending_player = Some(attack.defender);
             self.set_tagged_players(
-                ironsmith_core::tag::ATTACK_DECLARATION_ACTOR_TAG, vec![attack.attacker],
+                ironsmith_core::tag::ATTACK_DECLARATION_ACTOR_TAG,
+                vec![attack.attacker],
             );
             self.set_tagged_players(
-                ironsmith_core::tag::ATTACK_DECLARATION_DEFENDER_TAG, vec![attack.defender],
+                ironsmith_core::tag::ATTACK_DECLARATION_DEFENDER_TAG,
+                vec![attack.defender],
             );
         }
         if let Some(snapshot) = event.snapshot() {
@@ -1142,7 +1182,10 @@ impl<'a> ExecutionContext<'a> {
             self.set_tagged_players(tag.clone(), players.clone());
         }
         if let Some(controller) = event.cause().and_then(|cause| cause.source_controller) {
-            self.set_tagged_players(ironsmith_core::TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG, vec![controller]);
+            self.set_tagged_players(
+                ironsmith_core::TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG,
+                vec![controller],
+            );
         }
         if let Some(controller) = event.controller() {
             self.set_tagged_players(
@@ -1319,7 +1362,11 @@ impl<'a> ExecutionContext<'a> {
     /// replaces the seeded history. Filter references to "cards exiled with
     /// ~" still read the full link set through the filter context.
     pub fn tag_source_exiled_result(&mut self, snapshot: ObjectSnapshot) {
-        if self.source_snapshot.as_ref().is_some_and(|source| source.stable_id == snapshot.stable_id) {
+        if self
+            .source_snapshot
+            .as_ref()
+            .is_some_and(|source| source.stable_id == snapshot.stable_id)
+        {
             self.set_tagged_objects(crate::tag::SOURCE_EXILED_SELF_TAG, vec![snapshot.clone()]);
         }
         const RESOLUTION_MARKER: &str = crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG;
@@ -1445,6 +1492,20 @@ impl<'a> ExecutionContext<'a> {
                 })
                 .collect::<Vec<_>>()
         };
+        // An instruction's object-target scope still refers to the player
+        // chosen by an earlier target group in this same resolution.
+        if target_players.is_empty() && !self.targets_are_cost_choices {
+            target_players.extend(
+                self.announced_targets
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|target| match target {
+                        ResolvedTarget::Player(player) => Some(*player),
+                        _ => None,
+                    }),
+            );
+        }
         let target_objects = if self.targets_are_cost_choices {
             Vec::new()
         } else {
@@ -1468,9 +1529,10 @@ impl<'a> ExecutionContext<'a> {
         // removed attackers stop qualifying and later attacking entrants can
         // qualify (CR 508.6). Never derive this from the active-player seat.
         let mut attacking = Vec::new();
-        if let Some(attack) = self.triggering_event.as_ref().and_then(|event| {
-            event.downcast::<crate::events::PlayerAttackDeclarationEvent>()
-        })
+        if let Some(attack) = self
+            .triggering_event
+            .as_ref()
+            .and_then(|event| event.downcast::<crate::events::PlayerAttackDeclarationEvent>())
             && attack.turn_number == game.turn.turn_number
             && attack.combat_phase == game.turn_store.combat_phases_started_this_turn
             && let Some(combat) = &game.combat
@@ -1511,10 +1573,11 @@ impl<'a> ExecutionContext<'a> {
                     .map(|obj| ObjectSnapshot::from_object(obj, game))
             })
         {
+            // A resolution prelude can bind a more specific participant
+            // (for attachment events, the recipient instead of the attachment).
             tagged_objects
                 .entry(TagKey::from("triggering"))
-                .or_default()
-                .push(snapshot);
+                .or_insert_with(|| vec![snapshot]);
             if let Some(entry) = game.stack.iter().find(|entry| entry.object_id == object_id) {
                 // "that spell targets only a single opponent ... for each
                 // other opponent": an ability with no player targets of its
@@ -1598,9 +1661,23 @@ impl<'a> ExecutionContext<'a> {
         filter_ctx.active_player = game.singular_active_player(chosen_player);
         if self.combat.defending_player.is_some() {
             filter_ctx.defending_player = self.combat.defending_player;
+            filter_ctx.defending_players = if game.shared_team_turns_enabled() {
+                game.team_players_for(self.combat.defending_player.unwrap())
+            } else {
+                Vec::new()
+            };
         }
         if self.combat.attacking_player.is_some() {
             filter_ctx.attacking_player = self.combat.attacking_player;
+            if self.triggering_event.as_ref().is_some_and(|event| {
+                event
+                    .downcast::<crate::events::PlayerAttackDeclarationEvent>()
+                    .is_some()
+            }) {
+                // A declaration by one player stays singular even during
+                // a turn shared with that player's teammates.
+                filter_ctx.attacking_players.clear();
+            }
         }
         filter_ctx
     }

@@ -243,6 +243,7 @@ pub struct ReferenceFrame {
     pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
+    pub has_announced_x: bool,
 }
 
 impl ReferenceFrame {
@@ -270,11 +271,13 @@ impl ReferenceFrame {
             life_amount_producers: frame.life_amount_producers.clone(),
             die_result_producers: frame.die_result_producers.clone(),
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
+            has_announced_x: frame.has_announced_x,
         }
     }
 
     pub fn to_lowering_frame(&self) -> LoweringFrame {
         LoweringFrame {
+            declared_target_references: Vec::new(),
             last_effect_id: self.last_effect_id,
             last_library_search_effect_id: self.last_library_search_effect_id,
             last_object_tag: self.last_object_tag.clone(),
@@ -302,6 +305,7 @@ impl ReferenceFrame {
             life_amount_producers: self.life_amount_producers.clone(),
             die_result_producers: self.die_result_producers.clone(),
             bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
+            has_announced_x: self.has_announced_x,
         }
     }
 }
@@ -418,6 +422,7 @@ pub struct ReferenceEnv {
     pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
+    pub has_announced_x: bool,
 }
 
 impl Default for ReferenceEnv {
@@ -442,6 +447,7 @@ impl Default for ReferenceEnv {
             life_amount_producers: Default::default(),
             die_result_producers: Default::default(),
             bind_unbound_x_to_last_effect: false,
+            has_announced_x: false,
         }
     }
 }
@@ -478,6 +484,7 @@ impl ReferenceEnv {
             life_amount_producers: Default::default(),
             die_result_producers: Default::default(),
             bind_unbound_x_to_last_effect,
+            has_announced_x: false,
         }
     }
 
@@ -504,6 +511,7 @@ impl ReferenceEnv {
             life_amount_producers: frame.life_amount_producers.clone(),
             die_result_producers: frame.die_result_producers.clone(),
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
+            has_announced_x: frame.has_announced_x,
         }
     }
 
@@ -539,6 +547,7 @@ impl ReferenceEnv {
             life_amount_producers: self.life_amount_producers.clone(),
             die_result_producers: self.die_result_producers.clone(),
             bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
+            has_announced_x: self.has_announced_x,
         }
     }
 

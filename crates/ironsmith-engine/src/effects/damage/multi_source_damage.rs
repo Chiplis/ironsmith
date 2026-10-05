@@ -4,7 +4,7 @@ use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::events::damage::{checked_damage_amount, checked_damage_count};
 use crate::events::processing::{
     SimultaneousDamageEvent, process_simultaneous_damage_assignments_with_event_with_scope,
-    with_deferred_prevention_follow_ups,
+    with_deferred_prevention_follow_up_outcome,
 };
 use crate::events::{DamageEvent, DamageTarget, Event, LifeGainEvent};
 use crate::game_state::GameState;
@@ -49,7 +49,11 @@ impl EffectExecutor for DealDamageBySourcesEffect {
     }
 }
 trait ExecuteCapturedDamage {
-    fn execute_bound(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError>;
+    fn execute_bound(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError>;
 }
 impl ExecuteCapturedDamage for DealDamageBySourcesEffect {
     fn execute_bound(
@@ -247,7 +251,7 @@ impl ExecuteCapturedDamage for DealDamageBySourcesEffect {
         let batch = game.simultaneous_action_batch().unwrap_or_else(|| {
             game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage)
         });
-        with_deferred_prevention_follow_ups(game, ctx.decision_maker, |game, dm| {
+        with_deferred_prevention_follow_up_outcome(game, ctx.decision_maker, |game, dm| {
             let mut parent = ExecutionContext::new(source, controller, dm)
                 .with_cause(cause)
                 .with_provenance(provenance);
@@ -274,22 +278,37 @@ pub(crate) fn commit_damage_batch(
 ) -> Result<EffectOutcome, ExecutionError> {
     // Capture the authored recipient, not a replacement redirect's new
     // destination. These scalars precede every original damage consequence.
-    game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+    game.refresh_continuous_state()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
     let mut original_recipients = Vec::new();
     for event in &events {
         let receipt = match event.target {
-            DamageTarget::Player(player) => game.player(player).map(|state|
-                crate::effect::DamageRecipientBefore::Player { player, life: state.life }),
-            DamageTarget::Object(object) => game.try_current_characteristics(object)
+            DamageTarget::Player(player) => {
+                game.player(player)
+                    .map(|state| crate::effect::DamageRecipientBefore::Player {
+                        player,
+                        life: state.life,
+                    })
+            }
+            DamageTarget::Object(object) => game
+                .try_current_characteristics(object)
                 .map_err(ExecutionError::ContinuousDiscovery)?
                 .map(|frame| crate::effect::DamageRecipientBefore::Object {
                     object,
                     was_creature: frame.card_types.contains(&crate::CardType::Creature),
-                    loyalty: frame.card_types.contains(&crate::CardType::Planeswalker)
-                        .then(|| game.object(object).and_then(|state| state.loyalty()).unwrap_or(0)),
+                    loyalty: frame
+                        .card_types
+                        .contains(&crate::CardType::Planeswalker)
+                        .then(|| {
+                            game.object(object)
+                                .and_then(|state| state.loyalty())
+                                .unwrap_or(0)
+                        }),
                 }),
         };
-        if let Some(receipt) = receipt && !original_recipients.contains(&receipt) {
+        if let Some(receipt) = receipt
+            && !original_recipients.contains(&receipt)
+        {
             original_recipients.push(receipt);
         }
     }
@@ -338,12 +357,15 @@ pub(crate) fn commit_damage_batch(
         })
         .collect::<Vec<_>>();
     let any_prevented = processed.iter().any(|result| result.replacement_prevented);
+    let any_replaced = processed
+        .iter()
+        .any(|result| result.payload_outcome.is_some());
     let mut prepared = Vec::new();
     let mut reported = Vec::new();
     let mut programs = Vec::new();
     let mut payloads = Vec::new();
     let mut lifelink = Vec::<(usize, u32)>::new();
-    let mut total = 0i32;
+    let mut total = 0i64;
     let mut capacities = std::collections::HashMap::<ObjectId, u32>::new();
     // Excess capacity is sampled before this event, across every real source.
     for result in &processed {
@@ -654,7 +676,9 @@ pub(crate) fn commit_damage_batch(
             _ => None,
         })
         .collect::<Vec<_>>();
-    let mut outcome = if total == 0 && any_prevented {
+    let mut outcome = if total == 0 && any_replaced {
+        EffectOutcome::replaced()
+    } else if total == 0 && any_prevented {
         EffectOutcome::prevented()
     } else {
         EffectOutcome::count(total)
@@ -774,7 +798,7 @@ mod tests {
         assert!(damage.iter().all(|event| event.amount == 3));
     }
     #[test]
-    fn multi_source_total_overflow_rolls_back_every_original_and_receipt() {
+    fn multi_source_wide_total_preserves_every_original_and_receipt() {
         let (mut game, first, second, a, _, _) = setup();
         let recipient = game.create_object_from_definition(
             &crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Recipient")
@@ -799,12 +823,10 @@ mod tests {
             &effect,
             &mut ExecutionContext::new_default(first, a),
         );
-        assert!(matches!(
-            result,
-            Err(ExecutionError::ResourceLimitExceeded { .. })
-        ));
-        assert_eq!(game.damage_on(recipient), 0);
-        assert_eq!(game.turn_store.turn_history.event_records.len(), before);
+        let outcome = result.unwrap();
+        assert_eq!(outcome.count_or_zero(), i64::from(i32::MAX) * 2);
+        assert_eq!(game.damage_on(recipient), i32::MAX as u32 * 2);
+        assert_eq!(game.turn_store.turn_history.event_records.len(), before + 2);
         assert_eq!(game.effect_store.trigger_matching_holds, 0);
     }
 }
@@ -897,7 +919,7 @@ mod amplified_result_limit_tests {
     use crate::effects::execute_effect;
     use crate::target::PlayerFilter;
     #[test]
-    fn amplified_life_loss_sum_fails_before_result_publication_and_rolls_back_damage_receipts() {
+    fn amplified_life_loss_sum_retains_wide_aggregate_damage_receipts() {
         let mut game = GameState::new(
             vec!["Alice".into(), "Bob".into(), "Charlie".into()],
             i32::MAX,
@@ -934,19 +956,19 @@ mod amplified_result_limit_tests {
             &effect,
             &mut ExecutionContext::new_default(source, a),
         );
-        assert!(
-            matches!(
-                result,
-                Err(ExecutionError::ResourceLimitExceeded {
-                    resource: "simultaneous damage-result life loss",
-                    ..
-                })
-            ),
-            "{result:?}"
-        );
-        assert_eq!(game.player(b).unwrap().life, i32::MAX);
-        assert_eq!(game.player(c).unwrap().life, i32::MAX);
-        assert_eq!(game.turn_store.turn_history.event_records.len(), before);
+        let outcome = result.expect("wide aggregate life loss is representable");
+        assert_eq!(outcome.count_or_zero(), 2);
+        assert_eq!(game.player(b).unwrap().life, 0);
+        assert_eq!(game.player(c).unwrap().life, 0);
+        let losses = game
+            .turn_store
+            .turn_history
+            .projected_records()
+            .skip(before)
+            .filter_map(|record| record.event.downcast::<crate::events::LifeLossEvent>())
+            .map(|event| u64::from(event.amount))
+            .sum::<u64>();
+        assert_eq!(losses, 2 * i32::MAX as u64);
         assert_eq!(game.effect_store.trigger_matching_holds, 0);
     }
 }

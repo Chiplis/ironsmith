@@ -512,7 +512,8 @@ impl TriggerQueue {
     /// AbilityTriggered notifications for the same captured occurrences.
     pub(crate) fn append_captured(&mut self, mut captured: Self) {
         self.entries.append(&mut captured.entries);
-        self.ability_triggered_events.append(&mut captured.ability_triggered_events);
+        self.ability_triggered_events
+            .append(&mut captured.ability_triggered_events);
     }
 
     /// Restore an already-announced trigger after an interactive choice paused stacking.
@@ -587,21 +588,28 @@ fn shared_trigger_identity(
     abilities: &std::sync::Arc<Vec<crate::ability::Ability>>,
     index: usize,
 ) -> Option<TriggerIdentity> {
-    let AbilityKind::Triggered(triggered) = &abilities.get(index)?.kind else { return None; };
+    let AbilityKind::Triggered(triggered) = &abilities.get(index)?.kind else {
+        return None;
+    };
     let key = (std::sync::Arc::as_ptr(abilities) as usize, index);
     if let Some(identity) = SHARED_TRIGGER_IDENTITIES.with(|cache| {
         cache.borrow().get(&key).and_then(|(weak, identity)| {
-            weak.upgrade().filter(|live| std::sync::Arc::ptr_eq(live, abilities))
+            weak.upgrade()
+                .filter(|live| std::sync::Arc::ptr_eq(live, abilities))
                 .map(|_| *identity)
         })
-    }) { return Some(identity); }
+    }) {
+        return Some(identity);
+    }
     let identity = compute_trigger_identity(triggered);
     SHARED_TRIGGER_IDENTITIES.with(|cache| {
         let mut cache = cache.borrow_mut();
         // Disposable cache capacity, not a bound on trigger discovery.
         if cache.len() >= 4096 {
             cache.retain(|_, (weak, _)| weak.strong_count() != 0);
-            if cache.len() >= 4096 { cache.clear(); }
+            if cache.len() >= 4096 {
+                cache.clear();
+            }
         }
         cache.insert(key, (std::sync::Arc::downgrade(abilities), identity));
     });
@@ -1719,13 +1727,19 @@ fn add_ward_triggers(
     let Some(targeting_entry) = game.stack.iter().rev().find(|entry| {
         entry.is_ability == targeted.by_ability
             && (if targeted.by_ability {
-                targeted.stack_ability.is_some_and(|id| entry.target_id() == id)
-            } else { entry.object_id == targeted.source })
+                targeted
+                    .stack_ability
+                    .is_some_and(|id| entry.target_id() == id)
+            } else {
+                entry.object_id == targeted.source
+            })
             && entry.targets.contains(&targeted.target)
     }) else {
         return;
     };
-    let targeting_stack_id = targeting_entry.is_ability.then(|| targeting_entry.target_id());
+    let targeting_stack_id = targeting_entry
+        .is_ability
+        .then(|| targeting_entry.target_id());
     let wards = crate::targeting::get_ward_costs(game, target, targeted.source_controller);
     if wards.is_empty() {
         return;
@@ -1946,16 +1960,63 @@ fn tagged_objects_for_matched_trigger_with_view(
         trigger_event,
         trigger_requires_other_attacker_tag(trigger),
     );
-    if matches!(trigger.simultaneous_trigger_key(trigger_event), Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::PhasingBatch { .. }))
-        && let Some(snapshot) = trigger_event.snapshot()
+    let blocking = if let Some(event) =
+        trigger_event.downcast::<crate::events::combat::CreatureBlockedEvent>()
     {
-        tagged.insert(crate::tag::TagKey::from(ironsmith_core::tag::PHASING_GROUP_TAG), vec![snapshot.clone()]);
+        event
+            .blocker_snapshot
+            .clone()
+            .or_else(|| {
+                game.object(event.blocker).map(|object| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                })
+            })
+            .into_iter()
+            .collect::<Vec<_>>()
+    } else if let Some(event) =
+        trigger_event.downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
+    {
+        if !event.blocker_snapshots.is_empty() {
+            event.blocker_snapshots.clone()
+        } else {
+            event
+                .blockers
+                .iter()
+                .filter_map(|id| {
+                    game.object(*id).map(|object| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                    })
+                })
+                .collect()
+        }
+    } else {
+        Vec::new()
+    };
+    if !blocking.is_empty() {
+        tagged.insert(crate::tag::TagKey::from("blocking"), blocking);
     }
-    if let Some(attachment_trigger) = trigger.downcast_ref::<crate::triggers::AttachmentChangedTrigger>()
+    if matches!(
+        trigger.simultaneous_trigger_key(trigger_event),
+        Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::PhasingBatch { .. })
+    ) && let Some(snapshot) = trigger_event.snapshot()
+    {
+        tagged.insert(
+            crate::tag::TagKey::from(ironsmith_core::tag::PHASING_GROUP_TAG),
+            vec![snapshot.clone()],
+        );
+    }
+    if let Some(attachment_trigger) =
+        trigger.downcast_ref::<crate::triggers::AttachmentChangedTrigger>()
         && let Some((attachment, recipient)) = attachment_trigger.participants(trigger_event)
     {
-        tagged.insert(crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG), vec![attachment.clone()]);
-        tagged.insert(crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_RECIPIENT_TAG), vec![recipient.clone()]);
+        tagged.insert(
+            crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG),
+            vec![attachment.clone()],
+        );
+        tagged.insert(
+            crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_RECIPIENT_TAG),
+            vec![recipient.clone()],
+        );
     }
     if let Some(attacks) = trigger.downcast_ref::<crate::triggers::AttacksTrigger>()
         && attacks.one_or_more
@@ -1967,7 +2028,11 @@ fn tagged_objects_for_matched_trigger_with_view(
         let attackers = attacked
             .declared_attackers
             .as_deref()
-            .or_else(|| game.combat.as_ref().map(|combat| combat.attackers.as_slice()))
+            .or_else(|| {
+                game.combat
+                    .as_ref()
+                    .map(|combat| combat.attackers.as_slice())
+            })
             .into_iter()
             .flatten()
             .filter(|attacker| attacks.matches_attacker_info(attacker, ctx))
@@ -1986,13 +2051,20 @@ fn tagged_objects_for_matched_trigger_with_view(
     }
     if matches!(
         trigger.simultaneous_trigger_key(trigger_event),
-        Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { .. }
-            | crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerTapStateBatch { .. })
+        Some(
+            crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { .. }
+                | crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerTapStateBatch { .. }
+        )
     ) && let Some(snapshot) = trigger_event.snapshot().cloned().or_else(|| {
-        trigger_event.object_id().and_then(|id| game.object(id))
+        trigger_event
+            .object_id()
+            .and_then(|id| game.object(id))
             .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
     }) {
-        tagged.insert(crate::tag::TagKey::from(ironsmith_core::TAP_STATE_GROUP_TAG), vec![snapshot]);
+        tagged.insert(
+            crate::tag::TagKey::from(ironsmith_core::TAP_STATE_GROUP_TAG),
+            vec![snapshot],
+        );
     }
     if let Some(zone_change) =
         trigger.downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
@@ -2077,9 +2149,14 @@ fn tagged_objects_for_matched_trigger_with_view(
         if let Some(view) = view {
             // The registry already evaluated the source's ability origins in
             // this state. Reuse them instead of starting another layer pass.
-            let granting = view.calculated_characteristics_arc(ctx.source_id)
-                .and_then(|chars| chars.abilities.origin(ability_index)
-                    .and_then(|origin| origin.granting_source()));
+            let granting = view
+                .calculated_characteristics_arc(ctx.source_id)
+                .and_then(|chars| {
+                    chars
+                        .abilities
+                        .origin(ability_index)
+                        .and_then(|origin| origin.granting_source())
+                });
             if let Some(granting) = granting.filter(|id| *id != ctx.source_id)
                 && let Some(object) = game.object(granting)
             {
@@ -2087,7 +2164,9 @@ fn tagged_objects_for_matched_trigger_with_view(
                 tagged.insert(
                     crate::tag::TagKey::from(crate::tag::GRANTING_SOURCE_TAG),
                     vec![ObjectSnapshot::from_object_with_known_characteristics(
-                        object, game, chars.as_deref(),
+                        object,
+                        game,
+                        chars.as_deref(),
                     )],
                 );
             }
@@ -2148,7 +2227,11 @@ fn tagged_objects_for_trigger_event_impl(
         let other_attackers: Vec<_> = attacked
             .declared_attackers
             .as_deref()
-            .or_else(|| game.combat.as_ref().map(|combat| combat.attackers.as_slice()))
+            .or_else(|| {
+                game.combat
+                    .as_ref()
+                    .map(|combat| combat.attackers.as_slice())
+            })
             .into_iter()
             .flatten()
             .filter(|info| info.creature != attacked.attacker)
@@ -2211,7 +2294,6 @@ fn build_trigger_registry(
 
     view.prewarm_characteristics(&game.battlefield);
 
-
     for &obj_id in &game.battlefield {
         if game.is_phased_out(obj_id) {
             continue;
@@ -2223,7 +2305,6 @@ fn build_trigger_registry(
         let calculated_abilities = view
             .abilities_rc(obj_id)
             .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
-
 
         for (ability_index, ability) in calculated_abilities.iter().enumerate() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
@@ -2304,8 +2385,11 @@ fn check_battlefield_trigger_subscriber(
     let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
         return;
     };
-    let Some(trigger_identity) = shared_trigger_identity(&calculated_abilities, subscriber.ability_index)
-        else { return; };
+    let Some(trigger_identity) =
+        shared_trigger_identity(&calculated_abilities, subscriber.ability_index)
+    else {
+        return;
+    };
     let ctx = TriggerContext::for_source(obj_id, controller, game)
         .with_trigger_identity(trigger_identity)
         .with_ability_index(subscriber.ability_index);
@@ -2579,26 +2663,34 @@ fn skip_post_event_source_discovery(
     // During a simultaneous in/out exchange, an observer that only phased
     // in did not exist before the phase-out event (CR 603.10). A complete
     // producer snapshot already enumerated every eligible old source.
-    if trigger_event.downcast::<crate::events::PermanentPhasedOutEvent>()
+    if trigger_event
+        .downcast::<crate::events::PermanentPhasedOutEvent>()
         .is_some_and(|event| event.complete_source_lookback)
         && trigger_ability.trigger.looks_back_for_source(trigger_event)
     {
         return true;
     }
-    if trigger_event.downcast::<crate::events::ControlChangedEvent>()
+    if trigger_event
+        .downcast::<crate::events::ControlChangedEvent>()
         .is_some_and(|event| event.complete_source_lookback)
         && trigger_ability.trigger.looks_back_for_source(trigger_event)
     {
         return true;
     }
-    if trigger_event.downcast::<crate::events::DestroyEvent>()
+    if trigger_event
+        .downcast::<crate::events::DestroyEvent>()
         .is_some_and(|event| event.complete_source_lookback)
         && trigger_ability.trigger.looks_back_for_source(trigger_event)
-    { return true; }
-    if trigger_event.downcast::<crate::events::SpellCounteredEvent>()
+    {
+        return true;
+    }
+    if trigger_event
+        .downcast::<crate::events::SpellCounteredEvent>()
         .is_some_and(|event| event.complete_source_lookback)
         && trigger_ability.trigger.looks_back_for_source(trigger_event)
-    { return true; }
+    {
+        return true;
+    }
     // A look-back matcher describes which abilities can function from an
     // object's LKI; it does not mean every still-present permanent with that
     // matcher must be skipped. Only suppress the current-state copy when this
@@ -2773,7 +2865,9 @@ fn check_triggers_with_view_and_registry(
     view: &crate::derived_view::DerivedGameView<'_>,
     registry: &TriggerRegistry,
 ) -> Vec<TriggeredAbilityEntry> {
-    if trigger_event.triggers_captured() { return Vec::new(); }
+    if trigger_event.triggers_captured() {
+        return Vec::new();
+    }
     if suppresses_creature_etb_triggers_with_effects(game, trigger_event, Some(view.effects())) {
         return Vec::new();
     }
@@ -2782,12 +2876,12 @@ fn check_triggers_with_view_and_registry(
     collect_lookback_source_triggers(game, trigger_event, &mut triggered);
 
     #[cfg(feature = "shadow-continuous")]
-    game.with_shadow_characteristic_evaluation(|| assert_trigger_registry_matches_legacy_scan(game, trigger_event, view, registry));
+    game.with_shadow_characteristic_evaluation(|| {
+        assert_trigger_registry_matches_legacy_scan(game, trigger_event, view, registry)
+    });
 
     for subscriber in registry.subscribers_for(trigger_event.kind(), trigger_event.object_id()) {
-
         check_battlefield_trigger_subscriber(game, trigger_event, view, subscriber, &mut triggered);
-
     }
 
     // A permanent can see itself being sacrificed. The sacrifice event carries
@@ -3065,8 +3159,12 @@ fn check_triggers_with_view_and_registry(
         && let Some(obj) = game.object(cast.spell)
     {
         for (cost_index, (reference, times)) in entry.optional_costs_paid.costs.iter().enumerate() {
-            if *times == 0 || !matches!(reference.kind,
-                crate::cost::OptionalCostKind::Replicate | crate::cost::OptionalCostKind::GrantedConspire)
+            if *times == 0
+                || !matches!(
+                    reference.kind,
+                    crate::cost::OptionalCostKind::Replicate
+                        | crate::cost::OptionalCostKind::GrantedConspire
+                )
             {
                 continue;
             }
@@ -3074,8 +3172,10 @@ fn check_triggers_with_view_and_registry(
             let ability = TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
                 effects: ResolutionProgram::from_effects(vec![
-                    Effect::with_id(copy_effect_id.0,
-                        Effect::copy_spell_n(crate::target::ChooseSpec::Source, *times as i32)),
+                    Effect::with_id(
+                        copy_effect_id.0,
+                        Effect::copy_spell_n(crate::target::ChooseSpec::Source, *times as i32),
+                    ),
                     Effect::may_choose_new_targets(copy_effect_id),
                 ]),
                 choices: vec![],
@@ -3114,7 +3214,6 @@ fn check_triggers_with_view_and_registry(
     remove_suppressed_triggers(game, view, &mut triggered);
     cap_granted_casualty_triggers(game, &mut triggered);
     append_additional_trigger_copies(game, view, &mut triggered);
-
 
     triggered
 }
@@ -3244,6 +3343,12 @@ fn collect_state_triggers_for_object(
     active: &mut HashSet<ActiveStateTriggerKey>,
     pending: &[TriggeredAbilityEntry],
 ) {
+    if !game
+        .player(controller)
+        .is_some_and(|player| player.is_in_game())
+    {
+        return;
+    }
     for ability in abilities {
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
             continue;
@@ -3635,7 +3740,8 @@ pub fn check_delayed_triggers_for_simultaneous_events(
 
                 // Each object of a multi-object zone change is its own event for
                 // a delayed trigger watching one object (CR 603.2c, 603.7c).
-                for instance in trigger_instance_events(game, &delayed.trigger, trigger_event, &ctx) {
+                for instance in trigger_instance_events(game, &delayed.trigger, trigger_event, &ctx)
+                {
                     let trigger_event = &instance;
                     fired = true;
                     let ability_source = delayed.ability_source.unwrap_or(source);
@@ -3726,7 +3832,12 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                                     });
                                 }
                             }
-                            for (tag, snapshots) in tagged_objects_for_matched_trigger(game, trigger_event, &delayed.trigger, &ctx) {
+                            for (tag, snapshots) in tagged_objects_for_matched_trigger(
+                                game,
+                                trigger_event,
+                                &delayed.trigger,
+                                &ctx,
+                            ) {
                                 tagged.entry(tag).or_default().extend(snapshots);
                             }
                             tagged
@@ -3807,7 +3918,9 @@ fn check_triggers_in_zone(
         }
 
         let Some(trigger_identity) = shared_trigger_identity(&calculated_abilities, ability_index)
-            else { continue; };
+        else {
+            continue;
+        };
         let ctx = TriggerContext::for_source(obj_id, game.controller_of(obj), game)
             .with_trigger_identity(trigger_identity)
             .with_ability_index(ability_index);
@@ -4164,11 +4277,21 @@ pub(crate) fn first_time_this_turn_event(
     // A completed checkpoint can retain this exact unqualified event fact
     // without inventing a prior spell/ability or any historical characteristics.
     // Filtered source/target triggers still require their full event history.
-    if trigger_ability.trigger.downcast_ref::<crate::triggers::BecomesTargetedTrigger>().is_some()
-        && trigger_event.downcast::<crate::events::BecomesTargetedEvent>()
-            .and_then(|event| event.target_object()) == Some(ctx.source_id)
-        && game.turn_store.turn_history.object_was_targeted_before_checkpoint(ctx.source_id)
-    { return false; }
+    if trigger_ability
+        .trigger
+        .downcast_ref::<crate::triggers::BecomesTargetedTrigger>()
+        .is_some()
+        && trigger_event
+            .downcast::<crate::events::BecomesTargetedEvent>()
+            .and_then(|event| event.target_object())
+            == Some(ctx.source_id)
+        && game
+            .turn_store
+            .turn_history
+            .object_was_targeted_before_checkpoint(ctx.source_id)
+    {
+        return false;
+    }
     // Only events recorded before this one count; events of the same
     // simultaneous action recorded after it are not "earlier".
     let records = &game.turn_store.turn_history.event_records;
@@ -4196,7 +4319,9 @@ pub(crate) fn first_time_this_turn_event(
         .turn_history
         .simultaneous_batch_start
         .map_or(end, |start| end.min(start));
-    !records.iter().take(end)
+    !records
+        .iter()
+        .take(end)
         .any(|record| trigger_ability.trigger.matches(&record.event, ctx))
 }
 
@@ -4208,6 +4333,49 @@ pub fn verify_intervening_if(
     source_object_id: ObjectId,
     trigger_identity: Option<TriggerIdentity>,
     optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+) -> bool {
+    verify_intervening_if_impl(
+        game,
+        condition,
+        controller,
+        event,
+        source_object_id,
+        trigger_identity,
+        optional_costs_paid,
+        false,
+    )
+}
+
+pub(crate) fn verify_intervening_if_at_resolution(
+    game: &GameState,
+    condition: &crate::ConditionExpr,
+    controller: PlayerId,
+    event: &TriggerEvent,
+    source_object_id: ObjectId,
+    trigger_identity: Option<TriggerIdentity>,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+) -> bool {
+    verify_intervening_if_impl(
+        game,
+        condition,
+        controller,
+        event,
+        source_object_id,
+        trigger_identity,
+        optional_costs_paid,
+        true,
+    )
+}
+
+fn verify_intervening_if_impl(
+    game: &GameState,
+    condition: &crate::ConditionExpr,
+    controller: PlayerId,
+    event: &TriggerEvent,
+    source_object_id: ObjectId,
+    trigger_identity: Option<TriggerIdentity>,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+    triggering_object_current: bool,
 ) -> bool {
     let defending_player = if event.kind() == crate::events::traits::EventKind::CreatureAttacked {
         event
@@ -4261,7 +4429,8 @@ pub fn verify_intervening_if(
                     .downcast::<crate::events::zones::EnterBattlefieldEvent>()
                     .map(|entered| entered.object)
             })?;
-        game.object(entered).map(|object| game.controller_of(object))
+        game.object(entered)
+            .map(|object| game.controller_of(object))
     });
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller,
@@ -4274,7 +4443,10 @@ pub fn verify_intervening_if(
         triggering_event: Some(event),
         trigger_identity,
         ability_index: None,
-        options: Default::default(),
+        options: crate::condition_eval::ExternalEvaluationOptions {
+            triggering_object_current,
+            ..Default::default()
+        },
     };
     evaluate_intervening_if_condition(game, condition, &eval_ctx, optional_costs_paid)
 }
@@ -4338,27 +4510,48 @@ mod tests {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
         let mut active = crate::Ability::triggered(
-            Trigger::spell_cast(None, PlayerFilter::You), vec![Effect::gain_life(2)]);
+            Trigger::spell_cast(None, PlayerFilter::You),
+            vec![Effect::gain_life(2)],
+        );
         active.functional_zones = vec![Zone::Graveyard];
         let inactive = crate::Ability::triggered(
-            Trigger::spell_cast(None, PlayerFilter::You), vec![Effect::gain_life(3)]);
+            Trigger::spell_cast(None, PlayerFilter::You),
+            vec![Effect::gain_life(3)],
+        );
         let definition = CardDefinitionBuilder::new(CardId::new(), "Zone observer")
-            .card_types(vec![CardType::Creature]).with_ability(active).with_ability(inactive).build();
+            .card_types(vec![CardType::Creature])
+            .with_ability(active)
+            .with_ability(inactive)
+            .build();
         let source = game.create_object_from_definition(&definition, alice, Zone::Graveyard);
         let spell = game.create_object_from_definition(&definition, alice, Zone::Hand);
         let event = TriggerEvent::new_with_provenance(
-            SpellCastEvent::new(spell, alice, Zone::Hand), Default::default());
-        let identities = |game: &GameState| check_triggers(game, &event).into_iter()
-            .filter(|entry| entry.source == source).map(|entry| entry.trigger_identity).collect::<Vec<_>>();
+            SpellCastEvent::new(spell, alice, Zone::Hand),
+            Default::default(),
+        );
+        let identities = |game: &GameState| {
+            check_triggers(game, &event)
+                .into_iter()
+                .filter(|entry| entry.source == source)
+                .map(|entry| entry.trigger_identity)
+                .collect::<Vec<_>>()
+        };
         let expected = |game: &GameState| {
-            let AbilityKind::Triggered(triggered) = &game.object(source).unwrap().abilities[0].kind else { unreachable!() };
+            let AbilityKind::Triggered(triggered) = &game.object(source).unwrap().abilities[0].kind
+            else {
+                unreachable!()
+            };
             compute_trigger_identity(triggered)
         };
         let baseline = expected(&game);
         assert_eq!(identities(&game), vec![baseline]);
         assert_eq!(identities(&game), vec![baseline]);
         let mut branch = game.clone();
-        let AbilityKind::Triggered(triggered) = &mut branch.object_mut(source).unwrap().abilities_mut()[0].kind else { unreachable!() };
+        let AbilityKind::Triggered(triggered) =
+            &mut branch.object_mut(source).unwrap().abilities_mut()[0].kind
+        else {
+            unreachable!()
+        };
         triggered.effects = vec![Effect::gain_life(5)].into();
         assert_ne!(expected(&branch), baseline);
         assert_eq!(identities(&branch), vec![expected(&branch)]);
@@ -4376,7 +4569,9 @@ mod tests {
             crate::Ability::triggered(Trigger::this_dies(), vec![Effect::gain_life(3)]),
         ]);
         let expected = |abilities: &Arc<Vec<crate::Ability>>, index: usize| {
-            let AbilityKind::Triggered(triggered) = &abilities[index].kind else { unreachable!() };
+            let AbilityKind::Triggered(triggered) = &abilities[index].kind else {
+                unreachable!()
+            };
             let actual = shared_trigger_identity(abilities, index).unwrap();
             assert_eq!(actual, compute_trigger_identity(triggered));
             actual
@@ -4385,14 +4580,18 @@ mod tests {
         assert_ne!(original, expected(&abilities, 1));
         assert_eq!(original, expected(&abilities, 0));
         let weak = Arc::downgrade(&abilities);
-        let AbilityKind::Triggered(triggered) = &mut Arc::make_mut(&mut abilities)[0].kind else { unreachable!() };
+        let AbilityKind::Triggered(triggered) = &mut Arc::make_mut(&mut abilities)[0].kind else {
+            unreachable!()
+        };
         triggered.effects = vec![Effect::gain_life(4)].into();
         assert!(weak.upgrade().is_none());
         assert_ne!(original, expected(&abilities, 0));
         let rollback = abilities.clone();
         let baseline = expected(&rollback, 0);
         let mut sibling = abilities.clone();
-        let AbilityKind::Triggered(triggered) = &mut Arc::make_mut(&mut sibling)[0].kind else { unreachable!() };
+        let AbilityKind::Triggered(triggered) = &mut Arc::make_mut(&mut sibling)[0].kind else {
+            unreachable!()
+        };
         triggered.trigger = Trigger::this_attacks();
         assert_ne!(baseline, expected(&sibling, 0));
         assert_eq!(baseline, expected(&abilities, 0));
@@ -4400,7 +4599,10 @@ mod tests {
         assert_eq!(baseline, expected(&abilities, 0));
         let weak = Arc::downgrade(&abilities);
         drop(abilities);
-        assert!(weak.upgrade().is_none(), "cache must not retain ability collections");
+        assert!(
+            weak.upgrade().is_none(),
+            "cache must not retain ability collections"
+        );
     }
 
     fn make_battlefield_creature(
@@ -5286,7 +5488,10 @@ mod tests {
         );
         let source_stable_id = game.object(source).expect("source exists").stable_id;
 
-        assert!(game.mark_player_lost(bob).expect("checked designation/departure fixture"));
+        assert!(
+            game.mark_player_lost(bob)
+                .expect("checked designation/departure fixture")
+        );
         let events = game.take_pending_trigger_events();
         let event = events
             .iter()
@@ -5779,8 +5984,10 @@ mod tests {
             2,
             "expected two separate conspire triggers"
         );
-        assert_ne!(triggered[0].trigger_identity, triggered[1].trigger_identity,
-            "printed instances retain distinct trigger identities");
+        assert_ne!(
+            triggered[0].trigger_identity, triggered[1].trigger_identity,
+            "printed instances retain distinct trigger identities"
+        );
         for trigger in &triggered {
             let debug = format!("{:?}", trigger.ability.effects);
             assert!(
@@ -6038,7 +6245,8 @@ mod tests {
                 crate::continuous::EffectTarget::AllPermanents,
                 crate::continuous::Modification::RemoveAbility(StaticAbility::flying()),
             ));
-        game.refresh_continuous_state().expect("finite registry setup refresh succeeds");
+        game.refresh_continuous_state()
+            .expect("finite registry setup refresh succeeds");
 
         // Mana payment and similar action plumbing can invalidate continuous
         // state without changing the effect list. Registry construction must
@@ -6059,16 +6267,32 @@ mod tests {
         let after = game.work_counters();
         assert_eq!(triggered.len(), 1);
         assert_eq!(triggered[0].source, effect_source);
-        assert!(!triggered[0].tagged_objects.contains_key(crate::tag::GRANTING_SOURCE_TAG));
+        assert!(
+            !triggered[0]
+                .tagged_objects
+                .contains_key(crate::tag::GRANTING_SOURCE_TAG)
+        );
         let total_sorts = after.dependency_sorts - before.dependency_sorts;
         let reference_sorts = after.shadow_dependency_sorts - before.shadow_dependency_sorts;
-        assert!(reference_sorts <= total_sorts, "reference work remains included in total work");
-        assert_eq!(total_sorts - reference_sorts, 1,
-            "a dirty registry rebuild should sort the production layer batch once");
+        assert!(
+            reference_sorts <= total_sorts,
+            "reference work remains included in total work"
+        );
+        assert_eq!(
+            total_sorts - reference_sorts,
+            1,
+            "a dirty registry rebuild should sort the production layer batch once"
+        );
         #[cfg(feature = "shadow-continuous")]
-        assert!(reference_sorts > 0, "the reference calculations remain executed and observable");
+        assert!(
+            reference_sorts > 0,
+            "the reference calculations remain executed and observable"
+        );
         #[cfg(not(feature = "shadow-continuous"))]
-        assert_eq!(reference_sorts, 0, "the production control has no reference work");
+        assert_eq!(
+            reference_sorts, 0,
+            "the production control has no reference work"
+        );
     }
 
     #[test]
@@ -6078,16 +6302,27 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let receiver = make_battlefield_creature(&mut game, alice, "Trigger receiver");
         let grantor = make_battlefield_creature(&mut game, bob, "Trigger grantor");
-        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
-            grantor, bob, crate::continuous::EffectTarget::Specific(receiver),
-            crate::continuous::Modification::AddAbilityGeneric(crate::ability::Ability::triggered(
-                Trigger::this_attacks(), vec![Effect::gain_life(2)],
-            )),
-        ));
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                grantor,
+                bob,
+                crate::continuous::EffectTarget::Specific(receiver),
+                crate::continuous::Modification::AddAbilityGeneric(
+                    crate::ability::Ability::triggered(
+                        Trigger::this_attacks(),
+                        vec![Effect::gain_life(2)],
+                    ),
+                ),
+            ));
         game.refresh_continuous_state();
         game.mark_continuous_state_dirty();
         let event = TriggerEvent::new_with_provenance(
-            CreatureAttackedEvent::with_total_attackers(receiver, AttackEventTarget::Player(bob), 1),
+            CreatureAttackedEvent::with_total_attackers(
+                receiver,
+                AttackEventTarget::Player(bob),
+                1,
+            ),
             crate::provenance::ProvNodeId::default(),
         );
         let triggered = check_triggers(&game, &event);
@@ -6434,22 +6669,40 @@ mod native_conspire_payment_identity_contract_tests {
     use super::*;
     #[test]
     fn only_the_paid_printed_instance_triggers() {
-        for paid_index in [None,Some(0),Some(1)] {
-            let mut game=crate::tests::test_helpers::setup_two_player_game();
-            let alice=PlayerId::from_index(0);
-            let definition=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Two printed optional costs")
-                .card_types(vec![crate::types::CardType::Sorcery]).conspire().conspire().build();
-            let object=game.create_object_from_definition(&definition,alice,Zone::Stack);
-            let mut entry=crate::game_state::StackEntry::new(object,alice);
-            entry.optional_costs_paid=crate::cost::OptionalCostsPaid::from_costs(&definition.optional_costs);
-            if let Some(index)=paid_index {entry.optional_costs_paid.pay(index);}
-            let paid=entry.optional_costs_paid.clone();game.push_to_stack(entry);
-            game.object_mut(object).unwrap().optional_costs_paid=paid;
-            let event=crate::triggers::TriggerEvent::new_with_provenance(crate::events::SpellCastEvent::new(object,alice,Zone::Hand),Default::default());
-            let triggers=check_triggers(&game,&event);
-            assert_eq!(triggers.len(),usize::from(paid_index.is_some()));
-            if let Some(index)=paid_index {
-                assert_eq!(triggers[0].ability.intervening_if,Some(crate::ConditionExpr::ThisSpellPaidLabel(definition.optional_costs[index].cost_ref())));
+        for paid_index in [None, Some(0), Some(1)] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let definition = crate::cards::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                "Two printed optional costs",
+            )
+            .card_types(vec![crate::types::CardType::Sorcery])
+            .conspire()
+            .conspire()
+            .build();
+            let object = game.create_object_from_definition(&definition, alice, Zone::Stack);
+            let mut entry = crate::game_state::StackEntry::new(object, alice);
+            entry.optional_costs_paid =
+                crate::cost::OptionalCostsPaid::from_costs(&definition.optional_costs);
+            if let Some(index) = paid_index {
+                entry.optional_costs_paid.pay(index);
+            }
+            let paid = entry.optional_costs_paid.clone();
+            game.push_to_stack(entry);
+            game.object_mut(object).unwrap().optional_costs_paid = paid;
+            let event = crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::SpellCastEvent::new(object, alice, Zone::Hand),
+                Default::default(),
+            );
+            let triggers = check_triggers(&game, &event);
+            assert_eq!(triggers.len(), usize::from(paid_index.is_some()));
+            if let Some(index) = paid_index {
+                assert_eq!(
+                    triggers[0].ability.intervening_if,
+                    Some(crate::ConditionExpr::ThisSpellPaidLabel(
+                        definition.optional_costs[index].cost_ref()
+                    ))
+                );
             }
         }
     }

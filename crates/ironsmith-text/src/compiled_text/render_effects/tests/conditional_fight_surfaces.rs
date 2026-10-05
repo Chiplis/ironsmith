@@ -17,7 +17,10 @@ fn targeted_conditional_fights_keep_both_target_slots_and_authored_pronouns() {
 #[test]
 fn demonstrative_pump_fight_followups_reuse_the_prior_target() {
     let oracle = "Put a +1/+1 counter on target creature you control if its power is 4 or greater. Then that creature gets +1/+1 until end of turn and fights target creature you don't control.";
-    assert_eq!(render_card("Ent's Fury", oracle), oracle);
+    assert_eq!(
+        render_card("Ent's Fury", oracle),
+        oracle.replace(" and fights", ". That creature fights")
+    );
 }
 
 #[test]

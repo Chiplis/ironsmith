@@ -141,7 +141,7 @@ fn parses_that_creature_possessive_mana_value_binding() {
     assert_eq!(
         parse_where_x_value_shape_tokens(&tokens, false),
         Some(WhereXValueShape::ReferenceMetric {
-            reference: WhereXReferenceShape::TaggedIt,
+            reference: WhereXReferenceShape::Demonstrative("that creature"),
             metric: WhereXMetricShape::ManaValue,
         })
     );

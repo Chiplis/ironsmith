@@ -149,7 +149,9 @@ pub(super) fn read_it_demonstrative_value(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
-    if let Some(predicate) = parse_referenced_characteristic_state(predicate_tokens)? { return Ok(Some(predicate)); }
+    if let Some(predicate) = parse_referenced_characteristic_state(predicate_tokens)? {
+        return Ok(Some(predicate));
+    }
     let demonstrative_reference = demonstrative_reference_kind(predicate_tokens);
     let is_it = demonstrative_reference == Some(DemonstrativeReferenceKind::It);
     if is_it {
@@ -871,6 +873,7 @@ pub(super) const READINGS: &[Reading] = &[
             }))
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("source-power-threshold-predicate")
+                && !input.read_by("turn-history-intervening-predicate")
         },
         read: |input| input.outcome(read_value_reference_comparison_predicate(input)),
     },

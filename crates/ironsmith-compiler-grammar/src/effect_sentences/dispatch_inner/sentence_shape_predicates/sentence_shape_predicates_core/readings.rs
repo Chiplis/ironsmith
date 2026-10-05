@@ -1243,6 +1243,7 @@ const SENTENCE_READINGS: &[Reading] = &[
                && !input.claimed_by("for-each-object-filter-effect")
                 // A quoted grant under "<player> may" is the player-may composition's.
                && !input.claimed_by("quoted-ability-leading-may")
+               && !matches!(part_1::read_becomes_word_view(input), Ok(Some(_)))
         },
         read: |input| input.outcome(part_4::read_quoted_ability_conditional(input)),
     },

@@ -5231,6 +5231,22 @@
             crate::grant::GrantDuration::UntilYourNextTurnEnd => " until the end of your next turn",
             crate::grant::GrantDuration::Forever => "",
         };
+        if let crate::grant::Grantable::AlternativeCast(crate::alternative_cast::AlternativeCastingMethod::FromZone { total_cost, .. }) = &grant.spec.grantable {
+            let mut permission = grant.spec.clone().with_beneficiary(grant.player.clone());
+            permission.grantable = crate::grant::Grantable::PlayFrom;
+            let payment = describe_casting_price_payment(total_cost);
+            let payment = payment.strip_prefix("paying ").map(|tail| format!("pay {tail}"))
+                .or_else(|| payment.strip_prefix("discarding ").map(|tail| format!("discard {tail}")))
+                .unwrap_or(payment);
+            let look = if permission.may_look_at_top && permission.zone == Zone::Library {
+                format!("You may look at the top card of your library{duration}. ")
+            } else { String::new() };
+            let mut permission_text = permission.display();
+            if permission.top_card_only && permission.zone == Zone::Library && !permission_text.contains("top of") {
+                permission_text.push_str(" from the top of your library");
+            }
+            return format!("{look}{permission_text}{duration}. If you cast a spell this way, {payment} rather than pay its mana cost");
+        }
         let permission = grant.spec.clone().with_beneficiary(grant.player.clone()).display();
         if !grant.spec.cast_this_way_grants.is_empty() && !duration.is_empty() {
             return format!("{}, {}", capitalize_first(duration.trim()), lowercase_first(&permission));

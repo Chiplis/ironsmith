@@ -50,6 +50,7 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
         .collect();
     entry.target_assignments = ctx.target_assignments.clone();
     entry.target_distributions = ctx.target_distributions.clone();
+    entry.iteration = ctx.iteration;
     entry.x_value = ctx.x_value;
     entry.mana_spent_on_activation = ctx.mana.activation_payment.clone();
     entry.ninjutsu_attack_target = ctx.ninjutsu_attack_target.clone();
@@ -167,12 +168,20 @@ pub(crate) fn create_stack_copy_from_object(
     // spell is evaluated from its captured stack incarnation, never a newer
     // card with the same stable identity.
     if !original_entry.is_ability {
-        let abilities = if game.object(source.id).is_some_and(|object| object.zone == Zone::Stack) {
-            game.current_abilities(source.id).unwrap_or_else(|| source.abilities_vec())
-        } else { source.abilities_vec() };
-        if abilities.iter().any(|ability| matches!(&ability.kind,
+        let abilities = if game
+            .object(source.id)
+            .is_some_and(|object| object.zone == Zone::Stack)
+        {
+            game.current_abilities(source.id)
+                .unwrap_or_else(|| source.abilities_vec())
+        } else {
+            source.abilities_vec()
+        };
+        if abilities.iter().any(|ability| {
+            matches!(&ability.kind,
             crate::ability::AbilityKind::Static(rule)
-                if rule.id() == crate::static_abilities::StaticAbilityId::CantBeCopied)) {
+                if rule.id() == crate::static_abilities::StaticAbilityId::CantBeCopied)
+        }) {
             return Ok(None);
         }
     }
@@ -211,6 +220,7 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.keyword_payment_contributions = original_entry.keyword_payment_contributions.clone();
     copy_entry.crew_contributors = original_entry.crew_contributors.clone();
     copy_entry.saddle_contributors = original_entry.saddle_contributors.clone();
+    copy_entry.iteration = original_entry.iteration;
     copy_entry.tagged_objects = original_entry.tagged_objects.clone();
     copy_entry.effect_outcomes = original_entry.effect_outcomes.clone();
     // A copy of a triggered ability refers to the same trigger event as the
@@ -313,14 +323,27 @@ fn queue_copy_becomes_targeted_events(
     ctx: &ExecutionContext,
     copy_id: crate::ids::ObjectId,
 ) {
-    let Some(entry) = game.stack.iter().find(|entry| entry.object_id == copy_id).cloned() else { return; };
+    let Some(entry) = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == copy_id)
+        .cloned()
+    else {
+        return;
+    };
     let mut targeted_seen = Vec::new();
     for target in &entry.targets {
-        if targeted_seen.contains(target) { continue; }
+        if targeted_seen.contains(target) {
+            continue;
+        }
         targeted_seen.push(*target);
-        game.queue_trigger_event(ctx.provenance, TriggerEvent::new_with_provenance(
-            crate::events::BecomesTargetedEvent::from_stack_entry(*target, &entry), ctx.provenance,
-        ));
+        game.queue_trigger_event(
+            ctx.provenance,
+            TriggerEvent::new_with_provenance(
+                crate::events::BecomesTargetedEvent::from_stack_entry(*target, &entry),
+                ctx.provenance,
+            ),
+        );
     }
 }
 
@@ -395,7 +418,9 @@ impl EffectExecutor for CopySpellEffect {
         if target_ids.is_empty() {
             return if self.target.count().min == 0 {
                 Ok(EffectOutcome::with_objects(Vec::new()))
-            } else { Err(ExecutionError::InvalidTarget) };
+            } else {
+                Err(ExecutionError::InvalidTarget)
+            };
         }
         let copier = resolve_player_filter(game, &self.copier, ctx)?;
         let mut created_ids = Vec::with_capacity(copy_count.saturating_mul(target_ids.len()));
@@ -416,7 +441,11 @@ impl EffectExecutor for CopySpellEffect {
                         &self.removed_supertypes,
                         |copy| self.apply_copy_characteristic_modifiers(copy),
                         None,
-                    )? else { prevented_copy = true; continue; };
+                    )?
+                    else {
+                        prevented_copy = true;
+                        continue;
+                    };
                     created_ids.push(copy_id);
                     queue_copy_becomes_targeted_events(game, ctx, copy_id);
                     game.queue_trigger_event(
@@ -473,7 +502,11 @@ impl EffectExecutor for CopySpellEffect {
                     &self.removed_supertypes,
                     |copy| self.apply_copy_characteristic_modifiers(copy),
                     None,
-                )? else { prevented_copy = true; continue; };
+                )?
+                else {
+                    prevented_copy = true;
+                    continue;
+                };
                 created_ids.push(copy_id);
 
                 queue_copy_becomes_targeted_events(game, ctx, copy_id);
@@ -494,9 +527,13 @@ impl EffectExecutor for CopySpellEffect {
         }
 
         if created_ids.is_empty() {
-            return Ok(if prevented_copy { EffectOutcome::protected() }
-                else if copy_count == 0 { EffectOutcome::with_objects(Vec::new()) }
-                else { EffectOutcome::target_invalid() });
+            return Ok(if prevented_copy {
+                EffectOutcome::protected()
+            } else if copy_count == 0 {
+                EffectOutcome::with_objects(Vec::new())
+            } else {
+                EffectOutcome::target_invalid()
+            });
         }
 
         Ok(EffectOutcome::with_objects(created_ids))
@@ -550,11 +587,16 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let spell = create_instant_on_stack(&mut game, "Protected spell", alice);
         game.object_mut(spell).unwrap().abilities_mut().push(
-            crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::cant_be_copied())
-                .in_zones(vec![Zone::Stack]));
+            crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::cant_be_copied(),
+            )
+            .in_zones(vec![Zone::Stack]),
+        );
         let before = game.stack.len();
         let mut ctx = ExecutionContext::new_default(spell, alice);
-        let result = CopySpellEffect::single(ChooseSpec::Source).execute(&mut game, &mut ctx).unwrap();
+        let result = CopySpellEffect::single(ChooseSpec::Source)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
         assert_eq!(result.status, crate::effect::OutcomeStatus::Protected);
         assert_eq!(game.stack.len(), before);
         assert!(game.take_pending_trigger_events().is_empty());
@@ -562,9 +604,23 @@ mod tests {
         let source = game.object(spell).unwrap().clone();
         let mut ability = StackEntry::new(spell, alice);
         ability.is_ability = true;
-        let copy = create_stack_copy_from_object(&mut game, &source, spell, &ability,
-            alice, &[], |_| {}, None).unwrap().expect("independent ability copies");
-        assert!(game.stack.iter().any(|entry| entry.object_id == copy && entry.is_ability));
+        let copy = create_stack_copy_from_object(
+            &mut game,
+            &source,
+            spell,
+            &ability,
+            alice,
+            &[],
+            |_| {},
+            None,
+        )
+        .unwrap()
+        .expect("independent ability copies");
+        assert!(
+            game.stack
+                .iter()
+                .any(|entry| entry.object_id == copy && entry.is_ability)
+        );
     }
 
     #[test]
@@ -573,13 +629,28 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let spell = create_instant_on_stack(&mut game, "Protected LKI", alice);
         game.object_mut(spell).unwrap().abilities_mut().push(
-            crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::cant_be_copied())
-                .in_zones(vec![Zone::Stack]));
+            crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::cant_be_copied(),
+            )
+            .in_zones(vec![Zone::Stack]),
+        );
         let source = game.object(spell).unwrap().clone();
         let entry = game.stack.pop().unwrap();
         game.remove_object(spell);
-        assert!(create_stack_copy_from_object(&mut game, &source, spell, &entry,
-            alice, &[], |_| panic!("a prohibited copy must not be customized"), None).unwrap().is_none());
+        assert!(
+            create_stack_copy_from_object(
+                &mut game,
+                &source,
+                spell,
+                &entry,
+                alice,
+                &[],
+                |_| panic!("a prohibited copy must not be customized"),
+                None
+            )
+            .unwrap()
+            .is_none()
+        );
         assert!(game.stack.is_empty());
     }
 
@@ -591,30 +662,57 @@ mod tests {
         let mut entry = game.stack.last().unwrap().clone();
         entry.x_value = Some(3);
         entry.chosen_modes = Some(vec![0, 1]);
-        let copy = create_stack_copy(&mut game, spell, &entry, alice, &[], None).unwrap().unwrap();
-        let copied = game.stack.iter().find(|entry| entry.object_id == copy).unwrap();
+        let copy = create_stack_copy(&mut game, spell, &entry, alice, &[], None)
+            .unwrap()
+            .unwrap();
+        let copied = game
+            .stack
+            .iter()
+            .find(|entry| entry.object_id == copy)
+            .unwrap();
         assert_eq!(copied.x_value, Some(3));
         assert_eq!(copied.chosen_modes, Some(vec![0, 1]));
         game.object_mut(spell).unwrap().abilities_mut().push(
-            crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::cant_be_copied()));
-        assert!(create_stack_copy(&mut game, spell, &entry, alice, &[], None).unwrap().is_none());
+            crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::cant_be_copied(),
+            ),
+        );
+        assert!(
+            create_stack_copy(&mut game, spell, &entry, alice, &[], None)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
     fn copied_player_targets_are_reported_once_per_distinct_participant() {
         let mut game = setup_game();
-        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
         let spell = create_instant_on_stack(&mut game, "Repeated target spell", bob);
-        game.stack.last_mut().unwrap().targets = vec![Target::Player(alice), Target::Player(alice), Target::Player(bob)];
+        game.stack.last_mut().unwrap().targets = vec![
+            Target::Player(alice),
+            Target::Player(alice),
+            Target::Player(bob),
+        ];
         let mut ctx = ExecutionContext::new_default(spell, bob);
-        let outcome = CopySpellEffect::single(ChooseSpec::SpecificObject(spell)).execute(&mut game, &mut ctx).unwrap();
-        let crate::effect::OutcomeValue::Objects(copies) = outcome.value else { panic!("copy"); };
+        let outcome = CopySpellEffect::single(ChooseSpec::SpecificObject(spell))
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        let crate::effect::OutcomeValue::Objects(copies) = outcome.value else {
+            panic!("copy");
+        };
         let events = game.take_pending_trigger_events();
-        let targeted: Vec<_> = events.iter().filter_map(|event| event.downcast::<BecomesTargetedEvent>()).collect();
+        let targeted: Vec<_> = events
+            .iter()
+            .filter_map(|event| event.downcast::<BecomesTargetedEvent>())
+            .collect();
         assert_eq!(targeted.len(), 2);
         assert_eq!(targeted[0].target_player(), Some(alice));
         assert_eq!(targeted[1].target_player(), Some(bob));
-        assert!(targeted.iter().all(|event| event.source == copies[0] && event.source_controller == bob && !event.by_ability));
+        assert!(targeted.iter().all(|event| event.source == copies[0]
+            && event.source_controller == bob
+            && !event.by_ability));
     }
 
     #[test]

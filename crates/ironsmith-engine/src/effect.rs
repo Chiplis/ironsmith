@@ -179,8 +179,11 @@ impl OutcomeObjectMemory {
             stable_id: snapshot.stable_id,
             // Compact memory must retain both names of a split card even if
             // no current object survives to enrich its later snapshot.
-            name: snapshot.split_other_half_name().filter(|other| !crate::filter::names_match(&snapshot.name, other))
-                .map(|other| format!("{} // {other}", snapshot.name)).unwrap_or_else(|| snapshot.name.clone()),
+            name: snapshot
+                .split_other_half_name()
+                .filter(|other| !crate::filter::names_match(&snapshot.name, other))
+                .map(|other| format!("{} // {other}", snapshot.name))
+                .unwrap_or_else(|| snapshot.name.clone()),
             controller: snapshot.controller,
             owner: snapshot.owner,
             zone: snapshot.zone,
@@ -220,11 +223,15 @@ impl OutcomeObjectMemory {
         fallback: Option<&ObjectSnapshot>,
     ) -> ObjectSnapshot {
         let mut snapshot = fallback
-            .filter(|snapshot| snapshot.object_id == self.object_id
-                && snapshot.stable_id == self.stable_id)
+            .filter(|snapshot| {
+                snapshot.object_id == self.object_id && snapshot.stable_id == self.stable_id
+            })
             .cloned()
-            .or_else(|| game.object(self.object_id)
-                .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game)))
+            .or_else(|| {
+                game.object(self.object_id).map(|object| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                })
+            })
             .unwrap_or_else(|| ObjectSnapshot {
                 chosen_subtype: None,
                 secret_chosen_subtype: None,
@@ -275,7 +282,7 @@ impl OutcomeObjectMemory {
                 tapped: false,
                 attacking: false,
                 goaded: None,
-            ring_bearer: None,
+                ring_bearer: None,
                 flipped: false,
                 face_down: false,
                 transform_count: 0,
@@ -298,6 +305,10 @@ impl OutcomeObjectMemory {
         snapshot.toughness = self.toughness;
         snapshot.base_power = self.power;
         snapshot.base_toughness = self.toughness;
+        // Compact memory retains mana value even after the original object
+        // and its full mana cost disappear. Preserve that frozen value using
+        // the snapshot's mana-value override, without inventing a mana cost.
+        snapshot.linked_face_mana_value = Some(self.mana_value.max(0) as u32);
         snapshot.card_types = self.card_types.clone();
         snapshot.colors = self.colors;
         snapshot.subtypes = self.subtypes.clone();
@@ -309,10 +320,20 @@ impl OutcomeObjectMemory {
 /// Original recipient evidence for one damage instruction, before damage's
 /// life/counter consequences and independently of any redirection destination.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub enum DamageRecipientBefore {
-    Player { player: PlayerId, life: i32 },
-    Object { object: ObjectId, was_creature: bool, loyalty: Option<u32> },
+    Player {
+        player: PlayerId,
+        life: i32,
+    },
+    Object {
+        object: ObjectId,
+        was_creature: bool,
+        loyalty: Option<u32>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -335,6 +356,9 @@ pub enum ExecutionFact {
     /// objects that downstream effects should act on.
     ResultObjects(Vec<ObjectId>),
     AffectedObjects(Vec<ObjectId>),
+    /// Origin identities of creatures actually put into a graveyard from
+    /// the battlefield, retained after event reporting consumes its receipts.
+    ObjectsDied(Vec<ObjectId>),
     ChosenObjectMemory(Vec<OutcomeObjectMemory>),
     AffectedObjectMemory(Vec<OutcomeObjectMemory>),
     PlayerAffectedObjectMemory(Vec<(PlayerId, Vec<OutcomeObjectMemory>)>),
@@ -364,7 +388,10 @@ pub enum ExecutionFact {
     DamageRecipientBefore(DamageRecipientBefore),
     /// Exact successful original arrivals, before replacement-added programs.
     /// This is not selection/reveal evidence and does not include draws.
-    CardsPutIntoHand { player: PlayerId, cards: Vec<OutcomeObjectMemory> },
+    CardsPutIntoHand {
+        player: PlayerId,
+        cards: Vec<OutcomeObjectMemory>,
+    },
 }
 
 impl ExecutionFact {
@@ -424,10 +451,12 @@ pub struct EffectOutcome {
     /// The authored instruction's result before auxiliary replacement payloads
     /// are merged for observation. Tags and object references use this boundary;
     /// the enclosing event stream and facts still retain all actual side effects.
-    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    #[cfg_attr(
+        feature = "serialization",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub instruction_result: Option<Box<EffectOutcome>>,
 }
-
 
 impl EffectOutcome {
     fn object_memory_from_ids(game: &GameState, objects: &[ObjectId]) -> Vec<OutcomeObjectMemory> {
@@ -499,10 +528,18 @@ impl EffectOutcome {
         let outcomes = outcomes.into_iter().collect::<Vec<_>>();
         // Composition preserves every child's primary result, including plain
         // siblings. Auxiliary objects must not leak back into parent tags.
-        let instruction_result = outcomes.iter().any(|outcome| outcome.instruction_result.is_some())
-            .then(|| Box::new(Self::aggregate_with_summary(
-                outcomes.iter().map(|outcome| outcome.instruction_result().clone()).collect::<Vec<_>>(), summary_fn,
-            )));
+        let instruction_result = outcomes
+            .iter()
+            .any(|outcome| outcome.instruction_result.is_some())
+            .then(|| {
+                Box::new(Self::aggregate_with_summary(
+                    outcomes
+                        .iter()
+                        .map(|outcome| outcome.instruction_result().clone())
+                        .collect::<Vec<_>>(),
+                    summary_fn,
+                ))
+            });
         let mut results = Vec::new();
         let mut all_events = Vec::new();
         let mut all_execution_facts = Vec::new();
@@ -512,8 +549,12 @@ impl EffectOutcome {
             all_execution_facts.extend(outcome.execution_facts);
         }
         let (status, value) = summary_fn(&results);
-        let mut outcome = Self::with_details(status, value, all_events,
-            Self::merge_execution_facts(all_execution_facts));
+        let mut outcome = Self::with_details(
+            status,
+            value,
+            all_events,
+            Self::merge_execution_facts(all_execution_facts),
+        );
         outcome.instruction_result = instruction_result;
         outcome
     }
@@ -704,7 +745,9 @@ impl EffectOutcome {
 
     /// Add multiple execution facts to this outcome.
     pub fn with_execution_facts(mut self, facts: impl IntoIterator<Item = ExecutionFact>) -> Self {
-        for fact in facts { self.record_instruction_fact(fact); }
+        for fact in facts {
+            self.record_instruction_fact(fact);
+        }
         self
     }
 
@@ -794,12 +837,16 @@ impl EffectOutcome {
     }
 
     pub fn set_status(&mut self, status: OutcomeStatus) {
-        if let Some(original) = self.instruction_result.as_deref_mut() { original.set_status(status); }
+        if let Some(original) = self.instruction_result.as_deref_mut() {
+            original.set_status(status);
+        }
         self.status = status;
     }
 
     pub fn set_value(&mut self, value: OutcomeValue) {
-        if let Some(original) = self.instruction_result.as_deref_mut() { original.set_value(value.clone()); }
+        if let Some(original) = self.instruction_result.as_deref_mut() {
+            original.set_value(value.clone());
+        }
         self.value = value;
     }
 
@@ -819,9 +866,13 @@ impl EffectOutcome {
         replacements: impl IntoIterator<Item = Self>,
     ) -> Self {
         let replacements = replacements.into_iter().collect::<Vec<_>>();
-        if replacements.iter().all(|outcome| outcome.status == OutcomeStatus::Succeeded
-            && matches!(outcome.value, OutcomeValue::None) && outcome.events.is_empty()
-            && outcome.execution_facts.is_empty() && outcome.instruction_result.is_none()) {
+        if replacements.iter().all(|outcome| {
+            outcome.status == OutcomeStatus::Succeeded
+                && matches!(outcome.value, OutcomeValue::None)
+                && outcome.events.is_empty()
+                && outcome.execution_facts.is_empty()
+                && outcome.instruction_result.is_none()
+        }) {
             return original;
         }
         let instruction_result = Box::new(original.instruction_result().clone());
@@ -879,58 +930,79 @@ impl EffectOutcome {
 
     /// Access object IDs captured as chosen objects.
     pub fn chosen_objects(&self) -> Option<&[ObjectId]> {
-        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
-            ExecutionFact::ChosenObjects(ids) => Some(ids.as_slice()),
-            _ => None,
-        })
+        self.instruction_result()
+            .execution_facts
+            .iter()
+            .find_map(|fact| match fact {
+                ExecutionFact::ChosenObjects(ids) => Some(ids.as_slice()),
+                _ => None,
+            })
     }
 
     /// Access current object identities explicitly produced by the effect.
     pub fn result_objects(&self) -> Option<&[ObjectId]> {
-        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
-            ExecutionFact::ResultObjects(ids) => Some(ids.as_slice()),
-            _ => None,
-        })
+        self.instruction_result()
+            .execution_facts
+            .iter()
+            .find_map(|fact| match fact {
+                ExecutionFact::ResultObjects(ids) => Some(ids.as_slice()),
+                _ => None,
+            })
     }
 
     /// Access object IDs captured as affected objects.
     pub fn affected_objects(&self) -> Option<&[ObjectId]> {
-        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
-            ExecutionFact::AffectedObjects(ids) => Some(ids.as_slice()),
-            _ => None,
-        })
+        self.instruction_result()
+            .execution_facts
+            .iter()
+            .find_map(|fact| match fact {
+                ExecutionFact::AffectedObjects(ids) => Some(ids.as_slice()),
+                _ => None,
+            })
     }
 
     /// Access chosen object last-known information captured during execution.
     pub fn chosen_object_memory(&self) -> Option<&[OutcomeObjectMemory]> {
-        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
-            ExecutionFact::ChosenObjectMemory(memory) => Some(memory.as_slice()),
-            _ => None,
-        })
+        self.instruction_result()
+            .execution_facts
+            .iter()
+            .find_map(|fact| match fact {
+                ExecutionFact::ChosenObjectMemory(memory) => Some(memory.as_slice()),
+                _ => None,
+            })
     }
 
     /// Access affected object last-known information captured during execution.
     pub fn affected_object_memory(&self) -> Option<&[OutcomeObjectMemory]> {
-        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
-            ExecutionFact::AffectedObjectMemory(memory) => Some(memory.as_slice()),
-            _ => None,
-        })
+        self.instruction_result()
+            .execution_facts
+            .iter()
+            .find_map(|fact| match fact {
+                ExecutionFact::AffectedObjectMemory(memory) => Some(memory.as_slice()),
+                _ => None,
+            })
     }
 
     /// Access per-player count partitions captured during execution.
     pub fn player_counts(&self) -> Option<&[(PlayerId, i64)]> {
-        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
-            ExecutionFact::PlayerCounts(counts) => Some(counts.as_slice()),
-            _ => None,
-        })
+        self.instruction_result()
+            .execution_facts
+            .iter()
+            .find_map(|fact| match fact {
+                ExecutionFact::PlayerCounts(counts) => Some(counts.as_slice()),
+                _ => None,
+            })
     }
 
     /// Access affected object memory partitioned by iterated player.
     pub fn player_affected_object_memory(&self) -> Option<&[(PlayerId, Vec<OutcomeObjectMemory>)]> {
-        self.instruction_result().execution_facts.iter().find_map(|fact| match fact {
-            ExecutionFact::PlayerAffectedObjectMemory(memory) => Some(memory.as_slice()),
-            _ => None,
-        })
+        self.instruction_result()
+            .execution_facts
+            .iter()
+            .find_map(|fact| match fact {
+                ExecutionFact::PlayerAffectedObjectMemory(memory) => Some(memory.as_slice()),
+                _ => None,
+            })
     }
 
     /// Access explicit object IDs returned by the outcome payload.
@@ -1152,12 +1224,33 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                     positive.negated = false;
                     return !Self::PriorEffectResult(positive).evaluate_outcome(outcome);
                 }
+                if surface.action == crate::effect::PriorEffectAction::Died {
+                    let count = outcome.affected_object_memory().unwrap_or_default().iter()
+                        .filter(|memory| memory.card_types.contains(&crate::types::CardType::Creature)
+                            && prior_result_memory_matches_filter(memory, &surface.filter)
+                            && (outcome.execution_facts.iter().any(|fact|
+                                matches!(fact, crate::effect::ExecutionFact::ObjectsDied(ids) if ids.contains(&memory.object_id)))
+                            || outcome.events_of_type::<crate::events::ZoneChangeEvent>().any(|event|
+                                event.from == crate::zone::Zone::Battlefield
+                                    && event.to == crate::zone::Zone::Graveyard
+                                    && event.objects.contains(&memory.object_id))))
+                        .count();
+                    return count >= surface.required_count.unwrap_or(1) as usize;
+                }
                 if surface.action == crate::effect::PriorEffectAction::PutIntoHand {
                     // The context-aware If owner additionally selects the actor.
-                    let count = outcome.execution_facts.iter().filter_map(|fact| {
-                        let ExecutionFact::CardsPutIntoHand { cards, .. } = fact else { return None; };
-                        Some(cards)
-                    }).flatten().filter(|card| prior_result_memory_matches_filter(card, &surface.filter)).count();
+                    let count = outcome
+                        .execution_facts
+                        .iter()
+                        .filter_map(|fact| {
+                            let ExecutionFact::CardsPutIntoHand { cards, .. } = fact else {
+                                return None;
+                            };
+                            Some(cards)
+                        })
+                        .flatten()
+                        .filter(|card| prior_result_memory_matches_filter(card, &surface.filter))
+                        .count();
                     return count >= surface.required_count.unwrap_or(1) as usize;
                 }
                 if !prior_result_filter_has_lki_constraints(&surface.filter) {
@@ -1279,7 +1372,11 @@ impl RestrictionExt for Restriction {
                     // This is an output of restriction refresh, like the base
                     // value reset in update_cant_effects, not a player input.
                     // Using player_mut would invalidate the refresh itself.
-                    if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
+                    if let Some(player) = game
+                        .players
+                        .get_mut_for_derived_update()
+                        .get_mut(player_id.index())
+                    {
                         player.land_plays_per_turn =
                             player.land_plays_per_turn.saturating_add(*count);
                     }
@@ -1295,7 +1392,11 @@ impl RestrictionExt for Restriction {
                     .map(|player| player.id)
                     .collect();
                 for player_id in affected_players {
-                    if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
+                    if let Some(player) = game
+                        .players
+                        .get_mut_for_derived_update()
+                        .get_mut(player_id.index())
+                    {
                         player.max_hand_size = i32::MAX;
                     }
                 }
@@ -1345,39 +1446,63 @@ impl RestrictionExt for Restriction {
                                     if !chosen_name.is_empty() {
                                         let mut resolved_filter = spell_filter.clone();
                                         resolved_filter.name = Some(chosen_name.to_string());
-                                        tracker.add_scoped_cant_cast_filter(player.id, crate::game_state::CastRestrictionFilter {
-                                            filter: resolved_filter, source: Some(source), controller: Some(controller),
-                                            iterated_player, tagged_objects: tagged_objects.clone(),
-                                        });
+                                        tracker.add_scoped_cant_cast_filter(
+                                            player.id,
+                                            crate::game_state::CastRestrictionFilter {
+                                                filter: resolved_filter,
+                                                source: Some(source),
+                                                controller: Some(controller),
+                                                iterated_player,
+                                                tagged_objects: tagged_objects.clone(),
+                                            },
+                                        );
                                     }
                                 }
                             }
                         } else {
-                            tracker.add_scoped_cant_cast_filter(player.id, crate::game_state::CastRestrictionFilter {
-                                filter: spell_filter.clone(), source, controller: Some(controller),
-                                iterated_player, tagged_objects: tagged_objects.clone(),
-                            });
+                            tracker.add_scoped_cant_cast_filter(
+                                player.id,
+                                crate::game_state::CastRestrictionFilter {
+                                    filter: spell_filter.clone(),
+                                    source,
+                                    controller: Some(controller),
+                                    iterated_player,
+                                    tagged_objects: tagged_objects.clone(),
+                                },
+                            );
                         }
                     }
                 }
             }
             Restriction::PlayLandsMatching(player_filter, land_filter) => {
                 let restriction = crate::game_state::LandPlayRestrictionFilter {
-                    filter: land_filter.clone(), source, controller, iterated_player,
+                    filter: land_filter.clone(),
+                    source,
+                    controller,
+                    iterated_player,
                     tagged_objects: tagged_objects.clone(),
                 };
                 for player in &game.players {
-                    if player.is_in_game() && player_matches_restriction_filter(player.id, player_filter)
-                        && ctx.players_in_range.as_ref().is_none_or(|players| players.contains(&player.id))
+                    if player.is_in_game()
+                        && player_matches_restriction_filter(player.id, player_filter)
+                        && ctx
+                            .players_in_range
+                            .as_ref()
+                            .is_none_or(|players| players.contains(&player.id))
                     {
-                        tracker.cant_play_land_filters.entry(player.id).or_default().push(restriction.clone());
+                        tracker
+                            .cant_play_land_filters
+                            .entry(player.id)
+                            .or_default()
+                            .push(restriction.clone());
                     }
                 }
             }
             Restriction::ActivateLoyaltyAbilitiesOf(filter) => {
                 for &id in &game.battlefield {
                     if let Some(object) = game.object(id)
-                        && !game.is_phased_out(id) && filter.matches(object, &ctx, game)
+                        && !game.is_phased_out(id)
+                        && filter.matches(object, &ctx, game)
                     {
                         tracker.cant_activate_loyalty_abilities_of.insert(id);
                     }
@@ -1402,12 +1527,16 @@ impl RestrictionExt for Restriction {
                 // there, including mana abilities. Unqualified permanent bans
                 // retain their battlefield domain.
                 fn explicit_off_battlefield(filter: &crate::target::ObjectFilter) -> bool {
-                    filter.zone.is_some_and(|zone| zone != crate::zone::Zone::Battlefield)
+                    filter
+                        .zone
+                        .is_some_and(|zone| zone != crate::zone::Zone::Battlefield)
                         || filter.any_of.iter().any(explicit_off_battlefield)
                 }
                 for object in game.objects_in_deterministic_order() {
-                    if (object.zone == crate::zone::Zone::Battlefield || explicit_off_battlefield(filter))
-                        && !game.is_phased_out(object.id) && filter.matches(object, &ctx, game)
+                    if (object.zone == crate::zone::Zone::Battlefield
+                        || explicit_off_battlefield(filter))
+                        && !game.is_phased_out(object.id)
+                        && filter.matches(object, &ctx, game)
                     {
                         tracker.cant_activate_abilities_of.insert(object.id);
                     }
@@ -1487,6 +1616,13 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::LoseGameForZeroLife(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.cant_lose_game_for_zero_life.insert(player.id);
+                    }
+                }
+            }
             Restriction::LoseGame(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
@@ -1508,11 +1644,20 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
-            Restriction::PreventDamageFrom { sources, combat_only } => {
-                tracker.source_damage_cant_be_prevented.push(crate::game_state::SourceDamagePreventionProhibition {
-                    sources: sources.clone(), combat_only: *combat_only, host: source, controller,
-                    iterated_player, tagged_objects: tagged_objects.clone(),
-                });
+            Restriction::PreventDamageFrom {
+                sources,
+                combat_only,
+            } => {
+                tracker.source_damage_cant_be_prevented.push(
+                    crate::game_state::SourceDamagePreventionProhibition {
+                        sources: sources.clone(),
+                        combat_only: *combat_only,
+                        host: source,
+                        controller,
+                        iterated_player,
+                        tagged_objects: tagged_objects.clone(),
+                    },
+                );
             }
             Restriction::PreventDamage => {
                 tracker.damage_cant_be_prevented = true;
@@ -1727,8 +1872,11 @@ impl RestrictionExt for Restriction {
             }
             Restriction::EnterBattlefield(filter) => {
                 let restriction = crate::game_state::CastRestrictionFilter {
-                    filter: filter.clone(), source, controller: Some(controller),
-                    iterated_player, tagged_objects: tagged_objects.clone(),
+                    filter: filter.clone(),
+                    source,
+                    controller: Some(controller),
+                    iterated_player,
+                    tagged_objects: tagged_objects.clone(),
                 };
                 if !tracker.cant_enter_battlefield.contains(&restriction) {
                     tracker.cant_enter_battlefield.push(restriction);
@@ -1927,12 +2075,11 @@ impl Clone for Effect {
 }
 
 impl PartialEq for Effect {
-    fn eq(&self, _other: &Self) -> bool {
-        // Two effects are never considered equal via PartialEq.
-        // This is a limitation, but acceptable since Effect equality
-        // is primarily used for testing where effects can be
-        // compared via their behavior or debug output instead.
-        false
+    fn eq(&self, other: &Self) -> bool {
+        // Cloned snapshots retain the same executor. Identity equality lets
+        // transaction guards compare those snapshots without pretending that
+        // independently constructed programs have structural equality.
+        Arc::ptr_eq(&self.0, &other.0)
     }
 }
 
@@ -1994,7 +2141,6 @@ impl Effect {
     pub fn visit_card_definitions(&self, visitor: &mut dyn FnMut(&crate::cards::CardDefinition)) {
         self.0.visit_card_definitions(visitor);
     }
-
 
     /// Return a transparent wrapper's inner effect, if this effect has one.
     pub fn transparent_child_effect(&self) -> Option<&Effect> {
@@ -5023,6 +5169,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn effect_clones_preserve_identity_equality() {
+        let effect = Effect::draw(2);
+        assert_eq!(effect, effect.clone());
+        assert_ne!(effect, Effect::draw(2));
+    }
+
+    #[test]
     fn test_deal_damage_effect() {
         let effect = Effect::deal_damage(3, ChooseSpec::AnyTarget);
         // Verify it has the expected target spec via the trait method
@@ -5567,18 +5720,27 @@ mod accepted_optional_result_tests {
 mod replacement_instruction_result_contract_tests {
     use super::*;
     fn auxiliary(id: ObjectId) -> EffectOutcome {
-        EffectOutcome::count(7).with_affected_objects(vec![id]).with_event(
-            crate::events::RawEvent::new_with_provenance(
+        EffectOutcome::count(7)
+            .with_affected_objects(vec![id])
+            .with_event(crate::events::RawEvent::new_with_provenance(
                 crate::events::MarkersChangedEvent::added(
-                    crate::object::CounterType::PlusOnePlusOne, id, 2, None, None),
-                crate::provenance::ProvNodeId::default()))
+                    crate::object::CounterType::PlusOnePlusOne,
+                    id,
+                    2,
+                    None,
+                    None,
+                ),
+                crate::provenance::ProvNodeId::default(),
+            ))
     }
     #[test]
     fn replacement_observations_preserve_original_count_objects_and_events() {
         let original = ObjectId::from_raw(901);
         let payload = ObjectId::from_raw(902);
         let outcome = EffectOutcome::aggregate_replacement_outcomes(
-            EffectOutcome::count(1).with_affected_objects(vec![original]), [auxiliary(payload)]);
+            EffectOutcome::count(1).with_affected_objects(vec![original]),
+            [auxiliary(payload)],
+        );
         assert_eq!(outcome.value, OutcomeValue::Count(1));
         assert_eq!(outcome.affected_objects(), Some([original].as_slice()));
         assert_eq!(outcome.total_marker_changes(|event| event.is_added()), 2);
@@ -5591,9 +5753,13 @@ mod replacement_instruction_result_contract_tests {
         let second = ObjectId::from_raw(912);
         let payload = ObjectId::from_raw(913);
         let replaced = EffectOutcome::aggregate_replacement_outcomes(
-            EffectOutcome::count(1).with_result_objects(vec![first]), [auxiliary(payload)]);
+            EffectOutcome::count(1).with_result_objects(vec![first]),
+            [auxiliary(payload)],
+        );
         let combined = EffectOutcome::aggregate_summing_counts([
-            replaced, EffectOutcome::count(1).with_result_objects(vec![second])]);
+            replaced,
+            EffectOutcome::count(1).with_result_objects(vec![second]),
+        ]);
         assert_eq!(combined.value, OutcomeValue::Count(2));
         assert_eq!(combined.result_objects(), Some([first, second].as_slice()));
         assert_eq!(combined.affected_objects(), None);
@@ -5604,7 +5770,9 @@ mod replacement_instruction_result_contract_tests {
     fn replaced_empty_instruction_does_not_report_payload_objects_as_its_output() {
         let payload = ObjectId::from_raw(921);
         let outcome = EffectOutcome::aggregate_replacement_outcomes(
-            EffectOutcome::count(0), [auxiliary(payload)]);
+            EffectOutcome::count(0),
+            [auxiliary(payload)],
+        );
         assert_eq!(outcome.value, OutcomeValue::Count(0));
         assert!(outcome.output_objects().is_empty());
         assert_eq!(outcome.affected_objects(), None);
@@ -5618,10 +5786,16 @@ mod replacement_instruction_result_contract_tests {
         assert!(value.get("instruction_result").is_none());
         let restored: EffectOutcome = serde_json::from_value(value).unwrap();
         assert_eq!(restored, original);
-        let annotated = EffectOutcome::aggregate_replacement_outcomes(original,
-            [auxiliary(ObjectId::from_raw(932))]);
-        let restored: EffectOutcome = serde_json::from_value(serde_json::to_value(&annotated).unwrap()).unwrap();
-        assert_eq!(restored.instruction_result(), annotated.instruction_result());
+        let annotated = EffectOutcome::aggregate_replacement_outcomes(
+            original,
+            [auxiliary(ObjectId::from_raw(932))],
+        );
+        let restored: EffectOutcome =
+            serde_json::from_value(serde_json::to_value(&annotated).unwrap()).unwrap();
+        assert_eq!(
+            restored.instruction_result(),
+            annotated.instruction_result()
+        );
         assert_eq!(restored.result_objects(), annotated.result_objects());
     }
 }
@@ -5632,7 +5806,9 @@ mod replacement_instruction_predicate_contract_tests {
     #[test]
     fn prevented_auxiliary_action_does_not_cancel_original_happened_predicate() {
         let outcome = EffectOutcome::aggregate_replacement_outcomes(
-            EffectOutcome::count(1), [EffectOutcome::prevented()]);
+            EffectOutcome::count(1),
+            [EffectOutcome::prevented()],
+        );
         assert_eq!(outcome.value, OutcomeValue::Count(1));
         assert!(outcome.execution_facts.contains(&ExecutionFact::Prevented));
         assert!(EffectPredicate::Happened.evaluate_outcome(&outcome));
@@ -5640,8 +5816,10 @@ mod replacement_instruction_predicate_contract_tests {
     }
     #[test]
     fn accepted_auxiliary_action_does_not_accept_original_zero_result() {
-        let outcome = EffectOutcome::aggregate_replacement_outcomes(EffectOutcome::count(0),
-            [EffectOutcome::count(0).with_execution_fact(ExecutionFact::Accepted)]);
+        let outcome = EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(0),
+            [EffectOutcome::count(0).with_execution_fact(ExecutionFact::Accepted)],
+        );
         assert_eq!(outcome.value, OutcomeValue::Count(0));
         assert!(outcome.execution_facts.contains(&ExecutionFact::Accepted));
         assert!(!EffectPredicate::Happened.evaluate_outcome(&outcome));
@@ -5650,13 +5828,17 @@ mod replacement_instruction_predicate_contract_tests {
     fn original_acceptance_survives_auxiliary_prevention() {
         let outcome = EffectOutcome::aggregate_replacement_outcomes(
             EffectOutcome::count(0).with_execution_fact(ExecutionFact::Accepted),
-            [EffectOutcome::prevented()]);
+            [EffectOutcome::prevented()],
+        );
         assert!(EffectPredicate::Happened.evaluate_outcome(&outcome));
     }
     #[test]
     fn owner_added_acceptance_and_failure_remain_authoritative_after_composition() {
-        let outcome = EffectOutcome::aggregate_replacement_outcomes(EffectOutcome::count(0),
-            [EffectOutcome::count(2)]).with_execution_fact(ExecutionFact::Accepted);
+        let outcome = EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(0),
+            [EffectOutcome::count(2)],
+        )
+        .with_execution_fact(ExecutionFact::Accepted);
         assert!(EffectPredicate::Happened.evaluate_outcome(&outcome));
         let failed = outcome.with_execution_fact(ExecutionFact::Impossible);
         assert!(!EffectPredicate::Happened.evaluate_outcome(&failed));

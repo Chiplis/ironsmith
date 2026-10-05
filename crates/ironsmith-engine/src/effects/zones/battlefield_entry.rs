@@ -29,7 +29,12 @@ pub(crate) struct BattlefieldEntryReceipt {
 }
 
 impl BattlefieldEntryReceipt {
-    pub(crate) fn into_zone_receipt(self) -> (ObjectId, crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>) {
+    pub(crate) fn into_zone_receipt(
+        self,
+    ) -> (
+        ObjectId,
+        crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>,
+    ) {
         (self.original_object, self.zone_receipt)
     }
 }
@@ -40,8 +45,15 @@ pub(crate) fn finish_battlefield_entry_receipts(
     original: crate::effect::EffectOutcome,
     receipts: Vec<BattlefieldEntryReceipt>,
 ) -> Result<crate::effect::EffectOutcome, ExecutionError> {
-    super::finish_zone_change_receipts(game, ctx, original,
-        receipts.into_iter().map(BattlefieldEntryReceipt::into_zone_receipt).collect())
+    super::finish_zone_change_receipts(
+        game,
+        ctx,
+        original,
+        receipts
+            .into_iter()
+            .map(BattlefieldEntryReceipt::into_zone_receipt)
+            .collect(),
+    )
 }
 
 /// Config for moving an object to the battlefield through ETB processing.
@@ -136,7 +148,10 @@ impl BattlefieldEntryOptions {
         self
     }
 
-    pub(crate) fn with_aura_entry_attachment(mut self, target: Option<crate::object::AttachmentTarget>) -> Self {
+    pub(crate) fn with_aura_entry_attachment(
+        mut self,
+        target: Option<crate::object::AttachmentTarget>,
+    ) -> Self {
         self.entry_attachment = target;
         self.entry_attachment_requires_aura = true;
         self
@@ -148,7 +163,9 @@ impl BattlefieldEntryOptions {
     }
 
     pub(crate) fn with_composite_entry(
-        mut self, definition: crate::cards::CardDefinition, components: Vec<ObjectId>,
+        mut self,
+        definition: crate::cards::CardDefinition,
+        components: Vec<ObjectId>,
     ) -> Self {
         self.entry_definition = Some(definition);
         self.physical_components = components;
@@ -299,7 +316,8 @@ fn apply_entry_modifications(
             )
         })
         .collect();
-    game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+    game.refresh_continuous_state()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
     Ok(ids)
 }
 
@@ -312,8 +330,10 @@ fn finish_battlefield_entry(
     notifications: &mut Vec<TriggerEvent>,
 ) -> Result<BattlefieldEntryOutcome, ExecutionError> {
     let new_id = result.new_id;
-    let destination = game.object(new_id)
-        .ok_or(ExecutionError::ObjectNotFound(new_id))?.zone;
+    let destination = game
+        .object(new_id)
+        .ok_or(ExecutionError::ObjectNotFound(new_id))?
+        .zone;
     // A failed attachment choice can return the original object without any
     // movement. It is not a completed redirection and must not acquire links.
     if new_id == old_object && destination == old_zone {
@@ -321,12 +341,18 @@ fn finish_battlefield_entry(
     }
     if destination != Zone::Battlefield {
         let mut new_ids = game.take_zone_change_results(old_object);
-        if new_ids.is_empty() { new_ids.push(new_id); }
+        if new_ids.is_empty() {
+            new_ids.push(new_id);
+        }
         // Preserve the identity continuation for other consumers of this move.
         game.record_zone_change_results(old_object, new_ids.clone());
-        return Ok(BattlefieldEntryOutcome::Redirected(super::AppliedZoneChange {
-            final_zone: destination, new_object_id: Some(new_id), new_object_ids: new_ids,
-        }));
+        return Ok(BattlefieldEntryOutcome::Redirected(
+            super::AppliedZoneChange {
+                final_zone: destination,
+                new_object_id: Some(new_id),
+                new_object_ids: new_ids,
+            },
+        ));
     }
 
     game.add_battlefield_put_with_source_link(ctx.source, new_id);
@@ -363,7 +389,10 @@ pub(crate) fn move_to_battlefield_batch_with_options(
     requests: Vec<(ObjectId, BattlefieldEntryOptions)>,
 ) -> Result<Vec<BattlefieldEntryReceipt>, ExecutionError> {
     move_to_battlefield_batch_with_options_and_zone_proposals(
-        game, ctx, requests, std::collections::HashMap::new(),
+        game,
+        ctx,
+        requests,
+        std::collections::HashMap::new(),
     )
 }
 
@@ -371,7 +400,10 @@ pub(crate) fn move_to_battlefield_batch_with_options_and_zone_proposals(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     requests: Vec<(ObjectId, BattlefieldEntryOptions)>,
-    zone_proposals: std::collections::HashMap<ObjectId, crate::events::processing::PreparedBattlefieldZoneChange>,
+    zone_proposals: std::collections::HashMap<
+        ObjectId,
+        crate::events::processing::PreparedBattlefieldZoneChange,
+    >,
 ) -> Result<Vec<BattlefieldEntryReceipt>, ExecutionError> {
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
@@ -387,7 +419,10 @@ fn move_to_battlefield_batch_with_options_inner(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     requests: Vec<(ObjectId, BattlefieldEntryOptions)>,
-    mut zone_proposals: std::collections::HashMap<ObjectId, crate::events::processing::PreparedBattlefieldZoneChange>,
+    mut zone_proposals: std::collections::HashMap<
+        ObjectId,
+        crate::events::processing::PreparedBattlefieldZoneChange,
+    >,
 ) -> Result<Vec<BattlefieldEntryReceipt>, ExecutionError> {
     if requests.is_empty() {
         return Ok(Vec::new());
@@ -396,31 +431,62 @@ fn move_to_battlefield_batch_with_options_inner(
     // Original zone snapshots and observer lookback precede provisional faces,
     // continuous modifications and every entry program in this batch.
     let pre_event_lookback = game.trigger_source_lookback_snapshots();
-    let original_snapshots = requests.iter().filter_map(|(id, _)| {
-        game.object(*id).map(|object| (*id,
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)))
-    }).collect::<std::collections::HashMap<_, _>>();
+    let original_snapshots = requests
+        .iter()
+        .filter_map(|(id, _)| {
+            game.object(*id).map(|object| {
+                (
+                    *id,
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        object, game,
+                    ),
+                )
+            })
+        })
+        .collect::<std::collections::HashMap<_, _>>();
     let mut physical_entries = std::collections::HashMap::new();
     for (index, (primary, options)) in requests.iter().enumerate() {
-        if options.physical_components.is_empty() { continue; }
-        let unique = options.physical_components.iter().copied().collect::<std::collections::HashSet<_>>();
-        let origin = game.object(*primary).ok_or(ExecutionError::ObjectNotFound(*primary))?.zone;
+        if options.physical_components.is_empty() {
+            continue;
+        }
+        let unique = options
+            .physical_components
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        let origin = game
+            .object(*primary)
+            .ok_or(ExecutionError::ObjectNotFound(*primary))?
+            .zone;
         if options.physical_components.first() != Some(primary)
-            || unique.len() != options.physical_components.len() || options.entry_definition.is_none()
+            || unique.len() != options.physical_components.len()
+            || options.entry_definition.is_none()
             || origin == Zone::Battlefield
         {
-            return Err(ExecutionError::InternalError("invalid composite entry representation".into()));
+            return Err(ExecutionError::InternalError(
+                "invalid composite entry representation".into(),
+            ));
         }
         let mut components = Vec::new();
         for &id in &options.physical_components {
             let object = game.object(id).ok_or(ExecutionError::ObjectNotFound(id))?;
             if object.zone != origin || object.kind != crate::object::ObjectKind::Card {
-                return Err(ExecutionError::InternalError("composite entry cards have incompatible origins".into()));
+                return Err(ExecutionError::InternalError(
+                    "composite entry cards have incompatible origins".into(),
+                ));
             }
-            let definition = game.linked_face_definition_by_name_or_id(Some(object.name.as_str()), object.card)
-                .ok_or_else(|| ExecutionError::InternalError("composite entry source definition missing".into()))?;
+            let definition = game
+                .linked_face_definition_by_name_or_id(Some(object.name.as_str()), object.card)
+                .ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "composite entry source definition missing".into(),
+                    )
+                })?;
             components.push(crate::game_state::PreparedEntryComponent {
-                snapshot: crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game),
+                snapshot:
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        object, game,
+                    ),
                 original_definition: definition,
             });
         }
@@ -430,14 +496,21 @@ fn move_to_battlefield_batch_with_options_inner(
     let mut working = game.clone();
     let mut transformed_entry_states = std::collections::HashMap::new();
     for (index, (object_id, options)) in requests.iter().enumerate() {
-        if working.object(*object_id).is_some_and(|object| object.zone == Zone::Battlefield)
-            || (!options.transformed && options.entry_definition.is_none()) {
+        if working
+            .object(*object_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+            || (!options.transformed && options.entry_definition.is_none())
+        {
             continue;
         }
         let Some(original) = working.object(*object_id).cloned() else {
             continue;
         };
-        let Some(definition) = options.entry_definition.clone().or_else(|| transformed_entry_definition(&working, *object_id)) else {
+        let Some(definition) = options
+            .entry_definition
+            .clone()
+            .or_else(|| transformed_entry_definition(&working, *object_id))
+        else {
             continue;
         };
         if apply_entry_definition(&mut working, *object_id, &definition) {
@@ -449,7 +522,10 @@ fn move_to_battlefield_batch_with_options_inner(
     let mut provisional_effects = Vec::new();
     let mut provisional_entry_effects = std::collections::HashMap::new();
     for (object, options) in &requests {
-        if working.object(*object).is_some_and(|object| object.zone == Zone::Battlefield) {
+        if working
+            .object(*object)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
             continue;
         }
         let effects = apply_entry_modifications(&mut working, ctx, *object, options)?;
@@ -460,7 +536,10 @@ fn move_to_battlefield_batch_with_options_inner(
         .iter()
         .enumerate()
         .filter_map(|(index, (object, options))| {
-            if working.object(*object).is_some_and(|object| object.zone == Zone::Battlefield) {
+            if working
+                .object(*object)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+            {
                 return None;
             }
             if options.transformed && !transformed_entry_states.contains_key(&index) {
@@ -486,7 +565,11 @@ fn move_to_battlefield_batch_with_options_inner(
         .collect::<std::collections::HashSet<_>>();
     for &index in &eligible_indices {
         if let Some(components) = physical_entries.get(&index) {
-            reserved_objects.extend(components.iter().map(|component| component.snapshot.object_id));
+            reserved_objects.extend(
+                components
+                    .iter()
+                    .map(|component| component.snapshot.object_id),
+            );
         }
     }
 
@@ -504,9 +587,15 @@ fn move_to_battlefield_batch_with_options_inner(
     // Retain instructions even for proposals rejected by prospective entry
     // restrictions. The original verdict does not erase previously applied
     // zone replacement instructions.
-    let mut deferred_programs = requests.iter().map(|(object, _)| {
-        zone_proposals.get_mut(object).map(|proposal| proposal.take_programs()).unwrap_or_default()
-    }).collect::<Vec<_>>();
+    let mut deferred_programs = requests
+        .iter()
+        .map(|(object, _)| {
+            zone_proposals
+                .get_mut(object)
+                .map(|proposal| proposal.take_programs())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
     let mut replaced_entries = std::collections::HashSet::new();
     for index in proposal_order {
         let (object, options) = &requests[index];
@@ -518,20 +607,41 @@ fn move_to_battlefield_batch_with_options_inner(
             BattlefieldEntryController::Owner => working.object(*object).map(|object| object.owner),
             BattlefieldEntryController::Preserve => None,
         };
-        let (mut scope, scoped_additional, lookback, programs) = match zone_proposals.remove(object) {
+        let (mut scope, scoped_additional, lookback, programs) = match zone_proposals.remove(object)
+        {
             Some(proposal) => proposal.into_entry_scope(),
             None => (
-                crate::events::processing::ReplacementEventContext::with_scope(&working, crate::events::Event::zone_change(*object, old_zone, Zone::Battlefield,
-                ctx.cause.clone(), original_snapshots.get(object).cloned())
-                .with_provenance(ctx.provenance), &ctx.replacement),
-                additional_effects.clone(), pre_event_lookback.clone(), Vec::new(),
+                crate::events::processing::ReplacementEventContext::with_scope(
+                    &working,
+                    crate::events::Event::zone_change(
+                        *object,
+                        old_zone,
+                        Zone::Battlefield,
+                        ctx.cause.clone(),
+                        original_snapshots.get(object).cloned(),
+                    )
+                    .with_provenance(ctx.provenance),
+                    &ctx.replacement,
+                ),
+                additional_effects.clone(),
+                pre_event_lookback.clone(),
+                Vec::new(),
             ),
         };
         if let Some(components) = physical_entries.get(&index) {
-            let snapshots = components.iter().map(|component| component.snapshot.clone()).collect::<Vec<_>>();
+            let snapshots = components
+                .iter()
+                .map(|component| component.snapshot.clone())
+                .collect::<Vec<_>>();
             let zone = crate::events::zones::ZoneChangeEvent::batch_with_snapshots(
-                snapshots.iter().map(|snapshot| snapshot.object_id).collect(), old_zone, Zone::Battlefield,
-                ctx.cause.clone(), snapshots,
+                snapshots
+                    .iter()
+                    .map(|snapshot| snapshot.object_id)
+                    .collect(),
+                old_zone,
+                Zone::Battlefield,
+                ctx.cause.clone(),
+                snapshots,
             );
             scope.event = crate::events::Event::new_with_provenance(zone.clone(), ctx.provenance);
             scope.zone_change_context = Some(zone);
@@ -541,9 +651,15 @@ fn move_to_battlefield_batch_with_options_inner(
         // Store only source presentations overlaid for this proposal. Instead
         // programs operate on the real originals after entry has been replaced.
         let original_source_faces = if let Some(components) = physical_entries.get(&index) {
-            components.iter().filter_map(|component| game.object(component.snapshot.object_id).cloned()).collect::<Vec<_>>()
+            components
+                .iter()
+                .filter_map(|component| game.object(component.snapshot.object_id).cloned())
+                .collect::<Vec<_>>()
         } else {
-            transformed_entry_states.get(&index).map(|(original, _)| vec![original.clone()]).unwrap_or_default()
+            transformed_entry_states
+                .get(&index)
+                .map(|(original, _)| vec![original.clone()])
+                .unwrap_or_default()
         };
         let mut result = crate::events::processing::process_etb_batch_proposal_with_scope(
             &mut working,
@@ -562,7 +678,9 @@ fn move_to_battlefield_batch_with_options_inner(
             return Ok(Vec::new());
         }
         deferred_programs[index].append(&mut result.additional_programs);
-        if result.replaced { replaced_entries.insert(index); }
+        if result.replaced {
+            replaced_entries.insert(index);
+        }
         reserved_objects.extend(result.linked_exile_with_entering.iter().copied());
         proposals[index] = Some((old_zone, result));
     }
@@ -584,20 +702,30 @@ fn move_to_battlefield_batch_with_options_inner(
             proposal,
             entering_controller,
             &mut ctx.decision_maker,
-        )? else {
+        )?
+        else {
             return Ok(Vec::new());
         };
         if ctx.decision_maker.awaiting_choice() {
             return Ok(Vec::new());
         }
-        prepared.zone_entry_lookback = Some(proposal_lookbacks.remove(&index).unwrap_or_else(|| pre_event_lookback.clone()));
-        prepared.entry_definition = transformed_entry_states.get(&index).map(|(_, definition)| definition.clone());
+        prepared.zone_entry_lookback = Some(
+            proposal_lookbacks
+                .remove(&index)
+                .unwrap_or_else(|| pre_event_lookback.clone()),
+        );
+        prepared.entry_definition = transformed_entry_states
+            .get(&index)
+            .map(|(_, definition)| definition.clone());
         prepared.physical_components = physical_entries.remove(&index).unwrap_or_default();
         prepared.linked_face_mana_cost = options.linked_face_mana_cost.clone();
         // Retarget authored characteristic changes with the actual entrant,
         // before attachment legality and other commit-time checks inspect it.
         if let Some(effects) = provisional_entry_effects.get(object) {
-            prepared.choices.as_enters_continuous_effects.extend(effects.iter().copied());
+            prepared
+                .choices
+                .as_enters_continuous_effects
+                .extend(effects.iter().copied());
         }
         prepared.entry_attachment = options.entry_attachment;
         prepared.entry_attachment_requires_aura = options.entry_attachment_requires_aura;
@@ -635,7 +763,9 @@ fn move_to_battlefield_batch_with_options_inner(
             &mut ctx.decision_maker,
         );
         let mut committed = committed?;
-        if committed.pending || ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+        if committed.pending || ctx.decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
         deferred_programs[index].append(&mut committed.programs);
         let result = match committed.original {
             crate::events::processing::EventOutcome::Proceed(result) => result,
@@ -644,18 +774,28 @@ fn move_to_battlefield_batch_with_options_inner(
                 continue;
             }
             crate::events::processing::EventOutcome::Prevented
-                | crate::events::processing::EventOutcome::NotApplicable => continue,
+            | crate::events::processing::EventOutcome::NotApplicable => continue,
         };
         // Provisional modifications participate in replacement matching above;
         // lasting entry effects belong only to an actual battlefield entrant.
-        if working.object(result.new_id).is_some_and(|object| object.zone == Zone::Battlefield) {
+        if working
+            .object(result.new_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
             // These effects now describe the committed entrant. Keep them;
             // redirected and prevented proposals still lose provisional effects.
             if let Some(effects) = provisional_entry_effects.get(object) {
                 provisional_effects.retain(|id| !effects.contains(id));
             }
         }
-        outcomes[index] = finish_battlefield_entry(&mut working, ctx, *object, old_zone, result, &mut notifications)?;
+        outcomes[index] = finish_battlefield_entry(
+            &mut working,
+            ctx,
+            *object,
+            old_zone,
+            result,
+            &mut notifications,
+        )?;
     }
 
     // CR 613.7j: objects that receive timestamps simultaneously get them in an
@@ -679,6 +819,8 @@ fn move_to_battlefield_batch_with_options_inner(
         for id in ordered {
             working.effect_store.continuous_effects.record_entry(id);
         }
+        // Timestamp choices change layer ordering before entry receipts freeze.
+        working.mark_continuous_state_dirty();
     }
 
     for (index, (object_id, _)) in requests.iter().enumerate() {
@@ -696,28 +838,48 @@ fn move_to_battlefield_batch_with_options_inner(
     for id in provisional_effects {
         working.effect_store.continuous_effects.remove_effect(id);
     }
-    working.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+    working
+        .refresh_continuous_state()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
     // The complete original batch and its simultaneous timestamps are now
     // fixed. Freeze every entry before any deferred replacement program runs.
     working.close_simultaneous_action(opened_batch);
     working.freeze_completed_entry_events(notifications.iter_mut())?;
-    for event in notifications { working.queue_trigger_event(ctx.provenance, event); }
+    for event in notifications {
+        working.queue_trigger_event(ctx.provenance, event);
+    }
     *game = working;
-    Ok(outcomes.into_iter().enumerate().map(|(index, outcome)| {
-        use crate::events::processing::{EventOutcome, PreparedEventOutcome};
-        let original = match &outcome {
-            BattlefieldEntryOutcome::Moved(id) => EventOutcome::Proceed(super::AppliedZoneChange {
-                final_zone: Zone::Battlefield, new_object_id: Some(*id), new_object_ids: vec![*id],
-            }),
-            BattlefieldEntryOutcome::Redirected(change) => EventOutcome::Proceed(change.clone()),
-            BattlefieldEntryOutcome::Prevented if replaced_entries.contains(&index) => EventOutcome::Replaced,
-            BattlefieldEntryOutcome::Prevented => EventOutcome::Prevented,
-        };
-        BattlefieldEntryReceipt {
-            outcome, original_object: requests[index].0,
-            zone_receipt: PreparedEventOutcome { original, programs: std::mem::take(&mut deferred_programs[index]) },
-        }
-    }).collect())
+    Ok(outcomes
+        .into_iter()
+        .enumerate()
+        .map(|(index, outcome)| {
+            use crate::events::processing::{EventOutcome, PreparedEventOutcome};
+            let original = match &outcome {
+                BattlefieldEntryOutcome::Moved(id) => {
+                    EventOutcome::Proceed(super::AppliedZoneChange {
+                        final_zone: Zone::Battlefield,
+                        new_object_id: Some(*id),
+                        new_object_ids: vec![*id],
+                    })
+                }
+                BattlefieldEntryOutcome::Redirected(change) => {
+                    EventOutcome::Proceed(change.clone())
+                }
+                BattlefieldEntryOutcome::Prevented if replaced_entries.contains(&index) => {
+                    EventOutcome::Replaced
+                }
+                BattlefieldEntryOutcome::Prevented => EventOutcome::Prevented,
+            };
+            BattlefieldEntryReceipt {
+                outcome,
+                original_object: requests[index].0,
+                zone_receipt: PreparedEventOutcome {
+                    original,
+                    programs: std::mem::take(&mut deferred_programs[index]),
+                },
+            }
+        })
+        .collect())
 }
 
 /// True when a permanent's own static abilities generate continuous effects,
@@ -800,15 +962,20 @@ pub(crate) fn move_to_battlefield_with_options(
     object_id: ObjectId,
     options: BattlefieldEntryOptions,
 ) -> Result<Option<BattlefieldEntryReceipt>, ExecutionError> {
-    Ok(move_to_battlefield_batch_with_options(game, ctx, vec![(object_id, options)])?
-        .into_iter()
-        .next())
+    Ok(
+        move_to_battlefield_batch_with_options(game, ctx, vec![(object_id, options)])?
+            .into_iter()
+            .next(),
+    )
 }
 
 #[cfg(test)]
 impl BattlefieldEntryReceipt {
     pub(crate) fn assert_without_additions(&self) -> &BattlefieldEntryOutcome {
-        assert!(self.zone_receipt.programs.is_empty(), "fixture must finish its added entry programs");
+        assert!(
+            self.zone_receipt.programs.is_empty(),
+            "fixture must finish its added entry programs"
+        );
         &self.outcome
     }
 }
@@ -887,7 +1054,8 @@ mod tests {
             choices: 0,
         };
         let mut ctx = ExecutionContext::new(source, alice, &mut dm);
-        let outcomes = move_to_battlefield_batch_with_options(&mut game, &mut ctx, requests).expect("replacement operation must execute successfully in this scenario");
+        let outcomes = move_to_battlefield_batch_with_options(&mut game, &mut ctx, requests)
+            .expect("replacement operation must execute successfully in this scenario");
         let expected_tapped = !has_untapper || (intrinsic_tapped && !untapped_last);
         for outcome in outcomes {
             let BattlefieldEntryOutcome::Moved(id) = outcome.assert_without_additions() else {
@@ -1051,8 +1219,10 @@ mod tests {
         let mut dm = InspectColorChoiceDm::synchronous(Color::Blue);
 
         let result = game
-            .move_object_with_etb_processing_with_dm(entrant, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
-            .assert_completed_without_additions().expect("the permanent should enter after its choice is complete");
+            .move_object_with_etb_processing_with_dm(entrant, Zone::Battlefield, &mut dm)
+            .expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions()
+            .expect("the permanent should enter after its choice is complete");
 
         assert_eq!(dm.sources, vec![Some(entrant)]);
         assert_eq!(dm.source_zones, vec![Some(Zone::Hand)]);
@@ -1075,12 +1245,16 @@ mod tests {
         game.add_object(object);
         let mut dm = InspectColorChoiceDm::synchronous(Color::Blue);
 
-        let result =
-            game.move_object_with_etb_processing_with_dm(entrant, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario");
+        let result = game
+            .move_object_with_etb_processing_with_dm(entrant, Zone::Battlefield, &mut dm)
+            .expect("replacement operation must execute successfully in this scenario");
 
         assert!(!result.pending);
         assert!(result.programs.is_empty());
-        assert!(matches!(result.original, crate::events::processing::EventOutcome::NotApplicable));
+        assert!(matches!(
+            result.original,
+            crate::events::processing::EventOutcome::NotApplicable
+        ));
         assert!(dm.sources.is_empty(), "no ETB choice should be proposed");
         assert_eq!(
             game.object(entrant).expect("instant remains").zone,
@@ -1099,8 +1273,9 @@ mod tests {
             ..InspectColorChoiceDm::synchronous(Color::Red)
         };
 
-        let result =
-            game.move_object_with_etb_processing_with_dm(entrant, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario");
+        let result = game
+            .move_object_with_etb_processing_with_dm(entrant, Zone::Battlefield, &mut dm)
+            .expect("replacement operation must execute successfully in this scenario");
 
         assert!(result.pending);
         assert!(result.programs.is_empty());
@@ -1137,12 +1312,15 @@ mod tests {
         };
 
         let prepared = game
-            .prepare_etb_entry_with_controller_and_dm(entrant_id, proposal, None, &mut dm).expect("replacement operation must execute successfully in this scenario")
+            .prepare_etb_entry_with_controller_and_dm(entrant_id, proposal, None, &mut dm)
+            .expect("replacement operation must execute successfully in this scenario")
             .expect("copy-derived entry choice should be prepared");
         assert_eq!(dm.source_zones, vec![Some(Zone::Hand)]);
         let result = game
-            .commit_prepared_etb_with_controller_and_dm(entrant_id, prepared, None, &mut dm).expect("replacement operation must execute successfully in this scenario")
-            .assert_completed_without_additions().expect("the prepared copy should enter");
+            .commit_prepared_etb_with_controller_and_dm(entrant_id, prepared, None, &mut dm)
+            .expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions()
+            .expect("the prepared copy should enter");
 
         assert_eq!(game.chosen_color(result.new_id), Some(Color::Black));
         assert_eq!(
@@ -1168,13 +1346,13 @@ mod tests {
                 (first, BattlefieldEntryOptions::preserve(false)),
                 (second, BattlefieldEntryOptions::preserve(false)),
             ],
-        ).expect("replacement operation must execute successfully in this scenario");
+        )
+        .expect("replacement operation must execute successfully in this scenario");
 
-        assert!(
-            outcomes
-                .iter()
-                .all(|outcome| matches!(outcome.assert_without_additions(), BattlefieldEntryOutcome::Moved(_)))
-        );
+        assert!(outcomes.iter().all(|outcome| matches!(
+            outcome.assert_without_additions(),
+            BattlefieldEntryOutcome::Moved(_)
+        )));
         assert_eq!(dm.source_zones, vec![Some(Zone::Hand), Some(Zone::Hand)]);
         assert_eq!(dm.battlefield_sizes, vec![0, 0]);
     }
@@ -1217,10 +1395,17 @@ mod tests {
                 (instant_id, BattlefieldEntryOptions::preserve(false)),
                 (permanent_id, BattlefieldEntryOptions::preserve(false)),
             ],
-        ).expect("replacement operation must execute successfully in this scenario");
+        )
+        .expect("replacement operation must execute successfully in this scenario");
 
-        assert!(matches!(outcomes[0].assert_without_additions(), BattlefieldEntryOutcome::Prevented));
-        assert!(matches!(outcomes[1].assert_without_additions(), BattlefieldEntryOutcome::Moved(_)));
+        assert!(matches!(
+            outcomes[0].assert_without_additions(),
+            BattlefieldEntryOutcome::Prevented
+        ));
+        assert!(matches!(
+            outcomes[1].assert_without_additions(),
+            BattlefieldEntryOutcome::Moved(_)
+        ));
         assert_eq!(
             game.object(instant_id).expect("instant remains").zone,
             Zone::Hand
@@ -1257,8 +1442,10 @@ mod tests {
         let mut dm = crate::decision::SelectFirstDecisionMaker;
 
         let entered = game
-            .move_object_with_etb_processing_with_dm(entrant_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
-            .assert_completed_without_additions().expect("the permanent should enter after discarding the rest of the hand");
+            .move_object_with_etb_processing_with_dm(entrant_id, Zone::Battlefield, &mut dm)
+            .expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions()
+            .expect("the permanent should enter after discarding the rest of the hand");
         let discarded_new_id = game
             .player(alice)
             .and_then(|player| player.graveyard.first().copied())
@@ -1346,8 +1533,10 @@ mod tests {
             viewed_cards: Vec::new(),
         };
 
-        game.move_object_with_etb_processing_with_dm(entrant_id, Zone::Battlefield, &mut dm).expect("replacement operation must execute successfully in this scenario")
-            .assert_completed_without_additions().expect("the revealing permanent should enter");
+        game.move_object_with_etb_processing_with_dm(entrant_id, Zone::Battlefield, &mut dm)
+            .expect("replacement operation must execute successfully in this scenario")
+            .assert_completed_without_additions()
+            .expect("the revealing permanent should enter");
 
         assert_eq!(dm.choice_source_zone, Some(Zone::Hand));
         assert_eq!(
@@ -1382,10 +1571,16 @@ mod tests {
                 &mut ctx,
                 aura,
                 BattlefieldEntryOptions::specific(bob, false),
-            ).expect("replacement operation must execute successfully in this scenario")
+            )
+            .expect("replacement operation must execute successfully in this scenario")
         };
 
-        let BattlefieldEntryOutcome::Moved(new_id) = outcome.as_ref().expect("completed Aura entry receipt").assert_without_additions().clone() else {
+        let BattlefieldEntryOutcome::Moved(new_id) = outcome
+            .as_ref()
+            .expect("completed Aura entry receipt")
+            .assert_without_additions()
+            .clone()
+        else {
             panic!("Aura should enter attached");
         };
         assert_eq!(dm.chooser, Some(bob));
@@ -1413,9 +1608,16 @@ mod tests {
             &mut ctx,
             aura,
             BattlefieldEntryOptions::specific(alice, false),
-        ).expect("replacement operation must execute successfully in this scenario");
+        )
+        .expect("replacement operation must execute successfully in this scenario");
 
-        assert_eq!(outcome.as_ref().expect("completed prevented entry receipt").assert_without_additions(), &BattlefieldEntryOutcome::Prevented);
+        assert_eq!(
+            outcome
+                .as_ref()
+                .expect("completed prevented entry receipt")
+                .assert_without_additions(),
+            &BattlefieldEntryOutcome::Prevented
+        );
         assert_eq!(
             game.object(aura).map(|object| object.zone),
             Some(Zone::Hand)
@@ -1462,10 +1664,16 @@ mod tests {
                 (mox_id, BattlefieldEntryOptions::preserve(false)),
                 (land_id, BattlefieldEntryOptions::preserve(false)),
             ],
-        ).expect("replacement operation must execute successfully in this scenario");
+        )
+        .expect("replacement operation must execute successfully in this scenario");
 
-        assert!(matches!(outcomes[0].assert_without_additions(), BattlefieldEntryOutcome::Redirected(receipt) if receipt.final_zone == Zone::Graveyard));
-        assert!(matches!(outcomes[1].assert_without_additions(), BattlefieldEntryOutcome::Moved(_)));
+        assert!(
+            matches!(outcomes[0].assert_without_additions(), BattlefieldEntryOutcome::Redirected(receipt) if receipt.final_zone == Zone::Graveyard)
+        );
+        assert!(matches!(
+            outcomes[1].assert_without_additions(),
+            BattlefieldEntryOutcome::Moved(_)
+        ));
         assert!(game.battlefield.iter().any(|id| {
             game.object(*id)
                 .is_some_and(|object| object.name == "Entering Land")
@@ -1496,9 +1704,16 @@ mod tests {
             &mut ctx,
             card_id,
             BattlefieldEntryOptions::specific(alice, false),
-        ).expect("replacement operation must execute successfully in this scenario");
+        )
+        .expect("replacement operation must execute successfully in this scenario");
 
-        assert_eq!(outcome.as_ref().expect("completed prevented entry receipt").assert_without_additions(), &BattlefieldEntryOutcome::Prevented);
+        assert_eq!(
+            outcome
+                .as_ref()
+                .expect("completed prevented entry receipt")
+                .assert_without_additions(),
+            &BattlefieldEntryOutcome::Prevented
+        );
         assert_eq!(
             game.object(card_id).map(|object| object.zone),
             Some(Zone::Graveyard)
@@ -1564,12 +1779,15 @@ mod tests {
                 (first, BattlefieldEntryOptions::preserve(false)),
                 (second, BattlefieldEntryOptions::preserve(false)),
             ],
-        ).expect("replacement operation must execute successfully in this scenario");
+        )
+        .expect("replacement operation must execute successfully in this scenario");
         let ids: Vec<ObjectId> = outcomes
             .iter()
             .map(|outcome| match outcome.assert_without_additions() {
                 BattlefieldEntryOutcome::Moved(id) => *id,
-                BattlefieldEntryOutcome::Redirected(_) | BattlefieldEntryOutcome::Prevented => panic!("both permanents should enter"),
+                BattlefieldEntryOutcome::Redirected(_) | BattlefieldEntryOutcome::Prevented => {
+                    panic!("both permanents should enter")
+                }
             })
             .collect();
 
@@ -1607,63 +1825,109 @@ mod tests {
                 (relevant, BattlefieldEntryOptions::preserve(false)),
                 (plain_id, BattlefieldEntryOptions::preserve(false)),
             ],
-        ).expect("replacement operation must execute successfully in this scenario");
-        assert!(
-            outcomes
-                .iter()
-                .all(|outcome| matches!(outcome.assert_without_additions(), BattlefieldEntryOutcome::Moved(_)))
-        );
+        )
+        .expect("replacement operation must execute successfully in this scenario");
+        assert!(outcomes.iter().all(|outcome| matches!(
+            outcome.assert_without_additions(),
+            BattlefieldEntryOutcome::Moved(_)
+        )));
         assert!(dm.prompts.is_empty());
     }
 
     #[test]
     fn pending_batch_entry_stops_before_later_prompts_and_rolls_back_payments() {
-        struct Answers { calls: usize, pause_second: bool, pending: bool }
+        struct Answers {
+            calls: usize,
+            pause_second: bool,
+            pending: bool,
+        }
         impl DecisionMaker for Answers {
-            fn decide_boolean(&mut self, _: &GameState,
-                _: &crate::decisions::context::BooleanContext) -> bool {
+            fn decide_boolean(
+                &mut self,
+                _: &GameState,
+                _: &crate::decisions::context::BooleanContext,
+            ) -> bool {
                 self.calls += 1;
                 self.pending = self.pause_second && self.calls == 2;
                 !self.pending
             }
-            fn awaiting_choice(&self) -> bool { self.pending }
+            fn awaiting_choice(&self) -> bool {
+                self.pending
+            }
         }
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
         let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Batch land")
-            .card_types(vec![crate::types::CardType::Land]).build();
+            .card_types(vec![crate::types::CardType::Land])
+            .build();
         let mut requests = Vec::new();
         let mut shields = Vec::new();
         for _ in 0..3 {
             let object = game.create_object_from_card(&card, alice, Zone::Hand);
             shields.push(game.effect_store.replacement_effects.add_one_shot_effect(
-                crate::replacement::ReplacementEffect::with_matcher(object, alice,
+                crate::replacement::ReplacementEffect::with_matcher(
+                    object,
+                    alice,
                     crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
-                        crate::target::ObjectFilter::specific(object)),
-                    crate::replacement::ReplacementAction::InteractivePayLifeOrEnterTapped { life_cost: 2 }),
+                        crate::target::ObjectFilter::specific(object),
+                    ),
+                    crate::replacement::ReplacementAction::InteractivePayLifeOrEnterTapped {
+                        life_cost: 2,
+                    },
+                ),
             ));
             requests.push((object, BattlefieldEntryOptions::preserve(false)));
         }
-        let mut dm = Answers { calls: 0, pause_second: true, pending: false };
+        let mut dm = Answers {
+            calls: 0,
+            pause_second: true,
+            pending: false,
+        };
         let mut ctx = ExecutionContext::new(requests[0].0, alice, &mut dm);
-        let pending = move_to_battlefield_batch_with_options(&mut game, &mut ctx, requests.clone()).expect("replacement operation must execute successfully in this scenario");
+        let pending = move_to_battlefield_batch_with_options(&mut game, &mut ctx, requests.clone())
+            .expect("replacement operation must execute successfully in this scenario");
         drop(ctx);
-        assert_eq!(dm.calls, 2, "a pending prompt must stop the batch immediately");
-        assert!(pending.iter().all(|result| matches!(result.assert_without_additions(), BattlefieldEntryOutcome::Prevented)));
+        assert_eq!(
+            dm.calls, 2,
+            "a pending prompt must stop the batch immediately"
+        );
+        assert!(pending.iter().all(|result| matches!(
+            result.assert_without_additions(),
+            BattlefieldEntryOutcome::Prevented
+        )));
         assert_eq!(game.player(alice).unwrap().life, 20);
-        for (object, _) in &requests { assert_eq!(game.object(*object).unwrap().zone, Zone::Hand); }
-        for effect in &shields { assert!(game.effect_store.replacement_effects.get_effect(*effect).is_some()); }
+        for (object, _) in &requests {
+            assert_eq!(game.object(*object).unwrap().zone, Zone::Hand);
+        }
+        for effect in &shields {
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(*effect)
+                    .is_some()
+            );
+        }
         assert!(game.take_pending_trigger_events().is_empty());
         dm.calls = 0;
         dm.pause_second = false;
         dm.pending = false;
         let mut ctx = ExecutionContext::new(requests[0].0, alice, &mut dm);
-        let completed = move_to_battlefield_batch_with_options(&mut game, &mut ctx, requests).expect("replacement operation must execute successfully in this scenario");
-        assert!(completed.iter().all(|result| matches!(result.assert_without_additions(), BattlefieldEntryOutcome::Moved(_))));
+        let completed = move_to_battlefield_batch_with_options(&mut game, &mut ctx, requests)
+            .expect("replacement operation must execute successfully in this scenario");
+        assert!(completed.iter().all(|result| matches!(
+            result.assert_without_additions(),
+            BattlefieldEntryOutcome::Moved(_)
+        )));
         assert_eq!(game.player(alice).unwrap().life, 14);
-        for effect in &shields { assert!(game.effect_store.replacement_effects.get_effect(*effect).is_none()); }
+        for effect in &shields {
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(*effect)
+                    .is_none()
+            );
+        }
     }
-
 }
 
 #[cfg(test)]
@@ -1674,42 +1938,94 @@ mod entry_tapped_tests;
 mod authored_attachment_entry_contract_tests {
     use super::*;
     use crate::ability::Ability;
-    use crate::ids::{CardId,PlayerId};
-    use crate::object::{AttachmentTarget,AuraAttachmentFilter};
+    use crate::ids::{CardId, PlayerId};
+    use crate::object::{AttachmentTarget, AuraAttachmentFilter};
     use crate::static_abilities::StaticAbility;
-    use crate::types::{CardType,Subtype};
-    fn definitions() -> (crate::cards::CardDefinition,crate::cards::CardDefinition) {
-        let aura=crate::CardDefinitionBuilder::new(CardId::new(),"Requested aura").card_types(vec![CardType::Enchantment]).subtypes(vec![Subtype::Aura])
-            .with_ability(Ability::static_ability(StaticAbility::enchant(AuraAttachmentFilter::Object(crate::target::ObjectFilter::creature())))).build();
-        let source=crate::CardDefinitionBuilder::new(CardId::new(),"Entry owner").card_types(vec![CardType::Artifact]).build();
-        (aura,source)
+    use crate::types::{CardType, Subtype};
+    fn definitions() -> (crate::cards::CardDefinition, crate::cards::CardDefinition) {
+        let aura = crate::CardDefinitionBuilder::new(CardId::new(), "Requested aura")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .with_ability(Ability::static_ability(StaticAbility::enchant(
+                AuraAttachmentFilter::Object(crate::target::ObjectFilter::creature()),
+            )))
+            .build();
+        let source = crate::CardDefinitionBuilder::new(CardId::new(), "Entry owner")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        (aura, source)
     }
     #[test]
     fn illegal_authored_aura_attachment_does_not_commit_entry() {
-        let mut game=crate::tests::test_helpers::setup_two_player_game();let alice=PlayerId::from_index(0);let (aura,source)=definitions();
-        let parent=game.create_object_from_definition(&source,alice,Zone::Battlefield);
-        let target=game.create_object_from_definition(&source,alice,Zone::Battlefield);
-        let original=game.create_object_from_definition(&aura,alice,Zone::Graveyard);
-        game.take_pending_trigger_events();let ids=game.next_object_id_counter();let objects=game.objects_in_deterministic_order().len();
-        let mut ctx=ExecutionContext::new_default(parent,alice);
-        let _receipt=move_to_battlefield_with_options(&mut game,&mut ctx,original,BattlefieldEntryOptions::preserve(false).with_entry_attachment(Some(AttachmentTarget::Object(target)))).unwrap();
-        assert!(game.object(original).is_some_and(|object|object.zone==Zone::Graveyard),"an Aura with an illegal specified attachment stays in its original zone");
-        assert_eq!(game.next_object_id_counter(),ids);assert_eq!(game.objects_in_deterministic_order().len(),objects);
-        assert_eq!(game.battlefield.len(),2);assert!(game.object(target).unwrap().attachments.is_empty());
-        assert!(game.take_pending_trigger_events().is_empty(),"a rejected entry publishes no completed movement or ETB");
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let (aura, source) = definitions();
+        let parent = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+        let target = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+        let original = game.create_object_from_definition(&aura, alice, Zone::Graveyard);
+        game.take_pending_trigger_events();
+        let ids = game.next_object_id_counter();
+        let objects = game.objects_in_deterministic_order().len();
+        let mut ctx = ExecutionContext::new_default(parent, alice);
+        let _receipt = move_to_battlefield_with_options(
+            &mut game,
+            &mut ctx,
+            original,
+            BattlefieldEntryOptions::preserve(false)
+                .with_entry_attachment(Some(AttachmentTarget::Object(target))),
+        )
+        .unwrap();
+        assert!(
+            game.object(original)
+                .is_some_and(|object| object.zone == Zone::Graveyard),
+            "an Aura with an illegal specified attachment stays in its original zone"
+        );
+        assert_eq!(game.next_object_id_counter(), ids);
+        assert_eq!(game.objects_in_deterministic_order().len(), objects);
+        assert_eq!(game.battlefield.len(), 2);
+        assert!(game.object(target).unwrap().attachments.is_empty());
+        assert!(
+            game.take_pending_trigger_events().is_empty(),
+            "a rejected entry publishes no completed movement or ETB"
+        );
     }
     #[test]
     fn legal_authored_aura_attachment_is_present_when_entry_is_published() {
-        let mut game=crate::tests::test_helpers::setup_two_player_game();let alice=PlayerId::from_index(0);let (aura,source)=definitions();
-        let parent=game.create_object_from_definition(&source,alice,Zone::Battlefield);
-        let creature=crate::CardDefinitionBuilder::new(CardId::new(),"Attachment target").card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
-        let target=game.create_object_from_definition(&creature,alice,Zone::Battlefield);
-        let original=game.create_object_from_definition(&aura,alice,Zone::Graveyard);game.take_pending_trigger_events();
-        let mut ctx=ExecutionContext::new_default(parent,alice);
-        let _receipt=move_to_battlefield_with_options(&mut game,&mut ctx,original,BattlefieldEntryOptions::preserve(false).with_entry_attachment(Some(AttachmentTarget::Object(target)))).unwrap();
-        assert!(game.object(original).is_none());let attached=game.object(target).unwrap().attachments.clone();assert_eq!(attached.len(),1);
-        assert_eq!(game.object(attached[0]).unwrap().attached_to,Some(AttachmentTarget::Object(target)));
-        let events=game.take_pending_trigger_events();assert_eq!(events.iter().filter(|event|event.kind()==crate::events::EventKind::EnterBattlefield).count(),1);
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let (aura, source) = definitions();
+        let parent = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+        let creature = crate::CardDefinitionBuilder::new(CardId::new(), "Attachment target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+        let target = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let original = game.create_object_from_definition(&aura, alice, Zone::Graveyard);
+        game.take_pending_trigger_events();
+        let mut ctx = ExecutionContext::new_default(parent, alice);
+        let _receipt = move_to_battlefield_with_options(
+            &mut game,
+            &mut ctx,
+            original,
+            BattlefieldEntryOptions::preserve(false)
+                .with_entry_attachment(Some(AttachmentTarget::Object(target))),
+        )
+        .unwrap();
+        assert!(game.object(original).is_none());
+        let attached = game.object(target).unwrap().attachments.clone();
+        assert_eq!(attached.len(), 1);
+        assert_eq!(
+            game.object(attached[0]).unwrap().attached_to,
+            Some(AttachmentTarget::Object(target))
+        );
+        let events = game.take_pending_trigger_events();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind() == crate::events::EventKind::EnterBattlefield)
+                .count(),
+            1
+        );
     }
 }
 
@@ -1719,22 +2035,81 @@ mod replacement_invalid_entry_answer_contract_tests {
     use crate::replacement::{ReplacementAction, ReplacementEffect};
     struct Answer(Vec<usize>);
     impl crate::decision::DecisionMaker for Answer {
-        fn decide_options(&mut self, _: &GameState, _: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> { self.0.clone() }
+        fn decide_options(
+            &mut self,
+            _: &GameState,
+            _: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            self.0.clone()
+        }
     }
     fn invalid(indices: Vec<usize>) {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20); let alice = PlayerId::from_index(0);
-        let source = game.create_object_from_card(&crate::card::CardBuilder::new(crate::ids::CardId::new(), "Entry choice source").card_types(vec![crate::types::CardType::Enchantment]).build(), alice, Zone::Battlefield);
-        let entrant = game.create_object_from_card(&crate::card::CardBuilder::new(crate::ids::CardId::new(), "Entry choice land").card_types(vec![crate::types::CardType::Land]).build(), alice, Zone::Hand);
-        let mut shields = Vec::new(); for action in [ReplacementAction::EnterTapped, ReplacementAction::EnterUntapped] {
-            shields.push(game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, alice, crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(crate::target::ObjectFilter::specific(entrant)), action)));
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_card(
+            &crate::card::CardBuilder::new(crate::ids::CardId::new(), "Entry choice source")
+                .card_types(vec![crate::types::CardType::Enchantment])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let entrant = game.create_object_from_card(
+            &crate::card::CardBuilder::new(crate::ids::CardId::new(), "Entry choice land")
+                .card_types(vec![crate::types::CardType::Land])
+                .build(),
+            alice,
+            Zone::Hand,
+        );
+        let mut shields = Vec::new();
+        for action in [
+            ReplacementAction::EnterTapped,
+            ReplacementAction::EnterUntapped,
+        ] {
+            shields.push(game.effect_store.replacement_effects.add_one_shot_effect(
+                ReplacementEffect::with_matcher(
+                    source,
+                    alice,
+                    crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(
+                        crate::target::ObjectFilter::specific(entrant),
+                    ),
+                    action,
+                ),
+            ));
         }
-        game.take_pending_trigger_events(); let ids = game.next_object_id_counter(); let mut dm = Answer(indices);
-        let result = game.move_object_with_etb_processing_with_dm(entrant, Zone::Battlefield, &mut dm);
-        assert!(matches!(result, Err(crate::effects::ExecutionError::InternalError(_))), "entry must not treat malformed replacement input as an authorized default");
-        assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand); assert_eq!(game.next_object_id_counter(), ids);
-        for shield in shields { assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); } assert!(game.take_pending_trigger_events().is_empty());
+        game.take_pending_trigger_events();
+        let ids = game.next_object_id_counter();
+        let mut dm = Answer(indices);
+        let result =
+            game.move_object_with_etb_processing_with_dm(entrant, Zone::Battlefield, &mut dm);
+        assert!(
+            matches!(
+                result,
+                Err(crate::effects::ExecutionError::InternalError(_))
+            ),
+            "entry must not treat malformed replacement input as an authorized default"
+        );
+        assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand);
+        assert_eq!(game.next_object_id_counter(), ids);
+        for shield in shields {
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(shield)
+                    .is_some()
+            );
+        }
+        assert!(game.take_pending_trigger_events().is_empty());
     }
-    #[test] fn entry_empty_answer_is_invalid() { invalid(vec![]); }
-    #[test] fn entry_out_of_range_answer_is_invalid() { invalid(vec![usize::MAX]); }
-    #[test] fn entry_multiple_answers_are_invalid() { invalid(vec![0, 1]); }
+    #[test]
+    fn entry_empty_answer_is_invalid() {
+        invalid(vec![]);
+    }
+    #[test]
+    fn entry_out_of_range_answer_is_invalid() {
+        invalid(vec![usize::MAX]);
+    }
+    #[test]
+    fn entry_multiple_answers_are_invalid() {
+        invalid(vec![0, 1]);
+    }
 }

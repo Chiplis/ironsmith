@@ -984,7 +984,13 @@ mod resolved_event_tests {
                 .get_effect(one_shot)
                 .is_none()
         );
-        let events = game.take_pending_trigger_events();
+        let events = game
+            .turn_store
+            .turn_history
+            .projected_records()
+            .map(|record| &record.event)
+            .filter(|event| event.kind() == crate::events::EventKind::LifeGain)
+            .collect::<Vec<_>>();
         assert_eq!(events.len(), 4);
         assert!(
             events
@@ -1104,7 +1110,13 @@ mod resolved_event_tests {
                     .get_effect(one_shot)
                     .is_none()
             );
-            let events = game.take_pending_trigger_events();
+            let events = game
+                .turn_store
+                .turn_history
+                .projected_records()
+                .map(|record| &record.event)
+                .filter(|event| event.kind() == crate::events::EventKind::LifeGain)
+                .collect::<Vec<_>>();
             assert_eq!(events.len(), 4);
             for player in [alice, bob] {
                 assert_eq!(

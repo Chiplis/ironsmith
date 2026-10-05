@@ -56,7 +56,7 @@ pub(crate) fn bind(effects: &mut Vec<EffectAst>, sentence: &[OwnedLexToken]) -> 
     let Some(target) = action_target(&mut action) else {
         return false;
     };
-    let TargetAst::Object(filter, None, None) = target else {
+    let TargetAst::Object(filter, None, _) = target else {
         return false;
     };
     if filter.set_quantifier_surface().is_some() {

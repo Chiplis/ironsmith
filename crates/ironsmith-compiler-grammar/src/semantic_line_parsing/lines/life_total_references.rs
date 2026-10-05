@@ -3,7 +3,7 @@ use super::*;
 /// The numeric subject of an intervening life comparison may be repeated as
 /// “it” in a following total-setting instruction. The typed predicate proves
 /// that antecedent; the same words without that proof remain unclaimed.
-pub(super) fn conditional_life_total_set(
+pub fn conditional_life_total_set(
     predicate: Option<&PredicateAst>,
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {

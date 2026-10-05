@@ -185,6 +185,8 @@ fn resource(name: &str, types: &str) -> CardDefinition {
 }
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
+    // Checked execution already captures some triggers in the original observer frame.
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     for event in outcome.events {
         for entry in check_triggers(game, &event) {
             queue.add(entry);
@@ -240,7 +242,7 @@ fn cast(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -248,7 +250,7 @@ fn cast(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()
@@ -259,70 +261,193 @@ fn cast(
     spell
 }
 
-
 fn activate(game: &mut GameState, source: ObjectId, ability_index: usize, dm: &mut Choices) {
     let payer = game.current_controller(source).unwrap();
     game.turn.priority_player = Some(payer);
-    let action = LegalAction::ActivateAbility { source, ability_index };
-    assert!(compute_legal_actions(game, payer).unwrap().contains(&action));
+    let action = LegalAction::ActivateAbility {
+        source,
+        ability_index,
+    };
+    assert!(
+        compute_legal_actions(game, payer)
+            .unwrap()
+            .contains(&action)
+    );
     let mut queue = TriggerQueue::new();
     let mut state = PriorityLoopState::new(3);
-    let mut progress = apply_priority_response_with_dm(game, &mut queue, &mut state,
-        &PriorityResponse::PriorityAction(action), dm).unwrap();
+    let mut progress = apply_priority_response_with_dm(
+        game,
+        &mut queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+        dm,
+    )
+    .unwrap();
     for _ in 0..60 {
-        if state.pending_activation.is_none() { break; }
-        let GameProgress::NeedsDecisionCtx(ctx) = progress else { panic!("{progress:?}") };
+        if state.pending_activation.is_none() {
+            break;
+        }
+        let GameProgress::NeedsDecisionCtx(ctx) = progress else {
+            panic!("{progress:?}")
+        };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
     assert!(state.pending_activation.is_none());
     put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
 }
 fn activated_at(definition: &CardDefinition, position: usize) -> usize {
-    definition.abilities.iter().enumerate().filter_map(|(i,a)|
-        matches!(a.kind, ironsmith::ability::AbilityKind::Activated(_)).then_some(i)).nth(position).unwrap()
+    definition
+        .abilities
+        .iter()
+        .enumerate()
+        .filter_map(|(i, a)| {
+            matches!(a.kind, ironsmith::ability::AbilityKind::Activated(_)).then_some(i)
+        })
+        .nth(position)
+        .unwrap()
 }
 fn current_activated_at(game: &GameState, source: ObjectId, position: usize) -> usize {
-    game.calculated_characteristics(source).unwrap().abilities.iter().enumerate().filter_map(|(i,a)|
-        matches!(a.kind, ironsmith::ability::AbilityKind::Activated(_)).then_some(i)).nth(position).unwrap()
+    game.calculated_characteristics(source)
+        .unwrap()
+        .abilities
+        .iter()
+        .enumerate()
+        .filter_map(|(i, a)| {
+            matches!(a.kind, ironsmith::ability::AbilityKind::Activated(_)).then_some(i)
+        })
+        .nth(position)
+        .unwrap()
 }
-fn has(game: &GameState, id: ObjectId, ability: ironsmith::static_abilities::StaticAbilityId) -> bool {
+fn has(
+    game: &GameState,
+    id: ObjectId,
+    ability: ironsmith::static_abilities::StaticAbilityId,
+) -> bool {
     game.current_has_static_ability_id(id, ability)
 }
 fn event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
-    for trigger in check_triggers(game, &event) { queue.add(trigger); }
+    for trigger in check_triggers(game, &event) {
+        queue.add(trigger);
+    }
     put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
 }
 fn lore(game: &mut GameState, source: ObjectId, dm: &mut Choices) {
-    let outcome = apply(game, source, Effect::put_counters(ironsmith::object::CounterType::Lore, 1, ChooseSpec::SpecificObject(source)));
-    queue_outcome(game, outcome, dm); resolve_all(game, &mut Choices::default());
-}fn subject(game:&mut GameState, owner:PlayerId)->ObjectId {
-    let definition=compile_to_runtime_definition("Former knight","Mana cost: {R}\nType: Snow Artifact Creature — Human Knight\nPower/Toughness: 4/4\nFlying\n{1}: This creature gets +1/+1 until end of turn.",false).unwrap();
-    game.create_object_from_definition(&definition,owner,Zone::Battlefield)
+    let outcome = apply(
+        game,
+        source,
+        Effect::put_counters(
+            ironsmith::object::CounterType::Lore,
+            1,
+            ChooseSpec::SpecificObject(source),
+        ),
+    );
+    queue_outcome(game, outcome, dm);
+    resolve_all(game, &mut Choices::default());
 }
-fn cleanup(game:&mut GameState) {ironsmith::turn::execute_cleanup_step(game);game.refresh_continuous_state().unwrap();}
+fn subject(game: &mut GameState, owner: PlayerId) -> ObjectId {
+    let definition=compile_to_runtime_definition("Former knight","Mana cost: {R}\nType: Snow Artifact Creature — Human Knight\nPower/Toughness: 4/4\nFlying\n{1}: This creature gets +1/+1 until end of turn.",false).unwrap();
+    game.create_object_from_definition(&definition, owner, Zone::Battlefield)
+}
+fn cleanup(game: &mut GameState) {
+    ironsmith::turn::execute_cleanup_step(game);
+    game.refresh_continuous_state().unwrap();
+}
 #[test]
 fn four_full_templates_round_trip_with_no_dropped_instruction() {
-    let rows=fixtures().into_iter().filter(|row|row["proposed_complete"]==true).collect::<Vec<_>>();assert_eq!(rows.len(),4);
-    for row in rows { for definition in definitions(row["name"].as_str().unwrap()) {assert_eq!(definition.card.name,row["name"]);} }
+    let rows = fixtures()
+        .into_iter()
+        .filter(|row| row["proposed_complete"] == true)
+        .collect::<Vec<_>>();
+    assert_eq!(rows.len(), 4);
+    for row in rows {
+        for definition in definitions(row["name"].as_str().unwrap()) {
+            assert_eq!(definition.card.name, row["name"]);
+        }
+    }
 }
 #[test]
 fn targeted_templates_lose_abilities_and_creature_types_but_keep_other_card_types_and_counters() {
-    use ironsmith::{CardType,Subtype,Supertype};use ironsmith::static_abilities::StaticAbilityId as Id;
-    for (name,size,subtype,color) in [("Gift of Tusks",3,Subtype::Elephant,ironsmith::color::ColorSet::GREEN),("Turn to Frog",1,Subtype::Frog,ironsmith::color::ColorSet::BLUE),("Snakeform",1,Subtype::Snake,ironsmith::color::ColorSet::GREEN)] {
+    use ironsmith::static_abilities::StaticAbilityId as Id;
+    use ironsmith::{CardType, Subtype, Supertype};
+    for (name, size, subtype, color) in [
+        (
+            "Gift of Tusks",
+            3,
+            Subtype::Elephant,
+            ironsmith::color::ColorSet::GREEN,
+        ),
+        (
+            "Turn to Frog",
+            1,
+            Subtype::Frog,
+            ironsmith::color::ColorSet::BLUE,
+        ),
+        (
+            "Snakeform",
+            1,
+            Subtype::Snake,
+            ironsmith::color::ColorSet::GREEN,
+        ),
+    ] {
         for definition in definitions(name) {
-            let mut game=game();let target=subject(&mut game,B);
-            for _ in 0..2 {game.create_object_from_definition(&vanilla("Draw resource","{1}","Human",1,1),A,Zone::Library);}
-            counter(&mut game,target,target,2);
-            let spell=cast(&mut game,&definition,CastingMethod::Normal,&mut Choices{targets:vec![Target::Object(target)],..Default::default()});
-            assert_eq!(game.stack.last().unwrap().targets,vec![Target::Object(target)]);assert!(game.object(spell).is_some());
-            resolve_all(&mut game,&mut Choices::default());
-            assert_eq!(pt(&game,target),(size+2,size+2));assert!(!has(&game,target,Id::Flying));
-            assert!(game.calculated_characteristics(target).unwrap().abilities.iter().all(|ability|!matches!(ability.kind,ironsmith::ability::AbilityKind::Activated(_))));
-            assert!(game.object_has_card_type(target,CardType::Artifact));assert!(game.object_has_card_type(target,CardType::Creature));assert!(game.current_has_supertype(target,Supertype::Snow));
-            let types=game.current_subtypes(target).unwrap();assert!(types.contains(&subtype));assert!(!types.contains(&Subtype::Human));assert!(!types.contains(&Subtype::Knight));
-            assert_eq!(game.current_colors(target),Some(color));assert_eq!(game.player(A).unwrap().hand.len(),usize::from(name=="Snakeform"));
-            cleanup(&mut game);assert_eq!(pt(&game,target),(6,6));assert!(has(&game,target,Id::Flying));assert!(game.current_subtypes(target).unwrap().contains(&Subtype::Knight));
+            let mut game = game();
+            let target = subject(&mut game, B);
+            for _ in 0..2 {
+                game.create_object_from_definition(
+                    &vanilla("Draw resource", "{1}", "Human", 1, 1),
+                    A,
+                    Zone::Library,
+                );
+            }
+            counter(&mut game, target, target, 2);
+            let spell = cast(
+                &mut game,
+                &definition,
+                CastingMethod::Normal,
+                &mut Choices {
+                    targets: vec![Target::Object(target)],
+                    ..Default::default()
+                },
+            );
+            assert_eq!(
+                game.stack.last().unwrap().targets,
+                vec![Target::Object(target)]
+            );
+            assert!(game.object(spell).is_some());
+            resolve_all(&mut game, &mut Choices::default());
+            assert_eq!(pt(&game, target), (size + 2, size + 2));
+            assert!(!has(&game, target, Id::Flying));
+            assert!(
+                game.calculated_characteristics(target)
+                    .unwrap()
+                    .abilities
+                    .iter()
+                    .all(|ability| !matches!(
+                        ability.kind,
+                        ironsmith::ability::AbilityKind::Activated(_)
+                    ))
+            );
+            assert!(game.object_has_card_type(target, CardType::Artifact));
+            assert!(game.object_has_card_type(target, CardType::Creature));
+            assert!(game.current_has_supertype(target, Supertype::Snow));
+            let types = game.current_subtypes(target).unwrap();
+            assert!(types.contains(&subtype));
+            assert!(!types.contains(&Subtype::Human));
+            assert!(!types.contains(&Subtype::Knight));
+            assert_eq!(game.current_colors(target), Some(color));
+            assert_eq!(
+                game.player(A).unwrap().hand.len(),
+                usize::from(name == "Snakeform")
+            );
+            cleanup(&mut game);
+            assert_eq!(pt(&game, target), (6, 6));
+            assert!(has(&game, target, Id::Flying));
+            assert!(
+                game.current_subtypes(target)
+                    .unwrap()
+                    .contains(&Subtype::Knight)
+            );
         }
     }
 }
@@ -330,23 +455,59 @@ fn targeted_templates_lose_abilities_and_creature_types_but_keep_other_card_type
 fn polymorphist_targets_one_player_and_locks_the_resolving_creature_set() {
     use ironsmith::static_abilities::StaticAbilityId as Id;
     for definition in definitions("Polymorphist's Jest") {
-        let mut game=game();let affected=subject(&mut game,B);let other=subject(&mut game,C);
-        cast(&mut game,&definition,CastingMethod::Normal,&mut Choices{targets:vec![Target::Player(B)],..Default::default()});
-        assert_eq!(game.stack.last().unwrap().targets,vec![Target::Player(B)]);
-        let before_resolution=subject(&mut game,B);resolve_all(&mut game,&mut Choices::default());
-        for id in [affected,before_resolution] {assert_eq!(pt(&game,id),(1,1));assert!(!has(&game,id,Id::Flying));}
-        assert_eq!(pt(&game,other),(4,4));assert!(has(&game,other,Id::Flying));
-        let after_resolution=subject(&mut game,B);assert_eq!(pt(&game,after_resolution),(4,4));assert!(has(&game,after_resolution,Id::Flying));
-        game.set_current_controller(affected,C).unwrap();assert_eq!(pt(&game,affected),(1,1));
-        cleanup(&mut game);assert_eq!(pt(&game,affected),(4,4));assert!(has(&game,affected,Id::Flying));
+        let mut game = game();
+        let affected = subject(&mut game, B);
+        let other = subject(&mut game, C);
+        cast(
+            &mut game,
+            &definition,
+            CastingMethod::Normal,
+            &mut Choices {
+                targets: vec![Target::Player(B)],
+                ..Default::default()
+            },
+        );
+        assert_eq!(game.stack.last().unwrap().targets, vec![Target::Player(B)]);
+        let before_resolution = subject(&mut game, B);
+        resolve_all(&mut game, &mut Choices::default());
+        for id in [affected, before_resolution] {
+            assert_eq!(pt(&game, id), (1, 1));
+            assert!(!has(&game, id, Id::Flying));
+        }
+        assert_eq!(pt(&game, other), (4, 4));
+        assert!(has(&game, other, Id::Flying));
+        let after_resolution = subject(&mut game, B);
+        assert_eq!(pt(&game, after_resolution), (4, 4));
+        assert!(has(&game, after_resolution, Id::Flying));
+        game.set_current_controller(affected, C).unwrap();
+        assert_eq!(pt(&game, affected), (1, 1));
+        cleanup(&mut game);
+        assert_eq!(pt(&game, affected), (4, 4));
+        assert!(has(&game, affected, Id::Flying));
     }
 }
 #[test]
 fn snakeform_has_no_draw_when_its_only_target_is_illegal_on_resolution() {
     for definition in definitions("Snakeform") {
-        let mut game=game();let target=subject(&mut game,B);
-        game.create_object_from_definition(&vanilla("Draw resource","{1}","Human",1,1),A,Zone::Library);
-        cast(&mut game,&definition,CastingMethod::Normal,&mut Choices{targets:vec![Target::Object(target)],..Default::default()});
-        game.move_object_by_game_rule(target,Zone::Graveyard).unwrap();resolve_all(&mut game,&mut Choices::default());assert!(game.player(A).unwrap().hand.is_empty());
+        let mut game = game();
+        let target = subject(&mut game, B);
+        game.create_object_from_definition(
+            &vanilla("Draw resource", "{1}", "Human", 1, 1),
+            A,
+            Zone::Library,
+        );
+        cast(
+            &mut game,
+            &definition,
+            CastingMethod::Normal,
+            &mut Choices {
+                targets: vec![Target::Object(target)],
+                ..Default::default()
+            },
+        );
+        game.move_object_by_game_rule(target, Zone::Graveyard)
+            .unwrap();
+        resolve_all(&mut game, &mut Choices::default());
+        assert!(game.player(A).unwrap().hand.is_empty());
     }
 }

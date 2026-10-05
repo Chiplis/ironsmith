@@ -996,6 +996,18 @@ fn choice_single_counter_type<'a>(input: &mut LexStream<'a>) -> WResult<CounterT
         .ok_or_else(|| primitives::backtrack_err("counter choice", "recognized counter type"))
 }
 
+fn among_counter_separator<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    alt((
+        (
+            primitives::comma(),
+            opt(alt((primitives::kw("and"), primitives::kw("or")))),
+        )
+            .void(),
+        alt((primitives::kw("and"), primitives::kw("or"))).void(),
+    ))
+    .parse_next(input)
+}
+
 fn parse_put_counter_choice_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<PutCounterChoiceShape<'a>> {
@@ -1007,11 +1019,20 @@ fn parse_put_counter_choice_lexed<'a>(
         primitives::kw("put").void(),
     ))
     .parse_next(input)?;
-    let modes: Vec<(CounterType, u32)> = separated(
-        2..,
-        choice_counted_counter_type,
-        primitives::comma_or_separator,
-    )
+    let modes: Vec<(CounterType, u32)> = alt((
+        (
+            primitives::phrase(&["a", "counter", "from", "among"]),
+            separated(2.., choice_counter_type, among_counter_separator),
+        )
+            .map(|(_, kinds): (_, Vec<CounterType>)| {
+                kinds.into_iter().map(|kind| (kind, 1)).collect()
+            }),
+        separated(
+            2..,
+            choice_counted_counter_type,
+            primitives::comma_or_separator,
+        ),
+    ))
     .parse_next(input)?;
     primitives::kw("on").parse_next(input)?;
     let target_tokens = repeat_till(1.., any.void(), peek(primitives::sentence_end()))

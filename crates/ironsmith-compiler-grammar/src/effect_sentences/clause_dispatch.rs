@@ -887,12 +887,17 @@ fn parse_passive_sacrifice_by_controller_clause(
 /// the pump head and the number of additional blockable attackers.
 fn split_trailing_blocking_capacity_tail(
     tokens: &[OwnedLexToken],
-) -> Option<(&[OwnedLexToken], crate::grammar::blocking_permissions::BlockingCapacity)> {
+) -> Option<(
+    &[OwnedLexToken],
+    crate::grammar::blocking_permissions::BlockingCapacity,
+)> {
     for (idx, token) in tokens.iter().enumerate().rev() {
         if token.as_word() != Some("and") {
             continue;
         }
-        let Some(shape) = crate::grammar::blocking_permissions::parse_blocking_capacity(&tokens[idx + 1..]) else {
+        let Some(shape) =
+            crate::grammar::blocking_permissions::parse_blocking_capacity(&tokens[idx + 1..])
+        else {
             continue;
         };
         if !shape.subject_tokens.is_empty() || !shape.this_turn || shape.for_each_tokens.is_some() {
@@ -926,21 +931,20 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
     // "It gets +2/+2 until end of turn and can block an additional creature
     // this turn" (Act of Heroism) — the block permission is its own granted
     // effect on the pump subject, not part of the P/T modifier tail.
-    if let Some((pump_tokens, capacity)) = split_trailing_blocking_capacity_tail(action_tokens)
-    {
+    if let Some((pump_tokens, capacity)) = split_trailing_blocking_capacity_tail(action_tokens) {
         let Some(pump) = parse_get_pump_clause(subject_tokens, pump_tokens, full_tokens)? else {
             return Ok(None);
         };
         let EffectAst::SubjectVerb(subject_verb) = &pump else {
             return Ok(None);
         };
-        let SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. }) =
+        let SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. }) =
             &subject_verb.action
         else {
             return Ok(None);
         };
         let grant = EffectAst::subject_verb_grant_abilities_to_target(
-            target.clone(),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             vec![GrantedAbilityAst::StaticAbility(Box::new(crate::cards::builders::StaticAbilityAst::Static(
                 match capacity {
                     crate::grammar::blocking_permissions::BlockingCapacity::AnyNumber => crate::model::CompilerStaticAbilityCore::can_block_any_number(),
@@ -1369,7 +1373,10 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
             disallowed_pronoun,
             demonstrative_reference,
         } => {
-            if crate::lexer::parser_token_word_refs(filter_tokens) == ["the", "creature"] {
+            if matches!(
+                crate::lexer::parser_token_word_refs(filter_tokens).as_slice(),
+                ["the", "creature"] | ["the", "blocking", "creature"]
+            ) {
                 return Ok(Some(EffectAst::subject_verb_pump(
                     power,
                     toughness,

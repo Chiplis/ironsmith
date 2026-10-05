@@ -15,6 +15,18 @@ pub(crate) fn checked_damage_amount(
 pub(crate) fn checked_damage_count(
     amount: u128,
     resource: &'static str,
+) -> Result<i64, ExecutionError> {
+    i64::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
+        resource,
+        requested: amount,
+        maximum: i64::MAX as u128,
+    })
+}
+
+/// Characteristic and cost consumers retain a signed 32-bit representation.
+pub(crate) fn checked_scalar_count(
+    amount: u128,
+    resource: &'static str,
 ) -> Result<i32, ExecutionError> {
     i32::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
         resource,
@@ -74,7 +86,7 @@ pub(crate) fn validate_damage_history_amounts<'a>(
 mod tests {
     use super::*;
     #[test]
-    fn prior_damage_projection_is_counted_once_and_larger_history_is_incomplete() {
+    fn prior_damage_projection_is_counted_once_and_larger_history_stays_wide() {
         let mut game = crate::GameState::new(vec!["A".into(), "B".into()], 30);
         let provenance = game
             .provenance_graph_mut()
@@ -104,8 +116,7 @@ mod tests {
             ),
             Default::default(),
         );
-        let error = validate_damage_history_amounts(&game, [&next]).unwrap_err();
-        assert!(error.is_incomplete_execution());
+        validate_damage_history_amounts(&game, [&next]).unwrap();
         assert_eq!(
             game.turn_store
                 .turn_history
@@ -139,10 +150,8 @@ mod tests {
         let first = event(1, sibling_id);
         let second = event(1, sibling_id);
         validate_damage_history_amounts(&game, [&first, &first]).unwrap();
-        let error = validate_damage_history_amounts(&game, [&first, &second]).unwrap_err();
-        assert!(
-            matches!(error, ExecutionError::ResourceLimitExceeded { requested, .. } if requested == i32::MAX as u128 + 1)
-        );
+        validate_damage_history_amounts(&game, [&first, &second]).unwrap();
+        assert_ne!(first.occurrence_key(), second.occurrence_key());
     }
 
     #[test]
@@ -152,12 +161,12 @@ mod tests {
             u32::MAX
         );
         assert_eq!(
-            checked_damage_count(i32::MAX as u128, "damage outcome").unwrap(),
-            i32::MAX
+            checked_damage_count(i64::MAX as u128, "damage outcome").unwrap(),
+            i64::MAX
         );
         for error in [
             checked_damage_amount(u32::MAX as u128 + 1, "damage").unwrap_err(),
-            checked_damage_count(i32::MAX as u128 + 1, "damage outcome").unwrap_err(),
+            checked_damage_count(i64::MAX as u128 + 1, "damage outcome").unwrap_err(),
         ] {
             assert!(error.is_incomplete_execution());
             assert!(matches!(

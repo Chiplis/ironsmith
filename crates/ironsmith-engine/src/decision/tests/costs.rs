@@ -121,7 +121,8 @@ fn trinisphere_counts_krrik_life_paid_black_pips_toward_floor() {
             &effective,
             0,
             PaymentReason::CastSpell
-        ).expect("checked fixture mana payment"),
+        )
+        .expect("checked fixture mana payment"),
         "three black pips should already satisfy Trinisphere even when Krrik pays them with life"
     );
     assert_eq!(game.player(alice).expect("alice exists").life, 14);
@@ -390,14 +391,15 @@ fn test_compute_legal_actions_basic() {
     let game = setup_game();
     let alice = PlayerId::from_index(0);
 
-    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions =
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should at least have pass priority
     assert!(actions.contains(&LegalAction::PassPriority));
 }
 
 #[test]
-fn test_compute_legal_actions_surfaces_activated_ability_before_mana_payment() {
+fn test_compute_legal_actions_requires_potential_activated_ability_mana_payment() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
 
@@ -419,7 +421,8 @@ fn test_compute_legal_actions_surfaces_activated_ability_before_mana_payment() {
     let sink_id = game.create_object_from_definition(&sink, alice, Zone::Battlefield);
 
     let activations_for_sink = |game: &GameState| {
-        compute_legal_actions(game, alice).expect("fixture has complete replacement state")
+        compute_legal_actions(game, alice)
+            .expect("fixture has complete replacement state")
             .into_iter()
             .filter(|action| {
                 matches!(
@@ -432,8 +435,8 @@ fn test_compute_legal_actions_surfaces_activated_ability_before_mana_payment() {
 
     assert_eq!(
         activations_for_sink(&game),
-        1,
-        "an ability costing {{B}}{{B}} should still surface before mana is floated"
+        0,
+        "an ability costing {{B}}{{B}} requires floating mana or executable producers"
     );
 
     let swamp = CardDefinitionBuilder::new(CardId::from_raw(700_951), "Swamp")
@@ -480,7 +483,8 @@ fn test_compute_legal_actions_counts_floating_mana_for_activated_ability() {
         .mana_pool
         .add(ManaSymbol::Black, 2);
 
-    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions =
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(
         actions.iter().any(|action| {
             matches!(
@@ -507,7 +511,8 @@ fn test_compute_legal_actions_with_land() {
         .build();
     let land_id = game.create_object_from_card(&land, alice, Zone::Hand);
 
-    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions =
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     // Should have play land action
     assert!(actions.contains(&LegalAction::PlayLand { land_id }));
@@ -538,7 +543,8 @@ fn test_compute_legal_actions_includes_graveyard_land_with_play_from_grant() {
             game.turn.turn_number,
         );
 
-    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions =
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     assert!(
         actions.contains(&LegalAction::PlayLand { land_id }),
@@ -575,7 +581,8 @@ fn test_compute_legal_actions_excludes_graveyard_land_after_land_play_used() {
         .expect("alice should exist")
         .record_land_play();
 
-    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions =
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     assert!(
         !actions.contains(&LegalAction::PlayLand { land_id }),
@@ -608,7 +615,8 @@ fn test_compute_legal_actions_includes_exile_land_with_play_from_grant() {
             game.turn.turn_number,
         );
 
-    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions =
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
 
     assert!(
         actions.contains(&LegalAction::PlayLand { land_id }),
@@ -1394,7 +1402,8 @@ fn battlefield_cost_reduction_applies_only_to_the_chosen_creature_type() {
         .expect("Alice exists")
         .mana_pool
         .add(ManaSymbol::Colorless, 2);
-    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions =
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(actions.iter().any(|action| matches!(
         action,
         LegalAction::CastSpell { spell_id, .. } if *spell_id == matching_id
@@ -1455,7 +1464,8 @@ fn generic_chosen_type_cost_filter_falls_back_to_the_sources_chosen_card_type() 
         .expect("Alice exists")
         .mana_pool
         .add(ManaSymbol::Colorless, 2);
-    let actions = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions =
+        compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     assert!(actions.iter().any(|action| matches!(
         action,
         LegalAction::CastSpell { spell_id, .. } if *spell_id == matching_id
@@ -2991,7 +3001,8 @@ fn selected_source_actions_match_full_menu_without_hiding_payment_sources() {
     let full = compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
     for action in &full {
         let source = legal_action_source(action);
-        let selected = compute_actions_for_source(&game, alice, source).expect("fixture has complete replacement state");
+        let selected = compute_actions_for_source(&game, alice, source)
+            .expect("fixture has complete replacement state");
         assert!(selected.contains(action));
         if let Some(source) = source {
             assert!(

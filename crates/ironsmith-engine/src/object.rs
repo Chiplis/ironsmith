@@ -28,7 +28,10 @@ pub use ironsmith_core::CounterType;
 /// Stable occurrence of a keyword counter. The serial is a little-endian
 /// integer with arbitrary precision, so removed registrations are never reused.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct CounterAbilityOrigin {
     pub counter_type: CounterType,
     pub serial: Vec<u32>,
@@ -49,7 +52,9 @@ pub struct ObjectCounters {
     next_serial: Vec<u32>,
 }
 impl ObjectCounters {
-    pub fn counts(&self) -> &std::collections::BTreeMap<CounterType, u32> { &self.counts }
+    pub fn counts(&self) -> &std::collections::BTreeMap<CounterType, u32> {
+        &self.counts
+    }
 
     pub fn insert(&mut self, kind: CounterType, count: u32) -> Option<u32> {
         let old = self.counts.insert(kind, count);
@@ -63,15 +68,24 @@ impl ObjectCounters {
                     let (next, overflow) = digit.overflowing_add(1);
                     *digit = next;
                     carry = overflow;
-                    if !carry { break; }
+                    if !carry {
+                        break;
+                    }
                 }
-                if carry { self.next_serial.push(1); }
+                if carry {
+                    self.next_serial.push(1);
+                }
                 occurrences.push(CounterAbilityOccurrence {
-                    origin: CounterAbilityOrigin { counter_type: kind, serial },
+                    origin: CounterAbilityOrigin {
+                        counter_type: kind,
+                        serial,
+                    },
                     abilities: counter_ability_payloads(kind),
                 });
             }
-            if !occurrences.is_empty() { self.occurrences.insert(kind, occurrences); }
+            if !occurrences.is_empty() {
+                self.occurrences.insert(kind, occurrences);
+            }
         }
         old
     }
@@ -89,31 +103,43 @@ impl ObjectCounters {
     }
 
     pub fn clear(&mut self) {
-        self.counts.clear(); self.occurrences.clear();
+        self.counts.clear();
+        self.occurrences.clear();
     }
 
     pub(crate) fn ability_occurrences(&self, kind: CounterType) -> &[CounterAbilityOccurrence] {
-        self.occurrences.get(&kind).map(Vec::as_slice).unwrap_or(&[])
+        self.occurrences
+            .get(&kind)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 }
 impl std::ops::Deref for ObjectCounters {
     type Target = std::collections::BTreeMap<CounterType, u32>;
-    fn deref(&self) -> &Self::Target { &self.counts }
+    fn deref(&self) -> &Self::Target {
+        &self.counts
+    }
 }
 impl<'a> IntoIterator for &'a ObjectCounters {
     type Item = (&'a CounterType, &'a u32);
     type IntoIter = std::collections::btree_map::Iter<'a, CounterType, u32>;
-    fn into_iter(self) -> Self::IntoIter { self.counts.iter() }
+    fn into_iter(self) -> Self::IntoIter {
+        self.counts.iter()
+    }
 }
 impl IntoIterator for ObjectCounters {
     type Item = (CounterType, u32);
     type IntoIter = std::collections::btree_map::IntoIter<CounterType, u32>;
-    fn into_iter(self) -> Self::IntoIter { self.counts.into_iter() }
+    fn into_iter(self) -> Self::IntoIter {
+        self.counts.into_iter()
+    }
 }
 impl FromIterator<(CounterType, u32)> for ObjectCounters {
     fn from_iter<T: IntoIterator<Item = (CounterType, u32)>>(iter: T) -> Self {
         let mut counters = Self::default();
-        for (kind, count) in iter { counters.insert(kind, count); }
+        for (kind, count) in iter {
+            counters.insert(kind, count);
+        }
         counters
     }
 }
@@ -133,39 +159,50 @@ fn counter_ability_payloads(kind: CounterType) -> Vec<Ability> {
         CounterType::Trample => Some(StaticAbility::trample()),
         CounterType::Vigilance => Some(StaticAbility::vigilance()),
         CounterType::Haste => Some(StaticAbility::haste()),
-        CounterType::Named(name) if name.eq_ignore_ascii_case("shadow") => Some(StaticAbility::shadow()),
+        CounterType::Named(name) if name.eq_ignore_ascii_case("shadow") => {
+            Some(StaticAbility::shadow())
+        }
         _ => None,
     };
-    if let Some(keyword) = keyword { return vec![Ability::static_ability(keyword)]; }
+    if let Some(keyword) = keyword {
+        return vec![Ability::static_ability(keyword)];
+    }
     if kind == CounterType::Decayed {
         return vec![
             Ability::static_ability(StaticAbility::cant_block()),
             Ability::triggered(
                 crate::triggers::Trigger::this_attacks(),
-                crate::resolution::ResolutionProgram::from_effects(vec![crate::effect::Effect::new(
-                    crate::effects::ScheduleDelayedTriggerEffect::new(
+                crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
                         crate::triggers::Trigger::end_of_combat(),
-                        vec![crate::effect::Effect::sacrifice_source()], true, Vec::new(),
+                        vec![crate::effect::Effect::sacrifice_source()],
+                        true,
+                        Vec::new(),
                         crate::target::PlayerFilter::You,
-                    ),
-                )]),
+                    )),
+                ]),
             ),
         ];
     }
     if matches!(kind, CounterType::Named(name) if name.eq_ignore_ascii_case("exalted")) {
         let attacker_tag = "exalted_attacker";
         return vec![Ability::triggered(
-            crate::triggers::Trigger::attacks_alone(crate::target::ObjectFilter::creature().you_control()),
+            crate::triggers::Trigger::attacks_alone(
+                crate::target::ObjectFilter::creature().you_control(),
+            ),
             crate::resolution::ResolutionProgram::from_effects(vec![
                 crate::effect::Effect::tag_triggering_object(attacker_tag),
-                crate::effect::Effect::pump(1, 1, crate::target::ChooseSpec::Tagged(attacker_tag.into()),
-                    crate::effect::Until::EndOfTurn),
+                crate::effect::Effect::pump(
+                    1,
+                    1,
+                    crate::target::ChooseSpec::Tagged(attacker_tag.into()),
+                    crate::effect::Until::EndOfTurn,
+                ),
             ]),
         )];
     }
     Vec::new()
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SharedStr(Arc<str>);
@@ -588,12 +625,18 @@ impl From<AuraAttachmentFilter> for AuraAttachmentMetadata {
 
 impl std::ops::Deref for AuraAttachmentMetadata {
     type Target = AuraAttachmentFilter;
-    fn deref(&self) -> &Self::Target { &self.filter }
+    fn deref(&self) -> &Self::Target {
+        &self.filter
+    }
 }
 
 impl AuraAttachmentMetadata {
-    pub fn to_owned_value(&self) -> AuraAttachmentFilter { self.filter.to_owned_value() }
-    pub(crate) fn enchant_ability(&self) -> StaticAbility { self.enchant_ability.clone() }
+    pub fn to_owned_value(&self) -> AuraAttachmentFilter {
+        self.filter.to_owned_value()
+    }
+    pub(crate) fn enchant_ability(&self) -> StaticAbility {
+        self.enchant_ability.clone()
+    }
 }
 
 /// Complete attachment payload including its retained enchant occurrence.
@@ -912,7 +955,8 @@ pub struct Object {
         Option<Box<(ObjectId, Zone, crate::grant_registry::PlayFromConstraints)>>,
     /// Once-turn permission captured before movement and retained through payment.
     pub cast_grant_usage_identity: Option<Box<crate::grant_registry::GrantPermissionIdentity>>,
-    pub cast_price: Option<Box<CastPriceReceipt<TotalCost, crate::grant_registry::GrantPermissionIdentity>>>,
+    pub cast_price:
+        Option<Box<CastPriceReceipt<TotalCost, crate::grant_registry::GrantPermissionIdentity>>>,
     /// True if this split card can be cast fused from hand.
     pub has_fuse: bool,
     /// Optional costs (kicker, buyback, etc.)
@@ -961,22 +1005,36 @@ pub struct Object {
 
 /// Deterministic registration identity, independent of refresh order.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
-pub struct TemporaryAbilityOrigin { source: ObjectId, serial: u64 }
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+pub struct TemporaryAbilityOrigin {
+    source: ObjectId,
+    serial: u64,
+}
 
 /// Temporary grants paired with stable origins. Read access cannot detach
 /// a grant from its identity; push always registers a new occurrence.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TemporaryStaticAbilityGrants {
-    source: ObjectId, next_serial: u64,
+    source: ObjectId,
+    next_serial: u64,
     grants: Vec<TemporaryStaticAbilityGrant>,
     origins: Vec<TemporaryAbilityOrigin>,
 }
 impl TemporaryStaticAbilityGrants {
     pub fn new(source: ObjectId) -> Self {
-        Self { source, next_serial: 0, grants: Vec::new(), origins: Vec::new() }
+        Self {
+            source,
+            next_serial: 0,
+            grants: Vec::new(),
+            origins: Vec::new(),
+        }
     }
-    pub fn origin(&self, index: usize) -> Option<&TemporaryAbilityOrigin> { self.origins.get(index) }
+    pub fn origin(&self, index: usize) -> Option<&TemporaryAbilityOrigin> {
+        self.origins.get(index)
+    }
     pub fn push(&mut self, mut grant: TemporaryStaticAbilityGrant) {
         // A registered keyword is one runtime ability occurrence. Materialize
         // its payload at registration so layer/query reads clone that ability
@@ -985,42 +1043,67 @@ impl TemporaryStaticAbilityGrants {
             grant.ability_payload = static_ability_from_id(grant.ability);
         }
         let serial = self.next_serial;
-        self.next_serial = serial.checked_add(1).expect("temporary ability identity exhausted");
+        self.next_serial = serial
+            .checked_add(1)
+            .expect("temporary ability identity exhausted");
         self.grants.push(grant);
-        self.origins.push(TemporaryAbilityOrigin { source: self.source, serial });
+        self.origins.push(TemporaryAbilityOrigin {
+            source: self.source,
+            serial,
+        });
     }
-    pub fn clear(&mut self) { self.grants.clear(); self.origins.clear(); }
+    pub fn clear(&mut self) {
+        self.grants.clear();
+        self.origins.clear();
+    }
     pub fn retain(&mut self, mut keep: impl FnMut(&TemporaryStaticAbilityGrant) -> bool) {
-        let mut retained = Vec::new(); let mut index = 0;
+        let mut retained = Vec::new();
+        let mut index = 0;
         self.grants.retain(|grant| {
             let retain = keep(grant);
-            if retain { retained.push(self.origins[index].clone()); }
-            index += 1; retain
+            if retain {
+                retained.push(self.origins[index].clone());
+            }
+            index += 1;
+            retain
         });
         self.origins = retained;
     }
     pub(crate) fn empty_with_allocator(&self) -> Self {
-        Self { grants: Vec::new(), origins: Vec::new(), ..self.clone() }
+        Self {
+            grants: Vec::new(),
+            origins: Vec::new(),
+            ..self.clone()
+        }
     }
     /// Merge reconstruction retains component registrations, not new grants.
     pub(crate) fn extend_existing(&mut self, other: &Self) {
         for (grant, origin) in other.grants.iter().zip(&other.origins) {
             if origin.source == self.source {
-                self.next_serial = self.next_serial.max(origin.serial.checked_add(1)
-                    .expect("temporary ability identity exhausted"));
+                self.next_serial = self.next_serial.max(
+                    origin
+                        .serial
+                        .checked_add(1)
+                        .expect("temporary ability identity exhausted"),
+                );
             }
-            self.grants.push(grant.clone()); self.origins.push(origin.clone());
+            self.grants.push(grant.clone());
+            self.origins.push(origin.clone());
         }
     }
 }
 impl std::ops::Deref for TemporaryStaticAbilityGrants {
     type Target = [TemporaryStaticAbilityGrant];
-    fn deref(&self) -> &Self::Target { &self.grants }
+    fn deref(&self) -> &Self::Target {
+        &self.grants
+    }
 }
 impl<'a> IntoIterator for &'a TemporaryStaticAbilityGrants {
     type Item = &'a TemporaryStaticAbilityGrant;
     type IntoIter = std::slice::Iter<'a, TemporaryStaticAbilityGrant>;
-    fn into_iter(self) -> Self::IntoIter { self.grants.iter() }
+    fn into_iter(self) -> Self::IntoIter {
+        self.grants.iter()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1033,7 +1116,8 @@ pub struct TemporaryStaticAbilityGrant {
 
 impl TemporaryStaticAbilityGrant {
     pub fn is_expired(&self, current_turn: u32) -> bool {
-        self.expires_end_of_turn.is_some_and(|end| current_turn > end)
+        self.expires_end_of_turn
+            .is_some_and(|end| current_turn > end)
     }
 
     pub fn materialize(&self) -> Option<StaticAbility> {
@@ -1159,15 +1243,24 @@ impl Object {
     }
 
     pub fn aura_attach_filter_owned(&self) -> Option<AuraAttachmentFilter> {
-        self.aura_attach_filter.as_ref().map(AuraAttachmentMetadata::to_owned_value)
+        self.aura_attach_filter
+            .as_ref()
+            .map(AuraAttachmentMetadata::to_owned_value)
     }
 
-    fn abilities_with_enchant_metadata(&self, metadata: Option<&AuraAttachmentMetadata>) -> Arc<Vec<Ability>> {
-        let Some(metadata) = metadata else { return self.abilities.clone(); };
-        if self.abilities.iter().any(|ability| matches!(
-            &ability.kind, crate::ability::AbilityKind::Static(ability)
-                if ability.enchant_filter() == Some(&*metadata.filter)
-        )) {
+    fn abilities_with_enchant_metadata(
+        &self,
+        metadata: Option<&AuraAttachmentMetadata>,
+    ) -> Arc<Vec<Ability>> {
+        let Some(metadata) = metadata else {
+            return self.abilities.clone();
+        };
+        if self.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind, crate::ability::AbilityKind::Static(ability)
+                    if ability.enchant_filter() == Some(&*metadata.filter)
+            )
+        }) {
             return self.abilities.clone();
         }
         let mut abilities = self.abilities.as_ref().clone();
@@ -1180,8 +1273,12 @@ impl Object {
     }
 
     pub(crate) fn materialized_copiable_abilities(&self) -> Arc<Vec<Ability>> {
-        let metadata = self.bestow_cast_state.as_ref()
-            .map_or(self.aura_attach_filter.as_ref(), |restore| restore.aura_attach_filter.as_ref());
+        let metadata = self
+            .bestow_cast_state
+            .as_ref()
+            .map_or(self.aura_attach_filter.as_ref(), |restore| {
+                restore.aura_attach_filter.as_ref()
+            });
         self.abilities_with_enchant_metadata(metadata)
     }
 
@@ -1214,13 +1311,7 @@ impl Object {
             initial_controller: owner,
             name: card.name.clone().into(),
             first_printed_set_name: card.first_printed_set_name.clone().map(Into::into),
-            // Tokens are not cards and have no mana cost, even if a reusable
-            // token template accidentally carries a card-like cost.
-            mana_cost: if is_token {
-                None
-            } else {
-                shared_optional_value(card.mana_cost.clone())
-            },
+            mana_cost: shared_optional_value(card.mana_cost.clone()),
             color_override: card.color_indicator,
             supertypes: card.supertypes.clone().into(),
             card_types: card.card_types.clone().into(),
@@ -1389,9 +1480,6 @@ impl Object {
         };
         self.card = (!is_token).then_some(def.card.id);
         self.apply_definition_face_with_shared(def, handles);
-        if is_token {
-            self.mana_cost = None;
-        }
         self.spell_effect = handles.spell_effect.clone();
         self.aura_attach_filter = handles.aura_attach_filter.clone();
         self.alternative_casts = handles.alternative_casts.clone();
@@ -1478,7 +1566,8 @@ impl Object {
         // CR 709.4: keep the combined characteristics in step with the half
         // now shown (the half being hidden becomes the "other" half).
         if let Some(hidden) = hidden_split_half {
-            self.split_combined = Some(SplitCombinedCharacteristics::from_halves(self, &hidden).into());
+            self.split_combined =
+                Some(SplitCombinedCharacteristics::from_halves(self, &hidden).into());
         } else if self.linked_face_layout != LinkedFaceLayout::Split {
             self.split_combined = None;
         }
@@ -2393,7 +2482,9 @@ impl Object {
     #[inline]
     pub fn zone_subtypes(&self) -> &[Subtype] {
         self.split_combined_active()
-            .map_or(self.subtypes.as_slice(), |combined| combined.subtypes.as_slice())
+            .map_or(self.subtypes.as_slice(), |combined| {
+                combined.subtypes.as_slice()
+            })
     }
 
     /// Supertypes in the object's current zone (see `zone_card_types`).
@@ -2411,6 +2502,12 @@ impl Object {
     pub fn split_other_half_name(&self) -> Option<&str> {
         self.split_combined_active()
             .map(|combined| combined.other_half_name.as_ref())
+            .or_else(|| {
+                (self.linked_face_layout == crate::card::LinkedFaceLayout::Split
+                    && !matches!(self.zone, Zone::Stack | Zone::Battlefield))
+                .then(|| self.other_face_name.as_deref())
+                .flatten()
+            })
     }
 
     /// Whether the object has `name`: either half's name for a split card
@@ -2754,8 +2851,11 @@ impl Object {
         let current = self.counters.get(&counter_type).copied().unwrap_or(0);
         let removed = current.min(amount);
         let remaining = current - removed;
-        if remaining == 0 { self.counters.remove(&counter_type); }
-        else { self.counters.insert(counter_type, remaining); }
+        if remaining == 0 {
+            self.counters.remove(&counter_type);
+        } else {
+            self.counters.insert(counter_type, remaining);
+        }
         removed
     }
 
@@ -2915,7 +3015,7 @@ impl Object {
             initial_controller: controller,
             name: handles.name.clone(),
             first_printed_set_name: handles.first_printed_set_name.clone(),
-            mana_cost: None,                          // Tokens don't have mana costs
+            mana_cost: handles.mana_cost.clone(), // Predefined card-name tokens retain their printed cost.
             color_override: def.card.color_indicator, // Use color indicator if set
             supertypes: handles.supertypes.clone(),
             card_types: handles.card_types.clone(),
@@ -3498,7 +3598,10 @@ mod tests {
         let copy = Object::spell_copy_of(&source, ObjectId::from_raw(2), alice);
         assert_eq!(copy.snow_mana_spent_to_cast.total(), 0);
         assert_eq!(copy.caster_mana_spent_to_cast, None);
-        assert_eq!(copy.mana_spent_on_x, Some(crate::mana::XManaAllocation::default()));
+        assert_eq!(
+            copy.mana_spent_on_x,
+            Some(crate::mana::XManaAllocation::default())
+        );
         assert_eq!(copy.x_value, Some(3));
         assert_eq!(source.snow_mana_spent_to_cast.green, 2);
     }
@@ -3553,55 +3656,99 @@ mod temporary_ability_registration_tests {
     #[test]
     fn scalar_temporary_ability_materialization_preserves_registered_identity() {
         let mut observations = Vec::new();
-        for ability in [StaticAbilityId::Haste, StaticAbilityId::Flying,
-            StaticAbilityId::Hexproof, StaticAbilityId::Vigilance] {
+        for ability in [
+            StaticAbilityId::Haste,
+            StaticAbilityId::Flying,
+            StaticAbilityId::Hexproof,
+            StaticAbilityId::Vigilance,
+        ] {
             let source = ObjectId::from_raw(90003);
             let mut grants = TemporaryStaticAbilityGrants::new(source);
             for _ in 0..2 {
                 grants.push(TemporaryStaticAbilityGrant {
-                    ability, ability_payload: None, expires_end_of_turn: Some(2),
+                    ability,
+                    ability_payload: None,
+                    expires_end_of_turn: Some(2),
                 });
             }
-            assert_ne!(grants.origin(0), grants.origin(1),
-                "independently registered equal keywords retain separate occurrences");
+            assert_ne!(
+                grants.origin(0),
+                grants.origin(1),
+                "independently registered equal keywords retain separate occurrences"
+            );
             let native_copy = grants.clone();
             let mut rebuilt = grants.empty_with_allocator();
             rebuilt.extend_existing(&grants);
             for slot in 0..2 {
-                let first = grants[slot].materialize().expect("keyword is supported").instance_id();
-                let repeated = grants[slot].materialize().expect("keyword is supported").instance_id();
-                let cloned = native_copy[slot].materialize().expect("keyword is supported").instance_id();
-                let reconstructed = rebuilt[slot].materialize().expect("keyword is supported").instance_id();
+                let first = grants[slot]
+                    .materialize()
+                    .expect("keyword is supported")
+                    .instance_id();
+                let repeated = grants[slot]
+                    .materialize()
+                    .expect("keyword is supported")
+                    .instance_id();
+                let cloned = native_copy[slot]
+                    .materialize()
+                    .expect("keyword is supported")
+                    .instance_id();
+                let reconstructed = rebuilt[slot]
+                    .materialize()
+                    .expect("keyword is supported")
+                    .instance_id();
                 observations.push((ability, slot, first, repeated, cloned, reconstructed));
             }
             grants.retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > 2));
             assert!(grants.is_empty(), "expiry still removes the registrations");
         }
-        assert!(observations.iter().all(|(_, _, first, repeated, cloned, rebuilt)|
-            first == repeated && first == cloned && first == rebuilt),
-            "reads, native copies and reconstruction must retain each registered ability identity: {observations:?}");
+        assert!(
+            observations
+                .iter()
+                .all(|(_, _, first, repeated, cloned, rebuilt)| first == repeated
+                    && first == cloned
+                    && first == rebuilt),
+            "reads, native copies and reconstruction must retain each registered ability identity: {observations:?}"
+        );
     }
 
     #[test]
     fn temporary_ability_origins_survive_expiry_native_copy_and_reconstruction() {
         let source = ObjectId::from_raw(90001);
         let ability = crate::static_abilities::StaticAbility::haste();
-        let grant = |expiry| TemporaryStaticAbilityGrant { ability: ability.id(),
-            ability_payload: Some(ability.clone()), expires_end_of_turn: Some(expiry) };
+        let grant = |expiry| TemporaryStaticAbilityGrant {
+            ability: ability.id(),
+            ability_payload: Some(ability.clone()),
+            expires_end_of_turn: Some(expiry),
+        };
         let mut grants = TemporaryStaticAbilityGrants::new(source);
-        grants.push(grant(1)); grants.push(grant(2));
-        let first = grants.origin(0).unwrap().clone(); let second = grants.origin(1).unwrap().clone();
+        grants.push(grant(1));
+        grants.push(grant(2));
+        let first = grants.origin(0).unwrap().clone();
+        let second = grants.origin(1).unwrap().clone();
         assert_ne!(first, second, "cloned payloads register independently");
         grants.retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > 1));
-        assert_eq!(grants.origin(0), Some(&second), "expiry must not renumber survivor");
+        assert_eq!(
+            grants.origin(0),
+            Some(&second),
+            "expiry must not renumber survivor"
+        );
         assert_eq!(grants.clone(), grants);
-        let mut rebuilt = grants.empty_with_allocator(); rebuilt.extend_existing(&grants);
+        let mut rebuilt = grants.empty_with_allocator();
+        rebuilt.extend_existing(&grants);
         assert_eq!(rebuilt.origin(0), Some(&second));
-        rebuilt.clear(); rebuilt.push(grant(3));
-        assert_ne!(rebuilt.origin(0), Some(&first)); assert_ne!(rebuilt.origin(0), Some(&second));
-        let mut other = TemporaryStaticAbilityGrants::new(ObjectId::from_raw(90002)); other.push(grant(2));
-        let other_origin = other.origin(0).unwrap().clone(); rebuilt.extend_existing(&other);
-        assert_eq!(rebuilt.origin(1), Some(&other_origin), "component origin survives reconstruction");
+        rebuilt.clear();
+        rebuilt.push(grant(3));
+        assert_ne!(rebuilt.origin(0), Some(&first));
+        assert_ne!(rebuilt.origin(0), Some(&second));
+        let mut other = TemporaryStaticAbilityGrants::new(ObjectId::from_raw(90002));
+        other.push(grant(2));
+        let other_origin = other.origin(0).unwrap().clone();
+        rebuilt.extend_existing(&other);
+        assert_eq!(
+            rebuilt.origin(1),
+            Some(&other_origin),
+            "component origin survives reconstruction"
+        );
         assert_ne!(rebuilt.origin(0), rebuilt.origin(1));
     }
 
@@ -3609,16 +3756,22 @@ mod temporary_ability_registration_tests {
     fn native_clone_empty_counter_store_preserves_removed_registration_allocator() {
         let mut counters = ObjectCounters::default();
         counters.add(CounterType::Flying, 2);
-        let removed: Vec<_> = counters.occurrences.values().flatten().map(|entry| entry.origin.clone()).collect();
+        let removed: Vec<_> = counters
+            .occurrences
+            .values()
+            .flatten()
+            .map(|entry| entry.origin.clone())
+            .collect();
         counters.clear();
         let mut restored = counters.clone();
         counters.add(CounterType::Flying, 1);
         restored.add(CounterType::Flying, 1);
         assert_eq!(restored.next_serial, counters.next_serial);
-        assert!(!removed.contains(&restored.occurrences[&CounterType::Flying][0].origin),
-            "an empty native copy cannot recycle an old counter origin");
+        assert!(
+            !removed.contains(&restored.occurrences[&CounterType::Flying][0].origin),
+            "an empty native copy cannot recycle an old counter origin"
+        );
     }
-
 }
 
 #[cfg(test)]
@@ -3668,10 +3821,15 @@ mod native_temporary_registration_tests {
     #[test]
     fn native_clone_temporary_registration_preserves_aliases_origins_expiry_and_allocator() {
         let original = fixture();
-        let removed = TemporaryAbilityOrigin { source: original.source, serial: 0 };
+        let removed = TemporaryAbilityOrigin {
+            source: original.source,
+            serial: 0,
+        };
         assert!(!original.origins.contains(&removed));
-        assert_ne!(original.origins[0].source, original.origins[2].source,
-            "merged component origin retained");
+        assert_ne!(
+            original.origins[0].source, original.origins[2].source,
+            "merged component origin retained"
+        );
         let mut restored = original.clone();
         for slot in 0..original.len() {
             assert_eq!(restored.origin(slot), original.origin(slot));
@@ -3701,10 +3859,7 @@ mod native_temporary_registration_tests {
         );
         assert_ne!(restored.origin(0), Some(&removed));
     }
-
-
 }
-
 
 #[cfg(test)]
 mod native_copy_restore_state_tests {
@@ -3798,9 +3953,6 @@ mod native_copy_restore_state_tests {
         assert!(object.has_fuse);
         assert!(object.enters_as_copy_restore_state.is_none());
     }
-
-
-
 }
 
 #[cfg(test)]
@@ -3875,8 +4027,6 @@ mod native_cast_overlay_tests {
         assert_eq!(prototype.base_toughness, original.base_toughness);
         assert!(!prototype.end_prototype_cast_overlay());
     }
-
-
 }
 
 #[cfg(test)]
@@ -3885,10 +4035,16 @@ mod native_counter_store_tests {
     use crate::ability::AbilityKind;
 
     fn static_ids(store: &ObjectCounters) -> Vec<crate::static_abilities::StaticAbilityInstanceId> {
-        store.occurrences.values().flatten().flat_map(|entry| &entry.abilities)
+        store
+            .occurrences
+            .values()
+            .flatten()
+            .flat_map(|entry| &entry.abilities)
             .filter_map(|ability| match &ability.kind {
-                AbilityKind::Static(ability) => Some(ability.instance_id()), _ => None,
-            }).collect()
+                AbilityKind::Static(ability) => Some(ability.instance_id()),
+                _ => None,
+            })
+            .collect()
     }
 
     #[test]
@@ -3900,22 +4056,33 @@ mod native_counter_store_tests {
         let mut restored = counters.clone();
         assert_eq!(static_ids(&restored), original);
         assert_eq!(restored.next_serial, counters.next_serial);
-        assert!(matches!(restored.ability_occurrences(CounterType::Decayed)[0].abilities[1].kind, AbilityKind::Triggered(_)));
-        counters.insert(CounterType::Flying, 1); restored.insert(CounterType::Flying, 1);
+        assert!(matches!(
+            restored.ability_occurrences(CounterType::Decayed)[0].abilities[1].kind,
+            AbilityKind::Triggered(_)
+        ));
+        counters.insert(CounterType::Flying, 1);
+        restored.insert(CounterType::Flying, 1);
         assert_eq!(static_ids(&restored), static_ids(&counters));
-        counters.add(CounterType::Flying, 1); restored.add(CounterType::Flying, 1);
+        counters.add(CounterType::Flying, 1);
+        restored.add(CounterType::Flying, 1);
         assert_eq!(restored.next_serial, counters.next_serial);
-        let flying_ids = |store: &ObjectCounters| store.ability_occurrences(CounterType::Flying)
-            .iter().map(|entry| match &entry.abilities[0].kind {
-                AbilityKind::Static(ability) => ability.instance_id(), _ => panic!("flying counter must be static"),
-            }).collect::<Vec<_>>();
+        let flying_ids = |store: &ObjectCounters| {
+            store
+                .ability_occurrences(CounterType::Flying)
+                .iter()
+                .map(|entry| match &entry.abilities[0].kind {
+                    AbilityKind::Static(ability) => ability.instance_id(),
+                    _ => panic!("flying counter must be static"),
+                })
+                .collect::<Vec<_>>()
+        };
         assert_eq!(flying_ids(&restored)[0], flying_ids(&counters)[0]);
-        assert_ne!(flying_ids(&restored)[1], flying_ids(&counters)[1],
-            "independent newly registered counters have distinct payload occurrences");
+        assert_ne!(
+            flying_ids(&restored)[1],
+            flying_ids(&counters)[1],
+            "independent newly registered counters have distinct payload occurrences"
+        );
     }
-
-
-
 }
 
 #[cfg(all(test, feature = "serialization"))]
@@ -3924,8 +4091,11 @@ mod permanent_permission_registration_tests {
     #[test]
     fn indefinite_registration_is_explicit_and_retained_without_an_expiry() {
         let mut grants = TemporaryStaticAbilityGrants::new(ObjectId::from_raw(99999));
-        grants.push(TemporaryStaticAbilityGrant {ability: StaticAbilityId::Flying,
-            ability_payload: Some(StaticAbility::flying()), expires_end_of_turn: None});
+        grants.push(TemporaryStaticAbilityGrant {
+            ability: StaticAbilityId::Flying,
+            ability_payload: Some(StaticAbility::flying()),
+            expires_end_of_turn: None,
+        });
         assert!(!grants[0].is_expired(u32::MAX));
         let restored = grants.clone();
         assert_eq!(restored[0].expires_end_of_turn, None);
@@ -3934,7 +4104,10 @@ mod permanent_permission_registration_tests {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct CastPriceReceipt<C, G> {
     pub identity: G,
     pub source: ObjectId,

@@ -337,7 +337,10 @@ pub fn parse_sacrifice(
                         normalized_words.join(" ")
                     )));
                 }
-                let filter = parse_object_filter_lexed(filter_tokens, false)?;
+                let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
+                if filter.controller.is_none() {
+                    filter.controller = controller_filter_for_token_player(player);
+                }
                 let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
                 return Ok(wrap_unless_escaped(
                     EffectAst::Sequence {
@@ -600,7 +603,11 @@ pub fn parse_sacrifice(
         }),
         Some(count) if crate::effect_sentences::life_unit_programs::is_life_unit_count(&count) => {
             crate::effect_sentences::life_unit_programs::batch_sacrifice(tokens, &sacrifice, count)
-                .ok_or_else(|| CardTextError::ParseError("per-unit life sacrifice requires a selectable permanent batch".into()))?
+                .ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "per-unit life sacrifice requires a selectable permanent batch".into(),
+                    )
+                })?
         }
         Some(count) => EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),

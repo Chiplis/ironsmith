@@ -19,7 +19,9 @@ fn execute_effect_sequence(
     let mut outcomes = Vec::new();
     for effect in effects {
         outcomes.push(execute_effect(game, effect, ctx)?);
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
     }
     Ok(EffectOutcome::aggregate(outcomes))
 }
@@ -94,10 +96,9 @@ impl UnlessActionEffect {
         ctx: &ExecutionContext,
         deciding_player: PlayerId,
     ) -> bool {
-        let definitely_unpayable =
-            |result: Result<(), CostValidationError>| -> bool {
-                matches!(result, Err(err) if !matches!(err, CostValidationError::Other(_)))
-            };
+        let definitely_unpayable = |result: Result<(), CostValidationError>| -> bool {
+            matches!(result, Err(err) if !matches!(err, CostValidationError::Other(_)))
+        };
         // Choice effects establish bindings used by later costs. A fresh
         // cost-only context cannot resolve those tags before the choice runs.
         // Keep a read-only set of possible bindings for affordability checks;
@@ -107,8 +108,13 @@ impl UnlessActionEffect {
         for effect in &self.alternative {
             if let Some(choice) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
                 if definitely_unpayable(CostExecutableEffect::can_execute_as_cost(
-                    choice, game, ctx.source, deciding_player,
-                )) { return true; }
+                    choice,
+                    game,
+                    ctx.source,
+                    deciding_player,
+                )) {
+                    return true;
+                }
                 if let Ok(zones) = super::choose_objects::search_zones(choice) {
                     let snapshots = zones.into_iter()
                         .flat_map(|zone| game.objects_in_zone(zone))
@@ -118,16 +124,27 @@ impl UnlessActionEffect {
                         .map(|object| crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
                         .collect::<Vec<_>>();
                     let limit = if !choice.count.dynamic_x && choice.count_value.is_none() {
-                        choice.count.max.unwrap_or(snapshots.len()).min(snapshots.len())
-                    } else { snapshots.len() };
+                        choice
+                            .count
+                            .max
+                            .unwrap_or(snapshots.len())
+                            .min(snapshots.len())
+                    } else {
+                        snapshots.len()
+                    };
                     planned_choice_limits.insert(choice.tag.clone(), limit);
-                    planned_filter.tagged_objects.insert(choice.tag.clone(), snapshots);
+                    planned_filter
+                        .tagged_objects
+                        .insert(choice.tag.clone(), snapshots);
                 }
                 continue;
             }
             if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>()
-                && sacrifice.filter.tagged_constraints.iter().any(|constraint|
-                    planned_choice_limits.contains_key(&constraint.tag))
+                && sacrifice
+                    .filter
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| planned_choice_limits.contains_key(&constraint.tag))
             {
                 // Only a fixed amount has an exact bound before choices.
                 // Dynamic dependencies remain unknown rather than falsely
@@ -144,13 +161,19 @@ impl UnlessActionEffect {
                             && planned_choice_limits.get(&constraint.tag)
                                 .is_some_and(|limit| *limit < required)
                     }) { return true; }
-                    let available = game.battlefield.iter()
+                    let available = game
+                        .battlefield
+                        .iter()
                         .filter_map(|id| game.object(*id))
-                        .filter(|object| game.controller_of(object) == player
-                            && game.can_be_sacrificed(object.id)
-                            && sacrifice.filter.matches(object, &planned_filter, game))
+                        .filter(|object| {
+                            game.controller_of(object) == player
+                                && game.can_be_sacrificed(object.id)
+                                && sacrifice.filter.matches(object, &planned_filter, game)
+                        })
                         .count();
-                    if available < required { return true; }
+                    if available < required {
+                        return true;
+                    }
                 }
                 // Payment mutates the candidate set. Do not project these
                 // speculative bindings through another state-changing cost.
@@ -213,22 +236,24 @@ impl crate::effects::SimultaneousEffectProposal for UnlessActionProposal {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        let proposal = *self;
-        ctx.with_temp_iterated_player(proposal.iterated_player, |ctx| {
-            if proposal.wants_alternative {
-                // CR 118.11 / 118.12a: replacement-modified payment remains
-                // payment. Control flow follows the accepted feasible cost.
-                return execute_effect_sequence(game, ctx, &proposal.alternative);
-            }
-            execute_effect_sequence(game, ctx, &proposal.effects)
-        })
+            let proposal = *self;
+            ctx.with_temp_iterated_player(proposal.iterated_player, |ctx| {
+                if proposal.wants_alternative {
+                    // CR 118.11 / 118.12a: replacement-modified payment remains
+                    // payment. Control flow follows the accepted feasible cost.
+                    return execute_effect_sequence(game, ctx, &proposal.alternative);
+                }
+                execute_effect_sequence(game, ctx, &proposal.effects)
+            })
         })();
         let pending = ctx.decision_maker.awaiting_choice();
         if pending || result.is_err() {
             *game = checkpoint;
             context_checkpoint.restore(ctx);
         }
-        if pending { return Ok(EffectOutcome::count(0)); }
+        if pending {
+            return Ok(EffectOutcome::count(0));
+        }
         result
     }
 }
@@ -291,28 +316,30 @@ impl EffectExecutor for UnlessActionEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        let deciding_players = if matches!(self.player, PlayerFilter::Any) {
-            players_in_turn_order(game)
-        } else {
-            vec![resolve_player_filter(game, &self.player, ctx)?]
-        };
-        // "Target opponent loses 2 life unless they sacrifice ...": outside a
-        // player loop, "they"/"that player" in either branch is the single
-        // deciding player.
-        let bound_player = match deciding_players.as_slice() {
-            [player] if ctx.iteration.iterated_player.is_none() => Some(*player),
-            _ => ctx.iteration.iterated_player,
-        };
-        ctx.with_temp_iterated_player(bound_player, |ctx| {
-            self.execute_for_deciding_players(game, ctx, deciding_players)
-        })
+            let deciding_players = if matches!(self.player, PlayerFilter::Any) {
+                players_in_turn_order(game)
+            } else {
+                vec![resolve_player_filter(game, &self.player, ctx)?]
+            };
+            // "Target opponent loses 2 life unless they sacrifice ...": outside a
+            // player loop, "they"/"that player" in either branch is the single
+            // deciding player.
+            let bound_player = match deciding_players.as_slice() {
+                [player] if ctx.iteration.iterated_player.is_none() => Some(*player),
+                _ => ctx.iteration.iterated_player,
+            };
+            ctx.with_temp_iterated_player(bound_player, |ctx| {
+                self.execute_for_deciding_players(game, ctx, deciding_players)
+            })
         })();
         let pending = ctx.decision_maker.awaiting_choice();
         if pending || result.is_err() {
             *game = checkpoint;
             context_checkpoint.restore(ctx);
         }
-        if pending { return Ok(EffectOutcome::count(0)); }
+        if pending {
+            return Ok(EffectOutcome::count(0));
+        }
         result
     }
 
@@ -354,8 +381,12 @@ impl UnlessActionEffect {
                 FallbackStrategy::Accept,
             );
 
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            if !wants_alternative { continue; }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            if !wants_alternative {
+                continue;
+            }
 
             // Payment choice is authoritative even when a replacement changes
             // or prevents the payment event (CR 118.11 / 118.12a).
@@ -633,10 +664,16 @@ mod tests {
         create_creature(&mut game, "Selectable", alice);
         let source = game.new_object_id();
         let ctx = ExecutionContext::new_default(source, alice);
-        let effect = UnlessActionEffect::new(vec![Effect::gain_life(3)],
-            sacrifice_creature_alternative(PlayerFilter::You, PlayerFilter::You), PlayerFilter::You);
+        let effect = UnlessActionEffect::new(
+            vec![Effect::gain_life(3)],
+            sacrifice_creature_alternative(PlayerFilter::You, PlayerFilter::You),
+            PlayerFilter::You,
+        );
         assert!(!effect.alternative_is_infeasible(&game, &ctx, alice));
-        assert!(ctx.tagged_objects.is_empty(), "preflight must not make the choice");
+        assert!(
+            ctx.tagged_objects.is_empty(),
+            "preflight must not make the choice"
+        );
     }
 
     #[test]
@@ -648,11 +685,24 @@ mod tests {
         let source = game.new_object_id();
         let ctx = ExecutionContext::new_default(source, alice);
         let alternative = vec![
-            Effect::new(ChooseObjectsEffect::new(ObjectFilter::creature().controlled_by(PlayerFilter::You), 1, PlayerFilter::You, "chosen")),
-            Effect::new(SacrificeEffect::player(ObjectFilter::tagged("chosen"), 2, PlayerFilter::You)),
+            Effect::new(ChooseObjectsEffect::new(
+                ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                1,
+                PlayerFilter::You,
+                "chosen",
+            )),
+            Effect::new(SacrificeEffect::player(
+                ObjectFilter::tagged("chosen"),
+                2,
+                PlayerFilter::You,
+            )),
         ];
-        let effect = UnlessActionEffect::new(vec![Effect::gain_life(3)], alternative, PlayerFilter::You);
-        assert!(effect.alternative_is_infeasible(&game, &ctx, alice), "one chosen object cannot pay a two-object sacrifice");
+        let effect =
+            UnlessActionEffect::new(vec![Effect::gain_life(3)], alternative, PlayerFilter::You);
+        assert!(
+            effect.alternative_is_infeasible(&game, &ctx, alice),
+            "one chosen object cannot pay a two-object sacrifice"
+        );
         assert!(ctx.tagged_objects.is_empty());
     }
 
@@ -663,25 +713,61 @@ mod tests {
         let creature = create_creature(&mut game, "Payment subject", alice);
         let source = game.new_object_id();
         let shield = game.effect_store.replacement_effects.add_one_shot_effect(
-            crate::replacement::ReplacementEffect::with_matcher(creature, alice,
+            crate::replacement::ReplacementEffect::with_matcher(
+                creature,
+                alice,
                 crate::events::zones::matchers::WouldChangeZoneMatcher::new(
                     ObjectFilter::creature().controlled_by(PlayerFilter::You),
-                    Some(Zone::Battlefield), Some(Zone::Graveyard)),
-                crate::replacement::ReplacementAction::Prevent));
+                    Some(Zone::Battlefield),
+                    Some(Zone::Graveyard),
+                ),
+                crate::replacement::ReplacementAction::Prevent,
+            ),
+        );
         game.take_pending_trigger_events();
         let mut dm = AcceptBooleanDecisionMaker;
         let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
-        let effect = UnlessActionEffect::new(vec![Effect::gain_life(3)],
-            vec![Effect::new(SacrificeEffect::player(ObjectFilter::creature(), 1, PlayerFilter::You))],
-            PlayerFilter::You);
-        let outcome = effect.execute(&mut game, &mut ctx).expect("payable optional cost resolves through replacement");
+        let effect = UnlessActionEffect::new(
+            vec![Effect::gain_life(3)],
+            vec![Effect::new(SacrificeEffect::player(
+                ObjectFilter::creature(),
+                1,
+                PlayerFilter::You,
+            ))],
+            PlayerFilter::You,
+        );
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("payable optional cost resolves through replacement");
         assert!(!ctx.decision_maker.awaiting_choice());
         assert_eq!(game.object(creature).unwrap().zone, Zone::Battlefield);
-        assert_eq!(game.player(alice).unwrap().life, 20, "choosing to pay the feasible cost suppresses the unless branch even when payment's event is prevented");
-        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
-        let mut events = game.take_pending_trigger_events();events.extend(outcome.events);
-        assert!(!events.iter().any(|event| event.downcast::<crate::events::LifeGainEvent>().is_some()));
-        assert!(!events.iter().any(|event| event.downcast::<crate::events::SacrificeEvent>().is_some()));
+        assert_eq!(
+            game.player(alice).unwrap().life,
+            20,
+            "choosing to pay the feasible cost suppresses the unless branch even when payment's event is prevented"
+        );
+        assert!(
+            game.effect_store
+                .replacement_effects
+                .get_effect(shield)
+                .is_none()
+        );
+        let events = game
+            .turn_store
+            .turn_history
+            .projected_records()
+            .map(|record| &record.event)
+            .collect::<Vec<_>>();
+        assert!(
+            !events
+                .iter()
+                .any(|event| event.downcast::<crate::events::LifeGainEvent>().is_some())
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| event.downcast::<crate::events::SacrificeEvent>().is_some())
+        );
     }
 
     struct PausePaymentPayload {
@@ -690,11 +776,22 @@ mod tests {
         questions: usize,
     }
     impl DecisionMaker for PausePaymentPayload {
-        fn decide_boolean(&mut self, _game: &GameState, _context: &crate::decisions::context::BooleanContext) -> bool {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _context: &crate::decisions::context::BooleanContext,
+        ) -> bool {
             self.questions += 1;
-            if self.pause && self.questions == 2 { self.pending = true; false } else { true }
+            if self.pause && self.questions == 2 {
+                self.pending = true;
+                false
+            } else {
+                true
+            }
         }
-        fn awaiting_choice(&self) -> bool { self.pending }
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
     }
 
     fn run_optional_payment_owner(
@@ -706,7 +803,9 @@ mod tests {
         if simultaneous {
             let proposal = effect.prepare_simultaneous_player_action(game, ctx)?;
             proposal.commit(game, ctx)
-        } else { effect.execute(game, ctx) }
+        } else {
+            effect.execute(game, ctx)
+        }
     }
 
     fn check_optional_payment_payload_owner(simultaneous: bool, pending: bool) {
@@ -715,22 +814,55 @@ mod tests {
         let creature = create_creature(&mut game, "Cost replacement object", alice);
         let source = game.new_object_id();
         let effects = if pending {
-            vec![Effect::gain_life(2), Effect::may(vec![Effect::gain_life(4)]), Effect::gain_life(8)]
-        } else { vec![Effect::gain_life(2), Effect::lose_life(crate::effect::Value::X), Effect::gain_life(8)] };
+            vec![
+                Effect::gain_life(2),
+                Effect::may(vec![Effect::gain_life(4)]),
+                Effect::gain_life(8),
+            ]
+        } else {
+            vec![
+                Effect::gain_life(2),
+                Effect::lose_life(crate::effect::Value::X),
+                Effect::gain_life(8),
+            ]
+        };
         let shield = game.effect_store.replacement_effects.add_one_shot_effect(
-            crate::replacement::ReplacementEffect::with_matcher(creature, alice,
+            crate::replacement::ReplacementEffect::with_matcher(
+                creature,
+                alice,
                 crate::events::zones::matchers::WouldChangeZoneMatcher::new(
-                    ObjectFilter::creature().controlled_by(PlayerFilter::You), Some(Zone::Battlefield), Some(Zone::Graveyard)),
-                crate::replacement::ReplacementAction::Instead(effects)));
-        let effect = UnlessActionEffect::new(vec![Effect::gain_life(3)],
-            vec![Effect::new(SacrificeEffect::player(ObjectFilter::creature(), 1, PlayerFilter::You))],
-            if simultaneous { PlayerFilter::IteratedPlayer } else { PlayerFilter::You });
+                    ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                    Some(Zone::Battlefield),
+                    Some(Zone::Graveyard),
+                ),
+                crate::replacement::ReplacementAction::Instead(effects),
+            ),
+        );
+        let effect = UnlessActionEffect::new(
+            vec![Effect::gain_life(3)],
+            vec![Effect::new(SacrificeEffect::player(
+                ObjectFilter::creature(),
+                1,
+                PlayerFilter::You,
+            ))],
+            if simultaneous {
+                PlayerFilter::IteratedPlayer
+            } else {
+                PlayerFilter::You
+            },
+        );
         game.take_pending_trigger_events();
         let before_live = game.objects_in_deterministic_order().len();
         let before_id = game.next_object_id_counter();
-        let mut dm = PausePaymentPayload { pause: pending, pending: false, questions: 0 };
+        let mut dm = PausePaymentPayload {
+            pause: pending,
+            pending: false,
+            questions: 0,
+        };
         let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
-        if simultaneous { ctx.iteration.iterated_player = Some(alice); }
+        if simultaneous {
+            ctx.iteration.iterated_player = Some(alice);
+        }
         let result = run_optional_payment_owner(&effect, &mut game, &mut ctx, simultaneous);
         if pending {
             let outcome = result.expect("a pending payment is not an error");
@@ -740,39 +872,75 @@ mod tests {
             assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_))));
             assert!(!ctx.decision_maker.awaiting_choice());
         }
-        assert_eq!(ctx.source, source);assert_eq!(ctx.controller, alice);
+        assert_eq!(ctx.source, source);
+        assert_eq!(ctx.controller, alice);
         assert!(ctx.replacement.suppressed_replacement_effects.is_empty());
         drop(ctx);
         assert_eq!(game.player(alice).unwrap().life, 20);
         assert_eq!(game.object(creature).unwrap().zone, Zone::Battlefield);
         assert_eq!(game.objects_in_deterministic_order().len(), before_live);
         assert_eq!(game.next_object_id_counter(), before_id);
-        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+        assert!(
+            game.effect_store
+                .replacement_effects
+                .get_effect(shield)
+                .is_some()
+        );
         assert!(game.take_pending_trigger_events().is_empty());
         if pending {
             assert_eq!(dm.questions, 2);
-            let mut replay = PausePaymentPayload { pause: false, pending: false, questions: 0 };
-            let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut replay);
-            if simultaneous { ctx.iteration.iterated_player = Some(alice); }
-            let outcome = run_optional_payment_owner(&effect, &mut game, &mut ctx, simultaneous).unwrap();
+            let mut replay = PausePaymentPayload {
+                pause: false,
+                pending: false,
+                questions: 0,
+            };
+            let mut ctx =
+                ExecutionContext::new_default(source, alice).with_decision_maker(&mut replay);
+            if simultaneous {
+                ctx.iteration.iterated_player = Some(alice);
+            }
+            let outcome =
+                run_optional_payment_owner(&effect, &mut game, &mut ctx, simultaneous).unwrap();
             assert!(!ctx.decision_maker.awaiting_choice());
             drop(ctx);
             assert_eq!(replay.questions, 2);
             assert_eq!(game.player(alice).unwrap().life, 34);
             assert_eq!(game.object(creature).unwrap().zone, Zone::Battlefield);
-            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
-            let mut events = game.take_pending_trigger_events();events.extend(outcome.events);
-            let mut gains = events.iter().filter_map(|event| event.downcast::<crate::events::LifeGainEvent>()).map(|gain| gain.amount).collect::<Vec<_>>();gains.sort();
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(shield)
+                    .is_none()
+            );
+            let events = game
+                .turn_store
+                .turn_history
+                .projected_records()
+                .map(|record| &record.event)
+                .collect::<Vec<_>>();
+            let mut gains = events
+                .iter()
+                .filter_map(|event| event.downcast::<crate::events::LifeGainEvent>())
+                .map(|gain| gain.amount)
+                .collect::<Vec<_>>();
+            gains.sort();
             assert_eq!(gains, vec![2, 4, 8]);
         }
     }
     #[test]
-    fn unless_direct_payment_payload_error_restores_owner() { check_optional_payment_payload_owner(false, false); }
+    fn unless_direct_payment_payload_error_restores_owner() {
+        check_optional_payment_payload_owner(false, false);
+    }
     #[test]
-    fn unless_direct_payment_payload_pending_replays_once() { check_optional_payment_payload_owner(false, true); }
+    fn unless_direct_payment_payload_pending_replays_once() {
+        check_optional_payment_payload_owner(false, true);
+    }
     #[test]
-    fn unless_simultaneous_payment_payload_error_restores_owner() { check_optional_payment_payload_owner(true, false); }
+    fn unless_simultaneous_payment_payload_error_restores_owner() {
+        check_optional_payment_payload_owner(true, false);
+    }
     #[test]
-    fn unless_simultaneous_payment_payload_pending_replays_once() { check_optional_payment_payload_owner(true, true); }
-
+    fn unless_simultaneous_payment_payload_pending_replays_once() {
+        check_optional_payment_payload_owner(true, true);
+    }
 }

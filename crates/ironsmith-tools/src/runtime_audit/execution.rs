@@ -23,6 +23,18 @@ pub(super) fn create_fixture_object(
     owner: PlayerId,
     zone: Zone,
 ) -> ObjectId {
+    // Audit fixture definitions must not reuse an identity for different
+    // printed metadata. The engine can safely replace its shared-handle cache,
+    // so validate the fixture before that replacement hides the collision.
+    if let Some(existing) = game.retained_card_definition(definition.card.id) {
+        assert!(
+            existing.card.name == definition.card.name
+                && existing.card.card_types == definition.card.card_types,
+            "runtime audit fixture identity collision: requested {} but retained metadata is {}",
+            definition.name(),
+            existing.name(),
+        );
+    }
     let id = game.create_object_from_definition(definition, owner, zone);
     let object = game
         .object(id)

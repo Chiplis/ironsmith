@@ -1,7 +1,9 @@
 //! One-source damage with every recipient-local amount captured before results.
 use crate::effect::EffectOutcome;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::events::processing::{SimultaneousDamageEvent, with_deferred_prevention_follow_ups};
+use crate::events::processing::{
+    SimultaneousDamageEvent, with_deferred_prevention_follow_up_outcome,
+};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
@@ -30,7 +32,11 @@ impl EffectExecutor for DealDamageEachEffect {
     }
 }
 trait ExecuteCapturedDamage {
-    fn execute_captured(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError>;
+    fn execute_captured(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError>;
 }
 impl ExecuteCapturedDamage for DealDamageEachEffect {
     fn execute_captured(
@@ -114,7 +120,7 @@ impl ExecuteCapturedDamage for DealDamageEachEffect {
         let batch = game.simultaneous_action_batch().unwrap_or_else(|| {
             game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage)
         });
-        with_deferred_prevention_follow_ups(game, ctx.decision_maker, |game, dm| {
+        with_deferred_prevention_follow_up_outcome(game, ctx.decision_maker, |game, dm| {
             let mut parent = ExecutionContext::new(source, controller, dm)
                 .with_cause(cause)
                 .with_provenance(provenance);

@@ -10,6 +10,7 @@ use crate::cards::builders::PermissionEffectAst;
 use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::StackActionAst;
 use crate::cards::builders::TurnEventPredicateAst;
+pub use life_total_references::conditional_life_total_set;
 
 pub fn parse_triggered_line(
     info: LineInfo,

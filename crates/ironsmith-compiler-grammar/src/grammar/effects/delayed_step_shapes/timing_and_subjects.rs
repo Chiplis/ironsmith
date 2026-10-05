@@ -51,6 +51,7 @@ fn static_player<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> {
                 alt((primitives::kw("opponent"), primitives::kw("opponents"))),
             )
                 .value(PlayerAst::Opponent),
+            primitives::phrase(&["an", "opponent"]).value(PlayerAst::Opponent),
         )),
         primitives::kw("they").value(PlayerAst::That),
         (
@@ -348,12 +349,30 @@ pub fn parse_delayed_timing_marker_shape(
         ),
         // "at the beginning of the next turn's upkeep" (Sapphire Charm).
         (
-            &["at", "the", "beginning", "of", "the", "next", "turns", "upkeep"],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "turns",
+                "upkeep",
+            ],
             DelayedTimingStepShape::Upkeep,
             PlayerAst::Any,
         ),
         (
-            &["at", "the", "beginning", "of", "the", "next", "turn's", "upkeep"],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "turn's",
+                "upkeep",
+            ],
             DelayedTimingStepShape::Upkeep,
             PlayerAst::Any,
         ),

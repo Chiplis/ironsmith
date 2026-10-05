@@ -31,6 +31,7 @@ pub enum ProtectionTargetKind {
         counter_word_first: usize,
     },
     ChosenPlayer,
+    Opponents,
     ChosenColor,
     /// "protection from each of the exiled card's card types" (Mirror
     /// Golem): the card types of the card exiled with this permanent.
@@ -373,7 +374,9 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
     let tail = words.get(target_word..).unwrap_or_default();
     if matches!(
         tail,
-        ["each", "mana", "value", "other", "than", "the", "chosen", "number"]
+        [
+            "each", "mana", "value", "other", "than", "the", "chosen", "number"
+        ]
     ) {
         return ProtectionTargetKind::ManaValuesOtherThanChosenNumber;
     }
@@ -406,6 +409,12 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
             counter_word_first: target_word + 2,
         };
     }
+    if matches!(
+        tail,
+        ["each", "of", "your", "opponents"] | ["your", "opponents"]
+    ) {
+        return ProtectionTargetKind::Opponents;
+    }
     if word_phrase_prefix(tail, &["the", "chosen", "player"]) {
         return ProtectionTargetKind::ChosenPlayer;
     }
@@ -414,16 +423,16 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
     {
         return ProtectionTargetKind::ChosenColor;
     }
-    if word_phrase_prefix(tail, &["each", "of", "the", "exiled", "cards", "card", "types"])
-        || word_phrase_prefix(
-            tail,
-            &["each", "of", "the", "exiled", "card's", "card", "types"],
-        )
-        || word_phrase_prefix(
-            tail,
-            &["each", "of", "the", "exiled", "card", "s", "card", "types"],
-        )
-    {
+    if word_phrase_prefix(
+        tail,
+        &["each", "of", "the", "exiled", "cards", "card", "types"],
+    ) || word_phrase_prefix(
+        tail,
+        &["each", "of", "the", "exiled", "card's", "card", "types"],
+    ) || word_phrase_prefix(
+        tail,
+        &["each", "of", "the", "exiled", "card", "s", "card", "types"],
+    ) {
         return ProtectionTargetKind::ExiledCardTypes;
     }
     if word_phrase_prefix(tail, &["the", "chosen", "card", "type"])
@@ -435,7 +444,16 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
         let qualifier = &tail[2..];
         if matches!(
             qualifier,
-            ["thats" | "that's" | "that’s", "not", "in", "your", "commanders" | "commander's" | "commander’s", "color", "identity", ..]
+            [
+                "thats" | "that's" | "that’s",
+                "not",
+                "in",
+                "your",
+                "commanders" | "commander's" | "commander’s",
+                "color",
+                "identity",
+                ..
+            ]
         ) {
             return ProtectionTargetKind::ColorsOutsideCommanderIdentity;
         }

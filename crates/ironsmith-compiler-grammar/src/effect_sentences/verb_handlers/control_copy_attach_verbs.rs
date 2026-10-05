@@ -243,6 +243,11 @@ pub fn parse_gain_life(
     let rest = &tokens[used..];
     validate_life_keyword(rest)?;
     let trailing = trim_commas(&rest[1..]);
+    // The sentence owner retains the self-replacement marker; the action
+    // reader consumes only its life amount and any trailing predicate.
+    let trailing = if trailing.first().is_some_and(|token| token.is_word("instead")) {
+        &trailing[1..]
+    } else { trailing.as_slice() };
     if !trailing.is_empty() {
         if life_shape.unsupported_shuffle_graveyard {
             return Err(CardTextError::ParseError(format!(

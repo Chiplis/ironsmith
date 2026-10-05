@@ -255,13 +255,13 @@ fn exact_discard_cost_cards_have_no_unimplemented_content_after_transport() {
     assert_eq!(
         cards
             .iter()
-            .filter(|card| card["proposed_coverage"] == "complete")
+            .filter(|card| card["proposed_coverage"] == "source_implemented_all_validation_deferred")
             .count(),
-        3
+        4
     );
     for card in cards
         .into_iter()
-        .filter(|card| card["proposed_coverage"] == "complete")
+        .filter(|card| card["proposed_coverage"] == "source_implemented_all_validation_deferred")
     {
         for definition in definitions(card["name"].as_str().unwrap()) {
             assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
@@ -520,7 +520,7 @@ fn kozilek_printed_cost_and_target_value_work_independently_of_draw_difference_b
         )
         .unwrap();
         for _ in 0..30 {
-            if state.pending_cast.is_none() {
+            if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
                 break;
             }
             let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -530,7 +530,7 @@ fn kozilek_printed_cost_and_target_value_work_independently_of_draw_difference_b
                 apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm)
                     .unwrap();
         }
-        assert!(state.pending_cast.is_none());
+        assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
         let target = game.find_object_by_stable_id(stable).unwrap();
         assert_eq!(game.object(target).unwrap().zone, Zone::Stack);
         game.turn.priority_player = Some(A);

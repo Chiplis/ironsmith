@@ -153,16 +153,18 @@ fn parses_relative_attachment_state_as_an_intrinsic_filter_constraint() {
         };
 
         assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
-        assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
+        assert!(filter.tagged_constraints.is_empty(), "{filter:#?}");
+        let attachment = filter
+            .with_attached_object
+            .as_ref()
+            .expect("live attachment predicate");
         assert_eq!(
-            filter.tagged_constraints[0].tag.as_str(),
-            expected_tag,
-            "{filter:#?}"
-        );
-        assert_eq!(
-            filter.tagged_constraints[0].relation,
-            TaggedOpbjectRelation::IsTaggedObject,
-            "{filter:#?}"
+            attachment.subtypes,
+            vec![if expected_tag == "enchanted" {
+                Subtype::Aura
+            } else {
+                Subtype::Equipment
+            }]
         );
     }
 }
@@ -215,10 +217,10 @@ fn parses_disjunctive_relative_attachment_states_as_typed_union() {
         filter
             .any_of
             .iter()
-            .flat_map(|branch| branch.tagged_constraints.iter())
-            .map(|constraint| constraint.tag.as_str())
+            .filter_map(|branch| branch.with_attached_object.as_ref())
+            .flat_map(|attachment| attachment.subtypes.iter().copied())
             .collect::<Vec<_>>(),
-        vec!["enchanted", "equipped"]
+        vec![Subtype::Aura, Subtype::Equipment]
     );
 }
 

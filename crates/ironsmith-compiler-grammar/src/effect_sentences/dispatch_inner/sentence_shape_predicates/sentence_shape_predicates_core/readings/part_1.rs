@@ -97,9 +97,10 @@ pub(super) fn read_becomes_word_view(
         let body = trim_edge_punctuation(&tokens[body_start..]);
         if !subject.is_empty()
             && !body.is_empty()
-            && effect_grammar::become_shapes::parse_become_rest_shape(&body)
-                .copy_exception
-                .is_some()
+            && (crate::lexer::parser_token_word_refs(&body) == ["blocked"]
+                || effect_grammar::become_shapes::parse_become_rest_shape(&body)
+                    .copy_exception
+                    .is_some())
         {
             return Ok(Some(vec![
                 super::super::super::super::clause_dispatch::parse_become_clause(&subject, &body)?,

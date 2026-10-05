@@ -355,6 +355,22 @@ pub(crate) fn effect_consumed_choice_tag(
     while let Some(inner) = consumer.transparent_child_effect() {
         consumer = inner;
     }
+    // A sequence that selects its own payment objects must execute that
+    // producer before requiring the consumer's tag. The whole cost's
+    // preflight simulates the dependency without an existing external tag.
+    if let Some(sequence) = consumer.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.effects.iter().any(|effect| {
+            let mut inner = effect;
+            while let Some(child) = inner.transparent_child_effect() {
+                inner = child;
+            }
+            inner
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                .is_some()
+        })
+    {
+        return None;
+    }
     if consumer
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()
         .is_some()
@@ -372,7 +388,11 @@ pub(crate) fn effect_consumed_choice_tag(
             .flatten();
     }
     if let Some(discard) = consumer.downcast_ref::<crate::effects::DiscardEffect>() {
-        return discard.card_filter.as_ref().and_then(filter_consumed_tag).cloned();
+        return discard
+            .card_filter
+            .as_ref()
+            .and_then(filter_consumed_tag)
+            .cloned();
     }
     if let Some(reveal) = consumer.downcast_ref::<crate::effects::RevealTaggedEffect>() {
         return Some(reveal.tag.clone());
@@ -451,9 +471,16 @@ pub(crate) fn tagged_choice_pair_is_payable(
         while let Some(inner) = effect.transparent_child_effect() {
             effect = inner;
         }
-        if effect.downcast_ref::<crate::effects::TapEffect>().is_some() { Some(true) }
-        else if effect.downcast_ref::<crate::effects::UntapEffect>().is_some() { Some(false) }
-        else { None }
+        if effect.downcast_ref::<crate::effects::TapEffect>().is_some() {
+            Some(true)
+        } else if effect
+            .downcast_ref::<crate::effects::UntapEffect>()
+            .is_some()
+        {
+            Some(false)
+        } else {
+            None
+        }
     });
     let source_state_reserved = match state_change {
         Some(true) => choose.filter.untapped && components.iter().any(Cost::requires_tap),

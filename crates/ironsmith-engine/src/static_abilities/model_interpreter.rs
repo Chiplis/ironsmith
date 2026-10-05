@@ -130,9 +130,31 @@ impl StaticAbilityModelInterpreter {
 
     pub fn new(model: CompiledStaticAbility) -> Self {
         let leaf_static_ability = Self::cached_leaf_static_ability(&model);
-        let granted_inline_ability = Self::cached_granted_inline_ability(&model);
+        // The leaf already materializes carried abilities. Reuse its shared
+        // runtime handles: independently converting the same child for each
+        // cache doubles work at every nested grant level.
+        let granted_inline_ability = Self::model_has_inline_ability(&model)
+            .then(|| {
+                leaf_static_ability
+                    .as_ref()
+                    .and_then(StaticAbility::granted_inline_ability)
+                    .cloned()
+            })
+            .flatten();
         let granted_inline_condition = Self::cached_granted_inline_condition(&model);
-        let source_granted_inline_abilities = Self::cached_source_granted_inline_abilities(&model);
+        let source_granted_inline_abilities = if Self::model_has_source_grants(&model) {
+            leaf_static_ability
+                .as_ref()
+                .map(|leaf| {
+                    leaf.source_granted_inline_abilities()
+                        .into_iter()
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let enter_as_copy_spec = Self::cached_enter_as_copy_spec(&model);
         let level_abilities = Self::cached_level_abilities(&model);
         let equipment_grant_abilities = Self::cached_equipment_grant_abilities(&model);
@@ -362,9 +384,12 @@ impl StaticAbilityModelInterpreter {
                 crate::grant::Grantable::DerivedAlternativeCast(spec.clone())
             }
             ironsmith_core::Grantable::PlayFrom => crate::grant::Grantable::PlayFrom,
-            ironsmith_core::Grantable::AlternativePrice { costs, origin } => crate::grant::Grantable::AlternativePrice {
-                costs: costs.clone(), origin: *origin,
-            },
+            ironsmith_core::Grantable::AlternativePrice { costs, origin } => {
+                crate::grant::Grantable::AlternativePrice {
+                    costs: costs.clone(),
+                    origin: *origin,
+                }
+            }
         };
         crate::grant::GrantSpec {
             grantable,
@@ -396,31 +421,27 @@ impl StaticAbilityModelInterpreter {
         }
     }
 
-    fn cached_granted_inline_ability(
-        model: &CompiledStaticAbility,
-    ) -> Option<crate::ability::Ability> {
+    fn model_has_inline_ability(model: &CompiledStaticAbility) -> bool {
         match &model.payload {
-            ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant) => {
-                Some(Self::ability_from_model(&grant.ability))
-            }
-            ironsmith_core::StaticAbilityPayload::SoulbondSharedObjectAbility(ability) => {
-                Some(Self::ability_from_model(ability))
-            }
+            ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(_)
+            | ironsmith_core::StaticAbilityPayload::SoulbondSharedObjectAbility(_) => true,
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
-                Self::cached_granted_inline_ability(ability)
+                Self::model_has_inline_ability(ability)
             }
-            _ => None,
+            _ => false,
         }
     }
 
-    fn cached_granted_inline_condition(model: &CompiledStaticAbility) -> Option<crate::ConditionExpr> {
+    fn cached_granted_inline_condition(
+        model: &CompiledStaticAbility,
+    ) -> Option<crate::ConditionExpr> {
         match &model.payload {
             ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
                 grant.condition.clone()
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }
-                if Self::cached_granted_inline_ability(ability).is_some()
-                    || !Self::cached_source_granted_inline_abilities(ability).is_empty() =>
+                if Self::model_has_inline_ability(ability)
+                    || Self::model_has_source_grants(ability) =>
             {
                 Some(match Self::cached_granted_inline_condition(ability) {
                     Some(inner) => inner.and(condition.clone()),
@@ -431,22 +452,15 @@ impl StaticAbilityModelInterpreter {
         }
     }
 
-    fn cached_source_granted_inline_abilities(
-        model: &CompiledStaticAbility,
-    ) -> Vec<crate::ability::Ability> {
+    fn model_has_source_grants(model: &CompiledStaticAbility) -> bool {
         match &model.payload {
-            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
-                if grant.filter.source =>
-            {
-                std::iter::once(&grant.ability)
-                    .chain(grant.additional_abilities.iter())
-                    .map(Self::ability_from_model)
-                    .collect()
+            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
+                grant.filter.source
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
-                Self::cached_source_granted_inline_abilities(ability)
+                Self::model_has_source_grants(ability)
             }
-            _ => Vec::new(),
+            _ => false,
         }
     }
 
@@ -578,14 +592,28 @@ impl StaticAbilityModelInterpreter {
         }
     }
 
-    fn activation_cost_condition(condition: &ironsmith_core::ActivatedAbilityCostCondition) -> super::ActivatedAbilityCostCondition {
-        use ironsmith_core::ActivatedAbilityCostCondition as Model;
+    fn activation_cost_condition(
+        condition: &ironsmith_core::ActivatedAbilityCostCondition,
+    ) -> super::ActivatedAbilityCostCondition {
         use super::ActivatedAbilityCostCondition as Runtime;
+        use ironsmith_core::ActivatedAbilityCostCondition as Model;
         match condition {
-            Model::TargetsExactly { count, filter } => Runtime::TargetsExactly { count: *count, filter: filter.clone() },
-            Model::EquipAbility { targeting } => Runtime::EquipAbility { targeting: targeting.clone() },
-            Model::ThisAbility { ability_index } => Runtime::ThisAbility { ability_index: *ability_index },
-            Model::All(conditions) => Runtime::All(conditions.iter().map(Self::activation_cost_condition).collect()),
+            Model::TargetsExactly { count, filter } => Runtime::TargetsExactly {
+                count: *count,
+                filter: filter.clone(),
+            },
+            Model::EquipAbility { targeting } => Runtime::EquipAbility {
+                targeting: targeting.clone(),
+            },
+            Model::ThisAbility { ability_index } => Runtime::ThisAbility {
+                ability_index: *ability_index,
+            },
+            Model::All(conditions) => Runtime::All(
+                conditions
+                    .iter()
+                    .map(Self::activation_cost_condition)
+                    .collect(),
+            ),
         }
     }
 
@@ -636,7 +664,8 @@ impl StaticAbilityModelInterpreter {
                         .with_per_basic_land_types_among(per_basic_land_types_among.clone());
                 }
                 if let Some(condition) = condition {
-                    converted = converted.with_condition(Self::activation_cost_condition(condition));
+                    converted =
+                        converted.with_condition(Self::activation_cost_condition(condition));
                 }
                 Some(converted)
             }
@@ -673,7 +702,9 @@ impl StaticAbilityModelInterpreter {
                     increase_model.non_mana_only = *non_mana_only;
                     increase_model
                 };
-                parsed.ability_condition = ability_condition.as_ref().map(Self::activation_cost_condition);
+                parsed.ability_condition = ability_condition
+                    .as_ref()
+                    .map(Self::activation_cost_condition);
                 parsed.display = display.clone();
                 if let Some(condition) = condition.clone() {
                     parsed = parsed.with_condition(condition);
@@ -862,7 +893,9 @@ impl StaticAbilityModelInterpreter {
     fn this_spell_cast_restriction_from_model(
         kind: &ironsmith_core::ThisSpellCastRestrictionKind,
     ) -> super::ThisSpellCastRestrictionKind {
-        if let Some(timing) = kind.timing { return super::ThisSpellCastRestrictionKind::timing(timing); }
+        if let Some(timing) = kind.timing {
+            return super::ThisSpellCastRestrictionKind::timing(timing);
+        }
         match kind.label.as_str() {
             "during declare attackers step" => {
                 super::ThisSpellCastRestrictionKind::during_declare_attackers_step()
@@ -1069,6 +1102,7 @@ impl StaticAbilityModelInterpreter {
                     leaf = inner.as_ref();
                 }
                 let converted = StaticAbility::from_model(leaf.clone());
+                if !converted.may_generate_continuous_effects() { return Some(converted); }
                 converted.with_condition(combined.clone()).unwrap_or_else(|| {
                     StaticAbility::new(
                         crate::static_abilities::GrantAbility::source(converted)
@@ -2302,7 +2336,11 @@ impl StaticAbility {
     }
 
     pub fn from_model(model: CompiledStaticAbility) -> Self {
-        Self::new(StaticAbilityModelInterpreter::new(model))
+        // Native debug builds retain large enum temporaries in materialization
+        // frames. Grow before entering those frames for deeply nested models.
+        crate::perf::maybe_grow(8 * 1024 * 1024, 64 * 1024 * 1024, || {
+            Self::new(StaticAbilityModelInterpreter::new(model))
+        })
     }
 }
 
@@ -2319,7 +2357,8 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn intrinsic_starting_counter_rule(&self) -> Option<ironsmith_core::IntrinsicStartingCounter> {
-        self.leaf_static_ability()?.intrinsic_starting_counter_rule()
+        self.leaf_static_ability()?
+            .intrinsic_starting_counter_rule()
     }
 
     fn dungeon_entry_quality(&self) -> Option<&str> {
@@ -2511,14 +2550,26 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn may_generate_continuous_effects(&self) -> bool {
-        if self.enter_as_copy_spec.is_some() && matches!(&self.model.payload, ironsmith_core::StaticAbilityPayload::Conditional {..}) { return false; }
+        if self.enter_as_copy_spec.is_some()
+            && matches!(
+                &self.model.payload,
+                ironsmith_core::StaticAbilityPayload::Conditional { .. }
+            )
+        {
+            return false;
+        }
         self.leaf_static_ability()
             .is_some_and(StaticAbility::may_generate_continuous_effects)
     }
 
-    fn validate_mana_scalar_ranges(&self, game: &GameState, source: ObjectId, controller: PlayerId)
-        -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
-        self.leaf_static_ability().map(|ability| ability.validate_mana_scalar_ranges(game, source, controller))
+    fn validate_mana_scalar_ranges(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        self.leaf_static_ability()
+            .map(|ability| ability.validate_mana_scalar_ranges(game, source, controller))
             .unwrap_or(Ok(false))
     }
 
@@ -2531,13 +2582,49 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         // Entry-copy conditions belong to the replacement occurrence. Turning
         // them into a layer-6 self-grant would duplicate that occurrence when
         // true, while the cached outer copy specification also remains visible.
-        if self.enter_as_copy_spec.is_some() && matches!(&self.model.payload, ironsmith_core::StaticAbilityPayload::Conditional {..}) { return Vec::new(); }
+        if self.enter_as_copy_spec.is_some()
+            && matches!(
+                &self.model.payload,
+                ironsmith_core::StaticAbilityPayload::Conditional { .. }
+            )
+        {
+            return Vec::new();
+        }
         self.leaf_static_ability()
             .map(|ability| ability.generate_effects(source, controller, game))
             .unwrap_or_default()
     }
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        if let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } =
+            &self.model.payload
+        {
+            let mut inner = ability.as_ref();
+            while let ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } =
+                &inner.payload
+            {
+                inner = ability;
+            }
+            if matches!(
+                &inner.payload,
+                ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                    restriction: crate::effect::Restriction::Block(_),
+                    ..
+                }
+            ) {
+                // Blocking conditions bind each prospective attacking player,
+                // rather than a single global combat participant.
+                if let Some(leaf) = self.leaf_static_ability() {
+                    leaf.apply_restrictions(game, source, controller);
+                }
+                return;
+            }
+            if super::continuous::static_condition_is_active(condition, game, source, controller) {
+                StaticAbility::from_model(ability.as_ref().clone())
+                    .apply_restrictions(game, source, controller);
+            }
+            return;
+        }
         if let Some(ability) = self.leaf_static_ability() {
             ability.apply_restrictions(game, source, controller);
         }
@@ -2633,6 +2720,29 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        // Native restrictions own contextual predicates, including the
+        // opposing attacker. Evaluating them in a source-only frame first
+        // discards a valid conditional block restriction before pair checks.
+        if self.id() == StaticAbilityId::RuleRestriction
+            && let Some(ability) = self.leaf_static_ability()
+        {
+            return ability.is_active(game, source);
+        }
+        if let ironsmith_core::StaticAbilityPayload::Conditional { condition, .. } =
+            &self.model.payload
+        {
+            let Some(object) = game.object(source) else {
+                return false;
+            };
+            if !super::continuous::static_condition_is_active(
+                condition,
+                game,
+                source,
+                game.controller_of(object),
+            ) {
+                return false;
+            }
+        }
         if let Some(reduction) = &self.activated_ability_cost_reduction {
             return reduction.is_active(game, source);
         }
@@ -2723,8 +2833,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
-    fn additional_blockable_attackers_for_source(&self, game: &GameState, source: ObjectId) -> Option<usize> {
-        self.leaf_static_ability().and_then(|ability| ability.additional_blockable_attackers_for_source(game, source))
+    fn additional_blockable_attackers_for_source(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+    ) -> Option<usize> {
+        self.leaf_static_ability()
+            .and_then(|ability| ability.additional_blockable_attackers_for_source(game, source))
             .or_else(|| self.additional_blockable_attackers())
     }
 
@@ -2735,6 +2850,16 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             }
             _ => None,
         }
+    }
+
+    fn cant_be_blocked_by_power_or_less(&self) -> Option<i32> {
+        self.leaf_static_ability()?
+            .blocked_by_power_or_less_threshold()
+    }
+
+    fn cant_be_blocked_by_power_or_greater(&self) -> Option<i32> {
+        self.leaf_static_ability()?
+            .blocked_by_power_or_greater_threshold()
     }
 
     fn can_block_as_though_reach_subtype(&self) -> Option<crate::types::Subtype> {

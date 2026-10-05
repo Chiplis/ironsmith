@@ -201,7 +201,9 @@ fn legacy_program_boundary_reports_failure_without_partial_consequences() {
     let mut ctx = ExecutionContext::new_default(source, alice);
     assert!(matches!(
         execute_resolution_program(&mut game, &mut ctx, alice, source, &program, None, &[]),
-        Err(GameLoopError::ResolutionFailed(_))
+        Err(GameLoopError::ExecutionFailed(
+            crate::effects::ExecutionError::UnresolvableValue(_)
+        ))
     ));
     assert_eq!(game.player(alice).unwrap().life, 20);
     assert!(

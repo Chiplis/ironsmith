@@ -167,8 +167,17 @@ fn result_memories_share_characteristic(
                 >= required_count
         }),
         crate::ObjectCharacteristic::Name => memories.iter().any(|candidate| {
-            candidate.name.split(" // ").filter(|name| !crate::filter::name_is_nameless(name)).any(|name|
-                memories.iter().filter(|memory| crate::filter::names_match(name, &memory.name)).count() >= required_count)
+            candidate
+                .name
+                .split(" // ")
+                .filter(|name| !crate::filter::name_is_nameless(name))
+                .any(|name| {
+                    memories
+                        .iter()
+                        .filter(|memory| crate::filter::names_match(name, &memory.name))
+                        .count()
+                        >= required_count
+                })
         }),
     }
 }
@@ -209,25 +218,74 @@ pub(super) fn predicate_matches_with_context(
             ctx,
         );
     }
+    if surface.action == crate::effect::PriorEffectAction::Died {
+        let filter_ctx = ctx.filter_context(game);
+        let matching = outcome.affected_object_memory().unwrap_or_default().iter()
+            .filter(|memory| memory.card_types.contains(&crate::types::CardType::Creature)
+                && surface.filter.matches_snapshot(&memory.to_snapshot(game), &filter_ctx, game)
+                && (outcome.execution_facts.iter().any(|fact|
+                                matches!(fact, crate::effect::ExecutionFact::ObjectsDied(ids) if ids.contains(&memory.object_id)))
+                            || outcome.events_of_type::<crate::events::ZoneChangeEvent>().any(|event|
+                    event.from == crate::zone::Zone::Battlefield
+                        && event.to == crate::zone::Zone::Graveyard
+                        && event.objects.contains(&memory.object_id))))
+            .collect::<Vec<_>>();
+        if matching.len() < surface.required_count.unwrap_or(1) as usize {
+            return false;
+        }
+        return surface.shared_characteristic.is_none_or(|characteristic| {
+            result_memories_share_characteristic(
+                &matching,
+                surface.required_count.unwrap_or(2) as usize,
+                characteristic,
+            )
+        });
+    }
     if surface.action == crate::effect::PriorEffectAction::PutIntoHand {
         let player = match surface.actor {
             crate::effect::PriorEffectResultActor::You => Some(ctx.controller),
-            crate::effect::PriorEffectResultActor::ThatPlayer => match ctx.iteration.iterated_player {
-                Some(player) => Some(player),
-                None => return false,
-            },
+            crate::effect::PriorEffectResultActor::ThatPlayer => {
+                match ctx.iteration.iterated_player {
+                    Some(player) => Some(player),
+                    None => return false,
+                }
+            }
             crate::effect::PriorEffectResultActor::Passive => None,
             crate::effect::PriorEffectResultActor::It => return false,
         };
         let filter_ctx = ctx.filter_context(game);
-        let cards = outcome.instruction_result().execution_facts.iter().filter_map(|fact| {
-            let ExecutionFact::CardsPutIntoHand { player: recipient, cards } = fact else { return None; };
-            player.is_none_or(|player| player == *recipient).then_some(cards)
-        }).flatten().filter(|card| surface.filter.matches_snapshot(
-            &card.to_snapshot(game), &filter_ctx, game)).collect::<Vec<_>>();
-        if cards.len() < surface.required_count.unwrap_or(1) as usize { return false; }
+        let cards = outcome
+            .instruction_result()
+            .execution_facts
+            .iter()
+            .filter_map(|fact| {
+                let ExecutionFact::CardsPutIntoHand {
+                    player: recipient,
+                    cards,
+                } = fact
+                else {
+                    return None;
+                };
+                player
+                    .is_none_or(|player| player == *recipient)
+                    .then_some(cards)
+            })
+            .flatten()
+            .filter(|card| {
+                surface
+                    .filter
+                    .matches_snapshot(&card.to_snapshot(game), &filter_ctx, game)
+            })
+            .collect::<Vec<_>>();
+        if cards.len() < surface.required_count.unwrap_or(1) as usize {
+            return false;
+        }
         return surface.shared_characteristic.is_none_or(|characteristic| {
-            result_memories_share_characteristic(&cards, surface.required_count.unwrap_or(2) as usize, characteristic)
+            result_memories_share_characteristic(
+                &cards,
+                surface.required_count.unwrap_or(2) as usize,
+                characteristic,
+            )
         });
     }
     if surface.action == crate::effect::PriorEffectAction::Drawn
@@ -327,128 +385,162 @@ pub(crate) struct PreparedIfBranch {
 }
 
 /// Freeze contextual result predicates and participant partitions once.
-pub(crate) fn prepare_if_branches(effect: &IfEffect, game: &GameState, ctx: &ExecutionContext) -> Vec<PreparedIfBranch> {
-        let outcome = ctx
-            .get_outcome(effect.condition)
-            .cloned()
-            .unwrap_or_else(EffectOutcome::impossible);
-        let outcome = outcome.instruction_result();
+pub(crate) fn prepare_if_branches(
+    effect: &IfEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Vec<PreparedIfBranch> {
+    let outcome = ctx
+        .get_outcome(effect.condition)
+        .cloned()
+        .unwrap_or_else(EffectOutcome::impossible);
+    let outcome = outcome.instruction_result();
 
-        if matches!(
-            effect.predicate,
-            EffectPredicate::Happened
-                | EffectPredicate::DidNotHappen
-                | EffectPredicate::SearchedLibrary
-        ) && (effect.per_player_result
-            || effect_list_mentions_iterated_player(&effect.then)
-            || effect_list_mentions_iterated_player(&effect.else_))
-            && let Some(player_counts) =
-                outcome.execution_facts.iter().find_map(|fact| match fact {
-                    ExecutionFact::PlayerCounts(counts) => Some(counts.clone()),
-                    _ => None,
-                })
-        {
-            let mut branches = Vec::new();
-            let searched_players = outcome
-                .events
-                .iter()
-                .filter_map(|event| {
-                    event
-                        .downcast::<crate::events::SearchLibraryEvent>()
-                        .map(|event| event.player)
-                })
-                .collect::<Vec<_>>();
-            // Inside a player loop the condition belongs to the iterated
-            // player alone ("each opponent who didn't ..."): evaluate only
-            // that player's result, treating a player who took no part in
-            // the earlier action as one for whom it did not happen.
-            let player_counts = match ctx.iteration.iterated_player {
-                Some(iterated) => vec![(
-                    iterated,
-                    player_counts
-                        .iter()
-                        .find(|(player, _)| *player == iterated)
-                        .map(|(_, count)| *count)
-                        .unwrap_or(0),
-                )],
-                None => player_counts,
-            };
-            for (player_id, count) in player_counts {
-                let predicate_matches = match effect.predicate {
-                    EffectPredicate::Happened => count > 0,
-                    EffectPredicate::DidNotHappen => count <= 0,
-                    EffectPredicate::SearchedLibrary => searched_players.contains(&player_id),
-                    _ => false,
-                };
-                let branch = if predicate_matches {
-                    &effect.then
-                } else {
-                    &effect.else_
-                };
-                branches.push(PreparedIfBranch { player: Some(player_id), effects: branch.clone(), repetitions: 1 });
-            }
-            return branches;
-        }
-
-        let match_repetitions = if let EffectPredicate::Value(cmp) = &effect.predicate {
-            let chosen_numbers = outcome
-                .execution_facts
-                .iter()
-                .filter_map(|fact| match fact {
-                    ExecutionFact::ChosenNumber(n) => Some(*n as i32),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            if chosen_numbers.is_empty() {
-                None
-            } else {
-                let matches = chosen_numbers
-                    .into_iter()
-                    .filter(|value| cmp.evaluate(*value))
-                    .count();
-                Some(matches)
-            }
-        } else {
-            None
+    if matches!(
+        effect.predicate,
+        EffectPredicate::Happened
+            | EffectPredicate::DidNotHappen
+            | EffectPredicate::SearchedLibrary
+    ) && (effect.per_player_result
+        || effect_list_mentions_iterated_player(&effect.then)
+        || effect_list_mentions_iterated_player(&effect.else_))
+        && let Some(player_counts) = outcome.execution_facts.iter().find_map(|fact| match fact {
+            ExecutionFact::PlayerCounts(counts) => Some(counts.clone()),
+            _ => None,
+        })
+    {
+        let mut branches = Vec::new();
+        let searched_players = outcome
+            .events
+            .iter()
+            .filter_map(|event| {
+                event
+                    .downcast::<crate::events::SearchLibraryEvent>()
+                    .map(|event| event.player)
+            })
+            .collect::<Vec<_>>();
+        // Inside a player loop the condition belongs to the iterated
+        // player alone ("each opponent who didn't ..."): evaluate only
+        // that player's result, treating a player who took no part in
+        // the earlier action as one for whom it did not happen.
+        let player_counts = match ctx.iteration.iterated_player {
+            Some(iterated) => vec![(
+                iterated,
+                player_counts
+                    .iter()
+                    .find(|(player, _)| *player == iterated)
+                    .map(|(_, count)| *count)
+                    .unwrap_or(0),
+            )],
+            None => player_counts,
         };
-
-        let (branch, repetitions) = if let Some(matches) = match_repetitions {
-            if matches > 0 {
-                (&effect.then, matches)
+        for (player_id, count) in player_counts {
+            let predicate_matches = match effect.predicate {
+                EffectPredicate::Happened => count > 0,
+                EffectPredicate::DidNotHappen => count <= 0,
+                EffectPredicate::SearchedLibrary => searched_players.contains(&player_id),
+                _ => false,
+            };
+            let branch = if predicate_matches {
+                &effect.then
             } else {
-                (&effect.else_, 1)
-            }
-        } else if predicate_matches_with_context(&effect.predicate, outcome, game, ctx) {
-            (&effect.then, 1)
+                &effect.else_
+            };
+            branches.push(PreparedIfBranch {
+                player: Some(player_id),
+                effects: branch.clone(),
+                repetitions: 1,
+            });
+        }
+        return branches;
+    }
+
+    let match_repetitions = if let EffectPredicate::Value(cmp) = &effect.predicate {
+        let chosen_numbers = outcome
+            .execution_facts
+            .iter()
+            .filter_map(|fact| match fact {
+                ExecutionFact::ChosenNumber(n) => Some(*n as i32),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if chosen_numbers.is_empty() {
+            None
+        } else {
+            let matches = chosen_numbers
+                .into_iter()
+                .filter(|value| cmp.evaluate(*value))
+                .count();
+            Some(matches)
+        }
+    } else {
+        None
+    };
+
+    let (branch, repetitions) = if let Some(matches) = match_repetitions {
+        if matches > 0 {
+            (&effect.then, matches)
         } else {
             (&effect.else_, 1)
-        };
+        }
+    } else if predicate_matches_with_context(&effect.predicate, outcome, game, ctx) {
+        (&effect.then, 1)
+    } else {
+        (&effect.else_, 1)
+    };
 
-        if branch.is_empty() { Vec::new() }
-        else { vec![PreparedIfBranch { player: None, effects: branch.clone(), repetitions }] }
-
+    if branch.is_empty() {
+        Vec::new()
+    } else {
+        vec![PreparedIfBranch {
+            player: None,
+            effects: branch.clone(),
+            repetitions,
+        }]
+    }
 }
 
-pub(crate) fn execute_if_branches(game: &mut GameState, ctx: &mut ExecutionContext, branches: &[PreparedIfBranch]) -> Result<EffectOutcome, ExecutionError> {
+pub(crate) fn execute_if_branches(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    branches: &[PreparedIfBranch],
+) -> Result<EffectOutcome, ExecutionError> {
     let mut outcomes = Vec::new();
     for branch in branches {
         let previous = ctx.iteration.iterated_player;
-        if let Some(player) = branch.player { ctx.iteration.iterated_player = Some(player); }
+        if let Some(player) = branch.player {
+            ctx.iteration.iterated_player = Some(player);
+        }
         let result = (|| {
             for _ in 0..branch.repetitions {
                 for effect in &branch.effects {
-                    crate::effects::match_triggers_at_instruction_boundary(game, ctx, Some(effect), outcomes.iter().flat_map(|outcome: &EffectOutcome| outcome.events.iter()));
+                    crate::effects::match_triggers_at_instruction_boundary(
+                        game,
+                        ctx,
+                        Some(effect),
+                        outcomes
+                            .iter()
+                            .flat_map(|outcome: &EffectOutcome| outcome.events.iter()),
+                    );
                     outcomes.push(execute_effect(game, effect, ctx)?);
-                    if ctx.decision_maker.awaiting_choice() { return Ok::<_, ExecutionError>(()); }
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok::<_, ExecutionError>(());
+                    }
                 }
             }
             Ok(())
         })();
         ctx.iteration.iterated_player = previous;
         result?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
     }
-    if outcomes.is_empty() { Ok(EffectOutcome::count(0)) } else { Ok(EffectOutcome::aggregate(outcomes)) }
+    if outcomes.is_empty() {
+        Ok(EffectOutcome::count(0))
+    } else {
+        Ok(EffectOutcome::aggregate(outcomes))
+    }
 }
 
 impl EffectExecutor for IfEffect {
@@ -940,13 +1032,25 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
-        let effect = IfEffect::if_then(EffectId(0), EffectPredicate::Happened, vec![Effect::gain_life(5)]);
-        let outcome = effect.execute(&mut game, &mut ctx).expect("a skipped antecedent did not happen");
+        let effect = IfEffect::if_then(
+            EffectId(0),
+            EffectPredicate::Happened,
+            vec![Effect::gain_life(5)],
+        );
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("a skipped antecedent did not happen");
         assert_eq!(game.player(alice).unwrap().life, 20);
         assert!(outcome.events.is_empty());
         assert!(ctx.get_outcome(EffectId(0)).is_none());
-        let negative = IfEffect::if_then(EffectId(0), EffectPredicate::DidNotHappen, vec![Effect::gain_life(2)]);
-        negative.execute(&mut game, &mut ctx).expect("did-not-happen branch handles a skipped antecedent");
+        let negative = IfEffect::if_then(
+            EffectId(0),
+            EffectPredicate::DidNotHappen,
+            vec![Effect::gain_life(2)],
+        );
+        negative
+            .execute(&mut game, &mut ctx)
+            .expect("did-not-happen branch handles a skipped antecedent");
         assert_eq!(game.player(alice).unwrap().life, 22);
     }
 
@@ -994,13 +1098,28 @@ mod replacement_original_if_adapter_contract_tests {
     #[test]
     fn auxiliary_player_counts_do_not_create_original_per_player_followups() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = crate::ids::PlayerId::from_index(0); let bob = crate::ids::PlayerId::from_index(1);
-        let source = game.new_object_id(); let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.store_outcome(EffectId(921), EffectOutcome::aggregate_replacement_outcomes(
-            EffectOutcome::count(0), [EffectOutcome::count(1).with_player_counts(vec![(bob,1)])]));
-        IfEffect::if_then(EffectId(921), EffectPredicate::Happened, vec![Effect::lose_life_player(
-            crate::effect::Value::Fixed(1), crate::target::PlayerFilter::IteratedPlayer)])
-            .with_per_player_result(true).execute(&mut game, &mut ctx).unwrap();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let bob = crate::ids::PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.store_outcome(
+            EffectId(921),
+            EffectOutcome::aggregate_replacement_outcomes(
+                EffectOutcome::count(0),
+                [EffectOutcome::count(1).with_player_counts(vec![(bob, 1)])],
+            ),
+        );
+        IfEffect::if_then(
+            EffectId(921),
+            EffectPredicate::Happened,
+            vec![Effect::lose_life_player(
+                crate::effect::Value::Fixed(1),
+                crate::target::PlayerFilter::IteratedPlayer,
+            )],
+        )
+        .with_per_player_result(true)
+        .execute(&mut game, &mut ctx)
+        .unwrap();
         assert_eq!(game.player(alice).unwrap().life, 20);
         assert_eq!(game.player(bob).unwrap().life, 20);
     }
@@ -1008,25 +1127,55 @@ mod replacement_original_if_adapter_contract_tests {
     fn auxiliary_chosen_number_does_not_repeat_original_value_followup() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = crate::ids::PlayerId::from_index(0);
-        let source = game.new_object_id(); let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.store_outcome(EffectId(922), EffectOutcome::aggregate_replacement_outcomes(
-            EffectOutcome::count(0), [EffectOutcome::count(1).with_execution_fact(ExecutionFact::ChosenNumber(1))]));
-        IfEffect::if_then(EffectId(922), EffectPredicate::Value(crate::effect::Comparison::Equal(1)),
-            vec![Effect::gain_life(5)]).execute(&mut game, &mut ctx).unwrap();
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.store_outcome(
+            EffectId(922),
+            EffectOutcome::aggregate_replacement_outcomes(
+                EffectOutcome::count(0),
+                [EffectOutcome::count(1).with_execution_fact(ExecutionFact::ChosenNumber(1))],
+            ),
+        );
+        IfEffect::if_then(
+            EffectId(922),
+            EffectPredicate::Value(crate::effect::Comparison::Equal(1)),
+            vec![Effect::gain_life(5)],
+        )
+        .execute(&mut game, &mut ctx)
+        .unwrap();
         assert_eq!(game.player(alice).unwrap().life, 20);
     }
     #[test]
     fn auxiliary_search_event_does_not_satisfy_original_player_search_followup() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = crate::ids::PlayerId::from_index(0);
-        let source = game.new_object_id(); let mut ctx = ExecutionContext::new_default(source, alice);
-        let auxiliary = EffectOutcome::count(0).with_event(crate::events::RawEvent::new_with_provenance(
-            crate::events::SearchLibraryEvent::new(alice, Some(alice)), crate::provenance::ProvNodeId::default()));
-        ctx.store_outcome(EffectId(923), EffectOutcome::aggregate_replacement_outcomes(
-            EffectOutcome::count(0).with_player_counts(vec![(alice,0)]), [auxiliary]));
-        IfEffect::if_then(EffectId(923), EffectPredicate::SearchedLibrary,
-            vec![Effect::gain_life(5)]).with_per_player_result(true).execute(&mut game, &mut ctx).unwrap();
-        assert_eq!(ctx.get_outcome(EffectId(923)).unwrap().events.len(), 1, "actual auxiliary search remains observable");
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let auxiliary =
+            EffectOutcome::count(0).with_event(crate::events::RawEvent::new_with_provenance(
+                crate::events::SearchLibraryEvent::new(alice, Some(alice)),
+                crate::provenance::ProvNodeId::default(),
+            ));
+        ctx.store_outcome(
+            EffectId(923),
+            EffectOutcome::aggregate_replacement_outcomes(
+                EffectOutcome::count(0).with_player_counts(vec![(alice, 0)]),
+                [auxiliary],
+            ),
+        );
+        IfEffect::if_then(
+            EffectId(923),
+            EffectPredicate::SearchedLibrary,
+            vec![Effect::gain_life(5)],
+        )
+        .with_per_player_result(true)
+        .execute(&mut game, &mut ctx)
+        .unwrap();
+        assert_eq!(
+            ctx.get_outcome(EffectId(923)).unwrap().events.len(),
+            1,
+            "actual auxiliary search remains observable"
+        );
         assert_eq!(game.player(alice).unwrap().life, 20);
     }
     #[test]
@@ -1035,9 +1184,18 @@ mod replacement_original_if_adapter_contract_tests {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let mut memory = |left: &str, right: Option<&str>| {
             let id = game.new_object_id();
-            let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(id, id.into(), PlayerId(0), PlayerId(0), Zone::Hand);
+            let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
+                id,
+                id.into(),
+                PlayerId(0),
+                PlayerId(0),
+                Zone::Hand,
+            );
             snapshot.name = left.into();
-            if let Some(right) = right { snapshot.linked_face_layout = crate::card::LinkedFaceLayout::Split; snapshot.other_face_name = Some(right.into()); }
+            if let Some(right) = right {
+                snapshot.linked_face_layout = crate::card::LinkedFaceLayout::Split;
+                snapshot.other_face_name = Some(right.into());
+            }
             crate::effect::OutcomeObjectMemory::from_snapshot(&snapshot)
         };
         let ab = memory("Alpha", Some("Beta"));
@@ -1045,9 +1203,20 @@ mod replacement_original_if_adapter_contract_tests {
         let ca = memory("Gamma", Some("Alpha"));
         let beta = memory("Beta", None);
         let nameless = memory("", None);
-        assert!(result_memories_share_characteristic(&[&ab, &bc, &beta], 3, ObjectCharacteristic::Name));
-        assert!(!result_memories_share_characteristic(&[&ab, &bc, &ca], 3, ObjectCharacteristic::Name));
-        assert!(!result_memories_share_characteristic(&[&nameless], 1, ObjectCharacteristic::Name));
+        assert!(result_memories_share_characteristic(
+            &[&ab, &bc, &beta],
+            3,
+            ObjectCharacteristic::Name
+        ));
+        assert!(!result_memories_share_characteristic(
+            &[&ab, &bc, &ca],
+            3,
+            ObjectCharacteristic::Name
+        ));
+        assert!(!result_memories_share_characteristic(
+            &[&nameless],
+            1,
+            ObjectCharacteristic::Name
+        ));
     }
-
 }

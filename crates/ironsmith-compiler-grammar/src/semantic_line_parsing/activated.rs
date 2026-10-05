@@ -117,7 +117,9 @@ fn activation_cost_defines_x_for_mana_ability(
         }) => cost.has_x(),
         crate::model::CompilerCost::Life(amount) => value_uses_x(amount),
         crate::model::CompilerCost::Sacrifice { count, .. }
-        | crate::model::CompilerCost::ExileChosen { count, .. } => count.dynamic_x,
+        | crate::model::CompilerCost::ExileChosen { count, .. }
+        | crate::model::CompilerCost::TapChosen { count, .. }
+        | crate::model::CompilerCost::UntapChosen { count, .. } => count.dynamic_x,
         crate::model::CompilerCost::RemoveCounters { dynamic, .. } => *dynamic,
         _ => false,
     })
@@ -389,13 +391,17 @@ fn merge_copy_retarget_sentences(sentences: Vec<Vec<OwnedLexToken>>) -> Vec<Vec<
     for sentence in sentences {
         let words = crate::lexer::token_word_refs(&sentence);
         let is_retarget = words.as_slice()
-            == ["you", "may", "choose", "new", "targets", "for", "the", "copy"];
+            == [
+                "you", "may", "choose", "new", "targets", "for", "the", "copy",
+            ];
         if is_retarget
             && let Some(previous) = merged.last_mut()
             && {
                 let previous_words = crate::lexer::token_word_refs(previous);
                 previous_words.first() == Some(&"when")
-                    && previous_words.windows(2).any(|pair| pair == ["this", "mana"] || pair == ["that", "mana"])
+                    && previous_words
+                        .windows(2)
+                        .any(|pair| pair == ["this", "mana"] || pair == ["that", "mana"])
                     && previous_words.contains(&"copy")
             }
         {
@@ -425,7 +431,9 @@ fn finalize_rewrite_activated_effect_sentences(
         let sentence = render_token_slice(&tokens).trim().to_string();
         let restriction_kind = activated_grammar::classify_activated_restriction_sentence(&tokens);
         if let Some(rule) = crate::consumer_mana::x_spending_rule(&tokens) {
-            if !x_spending_rules.contains(&rule) { x_spending_rules.push(rule); }
+            if !x_spending_rules.contains(&rule) {
+                x_spending_rules.push(rule);
+            }
         } else if restriction_kind == Some(ActivatedRestrictionSentenceKind::ManaSource) {
             restrictions
                 .activation
@@ -445,7 +453,9 @@ fn finalize_rewrite_activated_effect_sentences(
         } else if is_standalone_x_definition_sentence(&tokens) {
             continue;
         } else if is_any_player_may_activate_sentence_lexed(&tokens)
-            || crate::grammar::abilities::parse_activate_only_timing_lexed(&tokens) == Some(ActivationTiming::AnyTimeByEnchantedCreatureController) {
+            || crate::grammar::abilities::parse_activate_only_timing_lexed(&tokens)
+                == Some(ActivationTiming::AnyTimeByEnchantedCreatureController)
+        {
             restrictions
                 .activation
                 .push(parse_activation_restriction_surface_tokens(&tokens));

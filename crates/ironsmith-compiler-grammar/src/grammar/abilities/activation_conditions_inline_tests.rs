@@ -130,7 +130,11 @@ fn activation_condition_composes_repeated_or_if_with_typed_source_and_basic_land
         ))
     );
 
-    let PredicateAst::YouControl(basic_land_filter) = right.as_ref() else {
+    let PredicateAst::Player(PlayerPredicateAst::PlayerControls {
+        player: crate::cards::builders::PlayerAst::You,
+        filter: basic_land_filter,
+    }) = right.as_ref()
+    else {
         panic!("expected basic-land control right branch, got {right:?}");
     };
     assert!(
@@ -156,17 +160,30 @@ fn activation_condition_or_if_composition_reuses_existing_branch_parsers() {
     assert!(matches!(
         parse_activation_condition_lexed(&lex("Activate only if you control a Plains or a Swamp.")),
         Some(PredicateAst::Player(
-            PlayerPredicateAst::PlayerHasAtLeast { .. }
+            PlayerPredicateAst::PlayerHasAtLeast { .. } | PlayerPredicateAst::PlayerControls { .. }
         )) | Some(PredicateAst::Or(_, _))
     ));
 }
 
 #[test]
 fn trailing_lifetime_activation_limit_keeps_the_source_color_gate() {
-    let predicate = parse_activation_condition_lexed(&lex("Activate only if this creature is blue and only once.")).expect("complete conjunction");
-    let PredicateAst::And(condition, limit) = predicate else { panic!("{predicate:?}") };
+    let predicate = parse_activation_condition_lexed(&lex(
+        "Activate only if this creature is blue and only once.",
+    ))
+    .expect("complete conjunction");
+    let PredicateAst::And(condition, limit) = predicate else {
+        panic!("{predicate:?}")
+    };
     assert_eq!(*limit, PredicateAst::MaxActivationsPerObject(1));
     assert_ne!(*condition, PredicateAst::MaxActivationsPerObject(1));
-    assert!(parse_activation_condition_lexed(&lex("Activate only if this creature doesn't have defender.")).is_some());
-    assert!(parse_activation_condition_lexed(&lex("Activate only if nonsense and only once.")).is_none());
+    assert!(
+        parse_activation_condition_lexed(&lex(
+            "Activate only if this creature doesn't have defender."
+        ))
+        .is_some()
+    );
+    assert!(
+        parse_activation_condition_lexed(&lex("Activate only if nonsense and only once."))
+            .is_none()
+    );
 }

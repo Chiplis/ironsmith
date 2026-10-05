@@ -26,28 +26,74 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             ExecutionError::UnresolvableValue("missing triggering event".to_string())
         })?;
 
+        let historical = event
+            .downcast::<crate::events::zones::ZoneChangeEvent>()
+            .filter(|event| {
+                event.from == crate::zone::Zone::Battlefield
+                    && event.to != crate::zone::Zone::Battlefield
+            })
+            .map(|event| {
+                ctx.get_tagged_all(ironsmith_core::ZONE_CHANGE_GROUP_TAG)
+                    .filter(|group| !group.is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| event.snapshots().to_vec())
+            });
+        if let Some(historical) = historical {
+            ctx.set_tagged_objects(
+                format!("__pre_move_history__{}", self.tag.as_str()),
+                historical,
+            );
+        }
+        let event = ctx
+            .triggering_event
+            .as_ref()
+            .expect("triggering event checked above");
+
         // A typed attachment trigger has two participants. Its ordinary
         // demonstrative is the recipient, never the Aura/Equipment itself.
-        if matches!(event.kind(), crate::events::EventKind::ObjectBecameAttached | crate::events::EventKind::ObjectBecameUnattached)
-            && let Some(recipient) = ctx.get_tagged_all(ironsmith_core::tag::TRIGGER_ATTACHMENT_RECIPIENT_TAG).cloned() {
+        if matches!(
+            event.kind(),
+            crate::events::EventKind::ObjectBecameAttached
+                | crate::events::EventKind::ObjectBecameUnattached
+        ) && let Some(recipient) = ctx
+            .get_tagged_all(ironsmith_core::tag::TRIGGER_ATTACHMENT_RECIPIENT_TAG)
+            .cloned()
+        {
             let count = recipient.len() as i32;
             set_triggering_object_tags(ctx, self.tag.as_str(), recipient);
             return Ok(EffectOutcome::count(count));
         }
 
         if let Some(discard) = event.downcast::<crate::events::other::CardDiscardedEvent>() {
-            let origins = ctx.get_tagged_all(ironsmith_core::ZONE_CHANGE_GROUP_TAG)
-                .filter(|group| !group.is_empty()).cloned()
+            let origins = ctx
+                .get_tagged_all(ironsmith_core::ZONE_CHANGE_GROUP_TAG)
+                .filter(|group| !group.is_empty())
+                .cloned()
                 .unwrap_or_else(|| discard.snapshot.iter().cloned().collect());
-            let tagged = origins.into_iter().map(|origin| {
-                discard.destination(origin.object_id)
-                    .and_then(|receipt| receipt.object.and_then(|id| game.object(id))
-                        .filter(|object| object.zone == receipt.zone && object.stable_id == origin.stable_id))
-                    .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
-                    // Keep historical characteristics if the arrival has gone;
-                    // movement helpers cannot substitute a later incarnation.
-                    .unwrap_or(origin)
-            }).collect::<Vec<_>>();
+            let tagged = origins
+                .into_iter()
+                .map(|origin| {
+                    discard
+                        .destination(origin.object_id)
+                        .and_then(|receipt| {
+                            receipt
+                                .object
+                                .and_then(|id| game.object(id))
+                                .filter(|object| {
+                                    object.zone == receipt.zone
+                                        && object.stable_id == origin.stable_id
+                                })
+                        })
+                        .map(|object| {
+                            ObjectSnapshot::from_object_with_calculated_characteristics(
+                                object, game,
+                            )
+                        })
+                        // Keep historical characteristics if the arrival has gone;
+                        // movement helpers cannot substitute a later incarnation.
+                        .unwrap_or(origin)
+                })
+                .collect::<Vec<_>>();
             let count = tagged.len() as i32;
             set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
             return Ok(EffectOutcome::count(count));
@@ -143,17 +189,27 @@ impl EffectExecutor for TagTriggeringObjectEffect {
                 return Ok(EffectOutcome::count(count));
             }
 
-            let tagged = game
-                .find_object_by_stable_id(snapshot.stable_id)
-                .and_then(|id| game.object(id))
-                .filter(|obj| obj.zone == zone_change.to)
-                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
-            if let Some(tagged) = tagged {
-                set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
-                return Ok(EffectOutcome::count(1));
-            }
-            set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
-            return Ok(EffectOutcome::count(0));
+            // The event's objects are its recorded arrivals when no explicit
+            // result list exists. A stable-id lookup would resurrect a later
+            // incarnation that left and re-entered the same destination zone.
+            let tagged: Vec<_> = zone_change
+                .destination_objects()
+                .iter()
+                .filter_map(|&id| {
+                    game.object(id)
+                        .filter(|object| object.zone == zone_change.to)
+                        .map(|object| {
+                            ObjectSnapshot::from_object_with_calculated_characteristics(
+                                object, game,
+                            )
+                        })
+                        .or_else(|| zone_change.destination_snapshot(id).cloned())
+                        .or_else(|| latest_zone_lki_snapshot(game, id, zone_change.to))
+                })
+                .collect();
+            let count = tagged.len() as i32;
+            set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
+            return Ok(EffectOutcome::count(count));
         }
 
         // CR 603.2c: "whenever one or more creatures attack you, those
@@ -165,9 +221,16 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             .is_some()
         {
             Some(ironsmith_core::ATTACKING_GROUP_TAG)
-        } else if matches!(event.kind(), crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped) {
+        } else if matches!(
+            event.kind(),
+            crate::events::EventKind::PermanentTapped | crate::events::EventKind::PermanentUntapped
+        ) {
             Some(ironsmith_core::TAP_STATE_GROUP_TAG)
-        } else if matches!(event.kind(), crate::events::EventKind::PermanentPhasedIn | crate::events::EventKind::PermanentPhasedOut) {
+        } else if matches!(
+            event.kind(),
+            crate::events::EventKind::PermanentPhasedIn
+                | crate::events::EventKind::PermanentPhasedOut
+        ) {
             Some(ironsmith_core::tag::PHASING_GROUP_TAG)
         } else if event
             .downcast::<crate::events::other::CardDiscardedEvent>()
@@ -275,7 +338,8 @@ fn group_member_tag(
         }
         return Some(tagged);
     }
-    destination.map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+    destination
+        .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
 }
 
 fn latest_zone_lki_snapshot(
@@ -702,7 +766,7 @@ mod tests {
                     tapped: false,
                     attacking: false,
                     goaded: Some(false),
-            ring_bearer: None,
+                    ring_bearer: None,
                     flipped: false,
                     face_down: false,
                     transform_count: 0,

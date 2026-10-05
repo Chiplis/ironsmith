@@ -361,7 +361,11 @@ pub fn parse_stack_retarget_filter(
 
 pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     const PRIMITIVES: &[ClausePrimitive] = &[
-        specific_primitive!("bounded-number-choice", &["choose"], super::bounded_number_choice::parse),
+        specific_primitive!(
+            "bounded-number-choice",
+            &["choose"],
+            super::bounded_number_choice::parse
+        ),
         specific_primitive!(
             "choose-card-name-clause",
             &["choose"],
@@ -517,7 +521,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "must-be-blocked-clause",
-            &["it", "they", "target"],
+            &["it", "that", "they", "target"],
             parse_must_be_blocked_if_able_clause,
         ),
         specific_primitive!(
@@ -881,6 +885,10 @@ pub fn parse_must_be_blocked_if_able_clause(
     if shape.kind != clause_shapes::CombatRequirementKind::MustBeBlocked {
         return Ok(None);
     }
+    let until = match shape.duration {
+        clause_shapes::CombatRequirementDuration::Turn => Until::EndOfTurn,
+        clause_shapes::CombatRequirementDuration::Combat => Until::EndOfCombat,
+    };
     let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
     if subject_clause.is_empty() {
         return Ok(None);
@@ -894,7 +902,7 @@ pub fn parse_must_be_blocked_if_able_clause(
                     crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(
                         crate::tag::CompilerReferenceTag::It.bind(),
                     )),
-                    Until::EndOfTurn,
+                    until,
                     None,
                 ),
             ],
@@ -912,7 +920,7 @@ pub fn parse_must_be_blocked_if_able_clause(
             crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
             )),
-            Until::EndOfTurn,
+            until,
             None,
         )));
     }
@@ -927,7 +935,7 @@ pub fn parse_must_be_blocked_if_able_clause(
 
     Ok(Some(EffectAst::subject_verb_cant(
         crate::effect::Restriction::must_be_blocked(attacker_filter),
-        Until::EndOfTurn,
+        until,
         None,
     )))
 }
@@ -1503,9 +1511,12 @@ pub fn parse_deal_damage_equal_to_power_clause(
     let source_result = if shape.source_is_tagged
         && crate::word_primitives::parse_any_sequence_complete(
             &demonstrative_source_words,
-            &[&["that", "creature"], &["that", "permanent"], &["that", "card"]],
-        )
-    {
+            &[
+                &["that", "creature"],
+                &["that", "permanent"],
+                &["that", "card"],
+            ],
+        ) {
         // "That creature deals damage equal to its power to this creature"
         // (Karplusan Yeti): a typed demonstrative names the latest object
         // antecedent, never a repeat of the previous clause's damage source
@@ -2013,7 +2024,10 @@ mod result_subject_tests {
         );
         assert!(matches!(
             amount.unhinted(),
-            Value::EventValue(crate::effect::EventValueSpec::Amount)
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::ExcessDamage,
+            }
         ));
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             constraint.tag.as_str() == "damaged"

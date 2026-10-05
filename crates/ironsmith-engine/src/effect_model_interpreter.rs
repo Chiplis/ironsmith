@@ -884,8 +884,13 @@ where
     {
         return Ok(converted);
     }
-    if let Some(payload) = M::downcast_ref::<ironsmith_core::CastTaggedEffect<ironsmith_core::Cost<M::Effect>>>(&effect) {
-        return Ok(Effect::new(payload.clone().try_map_cost(|cost| interpret_core_cost_model::<M, H>(cost, hooks))?));
+    if let Some(payload) = M::downcast_ref::<
+        ironsmith_core::CastTaggedEffect<ironsmith_core::Cost<M::Effect>>,
+    >(&effect)
+    {
+        return Ok(Effect::new(payload.clone().try_map_cost(|cost| {
+            interpret_core_cost_model::<M, H>(cost, hooks)
+        })?));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(&effect)
@@ -1476,7 +1481,10 @@ where
             ),
         ));
     }
-    if let Some(payload) = M::downcast_ref::<ironsmith_core::GrantPlayTaggedEffect<ironsmith_core::Cost<M::Effect>>>(&effect) {
+    if let Some(payload) = M::downcast_ref::<
+        ironsmith_core::GrantPlayTaggedEffect<ironsmith_core::Cost<M::Effect>>,
+    >(&effect)
+    {
         let mut grant = crate::effects::GrantPlayTaggedEffect::new(
             payload.tag.clone(),
             payload.player.clone(),
@@ -1494,7 +1502,11 @@ where
             grant = grant.with_filter(filter);
         }
         grant.spell_filter = payload.spell_filter.clone();
-        grant.alternative_cost = payload.alternative_cost.clone().map(|cost| interpret_core_total_cost_model::<M, H>(cost, hooks)).transpose()?;
+        grant.alternative_cost = payload
+            .alternative_cost
+            .clone()
+            .map(|cost| interpret_core_total_cost_model::<M, H>(cost, hooks))
+            .transpose()?;
         if let Some(counter_type) = payload.during_turns_counter_put_on_source {
             grant = grant.during_turns_counter_put_on_source(counter_type);
         }
@@ -1618,11 +1630,14 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::CumulativeUpkeepEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(crate::effects::CumulativeUpkeepEffect::new(
-            payload.player.clone(),
-            convert_effects(payload.payment.iter().cloned(), hooks)?,
-            convert_effects(payload.failure.iter().cloned(), hooks)?,
-        ).with_kind(payload.kind)));
+        return Ok(Effect::new(
+            crate::effects::CumulativeUpkeepEffect::new(
+                payload.player.clone(),
+                convert_effects(payload.payment.iter().cloned(), hooks)?,
+                convert_effects(payload.failure.iter().cloned(), hooks)?,
+            )
+            .with_kind(payload.kind),
+        ));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::ChooseNewTargetsEffect>(&effect)
@@ -1660,7 +1675,10 @@ where
         M::downcast_ref::<ironsmith_core::RegisterDrawReplacementEffect<M::Effect>>(&effect)
     {
         let mut registration = crate::effects::RegisterDrawReplacementEffect::new(
-            payload.player.clone(), convert_effects(payload.replacement_effects.iter().cloned(), hooks)?, payload.mode);
+            payload.player.clone(),
+            convert_effects(payload.replacement_effects.iter().cloned(), hooks)?,
+            payload.mode,
+        );
         registration.player_target = payload.player_target.clone();
         registration.display = payload.display.clone();
         return Ok(Effect::new(registration));
@@ -1696,10 +1714,14 @@ where
     {
         return Ok(converted);
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::RegisterManaSpendPermissionEffect>(&effect) {
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterManaSpendPermissionEffect>(&effect)
+    {
         return Ok(converted);
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::RegisterManaRewriteEffect>(&effect) {
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterManaRewriteEffect>(&effect)
+    {
         return Ok(converted);
     }
     if let Some(converted) =
@@ -2003,7 +2025,11 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipScheduledEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::SkipScheduledEffect { player: payload.player.clone(), kind: payload.kind, count: payload.count }));
+        return Ok(Effect::new(crate::effects::SkipScheduledEffect {
+            player: payload.player.clone(),
+            kind: payload.kind,
+            count: payload.count,
+        }));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipDrawStepEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SkipDrawStepEffect::new(
@@ -2394,6 +2420,13 @@ fn remove_redundant_target_only_effects(effects: Vec<Effect>) -> Vec<Effect> {
             continue;
         };
 
+        // An authored declaration is unconditional even when its consumer
+        // lives inside a conditional branch. It must be announced before the
+        // condition can inspect that target.
+        if target_only.explicit_declaration {
+            out.push(effect.clone());
+            continue;
+        }
         let duplicated_by_later_effect = effects[idx + 1..].iter().any(|later| {
             later
                 .0

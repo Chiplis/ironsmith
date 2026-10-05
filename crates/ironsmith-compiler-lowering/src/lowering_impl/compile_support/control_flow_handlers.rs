@@ -1060,7 +1060,17 @@ pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPr
         | IfResultPredicate::ExplicitDidNot
         | IfResultPredicate::Otherwise => EffectPredicate::DidNotHappen,
         IfResultPredicate::SearchedLibrary => EffectPredicate::SearchedLibrary,
-        IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
+        IfResultPredicate::DiesThisWay => {
+            EffectPredicate::PriorEffectResult(ironsmith_core::PriorEffectResultSurface::new(
+                ironsmith_core::PriorEffectAction::Died,
+                crate::filter::ObjectFilter {
+                    zone: None,
+                    ..crate::filter::ObjectFilter::creature()
+                },
+                ironsmith_core::PriorEffectResultActor::Passive,
+                ironsmith_core::PriorEffectResultQuantifier::One,
+            ))
+        }
         IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
         IfResultPredicate::DealtDamageToPlayer => EffectPredicate::DealtDamageToPlayer,
         IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {

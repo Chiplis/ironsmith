@@ -30,9 +30,8 @@ use super::util::{
 const ORIGINAL_PRINTING_SET_PREFIX: &[&str] =
     &["with", "a", "name", "originally", "printed", "in", "the"];
 const SACRIFICED_AS_IT_ENTERED_SUFFIX: &[&str] = &["sacrificed", "as", "it", "entered"];
-const DRAFTED_NOTED_NAME_QUALIFIER: &[&str] = &[
-    "with", "a", "name", "you", "noted", "for", "cards", "named",
-];
+const DRAFTED_NOTED_NAME_QUALIFIER: &[&str] =
+    &["with", "a", "name", "you", "noted", "for", "cards", "named"];
 
 /// "creatures with a name you noted for cards named Noble Banneret": the
 /// base selector plus the named draft-note card group.
@@ -997,6 +996,22 @@ fn finalize_public_object_filter(
 ) -> ObjectFilter {
     apply_phyrexian_mana_cost_predicate(&mut filter, tokens);
     split_enchanted_or_equipped_disjunction(&mut filter, tokens);
+    let words = parser_token_word_refs(tokens);
+    if words
+        .windows(3)
+        .any(|part| part == ["that", "are", "enchanted"])
+        || words
+            .windows(2)
+            .any(|part| part == ["enchanted", "creatures"])
+    {
+        filter
+            .tagged_constraints
+            .retain(|constraint| constraint.tag.as_str() != "enchanted");
+        let mut aura = ObjectFilter::default();
+        aura.subtypes.push(crate::types::Subtype::Aura);
+        filter.with_attached_object = Some(Box::new(aura));
+    }
+
     super::grammar::filters::apply_supertype_or_mana_capability_union(&mut filter, tokens);
     preserve_combat_role_disjunction(&mut filter, tokens);
     crate::util::split_cross_dimension_adjective_disjunction(
@@ -1025,7 +1040,9 @@ fn preserve_combat_role_disjunction(filter: &mut ObjectFilter, tokens: &[OwnedLe
     let words = parser_token_word_refs(tokens);
     let state_word = |word: &str| matches!(word, "attacking" | "blocking" | "tapped");
     let Some(pair) = words.windows(3).find_map(|window| {
-        (state_word(window[0]) && window[1] == "or" && state_word(window[2])
+        (state_word(window[0])
+            && window[1] == "or"
+            && state_word(window[2])
             && window[0] != window[2])
             .then(|| (window[0], window[2]))
     }) else {
@@ -1150,7 +1167,9 @@ fn split_whose_controller_controls(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let index = tokens.windows(3).position(|window| {
-        window[0].is_word("whose") && window[1].is_word("controller") && window[2].is_word("controls")
+        window[0].is_word("whose")
+            && window[1].is_word("controller")
+            && window[2].is_word("controls")
     })?;
     let base = &tokens[..index];
     let mut controlled = &tokens[index + 3..];
@@ -1185,9 +1204,15 @@ fn split_not_targeted_by_ability_from(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     const PHRASES: &[&[&str]] = &[
-        &["that", "isn't", "the", "target", "of", "an", "ability", "from"],
-        &["that", "isnt", "the", "target", "of", "an", "ability", "from"],
-        &["that", "is", "not", "the", "target", "of", "an", "ability", "from"],
+        &[
+            "that", "isn't", "the", "target", "of", "an", "ability", "from",
+        ],
+        &[
+            "that", "isnt", "the", "target", "of", "an", "ability", "from",
+        ],
+        &[
+            "that", "is", "not", "the", "target", "of", "an", "ability", "from",
+        ],
     ];
     let view = crate::lexer::TokenWordView::new(tokens);
     let words = view.to_word_refs();
@@ -1290,8 +1315,7 @@ fn strip_as_you_cast_this_spell_suffix(tokens: &[OwnedLexToken]) -> Option<&[Own
 /// candidate to the triggering land.
 fn split_shares_producible_mana_type_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     const SUFFIX: &[&str] = &[
-        "that", "could", "produce", "any", "type", "of", "mana", "that", "land", "could",
-        "produce",
+        "that", "could", "produce", "any", "type", "of", "mana", "that", "land", "could", "produce",
     ];
     let word_positions = tokens
         .iter()
@@ -1377,6 +1401,46 @@ pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let words = crate::lexer::TokenWordView::new(tokens);
+    let words_ref = words.word_refs();
+    // A seat-qualified controller is one complete relative player phrase.
+    // Keep it out of the permissive object noun scan, which otherwise drops it.
+    for start in 1..words_ref.len() {
+        let tail = &words_ref[start..];
+        let tail = tail.strip_prefix(&["the"]).unwrap_or(tail);
+        let player = match tail {
+            [
+                "player" | "opponent",
+                "to",
+                "your",
+                "left",
+                "controls" | "control",
+            ] => Some(PlayerFilter::PlayerToYourLeft),
+            [
+                "player" | "opponent",
+                "to",
+                "your",
+                "right",
+                "controls" | "control",
+            ] => Some(PlayerFilter::PlayerToYourRight),
+            _ => None,
+        };
+        if let Some(player) = player {
+            let boundary = words.token_start_indices()[start];
+            return Ok(parse_object_filter(&tokens[..boundary], other)?.controlled_by(player));
+        }
+    }
+    if let Some(index) = words_ref
+        .windows(4)
+        .position(|part| part == ["blocking", "or", "blocked", "by"])
+        && crate::util::is_source_reference_words(&words_ref[index + 4..])
+        && let Some(token_index) = words.token_start_indices().get(index)
+    {
+        let mut filter = parse_object_filter(&tokens[..*token_index], other)?;
+        filter.in_combat_with_source = true;
+        return Ok(filter);
+    }
+
     if let Some(split) = split_source_relation_phrases(tokens) {
         let mut filter = parse_object_filter(&split.tokens, other)?;
         apply_source_relation_phrases(&mut filter, &split);
@@ -1395,10 +1459,12 @@ pub fn parse_object_filter(
     if let Some(base) = split_from_among_those_cards_suffix(tokens) {
         let mut filter = parse_object_filter(&base, other)?;
         clear_zone_for_referenced_cards(&mut filter);
-        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::ThoseCardsReference.key(),
-            relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-        });
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::ThoseCardsReference.key(),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
         return Ok(filter);
     }
     if let Some((base, host)) = split_could_enchant_suffix(tokens)? {
@@ -1447,7 +1513,10 @@ pub fn parse_object_filter(
 /// "a creature that's enchanted or equipped" (Reyav, Master Smith) is a
 /// disjunction of two attachment states. The adjective scan records both as
 /// conjunctive tagged constraints; move them into `any_of` alternatives.
-pub(crate) fn split_enchanted_or_equipped_disjunction(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+pub(crate) fn split_enchanted_or_equipped_disjunction(
+    filter: &mut ObjectFilter,
+    tokens: &[OwnedLexToken],
+) {
     let words = crate::lexer::token_word_refs(tokens);
     let disjunction = words.windows(3).any(|window| {
         matches!(
@@ -1458,7 +1527,8 @@ pub(crate) fn split_enchanted_or_equipped_disjunction(filter: &mut ObjectFilter,
     if !disjunction || !filter.any_of.is_empty() {
         return;
     }
-    let is_state = |constraint: &crate::target::TaggedObjectConstraint, tag: crate::tag::CompilerReferenceTag| {
+    let is_state = |constraint: &crate::target::TaggedObjectConstraint,
+                    tag: crate::tag::CompilerReferenceTag| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             && constraint.tag.as_str() == tag.as_str()
     };
@@ -1598,7 +1668,10 @@ pub fn parse_object_filter_words(
     word_refs: &[&str],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    if word_refs.windows(5).any(|words| words == ["with", "the", "same", "name", "as"]) {
+    if word_refs
+        .windows(5)
+        .any(|words| words == ["with", "the", "same", "name", "as"])
+    {
         let tokens = super::lexer::synthetic_word_tokens(word_refs.iter().copied());
         if let Some(result) = crate::grammar::filters::parse_live_name_relation(&tokens, other) {
             return result;
@@ -1666,9 +1739,7 @@ fn split_could_enchant_suffix(
 ) -> Result<Option<(Vec<OwnedLexToken>, ObjectFilter)>, CardTextError> {
     let words = super::lexer::parser_token_word_positions(tokens);
     let Some(index) = words.windows(3).position(|window| {
-        window[0].1 == "that"
-            && matches!(window[1].1, "could" | "can")
-            && window[2].1 == "enchant"
+        window[0].1 == "that" && matches!(window[1].1, "could" | "can") && window[2].1 == "enchant"
     }) else {
         return Ok(None);
     };
@@ -1706,6 +1777,19 @@ pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let words = crate::lexer::TokenWordView::new(tokens);
+    let words_ref = words.word_refs();
+    if let Some(index) = words_ref
+        .windows(4)
+        .position(|part| part == ["blocking", "or", "blocked", "by"])
+        && crate::util::is_source_reference_words(&words_ref[index + 4..])
+        && let Some(token_index) = words.token_start_indices().get(index)
+    {
+        let mut filter = parse_object_filter(&tokens[..*token_index], other)?;
+        filter.in_combat_with_source = true;
+        return Ok(filter);
+    }
+
     if let Some(result) = crate::grammar::filters::parse_live_name_relation(tokens, other) {
         return result;
     }

@@ -3,7 +3,9 @@
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
-use crate::events::processing::{SimultaneousDamageEvent, with_deferred_prevention_follow_ups};
+use crate::events::processing::{
+    SimultaneousDamageEvent, with_deferred_prevention_follow_up_outcome,
+};
 use crate::events::{DamageTarget, EventKind};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::filter::ObjectFilterExt;
@@ -224,7 +226,17 @@ impl FightEffect {
                 Ok(candidates)
             };
         }
-        crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx)
+        crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx).map(|objects| {
+            objects
+                .into_iter()
+                .filter(|id| {
+                    game.object(*id)
+                        .is_some_and(|object| object.zone == crate::Zone::Battlefield)
+                        && !game.is_phased_out(*id)
+                        && game.current_is_creature(*id)
+                })
+                .collect()
+        })
     }
 
     fn select_fighter_pair(
@@ -375,13 +387,14 @@ impl FightEffect {
         let provenance = ctx.provenance;
         let scope = ctx.replacement.clone();
         let batch = game.alloc_child_event_provenance(provenance, EventKind::Damage);
-        let outcome = with_deferred_prevention_follow_ups(game, ctx.decision_maker, |game, dm| {
-            let mut parent = ExecutionContext::new(source, controller, dm)
-                .with_cause(cause)
-                .with_provenance(provenance);
-            parent.replacement = scope;
-            crate::effects::damage::commit_damage_batch(game, &mut parent, events, Some(batch))
-        })?;
+        let outcome =
+            with_deferred_prevention_follow_up_outcome(game, ctx.decision_maker, |game, dm| {
+                let mut parent = ExecutionContext::new(source, controller, dm)
+                    .with_cause(cause)
+                    .with_provenance(provenance);
+                parent.replacement = scope;
+                crate::effects::damage::commit_damage_batch(game, &mut parent, events, Some(batch))
+            })?;
         Ok(outcome.with_events(fight_events))
     }
 }
@@ -416,10 +429,10 @@ impl EffectExecutor for FightEffect {
 mod tests {
     use super::*;
     use crate::ability::Ability;
-    use crate::effects::execute_effect;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::continuous::ContinuousEffect;
     use crate::effect::Until;
+    use crate::effects::execute_effect;
     use crate::events::cause::CauseFilter;
     use crate::events::counters::matchers::WouldPutCountersMatcher;
     use crate::ids::{CardId, ObjectId, PlayerId};
@@ -849,6 +862,16 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let fighter = create_creature(&mut game, "Large fighter", i32::MAX, i32::MAX, alice);
         let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+        game.effect_store
+            .replacement_effects
+            .add_one_shot_effect(ReplacementEffect::with_matcher(
+                fighter,
+                alice,
+                crate::events::damage::matchers::DamageToObjectMatcher::new(
+                    ObjectFilter::specific(fighter),
+                ),
+                ReplacementAction::Modify(EventModification::Multiply(3)),
+            ));
         let history_before = game.turn_store.turn_history.event_records.len();
         let result = FightEffect::new(
             ChooseSpec::SpecificObject(fighter),

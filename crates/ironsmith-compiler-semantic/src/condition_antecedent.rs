@@ -246,7 +246,8 @@ fn effect_establishes_body_object_antecedent(effect: &EffectAst) -> bool {
                 target, ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
-                target, ..
+                target,
+                ..
             })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
@@ -323,7 +324,8 @@ fn bind_condition_antecedent_in_effect(
                 target, ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
-                target, ..
+                target,
+                ..
             })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
@@ -343,6 +345,16 @@ fn bind_condition_antecedent_in_effect(
             })
             | SubjectVerbActionAst::TargetOnly { target, .. } => {
                 bind_condition_antecedent_in_target(target, antecedent, mode);
+            }
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                filter,
+                target,
+                ..
+            }) => {
+                bind_condition_filter_antecedent(filter, antecedent);
+                if let Some(target) = target {
+                    bind_condition_antecedent_in_target(target, antecedent, mode);
+                }
             }
             _ => {}
         },
@@ -682,9 +694,9 @@ fn persistent_battlefield_subject(action: &mut SubjectVerbActionAst) -> Option<&
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
             target,
         })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
-            target,
-        }) => Some(target),
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked { target }) => {
+            Some(target)
+        }
         _ => None,
     }
 }
@@ -947,9 +959,7 @@ pub fn resolve_it_animations_to_source(effects: &mut [EffectAst]) {
 pub fn resolve_it_counter_and_animation_targets_to_source(effects: &mut [EffectAst]) {
     for effect in effects {
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
-                target, ..
-            })
+            && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
                 target,
                 ..

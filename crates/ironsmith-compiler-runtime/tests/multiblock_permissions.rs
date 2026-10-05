@@ -148,7 +148,9 @@ fn exact_unlimited_capacity_subset_keeps_metadata_artifacts_and_rendered_meaning
             }
             let rendered = ironsmith_text::compiled_text_lines(&definition).join("\n");
             assert!(
-                rendered.contains("can block any number of creatures"),
+                rendered
+                    .to_lowercase()
+                    .contains("can block any number of creatures"),
                 "{name}: {rendered}"
             );
             assert!(
@@ -306,13 +308,20 @@ fn entangler_follows_attachment_instead_of_aura_controller_and_ends_on_departure
 
 struct TargetDecision(ObjectId);
 impl DecisionMaker for TargetDecision {
-    fn decide_targets(&mut self, _: &GameState, context: &TargetsContext) -> Vec<Target> {
+    fn decide_targets(&mut self, game: &GameState, context: &TargetsContext) -> Vec<Target> {
         let target = Target::Object(self.0);
         assert!(
             context
                 .requirements
                 .iter()
                 .any(|requirement| requirement.legal_targets.contains(&target))
+        );
+        assert!(
+            ironsmith::targeting::validate_flat_target_assignment(&context.requirements, &[target]),
+            "{}: {context:?}",
+            game.object(context.source)
+                .map(|object| object.name.as_str())
+                .unwrap_or("unknown source")
         );
         vec![target]
     }
@@ -344,7 +353,7 @@ fn cast(game: &mut GameState, definition: &CardDefinition, caster: PlayerId, tar
     )
     .unwrap();
     for _ in 0..32 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(context) = progress else {
@@ -353,7 +362,7 @@ fn cast(game: &mut GameState, definition: &CardDefinition, caster: PlayerId, tar
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &context, &mut dm)
             .unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     assert!(!game.stack_is_empty());
     assert_eq!(
         game.player(caster).unwrap().mana_pool.total(),
@@ -507,10 +516,12 @@ fn monarch_condition_rechecks_live_designation() {
         let host = game.create_object_from_definition(&definition, bob, Zone::Battlefield);
         let (combat, attackers) = attack_setup(&mut game, bob, 3, "");
         assert!(blocks(&game, &combat, host, &attackers[..2]).is_err());
-        game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
+        game.set_monarch(Some(bob))
+            .expect("checked designation/departure fixture");
         blocks(&game, &combat, host, &attackers[..2]).unwrap();
         assert!(blocks(&game, &combat, host, &attackers).is_err());
-        game.set_monarch(Some(charlie)).expect("checked designation/departure fixture");
+        game.set_monarch(Some(charlie))
+            .expect("checked designation/departure fixture");
         assert!(blocks(&game, &combat, host, &attackers[..2]).is_err());
     }
 }

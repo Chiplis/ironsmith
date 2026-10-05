@@ -3036,8 +3036,11 @@ pub(super) fn rewrite_statement_lowering_parses_soul_partition_via_parser_path()
                 debug.contains("GrantBySpec") || debug.contains("GrantPlayTaggedForAsLongAsExiled"),
                 "{debug}"
             );
-            assert!(debug.contains("GrantToTarget"), "{debug}");
-            assert!(debug.contains("CostIncreaseManaCost"), "{debug}");
+            assert!(debug.contains("ItsOwner"), "{debug}");
+            assert!(
+                debug.contains("spell_cost_increase: Some") && debug.contains("Generic("),
+                "{debug}"
+            );
         }
         other => panic!("expected single Soul Partition statement chunk, got {other:?}"),
     }
@@ -3969,7 +3972,7 @@ pub(super) fn rewrite_parse_lose_life_unless_you_attacked_this_turn_clause() {
         parse_effect_sentence_lexed(&tokens).expect("life-loss unless clause should parse");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("ControlFlow"), "{debug}");
+    assert!(debug.contains("Conditionals"), "{debug}");
     assert!(debug.contains("LoseLife"), "{debug}");
     assert!(debug.contains("YouAttackedThisTurn"), "{debug}");
 }

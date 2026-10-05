@@ -1029,38 +1029,66 @@ pub(crate) fn describe_ability(
     rewrite_it_deals: bool,
 ) -> Vec<String> {
     if let AbilityKind::Activated(activated) = &ability.kind {
-        fn rules(cost: &crate::cost::TotalCost, output: &mut Vec<ironsmith_core::mana::ManaSpendingRestriction>) {
+        fn rules(
+            cost: &crate::cost::TotalCost,
+            output: &mut Vec<ironsmith_core::mana::ManaSpendingRestriction>,
+        ) {
             match cost.kind() {
-                ironsmith_core::TotalCostKind::OneOf(branches) => for branch in branches { rules(branch, output); },
-                ironsmith_core::TotalCostKind::All(costs) => for cost in costs {
-                    if let Some(mana) = cost.mana_cost_ref() {
-                        for rule in mana.spending_restrictions() {
-                            if matches!(rule, ironsmith_core::mana::ManaSpendingRestriction::OnX { .. }) && !output.contains(rule) {
-                                output.push(rule.clone());
+                ironsmith_core::TotalCostKind::OneOf(branches) => {
+                    for branch in branches {
+                        rules(branch, output);
+                    }
+                }
+                ironsmith_core::TotalCostKind::All(costs) => {
+                    for cost in costs {
+                        if let Some(mana) = cost.mana_cost_ref() {
+                            for rule in mana.spending_restrictions() {
+                                if matches!(
+                                    rule,
+                                    ironsmith_core::mana::ManaSpendingRestriction::OnX { .. }
+                                ) && !output.contains(rule)
+                                {
+                                    output.push(rule.clone());
+                                }
                             }
                         }
                     }
-                },
+                }
             }
         }
-        let mut spending = Vec::new(); rules(&activated.mana_cost, &mut spending);
+        let mut spending = Vec::new();
+        rules(&activated.mana_cost, &mut spending);
         if !spending.is_empty() {
             let mut bare = ability.clone();
             if let AbilityKind::Activated(activated) = &mut bare.kind {
-                activated.mana_cost = activated.mana_cost.clone().try_map(|cost| {
-                    Ok::<_, std::convert::Infallible>(if let Some(mana) = cost.mana_cost_ref() {
-                        crate::costs::Cost::mana(mana.clone().without_x_spending_restrictions())
-                    } else { cost })
-                }).unwrap_or_else(|never| match never {});
+                activated.mana_cost = activated
+                    .mana_cost
+                    .clone()
+                    .try_map(|cost| {
+                        Ok::<_, std::convert::Infallible>(
+                            if let Some(mana) = cost.mana_cost_ref() {
+                                crate::costs::Cost::mana(
+                                    mana.clone().without_x_spending_restrictions(),
+                                )
+                            } else {
+                                cost
+                            },
+                        )
+                    })
+                    .unwrap_or_else(|never| match never {});
             }
             let mut lines = describe_ability(index, &bare, subject, rewrite_it_deals);
             // Modal descriptions can preserve the authored rider on every
             // bullet; otherwise render the shared typed cost rider once.
             for rule in spending {
                 let rider = rule.cast_description(false);
-                if !lines.iter().any(|line| line.to_ascii_lowercase().contains(&rider.to_ascii_lowercase()))
-                    && let Some(last) = lines.last_mut() {
-                    last.push_str(". "); last.push_str(&rider);
+                if !lines.iter().any(|line| {
+                    line.to_ascii_lowercase()
+                        .contains(&rider.to_ascii_lowercase())
+                }) && let Some(last) = lines.last_mut()
+                {
+                    last.push_str(". ");
+                    last.push_str(&rider);
                 }
             }
             return lines;
@@ -1101,6 +1129,20 @@ pub(crate) fn describe_ability(
     {
         return vec![format!(
             "Static ability {index}: As long as it's your turn, {subject} has first strike"
+        )];
+    }
+    // Render conditional self type changes from their executable model before
+    // authored-label fallbacks can expose internal presentation markers.
+    if let AbilityKind::Static(static_ability) = &ability.kind
+        && let Some(model) = static_ability.compiled_model()
+        && let ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } = &model.payload
+        && matches!(&ability.payload,
+            ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types }
+                if filter.source && !card_types.is_empty())
+    {
+        return vec![format!(
+            "Static ability {index}: {}",
+            describe_static_ability_with_subject(static_ability, subject)
         )];
     }
     if let AbilityKind::Static(static_ability) = &ability.kind
@@ -1156,7 +1198,10 @@ pub(crate) fn describe_ability(
         && triggered.intervening_if.is_none()
         && triggered.choices.is_empty()
         && triggered.presentation_label.is_none()
-        && triggered.trigger.downcast_ref::<crate::triggers::YouCastThisSpellTrigger>().is_some()
+        && triggered
+            .trigger
+            .downcast_ref::<crate::triggers::YouCastThisSpellTrigger>()
+            .is_some()
         && let [segment] = triggered.effects.segments.as_slice()
         && segment.self_replacements.is_empty()
         && let [effect] = segment.default_effects.as_slice()
@@ -1950,7 +1995,9 @@ fn describe_soulbond_shared_delayed_return(granted: &Ability) -> Option<String> 
     {
         return None;
     }
-    if dies.object_filter != ObjectFilter::creature() {
+    if dies.object_filter != ObjectFilter::creature()
+        && dies.object_filter != ObjectFilter::default()
+    {
         return None;
     }
 
@@ -3438,5 +3485,48 @@ mod coordinated_discard_tests {
             ]),
             "discard an artifact card and another creature card"
         );
+    }
+}
+
+#[cfg(test)]
+mod conditional_source_type_surface_tests {
+    use super::*;
+
+    #[test]
+    fn conditional_source_types_keep_all_conditions_and_hide_internal_labels() {
+        let condition = ironsmith_core::Condition::And(
+            Box::new(ironsmith_core::Condition::YourTurn),
+            Box::new(ironsmith_core::Condition::YouControl(
+                ObjectFilter::creature().with_subtype(crate::types::Subtype::Army),
+            )),
+        );
+        let mut model = ironsmith_core::StaticAbility::set_card_types(
+            ObjectFilter::source(),
+            vec![CardType::Artifact, CardType::Creature],
+        )
+        .with_condition(condition);
+        model.label = format!(
+            "{}{}",
+            ironsmith_core::static_ability_model::AS_LONG_AS_ITS_YOUR_TURN_STATIC_LABEL_PREFIX,
+            model.label
+        );
+        let ability =
+            Ability::static_ability(crate::static_abilities::StaticAbility::from_model(model));
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Conditional Type Surface",
+        )
+        .card_types(vec![CardType::Artifact])
+        .with_ability(ability)
+        .build();
+        let text = crate::compiled_text_lines(&definition).join("\n");
+        let lower = text.to_ascii_lowercase();
+        assert!(lower.contains("it's your turn"), "{text}");
+        assert!(
+            lower.contains("you control") && lower.contains("army"),
+            "{text}"
+        );
+        assert!(lower.contains("is an artifact creature"), "{text}");
+        assert!(!text.contains("__ironsmith"), "{text}");
     }
 }

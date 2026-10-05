@@ -203,7 +203,12 @@ fn read_direct_quoted_object_restriction(
 ) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
     let authored_as_quoted_ability = input.authored_as_quoted_ability;
     let ability_tokens = input.tokens;
-    if authored_as_quoted_ability
+    if (authored_as_quoted_ability
+        || crate::lexer::token_word_refs(ability_tokens).starts_with(&[
+            "its",
+            "activated",
+            "abilities",
+        ]))
         && let Some(restriction) = parse_direct_quoted_object_restriction(&ability_tokens)?
     {
         return Ok(Some(restriction));

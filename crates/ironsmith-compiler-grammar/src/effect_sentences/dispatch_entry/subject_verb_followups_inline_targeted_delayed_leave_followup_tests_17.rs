@@ -21,9 +21,22 @@ fn targeted_creature_leave_watcher_reuses_delayed_target_choice() {
         .iter()
         .find_map(|effect| match effect {
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => Some(tag),
+            EffectAst::TagReferenced { effect, tag, .. }
+                if matches!(
+                    effect.as_ref(),
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::TargetOnly { .. },
+                        ..
+                    })
+                ) =>
+            {
+                Some(tag)
+            }
             _ => None,
         })
-        .expect("the target creature should be selected at resolution");
+        .unwrap_or_else(|| {
+            panic!("the target creature should be selected at resolution: {parsed:#?}")
+        });
     let leave_filter = parsed
         .iter()
         .find_map(|effect| match effect {

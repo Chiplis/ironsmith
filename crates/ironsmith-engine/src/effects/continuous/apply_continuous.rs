@@ -504,14 +504,20 @@ fn control_change_target_object_ids(
 }
 
 fn is_controller_change_cost(effect: &ApplyContinuousEffect) -> bool {
-    let base_is_controller_change = effect
-        .modification
-        .as_ref()
-        .is_none_or(|modification| matches!(modification, Modification::ChangeController(_) | Modification::ChangeControllerToEffectController));
-    let additional_are_controller_changes = effect
-        .additional_modifications
-        .iter()
-        .all(|modification| matches!(modification, Modification::ChangeController(_) | Modification::ChangeControllerToEffectController));
+    let base_is_controller_change = effect.modification.as_ref().is_none_or(|modification| {
+        matches!(
+            modification,
+            Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
+        )
+    });
+    let additional_are_controller_changes =
+        effect.additional_modifications.iter().all(|modification| {
+            matches!(
+                modification,
+                Modification::ChangeController(_)
+                    | Modification::ChangeControllerToEffectController
+            )
+        });
     let runtime_are_controller_changes = effect.runtime_modifications.iter().all(|modification| {
         matches!(
             modification,
@@ -519,21 +525,23 @@ fn is_controller_change_cost(effect: &ApplyContinuousEffect) -> bool {
                 | RuntimeModification::ChangeControllerToPlayer(_)
         )
     });
-    let has_controller_change = effect
-        .modification
-        .as_ref()
-        .is_some_and(|modification| matches!(modification, Modification::ChangeController(_) | Modification::ChangeControllerToEffectController))
-        || effect
-            .additional_modifications
-            .iter()
-            .any(|modification| matches!(modification, Modification::ChangeController(_) | Modification::ChangeControllerToEffectController))
-        || effect.runtime_modifications.iter().any(|modification| {
-            matches!(
-                modification,
-                RuntimeModification::ChangeControllerToEffectController
-                    | RuntimeModification::ChangeControllerToPlayer(_)
-            )
-        });
+    let has_controller_change = effect.modification.as_ref().is_some_and(|modification| {
+        matches!(
+            modification,
+            Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
+        )
+    }) || effect.additional_modifications.iter().any(|modification| {
+        matches!(
+            modification,
+            Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
+        )
+    }) || effect.runtime_modifications.iter().any(|modification| {
+        matches!(
+            modification,
+            RuntimeModification::ChangeControllerToEffectController
+                | RuntimeModification::ChangeControllerToPlayer(_)
+        )
+    });
 
     has_controller_change
         && base_is_controller_change
@@ -957,7 +965,8 @@ impl EffectExecutor for ApplyContinuousEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        game.establish_control_transition_boundary().map_err(ExecutionError::ContinuousDiscovery)?;
+        game.establish_control_transition_boundary()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
         // A tagged reference names the objects selected by an earlier action.
         // An empty selection has no characteristics to change.
         if let Some(spec) = &self.target_spec
@@ -977,9 +986,10 @@ impl EffectExecutor for ApplyContinuousEffect {
         if source_type.is_none()
             && let EffectTarget::Specific(object) = &target
         {
-            source_type = Some(EffectSourceType::Resolution { locked_targets: vec![*object] });
+            source_type = Some(EffectSourceType::Resolution {
+                locked_targets: vec![*object],
+            });
         }
-
 
         let filter_locked_targets = if let EffectTarget::Filter(filter) = &target {
             // Tagged filters depend on spell-resolution context and cannot be evaluated
@@ -1003,15 +1013,23 @@ impl EffectExecutor for ApplyContinuousEffect {
             Until::ObjectIsCast { object, from_zone } => {
                 let object = materialize_duration_object(object, &target, &source_type, ctx)
                     .ok_or_else(|| match object {
-                        ironsmith_core::ContinuousDurationObject::Tagged(tag) =>
-                            ExecutionError::TagNotFound(tag.as_str().to_string()),
-                        _ => ExecutionError::UnresolvableValue("cast-event duration must identify one object".into()),
+                        ironsmith_core::ContinuousDurationObject::Tagged(tag) => {
+                            ExecutionError::TagNotFound(tag.as_str().to_string())
+                        }
+                        _ => ExecutionError::UnresolvableValue(
+                            "cast-event duration must identify one object".into(),
+                        ),
                     })?;
-                let ironsmith_core::ContinuousDurationObject::Specific(id) = object else { unreachable!() };
+                let ironsmith_core::ContinuousDurationObject::Specific(id) = object else {
+                    unreachable!()
+                };
                 if game.object_completed_cast_from(id, *from_zone) {
                     return Ok(EffectOutcome::resolved());
                 }
-                Until::ObjectIsCast { object: ironsmith_core::ContinuousDurationObject::Specific(id), from_zone: *from_zone }
+                Until::ObjectIsCast {
+                    object: ironsmith_core::ContinuousDurationObject::Specific(id),
+                    from_zone: *from_zone,
+                }
             }
             Until::ForAsLongAs(predicate) => {
                 let Some(predicate) =
@@ -1064,15 +1082,19 @@ impl EffectExecutor for ApplyContinuousEffect {
             };
             let lowest_tied = tied(lives.iter().copied().min());
             let most_tied = tied(lives.iter().copied().max());
-            if self.runtime_modifications.iter().any(|modification| match modification {
-                RuntimeModification::ChangeControllerToPlayer(PlayerFilter::LowestLifeTied) => {
-                    lowest_tied
-                }
-                RuntimeModification::ChangeControllerToPlayer(PlayerFilter::MostLifeTied) => {
-                    most_tied
-                }
-                _ => false,
-            }) {
+            if self
+                .runtime_modifications
+                .iter()
+                .any(|modification| match modification {
+                    RuntimeModification::ChangeControllerToPlayer(PlayerFilter::LowestLifeTied) => {
+                        lowest_tied
+                    }
+                    RuntimeModification::ChangeControllerToPlayer(PlayerFilter::MostLifeTied) => {
+                        most_tied
+                    }
+                    _ => false,
+                })
+            {
                 return Ok(EffectOutcome::resolved());
             }
         }
@@ -1181,7 +1203,8 @@ impl EffectExecutor for ApplyContinuousEffect {
             ctx.created_continuous_effects.push(id);
         }
 
-        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+        game.refresh_continuous_state()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
 
         Ok(if registered_active_modification {
             EffectOutcome::resolved().with_affected_objects_from_game(game, affected_objects)
@@ -1648,8 +1671,8 @@ mod tests {
         game.next_turn();
         assert_eq!(game.current_controller(target), Some(bob));
         assert!(
-            game.is_summoning_sick(target),
-            "expiration of a control effect is also a controller change"
+            !game.is_summoning_sick(target),
+            "the returning controller controls it from the beginning of their new turn"
         );
     }
 
@@ -1998,7 +2021,9 @@ mod tests {
         let mut monarch_game = setup_game();
         let source = create_creature(&mut monarch_game, "Monarch Source", alice);
         let target = create_creature(&mut monarch_game, "Monarch Target", bob);
-        monarch_game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
+        monarch_game
+            .set_monarch(Some(bob))
+            .expect("checked designation/departure fixture");
         execute_latched_control(
             &mut monarch_game,
             source,
@@ -2007,9 +2032,13 @@ mod tests {
             Predicate::PlayerIsMonarch(PlayerRef::ControllerOf(ObjectRef::AffectedObject)),
         );
         assert_eq!(monarch_game.current_controller(target), Some(alice));
-        monarch_game.set_monarch(Some(alice)).expect("checked designation/departure fixture");
+        monarch_game
+            .set_monarch(Some(alice))
+            .expect("checked designation/departure fixture");
         assert_eq!(monarch_game.current_controller(target), Some(bob));
-        monarch_game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
+        monarch_game
+            .set_monarch(Some(bob))
+            .expect("checked designation/departure fixture");
         assert_eq!(monarch_game.current_controller(target), Some(bob));
     }
 

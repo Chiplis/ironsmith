@@ -265,9 +265,9 @@ pub fn parse_sentence_delayed_timing_suffix(
     };
     let split_last_coordinated_action = exile_then_delayed_return.is_some()
         || segments.len() > 1
-        && segments
-            .iter()
-            .all(|segment| super::super::lex_chain_helpers::segment_has_effect_head_lexed(segment));
+            && segments.iter().all(|segment| {
+                super::super::lex_chain_helpers::segment_has_effect_head_lexed(segment)
+            });
     // "Target player draws a card at the beginning of the next turn's
     // upkeep" (Sapphire Charm): the player is targeted as the spell is cast,
     // and the delayed action refers back to that announced target.
@@ -278,9 +278,7 @@ pub fn parse_sentence_delayed_timing_suffix(
         && ["player", "opponent"]
             .iter()
             .any(|word| action_body[1].parser_text().eq_ignore_ascii_case(word));
-    if hoisted_target_player
-        && let Ok(target) = parse_target_phrase(&action_body[..2])
-    {
+    if hoisted_target_player && let Ok(target) = parse_target_phrase(&action_body[..2]) {
         let mut carried = crate::lexer::synthetic_word_tokens(&["that", "player"]);
         carried.extend_from_slice(&action_body[2..]);
         if let Ok(delayed_effects) = parse_effect_chain(&carried)
@@ -385,9 +383,7 @@ fn causative_recipient_filter(player: PlayerAst) -> Option<PlayerFilter> {
         // "unless target player has <source> deal N damage to them": "them"
         // is the already-declared unless-player, not a second target.
         PlayerAst::Target => PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)),
-        PlayerAst::TargetOpponent => {
-            PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent))
-        }
+        PlayerAst::TargetOpponent => PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent)),
         PlayerAst::That => PlayerFilter::IteratedPlayer,
         PlayerAst::ItsController => PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
         PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
@@ -716,10 +712,7 @@ fn parse_unless_put_counters_clause_as_cost(
         .unwrap_or_else(|| clause.trimmed());
     // "put a card from their hand on top of their library" moves a card; it
     // places no counter (the library-top payment owns it).
-    if crate::word_primitives::sequence_occurs(
-        &payment_clause.word_refs(),
-        &["on", "top", "of"],
-    ) {
+    if crate::word_primitives::sequence_occurs(&payment_clause.word_refs(), &["on", "top", "of"]) {
         return Ok(None);
     }
     let Ok(effects) = parse_effect_chain(payment_clause.tokens()) else {
@@ -931,12 +924,12 @@ pub fn try_build_unless(
     let after_clause = clause.from(unless_idx + 1).trimmed();
     // A proven state predicate is checked when the scheduled action resolves.
     // It is not a payment option and must remain inside the delayed wrapper.
-    if let Ok(predicate) = crate::grammar::filters::parse_condition_predicate_lexed(after_clause.tokens()) {
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate,
-            if_true: Vec::new(),
-            if_false: effects,
-        })));
+    if let Ok(predicate) =
+        crate::grammar::filters::parse_condition_predicate_lexed(after_clause.tokens())
+    {
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::TrailingUnless { predicate, effects },
+        )));
     }
     let after_words = after_clause.words().to_word_refs();
     let before_delayed_step = crate::word_primitives::parse_sequence_start(
@@ -1931,11 +1924,26 @@ mod delayed_state_predicate_tests {
     #[test]
     fn next_step_unless_state_predicate_is_nested_inside_delayed_action() {
         let tokens = crate::lexer::lex_line("At the beginning of the next end step, exile that token unless this creature is your Ring-bearer.", 0).unwrap();
-        let effects = parse_sentence_delayed_next_step_unless_pays(SubjectVerbPrimitiveClause::new(&tokens)).unwrap().unwrap();
-        let [EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. })] = effects.as_slice() else { panic!("delayed action: {effects:?}") };
-        let [EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, if_true, if_false })] = effects.as_slice() else { panic!("delayed condition: {effects:?}") };
-        assert!(if_true.is_empty());
-        assert!(!if_false.is_empty());
-        assert!(matches!(predicate, PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceIsRingBearer { .. })));
+        let effects =
+            parse_sentence_delayed_next_step_unless_pays(SubjectVerbPrimitiveClause::new(&tokens))
+                .unwrap()
+                .unwrap();
+        let [EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. })] =
+            effects.as_slice()
+        else {
+            panic!("delayed action: {effects:?}")
+        };
+        let [EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { predicate, effects })] =
+            effects.as_slice()
+        else {
+            panic!("delayed condition: {effects:?}")
+        };
+        assert!(!effects.is_empty());
+        assert!(matches!(
+            predicate,
+            PredicateAst::Source(
+                crate::cards::builders::SourcePredicateAst::SourceIsRingBearer { .. }
+            )
+        ));
     }
 }

@@ -653,8 +653,12 @@ impl StaticAbilityKind for CounterLimit {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CantBeCopied;
 impl StaticAbilityKind for CantBeCopied {
-    fn id(&self) -> StaticAbilityId { StaticAbilityId::CantBeCopied }
-    fn display(&self) -> String { "This spell can't be copied".into() }
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CantBeCopied
+    }
+    fn display(&self) -> String {
+        "This spell can't be copied".into()
+    }
 }
 
 /// "This spell can't be countered"
@@ -883,9 +887,14 @@ impl StaticAbilityKind for RuleRestriction {
         // mana dependency classifier. These unconditional derived limits do
         // not change characteristics or mana-source eligibility.
         self.condition.is_some()
-            || !std::iter::once(&self.restriction).chain(&self.additional_restrictions).all(|restriction| {
-                matches!(restriction, Restriction::AdditionalLandPlays(_, _) | Restriction::NoMaximumHandSize(_))
-            })
+            || !std::iter::once(&self.restriction)
+                .chain(&self.additional_restrictions)
+                .all(|restriction| {
+                    matches!(
+                        restriction,
+                        Restriction::AdditionalLandPlays(_, _) | Restriction::NoMaximumHandSize(_)
+                    )
+                })
     }
 
     fn id(&self) -> StaticAbilityId {
@@ -1015,6 +1024,36 @@ impl StaticAbilityKind for RuleRestriction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn zero_life_loss_restriction_preserves_other_loss_causes() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(42);
+        game.add_restriction_effect(
+            Restriction::LoseGameForZeroLife(PlayerFilter::You),
+            crate::effect::Until::EndOfTurn,
+            source,
+            alice,
+            None,
+        );
+        game.update_cant_effects();
+        game.player_mut(alice).unwrap().life = 0;
+        assert!(game.can_lose_game(alice));
+        assert!(!crate::rules::state_based::check_state_based_actions(&game).iter().any(|action|
+            matches!(action, crate::rules::state_based::StateBasedAction::PlayerLoses { player, reason: crate::rules::state_based::LoseReason::ZeroLife } if *player == alice)));
+        game.player_mut(alice).unwrap().poison_counters = 10;
+        assert!(crate::rules::state_based::check_state_based_actions(&game).iter().any(|action|
+            matches!(action, crate::rules::state_based::StateBasedAction::PlayerLoses { player, reason: crate::rules::state_based::LoseReason::Poison } if *player == alice)));
+        let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+        crate::effects::execute_effect(
+            &mut game,
+            &crate::effect::Effect::lose_the_game(),
+            &mut ctx,
+        )
+        .unwrap();
+        assert!(!game.player(alice).unwrap().is_in_game());
+    }
+
     use crate::effect::{Value, ValueComparisonOperator};
     use crate::zone::Zone;
 

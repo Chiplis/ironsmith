@@ -37,11 +37,22 @@ fn preserves_filtered_prior_action_counts() {
         ),
     ] {
         let parsed = parse_draw_this_way_metric_shape(&tokens(text));
-        let expected = Value::Count(expected_filter.match_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
-            TaggedOpbjectRelation::IsTaggedObject,
-        ));
-        assert_eq!(parsed, Some(expected), "{text}");
+        let Some(Value::PendingPriorEffectMetric(query)) = parsed else {
+            panic!("typed prior-result query: {text}");
+        };
+        assert_eq!(
+            query.source,
+            ironsmith_core::EffectMetricSource::AffectedObjects
+        );
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::Count);
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::PutIntoGraveyard)
+        );
+        assert_eq!(
+            query.filter.as_ref().unwrap().card_types,
+            expected_filter.card_types
+        );
     }
 }
 

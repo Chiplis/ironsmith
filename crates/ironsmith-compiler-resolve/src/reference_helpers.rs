@@ -564,7 +564,9 @@ fn resolve_contextual_player_filter(
                 && controller_antecedent_tag(refs).is_some() =>
         {
             PlayerFilter::ControllerOf(ObjectRef::tagged(
-                controller_antecedent_tag(refs).cloned().unwrap_or_else(|| tag.clone()),
+                controller_antecedent_tag(refs)
+                    .cloned()
+                    .unwrap_or_else(|| tag.clone()),
             ))
         }
         PlayerFilter::ControllerOf(reference) => {
@@ -644,10 +646,14 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => replace_it_tag_in_filter(filter, tag),
         Value::StaticAbilitiesAmong { filter, .. } => replace_it_tag_in_filter(filter, tag),
-        Value::TurnHistoryCount(TurnHistoryCount::DestroyedBy { filter, cause }
-            | TurnHistoryCount::CastSpellsCounteredBy { filter, cause, .. }) => {
+        Value::TurnHistoryCount(
+            TurnHistoryCount::DestroyedBy { filter, cause }
+            | TurnHistoryCount::CastSpellsCounteredBy { filter, cause, .. },
+        ) => {
             replace_it_tag_in_filter(filter, tag);
-            if let Some(filter) = cause.source_filter.as_mut() { replace_it_tag_in_filter(filter, tag); }
+            if let Some(filter) = cause.source_filter.as_mut() {
+                replace_it_tag_in_filter(filter, tag);
+            }
         }
         Value::TurnHistoryCount(
             TurnHistoryCount::MaxEnteredBattlefieldByController { filter, .. }
@@ -923,7 +929,9 @@ fn bind_other_to_related_it_object(original: &ObjectFilter, resolved: &mut Objec
     let mut related_relations = original
         .tagged_constraints
         .iter()
-        .filter(|constraint| constraint.tag.as_str() == it && relates_to_object(constraint.relation))
+        .filter(|constraint| {
+            constraint.tag.as_str() == it && relates_to_object(constraint.relation)
+        })
         .map(|constraint| constraint.relation);
     let (Some(relation), None) = (related_relations.next(), related_relations.next()) else {
         return;
@@ -1281,10 +1289,12 @@ fn resolve_it_tag_inner(
             && identity_is_unqualified
             && let Some(tag) = looked_at_hand_antecedent(refs)
         {
-            resolved.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-                tag,
-                relation: TaggedOpbjectRelation::IsTaggedObject,
-            });
+            resolved
+                .tagged_constraints
+                .push(crate::filter::TaggedObjectConstraint {
+                    tag,
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
             return Ok(resolved);
         }
         if saw_it_constraint && identity_is_unqualified {
@@ -1504,8 +1514,12 @@ pub fn resolve_restriction_it_tag(
     refs: &ReferenceEnv,
 ) -> Result<Restriction, CardTextError> {
     let resolved = match restriction {
-        Restriction::PreventDamageFrom { sources, combat_only } => Restriction::PreventDamageFrom {
-            sources: resolve_it_tag(sources, refs)?, combat_only: *combat_only,
+        Restriction::PreventDamageFrom {
+            sources,
+            combat_only,
+        } => Restriction::PreventDamageFrom {
+            sources: resolve_it_tag(sources, refs)?,
+            combat_only: *combat_only,
         },
         Restriction::AdditionalLandPlays(player, count) => Restriction::additional_land_plays(
             resolve_contextual_player_filter(player, refs)?,
@@ -1526,9 +1540,12 @@ pub fn resolve_restriction_it_tag(
             Restriction::search_libraries(resolve_contextual_player_filter(player, refs)?)
         }
         Restriction::PlayLandsMatching(player, filter) => Restriction::PlayLandsMatching(
-            resolve_contextual_player_filter(player, refs)?, resolve_it_tag(filter, refs)?,
+            resolve_contextual_player_filter(player, refs)?,
+            resolve_it_tag(filter, refs)?,
         ),
-        Restriction::ActivateLoyaltyAbilitiesOf(filter) => Restriction::ActivateLoyaltyAbilitiesOf(resolve_it_tag(filter, refs)?),
+        Restriction::ActivateLoyaltyAbilitiesOf(filter) => {
+            Restriction::ActivateLoyaltyAbilitiesOf(resolve_it_tag(filter, refs)?)
+        }
         Restriction::CastSpellsMatching(player, filter) => Restriction::cast_spells_matching(
             resolve_contextual_player_filter(player, refs)?,
             resolve_it_tag(filter, refs)?,
@@ -1553,6 +1570,9 @@ pub fn resolve_restriction_it_tag(
         }
         Restriction::ChangeLifeTotal(player) => {
             Restriction::ChangeLifeTotal(resolve_contextual_player_filter(player, refs)?)
+        }
+        Restriction::LoseGameForZeroLife(player) => {
+            Restriction::LoseGameForZeroLife(resolve_contextual_player_filter(player, refs)?)
         }
         Restriction::LoseGame(player) => {
             Restriction::LoseGame(resolve_contextual_player_filter(player, refs)?)
@@ -1764,10 +1784,12 @@ fn triggering_stack_target_spec(
     let mut filter = ObjectFilter::default();
     filter.zone = Some(Zone::Battlefield);
     filter.card_types = types;
-    filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-        tag: stack_object,
-        relation: TaggedOpbjectRelation::TargetedByTaggedObject,
-    });
+    filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: stack_object,
+            relation: TaggedOpbjectRelation::TargetedByTaggedObject,
+        });
     Some(ChooseSpec::Object(filter))
 }
 
@@ -1782,7 +1804,8 @@ fn rebind_triggering_stack_target_filter(
     }
     let it = crate::tag::CompilerReferenceTag::It.as_str();
     if !filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == it && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        constraint.tag.as_str() == it
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }) {
         return None;
     }
@@ -1812,7 +1835,8 @@ fn rebind_triggering_stack_target_filter(
     let stack_object = refs.known_last_object_tag()?.clone();
     let mut rebound = filter.clone();
     for constraint in &mut rebound.tagged_constraints {
-        if constraint.tag.as_str() == it && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        if constraint.tag.as_str() == it
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         {
             constraint.tag = stack_object.clone();
             constraint.relation = TaggedOpbjectRelation::TargetedByTaggedObject;
@@ -2134,18 +2158,18 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             })
         }
 
-        Value::CardsInHand(player) => Ok(Value::CardsInHand(
-            resolve_contextual_player_filter(player, refs)?,
-        )),
+        Value::CardsInHand(player) => Ok(Value::CardsInHand(resolve_contextual_player_filter(
+            player, refs,
+        )?)),
         Value::CardsInLibrary(player) => Ok(Value::CardsInLibrary(
             resolve_contextual_player_filter(player, refs)?,
         )),
         Value::CardsInGraveyard(player) => Ok(Value::CardsInGraveyard(
             resolve_contextual_player_filter(player, refs)?,
         )),
-        Value::LifeTotal(player) => Ok(Value::LifeTotal(
-            resolve_contextual_player_filter(player, refs)?,
-        )),
+        Value::LifeTotal(player) => Ok(Value::LifeTotal(resolve_contextual_player_filter(
+            player, refs,
+        )?)),
         Value::StartingLifeTotal(player) => Ok(Value::StartingLifeTotal(
             resolve_contextual_player_filter(player, refs)?,
         )),
@@ -2401,22 +2425,48 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                     exclude_source: *exclude_source,
                     before_triggering_spell: *before_triggering_spell,
                 },
-                TurnHistoryCount::LibrarySearches { player, own_library_only } => TurnHistoryCount::LibrarySearches {
-                    player: resolve_contextual_player_filter(player, refs)?, own_library_only: *own_library_only,
+                TurnHistoryCount::LibrarySearches {
+                    player,
+                    own_library_only,
+                } => TurnHistoryCount::LibrarySearches {
+                    player: resolve_contextual_player_filter(player, refs)?,
+                    own_library_only: *own_library_only,
                 },
-                TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter } => TurnHistoryCount::MaxEnteredBattlefieldByController {
-                    player: resolve_contextual_player_filter(player, refs)?, filter: resolve_it_tag(filter, refs)?,
-                },
+                TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter } => {
+                    TurnHistoryCount::MaxEnteredBattlefieldByController {
+                        player: resolve_contextual_player_filter(player, refs)?,
+                        filter: resolve_it_tag(filter, refs)?,
+                    }
+                }
                 TurnHistoryCount::DestroyedBy { filter, cause } => {
                     let mut cause = cause.clone();
-                    cause.source_filter = cause.source_filter.as_ref().map(|filter| resolve_it_tag(filter, refs)).transpose()?;
-                    TurnHistoryCount::DestroyedBy { filter: resolve_it_tag(filter, refs)?, cause }
-                },
-                TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => {
+                    cause.source_filter = cause
+                        .source_filter
+                        .as_ref()
+                        .map(|filter| resolve_it_tag(filter, refs))
+                        .transpose()?;
+                    TurnHistoryCount::DestroyedBy {
+                        filter: resolve_it_tag(filter, refs)?,
+                        cause,
+                    }
+                }
+                TurnHistoryCount::CastSpellsCounteredBy {
+                    caster,
+                    filter,
+                    cause,
+                } => {
                     let mut cause = cause.clone();
-                    cause.source_filter = cause.source_filter.as_ref().map(|filter| resolve_it_tag(filter, refs)).transpose()?;
-                    TurnHistoryCount::CastSpellsCounteredBy { caster: resolve_contextual_player_filter(caster, refs)?, filter: resolve_it_tag(filter, refs)?, cause }
-                },
+                    cause.source_filter = cause
+                        .source_filter
+                        .as_ref()
+                        .map(|filter| resolve_it_tag(filter, refs))
+                        .transpose()?;
+                    TurnHistoryCount::CastSpellsCounteredBy {
+                        caster: resolve_contextual_player_filter(caster, refs)?,
+                        filter: resolve_it_tag(filter, refs)?,
+                        cause,
+                    }
+                }
                 TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => {
                     TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(
                         resolve_contextual_player_filter(player, refs)?,
@@ -2515,11 +2565,34 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             })
         }
         Value::PendingPriorEffectMetric(query) => {
-            if let Some(result) = super::reference_resolution::resolve_dice_quantity_query(query, refs) {
+            if refs.known_last_effect_id().is_none()
+                && let Some(value) =
+                    super::reference_resolution::resolve_cost_quantity_query(query, refs)
+            {
+                return Ok(value);
+            }
+
+            if let Some(result) =
+                super::reference_resolution::resolve_dice_quantity_query(query, refs)
+            {
                 return result;
             }
-            if let Some(result) = super::reference_resolution::resolve_life_quantity_query(query, refs) {
+            if let Some(result) =
+                super::reference_resolution::resolve_life_quantity_query(query, refs)
+            {
                 return result;
+            }
+            if refs.known_last_effect_id().is_none()
+                && refs.milling_event_filter.as_deref().is_some_and(|filter| {
+                    query.action == Some(ironsmith_core::PriorEffectAction::Milled)
+                        && query.source == ironsmith_core::EffectMetricSource::AffectedObjects
+                        && query.metric == ironsmith_core::EffectMetric::Count
+                        && query.player.is_none()
+                        && query.counter_type.is_none()
+                        && query.filter.as_ref().unwrap_or(&ObjectFilter::default()) == filter
+                })
+            {
+                return Ok(Value::EventValue(EventValueSpec::Amount));
             }
             let id = refs.known_last_effect_id().ok_or_else(|| {
                 CardTextError::ParseError(
@@ -2712,6 +2785,21 @@ pub fn resolve_target_spec_with_choices(
         }
         _ => choose_spec_for_target(target),
     };
+    if let TargetAst::Object(filter, None, _) = target
+        && filter
+            .additional_cost_object_surface()
+            .is_some_and(|surface| {
+                surface.action == ironsmith_core::AdditionalCostObjectAction::Exiled
+            })
+        && let Some(tag) = refs.known_last_object_tag()
+        && crate::tag_support::is_exile_cost_collection_tag(tag)
+    {
+        spec = ChooseSpec::Object(
+            filter
+                .clone()
+                .match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject),
+        );
+    }
     if let TargetAst::Object(filter, explicit_target_span, reference_span) = target
         && refs.iterated_object
         && explicit_target_span.is_none()
@@ -2753,7 +2841,8 @@ pub fn resolve_target_spec_with_choices(
     // "Exile X target cards from target player's graveyard": the embedded
     // player target is declared whatever the object count.
     let mut object_target = target;
-    while let TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) = object_target {
+    while let TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) = object_target
+    {
         object_target = inner;
     }
     match object_target {
@@ -3358,17 +3447,28 @@ mod target_participant_scalar_tests {
     #[test]
     fn scalar_player_binding_preserves_loops_and_requires_a_real_antecedent() {
         let value = Value::CardsInHand(PlayerFilter::IteratedPlayer);
-        assert_eq!(resolve_value_it_tag(&value, &ReferenceEnv::default()).unwrap(), value);
+        assert_eq!(
+            resolve_value_it_tag(&value, &ReferenceEnv::default()).unwrap(),
+            value
+        );
         let target = PlayerFilter::target_opponent();
         let mut env = ReferenceEnv {
             last_player_filter: RefState::Known(target.clone()),
             ..ReferenceEnv::default()
         };
-        assert_eq!(resolve_value_it_tag(&value, &env).unwrap(), Value::CardsInHand(target));
+        assert_eq!(
+            resolve_value_it_tag(&value, &env).unwrap(),
+            Value::CardsInHand(target)
+        );
         env.iterated_player = true;
-        assert_eq!(resolve_value_it_tag(&value, &env).unwrap(), value,
-            "a loop's participant remains local unless the typed caller opens a nearer explicit subject scope");
-        assert_eq!(resolve_value_it_tag(&Value::CardsInHand(PlayerFilter::You), &env).unwrap(),
-            Value::CardsInHand(PlayerFilter::You));
+        assert_eq!(
+            resolve_value_it_tag(&value, &env).unwrap(),
+            value,
+            "a loop's participant remains local unless the typed caller opens a nearer explicit subject scope"
+        );
+        assert_eq!(
+            resolve_value_it_tag(&Value::CardsInHand(PlayerFilter::You), &env).unwrap(),
+            Value::CardsInHand(PlayerFilter::You)
+        );
     }
 }

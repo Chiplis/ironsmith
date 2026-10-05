@@ -111,10 +111,23 @@ fn parses_unquoted_base_pt_from_the_exact_zone_change_group() {
         0,
     )
     .expect("near-miss base-power clause should lex");
-    assert_eq!(
-        parse_token_dynamic_power_toughness_tokens(&near_miss),
-        None,
-        "a different demonstrative subject must not claim the creature death group"
+    let (power, toughness) = parse_token_dynamic_power_toughness_tokens(&near_miss)
+        .expect("generic artifact antecedent");
+    assert_eq!(power, toughness);
+    let Value::TotalPower(filter) = power else {
+        panic!("typed total power");
+    };
+    assert!(
+        filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| crate::tag::CompilerReferenceTag::It.matches(&constraint.tag))
+    );
+    assert!(
+        !filter.tagged_constraints.iter().any(|constraint| {
+            crate::tag::CompilerReferenceTag::ZoneChangeGroup.matches(&constraint.tag)
+        }),
+        "artifact antecedent must not claim the creature death group"
     );
 }
 

@@ -72,6 +72,43 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     {
         return Ok(None);
     }
+    // Independently declared subjects keep independently constrained target
+    // slots even when they share the same ability and duration.
+    if subject_start_word_idx == 0 && tokens.first().is_some_and(|token| token.is_word("target")) {
+        let mut subject_end = gain_token_idx;
+        if tokens
+            .get(subject_end.wrapping_sub(1))
+            .is_some_and(|token| token.is_word("each"))
+        {
+            subject_end -= 1;
+        }
+        let mut boundaries = vec![0];
+        for index in 0..subject_end {
+            if tokens[index].is_word("and")
+                && tokens
+                    .get(index + 1)
+                    .is_some_and(|token| token.is_word("target"))
+            {
+                boundaries.push(index + 1);
+            }
+        }
+        if boundaries.len() > 1 {
+            let mut effects = Vec::new();
+            for (index, start) in boundaries.iter().copied().enumerate() {
+                let end = boundaries
+                    .get(index + 1)
+                    .map_or(subject_end, |next| next - 1);
+                let mut clause = tokens[start..end].to_vec();
+                clause.extend_from_slice(&tokens[gain_token_idx..]);
+                let Some(mut parsed) = parse_gain_ability_sentence(&clause)? else {
+                    return Ok(None);
+                };
+                effects.append(&mut parsed);
+            }
+            return Ok(Some(effects));
+        }
+    }
+
     let losing = gain_verb == gain_shapes::GainAbilityVerb::Lose;
 
     let after_gain = &word_list[gain_idx + 1..];
@@ -360,7 +397,9 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         // child remains in the same duration/program, with one target owner.
         let become_end = get_idx
             .filter(|index| subject_start_word_idx + *index > become_word_idx)
-            .and_then(|index| word_view.map_word_or_end_to_token_boundary(subject_start_word_idx + index))
+            .and_then(|index| {
+                word_view.map_word_or_end_to_token_boundary(subject_start_word_idx + index)
+            })
             .unwrap_or(gain_token_idx);
         let mut become_tail_tokens =
             trim_commas(&tokens[become_token_idx + 1..become_end]).to_vec();
@@ -465,7 +504,9 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         None
     };
     if leading_become_effect.is_some() && get_idx.is_some() && pump_effect.is_none() {
-        return Err(CardTextError::ParseError("unsupported complete pump between transformation and grant".into()));
+        return Err(CardTextError::ParseError(
+            "unsupported complete pump between transformation and grant".into(),
+        ));
     }
     if !losing
         && let Some((power, toughness, _gi, pump_duration, condition, for_each)) = &pump_effect
@@ -528,15 +569,17 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     }
 
     // Determine the real subject (before "get"/"gets" if pump is present)
-    let real_subject_end_word_idx = leading_become_subject_end_word_idx.or(pump_effect
-        .as_ref()
-        .map(|(_, _, gi, _, _, _)| *gi)
-        .or(leading_base_pt_effect
+    let real_subject_end_word_idx = leading_become_subject_end_word_idx
+        .or(pump_effect
             .as_ref()
-            .map(|(_, _, has_idx, _)| *has_idx))
-        )
+            .map(|(_, _, gi, _, _, _)| *gi)
+            .or(leading_base_pt_effect
+                .as_ref()
+                .map(|(_, _, has_idx, _)| *has_idx)))
         .unwrap_or(gain_idx);
-    let real_subject_start_word_idx = if leading_become_subject_end_word_idx.is_some() || target_word_only_qualifies_a_controller(before_gain) {
+    let real_subject_start_word_idx = if leading_become_subject_end_word_idx.is_some()
+        || target_word_only_qualifies_a_controller(before_gain)
+    {
         subject_start_word_idx
     } else if let Some(gi) = get_idx {
         subject_start_word_idx + gain_shapes::find_gain_real_subject_start(before_gain, gi)
@@ -605,9 +648,18 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
             effects.push(become_effect.clone());
         }
         let modifier_target = if leading_become_effect.is_some() {
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(real_subject_tokens))
-        } else { target.clone() };
-        append_shared_subject_base_pt_to_target(&mut effects, &modifier_target, &leading_base_pt_effect);
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                span_from_tokens(real_subject_tokens),
+            )
+        } else {
+            target.clone()
+        };
+        append_shared_subject_base_pt_to_target(
+            &mut effects,
+            &modifier_target,
+            &leading_base_pt_effect,
+        );
         append_shared_subject_pump_to_target(&mut effects, &modifier_target, &pump_effect);
         let grant_target = if has_preceding_target_effect || declares_shared_target {
             TargetAst::Tagged(
@@ -908,12 +960,14 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                 duration.clone(),
             ));
         } else {
-            effects.push(subject_verb_grant_abilities_to_target_with_optional_condition(
-                target,
-                abilities,
-                duration.clone(),
-                &duration_condition,
-            ));
+            effects.push(
+                subject_verb_grant_abilities_to_target_with_optional_condition(
+                    target,
+                    abilities,
+                    duration.clone(),
+                    &duration_condition,
+                ),
+            );
         }
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
         return Ok(Some(effects));

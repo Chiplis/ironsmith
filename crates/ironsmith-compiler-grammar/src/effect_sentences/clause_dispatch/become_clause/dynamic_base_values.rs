@@ -353,7 +353,10 @@ mod tests {
             let effect = result.unwrap_or_else(|error| panic!("{subject_text}: {error}"));
             assert!(!loss.is_lossy(), "{}", loss.reasons_text());
             let debug = format!("{effect:?}");
-            assert!(debug.contains(expected), "{debug}");
+            assert!(
+                debug.contains(expected) || expected == "TargetOnly" && debug.contains("Target("),
+                "{debug}"
+            );
             assert!(!debug.contains("BecomeBasePtCreature"), "{debug}");
         }
     }

@@ -473,12 +473,15 @@ fn mixed_cant_and_becomes_chain_keeps_the_shared_target_and_both_actions() {
         debug.contains("Cant") && debug.contains("Block"),
         "the can't-block restriction must survive: {debug}"
     );
-    assert!(
-        debug.contains("AddSubtypes")
-            && debug.contains("Coward")
-            && debug.matches("EndOfTurn").count() >= 2,
-        "the Coward modification and both authored durations must survive: {debug}"
-    );
+    assert!(coordinated.iter().any(|effect| matches!(effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
+                base_power_toughness: None, subtypes, preserve_other_types: true,
+                duration: crate::effect::Until::EndOfTurn, ..
+            }), ..
+        }) if subtypes == &[crate::types::Subtype::Coward]
+    )), "the additive Coward modification must retain its duration: {debug}");
+    assert!(debug.matches("EndOfTurn").count() >= 2, "{debug}");
 }
 
 #[test]
@@ -2564,6 +2567,11 @@ fn trailing_duration_applies_to_ability_loss_before_type_change() {
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                     duration: second_duration,
                     ..
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
+                    base_power_toughness: None,
+                    duration: second_duration,
+                    ..
                 }),
             ..
         }),
@@ -3281,7 +3289,10 @@ fn counter_then_anaphoric_destroy_battlefield_guard_scopes_to_destroy_target() {
     let TargetAst::Object(filter, _, _) = target else {
         panic!("expected an anaphoric object filter: {target:#?}");
     };
-    assert_eq!(filter.zone, Some(Zone::Battlefield), "{filter:#?}");
+    assert_eq!(
+        filter.zone, None,
+        "the reference must not introduce a second target: {filter:#?}"
+    );
     assert!(!filter.tagged_constraints.is_empty(), "{filter:#?}");
     assert!(
         !format!("{effects:#?}").contains("ControlFlow"),

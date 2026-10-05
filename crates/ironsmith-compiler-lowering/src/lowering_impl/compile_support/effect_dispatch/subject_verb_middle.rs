@@ -205,9 +205,10 @@ pub(super) fn compile_create_token_with_mods_action(
         let mut value_target_choices = Vec::new();
         super::collect_value_player_target_choices(&count, &mut value_target_choices);
         for choice in value_target_choices {
-            let reuses_prior_player_target = ctx.last_player_filter.as_ref().is_some_and(|player| {
-                super::player_target_choice_matches_filter(&choice, player)
-            });
+            let reuses_prior_player_target = ctx
+                .last_player_filter
+                .as_ref()
+                .is_some_and(|player| super::player_target_choice_matches_filter(&choice, player));
             if !choices.iter().any(|existing| existing == &choice) && !reuses_prior_player_target {
                 value_target_prelude.push(Effect::new(crate::effects::TargetOnlyEffect::new(
                     choice.clone(),
@@ -409,6 +410,9 @@ pub(super) fn compile_target_only_action(
             }
         }
     }
+    if *explicit_declaration {
+        ctx.declared_target_references.push(target.clone());
+    }
     let mut target_only = if *explicit_declaration {
         crate::effects::TargetOnlyEffect::explicit(spec.clone())
     } else {
@@ -478,9 +482,10 @@ fn bind_it_characteristic_to_spec(value: &Value, target: &ChooseSpec) -> Value {
             value: Box::new(bind_it_characteristic_to_spec(value, target)),
             hints: hints.clone(),
         },
-        Value::Scaled(value, factor) => {
-            Value::Scaled(Box::new(bind_it_characteristic_to_spec(value, target)), *factor)
-        }
+        Value::Scaled(value, factor) => Value::Scaled(
+            Box::new(bind_it_characteristic_to_spec(value, target)),
+            *factor,
+        ),
         Value::DividedRoundedDown(value, divisor) => Value::DividedRoundedDown(
             Box::new(bind_it_characteristic_to_spec(value, target)),
             *divisor,
@@ -571,7 +576,9 @@ pub(super) fn compile_pump_action(
         .with_set_quantifier_surface(*set_quantifier_surface);
         // A definite event participant remains that object after its type
         // changes (CR608.2k). Targeted pumps still require a legal creature.
-        if !historical_block_participant { apply = apply.require_creature_target(); }
+        if !historical_block_participant {
+            apply = apply.require_creature_target();
+        }
         if let Some(surface) = source_reference_surface {
             apply = apply.with_source_reference_surface(surface);
         }
@@ -658,31 +665,32 @@ pub(super) fn compile_grant_abilities_to_target_action(
             _ => None,
         }
     });
-    let (mut compiled, mut choices) = compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
-        let source_reference_surface = spec.source_reference_surface().cloned();
-        let effect_spec = if matches!(spec.unhinted(), ChooseSpec::Source) {
-            spec.into_unhinted()
-        } else {
-            spec
-        };
-        let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
-            effect_spec,
-            first_modification.clone(),
-            duration.clone(),
-        )
-        .with_set_quantifier_surface(*set_quantifier_surface);
+    let (mut compiled, mut choices) =
+        compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+            let source_reference_surface = spec.source_reference_surface().cloned();
+            let effect_spec = if matches!(spec.unhinted(), ChooseSpec::Source) {
+                spec.into_unhinted()
+            } else {
+                spec
+            };
+            let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
+                effect_spec,
+                first_modification.clone(),
+                duration.clone(),
+            )
+            .with_set_quantifier_surface(*set_quantifier_surface);
 
-        for modification in modifications.iter().skip(1) {
-            apply = apply.with_additional_modification(modification.clone());
-        }
-        if let Some(condition) = &resolved_condition {
-            apply = apply.with_condition(condition.clone());
-        }
-        if let Some(surface) = source_reference_surface {
-            apply = apply.with_source_reference_surface(surface);
-        }
-        Effect::new(apply)
-    })?;
+            for modification in modifications.iter().skip(1) {
+                apply = apply.with_additional_modification(modification.clone());
+            }
+            if let Some(condition) = &resolved_condition {
+                apply = apply.with_condition(condition.clone());
+            }
+            if let Some(surface) = source_reference_surface {
+                apply = apply.with_source_reference_surface(surface);
+            }
+            Effect::new(apply)
+        })?;
     if let Some(choice) = granted_player_target
         && !choices.contains(&choice)
     {
@@ -909,19 +917,26 @@ pub(super) fn compile_become_base_pt_creature_action(
     // results (and other contextual references) in the P/T values like every
     // other value-bearing instruction; an unresolvable reference keeps its
     // authored form.
-    let resolved_size = base_power_toughness.as_ref().map(|(power, toughness)| (
-        resolve_value_it_tag(power, &current_reference_env(ctx)).unwrap_or_else(|_| power.clone()),
-        resolve_value_it_tag(toughness, &current_reference_env(ctx)).unwrap_or_else(|_| toughness.clone()),
-    ));
+    let resolved_size = base_power_toughness.as_ref().map(|(power, toughness)| {
+        (
+            resolve_value_it_tag(power, &current_reference_env(ctx))
+                .unwrap_or_else(|_| power.clone()),
+            resolve_value_it_tag(toughness, &current_reference_env(ctx))
+                .unwrap_or_else(|_| toughness.clone()),
+        )
+    });
     compile_tagged_effect_for_target(target, ctx, "animated_creature", |spec| {
-        let resolved_size = resolved_size.as_ref().map(|(power, toughness)| (
-            bind_iterated_value_to_choose_spec(power, &spec),
-            bind_iterated_value_to_choose_spec(toughness, &spec),
-        ));
+        let resolved_size = resolved_size.as_ref().map(|(power, toughness)| {
+            (
+                bind_iterated_value_to_choose_spec(power, &spec),
+                bind_iterated_value_to_choose_spec(toughness, &spec),
+            )
+        });
         // CR 205.1b gives "artifact creature" an implicit preservation
         // exception even without an "in addition" clause.
-        let implicitly_preserves_card_types =
-            card_types.contains(&CardType::Artifact) && card_types.contains(&CardType::Creature) && !remove_other_abilities;
+        let implicitly_preserves_card_types = card_types.contains(&CardType::Artifact)
+            && card_types.contains(&CardType::Creature)
+            && !remove_other_abilities;
         // No authored card type ("becomes a green Wurm with base power and
         // toughness 6/4", Scale Up): only the creature subtype is set, so the
         // object keeps its card types. Color/supertype/size-only templates
@@ -943,9 +958,13 @@ pub(super) fn compile_become_base_pt_creature_action(
         .with_animation_duration_surface(*animation_duration_surface)
         .with_set_quantifier_surface(*set_quantifier_surface);
         if let Some((power, toughness)) = resolved_size {
-            apply = apply.with_additional_modification(crate::continuous::Modification::SetPowerToughness {
-                power, toughness, sublayer: crate::continuous::PtSublayer::Setting,
-            }).resolve_set_pt_values_at_resolution();
+            apply = apply
+                .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
+                    power,
+                    toughness,
+                    sublayer: crate::continuous::PtSublayer::Setting,
+                })
+                .resolve_set_pt_values_at_resolution();
         }
         if let Some(name) = name_override {
             apply = apply.with_additional_modification(crate::continuous::Modification::SetName(
@@ -965,16 +984,28 @@ pub(super) fn compile_become_base_pt_creature_action(
         if let Some(colors) = colors {
             apply = apply.with_additional_modification(if *preserve_other_colors {
                 crate::continuous::Modification::AddColors(*colors)
-            } else { crate::continuous::Modification::SetColors(*colors) });
+            } else {
+                crate::continuous::Modification::SetColors(*colors)
+            });
         }
         if !subtypes.is_empty() {
             if !preserve_other_types {
-                for family in [crate::types::SubtypeFamily::Creature, crate::types::SubtypeFamily::Artifact,
-                    crate::types::SubtypeFamily::Enchantment, crate::types::SubtypeFamily::Land,
-                    crate::types::SubtypeFamily::Planeswalker, crate::types::SubtypeFamily::Spell,
-                    crate::types::SubtypeFamily::Battle] {
-                    if subtypes.iter().any(|subtype| subtype.belongs_to_family(family)) {
-                        apply = apply.with_additional_modification(crate::continuous::Modification::RemoveAllSubtypesOfFamily(family));
+                for family in [
+                    crate::types::SubtypeFamily::Creature,
+                    crate::types::SubtypeFamily::Artifact,
+                    crate::types::SubtypeFamily::Enchantment,
+                    crate::types::SubtypeFamily::Land,
+                    crate::types::SubtypeFamily::Planeswalker,
+                    crate::types::SubtypeFamily::Spell,
+                    crate::types::SubtypeFamily::Battle,
+                ] {
+                    if subtypes
+                        .iter()
+                        .any(|subtype| subtype.belongs_to_family(family))
+                    {
+                        apply = apply.with_additional_modification(
+                            crate::continuous::Modification::RemoveAllSubtypesOfFamily(family),
+                        );
                     }
                 }
             }
@@ -983,7 +1014,8 @@ pub(super) fn compile_become_base_pt_creature_action(
             );
         }
         if *remove_other_abilities {
-            apply = apply.with_additional_modification(crate::continuous::Modification::RemoveAllAbilities);
+            apply = apply
+                .with_additional_modification(crate::continuous::Modification::RemoveAllAbilities);
         }
         for ability in &abilities {
             apply = apply.with_additional_modification(
@@ -1183,7 +1215,9 @@ pub(super) fn compile_subject_verb_middle(
             }
             let controller_target = if *player == PlayerAst::ItsController && spec.is_target() {
                 Some(reserved_or_next_object_tag(ctx, "copy_target"))
-            } else { None };
+            } else {
+                None
+            };
             let player_filter = if let Some(tag) = controller_target.as_ref() {
                 PlayerFilter::ControllerOf(ObjectRef::tagged(tag.clone()))
             } else {
@@ -1528,7 +1562,9 @@ pub(super) fn compile_subject_verb_middle(
                 resolve_total_cost_it_tags(&lowered, &current_reference_env(ctx))
             }).transpose()?;
             if *without_paying_mana_cost && alternative_cost.is_some() {
-                return Err(CardTextError::ParseError("two alternative casting prices on one permission".into()));
+                return Err(CardTextError::ParseError(
+                    "two alternative casting prices on one permission".into(),
+                ));
             }
             if let Some(cost) = spell_cost_reduction.clone() {
                 grant_play = grant_play.with_spell_cost_reduction(cost);
@@ -1780,7 +1816,9 @@ pub(super) fn compile_subject_verb_middle(
             // power"), so the exile must record that tag too.
             let names_exiled_object = matches!(
                 spec.base(),
-                ChooseSpec::Object(_) | ChooseSpec::ObjectOrPlayer(_, _) | ChooseSpec::SpecificObject(_)
+                ChooseSpec::Object(_)
+                    | ChooseSpec::ObjectOrPlayer(_, _)
+                    | ChooseSpec::SpecificObject(_)
             );
             if *all && let ChooseSpec::Object(filter) = spec {
                 spec = ChooseSpec::All(filter);
@@ -1840,6 +1878,12 @@ pub(super) fn compile_subject_verb_middle(
             let mut effects = Vec::new();
             let resolved_spec = if !spec.is_target() {
                 match &spec {
+                    ChooseSpec::Object(filter)
+                        if filter.union_surface.set_quantifier()
+                            == Some(ironsmith_core::SetQuantifierSurface::Each) =>
+                    {
+                        ChooseSpec::All(filter.clone())
+                    }
                     ChooseSpec::Object(filter)
                         if filter.tagged_constraints.is_empty()
                             && filter.zone == Some(Zone::Graveyard) =>
@@ -2162,10 +2206,8 @@ pub(super) fn compile_subject_verb_middle(
                     // order": the player performing the move orders the
                     // cards unless the text names another chooser.
                     let order_chooser = if matches!(*library_order_chooser, PlayerAst::Implicit)
-                        && !matches!(
-                            player,
-                            PlayerAst::Implicit
-                        ) {
+                        && !matches!(player, PlayerAst::Implicit)
+                    {
                         player
                     } else {
                         *library_order_chooser
@@ -2659,20 +2701,33 @@ pub(super) fn compile_subject_verb_middle(
             duration,
         }) => {
             let power = resolve_value_it_tag(power, &current_reference_env(ctx))?;
-            compile_tagged_effect_for_target(target, ctx, "set_base_power", |spec| {
-                Effect::new(
-                    crate::effects::ApplyContinuousEffect::with_spec(
-                        spec,
-                        crate::continuous::Modification::SetPower {
-                            power: power.clone(),
-                            sublayer: crate::continuous::PtSublayer::Setting,
-                        },
-                        duration.clone(),
+            let (mut effects, mut choices) =
+                compile_tagged_effect_for_target(target, ctx, "set_base_power", |spec| {
+                    Effect::new(
+                        crate::effects::ApplyContinuousEffect::with_spec(
+                            spec,
+                            crate::continuous::Modification::SetPower {
+                                power: power.clone(),
+                                sublayer: crate::continuous::PtSublayer::Setting,
+                            },
+                            duration.clone(),
+                        )
+                        .require_creature_target()
+                        .resolve_set_pt_values_at_resolution(),
                     )
-                    .require_creature_target()
-                    .resolve_set_pt_values_at_resolution(),
-                )
-            })
+                })?;
+            if matches!(
+                target,
+                TargetAst::Source(_) | TargetAst::Object(ObjectFilter { source: true, .. }, _, _)
+            ) && let Some(spec) = value_object_target_spec(&power)
+            {
+                effects.insert(
+                    0,
+                    Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone())),
+                );
+                push_choice(&mut choices, spec);
+            }
+            Ok((effects, choices))
         }
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness {
             toughness,
@@ -2680,20 +2735,33 @@ pub(super) fn compile_subject_verb_middle(
             duration,
         }) => {
             let toughness = resolve_value_it_tag(toughness, &current_reference_env(ctx))?;
-            compile_tagged_effect_for_target(target, ctx, "set_base_toughness", |spec| {
-                Effect::new(
-                    crate::effects::ApplyContinuousEffect::with_spec(
-                        spec,
-                        crate::continuous::Modification::SetToughness {
-                            toughness: toughness.clone(),
-                            sublayer: crate::continuous::PtSublayer::Setting,
-                        },
-                        duration.clone(),
+            let (mut effects, mut choices) =
+                compile_tagged_effect_for_target(target, ctx, "set_base_toughness", |spec| {
+                    Effect::new(
+                        crate::effects::ApplyContinuousEffect::with_spec(
+                            spec,
+                            crate::continuous::Modification::SetToughness {
+                                toughness: toughness.clone(),
+                                sublayer: crate::continuous::PtSublayer::Setting,
+                            },
+                            duration.clone(),
+                        )
+                        .require_creature_target()
+                        .resolve_set_pt_values_at_resolution(),
                     )
-                    .require_creature_target()
-                    .resolve_set_pt_values_at_resolution(),
-                )
-            })
+                })?;
+            if matches!(
+                target,
+                TargetAst::Source(_) | TargetAst::Object(ObjectFilter { source: true, .. }, _, _)
+            ) && let Some(spec) = value_object_target_spec(&toughness)
+            {
+                effects.insert(
+                    0,
+                    Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone())),
+                );
+                push_choice(&mut choices, spec);
+            }
+            Ok((effects, choices))
         }
         SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
             power_per,
@@ -2779,10 +2847,17 @@ pub(super) fn compile_subject_verb_middle(
                 duration.clone(),
             ))
         }),
-        SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { target, supertypes, duration }) =>
-            compile_tagged_effect_for_target(target, ctx, "typed", |spec| Effect::new(
-                crate::effects::ApplyContinuousEffect::with_spec(spec,
-                    crate::continuous::Modification::RemoveSupertypes(supertypes.clone()), duration.clone()))),
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes {
+            target,
+            supertypes,
+            duration,
+        }) => compile_tagged_effect_for_target(target, ctx, "typed", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::RemoveSupertypes(supertypes.clone()),
+                duration.clone(),
+            ))
+        }),
         SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes {
             target,
             card_types,
@@ -2947,12 +3022,17 @@ pub(super) fn compile_subject_verb_middle(
             ))
         }),
         SubjectVerbActionAst::Characteristics(
-            CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration, allowed_subtypes, preserve_other_types },
+            CharacteristicActionAst::BecomeBasicLandTypeChoice {
+                target,
+                duration,
+                allowed_subtypes,
+                preserve_other_types,
+            },
         ) => compile_tagged_effect_for_target(target, ctx, "become_basic_land_type", |spec| {
-            Effect::new(crate::effects::BecomeBasicLandTypeChoiceEffect::new(
-                spec,
-                duration.clone(),
-            ).with_options(allowed_subtypes.clone(), *preserve_other_types))
+            Effect::new(
+                crate::effects::BecomeBasicLandTypeChoiceEffect::new(spec, duration.clone())
+                    .with_options(allowed_subtypes.clone(), *preserve_other_types),
+            )
         }),
         SubjectVerbActionAst::Characteristics(
             CharacteristicActionAst::BecomeCreatureTypeChoice {
@@ -3045,8 +3125,10 @@ pub(super) fn compile_subject_verb_middle(
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let modes = modifications
                 .iter()
-                .map(|modification| EffectMode {
-                    source_text: String::new(),
+                .zip(abilities.iter())
+                .map(|(modification, ability)| EffectMode {
+                    source_text: granted_ability_mode_description(ability, &ChooseSpec::Source)
+                        .unwrap_or_default(),
                     effects: vec![Effect::new(
                         crate::effects::ApplyContinuousEffect::new(
                             crate::continuous::EffectTarget::Filter(resolved_filter.clone()),

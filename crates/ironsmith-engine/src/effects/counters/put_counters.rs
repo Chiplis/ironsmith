@@ -3,7 +3,7 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::{DistributeSpec, NumberSpec, make_decision_with_fallback};
 use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, Value};
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_nonnegative_u32};
+use crate::effects::helpers::{resolve_nonnegative_u32, resolve_objects_for_effect};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::{FilterContext, ObjectFilterExt as _};
@@ -61,7 +61,9 @@ impl EffectExecutor for PutCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         game.clear_pending_decision_controllers();
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
@@ -272,7 +274,10 @@ impl EffectExecutor for PutCountersEffect {
             Ok(counter_action_completed(self, ctx, outcome, count))
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            game.restore_execution_checkpoint(
+                checkpoint,
+                result.is_ok() && ctx.decision_maker.awaiting_choice(),
+            );
             context_checkpoint.restore(ctx);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
@@ -333,7 +338,12 @@ fn counter_action_completed(
 ) -> EffectOutcome {
     if let Some(action) = effect.completion_action {
         outcome.with_event(crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::KeywordActionEvent::new(action, ctx.controller, ctx.source, amount),
+            crate::events::KeywordActionEvent::new(
+                action,
+                ctx.iteration.iterated_player.unwrap_or(ctx.controller),
+                ctx.source,
+                amount,
+            ),
             ctx.provenance,
         ))
     } else {
@@ -817,10 +827,20 @@ mod tests {
                             .get_effect(one_shot)
                             .is_none()
                     );
-                    let queued = game.take_pending_trigger_events();
+                    let queued = game
+                        .turn_store
+                        .turn_history
+                        .projected_records()
+                        .map(|record| record.event.clone())
+                        .collect::<Vec<_>>();
                     if operation == 9 {
-                        let actual_events: Vec<_> =
-                            replay.events.iter().chain(queued.iter()).collect();
+                        let mut observed = std::collections::HashSet::new();
+                        let actual_events: Vec<_> = replay
+                            .events
+                            .iter()
+                            .chain(queued.iter())
+                            .filter(|event| observed.insert(event.occurrence_key()))
+                            .collect();
                         assert_eq!(
                             actual_events
                                 .iter()
@@ -867,7 +887,13 @@ mod tests {
                                 .is_some_and(|marker| marker.is_added())
                         }));
                     } else {
-                        assert!(queued.is_empty());
+                        assert_eq!(
+                            queued
+                                .iter()
+                                .filter(|event| event.kind() == crate::events::EventKind::LifeGain)
+                                .count(),
+                            3
+                        );
                     }
                 }
             }

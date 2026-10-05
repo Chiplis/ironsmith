@@ -244,7 +244,11 @@ fn empower_jace_complete_candidates_strict_compile_and_round_trip_with_typed_amo
             assert!(
                 ironsmith_text::compiled_text::unprocessed_compiled_lines(&definition)
                     .join("\n")
-                    .contains("Empower Jace")
+                    .to_ascii_lowercase()
+                    .contains("empower jace"),
+                "{}: {}",
+                definition.card.name,
+                ironsmith_text::compiled_text::unprocessed_compiled_lines(&definition).join("\n")
             );
         }
     }
@@ -527,7 +531,10 @@ fn empower_jace_pending_choice_rolls_back_token_creation_and_replays_once() {
     let doubler = CardDefinitionBuilder::new(CardId::new(), "Choice checkpoint fixture")
         .card_types(vec![CardType::Enchantment])
         .with_ability(Ability::static_ability(
-            StaticAbility::double_token_creation_replacement(PlayerFilter::You, "Double tokens".into()),
+            StaticAbility::double_token_creation_replacement(
+                PlayerFilter::You,
+                "Double tokens".into(),
+            ),
         ))
         .build();
     let source = game.create_object_from_definition(&doubler, alice, Zone::Battlefield);

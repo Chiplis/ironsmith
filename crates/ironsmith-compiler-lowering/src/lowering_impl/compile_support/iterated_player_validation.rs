@@ -332,11 +332,25 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                     player.mentions_iterated_player()
                         || object_filter_mentions_iterated_player(filter)
                 }
-                TurnHistoryCount::DestroyedBy { filter, cause } => object_filter_mentions_iterated_player(filter)
-                    || cause.source_filter.as_ref().is_some_and(object_filter_mentions_iterated_player),
-                TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => caster.mentions_iterated_player()
-                    || object_filter_mentions_iterated_player(filter)
-                    || cause.source_filter.as_ref().is_some_and(object_filter_mentions_iterated_player),
+                TurnHistoryCount::DestroyedBy { filter, cause } => {
+                    object_filter_mentions_iterated_player(filter)
+                        || cause
+                            .source_filter
+                            .as_ref()
+                            .is_some_and(object_filter_mentions_iterated_player)
+                }
+                TurnHistoryCount::CastSpellsCounteredBy {
+                    caster,
+                    filter,
+                    cause,
+                } => {
+                    caster.mentions_iterated_player()
+                        || object_filter_mentions_iterated_player(filter)
+                        || cause
+                            .source_filter
+                            .as_ref()
+                            .is_some_and(object_filter_mentions_iterated_player)
+                }
                 TurnHistoryCount::DamageDealtToSource | TurnHistoryCount::DamageDealtBySource => {
                     false
                 }
@@ -484,7 +498,7 @@ pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
         | PlayerHasNoOpponentWithMoreLifeThan { player }
         | PlayerHasMoreLifeThanEachOtherPlayer { player }
         | PlayerIsMonarch { player }
-        | PlayerWasMonarchAtTurnStart {player}
+        | PlayerWasMonarchAtTurnStart { player }
         | PlayerHasInitiative { player }
         | PlayerHasCitysBlessing { player }
         | PlayerHasEnduringStory { player }
@@ -541,11 +555,14 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | DamageReduceLifeBelowOne(player)
         | ChangeLifeTotal(player)
         | LoseGame(player)
+        | LoseGameForZeroLife(player)
         | WinGame(player)
         | BecomeMonarch(player)
         | LoseUnspentMana(player, _)
         | BeTargetedPlayer(player) => player.mentions_iterated_player(),
-        PlayLandsMatching(player, filter) | CastSpellsMatching(player, filter) | CastMoreThanOneSpellEachTurn(player, filter) => {
+        PlayLandsMatching(player, filter)
+        | CastSpellsMatching(player, filter)
+        | CastMoreThanOneSpellEachTurn(player, filter) => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
         }
         BeSacrificedByCause { filter, cause } => {

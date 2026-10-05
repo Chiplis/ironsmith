@@ -388,13 +388,18 @@ fn static_ability_has_minimum_total_spell_mana(
 impl<'a> DerivedGameView<'a> {
     /// A fresh activation-local target view. Its memo table must never reuse
     /// answers computed for another announced cost identity.
-    pub(crate) fn with_target_reference_bindings(mut self, references: crate::cost::prospective_references::CostReferenceBindings) -> Self {
+    pub(crate) fn with_target_reference_bindings(
+        mut self,
+        references: crate::cost::prospective_references::CostReferenceBindings,
+    ) -> Self {
         self.target_reference_bindings = references;
         self.spell_target_legality.get_mut().clear();
         self
     }
 
-    pub(crate) fn target_reference_bindings(&self) -> Option<&crate::cost::prospective_references::CostReferenceBindings> {
+    pub(crate) fn target_reference_bindings(
+        &self,
+    ) -> Option<&crate::cost::prospective_references::CostReferenceBindings> {
         (!self.target_reference_bindings.is_empty()).then_some(&self.target_reference_bindings)
     }
 
@@ -416,7 +421,9 @@ impl<'a> DerivedGameView<'a> {
         Self {
             game,
             target_reference_bindings: Default::default(),
-            memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(game)),
+            memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(
+                game,
+            )),
             battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
             use_game_characteristics_cache: true,
@@ -457,7 +464,9 @@ impl<'a> DerivedGameView<'a> {
         Self {
             game,
             target_reference_bindings: Default::default(),
-            memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(game)),
+            memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(
+                game,
+            )),
             battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
             use_game_characteristics_cache: false,
@@ -498,7 +507,9 @@ impl<'a> DerivedGameView<'a> {
     /// or become the quiescent game's final values.
     fn ensure_memo_context(&self) {
         let current = crate::continuous::characteristic_memo_context(self.game);
-        if self.memo_characteristic_context.get() == current { return; }
+        if self.memo_characteristic_context.get() == current {
+            return;
+        }
         self.characteristics.borrow_mut().clear();
         self.abilities_cache.borrow_mut().clear();
         self.ability_index_summary_cache.borrow_mut().clear();
@@ -510,7 +521,9 @@ impl<'a> DerivedGameView<'a> {
         self.battlefield_opponent_creatures.borrow_mut().clear();
         self.potential_mana.borrow_mut().clear();
         self.black_mana_life_permission.borrow_mut().clear();
-        self.pay_life_cast_or_activate_restriction.borrow_mut().clear();
+        self.pay_life_cast_or_activate_restriction
+            .borrow_mut()
+            .clear();
         self.granted_alternative_casts.borrow_mut().clear();
         self.granted_play_from.borrow_mut().clear();
         self.granted_static_ability_presence.borrow_mut().clear();
@@ -528,16 +541,26 @@ impl<'a> DerivedGameView<'a> {
         self.memo_characteristic_context.set(current);
     }
 
-    pub(crate) fn cached_available_payment_sources(&self, player: PlayerId)
-        -> Option<Rc<Vec<crate::decision::AvailableManaSource>>> {
+    pub(crate) fn cached_available_payment_sources(
+        &self,
+        player: PlayerId,
+    ) -> Option<Rc<Vec<crate::decision::AvailableManaSource>>> {
         self.ensure_memo_context();
-        self.available_payment_sources.borrow().get(&player).cloned()
+        self.available_payment_sources
+            .borrow()
+            .get(&player)
+            .cloned()
     }
 
-    pub(crate) fn cache_available_payment_sources(&self, player: PlayerId,
-        sources: Rc<Vec<crate::decision::AvailableManaSource>>) {
+    pub(crate) fn cache_available_payment_sources(
+        &self,
+        player: PlayerId,
+        sources: Rc<Vec<crate::decision::AvailableManaSource>>,
+    ) {
         self.ensure_memo_context();
-        self.available_payment_sources.borrow_mut().insert(player, sources);
+        self.available_payment_sources
+            .borrow_mut()
+            .insert(player, sources);
     }
 
     pub(crate) fn effects(&self) -> &[ContinuousEffect] {
@@ -723,7 +746,9 @@ impl<'a> DerivedGameView<'a> {
                     abilities.push(ability);
                 }
             }
-            for (_, ability) in crate::continuous::intrinsic_starting_counter_abilities(&object.card_types) {
+            for (_, ability) in
+                crate::continuous::intrinsic_starting_counter_abilities(&object.card_types)
+            {
                 abilities.push(ability);
             }
             for level_ability in object.level_granted_abilities() {
@@ -1193,7 +1218,9 @@ impl<'a> DerivedGameView<'a> {
                         }
                     })
                 }
-                Grantable::Ability(_) | Grantable::PlayFrom | Grantable::AlternativePrice { .. } => None,
+                Grantable::Ability(_)
+                | Grantable::PlayFrom
+                | Grantable::AlternativePrice { .. } => None,
             })
             .chain(self.game.plotted_cast_permission(card_id, zone, player))
             .collect();
@@ -1234,7 +1261,8 @@ impl<'a> DerivedGameView<'a> {
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)
-                | Grantable::DerivedAlternativeCast(_) | Grantable::AlternativePrice { .. } => None,
+                | Grantable::DerivedAlternativeCast(_)
+                | Grantable::AlternativePrice { .. } => None,
             })
             .collect();
         self.granted_play_from
@@ -1271,7 +1299,12 @@ impl<'a> DerivedGameView<'a> {
             })
             .filter(|grant| {
                 grant_applies_to_card_non_recursive(
-                    grant, card_id, card, filter_card, &ctx, self.game,
+                    grant,
+                    card_id,
+                    card,
+                    filter_card,
+                    &ctx,
+                    self.game,
                 )
             })
             .filter_map(|grant| match &grant.grantable {
@@ -1303,7 +1336,9 @@ impl<'a> DerivedGameView<'a> {
                         }
                     })
                 }
-                Grantable::Ability(_) | Grantable::PlayFrom | Grantable::AlternativePrice { .. } => None,
+                Grantable::Ability(_)
+                | Grantable::PlayFrom
+                | Grantable::AlternativePrice { .. } => None,
             })
             .collect()
     }
@@ -1333,7 +1368,8 @@ impl<'a> DerivedGameView<'a> {
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)
-                | Grantable::DerivedAlternativeCast(_) | Grantable::AlternativePrice { .. } => None,
+                | Grantable::DerivedAlternativeCast(_)
+                | Grantable::AlternativePrice { .. } => None,
             })
             .collect()
     }
@@ -1669,6 +1705,9 @@ impl<'a> DerivedGameView<'a> {
 
     fn permanent_non_layered_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
         self.ensure_memo_context();
+        if self.game.is_phased_out(permanent_id) {
+            return false;
+        }
         let mut has_modifier = false;
         self.for_each_active_non_layered_static_ability(permanent_id, |static_ability| {
             has_modifier |= static_ability_has_spell_cost_modifier(static_ability);
@@ -1678,6 +1717,9 @@ impl<'a> DerivedGameView<'a> {
 
     fn permanent_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
         self.ensure_memo_context();
+        if self.game.is_phased_out(permanent_id) {
+            return false;
+        }
         self.static_abilities_rc(permanent_id)
             .unwrap_or_default()
             .iter()
@@ -1689,6 +1731,9 @@ impl<'a> DerivedGameView<'a> {
         permanent_id: ObjectId,
     ) -> bool {
         self.ensure_memo_context();
+        if self.game.is_phased_out(permanent_id) {
+            return false;
+        }
         let mut has_modifier = false;
         self.for_each_active_non_layered_static_ability(permanent_id, |static_ability| {
             has_modifier |= static_ability_has_activated_ability_cost_modifier(static_ability);
@@ -1696,8 +1741,18 @@ impl<'a> DerivedGameView<'a> {
         has_modifier
     }
 
+    pub(crate) fn source_has_activated_ability_cost_modifiers(&self, source: ObjectId) -> bool {
+        self.game
+            .object(source)
+            .is_some_and(|object| object.zone != Zone::Battlefield)
+            && self.permanent_has_activated_ability_cost_modifiers(source)
+    }
+
     fn permanent_has_activated_ability_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
         self.ensure_memo_context();
+        if self.game.is_phased_out(permanent_id) {
+            return false;
+        }
         self.static_abilities_rc(permanent_id)
             .unwrap_or_default()
             .iter()
@@ -1980,7 +2035,11 @@ impl<'a> DerivedGameView<'a> {
         }
         // Keyword counters participate in layer six without a registered
         // continuous instruction. The raw printed-ability fast path omits them.
-        if object.counters.iter().any(|(kind, count)| *count > 0 && kind.is_ability_counter()) {
+        if object
+            .counters
+            .iter()
+            .any(|(kind, count)| *count > 0 && kind.is_ability_counter())
+        {
             return true;
         }
         self.battlefield_characteristic_scope
@@ -1996,7 +2055,9 @@ fn grant_applies_to_card(
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
-    if !crate::grant_registry::grant_top_card_matches(game, grant, card_id) { return false; }
+    if !crate::grant_registry::grant_top_card_matches(game, grant, card_id) {
+        return false;
+    }
 
     if grant
         .required_face_name
@@ -2031,7 +2092,9 @@ fn grant_applies_to_card_non_recursive(
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
-    if !crate::grant_registry::grant_top_card_matches(game, grant, card_id) { return false; }
+    if !crate::grant_registry::grant_top_card_matches(game, grant, card_id) {
+        return false;
+    }
 
     // A self-grant can require a particular cast face even when the grant's
     // card filter must use that card's characteristics in its current zone.
@@ -2358,7 +2421,11 @@ mod tests {
             .iter()
             .filter_map(StaticAbility::minimum_total_spell_mana)
             .max();
-        assert_eq!(layered_duplicate_minimum, Some(5), "different minimum-mana payloads are independent abilities");
+        assert_eq!(
+            layered_duplicate_minimum,
+            Some(5),
+            "different minimum-mana payloads are independent abilities"
+        );
 
         let view = DerivedGameView::new(&game);
         assert!(view.has_battlefield_spell_cost_modifiers());
@@ -2393,25 +2460,42 @@ mod tests {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
         let card = CardBuilder::new(CardId::from_raw(20005), "Payload parity source")
-            .card_types(vec![CardType::Creature]).build();
+            .card_types(vec![CardType::Creature])
+            .build();
         let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
         let printed = crate::static_abilities::StaticAbility::minimum_spell_total_mana(3);
-        game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(printed.clone()));
-        for payload in [printed, crate::static_abilities::StaticAbility::minimum_spell_total_mana(5)] {
+        game.object_mut(source)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(printed.clone()));
+        for payload in [
+            printed,
+            crate::static_abilities::StaticAbility::minimum_spell_total_mana(5),
+        ] {
             game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
-                source, crate::static_abilities::StaticAbilityId::MinimumSpellTotalMana, Some(payload),
+                source,
+                crate::static_abilities::StaticAbilityId::MinimumSpellTotalMana,
+                Some(payload),
             );
         }
         let layered = game.calculated_characteristics(source).unwrap();
-        let mut layered_values = layered.static_abilities.iter()
+        let mut layered_values = layered
+            .static_abilities
+            .iter()
             .filter_map(crate::static_abilities::StaticAbility::minimum_total_spell_mana)
             .collect::<Vec<_>>();
         layered_values.sort();
-        assert_eq!(layered_values, vec![3, 3, 5], "a printed ability and a separately granted equal ability are independent occurrences");
+        assert_eq!(
+            layered_values,
+            vec![3, 3, 5],
+            "a printed ability and a separately granted equal ability are independent occurrences"
+        );
         let view = DerivedGameView::new(&game);
         let mut sparse_values = Vec::new();
         view.for_each_active_non_layered_static_ability(source, |ability| {
-            if let Some(value) = ability.minimum_total_spell_mana() { sparse_values.push(value); }
+            if let Some(value) = ability.minimum_total_spell_mana() {
+                sparse_values.push(value);
+            }
         });
         sparse_values.sort();
         assert_eq!(sparse_values, layered_values);

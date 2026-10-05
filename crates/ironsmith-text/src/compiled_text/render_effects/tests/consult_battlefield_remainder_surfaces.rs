@@ -305,7 +305,7 @@ fn optional_consult_gates_movement_and_shuffle_on_acceptance() {
         .card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(4, 4))
         .parse_text("Kicker {1}{G}\nWhen this creature enters, if it was kicked, you may reveal cards from the top of your library until you reveal a creature card. If you do, put that card onto the battlefield and shuffle all other cards revealed this way into your library.").unwrap();
     let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
-    assert!(rendered.contains("If you do, put that card onto the battlefield and shuffle all other cards revealed this way into your library"), "{rendered}");
+    assert!(rendered.contains("If you do, put that card onto the battlefield and shuffle all other cards revealed this way into your library"), "{rendered}\n{definition:#?}");
     let trigger = definition
         .abilities
         .iter()
@@ -365,7 +365,7 @@ fn sacrificed_source_consult_keeps_gate_and_new_creature_damage() {
         .card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(3, 3))
         .parse_text("When this creature deals combat damage to a player, sacrifice it. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield, then shuffle the rest into your library. If that creature is a Demon, it deals damage equal to its power to each opponent.").unwrap();
     let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
-    assert!(rendered.contains("sacrifice it. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield, then shuffle the rest into your library"), "{rendered}");
+    assert!(rendered.contains("sacrifice it. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield, then shuffle the rest into your library"), "{rendered}\n{definition:#?}");
     let trigger = definition
         .abilities
         .iter()

@@ -31,7 +31,12 @@ pub fn static_ability_zone_defaults(
             Zone::Exile,
             Zone::Command,
         ],
-        Some(ShuffleIntoLibraryFromGraveyard | CountersRemainAcrossZoneChanges | SpellManaSpendingRestriction) => vec![
+        Some(
+            CharacteristicDefiningPT
+            | ShuffleIntoLibraryFromGraveyard
+            | CountersRemainAcrossZoneChanges
+            | SpellManaSpendingRestriction,
+        ) => vec![
             Zone::Battlefield,
             Zone::Hand,
             Zone::Stack,
@@ -48,6 +53,12 @@ pub fn static_ability_zone_defaults(
 
 impl<T, E, C, Cond, ICond> StaticAbilityFunctionalZones for StaticAbility<T, E, C, Cond, ICond> {
     fn default_functional_zones(&self) -> Vec<Zone> {
+        // A conditional size assignment is not a characteristic-defining ability.
+        if matches!(&self.payload, StaticAbilityPayload::Conditional { .. })
+            && self.id == Some(StaticAbilityId::CharacteristicDefiningPT)
+        {
+            return vec![Zone::Battlefield];
+        }
         let source_only = match &self.payload {
             StaticAbilityPayload::ExileToExileInsteadOfGraveyard { filter, .. }
             | StaticAbilityPayload::ExileWouldDieInstead { filter, .. } => filter.source,

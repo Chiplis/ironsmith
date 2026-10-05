@@ -543,7 +543,7 @@ fn both_convoke_payment_routes_publish_one_group_with_the_actual_payer() {
                         break;
                     }
                 }
-                assert!(state.pending_cast.is_none());
+                assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
                 put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
                 settle(&mut game);
                 assert_eq!(

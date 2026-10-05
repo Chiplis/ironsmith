@@ -360,16 +360,20 @@ mod tests {
     }
 }
 
-
-fn parse_canonical_named_token<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<BuiltinTokenShape> {
-    alt((
+fn parse_canonical_named_token<'a>(
+    input: &mut crate::lexer::LexStream<'a>,
+) -> WResult<BuiltinTokenShape> {
+    let token = alt((
         primitives::kw("heartwood").value(BuiltinTokenShape::Heartwood),
         primitives::kw("vibranium").value(BuiltinTokenShape::Vibranium),
         primitives::kw("gingerbrute").value(BuiltinTokenShape::Gingerbrute),
         primitives::kw("mutavault").value(BuiltinTokenShape::Mutavault),
         primitives::phrase(&["spellgorger", "weird"]).value(BuiltinTokenShape::SpellgorgerWeird),
         primitives::kw("tarmogoyf").value(BuiltinTokenShape::Tarmogoyf),
-    )).parse_next(input)
+    ))
+    .parse_next(input)?;
+    opt(alt((primitives::kw("token"), primitives::kw("tokens")))).parse_next(input)?;
+    Ok(token)
 }
 pub fn parse_canonical_named_token_shape(tokens: &[OwnedLexToken]) -> Option<BuiltinTokenShape> {
     primitives::probe_all(tokens, parse_canonical_named_token, "canonical named token")

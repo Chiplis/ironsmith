@@ -185,6 +185,8 @@ fn queue_event(game: &mut GameState, event: TriggerEvent, dm: &mut impl Decision
 }
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut impl DecisionMaker) {
     let mut queue = TriggerQueue::new();
+    // Checked execution already captures some triggers in the original observer frame.
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     for event in outcome.events {
         for entry in check_triggers(game, &event) {
             queue.add(entry);
@@ -238,7 +240,7 @@ fn cast(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -246,7 +248,7 @@ fn cast(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()
@@ -371,7 +373,9 @@ fn nihiloor_retains_singular_owned_attack_and_local_reflexive_comparison_artifac
         for ability in &definition.abilities {
             if let ironsmith::ability::AbilityKind::Triggered(ability) = &ability.kind {
                 if let Some(model) = ability.trigger.compiled_model() {
-                    if let ironsmith_core::trigger_model::TriggerKind::Attacks { filter } = &model.kind {
+                    if let ironsmith_core::trigger_model::TriggerKind::Attacks { filter } =
+                        &model.kind
+                    {
                         attacks += 1;
                         assert_eq!(filter.controller, Some(PlayerFilter::You));
                         assert_eq!(filter.owner, Some(PlayerFilter::Opponent));

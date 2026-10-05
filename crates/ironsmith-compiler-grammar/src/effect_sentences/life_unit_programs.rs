@@ -79,7 +79,7 @@ fn mixed_permanent_private_card_exile(
     tokens: &[OwnedLexToken],
     count: Value,
 ) -> Option<Vec<EffectAst>> {
-    let words = crate::lexer::token_word_refs(tokens);
+    let words = crate::lexer::parser_token_word_refs(tokens);
     let zones = match words.as_slice() {
         [
             "exile",
@@ -145,7 +145,7 @@ pub(crate) fn parse_prefix(
     if crate::lexer::split_lexed_sentences(tokens).len() != 1 {
         return Ok(None);
     }
-    let words = crate::lexer::token_word_refs(tokens);
+    let words = crate::lexer::parser_token_word_refs(tokens);
     let Some((count, used)) = crate::util::parse_for_each_count_value_words(&words) else {
         return Ok(None);
     };

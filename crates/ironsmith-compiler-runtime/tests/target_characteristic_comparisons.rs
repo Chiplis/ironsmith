@@ -185,6 +185,8 @@ fn queue_event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) -> u
 }
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
+    // Checked execution already captures some triggers in the original observer frame.
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     for event in outcome.events {
         for entry in check_triggers(game, &event) {
             queue.add(entry);
@@ -238,7 +240,7 @@ fn cast(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -246,7 +248,7 @@ fn cast(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()
@@ -365,7 +367,7 @@ fn fell_loses_its_only_target_on_blink_or_shroud_and_does_not_destroy_anything()
             } else {
                 let protection = compile_to_runtime_definition(
                     "Target protection",
-                    "Type: Instant\nTarget creature gains shroud until end of turn.",
+                    "Mana cost: {0}\nType: Instant\nTarget creature gains shroud until end of turn.",
                     false,
                 )
                 .unwrap();
@@ -455,7 +457,15 @@ fn active_resolution_tag_prefers_the_exact_departure_receipt_over_its_earlier_se
     )));
     let mut ctx = ironsmith::effects::EffectContext::new_default(source, A);
     ctx.tagged_objects = tags.clone();
-    assert!(!ironsmith::effects::helpers::resolve_objects_from_spec(&game, &ChooseSpec::All(filter.clone()), &ctx).unwrap().contains(&candidate));
+    assert!(
+        !ironsmith::effects::helpers::resolve_objects_from_spec(
+            &game,
+            &ChooseSpec::All(filter.clone()),
+            &ctx
+        )
+        .unwrap()
+        .contains(&candidate)
+    );
     pump(&mut game, reference, 3);
     let exiled = game
         .move_object_by_game_rule(reference, Zone::Exile)
@@ -468,7 +478,13 @@ fn active_resolution_tag_prefers_the_exact_departure_receipt_over_its_earlier_se
         .unwrap();
     assert_eq!(tags["selected"][0].power, Some(2));
     assert!(
-        ironsmith::effects::helpers::resolve_objects_from_spec(&game, &ChooseSpec::All(filter.clone()), &ctx).unwrap().contains(&candidate),
+        ironsmith::effects::helpers::resolve_objects_from_spec(
+            &game,
+            &ChooseSpec::All(filter.clone()),
+            &ctx
+        )
+        .unwrap()
+        .contains(&candidate),
         "four is less than exact departure power five; initial selection and later incarnation both differ"
     );
 }

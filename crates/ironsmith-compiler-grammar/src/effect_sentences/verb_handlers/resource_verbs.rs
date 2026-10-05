@@ -1,9 +1,9 @@
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::LifeResourceActionAst;
-use crate::cards::builders::ZoneMoveActionAst;
 use crate::cards::builders::CounterActionAst;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
 fn subject_verb_player_resource_effect(
     role: SubjectVerbRoleAst,
     player: PlayerAst,
@@ -48,7 +48,10 @@ pub fn parse_effect_with_verb(
                 && matches!(subject, Some(SubjectAst::This) | None)
             {
                 return Ok(EffectAst::subject_verb_remove_abilities_from_target(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens)),
+                    TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::It.bind(),
+                        span_from_tokens(tokens),
+                    ),
                     Vec::new(),
                     Until::Forever,
                 ));
@@ -68,13 +71,10 @@ pub fn parse_effect_with_verb(
         }
         Verb::Put => {
             let has_onto = crate::lexer::contains_token_word(tokens, "onto");
-            let has_from_into_zone_move =
-                crate::lexer::contains_token_word(tokens, "from")
-                    && crate::lexer::contains_token_word(tokens, "into");
-            let has_counter_words = crate::lexer::contains_token_any_word(
-                tokens,
-                &["counter", "counters"],
-            );
+            let has_from_into_zone_move = crate::lexer::contains_token_word(tokens, "from")
+                && crate::lexer::contains_token_word(tokens, "into");
+            let has_counter_words =
+                crate::lexer::contains_token_any_word(tokens, &["counter", "counters"]);
 
             // Prefer zone moves like "... onto the battlefield" over counter placement because
             // "counter(s)" may appear in subordinate clauses (e.g. "mana value equal to the number
@@ -161,9 +161,7 @@ pub fn parse_effect_with_verb(
             // opponent's choice" is chosen during resolution instead (for
             // example, Tasigur's graveyard return).
             if let Some(choice_shape) =
-                crate::grammar::choices::parse_possessive_object_choice_tokens(
-                    tokens,
-                )
+                crate::grammar::choices::parse_possessive_object_choice_tokens(tokens)
                 && choice_shape.actor
                     == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
             {
@@ -173,20 +171,21 @@ pub fn parse_effect_with_verb(
                 }
                 if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
-                        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
+                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                            target, ..
+                        })
+                        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
+                            target, ..
+                        }),
                     ..
                 }) = &mut effect
                 {
                     if let Some((filter, count, count_value)) =
                         untargeted_object_choice_parts(target)
                     {
-                        let object_tag =
-                            crate::util::helper_tag_for_tokens(
-                                tokens,
-                                "chosen",
-                            );
-                        *target = TargetAst::Tagged(crate::tag::TagRef::of(object_tag.clone()), None);
+                        let object_tag = crate::util::helper_tag_for_tokens(tokens, "chosen");
+                        *target =
+                            TargetAst::Tagged(crate::tag::TagRef::of(object_tag.clone()), None);
                         return Ok(EffectAst::Sequence {
                             effects: vec![
                                 EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
@@ -236,10 +235,24 @@ pub fn parse_effect_with_verb(
         Verb::Pay => parse_pay(tokens, subject),
         Verb::Take => parse_take(tokens, subject),
         Verb::Detain => parse_detain(tokens),
-        Verb::Assign => Err(CardTextError::ParseError(format!(
-            "unsupported generic assign clause (clause: '{}')",
-            crate::lexer::token_word_refs(tokens).join(" ")
-        ))),
+        Verb::Assign => {
+            let (duration, body) = crate::effect_sentences::search_library::parse_restriction_duration(tokens)?
+                .unwrap_or_else(|| (Until::Forever, tokens.to_vec()));
+            if let Some(no_defender) = crate::grammar::effects::toughness_assignment::assignment_body(&body) {
+                let target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens));
+                let mut abilities = vec![crate::cards::builders::GrantedAbilityAst::StaticAbility(Box::new(
+                    crate::cards::builders::StaticAbilityAst::Static(
+                        crate::model::CompilerStaticAbilityCore::this_creature_assigns_combat_damage_using_toughness(),
+                    ),
+                ))];
+                if no_defender {
+                    abilities.push(crate::cards::builders::GrantedAbilityAst::CanAttackAsThoughNoDefender);
+                }
+                Ok(EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration))
+            } else {
+                Err(CardTextError::ParseError(format!("unsupported generic assign clause (clause: '{}')", crate::lexer::token_word_refs(tokens).join(" "))))
+            }
+        }
         Verb::Goad => parse_goad(tokens),
         Verb::Suspect => parse_suspect(tokens),
         Verb::Note => parse_note(tokens, subject),
@@ -315,8 +328,11 @@ fn parse_note(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    if matches!(subject, None | Some(SubjectAst::Player(PlayerAst::You)))
-        && resource_grammar::parse_resource_note_life_total_shape(tokens)
+    if matches!(
+        subject,
+        None | Some(SubjectAst::This)
+            | Some(SubjectAst::Player(PlayerAst::You | PlayerAst::Implicit))
+    ) && resource_grammar::parse_resource_note_life_total_shape(tokens)
     {
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::Actor,
@@ -325,7 +341,7 @@ fn parse_note(
         ));
     }
     Err(CardTextError::ParseError(format!(
-        "unsupported note clause: '{}'",
+        "unsupported note clause: '{}' (subject: {subject:?})",
         crate::lexer::token_word_refs(tokens).join(" ")
     )))
 }
@@ -409,22 +425,33 @@ pub fn parse_look(
                 PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
                 PlayerAst::Opponent => PlayerFilter::Opponent,
                 PlayerAst::That => PlayerFilter::IteratedPlayer,
-                _ => return Err(CardTextError::ParseError("unsupported random hand owner".into())),
+                _ => {
+                    return Err(CardTextError::ParseError(
+                        "unsupported random hand owner".into(),
+                    ));
+                }
             };
             let tag = crate::util::helper_tag_for_tokens(tokens, "looked");
-            Ok(EffectAst::Sequence { effects: vec![
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    filter: ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner),
-                    count: ChoiceCount::exactly(1).at_random(),
-                    count_value: None,
-                    player,
-                    tag: crate::tag::TagRef::of(tag.clone()),
-                }),
-                EffectAst::subject_verb_look_at_target(TargetAst::Tagged(tag, span_from_tokens(tokens))),
-            ] })
+            Ok(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                        filter: ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner),
+                        count: ChoiceCount::exactly(1).at_random(),
+                        count_value: None,
+                        player,
+                        tag: crate::tag::TagRef::of(tag.clone()),
+                    }),
+                    EffectAst::subject_verb_look_at_target(TargetAst::Tagged(
+                        tag,
+                        span_from_tokens(tokens),
+                    )),
+                ],
+            })
         }
         ResourceLookShape::Tagged => Ok(EffectAst::subject_verb_look_at_target(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens)))),
+            crate::tag::CompilerReferenceTag::It.bind(),
+            span_from_tokens(tokens),
+        ))),
         ResourceLookShape::PlayTaggedWhileExiled => Ok(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
                 crate::tag::CompilerReferenceTag::It.bind(),
@@ -435,12 +462,14 @@ pub fn parse_look(
                 None,
             ),
         ),
-        ResourceLookShape::EachPlayerHand => Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-            effects: vec![EffectAst::subject_verb_look_at_hand(TargetAst::Player(
-                PlayerFilter::IteratedPlayer,
-                None,
-            ))],
-        })),
+        ResourceLookShape::EachPlayerHand => {
+            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects: vec![EffectAst::subject_verb_look_at_hand(TargetAst::Player(
+                    PlayerFilter::IteratedPlayer,
+                    None,
+                ))],
+            }))
+        }
         ResourceLookShape::Hand {
             player,
             surface_tokens,
@@ -535,16 +564,22 @@ pub fn parse_look(
                 tag: crate::tag::CompilerReferenceTag::It.bind(),
             })
         }
-        ResourceLookShape::TopCards { player, count } => Ok(
-            EffectAst::subject_verb_look_at_top_cards(player, count, crate::tag::CompilerReferenceTag::It.bind()),
-        ),
-        ResourceLookShape::EachPlayerTopCards { count } => Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-            effects: vec![EffectAst::subject_verb_look_at_top_cards(
-                PlayerAst::That,
+        ResourceLookShape::TopCards { player, count } => {
+            Ok(EffectAst::subject_verb_look_at_top_cards(
+                player,
                 count,
                 crate::tag::CompilerReferenceTag::It.bind(),
-            )],
-        })),
+            ))
+        }
+        ResourceLookShape::EachPlayerTopCards { count } => {
+            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects: vec![EffectAst::subject_verb_look_at_top_cards(
+                    PlayerAst::That,
+                    count,
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                )],
+            }))
+        }
     }
 }
 
@@ -622,7 +657,11 @@ pub fn parse_shuffle(
             let shuffle_into_owner_library = |target: TargetAst| {
                 EffectAst::subject_verb(
                     SubjectVerbRoleAst::LibraryOwner,
-                    if explicit_actor { player } else { PlayerAst::ItsOwner },
+                    if explicit_actor {
+                        player
+                    } else {
+                        PlayerAst::ItsOwner
+                    },
                     SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
                         target,
                         all: false,
@@ -651,23 +690,49 @@ pub fn parse_shuffle(
             let target = parse_target_phrase(&target_tokens)?;
             Ok(shuffle_into_owner_library(target))
         }
-        ResourceShuffleShape::GraveyardIntoLibrary { player, explicit_all_cards_from } => {
-            Ok(EffectAst::subject_verb_shuffle_graveyard_into_library_with_surface(player, explicit_all_cards_from))
-        }
-        ResourceShuffleShape::ObjectsIntoSubjectLibrary { target_len, player, all } => {
+        ResourceShuffleShape::GraveyardIntoLibrary {
+            player,
+            explicit_all_cards_from,
+        } => Ok(
+            EffectAst::subject_verb_shuffle_graveyard_into_library_with_surface(
+                player,
+                explicit_all_cards_from,
+            ),
+        ),
+        ResourceShuffleShape::ObjectsIntoSubjectLibrary {
+            target_len,
+            player,
+            all,
+        } => {
             let mut target = parse_target_phrase(&trim_commas(&tokens[..target_len]))?;
             super::zone_counter_helpers::apply_shuffle_subject_graveyard_owner_context(
-                &mut target, SubjectAst::Player(player));
-            Ok(if all { EffectAst::subject_verb_shuffle_all_objects_into_library(player, target) }
-                else { EffectAst::subject_verb_shuffle_objects_into_library(player, target) })
+                &mut target,
+                SubjectAst::Player(player),
+            );
+            Ok(if all {
+                EffectAst::subject_verb_shuffle_all_objects_into_library(player, target)
+            } else {
+                EffectAst::subject_verb_shuffle_objects_into_library(player, target)
+            })
         }
         ResourceShuffleShape::HandIntoLibrary { player } => {
-            let owner = crate::grammar::effects::zone_counter_shapes::player_filter_for_half_reference(player)
-                .ok_or_else(|| CardTextError::ParseError("unsupported hand owner in shuffle".to_string()))?;
+            let owner =
+                crate::grammar::effects::zone_counter_shapes::player_filter_for_half_reference(
+                    player,
+                )
+                .ok_or_else(|| {
+                    CardTextError::ParseError("unsupported hand owner in shuffle".to_string())
+                })?;
             // "shuffles their hand into their library" names every card in
             // that hand, not a target (CR 701.24a, 115.1).
-            Ok(EffectAst::subject_verb_shuffle_all_objects_into_library(player,
-                TargetAst::Object(ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner), None, None)))
+            Ok(EffectAst::subject_verb_shuffle_all_objects_into_library(
+                player,
+                TargetAst::Object(
+                    ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner),
+                    None,
+                    None,
+                ),
+            ))
         }
         ResourceShuffleShape::TaggedIntoLibrary {
             player: destination_player,
@@ -676,7 +741,10 @@ pub fn parse_shuffle(
             tag: crate::tag::CompilerReferenceTag::It.bind(),
             effects: vec![
                 EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens)),
+                    TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::It.bind(),
+                        span_from_tokens(tokens),
+                    ),
                     Zone::Library,
                     to_bottom,
                     ReturnControllerAst::Preserve,

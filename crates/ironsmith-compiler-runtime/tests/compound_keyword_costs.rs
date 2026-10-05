@@ -33,7 +33,8 @@ fn definitions(name: &str) -> [CardDefinition; 2] {
         .find(|card| card["name"] == name)
         .unwrap();
     let text = card["text"].as_str().unwrap();
-    let direct = compile_to_runtime_definition(name, text, false).unwrap();
+    let direct = compile_to_runtime_definition(name, text, false)
+        .unwrap_or_else(|error| panic!("{name}: {error}"));
     let (artifact, _) = compile_to_artifact(name, text, false).unwrap();
     let restored = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
     assert_eq!(restored, artifact);
@@ -390,4 +391,47 @@ fn dawnhand_partial_cost_repair_retains_both_blight_counts() {
             ironsmith::effect::Value::Fixed(2)
         ]
     );
+}
+
+#[test]
+fn a_target_opponents_blight_uses_their_creature_and_records_their_action() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    for definition in definitions("Champion of the Weird") {
+        let mut game = game();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let own = fixture(&mut game, alice, Zone::Battlefield, false);
+        let foreign = fixture(&mut game, bob, Zone::Battlefield, false);
+        let third = fixture(&mut game, PlayerId::from_index(2), Zone::Battlefield, false);
+        let action = action(&game, &definition, source, KeywordActionKind::Blight).unwrap();
+        let mut choices = Choices {
+            cards: vec![own, foreign],
+            forage_food: false,
+        };
+        activate(&mut game, action, &mut choices);
+        assert_eq!(game.player(alice).unwrap().life, 19);
+        assert_eq!(
+            game.object(own)
+                .unwrap()
+                .counters
+                .get(&CounterType::MinusOneMinusOne),
+            Some(&2)
+        );
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut choices).unwrap();
+        assert_eq!(
+            game.object(foreign)
+                .unwrap()
+                .counters
+                .get(&CounterType::MinusOneMinusOne),
+            Some(&2)
+        );
+        assert_eq!(
+            game.object(third)
+                .unwrap()
+                .counters
+                .get(&CounterType::MinusOneMinusOne),
+            None
+        );
+        assert_eq!(keyword_events(&game, KeywordActionKind::Blight, bob), 1);
+    }
 }

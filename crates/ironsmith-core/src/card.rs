@@ -457,9 +457,12 @@ impl CardBuilder {
         self
     }
 
-    /// Mark this as a token (not a real card).
+    /// Mark this as a token and discard an inherited card mana cost.
+    /// Predefined card-name tokens can explicitly set their printed cost
+    /// after this marker; ordinary token templates have no mana cost.
     pub fn token(mut self) -> Self {
         self.is_token = true;
+        self.mana_cost = None;
         self
     }
 

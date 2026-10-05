@@ -93,7 +93,9 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
             .downcast_ref::<effects::ChooseCreatureTypeEffect>()
             .is_some()
         || effect.downcast_ref::<effects::BeholdEffect>().is_some()
-        || effect.downcast_ref::<effects::CollectEvidenceEffect>().is_some()
+        || effect
+            .downcast_ref::<effects::CollectEvidenceEffect>()
+            .is_some()
         || effect
             .downcast_ref::<effects::RevealTaggedEffect>()
             .is_some()
@@ -175,6 +177,16 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
 }
 
 pub fn payment_effect_to_cost(effect: crate::effect::Effect) -> Result<Cost, String> {
+    let payment_effect = effect
+        .downcast_ref::<crate::effects::WithIdEffect>()
+        .map_or(&effect, |wrapper| wrapper.effect.as_ref());
+    if let Some(payment) = payment_effect.downcast_ref::<crate::effects::PayManaEffect>()
+        && payment.player == crate::target::ChooseSpec::Player(crate::filter::PlayerFilter::You)
+        && payment.x_value.is_none()
+        && payment.x_maximum.is_none()
+    {
+        return Ok(Cost::mana(payment.cost.clone()));
+    }
     let payload_type = effect.payload_type_name();
     if is_payment_effect(&effect) || payload_type.contains("TaggedEffect") {
         Ok(Cost::effect(effect))

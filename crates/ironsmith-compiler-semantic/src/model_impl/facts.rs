@@ -171,6 +171,8 @@ pub struct IdGenContext {
 
 #[derive(Debug, Clone, Default)]
 pub struct LoweringFrame {
+    /// Exact authored declarations referenced again by a later instruction.
+    pub declared_target_references: Vec<crate::TargetAst>,
     pub last_effect_id: Option<EffectId>,
     pub last_library_search_effect_id: Option<EffectId>,
     pub last_object_tag: Option<TagKey>,
@@ -214,6 +216,7 @@ pub struct LoweringFrame {
     pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
+    pub has_announced_x: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -353,6 +356,7 @@ impl EffectLoweringContext {
     }
 
     pub fn apply_reference_frame(&mut self, frame: LoweringFrame) {
+        self.last_value_comparison = frame.last_value_comparison;
         self.last_effect_id = frame.last_effect_id;
         self.last_library_search_effect_id = frame.last_library_search_effect_id;
         self.last_object_tag = frame.last_object_tag;
@@ -373,6 +377,7 @@ impl EffectLoweringContext {
         self.life_amount_producers = frame.life_amount_producers.clone();
         self.die_result_producers = frame.die_result_producers.clone();
         self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
+        self.has_announced_x = frame.has_announced_x;
     }
 
     pub fn apply_lowering_frame(&mut self, frame: LoweringFrame) {

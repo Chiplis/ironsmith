@@ -127,6 +127,9 @@ impl YouDiscardCardTrigger {
 }
 
 impl TriggerMatcher for YouDiscardCardTrigger {
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CardDiscarded])
+    }
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::CardDiscarded {
             return false;
@@ -134,7 +137,12 @@ impl TriggerMatcher for YouDiscardCardTrigger {
         let Some(e) = event.downcast::<CardDiscardedEvent>() else {
             return false;
         };
-        let player_matches = crate::filter::player_filter_matches_game(&self.player, e.player, ctx.game, &ctx.filter_ctx);
+        let player_matches = crate::filter::player_filter_matches_game(
+            &self.player,
+            e.player,
+            ctx.game,
+            &ctx.filter_ctx,
+        );
         if !player_matches {
             return false;
         }
@@ -151,7 +159,12 @@ impl TriggerMatcher for YouDiscardCardTrigger {
             else {
                 return false;
             };
-            let controller_matches = crate::filter::player_filter_matches_game(controller_filter, controller, ctx.game, &ctx.filter_ctx);
+            let controller_matches = crate::filter::player_filter_matches_game(
+                controller_filter,
+                controller,
+                ctx.game,
+                &ctx.filter_ctx,
+            );
             if !controller_matches {
                 return false;
             }
@@ -175,7 +188,8 @@ impl TriggerMatcher for YouDiscardCardTrigger {
     }
 
     fn display(&self) -> String {
-        if self.effect_like_only && self.player == PlayerFilter::You
+        if self.effect_like_only
+            && self.player == PlayerFilter::You
             && self.filter.as_ref().is_none_or(|filter| filter.source)
             && let Some(controller) = &self.cause_controller
         {
@@ -185,8 +199,13 @@ impl TriggerMatcher for YouDiscardCardTrigger {
                 PlayerFilter::Any => "a player controls".to_string(),
                 player => format!("{} controls", player.description()),
             };
-            let card = if self.filter.as_ref().is_some_and(|filter| filter.source) { "this card" }
-                else if self.one_or_more { "one or more cards" } else { "a card" };
+            let card = if self.filter.as_ref().is_some_and(|filter| filter.source) {
+                "this card"
+            } else if self.one_or_more {
+                "one or more cards"
+            } else {
+                "a card"
+            };
             return format!("Whenever a spell or ability {actor} causes you to discard {card}");
         }
         let player_text = match &self.player {
@@ -351,16 +370,42 @@ mod causal_group_tests {
     use crate::ids::{ObjectId, PlayerId};
     #[test]
     fn grouped_causal_discard_keeps_effect_kind_actor_team_and_batch_index() {
-        let mut game=crate::game_state::GameState::new(vec!["A".into(),"B".into(),"C".into(),"D".into()],20);
-        let [a,b,c,d]=[0,1,2,3].map(PlayerId::from_index);game.set_teams(vec![vec![a,b],vec![c,d]]).unwrap();
-        let trigger=YouDiscardCardTrigger::new(PlayerFilter::You,None).caused_by_controller(PlayerFilter::Opponent).effect_like_only().one_or_more();
-        let ctx=TriggerContext::for_source(ObjectId::from_raw(10),a,&game);
-        for (actor,cost,index,expected) in [(c,false,0,true),(b,false,0,false),(c,true,0,false),(c,false,1,false)] {
-            let source=ObjectId::from_raw(20);let cards=vec![ObjectId::from_raw(30),ObjectId::from_raw(31)];
-            let cause=if cost {crate::events::cause::EventCause::from_cost(source,actor)}else{crate::events::cause::EventCause::from_effect(source,actor)};
-            let event=TriggerEvent::new_with_provenance(CardDiscardedEvent::with_cause(a,cards[index],cause).with_batch(cards,vec![],index),Default::default());
-            assert_eq!(trigger.matches(&event,&ctx),expected);
-            if expected {assert_eq!(trigger.event_value_amount(&event,&ctx),Some(2));}
+        let mut game = crate::game_state::GameState::new(
+            vec!["A".into(), "B".into(), "C".into(), "D".into()],
+            20,
+        );
+        let [a, b, c, d] = [0, 1, 2, 3].map(PlayerId::from_index);
+        game.set_teams(vec![vec![a, b], vec![c, d]]).unwrap();
+        let trigger = YouDiscardCardTrigger::new(PlayerFilter::You, None)
+            .caused_by_controller(PlayerFilter::Opponent)
+            .effect_like_only()
+            .one_or_more();
+        let ctx = TriggerContext::for_source(ObjectId::from_raw(10), a, &game);
+        for (actor, cost, index, expected) in [
+            (c, false, 0, true),
+            (b, false, 0, false),
+            (c, true, 0, false),
+            (c, false, 1, false),
+        ] {
+            let source = ObjectId::from_raw(20);
+            let cards = vec![ObjectId::from_raw(30), ObjectId::from_raw(31)];
+            let cause = if cost {
+                crate::events::cause::EventCause::from_cost(source, actor)
+            } else {
+                crate::events::cause::EventCause::from_effect(source, actor)
+            };
+            let event = TriggerEvent::new_with_provenance(
+                CardDiscardedEvent::with_cause(a, cards[index], cause).with_batch(
+                    cards,
+                    vec![],
+                    index,
+                ),
+                Default::default(),
+            );
+            assert_eq!(trigger.matches(&event, &ctx), expected);
+            if expected {
+                assert_eq!(trigger.event_value_amount(&event, &ctx), Some(2));
+            }
         }
     }
 }

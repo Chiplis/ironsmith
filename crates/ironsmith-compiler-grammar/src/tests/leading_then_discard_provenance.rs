@@ -23,7 +23,7 @@ fn draw_and_conditional_discard(
     program: &crate::resolution::ResolutionProgram,
 ) -> (
     &crate::effects::DrawCardsEffect,
-    &crate::effects::ConditionalEffect,
+    &crate::effect::Condition,
     &crate::effects::DiscardEffect,
 ) {
     let [draw_segment, discard_segment] = program.segments.as_slice() else {
@@ -51,13 +51,24 @@ fn draw_and_conditional_discard(
     let conditional = conditional_effect
         .downcast_ref::<crate::effects::ConditionalEffect>()
         .expect("the leading-then sequence should contain a conditional");
+    assert_eq!(
+        conditional.surface,
+        ironsmith_core::ConditionalSurface::TrailingUnless
+    );
+    assert!(
+        conditional.if_false.is_empty(),
+        "the satisfied unless condition must skip the discard"
+    );
+    let crate::effect::Condition::Not(predicate) = &conditional.condition else {
+        panic!("unless must execute only when its predicate is false: {conditional:#?}");
+    };
     let [discard_effect] = conditional.if_true.as_slice() else {
-        panic!("expected one discard effect in the true branch: {conditional:#?}");
+        panic!("expected one discard effect in the negated-condition branch: {conditional:#?}");
     };
     let discard = discard_effect
         .downcast_ref::<crate::effects::DiscardEffect>()
-        .expect("the true branch should discard");
-    (draw, conditional, discard)
+        .expect("the false branch should discard");
+    (draw, predicate.as_ref(), discard)
 }
 
 #[test]
@@ -80,21 +91,17 @@ fn spell_cast_trigger_resolution_condition_refers_to_the_triggering_spell() {
     let program = compile_triggered_program(
         "Whenever you cast an instant or sorcery spell, draw a card. Then discard a card unless five or more mana was spent to cast that spell.",
     );
-    let (draw, conditional, discard) = draw_and_conditional_discard(&program);
+    let (draw, predicate, discard) = draw_and_conditional_discard(&program);
 
     assert_eq!(draw.player, crate::target::PlayerFilter::You);
     assert_eq!(discard.player, crate::target::PlayerFilter::You);
     assert!(
         matches!(
-            &conditional.condition,
-            crate::effect::Condition::Not(inner)
-                if matches!(
-                    inner.as_ref(),
-                    crate::effect::Condition::TriggeringSpellManaSpentToCastAtLeast {
-                        amount: 5,
-                        symbol: None,
-                    }
-                )
+            predicate,
+            crate::effect::Condition::TriggeringSpellManaSpentToCastAtLeast {
+                amount: 5,
+                symbol: None,
+            }
         ),
         "{program:#?}"
     );

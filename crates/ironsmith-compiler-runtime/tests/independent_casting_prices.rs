@@ -560,13 +560,16 @@ fn selected_face_filters_and_both_identities_survive_provider_sacrifice() {
 }
 #[test]
 fn public_zone_cancellation_restores_both_budgets_and_can_retry_the_same_route() {
-    struct Cancel;
+    struct Cancel {
+        canceled: bool,
+    }
     impl DecisionMaker for Cancel {
         fn decide_mana_payment(
             &mut self,
             _: &GameState,
             _: &ironsmith::decisions::context::ManaPaymentContext,
         ) -> ironsmith::mana_payment::ManaPaymentResponse {
+            self.canceled = true;
             ironsmith::mana_payment::ManaPaymentResponse::Cancel
         }
     }
@@ -590,7 +593,7 @@ fn public_zone_cancellation_restores_both_budgets_and_can_retry_the_same_route()
     let action = priced(&g, A, card, provider).unwrap();
     let mut state = PriorityLoopState::new(2);
     let mut q = TriggerQueue::new();
-    let mut dm = Cancel;
+    let mut dm = Cancel { canceled: false };
     let mut result = apply_priority_response_with_dm(
         &mut g,
         &mut q,
@@ -609,7 +612,10 @@ fn public_zone_cancellation_restores_both_budgets_and_can_retry_the_same_route()
             _ => break,
         }
     }
-    assert!(result.is_err());
+    // Cancellation rolls back and returns to priority through a successful response.
+    result.unwrap();
+    assert!(dm.canceled);
+    assert!(!state.has_pending_action());
     assert_eq!(g.object(card).unwrap().zone, Zone::Graveyard);
     assert!(g.turn_store.grant_cast_uses_this_turn.is_empty());
     assert_eq!(g.player(A).unwrap().mana_pool.total(), 1);
@@ -762,7 +768,7 @@ fn commander_tax_remains_payable_and_a_command_zone_price_provider_is_inactive()
         A,
         Zone::Command,
     );
-    g.set_commander(inactive);
+    g.set_as_commander(inactive, A);
     g.player_mut(A).unwrap().energy_counters = 8;
     let own = spell(&mut g, A, Zone::Hand, "{8}");
     assert!(priced(&g, A, own, inactive).is_none());
@@ -980,12 +986,21 @@ fn prepared_copy_native_origin_is_not_general_exile_access() {
         "Unmarked cast",
         "Mana cost: {4}\nType: Sorcery\nYou gain 1 life.",
     );
-    let prepared_definition = compile_to_runtime_definition("Prepared cast", "Mana cost: {4}\nType: Sorcery\nYou gain 1 life.", false).unwrap();
+    let prepared_definition = compile_to_runtime_definition(
+        "Prepared cast",
+        "Mana cost: {4}\nType: Sorcery\nYou gain 1 life.",
+        false,
+    )
+    .unwrap();
     g.register_linked_face_definition(&prepared_definition);
     g.object_mut(source).unwrap().linked_face_layout = LinkedFaceLayout::Prepare;
     g.object_mut(source).unwrap().other_face = Some(prepared_definition.card.id);
     assert!(g.set_prepared(source));
-    let copy = *g.exile.iter().find(|id| g.prepared_spell_source(**id) == Some(source)).unwrap();
+    let copy = *g
+        .exile
+        .iter()
+        .find(|id| g.prepared_spell_source(**id) == Some(source))
+        .unwrap();
     assert!(priced(&g, A, ordinary, price).is_none());
     assert!(casts(&g, B, copy).is_empty());
     let action = priced(&g, A, copy, price).unwrap();

@@ -4599,6 +4599,7 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::Countered => "countered",
         crate::effect::PriorEffectAction::CountersPut => "had counters put on them",
         crate::effect::PriorEffectAction::DealtDamage => "dealt damage",
+        crate::effect::PriorEffectAction::Died => "died",
         crate::effect::PriorEffectAction::Destroyed => "destroyed",
         crate::effect::PriorEffectAction::Discarded => "discarded",
         crate::effect::PriorEffectAction::Drawn => "drawn",
@@ -4823,8 +4824,16 @@ pub(crate) fn describe_prior_effect_count_basis_for_action(
 pub(crate) fn describe_prior_effect_metric_value(
     query: &crate::effect::PriorEffectMetricQuery,
 ) -> String {
-    if query.action == Some(crate::effect::PriorEffectAction::Rolled) && query.metric == crate::effect::EffectMetric::Count { return "the result of that roll".into(); }
-    if query.action == Some(crate::effect::PriorEffectAction::ChosenNumber) && query.metric == crate::effect::EffectMetric::Count { return "the chosen number".into(); }
+    if query.action == Some(crate::effect::PriorEffectAction::Rolled)
+        && query.metric == crate::effect::EffectMetric::Count
+    {
+        return "the result of that roll".into();
+    }
+    if query.action == Some(crate::effect::PriorEffectAction::ChosenNumber)
+        && query.metric == crate::effect::EffectMetric::Count
+    {
+        return "the chosen number".into();
+    }
     let plural_basis = describe_prior_effect_metric_basis(query, true);
     let singular_basis = describe_prior_effect_metric_basis(query, false);
     match query.metric {
@@ -5168,9 +5177,12 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
 fn describe_history_cause(cause: &ironsmith_core::CauseFilter) -> String {
     use ironsmith_core::{CauseType, CauseTypeFilter, ControllerFilter};
     let kind = |kind: &CauseType| match kind {
-        CauseType::Effect => "a spell or ability", CauseType::Cost => "a cost payment",
-        CauseType::StateBasedAction => "a state-based action", CauseType::GameRule => "a game rule",
-        CauseType::CombatDamage => "combat damage", CauseType::SpecialAction => "a special action",
+        CauseType::Effect => "a spell or ability",
+        CauseType::Cost => "a cost payment",
+        CauseType::StateBasedAction => "a state-based action",
+        CauseType::GameRule => "a game rule",
+        CauseType::CombatDamage => "combat damage",
+        CauseType::SpecialAction => "a special action",
         CauseType::LegendRule => "the legend rule",
     };
     let mut text = match &cause.cause_type {
@@ -5179,13 +5191,24 @@ fn describe_history_cause(cause: &ironsmith_core::CauseFilter) -> String {
         Some(CauseTypeFilter::Not(value)) => format!("an event other than {}", kind(value)),
         Some(CauseTypeFilter::EffectLike) => "a spell or ability".into(),
         Some(CauseTypeFilter::NotCost) => "an event other than a cost payment".into(),
-        Some(CauseTypeFilter::OneOf(values)) => values.iter().map(kind).collect::<Vec<_>>().join(" or "),
+        Some(CauseTypeFilter::OneOf(values)) => {
+            values.iter().map(kind).collect::<Vec<_>>().join(" or ")
+        }
     };
-    if let Some(filter) = &cause.source_filter { text.push_str(&format!(" from {}", describe_for_each_filter(filter))); }
+    if let Some(filter) = &cause.source_filter {
+        text.push_str(&format!(" from {}", describe_for_each_filter(filter)));
+    }
     match &cause.controller_filter {
-        Some(ControllerFilter::You | ControllerFilter::ContextController) => text.push_str(" you controlled"),
-        Some(ControllerFilter::Opponent | ControllerFilter::ContextOpponent) => text.push_str(" an opponent controlled"),
-        Some(ControllerFilter::Player(player)) => text.push_str(&format!(" controlled by {}", describe_player_filter(&PlayerFilter::Specific(*player)))),
+        Some(ControllerFilter::You | ControllerFilter::ContextController) => {
+            text.push_str(" you controlled")
+        }
+        Some(ControllerFilter::Opponent | ControllerFilter::ContextOpponent) => {
+            text.push_str(" an opponent controlled")
+        }
+        Some(ControllerFilter::Player(player)) => text.push_str(&format!(
+            " controlled by {}",
+            describe_player_filter(&PlayerFilter::Specific(*player))
+        )),
         _ => {}
     }
     text
@@ -5206,10 +5229,38 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 describe_death_history_subject(&subject, controller.as_ref(), *controller_surface,)
             )
         }
-        TurnHistoryCount::LibrarySearches { player, own_library_only } => format!("the number of times {} searched {} this turn", describe_player_filter(player), if *own_library_only { "their own library" } else { "a library" }),
-        TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter } => format!("the greatest number of {} that entered the battlefield under {} control this turn", pluralize_noun_phrase(&describe_for_each_filter(filter)), describe_possessive_player_filter(player)),
-        TurnHistoryCount::DestroyedBy { filter, cause } => format!("the number of {} destroyed this turn by {}", describe_for_each_filter(filter), describe_history_cause(cause)),
-        TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => format!("the number of {} cast by {} this turn that were countered by {}", describe_for_each_filter(filter), describe_player_filter(caster), describe_history_cause(cause)),
+        TurnHistoryCount::LibrarySearches {
+            player,
+            own_library_only,
+        } => format!(
+            "the number of times {} searched {} this turn",
+            describe_player_filter(player),
+            if *own_library_only {
+                "their own library"
+            } else {
+                "a library"
+            }
+        ),
+        TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter } => format!(
+            "the greatest number of {} that entered the battlefield under {} control this turn",
+            pluralize_noun_phrase(&describe_for_each_filter(filter)),
+            describe_possessive_player_filter(player)
+        ),
+        TurnHistoryCount::DestroyedBy { filter, cause } => format!(
+            "the number of {} destroyed this turn by {}",
+            describe_for_each_filter(filter),
+            describe_history_cause(cause)
+        ),
+        TurnHistoryCount::CastSpellsCounteredBy {
+            caster,
+            filter,
+            cause,
+        } => format!(
+            "the number of {} cast by {} this turn that were countered by {}",
+            describe_for_each_filter(filter),
+            describe_player_filter(caster),
+            describe_history_cause(cause)
+        ),
         TurnHistoryCount::EnteredBattlefield(filter) => {
             let mut subject_filter = filter.clone();
             let controller = subject_filter.controller.take();

@@ -497,6 +497,14 @@ pub fn parse_value_comparison_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(ValueComparisonOperator, &[OwnedLexToken])> {
     for (phrase, operator) in [
+        (
+            &["is", "at", "least"][..],
+            ValueComparisonOperator::GreaterThanOrEqual,
+        ),
+        (
+            &["is", "at", "most"][..],
+            ValueComparisonOperator::LessThanOrEqual,
+        ),
         (&["is", "exactly"][..], ValueComparisonOperator::Equal),
         (&["exactly"][..], ValueComparisonOperator::Equal),
         (&["is", "equal", "to"][..], ValueComparisonOperator::Equal),

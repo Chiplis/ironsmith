@@ -158,7 +158,7 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("subject-descriptor-condition"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        admits: |input| !input.read_by("subject-status-condition"),
         read: |input| input.outcome(read_subject_descriptor_condition(input)),
     },
     Reading {
@@ -276,9 +276,11 @@ fn read_player_controls_more_than_you(
         return Ok(None);
     }
     match crate::grammar::filters::parse_condition_predicate_lexed(input.tokens) {
-        Ok(predicate @ PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou { .. })) => {
-            Ok(Some(predicate))
-        }
+        Ok(
+            predicate @ PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou {
+                ..
+            }),
+        ) => Ok(Some(predicate)),
         _ => Ok(None),
     }
 }
@@ -343,6 +345,19 @@ fn read_subject_status_condition(
     input: &ConditionClause<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let tokens = input.tokens;
+    // Negation changes the predicate, not the identity of its subject.
+    let words = AnthemNormalizedWords::new(tokens);
+    let words = words.word_refs();
+    if let Some(index) = words.iter().position(|word| matches!(*word, "isnt" | "arent" | "isn't" | "aren't")) {
+        let affirmative = words.iter().enumerate().map(|(i, word)|
+            OwnedLexToken::word(if i == index { "is" } else { word }.to_string(), TextSpan::synthetic())
+        ).collect::<Vec<_>>();
+        if let Some(condition) = crate::grammar::conditions::parse_subject_status_condition(&affirmative)
+            .and_then(|condition| condition.condition_expr())
+        {
+            return Ok(Some(PredicateAst::Not(Box::new(condition))));
+        }
+    }
     if let Some(condition) = crate::grammar::conditions::parse_subject_status_condition(&tokens)
         .and_then(|condition| condition.condition_expr())
         .or_else(|| crate::grammar::conditions::parse_subject_status_disjunction_condition(tokens))
@@ -493,11 +508,13 @@ fn read_removed_from_draft(
     let tokens = input.tokens;
     if let Some(condition) = crate::grammar::conditions::parse_removed_from_draft_condition(&tokens)
     {
-        return Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerRemovedDraftCardMatching {
-            player: condition.player,
-            filter: condition.filter,
-            with_cards_named: condition.with_cards_named,
-        })));
+        return Ok(Some(PredicateAst::Player(
+            PlayerPredicateAst::PlayerRemovedDraftCardMatching {
+                player: condition.player,
+                filter: condition.filter,
+                with_cards_named: condition.with_cards_named,
+            },
+        )));
     }
     Ok(None)
 }
@@ -538,7 +555,9 @@ fn read_source_keyword_filter(
     ) && let Some(filter) =
         crate::grammar::filters::parse_source_keyword_condition_filter_lexed(&tokens)
     {
-        return Ok(Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))));
+        return Ok(Some(PredicateAst::Source(
+            SourcePredicateAst::SourceMatches(filter),
+        )));
     }
     Ok(None)
 }
@@ -555,21 +574,23 @@ fn read_fixed_static_condition_kind(
                 PredicateAst::AttachedToSourceMatches(ObjectFilter::creature()),
             ),
             FixedStaticConditionKind::SourceSpellWasKicked => Ok(PredicateAst::ThisSpellWasKicked),
-            FixedStaticConditionKind::OpponentLostLifeThisTurn => {
-                Ok(PredicateAst::TurnEvents(TurnEventPredicateAst::OpponentLostLifeThisTurn))
-            }
-            FixedStaticConditionKind::YouDidNotCastSpellThisTurn => Ok(PredicateAst::Not(
-                Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerCastSpellsThisTurnOrMore {
-                    player: PlayerAst::You,
-                    count: 1,
-                })),
+            FixedStaticConditionKind::OpponentLostLifeThisTurn => Ok(PredicateAst::TurnEvents(
+                TurnEventPredicateAst::OpponentLostLifeThisTurn,
             )),
-            FixedStaticConditionKind::YouCastSpellThisTurn => {
-                Ok(PredicateAst::Player(PlayerPredicateAst::PlayerCastSpellsThisTurnOrMore {
+            FixedStaticConditionKind::YouDidNotCastSpellThisTurn => {
+                Ok(PredicateAst::Not(Box::new(PredicateAst::Player(
+                    PlayerPredicateAst::PlayerCastSpellsThisTurnOrMore {
+                        player: PlayerAst::You,
+                        count: 1,
+                    },
+                ))))
+            }
+            FixedStaticConditionKind::YouCastSpellThisTurn => Ok(PredicateAst::Player(
+                PlayerPredicateAst::PlayerCastSpellsThisTurnOrMore {
                     player: PlayerAst::You,
                     count: 1,
-                }))
-            }
+                },
+            )),
             FixedStaticConditionKind::NoCardsInYourLibrary => Ok(PredicateAst::CountComparison {
                 count: AnthemCountExpression::MatchingFilter(
                     ObjectFilter::default()
@@ -579,25 +600,27 @@ fn read_fixed_static_condition_kind(
                 comparison: crate::effect::Comparison::Equal(0),
                 display: Some("there are no cards in your library".to_string()),
             }),
-            FixedStaticConditionKind::SourceIsOnBattlefield => {
-                Ok(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Battlefield)))
-            }
+            FixedStaticConditionKind::SourceIsOnBattlefield => Ok(PredicateAst::Source(
+                SourcePredicateAst::SourceIsInZone(Zone::Battlefield),
+            )),
             FixedStaticConditionKind::SourceIsNotOnBattlefield => Ok(PredicateAst::Not(Box::new(
                 PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Battlefield)),
             ))),
-            FixedStaticConditionKind::SourceDevouredCreature => {
-                Ok(PredicateAst::Source(SourcePredicateAst::SourceDevouredCreaturesOrMore(1)))
-            }
-            FixedStaticConditionKind::SourceIsSoulbondPaired => {
-                Ok(PredicateAst::Source(SourcePredicateAst::SourceIsSoulbondPaired))
-            }
-            FixedStaticConditionKind::SourceAttackedThisTurn => {
-                Ok(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn))
-            }
-            FixedStaticConditionKind::SourceAttackedBattleThisTurn => {
-                Ok(PredicateAst::Source(SourcePredicateAst::SourceAttackedBattleThisTurn))
-            }
-            FixedStaticConditionKind::YouAttackedThisTurn => Ok(PredicateAst::TurnEvents(TurnEventPredicateAst::AttackedThisTurn)),
+            FixedStaticConditionKind::SourceDevouredCreature => Ok(PredicateAst::Source(
+                SourcePredicateAst::SourceDevouredCreaturesOrMore(1),
+            )),
+            FixedStaticConditionKind::SourceIsSoulbondPaired => Ok(PredicateAst::Source(
+                SourcePredicateAst::SourceIsSoulbondPaired,
+            )),
+            FixedStaticConditionKind::SourceAttackedThisTurn => Ok(PredicateAst::Source(
+                SourcePredicateAst::SourceAttackedThisTurn,
+            )),
+            FixedStaticConditionKind::SourceAttackedBattleThisTurn => Ok(PredicateAst::Source(
+                SourcePredicateAst::SourceAttackedBattleThisTurn,
+            )),
+            FixedStaticConditionKind::YouAttackedThisTurn => Ok(PredicateAst::TurnEvents(
+                TurnEventPredicateAst::AttackedThisTurn,
+            )),
             FixedStaticConditionKind::SourceEnteredThisTurn => {
                 let mut filter = ObjectFilter::source();
                 filter.entered_battlefield_this_turn = true;
@@ -619,16 +642,16 @@ fn read_fixed_static_condition_kind(
             FixedStaticConditionKind::NotYourTurn => {
                 Ok(PredicateAst::Not(Box::new(PredicateAst::YourTurn)))
             }
-            FixedStaticConditionKind::YourLifeAtMostHalfStarting => {
-                Ok(PredicateAst::Player(PlayerPredicateAst::PlayerLifeAtMostHalfStartingLifeTotal {
+            FixedStaticConditionKind::YourLifeAtMostHalfStarting => Ok(PredicateAst::Player(
+                PlayerPredicateAst::PlayerLifeAtMostHalfStartingLifeTotal {
                     player: PlayerAst::You,
-                }))
-            }
-            FixedStaticConditionKind::YouCommittedCrimeThisTurn => {
-                Ok(PredicateAst::Player(PlayerPredicateAst::PlayerCommittedCrimeThisTurn {
+                },
+            )),
+            FixedStaticConditionKind::YouCommittedCrimeThisTurn => Ok(PredicateAst::Player(
+                PlayerPredicateAst::PlayerCommittedCrimeThisTurn {
                     player: PlayerAst::You,
-                }))
-            }
+                },
+            )),
         })
         .map(Some);
     }
@@ -640,19 +663,23 @@ fn read_fixed_static_condition_kind(
 fn read_battlefield_population_condition(
     input: &ConditionClause<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    use anthem_grant_grammar::BattlefieldPopulationCondition;
     use crate::color::{Color, ColorSet};
     use crate::effect::{Value, ValueComparisonOperator};
-    let Some(shape) = anthem_grant_grammar::parse_battlefield_population_condition(input.tokens) else {
+    use anthem_grant_grammar::BattlefieldPopulationCondition;
+    let Some(shape) = anthem_grant_grammar::parse_battlefield_population_condition(input.tokens)
+    else {
         return Ok(None);
     };
     let count = |filter| Value::Count(filter);
     let compare = |filter, operator, amount| PredicateAst::ValueComparison {
-        left: count(filter), operator, right: Value::Fixed(amount),
+        left: count(filter),
+        operator,
+        right: Value::Fixed(amount),
     };
     let condition = match shape {
         BattlefieldPopulationCondition::MostCommonColorIncludingTies(color) => {
-            let color_count = |color| count(ObjectFilter::permanent().with_colors(ColorSet::from(color)));
+            let color_count =
+                |color| count(ObjectFilter::permanent().with_colors(ColorSet::from(color)));
             // Each multicolored permanent contributes to each of its colors;
             // colorless permanents contribute to none. Equality admits ties.
             let present = PredicateAst::ValueComparison {
@@ -660,13 +687,17 @@ fn read_battlefield_population_condition(
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
                 right: Value::Fixed(1),
             };
-            Color::ALL.into_iter().filter(|other| *other != color).map(|other| {
-                PredicateAst::ValueComparison {
+            Color::ALL
+                .into_iter()
+                .filter(|other| *other != color)
+                .map(|other| PredicateAst::ValueComparison {
                     left: color_count(color),
                     operator: ValueComparisonOperator::GreaterThanOrEqual,
                     right: color_count(other),
-                }
-            }).fold(present, |left, right| PredicateAst::And(Box::new(left), Box::new(right)))
+                })
+                .fold(present, |left, right| {
+                    PredicateAst::And(Box::new(left), Box::new(right))
+                })
         }
         BattlefieldPopulationCondition::AnyPlayerControls(tokens)
         | BattlefieldPopulationCondition::NoOpponentControls(tokens) => {
@@ -676,7 +707,9 @@ fn read_battlefield_population_condition(
             if filter.zone.is_some_and(|zone| zone != Zone::Battlefield)
                 || filter.controller.is_some()
             {
-                return Err(CardTextError::ParseError("conflicting scope in battlefield population condition".into()));
+                return Err(CardTextError::ParseError(
+                    "conflicting scope in battlefield population condition".into(),
+                ));
             }
             filter.zone = Some(Zone::Battlefield);
             if matches!(shape, BattlefieldPopulationCondition::NoOpponentControls(_)) {
@@ -688,7 +721,8 @@ fn read_battlefield_population_condition(
         }
         BattlefieldPopulationCondition::CreatureHasCounter(counter) => compare(
             ObjectFilter::creature().with_counter_type(counter),
-            ValueComparisonOperator::GreaterThanOrEqual, 1,
+            ValueComparisonOperator::GreaterThanOrEqual,
+            1,
         ),
     };
     Ok(Some(condition))

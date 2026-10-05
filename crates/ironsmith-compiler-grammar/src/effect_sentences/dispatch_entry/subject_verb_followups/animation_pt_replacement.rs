@@ -38,18 +38,24 @@ pub(super) fn pre_rule_animation_base_pt_replacement(
     else {
         return Ok(None);
     };
-    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
-                power,
-                toughness,
-                duration: replacement_duration,
-                ..
-            }),
-        ..
-    })) = crate::effect_sentences::for_each_helpers::parse_has_base_power_toughness_clause(body)?
+    let Some(EffectAst::SubjectVerb(size)) =
+        crate::effect_sentences::for_each_helpers::parse_has_base_power_toughness_clause(body)?
     else {
         return Ok(None);
+    };
+    let (power, toughness, replacement_duration) = match size.action {
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
+            power,
+            toughness,
+            duration,
+            ..
+        }) => (power, toughness, duration),
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
+            base_power_toughness: Some((power, toughness)),
+            duration,
+            ..
+        }) => (power, toughness, duration),
+        _ => return Ok(None),
     };
     // A size with a different expiration needs a separate timed modification,
     // not a rewrite of the whole animation's lifetime.

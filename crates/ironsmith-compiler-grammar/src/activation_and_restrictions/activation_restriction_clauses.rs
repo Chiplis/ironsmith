@@ -13,11 +13,17 @@ fn simple_negated_object_restriction(
     use crate::effect::Restriction;
 
     // "[objects] can't have [kind] counters put on them/it" (Melira).
-    if let ["have", counter_words @ .., "counters", "put", "on", "them" | "it"] = words
+    if let [
+        "have",
+        counter_words @ ..,
+        "counters",
+        "put",
+        "on",
+        "them" | "it",
+    ] = words
         && !counter_words.is_empty()
-        && let Some(counter_type) = crate::grammar::filters::parse_counter_type_words(
-            &words[1..=counter_words.len() + 1],
-        )
+        && let Some(counter_type) =
+            crate::grammar::filters::parse_counter_type_words(&words[1..=counter_words.len() + 1])
     {
         return Some(Restriction::have_counter_type_placed(
             filter.clone(),
@@ -70,7 +76,9 @@ fn source_filtered_target_restriction(
 
     let source_filter = match envelope {
         TargetRestrictionEnvelope::SpellsOrAbilities => {
-            return Ok(Some(crate::effect::Restriction::be_targeted(target_filter.clone())));
+            return Ok(Some(crate::effect::Restriction::be_targeted(
+                target_filter.clone(),
+            )));
         }
         TargetRestrictionEnvelope::SourceAbility { full_source_tokens } => {
             let mut filter = parse_object_filter(&tokens[full_source_tokens], false)?;
@@ -79,14 +87,23 @@ fn source_filtered_target_restriction(
             filter
         }
         TargetRestrictionEnvelope::PairedControlledSources {
-            spell_tokens, spell_noun, source_tokens, source_noun,
+            spell_tokens,
+            spell_noun,
+            source_tokens,
+            source_noun,
         } => {
             let without_noun = |range: std::ops::Range<usize>, noun| {
-                range.filter(|index| *index != noun).map(|index| tokens[index].clone()).collect::<Vec<_>>()
+                range
+                    .filter(|index| *index != noun)
+                    .map(|index| tokens[index].clone())
+                    .collect::<Vec<_>>()
             };
             let spell_filter = parse_object_filter(&without_noun(spell_tokens, spell_noun), false)?;
-            let source_filter = parse_object_filter(&without_noun(source_tokens, source_noun), false)?;
-            if spell_filter != source_filter { return Err(error()); }
+            let source_filter =
+                parse_object_filter(&without_noun(source_tokens, source_noun), false)?;
+            if spell_filter != source_filter {
+                return Err(error());
+            }
             // No stack-kind constraint: the authored ability qualifier refers
             // to its source, not to the controller of the ability on the stack.
             source_filter
@@ -184,7 +201,13 @@ fn player_negated_restriction_from_tail(
             match restriction_grammar::parse_player_restriction_tail_words(words)? {
                 PlayerRestrictionTailKind::GainLife => Restriction::gain_life(player),
                 PlayerRestrictionTailKind::SearchLibraries => Restriction::search_libraries(player),
-                PlayerRestrictionTailKind::LoseGame => Restriction::lose_game(player),
+                PlayerRestrictionTailKind::LoseGame => {
+                    if words.ends_with(&["for", "having", "0", "or", "less", "life"]) {
+                        Restriction::LoseGameForZeroLife(player)
+                    } else {
+                        Restriction::lose_game(player)
+                    }
+                }
                 PlayerRestrictionTailKind::LoseLife => Restriction::lose_life(player),
                 PlayerRestrictionTailKind::WinGame => Restriction::win_game(player),
                 PlayerRestrictionTailKind::DrawCards => Restriction::draw_cards(player),
@@ -321,14 +344,23 @@ pub fn parse_cant_restrictions(
     }
 
     if let Some((neg_start, neg_end)) = find_negation_span(tokens)
-        && let Some((player, target)) = parse_player_restriction_subject(&trim_commas(&tokens[..neg_start]))?
+        && let Some((player, target)) =
+            parse_player_restriction_subject(&trim_commas(&tokens[..neg_start]))?
     {
         let tail_storage = normalize_cant_words(&trim_commas(&tokens[neg_end..]));
         let tail = tail_storage.iter().map(String::as_str).collect::<Vec<_>>();
-        if let Some(facts) = restriction_grammar::parse_compound_player_action_restriction_words(&tail) {
-            return Ok(Some(facts.into_iter().map(|fact| ParsedCantRestriction {
-                restriction: restriction_from_player_action_fact(player.clone(), fact), target: target.clone(),
-            }).collect()));
+        if let Some(facts) =
+            restriction_grammar::parse_compound_player_action_restriction_words(&tail)
+        {
+            return Ok(Some(
+                facts
+                    .into_iter()
+                    .map(|fact| ParsedCantRestriction {
+                        restriction: restriction_from_player_action_fact(player.clone(), fact),
+                        target: target.clone(),
+                    })
+                    .collect(),
+            ));
         }
     }
 
@@ -593,7 +625,6 @@ pub fn strip_static_restriction_condition(
 pub fn parse_player_negated_restriction_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
-
     let Some((neg_start, neg_end)) = find_negation_span(tokens) else {
         return Ok(None);
     };
@@ -624,14 +655,18 @@ pub fn parse_player_negated_restriction_clause(
 }
 
 fn restriction_from_player_action_fact(
-    player: PlayerFilter, fact: restriction_grammar::PlayerActivationRestrictionTailFact,
+    player: PlayerFilter,
+    fact: restriction_grammar::PlayerActivationRestrictionTailFact,
 ) -> crate::effect::Restriction {
     use crate::effect::Restriction;
     use restriction_grammar::PlayerActivationRestrictionTailFact;
     match fact {
-        PlayerActivationRestrictionTailFact::PlayLandsMatching(filter) => Restriction::PlayLandsMatching(player, filter),
+        PlayerActivationRestrictionTailFact::PlayLandsMatching(filter) => {
+            Restriction::PlayLandsMatching(player, filter)
+        }
         PlayerActivationRestrictionTailFact::ActivateLoyaltyAbilitiesOf(mut filter) => {
-            filter.controller = Some(player); Restriction::ActivateLoyaltyAbilitiesOf(filter)
+            filter.controller = Some(player);
+            Restriction::ActivateLoyaltyAbilitiesOf(filter)
         }
         PlayerActivationRestrictionTailFact::CastSpellsMatching(filter) => {
             Restriction::cast_spells_matching(player, filter)
@@ -686,9 +721,16 @@ pub fn parse_player_restriction_subject(
     // to, not an unbound "it".
     if let [attached @ ("enchanted" | "equipped"), noun, "controller"] =
         crate::lexer::parser_token_word_refs(subject_tokens).as_slice()
-        && ["creature", "permanent", "land", "artifact", "enchantment", "planeswalker"]
-            .iter()
-            .any(|kind| noun.starts_with(kind))
+        && [
+            "creature",
+            "permanent",
+            "land",
+            "artifact",
+            "enchantment",
+            "planeswalker",
+        ]
+        .iter()
+        .any(|kind| noun.starts_with(kind))
     {
         return Ok(Some((
             PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(*attached)),
@@ -1046,7 +1088,10 @@ pub fn parse_negated_object_restriction_clause(
     if let Some(shape) = restriction_grammar::parse_filtered_unpreventability(tokens) {
         let sources = parse_object_filter_lexed(shape.sources, false)?;
         return Ok(Some(ParsedCantRestriction {
-            restriction: Restriction::PreventDamageFrom { sources, combat_only: shape.combat_only },
+            restriction: Restriction::PreventDamageFrom {
+                sources,
+                combat_only: shape.combat_only,
+            },
             target: None,
         }));
     }
@@ -1110,7 +1155,10 @@ pub fn parse_negated_object_restriction_clause(
             ],
         ) || (crate::word_primitives::parse_any_sequence_complete(
             &subject_words,
-            &[&["each", "of", "them"], &["each", "of", "those", "creatures"]],
+            &[
+                &["each", "of", "them"],
+                &["each", "of", "those", "creatures"],
+            ],
         ) && tokens[neg_end..].iter().any(|token| token.is_word("untap")))
         {
             // "Tap up to one target creature ... Each of those creatures
@@ -1452,6 +1500,18 @@ pub fn parse_activated_ability_subject(
 ) -> Result<Option<ParsedActivatedAbilitySubject>, CardTextError> {
     if tokens.is_empty() {
         return Ok(None);
+    }
+
+    let words = crate::lexer::token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        ["its", "activated", "abilities"] | ["their", "activated", "abilities"]
+    ) {
+        return Ok(Some(ParsedActivatedAbilitySubject {
+            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+            target: None,
+            scope: ActivatedAbilityScope::All,
+        }));
     }
 
     let Some(owner_shape) = restriction_grammar::parse_activated_ability_owner_shape_tokens(tokens)
@@ -1856,21 +1916,69 @@ mod scoped_action_prohibition_tests {
     use super::*;
     #[test]
     fn static_mixed_action_rule_keeps_both_hand_origins() {
-        let tokens = crate::lexer::lex_line("You can't play lands or cast spells from your hand.", 0).unwrap();
-        let abilities = super::super::activation_costs::parse_cant_clauses(&tokens).unwrap().unwrap();
+        let tokens =
+            crate::lexer::lex_line("You can't play lands or cast spells from your hand.", 0)
+                .unwrap();
+        let abilities = super::super::activation_costs::parse_cant_clauses(&tokens)
+            .unwrap()
+            .unwrap();
         assert_eq!(abilities.len(), 1);
-        let ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, additional_restrictions, .. } = &abilities[0].payload else { panic!("typed restrictions"); };
-        let crate::effect::Restriction::PlayLandsMatching(PlayerFilter::You, lands) = restriction else { panic!("land rule"); };
-        let [crate::effect::Restriction::CastSpellsMatching(PlayerFilter::You, spells)] = additional_restrictions.as_slice() else { panic!("cast rule"); };
-        assert_eq!(lands.zone, Some(Zone::Hand)); assert_eq!(spells.zone, Some(Zone::Hand));
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+            restriction,
+            additional_restrictions,
+            ..
+        } = &abilities[0].payload
+        else {
+            panic!("typed restrictions");
+        };
+        let crate::effect::Restriction::PlayLandsMatching(PlayerFilter::You, lands) = restriction
+        else {
+            panic!("land rule");
+        };
+        let [crate::effect::Restriction::CastSpellsMatching(PlayerFilter::You, spells)] =
+            additional_restrictions.as_slice()
+        else {
+            panic!("cast rule");
+        };
+        assert_eq!(lands.zone, Some(Zone::Hand));
+        assert_eq!(spells.zone, Some(Zone::Hand));
     }
     #[test]
     fn targeted_player_duration_is_an_effect_not_a_static_object_rule() {
-        let tokens = crate::lexer::lex_line("Target player can't play lands this turn.", 0).unwrap();
-        assert!(super::super::activation_costs::parse_cant_clauses(&tokens).unwrap().is_none());
-        let effects = crate::grammar::effects::parse_cant_effect_sentence(&tokens).unwrap().unwrap();
+        let tokens =
+            crate::lexer::lex_line("Target player can't play lands this turn.", 0).unwrap();
+        assert!(
+            super::super::activation_costs::parse_cant_clauses(&tokens)
+                .unwrap()
+                .is_none()
+        );
+        let effects = crate::grammar::effects::parse_cant_effect_sentence(&tokens)
+            .unwrap()
+            .unwrap();
         let debug = format!("{effects:?}");
         assert!(debug.contains("PlayLandsMatching"), "{debug}");
         assert!(debug.contains("EndOfTurn"), "{debug}");
+    }
+}
+
+#[cfg(test)]
+mod zero_life_loss_tests {
+    use super::*;
+    #[test]
+    fn loss_cause_qualifier_is_preserved() {
+        let tokens =
+            crate::lexer::lex_line("You don't lose the game for having 0 or less life.", 0)
+                .unwrap();
+        let parsed = parse_cant_restriction_clause(&tokens).unwrap().unwrap();
+        assert_eq!(
+            parsed.restriction,
+            crate::effect::Restriction::LoseGameForZeroLife(PlayerFilter::You)
+        );
+        let tokens = crate::lexer::lex_line("You can't lose the game.", 0).unwrap();
+        let parsed = parse_cant_restriction_clause(&tokens).unwrap().unwrap();
+        assert_eq!(
+            parsed.restriction,
+            crate::effect::Restriction::LoseGame(PlayerFilter::You)
+        );
     }
 }

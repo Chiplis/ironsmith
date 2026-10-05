@@ -226,16 +226,78 @@ pub fn parse_elided_shared_domain_union(
             continue;
         }
 
-        let leading_scope = crate::grammar::primitives::probe_shape(parse_object_filter(
-            &tokens[..first_in],
-            other,
-        ));
+        // Each authored inner location is an independent selector constraint;
+        // it cannot be erased while distributing the shared outer locations.
+        if tokens[after_second..]
+            .iter()
+            .any(|token| token.is_any_word(&["in", "on", "from"]))
+        {
+            continue;
+        }
+        let leading_scope =
+            crate::grammar::filters::parse_simple_object_filter_lexed(&tokens[..first_in], other)
+                .or_else(|| {
+                    crate::grammar::primitives::probe_shape(parse_object_filter(
+                        &tokens[..first_in],
+                        other,
+                    ))
+                });
         let mut shared_tokens = Vec::with_capacity(tokens.len());
         shared_tokens.extend_from_slice(&tokens[..first_in]);
         shared_tokens.extend_from_slice(&tokens[after_second..]);
-        let Ok(mut outer) = parse_object_filter(&shared_tokens, other) else {
+        let parsed_outer = parse_object_filter(&shared_tokens, other);
+        let mut outer = parsed_outer.clone().unwrap_or_default();
+        let tail = &tokens[after_second..];
+        if tail.get(0).is_some_and(|token| token.is_word("that"))
+            && tail.get(1).is_some_and(|token| token.is_word("are"))
+            && let Some(or) = tail
+                .windows(2)
+                .position(|pair| pair[0].is_word("or") && pair[1].is_word("are"))
+        {
+            let Some(mut domain) = leading_scope.clone() else {
+                continue;
+            };
+            let mut selectors = Vec::new();
+            for predicate in [&tail[2..or], &tail[or + 2..]] {
+                let mut branch_tokens = Vec::new();
+                if predicate
+                    .first()
+                    .is_some_and(|token| token.is_word("named"))
+                {
+                    branch_tokens.extend_from_slice(&tokens[..first_in]);
+                    branch_tokens.extend_from_slice(predicate);
+                } else {
+                    branch_tokens.extend_from_slice(predicate);
+                    branch_tokens.extend_from_slice(&tokens[..first_in]);
+                }
+                let Some(mut selector) = crate::grammar::filters::parse_simple_object_filter_lexed(
+                    &branch_tokens,
+                    false,
+                )
+                .or_else(|| {
+                    crate::grammar::primitives::probe_shape(parse_object_filter(
+                        &branch_tokens,
+                        false,
+                    ))
+                }) else {
+                    selectors.clear();
+                    break;
+                };
+                if !clear_inferred_selector_domains(&mut selector) {
+                    selectors.clear();
+                    break;
+                }
+                selector.owner = None;
+                selectors.push(selector);
+            }
+            if selectors.len() != 2 {
+                continue;
+            }
+            domain.any_of = selectors;
+            outer = domain;
+        } else if parsed_outer.is_err() {
             continue;
-        };
+        }
         if !outer.any_of.is_empty() {
             let Some(leading_scope) = leading_scope.as_ref() else {
                 continue;

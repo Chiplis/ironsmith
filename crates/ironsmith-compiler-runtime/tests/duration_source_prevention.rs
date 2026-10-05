@@ -198,6 +198,8 @@ fn resource(name: &str, types: &str) -> CardDefinition {
 }
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
+    // Checked execution already captures some triggers in the original observer frame.
+    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
     for event in outcome.events {
         for entry in check_triggers(game, &event) {
             queue.add(entry);
@@ -266,7 +268,7 @@ fn cast_for(
     )
     .unwrap();
     for _ in 0..60 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(ctx) = progress else {
@@ -274,7 +276,7 @@ fn cast_for(
         };
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let spell = game
         .stack
         .iter()
@@ -621,7 +623,9 @@ fn exact_source_lki_remains_shielded_but_a_returned_card_is_a_new_incarnation() 
                 &game,
             );
         let exile = game.move_object_by_effect(target, Zone::Exile).unwrap();
-        let returned = game.move_object_by_effect(exile, Zone::Battlefield).unwrap();
+        let returned = game
+            .move_object_by_effect(exile, Zone::Battlefield)
+            .unwrap();
         assert_ne!(returned, target);
         assert_eq!(
             dealt(&damage(
@@ -1075,7 +1079,9 @@ fn hallow_gains_only_when_damage_is_actually_prevented_and_follows_only_the_reso
                 &game,
             );
         let exile = game.move_object_by_effect(permanent, Zone::Exile).unwrap();
-        let returned = game.move_object_by_effect(exile, Zone::Battlefield).unwrap();
+        let returned = game
+            .move_object_by_effect(exile, Zone::Battlefield)
+            .unwrap();
         assert_eq!(
             dealt(&damage(
                 &mut game,
@@ -1211,9 +1217,12 @@ fn hallow_invalid_target_and_failed_deferred_gain_do_not_commit_a_partial_result
         .with_follow_up_effects(vec![Effect::gain_life(
             ironsmith::effect::Value::EventValue(ironsmith::effect::EventValueSpec::Amount),
         )]);
-    let wire =
-        ironsmith_runtime_catalog::artifact_materializer::encode_runtime_effect(Effect::new(shield)).unwrap();
-    let restored = ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire).unwrap();
+    let wire = ironsmith_runtime_catalog::artifact_materializer::encode_runtime_effect(
+        Effect::new(shield),
+    )
+    .unwrap();
+    let restored =
+        ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire).unwrap();
     assert_eq!(
         restored
             .downcast_ref::<ironsmith::effects::PreventAllDamageEffect>()

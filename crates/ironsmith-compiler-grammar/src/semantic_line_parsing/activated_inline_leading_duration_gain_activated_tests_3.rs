@@ -36,15 +36,30 @@ fn next_turn_pump_and_activation_restriction_keeps_typed_duration_scope() {
     let program = control
         .program(*program)
         .expect("duration node should reference its effect program");
-    assert!(program.effects.iter().any(|effect| matches!(
-        effect,
-        EffectAst::SubjectVerb(subject_verb)
-            if matches!(&subject_verb.action, SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. }))
+    fn contains_action(
+        effects: &[EffectAst],
+        predicate: fn(&SubjectVerbActionAst) -> bool,
+    ) -> bool {
+        effects.iter().any(|effect| {
+            if let EffectAst::SubjectVerb(subject_verb) = effect
+                && predicate(&subject_verb.action)
+            {
+                return true;
+            }
+            let mut found = false;
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                found |= contains_action(nested, predicate);
+            });
+            found
+        })
+    }
+    assert!(contains_action(&program.effects, |action| matches!(
+        action,
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. })
     )));
-    assert!(program.effects.iter().any(|effect| matches!(
-        effect,
-        EffectAst::SubjectVerb(subject_verb)
-            if matches!(&subject_verb.action, SubjectVerbActionAst::Cant { .. })
+    assert!(contains_action(&program.effects, |action| matches!(
+        action,
+        SubjectVerbActionAst::Cant { .. }
     )));
 }
 

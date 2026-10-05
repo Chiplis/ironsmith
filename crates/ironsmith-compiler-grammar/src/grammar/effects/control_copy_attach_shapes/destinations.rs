@@ -247,7 +247,8 @@ pub fn parse_library_placement_destination_shape(
 pub fn is_exhaustive_hand_collection(tokens: &[OwnedLexToken]) -> bool {
     let tokens = trim_lexed_commas(tokens);
     let plural_collection = permission_shapes::prefix_tokens(tokens, &["the", "cards", "in"])
-        || permission_shapes::prefix_tokens(tokens, &["cards", "in"]);
+        || permission_shapes::prefix_tokens(tokens, &["cards", "in"])
+        || permission_shapes::prefix_tokens(tokens, &["the", "cards", "from"]);
     plural_collection
         && (primitives::contains_word(tokens, "hand") || primitives::contains_word(tokens, "hands"))
 }

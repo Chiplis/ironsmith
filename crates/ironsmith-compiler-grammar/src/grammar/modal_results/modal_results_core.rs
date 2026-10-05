@@ -29,7 +29,10 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         let negated = if let Some(rest) = tail.strip_prefix(&["did", "not"]) {
             tail = rest;
             true
-        } else if tail.first().is_some_and(|word| matches!(*word, "didnt" | "didn't")) {
+        } else if tail
+            .first()
+            .is_some_and(|word| matches!(*word, "didnt" | "didn't"))
+        {
             tail = &tail[1..];
             true
         } else {
@@ -44,6 +47,38 @@ pub(super) fn parse_direct_prior_effect_result_surface(
             );
             surface.negated = negated;
             return Some(surface);
+        }
+    }
+    // Qualified death results retain the creature's characteristics at the
+    // actual battlefield departure, rather than testing the graveyard card.
+    if let Some(dies) = tokens
+        .iter()
+        .position(|token| token.is_any_word(&["dies", "died"]))
+    {
+        let tail = tokens[dies + 1..]
+            .iter()
+            .filter_map(OwnedLexToken::as_word)
+            .collect::<Vec<_>>();
+        let subject = &tokens[..dies];
+        if tail == ["this", "way"]
+            && !subject
+                .first()
+                .is_some_and(|token| token.is_any_word(&["that", "it"]))
+            && let Some(mut filter) = parse_prior_result_object_filter(subject)
+        {
+            if !filter
+                .card_types
+                .contains(&crate::types::CardType::Creature)
+            {
+                return None;
+            }
+            filter.zone = None;
+            return Some(PriorEffectResultSurface::new(
+                PriorEffectAction::Died,
+                filter,
+                PriorEffectResultActor::Passive,
+                PriorEffectResultQuantifier::One,
+            ));
         }
     }
     let one_or_more =

@@ -458,12 +458,22 @@ pub(crate) fn queue_reflexive_trigger(
     effects: Vec<Effect>,
     tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
 ) {
-    queue_reflexive_trigger_with_source_snapshot(game, source, controller, effects, tagged_objects, None);
+    queue_reflexive_trigger_with_source_snapshot(
+        game,
+        source,
+        controller,
+        effects,
+        tagged_objects,
+        None,
+    );
 }
 
 pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
-    game: &mut GameState, source: crate::ids::ObjectId, controller: crate::ids::PlayerId,
-    effects: Vec<Effect>, tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+    effects: Vec<Effect>,
+    tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
     fallback_snapshot: Option<ObjectSnapshot>,
 ) {
     let id = game.effect_store.next_reflexive_trigger_id;
@@ -475,20 +485,34 @@ pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
         id.hash(&mut hasher);
         crate::triggers::TriggerIdentity(hasher.finish())
     };
-    let fallback_snapshot = fallback_snapshot.or_else(|| game.turn_store.turn_history.source_last_known_snapshot(source).cloned());
-    let (source_stable_id, source_name, source_snapshot) = match game.object(source).filter(|_| !game.is_phased_out(source)) {
-        Some(object) => (
-            object.stable_id,
-            object.name.to_string(),
-            Some(ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )),
-        ),
-        None => match fallback_snapshot {
-            Some(snapshot) => (snapshot.stable_id, snapshot.name.to_string(), Some(snapshot)),
-            None => (crate::ids::StableId::from(source), "Reflexive trigger".to_string(), None),
-        },
-    };
+    let fallback_snapshot = fallback_snapshot.or_else(|| {
+        game.turn_store
+            .turn_history
+            .source_last_known_snapshot(source)
+            .cloned()
+    });
+    let (source_stable_id, source_name, source_snapshot) =
+        match game.object(source).filter(|_| !game.is_phased_out(source)) {
+            Some(object) => (
+                object.stable_id,
+                object.name.to_string(),
+                Some(ObjectSnapshot::from_object_with_calculated_characteristics(
+                    object, game,
+                )),
+            ),
+            None => match fallback_snapshot {
+                Some(snapshot) => (
+                    snapshot.stable_id,
+                    snapshot.name.to_string(),
+                    Some(snapshot),
+                ),
+                None => (
+                    crate::ids::StableId::from(source),
+                    "Reflexive trigger".to_string(),
+                    None,
+                ),
+            },
+        };
     game.effect_store
         .pending_reflexive_triggers
         .push(PendingReflexiveTrigger {
@@ -649,6 +673,7 @@ pub(crate) fn reflexive_trigger_stack_entry(
         .with_trigger_identity(pending.trigger_identity);
     // References such as "that player" in the follow-up still refer to
     // the event that supplied the enclosing ability's context.
+    entry.iteration = pending.iteration;
     entry.triggering_event = pending.triggering_event;
     entry.event_value_amount = pending.event_value_amount;
 
@@ -833,7 +858,10 @@ mod tests {
             .expect("reflexive trigger should push a stack ability");
 
         drop(ctx);
-        assert!(game.stack.is_empty(), "the scheduled reflexive ability awaits priority placement");
+        assert!(
+            game.stack.is_empty(),
+            "the scheduled reflexive ability awaits priority placement"
+        );
         let mut queue = crate::triggers::TriggerQueue::new();
         crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
         let entry = game.stack.last().expect("reflexive ability on stack");
@@ -876,29 +904,65 @@ mod pending_reflexive_context_contract_tests {
     use crate::{PlayerId, Zone};
     #[test]
     fn antecedent_context_is_retained_until_priority_placement_and_resolution() {
-        let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);
-        let alice=PlayerId::from_index(0);
-        let card=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Pending trigger source")
-            .card_types(vec![crate::types::CardType::Creature]).build();
-        let source=game.create_object_from_definition(&card,alice,Zone::Battlefield);
-        let snapshot=ObjectSnapshot::from_object(game.object(source).unwrap(),&game);
-        let condition=EffectId(77);let mut dm=crate::decision::SelectFirstDecisionMaker;
-        let mut ctx=ExecutionContext::new(source,alice,&mut dm);
-        ctx.x_value=Some(7);
-        ctx.set_tagged_objects("paid",vec![snapshot.clone()]);
-        ctx.store_outcome(condition,EffectOutcome::count(1).with_affected_object_memory(vec![crate::effect::OutcomeObjectMemory::from_snapshot(&snapshot)]));
-        let effect=ReflexiveTriggerEffect::new(condition,crate::effect::EffectPredicate::Happened,vec![Effect::gain_life(2)],Vec::new());
-        assert_eq!(effect.execute(&mut game,&mut ctx).unwrap().count_or_zero(),1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Pending trigger source",
+        )
+        .card_types(vec![crate::types::CardType::Creature])
+        .build();
+        let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+        let snapshot = ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        let condition = EffectId(77);
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ctx.x_value = Some(7);
+        ctx.set_tagged_objects("paid", vec![snapshot.clone()]);
+        ctx.store_outcome(
+            condition,
+            EffectOutcome::count(1).with_affected_object_memory(vec![
+                crate::effect::OutcomeObjectMemory::from_snapshot(&snapshot),
+            ]),
+        );
+        let effect = ReflexiveTriggerEffect::new(
+            condition,
+            crate::effect::EffectPredicate::Happened,
+            vec![Effect::gain_life(2)],
+            Vec::new(),
+        );
+        assert_eq!(
+            effect.execute(&mut game, &mut ctx).unwrap().count_or_zero(),
+            1
+        );
         drop(ctx);
-        assert!(game.stack.is_empty());assert_eq!(game.player(alice).unwrap().life,20);
-        let mut queue=crate::triggers::TriggerQueue::new();
-        crate::game_loop::put_triggers_on_stack_with_dm(&mut game,&mut queue,&mut dm).unwrap();
-        assert_eq!(game.stack.len(),1);let entry=&game.stack[0];
-        assert_eq!(entry.x_value,Some(7));assert_eq!(entry.controller,alice);
-        assert_eq!(entry.effect_outcomes.get(&condition).unwrap().count_or_zero(),1);
-        assert_eq!(entry.tagged_objects.get(&crate::tag::TagKey::from("paid")).unwrap()[0].object_id,source);
-        assert_eq!(game.player(alice).unwrap().life,20);
+        assert!(game.stack.is_empty());
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        let mut queue = crate::triggers::TriggerQueue::new();
+        crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+        assert_eq!(game.stack.len(), 1);
+        let entry = &game.stack[0];
+        assert_eq!(entry.x_value, Some(7));
+        assert_eq!(entry.controller, alice);
+        assert_eq!(
+            entry
+                .effect_outcomes
+                .get(&condition)
+                .unwrap()
+                .count_or_zero(),
+            1
+        );
+        assert_eq!(
+            entry
+                .tagged_objects
+                .get(&crate::tag::TagKey::from("paid"))
+                .unwrap()[0]
+                .object_id,
+            source
+        );
+        assert_eq!(game.player(alice).unwrap().life, 20);
         crate::game_loop::resolve_stack_entry(&mut game).unwrap();
-        assert_eq!(game.player(alice).unwrap().life,22);assert!(game.stack.is_empty());
+        assert_eq!(game.player(alice).unwrap().life, 22);
+        assert!(game.stack.is_empty());
     }
 }

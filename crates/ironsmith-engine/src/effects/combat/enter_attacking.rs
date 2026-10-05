@@ -35,7 +35,8 @@ fn combat_phase_in_progress(game: &GameState) -> bool {
 /// team turns, every member of the active team)?
 fn is_attacking_player(game: &GameState, controller: PlayerId) -> bool {
     let active = game.turn.active_player;
-    controller == active || (game.shared_team_turns_enabled() && game.are_teammates(controller, active))
+    controller == active
+        || (game.shared_team_turns_enabled() && game.are_teammates(controller, active))
 }
 
 /// CR 506.3a / 506.3b / 506.3f / 508.4: may the permanent `object_id`, just
@@ -110,6 +111,7 @@ pub(crate) fn put_onto_battlefield_blocking(
         order.push(blocker);
     }
     combat.blocked_attackers.insert(attacker);
+    game.mark_continuous_state_dirty();
     true
 }
 
@@ -120,7 +122,10 @@ pub(crate) fn put_onto_battlefield_blocking(
 ///
 /// Empty outside a combat phase or when `controller` isn't an attacking player
 /// (CR 506.3b: the creature enters but is never attacking).
-pub(crate) fn enters_attacking_targets(game: &GameState, controller: PlayerId) -> Vec<AttackTarget> {
+pub(crate) fn enters_attacking_targets(
+    game: &GameState,
+    controller: PlayerId,
+) -> Vec<AttackTarget> {
     if !combat_phase_in_progress(game) || !is_attacking_player(game, controller) {
         return Vec::new();
     }

@@ -6,7 +6,7 @@ use ironsmith::card::{CardBuilder, PowerToughness};
 use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
 use ironsmith::combat_state::{AttackTarget, CombatState};
 use ironsmith::decision::{AttackerDeclaration, SelectFirstDecisionMaker};
-use ironsmith::effects::{CreateTokenEffect, EffectExecutor, EffectContext};
+use ironsmith::effects::{CreateTokenEffect, EffectContext, EffectExecutor};
 use ironsmith::game_loop::{
     apply_attacker_declarations, put_triggers_on_stack_with_dm, resolve_stack_entry_with,
 };
@@ -131,6 +131,12 @@ fn stack(game: &mut GameState, queue: &mut TriggerQueue) {
 fn resolve(game: &mut GameState) {
     while !game.stack.is_empty() {
         resolve_stack_entry_with(game, &mut SelectFirstDecisionMaker).unwrap();
+        ironsmith::game_loop::put_triggers_on_stack_with_dm(
+            game,
+            &mut TriggerQueue::new(),
+            &mut SelectFirstDecisionMaker,
+        )
+        .unwrap();
     }
 }
 

@@ -612,7 +612,7 @@ fn cast_zero_cost_spell(game: &mut GameState, dm: &mut impl DecisionMaker) {
     )
     .unwrap();
     for _ in 0..32 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let ironsmith::GameProgress::NeedsDecisionCtx(context) = progress else {
@@ -621,7 +621,7 @@ fn cast_zero_cost_spell(game: &mut GameState, dm: &mut impl DecisionMaker) {
         progress =
             apply_decision_context_with_dm(game, &mut queue, &mut state, &context, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
     settle(game, dm);
 }

@@ -30,213 +30,283 @@ impl EffectExecutor for CastTaggedEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let instruction = crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-        use crate::alternative_cast::CastingMethod;
-        use crate::effects::helpers::resolve_player_filter;
-
-        let Some(snapshot) = ctx.get_tagged(self.tag.as_str()) else {
-            return Ok(EffectOutcome::target_invalid());
-        };
-
-        let mut object_id = snapshot.object_id;
-        if game.object(object_id).is_none() {
-            // A priced instruction refers to this exact result incarnation;
-            // a blink/re-exile cannot revive its authorization.
-            if self.alternative_cost.is_some() || self.alternative_payment.is_some() {
-                return Ok(EffectOutcome::target_invalid());
-            }
-            if let Some(found) = game.find_object_by_stable_id(snapshot.stable_id) {
-                object_id = found;
-            } else {
-                return Ok(EffectOutcome::target_invalid());
-            }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
         }
+        let instruction = crate::effects::tokens::execute_resource_transaction_atomically(
+            game,
+            ctx,
+            |game, ctx| {
+                use crate::alternative_cast::CastingMethod;
+                use crate::effects::helpers::resolve_player_filter;
 
-        let (is_land, from_zone) = {
-            let Some(obj) = game.object(object_id) else {
-                return Ok(EffectOutcome::target_invalid());
-            };
-            (obj.is_land(), obj.zone)
-        };
-
-        let caster = resolve_player_filter(game, &self.player, ctx)?;
-
-        if self.alternative_cost.is_some() && (self.alternative_payment.is_some() || self.without_paying_mana_cost) {
-            return Err(ExecutionError::InternalError("multiple resolving-effect alternative prices".into()));
-        }
-        let legacy_payment = match self.alternative_payment {
-            Some(ironsmith_core::CastTaggedAlternativePayment::EnergyEqualToManaValue) => Some(
-                crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
-                    crate::effects::PayEnergyEffect::new(
-                        crate::effect::Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source)),
-                        crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You))))),
-            None => None,
-        };
-        let alternative_cost = self.alternative_cost.as_ref().or(legacy_payment.as_ref());
-        let without_paying_mana_cost = self.without_paying_mana_cost;
-
-        if self.as_copy {
-            let copy_id = game.new_object_id();
-
-            let source_obj = match game.object(object_id) {
-                Some(obj) => obj.clone(),
-                None => return Ok(EffectOutcome::target_invalid()),
-            };
-            let mut copy_obj = crate::object::Object::token_copy_of(&source_obj, copy_id, caster);
-
-            if is_land {
-                if !self.allow_land {
+                let Some(snapshot) = ctx.get_tagged(self.tag.as_str()) else {
                     return Ok(EffectOutcome::target_invalid());
-                }
-                copy_obj.zone = Zone::Command;
-                game.add_object(copy_obj);
-                let entry = move_to_battlefield_with_options(
-                    game, ctx, copy_id, BattlefieldEntryOptions::specific(caster, false),
-                )?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                let entry = entry.ok_or_else(|| ExecutionError::InternalError("land entry lost its receipt without pending input".into()))?;
-                let original = match &entry.outcome {
-                    BattlefieldEntryOutcome::Moved(new_id) => {
-                        queue_effect_driven_land_play(game, ctx, *new_id, caster, from_zone);
-                        EffectOutcome::with_objects(vec![*new_id])
+                };
+
+                let mut object_id = snapshot.object_id;
+                if game.object(object_id).is_none() {
+                    // A priced instruction refers to this exact result incarnation;
+                    // a blink/re-exile cannot revive its authorization.
+                    if self.alternative_cost.is_some() || self.alternative_payment.is_some() {
+                        let arrival = ctx
+                            .effect_outcomes
+                            .values()
+                            .filter(|outcome| {
+                                outcome.affected_object_memory().is_some_and(|memory| {
+                                    memory
+                                        .iter()
+                                        .any(|object| object.object_id == snapshot.object_id)
+                                })
+                            })
+                            .filter_map(|outcome| outcome.result_objects())
+                            .flatten()
+                            .copied()
+                            .find(|id| {
+                                game.object(*id).is_some_and(|object| {
+                                    object.stable_id == snapshot.stable_id
+                                        && object.zone == Zone::Exile
+                                })
+                            });
+                        let Some(arrival) = arrival else {
+                            return Ok(EffectOutcome::target_invalid());
+                        };
+                        object_id = arrival;
                     }
-                    BattlefieldEntryOutcome::Redirected(change) => {
-                        if let Some(id) = change.new_object_id {
-                            queue_effect_driven_land_play(game, ctx, id, caster, from_zone);
+                    if game.object(object_id).is_some() {
+                        // The stored result identified its exact completed arrival.
+                    } else if let Some(found) = game.find_object_by_stable_id(snapshot.stable_id) {
+                        object_id = found;
+                    } else {
+                        return Ok(EffectOutcome::target_invalid());
+                    }
+                }
+
+                let (is_land, from_zone) = {
+                    let Some(obj) = game.object(object_id) else {
+                        return Ok(EffectOutcome::target_invalid());
+                    };
+                    (obj.is_land(), obj.zone)
+                };
+
+                let caster = resolve_player_filter(game, &self.player, ctx)?;
+
+                if self.alternative_cost.is_some()
+                    && (self.alternative_payment.is_some() || self.without_paying_mana_cost)
+                {
+                    return Err(ExecutionError::InternalError(
+                        "multiple resolving-effect alternative prices".into(),
+                    ));
+                }
+                let legacy_payment = match self.alternative_payment {
+                    Some(ironsmith_core::CastTaggedAlternativePayment::EnergyEqualToManaValue) => {
+                        Some(crate::cost::TotalCost::from_cost(
+                            crate::costs::Cost::effect(crate::effects::PayEnergyEffect::new(
+                                crate::effect::Value::ManaValueOf(Box::new(
+                                    crate::target::ChooseSpec::Source,
+                                )),
+                                crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You),
+                            )),
+                        ))
+                    }
+                    None => None,
+                };
+                let alternative_cost = self.alternative_cost.as_ref().or(legacy_payment.as_ref());
+                let without_paying_mana_cost = self.without_paying_mana_cost;
+
+                if self.as_copy {
+                    let copy_id = game.new_object_id();
+
+                    let source_obj = match game.object(object_id) {
+                        Some(obj) => obj.clone(),
+                        None => return Ok(EffectOutcome::target_invalid()),
+                    };
+                    let mut copy_obj =
+                        crate::object::Object::token_copy_of(&source_obj, copy_id, caster);
+
+                    if is_land {
+                        if !self.allow_land {
+                            return Ok(EffectOutcome::target_invalid());
                         }
-                        EffectOutcome::with_objects(change.new_object_ids.clone())
+                        copy_obj.zone = Zone::Command;
+                        game.add_object(copy_obj);
+                        let entry = move_to_battlefield_with_options(
+                            game,
+                            ctx,
+                            copy_id,
+                            BattlefieldEntryOptions::specific(caster, false),
+                        )?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        let entry = entry.ok_or_else(|| {
+                            ExecutionError::InternalError(
+                                "land entry lost its receipt without pending input".into(),
+                            )
+                        })?;
+                        let original = match &entry.outcome {
+                            BattlefieldEntryOutcome::Moved(new_id) => {
+                                queue_effect_driven_land_play(
+                                    game, ctx, *new_id, caster, from_zone,
+                                );
+                                EffectOutcome::with_objects(vec![*new_id])
+                            }
+                            BattlefieldEntryOutcome::Redirected(change) => {
+                                if let Some(id) = change.new_object_id {
+                                    queue_effect_driven_land_play(game, ctx, id, caster, from_zone);
+                                }
+                                EffectOutcome::with_objects(change.new_object_ids.clone())
+                            }
+                            BattlefieldEntryOutcome::Prevented => {
+                                game.remove_object(copy_id);
+                                EffectOutcome::impossible()
+                            }
+                        };
+                        return crate::effects::zones::finish_battlefield_entry_receipts(
+                            game,
+                            ctx,
+                            original,
+                            vec![entry],
+                        );
                     }
-                    BattlefieldEntryOutcome::Prevented => {
+
+                    copy_obj.zone = from_zone;
+                    game.add_object(copy_obj);
+                    let casting_method = if from_zone == Zone::Hand {
+                        CastingMethod::Normal
+                    } else {
+                        CastingMethod::PlayFrom {
+                            source: ctx.source,
+                            zone: from_zone,
+                            use_alternative: None,
+                        }
+                    };
+                    let cast_tags = ctx.tagged_objects.clone();
+                    let result = crate::game_loop::cast_spell_from_resolving_effect_with_price(
+                        game,
+                        copy_id,
+                        from_zone,
+                        caster,
+                        &casting_method,
+                        without_paying_mana_cost,
+                        alternative_cost,
+                        self.cost_reduction.as_ref(),
+                        self.additional_mana_cost.as_ref(),
+                        self.mana_spend_mode,
+                        cast_tags,
+                        ctx.provenance,
+                        &mut ctx.decision_maker,
+                    )
+                    .map_err(super::runtime_helpers::effect_driven_cast_error)?;
+                    let Some(new_id) = result else {
                         game.remove_object(copy_id);
-                        EffectOutcome::impossible()
-                    }
-                };
-                return crate::effects::zones::finish_battlefield_entry_receipts(game, ctx, original, vec![entry]);
-            }
-
-            copy_obj.zone = from_zone;
-            game.add_object(copy_obj);
-            let casting_method = if from_zone == Zone::Hand {
-                CastingMethod::Normal
-            } else {
-                CastingMethod::PlayFrom {
-                    source: ctx.source,
-                    zone: from_zone,
-                    use_alternative: None,
+                        return if ctx.decision_maker.awaiting_choice() {
+                            Ok(EffectOutcome::count(0))
+                        } else {
+                            Ok(EffectOutcome::impossible())
+                        };
+                    };
+                    let outcome = with_spell_cast_event(
+                        EffectOutcome::with_objects(vec![new_id]),
+                        game,
+                        new_id,
+                        caster,
+                        from_zone,
+                        ctx.provenance,
+                    );
+                    return Ok(outcome);
                 }
-            };
-            let cast_tags = ctx.tagged_objects.clone();
-            let result = crate::game_loop::cast_spell_from_resolving_effect_with_price(
-                game,
-                copy_id,
-                from_zone,
-                caster,
-                &casting_method,
-                without_paying_mana_cost,
-                alternative_cost,
-                self.cost_reduction.as_ref(),
-                self.additional_mana_cost.as_ref(),
-                self.mana_spend_mode,
-                cast_tags,
-                ctx.provenance,
-                &mut ctx.decision_maker,
-            )
-            .map_err(super::runtime_helpers::effect_driven_cast_error)?;
-            let Some(new_id) = result else {
-                game.remove_object(copy_id);
-                return if ctx.decision_maker.awaiting_choice() {
-                    Ok(EffectOutcome::count(0))
+
+                if is_land {
+                    if !self.allow_land {
+                        return Ok(EffectOutcome::target_invalid());
+                    }
+
+                    let entry = move_to_battlefield_with_options(
+                        game,
+                        ctx,
+                        object_id,
+                        BattlefieldEntryOptions::specific(caster, false),
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    let entry = entry.ok_or_else(|| {
+                        ExecutionError::InternalError(
+                            "land entry lost its receipt without pending input".into(),
+                        )
+                    })?;
+                    let original = match &entry.outcome {
+                        BattlefieldEntryOutcome::Moved(new_id) => {
+                            queue_effect_driven_land_play(game, ctx, *new_id, caster, from_zone);
+                            EffectOutcome::with_objects(vec![*new_id])
+                        }
+                        BattlefieldEntryOutcome::Redirected(change) => {
+                            if let Some(id) = change.new_object_id {
+                                queue_effect_driven_land_play(game, ctx, id, caster, from_zone);
+                            }
+                            EffectOutcome::with_objects(change.new_object_ids.clone())
+                        }
+                        BattlefieldEntryOutcome::Prevented => EffectOutcome::impossible(),
+                    };
+                    return crate::effects::zones::finish_battlefield_entry_receipts(
+                        game,
+                        ctx,
+                        original,
+                        vec![entry],
+                    );
+                }
+
+                let casting_method = if from_zone == Zone::Hand {
+                    CastingMethod::Normal
                 } else {
-                    Ok(EffectOutcome::impossible())
-                };
-            };
-            let outcome = with_spell_cast_event(
-                EffectOutcome::with_objects(vec![new_id]),
-                game,
-                new_id,
-                caster,
-                from_zone,
-                ctx.provenance,
-            );
-            return Ok(outcome);
-        }
-
-        if is_land {
-            if !self.allow_land {
-                return Ok(EffectOutcome::target_invalid());
-            }
-
-            let entry = move_to_battlefield_with_options(
-                game, ctx, object_id, BattlefieldEntryOptions::specific(caster, false),
-            )?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            let entry = entry.ok_or_else(|| ExecutionError::InternalError("land entry lost its receipt without pending input".into()))?;
-            let original = match &entry.outcome {
-                BattlefieldEntryOutcome::Moved(new_id) => {
-                    queue_effect_driven_land_play(game, ctx, *new_id, caster, from_zone);
-                    EffectOutcome::with_objects(vec![*new_id])
-                }
-                BattlefieldEntryOutcome::Redirected(change) => {
-                    if let Some(id) = change.new_object_id {
-                        queue_effect_driven_land_play(game, ctx, id, caster, from_zone);
+                    CastingMethod::PlayFrom {
+                        source: ctx.source,
+                        zone: from_zone,
+                        use_alternative: None,
                     }
-                    EffectOutcome::with_objects(change.new_object_ids.clone())
-                }
-                BattlefieldEntryOutcome::Prevented => {
+                };
 
-                    EffectOutcome::impossible()
-                }
-            };
-            return crate::effects::zones::finish_battlefield_entry_receipts(game, ctx, original, vec![entry]);
-        }
-
-        let casting_method = if from_zone == Zone::Hand {
-            CastingMethod::Normal
-        } else {
-            CastingMethod::PlayFrom {
-                source: ctx.source,
-                zone: from_zone,
-                use_alternative: None,
-            }
-        };
-
-        let cast_tags = ctx.tagged_objects.clone();
-        let result = crate::game_loop::cast_spell_from_resolving_effect_with_price(
-            game,
-            object_id,
-            from_zone,
-            caster,
-            &casting_method,
-            without_paying_mana_cost,
-            alternative_cost,
-            self.cost_reduction.as_ref(),
-            self.additional_mana_cost.as_ref(),
-            self.mana_spend_mode,
-            cast_tags,
-            ctx.provenance,
-            &mut ctx.decision_maker,
-        )
-        .map_err(super::runtime_helpers::effect_driven_cast_error)?;
-        let Some(new_id) = result else {
-            return if ctx.decision_maker.awaiting_choice() {
-                Ok(EffectOutcome::count(0))
-            } else {
-                Ok(EffectOutcome::impossible())
-            };
-        };
-        let outcome = with_spell_cast_event(
-            EffectOutcome::with_objects(vec![new_id]),
-            game,
-            new_id,
-            caster,
-            from_zone,
-            ctx.provenance,
+                let cast_tags = ctx.tagged_objects.clone();
+                let result = crate::game_loop::cast_spell_from_resolving_effect_with_price(
+                    game,
+                    object_id,
+                    from_zone,
+                    caster,
+                    &casting_method,
+                    without_paying_mana_cost,
+                    alternative_cost,
+                    self.cost_reduction.as_ref(),
+                    self.additional_mana_cost.as_ref(),
+                    self.mana_spend_mode,
+                    cast_tags,
+                    ctx.provenance,
+                    &mut ctx.decision_maker,
+                )
+                .map_err(super::runtime_helpers::effect_driven_cast_error)?;
+                let Some(new_id) = result else {
+                    return if ctx.decision_maker.awaiting_choice() {
+                        Ok(EffectOutcome::count(0))
+                    } else {
+                        Ok(EffectOutcome::impossible())
+                    };
+                };
+                let outcome = with_spell_cast_event(
+                    EffectOutcome::with_objects(vec![new_id]),
+                    game,
+                    new_id,
+                    caster,
+                    from_zone,
+                    ctx.provenance,
+                );
+                Ok(outcome)
+            },
         );
-        Ok(outcome)
-        });
-        if ctx.decision_maker.awaiting_choice() { instruction.map(|_| EffectOutcome::count(0)) }
-        else { instruction }
+        if ctx.decision_maker.awaiting_choice() {
+            instruction.map(|_| EffectOutcome::count(0))
+        } else {
+            instruction
+        }
     }
 }
 
@@ -579,7 +649,8 @@ mod tests {
                 tags.insert(TagKey::from("it"), vec![snapshot]);
                 game.take_pending_trigger_events();
                 let mut dm = SelectFirstDecisionMaker;
-                let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+                let mut ctx =
+                    ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
                 let mut effect = CastTaggedEffect::new("it", PlayerFilter::You).allow_land();
                 if as_copy {
                     effect = effect.as_copy();
@@ -630,7 +701,8 @@ mod tests {
                 let placements = events
                     .iter()
                     .filter_map(|event| {
-                        if let Some(counter) = event.downcast::<crate::events::CounterPlacedEvent>() {
+                        if let Some(counter) = event.downcast::<crate::events::CounterPlacedEvent>()
+                        {
                             Some((counter.permanent, counter.counter_type, counter.amount))
                         } else if let Some(marker) = event.downcast::<MarkersChangedEvent>() {
                             if let (
@@ -746,25 +818,55 @@ mod replacement_cast_tagged_land_owner_contract_tests {
     use crate::snapshot::ObjectSnapshot;
     use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
     use crate::types::CardType;
-    struct Answers { player: PlayerId, pause: bool, pending: bool, calls: usize, binding: bool }
+    struct Answers {
+        player: PlayerId,
+        pause: bool,
+        pending: bool,
+        calls: usize,
+        binding: bool,
+    }
     impl DecisionMaker for Answers {
-        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+        fn decide_boolean(
+            &mut self,
+            game: &GameState,
+            _: &crate::decisions::context::BooleanContext,
+        ) -> bool {
             self.calls += 1;
-            let lands = game.battlefield.iter().copied().filter(|id| game.object(*id).unwrap().is_land()).collect::<Vec<_>>();
+            let lands = game
+                .battlefield
+                .iter()
+                .copied()
+                .filter(|id| game.object(*id).unwrap().is_land())
+                .collect::<Vec<_>>();
             assert_eq!(lands.len(), 1, "the original land arrives before additions");
-            assert_eq!(game.player(self.player).unwrap().lands_played_this_turn, 1, "authored land-play bookkeeping precedes additions");
-            if self.binding { assert_eq!(game.counter_count(lands[0], CounterType::PlusOnePlusOne), 1); }
-            self.pending = self.pause; !self.pending
+            assert_eq!(
+                game.player(self.player).unwrap().lands_played_this_turn,
+                1,
+                "authored land-play bookkeeping precedes additions"
+            );
+            if self.binding {
+                assert_eq!(game.counter_count(lands[0], CounterType::PlusOnePlusOne), 1);
+            }
+            self.pending = self.pause;
+            !self.pending
         }
-        fn awaiting_choice(&self) -> bool { self.pending }
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
     }
     fn card(game: &mut GameState, owner: PlayerId, kind: CardType, zone: Zone) -> ObjectId {
-        game.create_object_from_card(&CardBuilder::new(CardId::new(), "Tagged land fixture")
-            .card_types(vec![kind]).build(), owner, zone)
+        game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Tagged land fixture")
+                .card_types(vec![kind])
+                .build(),
+            owner,
+            zone,
+        )
     }
     fn check(as_copy: bool, mode: u8) {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
         let parent = card(&mut game, alice, CardType::Artifact, Zone::Battlefield);
         let source = card(&mut game, bob, CardType::Artifact, Zone::Battlefield);
         let target = card(&mut game, alice, CardType::Land, Zone::Exile);
@@ -772,44 +874,132 @@ mod replacement_cast_tagged_land_owner_contract_tests {
         let sentinel = ObjectSnapshot::from_object(game.object(parent).unwrap(), &game);
         let effects = match mode {
             1 => vec![Effect::gain_life(3), Effect::lose_life(Value::X)],
-            3 => vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne, 1, ChooseSpec::tagged("it"))), Effect::may(vec![Effect::gain_life(0)])],
-            _ => vec![Effect::gain_life(3), Effect::may(vec![Effect::gain_life(4)])],
+            3 => vec![
+                Effect::new(crate::effects::PutCountersEffect::new(
+                    CounterType::PlusOnePlusOne,
+                    1,
+                    ChooseSpec::tagged("it"),
+                )),
+                Effect::may(vec![Effect::gain_life(0)]),
+            ],
+            _ => vec![
+                Effect::gain_life(3),
+                Effect::may(vec![Effect::gain_life(4)]),
+            ],
         };
-        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, bob,
-            crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::default().with_type(CardType::Land),
-                Some(if as_copy {Zone::Command} else {Zone::Exile}), Some(Zone::Battlefield)), ReplacementAction::Additionally(effects)));
-        game.take_pending_trigger_events(); let before_ids = game.next_object_id_counter();
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            ReplacementEffect::with_matcher(
+                source,
+                bob,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                    ObjectFilter::default().with_type(CardType::Land),
+                    Some(if as_copy { Zone::Command } else { Zone::Exile }),
+                    Some(Zone::Battlefield),
+                ),
+                ReplacementAction::Additionally(effects),
+            ),
+        );
+        game.take_pending_trigger_events();
+        let before_ids = game.next_object_id_counter();
         let before_objects = game.objects_in_deterministic_order().len();
-        let mut dm = Answers { player: alice, pause: mode == 2, pending: false, calls: 0, binding: mode == 3 };
+        let mut dm = Answers {
+            player: alice,
+            pause: mode == 2,
+            pending: false,
+            calls: 0,
+            binding: mode == 3,
+        };
         let mut ctx = ExecutionContext::new(parent, alice, &mut dm);
-        ctx.set_tagged_objects("casted", vec![selected.clone()]); ctx.set_tagged_objects("it", vec![sentinel.clone()]);
-        let mut effect = CastTaggedEffect::new("casted", PlayerFilter::You).allow_land(); if as_copy { effect = effect.as_copy(); }
+        ctx.set_tagged_objects("casted", vec![selected.clone()]);
+        ctx.set_tagged_objects("it", vec![sentinel.clone()]);
+        let mut effect = CastTaggedEffect::new("casted", PlayerFilter::You).allow_land();
+        if as_copy {
+            effect = effect.as_copy();
+        }
         let result = effect.execute(&mut game, &mut ctx);
-        if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
-        else if mode == 2 { assert!(ctx.decision_maker.awaiting_choice()); assert!(result.unwrap().events.is_empty()); }
-        else {
-            let outcome = result.unwrap(); assert_eq!(outcome.objects().unwrap().len(), 1);
-            let arrival = outcome.objects().unwrap()[0]; assert!(game.battlefield.contains(&arrival));
+        if mode == 1 {
+            assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_))));
+        } else if mode == 2 {
+            assert!(ctx.decision_maker.awaiting_choice());
+            assert!(result.unwrap().events.is_empty());
+        } else {
+            let outcome = result.unwrap();
+            assert_eq!(outcome.objects().unwrap().len(), 1);
+            let arrival = outcome.objects().unwrap()[0];
+            assert!(game.battlefield.contains(&arrival));
             assert_eq!(game.player(alice).unwrap().lands_played_this_turn, 1);
-            assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.player(bob).unwrap().life, if mode == 3 {20} else {27});
+            assert_eq!(game.player(alice).unwrap().life, 20);
+            assert_eq!(
+                game.player(bob).unwrap().life,
+                if mode == 3 { 20 } else { 27 }
+            );
             if mode == 3 {
                 assert_eq!(game.counter_count(arrival, CounterType::PlusOnePlusOne), 1);
-                assert!(outcome.execution_facts.iter().filter_map(|fact| match fact { crate::effect::ExecutionFact::AffectedObjectMemory(memory) => Some(memory.as_slice()), _ => None }).flatten().any(|memory| memory.object_id == arrival && memory.zone == Zone::Battlefield));
-                assert!(!outcome.affected_object_memory().unwrap_or(&[]).iter().any(|memory| memory.object_id == arrival && memory.zone == Zone::Battlefield), "auxiliary post-move counter memory is not original movement memory");
+                assert!(
+                    outcome
+                        .execution_facts
+                        .iter()
+                        .filter_map(|fact| match fact {
+                            crate::effect::ExecutionFact::AffectedObjectMemory(memory) =>
+                                Some(memory.as_slice()),
+                            _ => None,
+                        })
+                        .flatten()
+                        .any(|memory| memory.object_id == arrival
+                            && memory.zone == Zone::Battlefield)
+                );
+                assert!(
+                    !outcome
+                        .affected_object_memory()
+                        .unwrap_or(&[])
+                        .iter()
+                        .any(|memory| memory.object_id == arrival
+                            && memory.zone == Zone::Battlefield),
+                    "auxiliary post-move counter memory is not original movement memory"
+                );
             } else {
-                assert_eq!(outcome.events.iter().filter_map(|event| event.downcast::<crate::events::LifeGainEvent>())
-                    .map(|event| (event.player,event.amount)).collect::<Vec<_>>(), vec![(bob,3),(bob,4)]);
+                assert_eq!(
+                    outcome
+                        .events
+                        .iter()
+                        .filter_map(|event| event.downcast::<crate::events::LifeGainEvent>())
+                        .map(|event| (event.player, event.amount))
+                        .collect::<Vec<_>>(),
+                    vec![(bob, 3), (bob, 4)]
+                );
             }
-            let events = game.take_pending_trigger_events();
-            let played = events.iter().filter_map(|event| event.downcast::<crate::events::other::LandPlayedEvent>()).collect::<Vec<_>>();
-            assert_eq!(played.len(), 1);
-            assert_eq!(game.objects_in_deterministic_order().len(), before_objects + usize::from(as_copy));
-            if as_copy { assert_eq!(game.object(target).unwrap().zone, Zone::Exile); }
-            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            // Added programs capture the completed original's triggers before
+            // executing their instructions, consuming the pending queue.
+            assert_eq!(
+                game.turn_store
+                    .turn_history
+                    .event_kind_count(crate::events::EventKind::LandPlayed),
+                1
+            );
+            assert_eq!(
+                game.objects_in_deterministic_order().len(),
+                before_objects + usize::from(as_copy)
+            );
+            if as_copy {
+                assert_eq!(game.object(target).unwrap().zone, Zone::Exile);
+            }
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(shield)
+                    .is_none()
+            );
         }
-        assert_eq!(ctx.source, parent); assert_eq!(ctx.controller, alice);
-        assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id, sentinel.object_id);
-        assert_eq!(ctx.get_tagged_all("casted").unwrap()[0].object_id, selected.object_id);
+        assert_eq!(ctx.source, parent);
+        assert_eq!(ctx.controller, alice);
+        assert_eq!(
+            ctx.get_tagged_all("it").unwrap()[0].object_id,
+            sentinel.object_id
+        );
+        assert_eq!(
+            ctx.get_tagged_all("casted").unwrap()[0].object_id,
+            selected.object_id
+        );
         assert_eq!(game.counter_count(parent, CounterType::PlusOnePlusOne), 0);
         if mode == 1 || mode == 2 {
             assert_eq!(game.next_object_id_counter(), before_ids);
@@ -818,25 +1008,69 @@ mod replacement_cast_tagged_land_owner_contract_tests {
             assert_eq!(game.player(alice).unwrap().lands_played_this_turn, 0);
             assert_eq!(game.player(bob).unwrap().life, 20);
             assert!(game.command_zone.is_empty());
-            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty());
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(shield)
+                    .is_some()
+            );
+            assert!(game.take_pending_trigger_events().is_empty());
         }
         drop(ctx);
-        if mode == 0 || mode == 3 { assert_eq!(dm.calls, 1); }
+        if mode == 0 || mode == 3 {
+            assert_eq!(dm.calls, 1);
+        }
         if mode == 2 {
-            assert_eq!(dm.calls, 1); dm.pause = false; dm.pending = false;
-            let mut ctx = ExecutionContext::new(parent, alice, &mut dm); ctx.set_tagged_objects("casted", vec![selected]);
-            let outcome = effect.execute(&mut game, &mut ctx).unwrap(); assert_eq!(outcome.objects().unwrap().len(), 1);
-            assert_eq!(game.player(bob).unwrap().life, 27); assert_eq!(game.player(alice).unwrap().lands_played_this_turn, 1);
-            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
-            assert!(!ctx.decision_maker.awaiting_choice()); drop(ctx); assert_eq!(dm.calls, 2);
+            assert_eq!(dm.calls, 1);
+            dm.pause = false;
+            dm.pending = false;
+            let mut ctx = ExecutionContext::new(parent, alice, &mut dm);
+            ctx.set_tagged_objects("casted", vec![selected]);
+            let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(outcome.objects().unwrap().len(), 1);
+            assert_eq!(game.player(bob).unwrap().life, 27);
+            assert_eq!(game.player(alice).unwrap().lands_played_this_turn, 1);
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(shield)
+                    .is_none()
+            );
+            assert!(!ctx.decision_maker.awaiting_choice());
+            drop(ctx);
+            assert_eq!(dm.calls, 2);
         }
     }
-    #[test] fn land_additions_follow_original_play() { check(false,0); }
-    #[test] fn land_error_restores_entire_play() { check(false,1); }
-    #[test] fn land_pending_replays_entire_play() { check(false,2); }
-    #[test] fn land_addition_binds_arrival_and_returns_facts() { check(false,3); }
-    #[test] fn copy_additions_follow_original_play() { check(true,0); }
-    #[test] fn copy_error_restores_provisional_copy_and_play() { check(true,1); }
-    #[test] fn copy_pending_replays_provisional_copy_and_play() { check(true,2); }
-    #[test] fn copy_addition_binds_arrival_and_returns_facts() { check(true,3); }
+    #[test]
+    fn land_additions_follow_original_play() {
+        check(false, 0);
+    }
+    #[test]
+    fn land_error_restores_entire_play() {
+        check(false, 1);
+    }
+    #[test]
+    fn land_pending_replays_entire_play() {
+        check(false, 2);
+    }
+    #[test]
+    fn land_addition_binds_arrival_and_returns_facts() {
+        check(false, 3);
+    }
+    #[test]
+    fn copy_additions_follow_original_play() {
+        check(true, 0);
+    }
+    #[test]
+    fn copy_error_restores_provisional_copy_and_play() {
+        check(true, 1);
+    }
+    #[test]
+    fn copy_pending_replays_provisional_copy_and_play() {
+        check(true, 2);
+    }
+    #[test]
+    fn copy_addition_binds_arrival_and_returns_facts() {
+        check(true, 3);
+    }
 }

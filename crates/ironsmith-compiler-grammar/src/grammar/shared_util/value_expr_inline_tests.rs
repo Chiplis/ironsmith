@@ -69,7 +69,9 @@ fn counted_curses_attached_to_them_keep_player_attachment_scope() {
     assert!(filter.attached_to_object.is_none());
     assert_eq!(
         filter.attached_to_player,
-        Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)))
+        Some(PlayerFilter::AliasedTarget(Box::new(
+            PlayerFilter::IteratedPlayer
+        )))
     );
 
     let object_attachments = lex_line("the number of Auras attached to them", 0)
@@ -575,12 +577,11 @@ fn explicit_revealed_card_mana_value_keeps_reference_surface() {
         .expect("revealed-card mana value");
 
     assert_eq!(used, 5);
-    assert!(value.has_surface_hint(ValueSurfaceHint::RevealedCardReference));
-    assert!(matches!(
-        value.unhinted(),
-        Value::ManaValueOf(spec)
-            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "__public_revealed")
-    ));
+    assert!(
+        matches!(value.unhinted(), Value::PendingPriorEffectMetric(query)
+        if query.metric == ironsmith_core::EffectMetric::FirstManaValue
+            && query.action == Some(ironsmith_core::PriorEffectAction::Revealed))
+    );
 }
 
 #[test]

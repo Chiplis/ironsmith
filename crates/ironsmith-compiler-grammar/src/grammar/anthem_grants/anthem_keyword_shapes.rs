@@ -81,6 +81,18 @@ pub fn parse_anthem_keyword_head(tokens: &[OwnedLexToken]) -> Option<AnthemKeywo
     if get_token == have_token {
         return None;
     }
+    // A possessive count tail ("for each ... you have") is not a keyword grant.
+    if have_token > get_token
+        && primitives::find_prefix(&tokens[get_token + 1..have_token], || {
+            primitives::phrase(&["for", "each"]).void()
+        })
+        .is_some()
+        && !tokens
+            .get(have_token.wrapping_sub(1))
+            .is_some_and(|token| token.is_word("and"))
+    {
+        return None;
+    }
     let order = if have_token < get_token {
         AnthemKeywordOrder::KeywordBeforeAnthem
     } else {

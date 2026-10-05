@@ -24,8 +24,14 @@ pub(super) fn active_target_assignments_for_effect(
         let mut next = start;
         let mut selected = Vec::new();
         for (_spec, previous) in roles {
-            let index = previous.unwrap_or_else(|| { let index = next; next += 1; index });
-            if let Some(assignment) = assignments.get(index) { selected.push(assignment.clone()); }
+            let index = previous.unwrap_or_else(|| {
+                let index = next;
+                next += 1;
+                index
+            });
+            if let Some(assignment) = assignments.get(index) {
+                selected.push(assignment.clone());
+            }
         }
         *cursor = start.saturating_add(count).min(assignments.len());
         return selected;
@@ -576,6 +582,15 @@ fn bind_singular_combat_player_choice(
     if !references_player || !game.shared_team_turns_enabled() {
         return true;
     }
+    if attacking
+        && ctx.triggering_event.as_ref().is_some_and(|event| {
+            event
+                .downcast::<crate::events::PlayerAttackDeclarationEvent>()
+                .is_some()
+        })
+    {
+        return true;
+    }
     let Some(anchor) = anchor else {
         return true;
     };
@@ -624,8 +639,15 @@ pub(crate) fn execute_resolution_program(
     valid_target_assignments: &[crate::game_state::TargetAssignment],
 ) -> Result<Vec<crate::triggers::TriggerEvent>, GameLoopError> {
     execute_resolution_program_typed(
-        game, ctx, controller, source_id, program, chosen_modes, valid_target_assignments,
-    ).map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))
+        game,
+        ctx,
+        controller,
+        source_id,
+        program,
+        chosen_modes,
+        valid_target_assignments,
+    )
+    .map_err(GameLoopError::ExecutionFailed)
 }
 
 /// Execute a resolution program. With `match_triggers_per_instruction`, the
@@ -657,7 +679,7 @@ pub(crate) fn execute_resolution_program_with_trigger_matching(
         valid_target_assignments,
         match_triggers_per_instruction,
     )
-    .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))
+    .map_err(GameLoopError::ExecutionFailed)
 }
 /// Execute a whole effect program while retaining typed errors and restoring
 /// game and owned context on failure or an unanswered choice.
@@ -693,7 +715,9 @@ pub(crate) fn execute_resolution_program_with_trigger_matching_typed(
     valid_target_assignments: &[crate::game_state::TargetAssignment],
     match_triggers_per_instruction: bool,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
-    if !ctx.decision_maker.awaiting_choice() { game.clear_pending_decision_controllers(); }
+    if !ctx.decision_maker.awaiting_choice() {
+        game.clear_pending_decision_controllers();
+    }
     let (resource_root, resource_meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
@@ -716,7 +740,10 @@ pub(crate) fn execute_resolution_program_with_trigger_matching_typed(
         },
     );
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+        game.restore_execution_checkpoint(
+            checkpoint,
+            result.is_ok() && ctx.decision_maker.awaiting_choice(),
+        );
         context_checkpoint.restore(ctx);
         game.end_token_resource_scope(resource_root, &resource_meter);
         return result.map(|_| Vec::new());
@@ -1048,13 +1075,18 @@ pub(super) fn resolve_stack_entry_full(
     decision_maker: &mut dyn DecisionMaker,
     mut trigger_queue: Option<&mut TriggerQueue>,
 ) -> Result<(), GameLoopError> {
-    if !decision_maker.awaiting_choice() { game.clear_pending_decision_controllers(); }
+    if !decision_maker.awaiting_choice() {
+        game.clear_pending_decision_controllers();
+    }
     let (resource_root, resource_meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.as_deref().cloned();
     let result = resolve_stack_entry_full_inner(game, decision_maker, trigger_queue.as_deref_mut());
     if result.is_err() || decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(checkpoint, result.is_ok() && decision_maker.awaiting_choice());
+        game.restore_execution_checkpoint(
+            checkpoint,
+            result.is_ok() && decision_maker.awaiting_choice(),
+        );
         if let (Some(queue), Some(checkpoint)) = (trigger_queue, queue_checkpoint) {
             *queue = checkpoint;
         }
@@ -1068,8 +1100,9 @@ fn resolve_stack_entry_full_inner(
     decision_maker: &mut dyn DecisionMaker,
     mut trigger_queue: Option<&mut TriggerQueue>,
 ) -> Result<(), GameLoopError> {
-    game.refresh_continuous_state().map_err(|error| GameLoopError::ExecutionFailed(
-        crate::effects::ExecutionError::ContinuousDiscovery(error)))?;
+    game.refresh_continuous_state().map_err(|error| {
+        GameLoopError::ExecutionFailed(crate::effects::ExecutionError::ContinuousDiscovery(error))
+    })?;
     // Rebound granted by a static ability (Cast Through Time) applies to
     // spells on the stack, so read it before the entry is popped.
     let resolving_spell_has_granted_rebound = game.stack.last().is_some_and(|entry| {
@@ -1085,8 +1118,9 @@ fn resolve_stack_entry_full_inner(
     // Spells use their current controller (CR 109.5, 112.2); abilities keep
     // the controller captured when they were put on the stack (CR 113.8).
     if !entry.is_ability {
-        entry.controller = game.current_controller(entry.object_id).ok_or_else(||
-            GameLoopError::InvalidState("Resolving spell has no object controller".to_string()))?;
+        entry.controller = game.current_controller(entry.object_id).ok_or_else(|| {
+            GameLoopError::InvalidState("Resolving spell has no object controller".to_string())
+        })?;
     }
 
     // Get the object for this stack entry
@@ -1113,6 +1147,7 @@ fn resolve_stack_entry_full_inner(
         // ability, whose stack object is only a stand-in for the copy.
         .with_cause(EventCause::from_effect(execution_source, entry.controller))
         .with_provenance(entry.provenance);
+    ctx.iteration = entry.iteration;
     // CR 400.7j: only objects this resolution moves are new objects its
     // instructions may still find.
     ctx.resolution_object_id_floor = Some(crate::ids::ObjectId::from_raw(
@@ -1194,18 +1229,19 @@ fn resolve_stack_entry_full_inner(
     // battlefield") keeps its own exiled card, as long as that card is still
     // linked to the source, instead of widening to every linked card.
     let source_exiled_tag = crate::tag::TagKey::from(crate::tag::SOURCE_EXILED_TAG);
-    let keeps_captured_subset = entry
-        .tagged_objects
-        .get(&source_exiled_tag)
-        .is_some_and(|captured| {
-            !captured.is_empty()
-                && captured.len() < source_exiled.len()
-                && captured.iter().all(|snapshot| {
-                    source_exiled
-                        .iter()
-                        .any(|linked| linked.object_id == snapshot.object_id)
-                })
-        });
+    let keeps_captured_subset =
+        entry
+            .tagged_objects
+            .get(&source_exiled_tag)
+            .is_some_and(|captured| {
+                !captured.is_empty()
+                    && captured.len() < source_exiled.len()
+                    && captured.iter().all(|snapshot| {
+                        source_exiled
+                            .iter()
+                            .any(|linked| linked.object_id == snapshot.object_id)
+                    })
+            });
     if !source_exiled.is_empty() && !keeps_captured_subset {
         tagged_objects.insert(source_exiled_tag, source_exiled);
     }
@@ -1222,7 +1258,7 @@ fn resolve_stack_entry_full_inner(
     // Per MTG Rule 608.2b, if ALL targets are now illegal, the spell/ability fizzles
     let target_validation_view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
     let (valid_targets, valid_target_assignments, all_targets_invalid) =
-        validate_stack_entry_targets_with_view(game, &entry, &target_validation_view,Some(&ctx))?;
+        validate_stack_entry_targets_with_view(game, &entry, &target_validation_view, Some(&ctx))?;
 
     let mutating_creature_spell = !entry.is_ability
         && obj.as_ref().is_some_and(|obj| {
@@ -1290,11 +1326,18 @@ fn resolve_stack_entry_full_inner(
                 crate::events::cause::EventCause::from_game_rule(),
                 &mut ctx,
             )?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
             completion_receipts.push((entry.object_id, receipt));
         }
         crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
-        finish_resolving_spell_receipts(game, &mut ctx, trigger_queue.as_deref_mut(), completion_receipts)?;
+        finish_resolving_spell_receipts(
+            game,
+            &mut ctx,
+            trigger_queue.as_deref_mut(),
+            completion_receipts,
+        )?;
         return Ok(());
     }
 
@@ -1327,7 +1370,7 @@ fn resolve_stack_entry_full_inner(
     // If the condition is false, the ability does nothing (but doesn't fizzle)
     if let Some(ref condition) = entry.intervening_if
         && let Some(ref triggering_event) = entry.triggering_event
-        && !crate::triggers::verify_intervening_if(
+        && !crate::triggers::verify_intervening_if_at_resolution(
             game,
             condition,
             entry.controller,
@@ -1467,9 +1510,16 @@ fn resolve_stack_entry_full_inner(
                 EventCause::from_effect(entry.object_id, entry.controller),
                 &mut ctx,
             )?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
             completion_receipts.push((entry.object_id, receipt));
-            finish_resolving_spell_receipts(game, &mut ctx, trigger_queue.as_deref_mut(), completion_receipts)?;
+            finish_resolving_spell_receipts(
+                game,
+                &mut ctx,
+                trigger_queue.as_deref_mut(),
+                completion_receipts,
+            )?;
             return Ok(());
         }
     }
@@ -1502,7 +1552,8 @@ fn resolve_stack_entry_full_inner(
                     1,
                     1,
                 );
-                let spell_on_top = ctx.decision_maker
+                let spell_on_top = ctx
+                    .decision_maker
                     .decide_options(game, &choice_context)
                     .into_iter()
                     .next()
@@ -1562,32 +1613,62 @@ fn resolve_stack_entry_full_inner(
             let battlefield_method = obj.cast_alternative_method_owned().or_else(|| {
                 if let CastingMethod::Alternative(index) = entry.casting_method {
                     obj.alternative_casts.get(index).cloned()
-                } else { None }
+                } else {
+                    None
+                }
             });
             let current_turn = game.turn.turn_number;
             if let Some(method) = battlefield_method.as_ref()
-                && let Some(spell) = game.object_mut(entry.object_id) {
-                crate::alternative_cast::ensure_alternative_battlefield_abilities(spell, method, current_turn);
+                && let Some(spell) = game.object_mut(entry.object_id)
+            {
+                crate::alternative_cast::ensure_alternative_battlefield_abilities(
+                    spell,
+                    method,
+                    current_turn,
+                );
             }
 
             // It's a permanent spell, move to battlefield with ETB processing
             // This handles replacement effects like "enters tapped" or "enters with counters"
-            let aura_target = obj.subtypes.contains(&Subtype::Aura).then(|| entry.targets.first().map(|target| match target {
-                Target::Object(id) => crate::object::AttachmentTarget::Object(*id),
-                Target::Player(id) => crate::object::AttachmentTarget::Player(*id),
-            })).flatten();
-            if let Some(player) = chosen_player { game.set_chosen_player(entry.object_id, player); }
-            let mut options = crate::effects::zones::BattlefieldEntryOptions::specific(obj.initial_controller, cast_with_sneak);
+            let aura_target = obj
+                .subtypes
+                .contains(&Subtype::Aura)
+                .then(|| {
+                    entry.targets.first().map(|target| match target {
+                        Target::Object(id) => crate::object::AttachmentTarget::Object(*id),
+                        Target::Player(id) => crate::object::AttachmentTarget::Player(*id),
+                    })
+                })
+                .flatten();
+            if let Some(player) = chosen_player {
+                game.set_chosen_player(entry.object_id, player);
+            }
+            let mut options = crate::effects::zones::BattlefieldEntryOptions::specific(
+                obj.initial_controller,
+                cast_with_sneak,
+            );
             if let Some(method) = &battlefield_method {
                 options = options.with_initial_counters(method.entry_counters().to_vec());
             }
-            if obj.subtypes.contains(&Subtype::Aura) { options = options.with_aura_entry_attachment(aura_target); }
-            let receipt = crate::effects::zones::move_to_battlefield_with_options(game, &mut ctx, entry.object_id, options)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(()); }
-            let receipt = receipt.ok_or_else(|| GameLoopError::ResolutionFailed("spell entry returned no terminal receipt".into()))?;
+            if obj.subtypes.contains(&Subtype::Aura) {
+                options = options.with_aura_entry_attachment(aura_target);
+            }
+            let receipt = crate::effects::zones::move_to_battlefield_with_options(
+                game,
+                &mut ctx,
+                entry.object_id,
+                options,
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+            let receipt = receipt.ok_or_else(|| {
+                GameLoopError::ResolutionFailed("spell entry returned no terminal receipt".into())
+            })?;
             let new_id = match &receipt.outcome {
                 crate::effects::zones::BattlefieldEntryOutcome::Moved(id) => Some(*id),
-                crate::effects::zones::BattlefieldEntryOutcome::Redirected(_) | crate::effects::zones::BattlefieldEntryOutcome::Prevented => None,
+                crate::effects::zones::BattlefieldEntryOutcome::Redirected(_)
+                | crate::effects::zones::BattlefieldEntryOutcome::Prevented => None,
             };
             completion_receipts.push(receipt.into_zone_receipt());
             if let Some(new_id) = new_id {
@@ -1715,9 +1796,16 @@ fn resolve_stack_entry_full_inner(
                         vec![new_id],
                         crate::target::PlayerFilter::Specific(entry.controller),
                     );
-                    execute_resolved_permanent_annotation(game, &mut ctx, new_id, entry.controller,
-                        &crate::effect::Effect::new(return_to_hand))?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                    execute_resolved_permanent_annotation(
+                        game,
+                        &mut ctx,
+                        new_id,
+                        entry.controller,
+                        &crate::effect::Effect::new(return_to_hand),
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(());
+                    }
                 }
                 if cast_with_blitz {
                     let sacrifice_at_end_step = crate::effects::ScheduleDelayedTriggerEffect::new(
@@ -1731,9 +1819,16 @@ fn resolve_stack_entry_full_inner(
                         vec![new_id],
                         crate::target::PlayerFilter::Specific(entry.controller),
                     );
-                    execute_resolved_permanent_annotation(game, &mut ctx, new_id, entry.controller,
-                        &crate::effect::Effect::new(sacrifice_at_end_step))?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                    execute_resolved_permanent_annotation(
+                        game,
+                        &mut ctx,
+                        new_id,
+                        entry.controller,
+                        &crate::effect::Effect::new(sacrifice_at_end_step),
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(());
+                    }
                 }
                 if cast_with_suspend && obj.has_card_type(crate::types::CardType::Creature) {
                     let suspend_haste = crate::effects::ApplyContinuousEffect::new(
@@ -1743,9 +1838,16 @@ fn resolve_stack_entry_full_inner(
                         ),
                         crate::effect::Until::YouStopControllingThis,
                     );
-                    execute_resolved_permanent_annotation(game, &mut ctx, new_id, entry.controller,
-                        &crate::effect::Effect::new(suspend_haste))?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                    execute_resolved_permanent_annotation(
+                        game,
+                        &mut ctx,
+                        new_id,
+                        entry.controller,
+                        &crate::effect::Effect::new(suspend_haste),
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(());
+                    }
                 }
                 if cast_with_warp {
                     let exile_then_grant = crate::effects::ScheduleDelayedTriggerEffect::new(
@@ -1762,13 +1864,21 @@ fn resolve_stack_entry_full_inner(
                         vec![new_id],
                         crate::target::PlayerFilter::Specific(entry.controller),
                     );
-                    execute_resolved_permanent_annotation(game, &mut ctx, new_id, entry.controller,
-                        &crate::effect::Effect::new(exile_then_grant))?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                    execute_resolved_permanent_annotation(
+                        game,
+                        &mut ctx,
+                        new_id,
+                        entry.controller,
+                        &crate::effect::Effect::new(exile_then_grant),
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(());
+                    }
                 }
 
                 if let Some(ref mut tq) = trigger_queue {
-                    handle_saga_enters_battlefield(game, new_id, tq, &mut *ctx.decision_maker).map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
+                    handle_saga_enters_battlefield(game, new_id, tq, &mut *ctx.decision_maker)
+                        .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
                 } else {
                     let mut temp_queue = TriggerQueue::new();
                     handle_saga_enters_battlefield(
@@ -1776,10 +1886,13 @@ fn resolve_stack_entry_full_inner(
                         new_id,
                         &mut temp_queue,
                         &mut *ctx.decision_maker,
-                    ).map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
+                    )
+                    .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
                 }
 
-                if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
             }
         } else if obj.zone == Zone::Stack {
             if obj.kind == crate::object::ObjectKind::SpellCopy {
@@ -1826,13 +1939,25 @@ fn resolve_stack_entry_full_inner(
                 CastingMethod::AlternativePrice { .. } => false,
                 CastingMethod::Normal => false,
                 CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => false,
-                CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => {
-                    obj.subtypes.contains(&crate::types::Subtype::Adventure)
-                }
-                CastingMethod::SplitOtherHalfPlayFrom { use_alternative: Some(index), zone, .. } => {
-                    crate::decision::resolve_play_from_alternative_method(game, entry.controller, obj, *zone, *index)
-                        .or_else(|| obj.cast_alternative_method_owned())
-                        .is_some_and(|method| method.exiles_after_resolution())
+                CastingMethod::SplitOtherHalf
+                | CastingMethod::SplitOtherHalfPlayFrom {
+                    use_alternative: None,
+                    ..
+                } => obj.subtypes.contains(&crate::types::Subtype::Adventure),
+                CastingMethod::SplitOtherHalfPlayFrom {
+                    use_alternative: Some(index),
+                    zone,
+                    ..
+                } => {
+                    crate::decision::resolve_play_from_alternative_method(
+                        game,
+                        entry.controller,
+                        obj,
+                        *zone,
+                        *index,
+                    )
+                    .or_else(|| obj.cast_alternative_method_owned())
+                    .is_some_and(|method| method.exiles_after_resolution())
                         || obj.subtypes.contains(&crate::types::Subtype::Adventure)
                 }
                 CastingMethod::Fuse => false,
@@ -1898,17 +2023,19 @@ fn resolve_stack_entry_full_inner(
 
             if resolving_as_omen {
                 let receipt = apply_resolving_spell_zone_change(
-                        game,
+                    game,
+                    entry.object_id,
+                    Zone::Stack,
+                    Zone::Library,
+                    crate::events::cause::EventCause::from_spell_resolution(
                         entry.object_id,
-                        Zone::Stack,
-                        Zone::Library,
-                        crate::events::cause::EventCause::from_spell_resolution(
-                            entry.object_id,
-                            entry.controller,
-                        ),
-                        &mut ctx,
-                    )?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                        entry.controller,
+                    ),
+                    &mut ctx,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
                 if let crate::events::processing::EventOutcome::Proceed(result) = &receipt.original
                     && result.final_zone == Zone::Library
                 {
@@ -1931,20 +2058,21 @@ fn resolve_stack_entry_full_inner(
                     }
                 }
                 completion_receipts.push((entry.object_id, receipt));
-
             } else if has_rebound {
                 let receipt = apply_resolving_spell_zone_change(
-                        game,
+                    game,
+                    entry.object_id,
+                    Zone::Stack,
+                    Zone::Exile,
+                    crate::events::cause::EventCause::from_spell_resolution(
                         entry.object_id,
-                        Zone::Stack,
-                        Zone::Exile,
-                        crate::events::cause::EventCause::from_spell_resolution(
-                            entry.object_id,
-                            entry.controller,
-                        ),
-                        &mut ctx,
-                    )?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                        entry.controller,
+                    ),
+                    &mut ctx,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
                 if let crate::events::processing::EventOutcome::Proceed(result) = &receipt.original
                     && result.final_zone == Zone::Exile
                     && let Some(exiled_id) = result.new_object_id
@@ -1984,21 +2112,22 @@ fn resolve_stack_entry_full_inner(
                         });
                 }
                 completion_receipts.push((entry.object_id, receipt));
-
             } else if should_exile {
                 let was_adventure = obj.subtypes.contains(&crate::types::Subtype::Adventure);
                 let receipt = apply_resolving_spell_zone_change(
-                        game,
+                    game,
+                    entry.object_id,
+                    Zone::Stack,
+                    Zone::Exile,
+                    crate::events::cause::EventCause::from_spell_resolution(
                         entry.object_id,
-                        Zone::Stack,
-                        Zone::Exile,
-                        crate::events::cause::EventCause::from_spell_resolution(
-                            entry.object_id,
-                            entry.controller,
-                        ),
-                        &mut ctx,
-                    )?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                        entry.controller,
+                    ),
+                    &mut ctx,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
                 if let crate::events::processing::EventOutcome::Proceed(result) = &receipt.original
                     && result.final_zone == Zone::Exile
                     && let Some(exiled_id) = result.new_object_id
@@ -2007,7 +2136,6 @@ fn resolve_stack_entry_full_inner(
                     game.set_adventure_exiled_for(exiled_id, entry.controller);
                 }
                 completion_receipts.push((entry.object_id, receipt));
-
             } else if entry.optional_costs_paid.was_bought_back()
                 || obj.optional_costs_paid.was_bought_back()
             {
@@ -2022,7 +2150,9 @@ fn resolve_stack_entry_full_inner(
                     ),
                     &mut ctx,
                 )?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
                 completion_receipts.push((entry.object_id, receipt));
             } else {
                 // Process zone change through replacement effects
@@ -2038,49 +2168,101 @@ fn resolve_stack_entry_full_inner(
                     ),
                     &mut ctx,
                 )?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
                 completion_receipts.push((entry.object_id, receipt));
             }
         }
         // Abilities just disappear from the stack
     }
 
-    finish_resolving_spell_receipts(game, &mut ctx, trigger_queue.as_deref_mut(), completion_receipts)
+    finish_resolving_spell_receipts(
+        game,
+        &mut ctx,
+        trigger_queue.as_deref_mut(),
+        completion_receipts,
+    )
 }
 
 fn apply_resolving_spell_zone_change(
-    game: &mut GameState, object: ObjectId, from: Zone, to: Zone, cause: EventCause,
+    game: &mut GameState,
+    object: ObjectId,
+    from: Zone,
+    to: Zone,
+    cause: EventCause,
     ctx: &mut ExecutionContext,
-) -> Result<crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>, crate::effects::ExecutionError> {
+) -> Result<
+    crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
+    crate::effects::ExecutionError,
+> {
     let additional = ctx.additional_replacement_effects_snapshot();
-    crate::effects::zones::apply_zone_change_with_context_and_additional_effects(game, object, from, to, cause, ctx, &additional)
+    crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+        game,
+        object,
+        from,
+        to,
+        cause,
+        ctx,
+        &additional,
+    )
 }
 
 fn finish_resolving_spell_receipts(
-    game: &mut GameState, ctx: &mut ExecutionContext, queue: Option<&mut TriggerQueue>,
-    receipts: Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    queue: Option<&mut TriggerQueue>,
+    receipts: Vec<(
+        ObjectId,
+        crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
+    )>,
 ) -> Result<(), GameLoopError> {
-    if ctx.decision_maker.awaiting_choice() { return Ok(()); }
-    let mut outcome = crate::effects::zones::finish_zone_change_receipts(game, ctx, crate::effect::EffectOutcome::resolved(), receipts)?;
-    if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(());
+    }
+    let mut outcome = crate::effects::zones::finish_zone_change_receipts(
+        game,
+        ctx,
+        crate::effect::EffectOutcome::resolved(),
+        receipts,
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(());
+    }
     crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-    for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
-    if let Some(queue) = queue { drain_pending_trigger_events_with_dm(game, queue, &mut *ctx.decision_maker)?; }
+    for event in outcome.events {
+        game.queue_trigger_event(event.provenance(), event);
+    }
+    if let Some(queue) = queue {
+        drain_pending_trigger_events_with_dm(game, queue, &mut *ctx.decision_maker)?;
+    }
     Ok(())
 }
 
 fn execute_resolved_permanent_annotation(
-    game: &mut GameState, parent: &mut ExecutionContext, source: ObjectId, controller: PlayerId, effect: &Effect,
+    game: &mut GameState,
+    parent: &mut ExecutionContext,
+    source: ObjectId,
+    controller: PlayerId,
+    effect: &Effect,
 ) -> Result<(), GameLoopError> {
     let checkpoint = crate::effects::ExecutionContextCheckpoint::capture(parent);
-    let snapshot = game.object(source).map(|object| crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game));
+    let snapshot = game.object(source).map(|object| {
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+    });
     let mut ctx = ExecutionContext::new(source, controller, &mut *parent.decision_maker);
     checkpoint.restore(&mut ctx);
-    ctx.source = source; ctx.controller = controller; ctx.source_snapshot = snapshot;
+    ctx.source = source;
+    ctx.controller = controller;
+    ctx.source_snapshot = snapshot;
     let mut outcome = crate::effects::execute_effect(game, effect, &mut ctx)?;
-    if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(());
+    }
     crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-    for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+    for event in outcome.events {
+        game.queue_trigger_event(event.provenance(), event);
+    }
     Ok(())
 }
 
@@ -3303,7 +3485,8 @@ mod tests {
         resolve_stack_entry_with(&mut game, &mut dm).expect("stack entry should resolve");
 
         assert_eq!(game.damage_on(damaged), 2);
-        crate::rules::state_based::apply_state_based_actions(&mut game).expect("replacement operation must finish without execution error");
+        crate::rules::state_based::apply_state_based_actions(&mut game)
+            .expect("replacement operation must finish without execution error");
         assert!(
             game.exile
                 .iter()
@@ -3370,161 +3553,484 @@ fn link_enter_and_leave_trigger_players(
 #[cfg(test)]
 mod replacement_spell_completion_owner_contract_tests {
     use super::*;
+    use crate::effect::Value;
     use crate::ids::{CardId, StableId};
     use crate::object::CounterType;
     use crate::replacement::{ReplacementAction, ReplacementEffect};
     use crate::target::{ChooseSpec, ObjectFilter};
     use crate::types::{CardType, Subtype};
-    use crate::effect::Value;
-    struct Answers { original: ObjectId, stable: StableId, path: u8, destination: Zone, alice: PlayerId, pause: bool, pending: bool, calls: usize, binding: bool }
+    struct Answers {
+        original: ObjectId,
+        stable: StableId,
+        path: u8,
+        destination: Zone,
+        alice: PlayerId,
+        pause: bool,
+        pending: bool,
+        calls: usize,
+        binding: bool,
+    }
     impl DecisionMaker for Answers {
-        fn decide_boolean(&mut self, game: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
-            self.calls += 1; assert!(game.object(self.original).is_none()); assert!(game.stack.is_empty());
-            let arrival = game.objects_in_deterministic_order().into_iter().find(|object| object.stable_id == self.stable).unwrap(); assert_eq!(arrival.zone, self.destination);
-            if self.path == 2 { assert!(game.effect_store.delayed_triggers.iter().any(|trigger| trigger.target_objects.contains(&arrival.id)), "rebound registration precedes additions"); }
-            if self.path == 4 { assert_eq!(game.adventure_exiled_player(arrival.id), Some(self.alice), "adventure permission precedes additions"); }
-            if self.binding { assert_eq!(game.counter_count(arrival.id, CounterType::PlusOnePlusOne), 1); }
-            self.pending = self.pause; !self.pending
+        fn decide_boolean(
+            &mut self,
+            game: &GameState,
+            _: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.calls += 1;
+            assert!(game.object(self.original).is_none());
+            assert!(game.stack.is_empty());
+            let arrival = game
+                .objects_in_deterministic_order()
+                .into_iter()
+                .find(|object| object.stable_id == self.stable)
+                .unwrap();
+            assert_eq!(arrival.zone, self.destination);
+            if self.path == 2 {
+                assert!(
+                    game.effect_store
+                        .delayed_triggers
+                        .iter()
+                        .any(|trigger| trigger.target_objects.contains(&arrival.id)),
+                    "rebound registration precedes additions"
+                );
+            }
+            if self.path == 4 {
+                assert_eq!(
+                    game.adventure_exiled_player(arrival.id),
+                    Some(self.alice),
+                    "adventure permission precedes additions"
+                );
+            }
+            if self.binding {
+                assert_eq!(
+                    game.counter_count(arrival.id, CounterType::PlusOnePlusOne),
+                    1
+                );
+            }
+            self.pending = self.pause;
+            !self.pending
         }
-        fn awaiting_choice(&self) -> bool { self.pending }
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
     }
     fn check(path: u8, mode: u8) {
-        let mut game = crate::tests::test_helpers::setup_two_player_game(); let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
-        let replacement = crate::CardDefinitionBuilder::new(CardId::new(), "Completion replacement").card_types(vec![CardType::Artifact]).build();
-        let replacement_source = game.create_object_from_definition(&replacement, bob, Zone::Battlefield);
-        let mut builder = crate::CardDefinitionBuilder::new(CardId::new(), "Completion spell").card_types(vec![if path == 0 { CardType::Creature } else { CardType::Sorcery }]);
-        if path == 0 { builder = builder.power_toughness(crate::card::PowerToughness::fixed(2, 2)); }
-        if path == 2 { builder = builder.rebound(); }
-        if path == 3 { builder = builder.subtypes(vec![Subtype::Omen]); }
-        if path == 4 { builder = builder.subtypes(vec![Subtype::Adventure]); }
-        let source = game.create_object_from_definition(&builder.build(), alice, Zone::Stack); let stable = game.object(source).unwrap().stable_id;
-        let mut entry = StackEntry::new(source, alice); if path == 3 || path == 4 { entry.casting_method = CastingMethod::SplitOtherHalf; }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let replacement =
+            crate::CardDefinitionBuilder::new(CardId::new(), "Completion replacement")
+                .card_types(vec![CardType::Artifact])
+                .build();
+        let replacement_source =
+            game.create_object_from_definition(&replacement, bob, Zone::Battlefield);
+        let mut builder = crate::CardDefinitionBuilder::new(CardId::new(), "Completion spell")
+            .card_types(vec![if path == 0 {
+                CardType::Creature
+            } else {
+                CardType::Sorcery
+            }]);
+        if path == 0 {
+            builder = builder.power_toughness(crate::card::PowerToughness::fixed(2, 2));
+        }
+        if path == 2 {
+            builder = builder.rebound();
+        }
+        if path == 3 {
+            builder = builder.subtypes(vec![Subtype::Omen]);
+        }
+        if path == 4 {
+            builder = builder.subtypes(vec![Subtype::Adventure]);
+        }
+        let source = game.create_object_from_definition(&builder.build(), alice, Zone::Stack);
+        let stable = game.object(source).unwrap().stable_id;
+        let mut entry = StackEntry::new(source, alice);
+        if path == 3 || path == 4 {
+            entry.casting_method = CastingMethod::SplitOtherHalf;
+        }
         game.stack.push(entry);
-        let destination = match path { 0 => Zone::Battlefield, 2 | 4 => Zone::Exile, 3 => Zone::Library, _ => Zone::Graveyard };
-        let actions = match mode { 1 => vec![Effect::gain_life(3), Effect::lose_life(Value::X)],
-            3 => vec![Effect::new(crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne, 1, ChooseSpec::tagged("it"))), Effect::may(vec![Effect::gain_life(0)])],
-            _ => vec![Effect::gain_life(3), Effect::may(vec![Effect::gain_life(4)])] };
-        let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(replacement_source, bob,
-            crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(source), Some(Zone::Stack), Some(destination)), ReplacementAction::Additionally(actions)));
-        game.take_pending_trigger_events(); let ids = game.next_object_id_counter(); let objects = game.objects_in_deterministic_order().len(); let delayed = game.effect_store.delayed_triggers.len();
-        let mut queue = TriggerQueue::new(); let mut dm = Answers { original: source, stable, path, destination, alice, pause: mode == 2, pending: false, calls: 0, binding: mode == 3 };
-        let result = if path == 1 { resolve_stack_entry_with(&mut game, &mut dm) } else { resolve_stack_entry_full(&mut game, &mut dm, Some(&mut queue)) };
-        if mode == 1 { assert!(matches!(result, Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::UnresolvableValue(message))) if message == "X value not set"), "surface typed unresolved-X replacement error"); }
-        else if mode == 2 { assert!(dm.awaiting_choice()); assert!(result.is_ok()); }
-        else {
-            assert!(result.is_ok()); assert!(game.object(source).is_none()); assert!(game.stack.is_empty());
-            let arrival = game.objects_in_deterministic_order().into_iter().find(|object| object.stable_id == stable).unwrap(); assert_eq!(arrival.zone, destination);
-            if path == 2 { assert!(game.effect_store.delayed_triggers.iter().any(|trigger| trigger.target_objects.contains(&arrival.id))); }
-            if path == 4 { assert_eq!(game.adventure_exiled_player(arrival.id), Some(alice)); }
-            assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.player(bob).unwrap().life, if mode == 3 { 20 } else { 27 });
-            if mode == 3 { assert_eq!(game.counter_count(arrival.id, CounterType::PlusOnePlusOne), 1); }
-            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none()); assert_eq!(dm.calls, 1);
+        let destination = match path {
+            0 => Zone::Battlefield,
+            2 | 4 => Zone::Exile,
+            3 => Zone::Library,
+            _ => Zone::Graveyard,
+        };
+        let actions = match mode {
+            1 => vec![Effect::gain_life(3), Effect::lose_life(Value::X)],
+            3 => vec![
+                Effect::new(crate::effects::PutCountersEffect::new(
+                    CounterType::PlusOnePlusOne,
+                    1,
+                    ChooseSpec::tagged("it"),
+                )),
+                Effect::may(vec![Effect::gain_life(0)]),
+            ],
+            _ => vec![
+                Effect::gain_life(3),
+                Effect::may(vec![Effect::gain_life(4)]),
+            ],
+        };
+        let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+            ReplacementEffect::with_matcher(
+                replacement_source,
+                bob,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                    ObjectFilter::specific(source),
+                    Some(Zone::Stack),
+                    Some(destination),
+                ),
+                ReplacementAction::Additionally(actions),
+            ),
+        );
+        game.take_pending_trigger_events();
+        let ids = game.next_object_id_counter();
+        let objects = game.objects_in_deterministic_order().len();
+        let delayed = game.effect_store.delayed_triggers.len();
+        let mut queue = TriggerQueue::new();
+        let mut dm = Answers {
+            original: source,
+            stable,
+            path,
+            destination,
+            alice,
+            pause: mode == 2,
+            pending: false,
+            calls: 0,
+            binding: mode == 3,
+        };
+        let result = if path == 1 {
+            resolve_stack_entry_with(&mut game, &mut dm)
+        } else {
+            resolve_stack_entry_full(&mut game, &mut dm, Some(&mut queue))
+        };
+        if mode == 1 {
+            assert!(
+                matches!(result, Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::UnresolvableValue(message))) if message == "X value not set"),
+                "surface typed unresolved-X replacement error"
+            );
+        } else if mode == 2 {
+            assert!(dm.awaiting_choice());
+            assert!(result.is_ok());
+        } else {
+            assert!(result.is_ok());
+            assert!(game.object(source).is_none());
+            assert!(game.stack.is_empty());
+            let arrival = game
+                .objects_in_deterministic_order()
+                .into_iter()
+                .find(|object| object.stable_id == stable)
+                .unwrap();
+            assert_eq!(arrival.zone, destination);
+            if path == 2 {
+                assert!(
+                    game.effect_store
+                        .delayed_triggers
+                        .iter()
+                        .any(|trigger| trigger.target_objects.contains(&arrival.id))
+                );
+            }
+            if path == 4 {
+                assert_eq!(game.adventure_exiled_player(arrival.id), Some(alice));
+            }
+            assert_eq!(game.player(alice).unwrap().life, 20);
+            assert_eq!(
+                game.player(bob).unwrap().life,
+                if mode == 3 { 20 } else { 27 }
+            );
+            if mode == 3 {
+                assert_eq!(
+                    game.counter_count(arrival.id, CounterType::PlusOnePlusOne),
+                    1
+                );
+            }
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(shield)
+                    .is_none()
+            );
+            assert_eq!(dm.calls, 1);
         }
         if mode == 1 || mode == 2 {
-            assert_eq!(game.object(source).unwrap().zone, Zone::Stack); assert_eq!(game.stack.len(), 1); assert_eq!(game.stack[0].object_id, source); assert_eq!(game.player(bob).unwrap().life, 20);
-            assert_eq!(game.next_object_id_counter(), ids); assert_eq!(game.objects_in_deterministic_order().len(), objects); assert_eq!(game.effect_store.delayed_triggers.len(), delayed); assert!(game.effect_store.replacement_effects.get_effect(shield).is_some()); assert!(game.take_pending_trigger_events().is_empty()); assert!(queue.entries.is_empty());
+            assert_eq!(game.object(source).unwrap().zone, Zone::Stack);
+            assert_eq!(game.stack.len(), 1);
+            assert_eq!(game.stack[0].object_id, source);
+            assert_eq!(game.player(bob).unwrap().life, 20);
+            assert_eq!(game.next_object_id_counter(), ids);
+            assert_eq!(game.objects_in_deterministic_order().len(), objects);
+            assert_eq!(game.effect_store.delayed_triggers.len(), delayed);
+            assert!(
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(shield)
+                    .is_some()
+            );
+            assert!(game.take_pending_trigger_events().is_empty());
+            assert!(queue.entries.is_empty());
         }
-        if mode == 2 { assert_eq!(dm.calls, 1); dm.pause = false; dm.pending = false;
-            let result = if path == 1 { resolve_stack_entry_with(&mut game, &mut dm) } else { resolve_stack_entry_full(&mut game, &mut dm, Some(&mut queue)) };
-            assert!(result.is_ok()); assert!(game.object(source).is_none()); assert!(game.stack.is_empty()); assert_eq!(game.player(bob).unwrap().life, 27); assert!(!dm.awaiting_choice()); assert_eq!(dm.calls, 2);
+        if mode == 2 {
+            assert_eq!(dm.calls, 1);
+            dm.pause = false;
+            dm.pending = false;
+            let result = if path == 1 {
+                resolve_stack_entry_with(&mut game, &mut dm)
+            } else {
+                resolve_stack_entry_full(&mut game, &mut dm, Some(&mut queue))
+            };
+            assert!(result.is_ok());
+            assert!(game.object(source).is_none());
+            assert!(game.stack.is_empty());
+            assert_eq!(game.player(bob).unwrap().life, 27);
+            assert!(!dm.awaiting_choice());
+            assert_eq!(dm.calls, 2);
         }
     }
-    #[test] fn permanent_additions_follow_completion() { check(0, 0); }
-    #[test] fn permanent_error_restores_stack_and_registrations() { check(0, 1); }
-    #[test] fn permanent_pending_replays_once() { check(0, 2); }
-    #[test] fn permanent_addition_binds_actual_arrival() { check(0, 3); }
-    #[test] fn ordinary_cleanup_additions_follow_completion() { check(1, 0); }
-    #[test] fn ordinary_cleanup_error_restores_stack_and_registrations() { check(1, 1); }
-    #[test] fn ordinary_cleanup_pending_replays_once() { check(1, 2); }
-    #[test] fn ordinary_cleanup_addition_binds_actual_arrival() { check(1, 3); }
-    #[test] fn rebound_additions_follow_completion() { check(2, 0); }
-    #[test] fn rebound_error_restores_stack_and_registrations() { check(2, 1); }
-    #[test] fn rebound_pending_replays_once() { check(2, 2); }
-    #[test] fn rebound_addition_binds_actual_arrival() { check(2, 3); }
-    #[test] fn omen_additions_follow_completion() { check(3, 0); }
-    #[test] fn omen_error_restores_stack_and_registrations() { check(3, 1); }
-    #[test] fn omen_pending_replays_once() { check(3, 2); }
-    #[test] fn omen_addition_binds_actual_arrival() { check(3, 3); }
-    #[test] fn adventure_additions_follow_completion() { check(4, 0); }
-    #[test] fn adventure_error_restores_stack_and_registrations() { check(4, 1); }
-    #[test] fn adventure_pending_replays_once() { check(4, 2); }
-    #[test] fn adventure_addition_binds_actual_arrival() { check(4, 3); }
+    #[test]
+    fn permanent_additions_follow_completion() {
+        check(0, 0);
+    }
+    #[test]
+    fn permanent_error_restores_stack_and_registrations() {
+        check(0, 1);
+    }
+    #[test]
+    fn permanent_pending_replays_once() {
+        check(0, 2);
+    }
+    #[test]
+    fn permanent_addition_binds_actual_arrival() {
+        check(0, 3);
+    }
+    #[test]
+    fn ordinary_cleanup_additions_follow_completion() {
+        check(1, 0);
+    }
+    #[test]
+    fn ordinary_cleanup_error_restores_stack_and_registrations() {
+        check(1, 1);
+    }
+    #[test]
+    fn ordinary_cleanup_pending_replays_once() {
+        check(1, 2);
+    }
+    #[test]
+    fn ordinary_cleanup_addition_binds_actual_arrival() {
+        check(1, 3);
+    }
+    #[test]
+    fn rebound_additions_follow_completion() {
+        check(2, 0);
+    }
+    #[test]
+    fn rebound_error_restores_stack_and_registrations() {
+        check(2, 1);
+    }
+    #[test]
+    fn rebound_pending_replays_once() {
+        check(2, 2);
+    }
+    #[test]
+    fn rebound_addition_binds_actual_arrival() {
+        check(2, 3);
+    }
+    #[test]
+    fn omen_additions_follow_completion() {
+        check(3, 0);
+    }
+    #[test]
+    fn omen_error_restores_stack_and_registrations() {
+        check(3, 1);
+    }
+    #[test]
+    fn omen_pending_replays_once() {
+        check(3, 2);
+    }
+    #[test]
+    fn omen_addition_binds_actual_arrival() {
+        check(3, 3);
+    }
+    #[test]
+    fn adventure_additions_follow_completion() {
+        check(4, 0);
+    }
+    #[test]
+    fn adventure_error_restores_stack_and_registrations() {
+        check(4, 1);
+    }
+    #[test]
+    fn adventure_pending_replays_once() {
+        check(4, 2);
+    }
+    #[test]
+    fn adventure_addition_binds_actual_arrival() {
+        check(4, 3);
+    }
 }
 
 #[cfg(test)]
 mod counter_transfer_role_assignment_tests {
     use super::*;
-    use crate::effects::{MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, WithIdEffect, MayEffect, TargetOnlyEffect};
-    use crate::target::{ChooseSpec, PlayerFilter};
+    use crate::effects::{
+        MayEffect, MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect,
+        TargetOnlyEffect, WithIdEffect,
+    };
     use crate::game_state::TargetAssignment;
+    use crate::target::{ChooseSpec, PlayerFilter};
     fn owners() -> Vec<Effect> {
         let endpoint = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
         vec![
-            Effect::new(MoveAllCountersEffect::new(endpoint.clone(), endpoint.clone())),
-            Effect::new(MoveCountersEffect::new(crate::object::CounterType::Charge, 1, endpoint.clone(), endpoint.clone())),
+            Effect::new(MoveAllCountersEffect::new(
+                endpoint.clone(),
+                endpoint.clone(),
+            )),
+            Effect::new(MoveCountersEffect::new(
+                crate::object::CounterType::Charge,
+                1,
+                endpoint.clone(),
+                endpoint.clone(),
+            )),
             Effect::new(MoveOneCounterEffect::new(endpoint.clone(), endpoint)),
         ]
     }
     fn variants(effect: Effect) -> Vec<Effect> {
-        vec![effect.clone(), effect.clone().tag("role"),
-            Effect::new(WithIdEffect::new(crate::effect::EffectId(0), effect.clone())),
-            Effect::new(MayEffect::new(vec![effect]))]
+        vec![
+            effect.clone(),
+            effect.clone().tag("role"),
+            Effect::new(WithIdEffect::new(
+                crate::effect::EffectId(0),
+                effect.clone(),
+            )),
+            Effect::new(MayEffect::new(vec![effect])),
+        ]
     }
-    fn bind(effect: &Effect, declared: &mut Vec<DeclaredTarget>, assignments: &[TargetAssignment], cursor: &mut usize) -> Vec<TargetAssignment> {
-        active_target_assignments_for_effect(effect, None, &mut false, declared, assignments, cursor)
+    fn bind(
+        effect: &Effect,
+        declared: &mut Vec<DeclaredTarget>,
+        assignments: &[TargetAssignment],
+        cursor: &mut usize,
+    ) -> Vec<TargetAssignment> {
+        active_target_assignments_for_effect(
+            effect,
+            None,
+            &mut false,
+            declared,
+            assignments,
+            cursor,
+        )
     }
     #[test]
     fn independent_equal_filters_keep_two_roles_through_wrappers() {
-        for owner in owners() { for effect in variants(owner) {
-            let spec = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
-            let assignments = vec![TargetAssignment { spec: spec.clone(), range: 0..1 }, TargetAssignment { spec, range: 1..2 }];
-            let mut cursor = 0;
-            let selected = bind(&effect, &mut Vec::new(), &assignments, &mut cursor);
-            assert_eq!(cursor, 2);
-            assert_eq!(selected.len(), 2);
-            assert_eq!(selected[0].range, 0..1);
-            assert_eq!(selected[1].range, 1..2);
-        }}
+        for owner in owners() {
+            for effect in variants(owner) {
+                let spec = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
+                let assignments = vec![
+                    TargetAssignment {
+                        spec: spec.clone(),
+                        range: 0..1,
+                    },
+                    TargetAssignment { spec, range: 1..2 },
+                ];
+                let mut cursor = 0;
+                let selected = bind(&effect, &mut Vec::new(), &assignments, &mut cursor);
+                assert_eq!(cursor, 2);
+                assert_eq!(selected.len(), 2);
+                assert_eq!(selected[0].range, 0..1);
+                assert_eq!(selected[1].range, 1..2);
+            }
+        }
     }
     #[test]
     fn illegal_endpoint_empty_ranges_do_not_shift_the_other_role() {
-        for owner in owners() { for effect in variants(owner) { for first_illegal in [true, false] {
-            let spec = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
-            let ranges = if first_illegal { [0..0, 0..1] } else { [0..1, 1..1] };
-            let assignments = vec![TargetAssignment { spec: spec.clone(), range: ranges[0].clone() }, TargetAssignment { spec, range: ranges[1].clone() }];
-            let mut cursor = 0;
-            let selected = bind(&effect, &mut Vec::new(), &assignments, &mut cursor);
-            assert_eq!(cursor, 2);
-            assert_eq!(selected.len(), 2);
-            assert_eq!(selected[0].range, ranges[0]);
-            assert_eq!(selected[1].range, ranges[1]);
-        }}}
+        for owner in owners() {
+            for effect in variants(owner) {
+                for first_illegal in [true, false] {
+                    let spec = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
+                    let ranges = if first_illegal {
+                        [0..0, 0..1]
+                    } else {
+                        [0..1, 1..1]
+                    };
+                    let assignments = vec![
+                        TargetAssignment {
+                            spec: spec.clone(),
+                            range: ranges[0].clone(),
+                        },
+                        TargetAssignment {
+                            spec,
+                            range: ranges[1].clone(),
+                        },
+                    ];
+                    let mut cursor = 0;
+                    let selected = bind(&effect, &mut Vec::new(), &assignments, &mut cursor);
+                    assert_eq!(cursor, 2);
+                    assert_eq!(selected.len(), 2);
+                    assert_eq!(selected[0].range, ranges[0]);
+                    assert_eq!(selected[1].range, ranges[1]);
+                }
+            }
+        }
     }
     #[test]
     fn synthetic_endpoint_is_borrowed_once_after_unrelated_declaration() {
-        for owner in owners() { for effect in variants(owner) {
-            let endpoint = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
-            let unrelated = ChooseSpec::Player(PlayerFilter::Any);
-            let assignments = vec![
-                TargetAssignment { spec: unrelated.clone(), range: 0..1 },
-                TargetAssignment { spec: endpoint.clone(), range: 1..2 },
-                TargetAssignment { spec: endpoint.clone(), range: 2..3 },
-                TargetAssignment { spec: endpoint.clone(), range: 3..4 },
-                TargetAssignment { spec: endpoint.clone(), range: 4..5 },
-            ];
-            let mut declared = Vec::new(); let mut cursor = 0;
-            assert_eq!(bind(&Effect::new(TargetOnlyEffect::new(unrelated)), &mut declared, &assignments, &mut cursor).len(), 1);
-            assert_eq!(bind(&Effect::new(TargetOnlyEffect::new(endpoint)), &mut declared, &assignments, &mut cursor).len(), 1);
-            let selected = bind(&effect, &mut declared, &assignments, &mut cursor);
-            assert_eq!(cursor, 3);
-            assert_eq!(selected.len(), 2);
-            assert_eq!(selected[0].range, 1..2);
-            assert_eq!(selected[1].range, 2..3);
-            let next = bind(&effect, &mut declared, &assignments, &mut cursor);
-            assert_eq!(cursor, 5);
-            assert_eq!(next.len(), 2);
-            assert_eq!(next[0].range, 3..4);
-            assert_eq!(next[1].range, 4..5);
-        }}
+        for owner in owners() {
+            for effect in variants(owner) {
+                let endpoint = ChooseSpec::Target(Box::new(ChooseSpec::creature()));
+                let unrelated = ChooseSpec::Player(PlayerFilter::Any);
+                let assignments = vec![
+                    TargetAssignment {
+                        spec: unrelated.clone(),
+                        range: 0..1,
+                    },
+                    TargetAssignment {
+                        spec: endpoint.clone(),
+                        range: 1..2,
+                    },
+                    TargetAssignment {
+                        spec: endpoint.clone(),
+                        range: 2..3,
+                    },
+                    TargetAssignment {
+                        spec: endpoint.clone(),
+                        range: 3..4,
+                    },
+                    TargetAssignment {
+                        spec: endpoint.clone(),
+                        range: 4..5,
+                    },
+                ];
+                let mut declared = Vec::new();
+                let mut cursor = 0;
+                assert_eq!(
+                    bind(
+                        &Effect::new(TargetOnlyEffect::new(unrelated)),
+                        &mut declared,
+                        &assignments,
+                        &mut cursor
+                    )
+                    .len(),
+                    1
+                );
+                assert_eq!(
+                    bind(
+                        &Effect::new(TargetOnlyEffect::new(endpoint)),
+                        &mut declared,
+                        &assignments,
+                        &mut cursor
+                    )
+                    .len(),
+                    1
+                );
+                let selected = bind(&effect, &mut declared, &assignments, &mut cursor);
+                assert_eq!(cursor, 3);
+                assert_eq!(selected.len(), 2);
+                assert_eq!(selected[0].range, 1..2);
+                assert_eq!(selected[1].range, 2..3);
+                let next = bind(&effect, &mut declared, &assignments, &mut cursor);
+                assert_eq!(cursor, 5);
+                assert_eq!(next.len(), 2);
+                assert_eq!(next[0].range, 3..4);
+                assert_eq!(next[1].range, 4..5);
+            }
+        }
     }
 }

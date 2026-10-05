@@ -48,8 +48,10 @@ pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option
     if let Some(value) = equal_to_count_readings::read_value_expression(&input) {
         return Some(value);
     }
-    let filter =
-        crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))?;
+    let filter = crate::grammar::filters::parse_simple_object_filter_lexed(&filter_tokens, false)
+        .or_else(|| {
+        crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))
+    })?;
     Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo))
 }
 
@@ -184,7 +186,11 @@ fn bind_candidate_controller_graveyard_count(operand: Value, operand_words: &[&s
     let names_candidate_controller_graveyard = operand_words.windows(3).any(|window| {
         matches!(
             window,
-            ["its", "controller" | "controllers" | "controller's", "graveyard"]
+            [
+                "its",
+                "controller" | "controllers" | "controller's",
+                "graveyard"
+            ]
         )
     });
     if !names_candidate_controller_graveyard {

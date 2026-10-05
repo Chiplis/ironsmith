@@ -52,7 +52,11 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,
 ) -> ReferenceTagStageResult {
-    if all_words.first().is_some_and(|word| *word == EQUIPPED_WORD) {
+    if all_words.first().is_some_and(|word| *word == EQUIPPED_WORD)
+        && !all_words
+            .get(1)
+            .is_some_and(|noun| matches!(*noun, "creatures" | "permanents"))
+    {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: (crate::tag::CompilerReferenceTag::Equipped.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -182,10 +186,8 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         // noun ("this creature") is not a characteristic of the Vehicle.
         let segment_words = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
         let segment_word_refs = segment_words.to_word_refs();
-        if let Some(segment_idx) =
-            find_crewed_by_source_this_turn_phrase(&segment_word_refs)
-            && let Some(token_start) =
-                segment_words.map_word_or_end_to_token_boundary(segment_idx)
+        if let Some(segment_idx) = find_crewed_by_source_this_turn_phrase(&segment_word_refs)
+            && let Some(token_start) = segment_words.map_word_or_end_to_token_boundary(segment_idx)
         {
             segment_tokens.truncate(token_start);
         }
@@ -435,7 +437,10 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     let shares_with_triggering_creature = !words_contain_any_word(all_words, IT_OR_THEM_WORDS)
         && find_any_phrase_start(
             all_words,
-            &[&["with", "that", "creature"], &["with", "that", "permanent"]],
+            &[
+                &["with", "that", "creature"],
+                &["with", "that", "permanent"],
+            ],
         )
         .is_some();
     let has_share_creature_type = find_any_phrase_start(all_words, CREATURE_TYPE_PHRASES).is_some()

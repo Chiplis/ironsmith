@@ -7,7 +7,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
         if token.is_comma() {
             words.push(",");
         } else {
-            words.extend(crate::lexer::token_word_refs(std::slice::from_ref(token)));
+            words.extend(crate::lexer::parser_token_word_refs(std::slice::from_ref(
+                token,
+            )));
         }
     }
     if !matches!(

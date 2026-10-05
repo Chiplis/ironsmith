@@ -370,13 +370,17 @@ fn i006_bulk_snow_payment_rejects_nonsnow_mana_and_accepts_snow_mana() {
         0,
         crate::costs::PaymentReason::Other,
     ));
-    assert!(!game.try_pay_mana_cost_with_reason(
-        alice,
-        None,
-        &cost,
-        0,
-        crate::costs::PaymentReason::Other,
-    ).expect("checked fixture mana payment"));
+    assert!(
+        !game
+            .try_pay_mana_cost_with_reason(
+                alice,
+                None,
+                &cost,
+                0,
+                crate::costs::PaymentReason::Other,
+            )
+            .expect("checked fixture mana payment")
+    );
     assert_eq!(game.player(alice).expect("player").mana_pool.colorless, 1);
 
     add_test_mana_from_source(&mut game, alice, "Snow Blue Source", true, ManaSymbol::Blue);
@@ -387,13 +391,16 @@ fn i006_bulk_snow_payment_rejects_nonsnow_mana_and_accepts_snow_mana() {
         0,
         crate::costs::PaymentReason::Other,
     ));
-    assert!(game.try_pay_mana_cost_with_reason(
-        alice,
-        None,
-        &cost,
-        0,
-        crate::costs::PaymentReason::Other,
-    ).expect("checked fixture mana payment"));
+    assert!(
+        game.try_pay_mana_cost_with_reason(
+            alice,
+            None,
+            &cost,
+            0,
+            crate::costs::PaymentReason::Other,
+        )
+        .expect("checked fixture mana payment")
+    );
     assert_eq!(game.player(alice).expect("player").mana_pool.blue, 0);
     assert_eq!(game.player(alice).expect("player").mana_pool.colorless, 1);
 }
@@ -447,13 +454,16 @@ fn i006_mana_remembers_a_continuously_snow_source_after_the_effect_ends() {
         0,
         crate::costs::PaymentReason::Other,
     ));
-    assert!(game.try_pay_mana_cost_with_reason(
-        alice,
-        None,
-        &snow_cost,
-        0,
-        crate::costs::PaymentReason::Other,
-    ).expect("checked fixture mana payment"));
+    assert!(
+        game.try_pay_mana_cost_with_reason(
+            alice,
+            None,
+            &snow_cost,
+            0,
+            crate::costs::PaymentReason::Other,
+        )
+        .expect("checked fixture mana payment")
+    );
 }
 
 #[test]
@@ -605,7 +615,8 @@ fn test_single_flexible_mana_source_cannot_pay_two_colored_pips() {
         .build();
     let spell_id = game.create_object_from_definition(&two_color_spell, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions = crate::decision::compute_legal_actions(&game, alice)
+        .expect("fixture has complete replacement state");
 
     assert!(
         !actions.iter().any(|action| matches!(
@@ -635,7 +646,8 @@ fn test_single_flexible_mana_source_can_pay_one_colored_pip() {
         .build();
     let spell_id = game.create_object_from_definition(&one_color_spell, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions = crate::decision::compute_legal_actions(&game, alice)
+        .expect("fixture has complete replacement state");
 
     assert!(
         actions.iter().any(|action| matches!(
@@ -680,7 +692,8 @@ fn test_tapped_lands_do_not_make_spell_castable() {
         .build();
     let spell_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions = crate::decision::compute_legal_actions(&game, alice)
+        .expect("fixture has complete replacement state");
 
     assert!(
         !actions.iter().any(|action| matches!(
@@ -729,7 +742,8 @@ fn test_tapped_lands_plus_one_floating_mana_do_not_make_two_mana_spell_castable(
         .build();
     let spell_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
 
-    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions = crate::decision::compute_legal_actions(&game, alice)
+        .expect("fixture has complete replacement state");
 
     assert!(
         !actions.iter().any(|action| matches!(
@@ -1038,7 +1052,8 @@ fn test_phyrexian_tower_alternative_mana_abilities_are_one_payment_source() {
     let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
 
     let next_object_id_before_actions = game.next_object_id_counter();
-    let actions = crate::decision::compute_legal_actions(&game, alice).expect("fixture has complete replacement state");
+    let actions = crate::decision::compute_legal_actions(&game, alice)
+        .expect("fixture has complete replacement state");
 
     assert_eq!(
         game.next_object_id_counter(),
@@ -1696,13 +1711,16 @@ fn u078_pool_doubling_publishes_each_spend_without_copying_the_old_payload() {
         .card_types(vec![CardType::Creature])
         .build();
     let spell = game.create_object_from_definition(&creature, alice, Zone::Stack);
-    assert!(game.try_pay_mana_cost_with_reason(
-        alice,
-        Some(spell),
-        &ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]),
-        0,
-        crate::costs::PaymentReason::CastSpell,
-    ).expect("checked fixture mana payment"));
+    assert!(
+        game.try_pay_mana_cost_with_reason(
+            alice,
+            Some(spell),
+            &ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]),
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        )
+        .expect("checked fixture mana payment")
+    );
 
     let spent_events = game
         .take_pending_trigger_events()
@@ -1722,7 +1740,11 @@ fn u078_pool_doubling_publishes_each_spend_without_copying_the_old_payload() {
     // CR 106.6 (Doubling Cube example): new pool-doubling mana has no
     // inherited spending bonuses. CR 106.6a concerns replacement effects
     // on mana production, which this operation is not.
-    assert_eq!(entries.len(), 1, "only the original mana carries a spend payload");
+    assert_eq!(
+        entries.len(),
+        1,
+        "only the original mana carries a spend payload"
+    );
     assert!(entries.iter().all(|entry| {
         entry
             .tagged_objects
@@ -1765,13 +1787,16 @@ fn u078_on_spend_predicate_does_not_restrict_ordinary_use_or_trigger_on_mismatch
         .build();
     let spell = game.create_object_from_definition(&artifact, alice, Zone::Stack);
 
-    assert!(game.try_pay_mana_cost_with_reason(
-        alice,
-        Some(spell),
-        &ManaCost::from_symbols(vec![ManaSymbol::Red]),
-        0,
-        crate::costs::PaymentReason::CastSpell,
-    ).expect("checked fixture mana payment"));
+    assert!(
+        game.try_pay_mana_cost_with_reason(
+            alice,
+            Some(spell),
+            &ManaCost::from_symbols(vec![ManaSymbol::Red]),
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        )
+        .expect("checked fixture mana payment")
+    );
     assert!(game.take_pending_trigger_entries().is_empty());
 }
 
@@ -1782,112 +1807,280 @@ fn indexed_grant_cost_keeps_announcement_method_after_provider_leaves() {
     game.turn.active_player = alice;
     game.turn.phase = Phase::FirstMain;
     let cost_method = |amount| crate::alternative_cast::AlternativeCastingMethod::FromZone {
-        name: "Indexed graveyard permission".into(), zone: Zone::Graveyard,
+        name: "Indexed graveyard permission".into(),
+        zone: Zone::Graveyard,
         total_cost: TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(amount)])),
-        condition: None, exiles_after_resolution: false, entry_counters: Vec::new(),
+        condition: None,
+        exiles_after_resolution: false,
+        entry_counters: Vec::new(),
     };
     let first = cost_method(1);
     let second = cost_method(3);
     let mut sources = Vec::new();
     for method in [first.clone(), second] {
         let source = crate::card::CardBuilder::new(CardId::new(), "Cost permission source")
-            .card_types(vec![CardType::Artifact]).build();
+            .card_types(vec![CardType::Artifact])
+            .build();
         let id = game.create_object_from_card(&source, alice, Zone::Battlefield);
-        game.object_mut(id).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::grants(
-            crate::grant::GrantSpec::new(crate::grant::Grantable::AlternativeCast(method),
-                crate::filter::ObjectFilter::default(), Zone::Graveyard))));
+        game.object_mut(id)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::grants(
+                crate::grant::GrantSpec::new(
+                    crate::grant::Grantable::AlternativeCast(method),
+                    crate::filter::ObjectFilter::default(),
+                    Zone::Graveyard,
+                ),
+            )));
         sources.push(id);
     }
     let card = crate::card::CardBuilder::new(CardId::new(), "Announced permission spell")
-        .card_types(vec![CardType::Instant]).mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])).build();
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
     let spell = game.create_object_from_card(&card, alice, Zone::Graveyard);
-    let casting = CastingMethod::PlayFrom {source: sources[0], zone: Zone::Graveyard, use_alternative: Some(0)};
+    let casting = CastingMethod::PlayFrom {
+        source: sources[0],
+        zone: Zone::Graveyard,
+        use_alternative: Some(0),
+    };
     let stack = propose_spell_cast(&mut game, spell, Zone::Graveyard, alice, &casting).unwrap();
-    assert_eq!(game.object(stack).unwrap().cast_alternative_method_owned(), Some(first.clone()));
+    assert_eq!(
+        game.object(stack).unwrap().cast_alternative_method_owned(),
+        Some(first.clone())
+    );
     // Paying a sacrifice cost can remove the provider during announcement.
-    game.move_object_by_effect(sources[0], Zone::Graveyard).unwrap();
-    let resolved = crate::decision::resolve_play_from_alternative_method(&game, alice,
-        game.object(stack).unwrap(), Zone::Graveyard, 0);
-    assert_eq!(resolved, Some(first), "pending cost lookup must use the frozen method, not the replacement occupant of index0");
+    game.move_object_by_effect(sources[0], Zone::Graveyard)
+        .unwrap();
+    let resolved = crate::decision::resolve_play_from_alternative_method(
+        &game,
+        alice,
+        game.object(stack).unwrap(),
+        Zone::Graveyard,
+        0,
+    );
+    assert_eq!(
+        resolved,
+        Some(first),
+        "pending cost lookup must use the frozen method, not the replacement occupant of index0"
+    );
 }
 
+fn colored_conversion_fixture() -> crate::cards::CardDefinition {
+    let cost = TotalCost::from_costs(vec![
+        crate::costs::Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Black])),
+        crate::costs::Cost::life(1),
+    ]);
+    let mut ability = Ability::activated(
+        cost,
+        vec![crate::effect::Effect::new(
+            crate::effects::AddManaOfAnyColorEffect::you(1),
+        )],
+    );
+    let AbilityKind::Activated(activated) = &mut ability.kind else {
+        unreachable!()
+    };
+    activated.mana_output = Some(Vec::new());
+    CardDefinitionBuilder::new(CardId::new(), "Conversion fixture")
+        .card_types(vec![CardType::Creature])
+        .with_ability(ability)
+        .build()
+}
 
 #[test]
 fn canceling_root_mana_announcement_restores_a_pre_visibility_checkpoint() {
     // Authored only; no execution before the deferred campaign gate.
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = PlayerId::from_index(0);
-    game.turn.active_player = alice; game.turn.priority_player = Some(alice);
-    game.turn.phase = Phase::FirstMain; game.turn.step = None;
-    let source = game.create_object_from_definition(&blood_celebrant(), alice, Zone::Battlefield);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 1);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    let source =
+        game.create_object_from_definition(&colored_conversion_fixture(), alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
     let index = game.object(source).unwrap().abilities.iter().position(|ability|
         matches!(&ability.kind, AbilityKind::Activated(activated) if activated.is_runtime_mana_ability(&game, source, alice))).unwrap();
-    let mut state = PriorityLoopState::new(2); let mut queue = TriggerQueue::new();
-    let _ = super::super::priority_apply::begin_mana_ability_activation(&mut game, &mut queue, &mut state,
-        &source, &index, alice, &mut SelectFirstDecisionMaker).unwrap();
+    let mut state = PriorityLoopState::new(2);
+    let mut queue = TriggerQueue::new();
+    let _ = super::super::priority_apply::begin_mana_ability_activation(
+        &mut game,
+        &mut queue,
+        &mut state,
+        &source,
+        &index,
+        alice,
+        &mut SelectFirstDecisionMaker,
+    )
+    .unwrap();
     assert!(state.pending_mana_ability.is_some());
     assert!(game.has_library_top_announcement());
-    assert!(!state.checkpoint.as_ref().unwrap().has_library_top_announcement());
-    apply_mana_payment_plan_response_inner(&mut game, &mut queue, &mut state,
-        &crate::mana_payment::ManaPaymentResponse::Cancel, &mut SelectFirstDecisionMaker).unwrap();
-    assert!(!game.has_library_top_announcement()); assert!(state.pending_mana_ability.is_none());
+    assert!(
+        !state
+            .checkpoint
+            .as_ref()
+            .unwrap()
+            .has_library_top_announcement()
+    );
+    apply_mana_payment_plan_response_inner(
+        &mut game,
+        &mut queue,
+        &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Cancel,
+        &mut SelectFirstDecisionMaker,
+    )
+    .unwrap();
+    assert!(!game.has_library_top_announcement());
+    assert!(state.pending_mana_ability.is_none());
 }
 
 #[test]
 fn canceling_nested_mana_removes_only_the_child_visibility_boundary() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = PlayerId::from_index(0);
-    game.turn.active_player = alice; game.turn.priority_player = Some(alice);
-    game.turn.phase = Phase::FirstMain; game.turn.step = None;
-    let source = game.create_object_from_definition(&blood_celebrant(), alice, Zone::Battlefield);
-    let parent_provenance = game.provenance_graph_mut().alloc_root(crate::provenance::ProvenanceNodeKind::EffectExecution {source, controller: alice});
-    let child_provenance = game.provenance_graph_mut().alloc_root(crate::provenance::ProvenanceNodeKind::EffectExecution {source, controller: alice});
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    let source =
+        game.create_object_from_definition(&colored_conversion_fixture(), alice, Zone::Battlefield);
+    let parent_provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source,
+            controller: alice,
+        },
+    );
+    let child_provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source,
+            controller: alice,
+        },
+    );
     let pending = |provenance| PendingManaAbility {
-        source, ability_index: 0, activator: alice, provenance, mana_cost: ManaCost::new(),
-        other_costs: Vec::new(), mana_to_add: Vec::new(), effects: Default::default(),
-        mana_usage_restrictions: Vec::new(), mana_source_chosen_creature_type: None,
+        source,
+        ability_index: 0,
+        activator: alice,
+        provenance,
+        mana_cost: ManaCost::new(),
+        other_costs: Vec::new(),
+        mana_to_add: Vec::new(),
+        effects: Default::default(),
+        mana_usage_restrictions: Vec::new(),
+        mana_source_chosen_creature_type: None,
         mana_production_provenance: crate::events::mana::ManaProductionProvenance::Unknown,
-        undo_locked_by_mana: false, pending_mana_payment: None, exhaust_announcement: None, x_value: None,
+        undo_locked_by_mana: false,
+        pending_mana_payment: None,
+        exhaust_announcement: None,
+        x_value: None,
     };
-    let mut state = PriorityLoopState::new(2); state.save_checkpoint(&game);
+    let mut state = PriorityLoopState::new(2);
+    state.save_checkpoint(&game);
     state.pending_mana_parents.push(pending(parent_provenance));
     state.pending_mana_ability = Some(pending(child_provenance));
-    game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(parent_provenance));
-    game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(child_provenance));
-    apply_mana_payment_plan_response_inner(&mut game, &mut TriggerQueue::new(), &mut state,
-        &crate::mana_payment::ManaPaymentResponse::Cancel, &mut SelectFirstDecisionMaker).unwrap();
-    assert_eq!(state.pending_mana_ability.as_ref().unwrap().provenance, parent_provenance);
-    assert!(game.has_library_top_announcement(), "the enclosing payment still owns its boundary");
-    game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(parent_provenance));
-    assert!(!game.has_library_top_announcement(), "the canceled child cannot leave an orphan frame");
+    game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(
+        parent_provenance,
+    ));
+    game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(
+        child_provenance,
+    ));
+    apply_mana_payment_plan_response_inner(
+        &mut game,
+        &mut TriggerQueue::new(),
+        &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Cancel,
+        &mut SelectFirstDecisionMaker,
+    )
+    .unwrap();
+    assert_eq!(
+        state.pending_mana_ability.as_ref().unwrap().provenance,
+        parent_provenance
+    );
+    assert!(
+        game.has_library_top_announcement(),
+        "the enclosing payment still owns its boundary"
+    );
+    game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(
+        parent_provenance,
+    ));
+    assert!(
+        !game.has_library_top_announcement(),
+        "the canceled child cannot leave an orphan frame"
+    );
 }
-
 
 #[test]
 fn completed_deferred_mana_root_is_not_rewound_by_canceling_the_next_root() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = PlayerId::from_index(0);
-    game.turn.active_player = alice; game.turn.priority_player = Some(alice);
-    game.turn.phase = Phase::FirstMain; game.turn.step = None;
-    let source = game.create_object_from_definition(&blood_celebrant(), alice, Zone::Battlefield);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Black, 2);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    let source =
+        game.create_object_from_definition(&colored_conversion_fixture(), alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
     let index = game.object(source).unwrap().abilities.iter().position(|ability|
         matches!(&ability.kind, AbilityKind::Activated(activated) if activated.is_runtime_mana_ability(&game, source, alice))).unwrap();
-    let mut state = PriorityLoopState::new(2); let mut queue = TriggerQueue::new();
-    let _ = super::super::priority_apply::begin_mana_ability_activation(&mut game, &mut queue, &mut state,
-        &source, &index, alice, &mut SelectFirstDecisionMaker).unwrap();
-    let payment = state.pending_mana_ability.as_ref().unwrap().pending_mana_payment.as_ref().unwrap().clone();
-    apply_mana_payment_plan_response_inner(&mut game, &mut queue, &mut state,
-        &crate::mana_payment::ManaPaymentResponse::Confirm { plan_id: payment.plan.id, request_hash: payment.plan.request_hash },
-        &mut SelectFirstDecisionMaker).unwrap();
-    assert!(state.pending_mana_ability.is_none()); assert!(state.checkpoint.is_none());
-    assert!(!game.has_library_top_announcement()); assert_eq!(game.player(alice).unwrap().life, 19);
+    let mut state = PriorityLoopState::new(2);
+    let mut queue = TriggerQueue::new();
+    let _ = super::super::priority_apply::begin_mana_ability_activation(
+        &mut game,
+        &mut queue,
+        &mut state,
+        &source,
+        &index,
+        alice,
+        &mut SelectFirstDecisionMaker,
+    )
+    .unwrap();
+    let payment = state
+        .pending_mana_ability
+        .as_ref()
+        .unwrap()
+        .pending_mana_payment
+        .as_ref()
+        .unwrap()
+        .clone();
+    apply_mana_payment_plan_response_inner(
+        &mut game,
+        &mut queue,
+        &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id: payment.plan.id,
+            request_hash: payment.plan.request_hash,
+        },
+        &mut SelectFirstDecisionMaker,
+    )
+    .unwrap();
+    assert!(state.pending_mana_ability.is_none());
+    assert!(state.checkpoint.is_none());
+    assert!(!game.has_library_top_announcement());
+    assert_eq!(game.player(alice).unwrap().life, 19);
     let mana_after_first = game.player(alice).unwrap().mana_pool.clone();
-    let _ = super::super::priority_apply::begin_mana_ability_activation(&mut game, &mut queue, &mut state,
-        &source, &index, alice, &mut SelectFirstDecisionMaker).unwrap();
-    apply_mana_payment_plan_response_inner(&mut game, &mut queue, &mut state,
-        &crate::mana_payment::ManaPaymentResponse::Cancel, &mut SelectFirstDecisionMaker).unwrap();
+    let _ = super::super::priority_apply::begin_mana_ability_activation(
+        &mut game,
+        &mut queue,
+        &mut state,
+        &source,
+        &index,
+        alice,
+        &mut SelectFirstDecisionMaker,
+    )
+    .unwrap();
+    apply_mana_payment_plan_response_inner(
+        &mut game,
+        &mut queue,
+        &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Cancel,
+        &mut SelectFirstDecisionMaker,
+    )
+    .unwrap();
     assert_eq!(game.player(alice).unwrap().life, 19);
     assert_eq!(game.player(alice).unwrap().mana_pool, mana_after_first);
     assert!(!game.has_library_top_announcement());

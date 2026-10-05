@@ -2,7 +2,9 @@ use super::*;
 
 pub fn parse_target_only_shape(tokens: &[OwnedLexToken]) -> Option<TargetOnlyShape<'_>> {
     primitives::parse_prefix(tokens, primitives::kw("target"))?;
-    if super::super::parse_clause_subject_verb_shape(tokens).is_some() {
+    if crate::grammar::blocking_permissions::parse_blocking_capacity(tokens).is_some()
+        || super::super::parse_clause_subject_verb_shape(tokens).is_some()
+    {
         return None;
     }
     let restriction_like = [

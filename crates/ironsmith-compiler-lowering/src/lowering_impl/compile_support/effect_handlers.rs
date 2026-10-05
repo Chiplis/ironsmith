@@ -173,9 +173,22 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone()))
         }
-        TriggerSpec::ControlChanged(trigger) => Ok(ironsmith_core::DelayedTriggerSpec::ControlChanged(trigger.clone())),
-        TriggerSpec::ThisBecomesUntapped => Ok(ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped { filter: ObjectFilter::source() }),
-        TriggerSpec::PermanentBecomesUntapped { filter, one_or_more: false } => Ok(ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped { filter: filter.clone() }),
+        TriggerSpec::ControlChanged(trigger) => Ok(
+            ironsmith_core::DelayedTriggerSpec::ControlChanged(trigger.clone()),
+        ),
+        TriggerSpec::ThisBecomesUntapped => Ok(
+            ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped {
+                filter: ObjectFilter::source(),
+            },
+        ),
+        TriggerSpec::PermanentBecomesUntapped {
+            filter,
+            one_or_more: false,
+        } => Ok(
+            ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped {
+                filter: filter.clone(),
+            },
+        ),
         TriggerSpec::PermanentBecomesTapped(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::PermanentBecomesTapped(filter.clone()),
         ),
@@ -239,28 +252,56 @@ pub fn compile_delayed_trigger_spec(
             })
         }
         TriggerSpec::YouGainLife => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
-            player: PlayerFilter::You, gained: true, during_turn: None,
+            player: PlayerFilter::You,
+            gained: true,
+            during_turn: None,
         }),
-        TriggerSpec::YouGainLifeDuringTurn(turn) => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
-            player: PlayerFilter::You, gained: true, during_turn: Some(turn.clone()),
+        TriggerSpec::YouGainLifeDuringTurn(turn) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+                player: PlayerFilter::You,
+                gained: true,
+                during_turn: Some(turn.clone()),
+            })
+        }
+        TriggerSpec::PlayerGainsLife {
+            player,
+            during_turn,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: player.clone(),
+            gained: true,
+            during_turn: during_turn.clone(),
         }),
-        TriggerSpec::PlayerGainsLife { player, during_turn } => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
-            player: player.clone(), gained: true, during_turn: during_turn.clone(),
-        }),
-        TriggerSpec::PlayerLosesLife(player) => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
-            player: player.clone(), gained: false, during_turn: None,
-        }),
-        TriggerSpec::PlayerLosesLifeDuringTurn { player, during_turn } => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
-            player: player.clone(), gained: false, during_turn: Some(during_turn.clone()),
+        TriggerSpec::PlayerLosesLife(player) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+                player: player.clone(),
+                gained: false,
+                during_turn: None,
+            })
+        }
+        TriggerSpec::PlayerLosesLifeDuringTurn {
+            player,
+            during_turn,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::LifeChanged {
+            player: player.clone(),
+            gained: false,
+            during_turn: Some(during_turn.clone()),
         }),
         TriggerSpec::YouDrawCard => Ok(ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(
             PlayerFilter::You,
         )),
-        TriggerSpec::PlayerDiscardsCard { player, filter, cause_controller, effect_like_only, one_or_more } =>
-            Ok(ironsmith_core::DelayedTriggerSpec::PlayerDiscardsCard {
-                player: player.clone(), filter: filter.clone(), cause_controller: cause_controller.clone(),
-                effect_like_only: *effect_like_only, one_or_more: *one_or_more,
-            }),
+        TriggerSpec::PlayerDiscardsCard {
+            player,
+            filter,
+            cause_controller,
+            effect_like_only,
+            one_or_more,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::PlayerDiscardsCard {
+            player: player.clone(),
+            filter: filter.clone(),
+            cause_controller: cause_controller.clone(),
+            effect_like_only: *effect_like_only,
+            one_or_more: *one_or_more,
+        }),
         TriggerSpec::PlayerDrawsCard(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(player.clone()),
         ),
@@ -755,7 +796,9 @@ fn compile_duration_scoped_delayed_trigger(
             }
             TriggerSpec::AnyOf(triggers) => {
                 !triggers.is_empty()
-                    && triggers.iter().all(event_object_trigger_supplies_own_object)
+                    && triggers
+                        .iter()
+                        .all(event_object_trigger_supplies_own_object)
             }
             // A cast spell or a played land is always a new object of its
             // own event; a tagged constraint ("... this way") only restricts
@@ -770,8 +813,9 @@ fn compile_duration_scoped_delayed_trigger(
     let trigger_supplies_own_object = matches!(
         trigger_without_intro(trigger),
         TriggerSpec::Either(..) | TriggerSpec::AnyOf(..)
-    ) && event_object_trigger_supplies_own_object(trigger_without_intro(trigger))
-        || {
+    ) && event_object_trigger_supplies_own_object(
+        trigger_without_intro(trigger),
+    ) || {
         let event_filter = match trigger_without_intro(trigger) {
             TriggerSpec::PermanentBecomesTapped(filter)
             | TriggerSpec::Dies(filter)
@@ -817,8 +861,12 @@ fn compile_duration_scoped_delayed_trigger(
             TriggerSpec::ThisBecomesUntapped => true,
             TriggerSpec::PermanentBecomesUntapped { filter, .. } => filter.source,
             TriggerSpec::ControlChanged(control) => control.filter.source,
-            TriggerSpec::Either(left, right) => watches_ability_source(left) && watches_ability_source(right),
-            TriggerSpec::AnyOf(branches) => !branches.is_empty() && branches.iter().all(watches_ability_source),
+            TriggerSpec::Either(left, right) => {
+                watches_ability_source(left) && watches_ability_source(right)
+            }
+            TriggerSpec::AnyOf(branches) => {
+                !branches.is_empty() && branches.iter().all(watches_ability_source)
+            }
             _ => false,
         }
     }
@@ -962,9 +1010,9 @@ fn compile_duration_scoped_delayed_trigger(
                 }
             }
         }
-        _ => compile_delayed_trigger_spec(&resolve_play_or_cast_trigger_references(
-            trigger, &refs,
-        )?)?,
+        _ => {
+            compile_delayed_trigger_spec(&resolve_play_or_cast_trigger_references(trigger, &refs)?)?
+        }
     };
 
     let mut delayed = if let Some(tag) = watched_tag {
@@ -1035,15 +1083,15 @@ pub(super) fn try_compile_timing_and_control_effect(
             // end step, reveal cards until you reveal that many creature
             // cards": the delayed ability has no triggering amount; "that
             // many" counts the objects the scheduling instruction tagged.
-            if !uses_prior_prevention_amount
-                && let Some(tag) = ctx.last_object_tag.clone()
-            {
+            if !uses_prior_prevention_amount && let Some(tag) = ctx.last_object_tag.clone() {
                 let mut filter = ObjectFilter::default();
                 filter.zone = None;
-                filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-                    tag: tag.clone(),
-                    relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-                });
+                filter
+                    .tagged_constraints
+                    .push(crate::filter::TaggedObjectConstraint {
+                        tag: tag.clone(),
+                        relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                    });
                 let count = Value::Count(filter);
                 delayed_effects = delayed_effects
                     .iter()
@@ -1268,33 +1316,31 @@ pub(super) fn try_compile_timing_and_control_effect(
             // source, a demonstrative in its body names the registering
             // ability's object (captured with the delayed trigger), never
             // the source that left.
-            let (mut delayed_effects, _delayed_choices) =
-                match ctx.last_object_tag.clone().filter(|_| {
-                    delayed_trigger_event_object_is_source(trigger)
-                }) {
-                    Some(outer) => {
-                        let lowered = compile_trigger_effects_with_imports(
-                            Some(trigger),
-                            effects,
-                            &ReferenceImports {
-                                last_object_tag: Some(outer.into()),
-                                ..Default::default()
-                            },
-                        )?;
+            let (mut delayed_effects, _delayed_choices) = match ctx
+                .last_object_tag
+                .clone()
+                .filter(|_| delayed_trigger_event_object_is_source(trigger))
+            {
+                Some(outer) => {
+                    let lowered = compile_trigger_effects_with_imports(
+                        Some(trigger),
+                        effects,
+                        &ReferenceImports {
+                            last_object_tag: Some(outer.into()),
+                            ..Default::default()
+                        },
+                    )?;
+                    (lowered.effects.to_vec(), lowered.choices)
+                }
+                None => match delayed_registration_result_imports(effects, ctx) {
+                    Some(imports) => {
+                        let lowered =
+                            compile_trigger_effects_with_imports(Some(trigger), effects, &imports)?;
                         (lowered.effects.to_vec(), lowered.choices)
                     }
-                    None => match delayed_registration_result_imports(effects, ctx) {
-                        Some(imports) => {
-                            let lowered = compile_trigger_effects_with_imports(
-                                Some(trigger),
-                                effects,
-                                &imports,
-                            )?;
-                            (lowered.effects.to_vec(), lowered.choices)
-                        }
-                        None => compile_trigger_effects(Some(trigger), effects)?,
-                    },
-                };
+                    None => compile_trigger_effects(Some(trigger), effects)?,
+                },
+            };
             fuse_next_cast_entry_counter_body(trigger, *one_shot, &mut delayed_effects);
             let choices = Vec::new();
             match trigger {
@@ -1971,6 +2017,23 @@ fn compile_conditional_ast(
     trailing: bool,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let declared_player = match predicate {
+        PredicateAst::Player(
+            crate::cards::builders::PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou {
+                player: PlayerAst::Target,
+            },
+        ) => Some(PlayerFilter::Any),
+        PredicateAst::Player(
+            crate::cards::builders::PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou {
+                player: PlayerAst::TargetOpponent,
+            },
+        ) => Some(PlayerFilter::Opponent),
+        _ => None,
+    };
+    let declared_choice = declared_player.map(|player| {
+        ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(player.clone())));
+        ChooseSpec::target(ChooseSpec::Player(player))
+    });
     let mut effective_if_true = if_true.to_vec();
     let predicate_names_explicit_subject = matches!(
         predicate,
@@ -2004,10 +2067,7 @@ fn compile_conditional_ast(
     let (false_effects, false_choices) = compile_effects(if_false, ctx)?;
     ctx.source_object_antecedent = saved_source_object_antecedent;
     let predicate_references_it = predicate_uses_implicit_object_reference(predicate)
-        || predicate_references_tag(
-            predicate,
-            crate::tag::CompilerReferenceTag::It.as_str(),
-        );
+        || predicate_references_tag(predicate, crate::tag::CompilerReferenceTag::It.as_str());
 
     // A leading condition's `it` precedes every target its consequence
     // announces; with an established source antecedent it names the source
@@ -2033,15 +2093,18 @@ fn compile_conditional_ast(
 
     let mut condition_reference_tag = saved_last_tag.clone();
     let mut prelude = Vec::new();
+    if let Some(choice) = declared_choice.as_ref() {
+        prelude.push(Effect::new(crate::effects::TargetOnlyEffect::explicit(
+            choice.clone(),
+        )));
+    }
     if let Some(choice) = antecedent_choice.clone() {
         let tag = if let Some(existing) = tagged_alias_for_choice(&true_effects, &choice) {
             existing
         } else {
             ctx.next_tag("targeted")
         };
-        prelude.push(
-            Effect::new(crate::effects::TargetOnlyEffect::new(choice)).tag(tag.clone()),
-        );
+        prelude.push(Effect::new(crate::effects::TargetOnlyEffect::new(choice)).tag(tag.clone()));
         condition_reference_tag = Some(tag);
     }
 
@@ -2073,8 +2136,7 @@ fn compile_conditional_ast(
     // still name a player its consequence introduced.
     let branch_last_player = (predicate_names_target_player || !trailing)
         .then(|| std::mem::replace(&mut ctx.last_player_filter, saved_last_player));
-    let condition =
-        compile_condition_from_predicate_ast(predicate, ctx, &condition_reference_tag)?;
+    let condition = compile_condition_from_predicate_ast(predicate, ctx, &condition_reference_tag)?;
     if let Some(branch_last_player) = branch_last_player {
         ctx.last_player_filter = branch_last_player;
     }
@@ -2110,6 +2172,9 @@ fn compile_conditional_ast(
     }
 
     let mut choices = true_choices;
+    if let Some(choice) = declared_choice {
+        push_choice(&mut choices, choice);
+    }
     for choice in false_choices {
         push_choice(&mut choices, choice);
     }
@@ -2141,39 +2206,66 @@ mod collective_otherwise_scope_tests {
     use crate::cards::builders::LifeResourceActionAst;
 
     fn lower_followup(predicate: IfResultPredicate, in_player_loop: bool) -> crate::effect::Effect {
-        let mut ctx=EffectLoweringContext::new();
-        ctx.last_player_filter=Some(PlayerFilter::IteratedPlayer);
-        ctx.iterated_player=in_player_loop;
-        let ast=EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
-            condition:crate::effect::EffectId(77),predicate,
-            effects:vec![EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer,PlayerAst::You,
-                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count:Value::Fixed(1) }))],
+        let mut ctx = EffectLoweringContext::new();
+        ctx.last_player_filter = Some(PlayerFilter::IteratedPlayer);
+        ctx.iterated_player = in_player_loop;
+        let ast = EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
+            condition: crate::effect::EffectId(77),
+            predicate,
+            effects: vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                    count: Value::Fixed(1),
+                }),
+            )],
         });
-        let (mut effects,choices)=try_compile_stack_and_condition_effect(&ast,&mut ctx).unwrap().unwrap();
-        assert!(choices.is_empty());assert_eq!(effects.len(),1);
+        let (mut effects, choices) = try_compile_stack_and_condition_effect(&ast, &mut ctx)
+            .unwrap()
+            .unwrap();
+        assert!(choices.is_empty());
+        assert_eq!(effects.len(), 1);
         effects.remove(0)
     }
 
     #[test]
     fn collective_otherwise_does_not_inherit_participant_partition() {
-        let effect=lower_followup(IfResultPredicate::Otherwise,false);
-        let condition=effect.as_if_effect().unwrap();
+        let effect = lower_followup(IfResultPredicate::Otherwise, false);
+        let condition = effect.as_if_effect().unwrap();
         assert!(!condition.per_player_result);
-        assert_eq!(condition.condition,crate::effect::EffectId(77));
-        assert_eq!(condition.predicate,EffectPredicate::DidNotHappen);
+        assert_eq!(condition.condition, crate::effect::EffectId(77));
+        assert_eq!(condition.predicate, EffectPredicate::DidNotHappen);
     }
 
     #[test]
     fn explicit_participant_conditions_keep_partition_binding() {
-        for predicate in [IfResultPredicate::Did,IfResultPredicate::DidNot,IfResultPredicate::ExplicitDidNot] {
-            assert!(lower_followup(predicate,false).as_if_effect().unwrap().per_player_result);
+        for predicate in [
+            IfResultPredicate::Did,
+            IfResultPredicate::DidNot,
+            IfResultPredicate::ExplicitDidNot,
+        ] {
+            assert!(
+                lower_followup(predicate, false)
+                    .as_if_effect()
+                    .unwrap()
+                    .per_player_result
+            );
         }
     }
 
     #[test]
     fn condition_inside_participant_loop_does_not_repeat_all_participants() {
-        for predicate in [IfResultPredicate::Did,IfResultPredicate::DidNot,IfResultPredicate::Otherwise] {
-            assert!(!lower_followup(predicate,true).as_if_effect().unwrap().per_player_result);
+        for predicate in [
+            IfResultPredicate::Did,
+            IfResultPredicate::DidNot,
+            IfResultPredicate::Otherwise,
+        ] {
+            assert!(
+                !lower_followup(predicate, true)
+                    .as_if_effect()
+                    .unwrap()
+                    .per_player_result
+            );
         }
     }
 }

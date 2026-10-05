@@ -436,7 +436,9 @@ fn describe_each_player_hand_exile_with_linked_play_constraints(
         return None;
     }
 
-    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+    let permission = permission_effect
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     if permission.tag != choose.tag
         || permission.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
         || !permission.allow_land
@@ -1107,7 +1109,9 @@ fn describe_exile_collection_play_any_type_then_exile_source(effects: &[Effect])
     let [grant_effect] = for_each.effects.as_slice() else {
         return None;
     };
-    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+    let grant = grant_effect
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     if grant.tag.as_str() != "__it__"
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
@@ -2196,8 +2200,7 @@ pub(super) fn describe_target_same_name_action_fanout_pair(
         })
         .count();
     if relation.len() != 1
-        || (!fanout_filter.other && tagged_exclusions != 1)
-        || tagged_exclusions > 1
+        || (!fanout_filter.other && tagged_exclusions == 0)
         || fanout_filter.tagged_constraints.iter().any(|constraint| {
             constraint.tag != *target_tag
                 || !matches!(
@@ -4310,8 +4313,11 @@ fn describe_search_two_split_battlefield_hand_sequence(
     let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
 
     let count_matches = if let Some(comparison) = comparison {
-        let PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter, fewer: false } =
-            &comparison.filter
+        let PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player,
+            filter,
+            fewer: false,
+        } = &comparison.filter
         else {
             return None;
         };
@@ -4395,7 +4401,11 @@ fn describe_search_two_split_battlefield_hand_sequence(
         if trailing_scry.is_some() {
             return None;
         }
-        let PlayerFilter::OpponentWithMoreControlledObjectsThan { filter, fewer: false, .. } = &comparison.filter
+        let PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            filter,
+            fewer: false,
+            ..
+        } = &comparison.filter
         else {
             return None;
         };
@@ -5701,7 +5711,9 @@ pub(in crate::compiled_text) fn describe_chosen_hand_optional_free_cast(
     let [cast] = each.effects.as_slice() else {
         return None;
     };
-    let cast = cast.downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+    let cast = cast
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     let mut hand = ObjectFilter::default().in_zone(Zone::Hand);
     hand.owner = Some(PlayerFilter::IteratedPlayer);
     let viewed = ObjectFilter::tagged(selection.tag.clone()).in_zone(Zone::Hand);
@@ -5774,7 +5786,9 @@ pub(in crate::compiled_text) fn describe_revealed_hand_then_optional_free_cast(
         return None;
     }
     let choose = may.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let cast = may.effects[1].downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+    let cast = may.effects[1]
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
 
     let mut expected_filter = ObjectFilter::default();
     expected_filter.zone = Some(Zone::Hand);
@@ -13411,7 +13425,9 @@ pub(in crate::compiled_text) fn describe_opponent_top_exile_and_play(
     {
         return None;
     }
-    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+    let permission = permission_effect
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     if permission.tag != tagged.tag
         || permission.player != PlayerFilter::You
         || !permission.allow_land
@@ -13476,7 +13492,9 @@ pub(in crate::compiled_text) fn describe_hand_choice_exile_permission(
     {
         return None;
     }
-    let permission = permission.downcast_ref::<crate::effects::GrantPlayTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())?;
+    let permission = permission
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .filter(|permission| permission.alternative_cost.is_none())?;
     if permission.tag != choice.tag
         || !permission.allow_land
         || permission.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled

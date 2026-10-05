@@ -39,7 +39,9 @@ impl crate::effects::SimultaneousEffectProposal for WithIdProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let previous = ctx.effect_outcomes.remove(&self.id);
         let result = self.inner.commit(game, ctx);
         finish_recording_outcome(ctx, self.id, previous, result)
@@ -58,12 +60,16 @@ fn finish_recording_outcome(
         Ok(outcome) if !ctx.decision_maker.awaiting_choice() => {
             // A same-id descendant may intentionally own the more specific
             // result. Preserve it after successful live or prepared execution.
-            ctx.effect_outcomes.entry(id).or_insert_with(|| outcome.clone());
+            ctx.effect_outcomes
+                .entry(id)
+                .or_insert_with(|| outcome.clone());
             Ok(outcome)
         }
         unresolved => {
             ctx.effect_outcomes.remove(&id);
-            if let Some(previous) = previous { ctx.store_outcome(id, previous); }
+            if let Some(previous) = previous {
+                ctx.store_outcome(id, previous);
+            }
             unresolved
         }
     }
@@ -114,7 +120,9 @@ impl EffectExecutor for WithIdEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let previous = ctx.effect_outcomes.remove(&self.id);
         let result = execute_effect(game, &self.effect, ctx);
         finish_recording_outcome(ctx, self.id, previous, result)
@@ -313,38 +321,181 @@ mod tests {
 #[cfg(test)]
 mod pending_result_publication_contract_tests {
     use super::*;
-    use crate::effect::{Effect,EffectId};
+    use crate::effect::{Effect, EffectId};
     use crate::effects::PlayerCountersEffect;
-    use crate::ids::{CardId,PlayerId,ObjectId};
+    use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::object::CounterType;
     use crate::target::PlayerFilter;
-    struct Decisions{answer:Option<usize>,pending:bool,calls:usize}
+    struct Decisions {
+        answer: Option<usize>,
+        pending: bool,
+        calls: usize,
+    }
     impl crate::decision::DecisionMaker for Decisions {
-        fn awaiting_choice(&self)->bool{self.pending}
-        fn decide_options(&mut self,_game:&GameState,ctx:&crate::decisions::context::SelectOptionsContext)->Vec<usize> {
-            assert!(!self.pending);assert_eq!(ctx.player,PlayerId::from_index(1));assert_eq!(ctx.options.len(),2);self.calls+=1;
-            if let Some(answer)=self.answer.take(){vec![answer]}else{self.pending=true;vec![]}
+        fn awaiting_choice(&self) -> bool {
+            self.pending
         }
-    }
-    fn fixture()->(GameState,ObjectId,PlayerId,PlayerId) {
-        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);let card=crate::card::CardBuilder::new(CardId::new(),"Pending result owner").card_types(vec![crate::types::CardType::Artifact]).build();let source=game.create_object_from_card(&card,alice,crate::zone::Zone::Battlefield);(game,source,alice,bob)
-    }
-    fn run(simultaneous:bool,already_pending:bool) {
-        for previous in [false,true] {
-            let (mut game,source,alice,bob)=fixture();let mut shields=Vec::new();
-            for extra in [0,1] {
-                let effect=crate::static_abilities::StaticAbility::add_player_counters_placement_replacement(PlayerFilter::Specific(bob),Some(CounterType::Energy),extra,"Player counter result choice".into()).generate_replacement_effect(source,alice).unwrap();shields.push(game.effect_store.replacement_effects.add_one_shot_effect(effect));
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            assert!(!self.pending);
+            assert_eq!(ctx.player, PlayerId::from_index(1));
+            assert_eq!(ctx.options.len(), 2);
+            self.calls += 1;
+            if let Some(answer) = self.answer.take() {
+                vec![answer]
+            } else {
+                self.pending = true;
+                vec![]
             }
-            let effect=WithIdEffect::new(EffectId(77),Effect::new(PlayerCountersEffect::new(CounterType::Energy,1,PlayerFilter::Specific(bob))));let mut dm=Decisions{answer:None,pending:already_pending,calls:0};let mut ctx=ExecutionContext::new(source,alice,&mut dm);ctx.store_outcome(EffectId(31),EffectOutcome::count(42));if previous{ctx.store_outcome(EffectId(77),EffectOutcome::count(7));}
-            let out=if simultaneous{effect.prepare_simultaneous_player_action(&game,&mut ctx).unwrap().commit(&mut game,&mut ctx).unwrap()}else{effect.execute(&mut game,&mut ctx).unwrap()};assert!(ctx.decision_maker.awaiting_choice());assert_eq!(out.as_count(),Some(0));assert!(out.events.is_empty());assert_eq!(game.player(bob).unwrap().energy_counters,0);assert_eq!(ctx.get_outcome(EffectId(77)).map(|out|out.count_or_zero()),if previous{Some(7)}else{None},"pending work must not publish or overwrite a completed instruction receipt");assert_eq!(ctx.get_outcome(EffectId(31)).unwrap().as_count(),Some(42));assert!(shields.iter().all(|id|game.effect_store.replacement_effects.get_effect(*id).is_some()));assert!(game.take_pending_trigger_events().is_empty());let saved=crate::effects::ExecutionContextCheckpoint::capture(&ctx);drop(ctx);assert_eq!(dm.calls,usize::from(!already_pending));
-            let mut replay=Decisions{answer:Some(0),pending:false,calls:0};let mut ctx=ExecutionContext::new(source,alice,&mut replay);saved.restore(&mut ctx);let out=if simultaneous{effect.prepare_simultaneous_player_action(&game,&mut ctx).unwrap().commit(&mut game,&mut ctx).unwrap()}else{effect.execute(&mut game,&mut ctx).unwrap()};assert!(!ctx.decision_maker.awaiting_choice());assert_eq!(out.as_count(),Some(2));assert_eq!(ctx.get_outcome(EffectId(77)).unwrap().as_count(),Some(2));assert_eq!(ctx.get_outcome(EffectId(31)).unwrap().as_count(),Some(42));assert_eq!(game.player(bob).unwrap().energy_counters,2);assert!(shields.iter().all(|id|game.effect_store.replacement_effects.get_effect(*id).is_none()));assert_eq!(out.events_of_type::<crate::events::MarkersChangedEvent>().count(),1);assert!(game.take_pending_trigger_events().is_empty());
         }
     }
-    #[test]fn live_with_id_pending_preserves_absent_and_existing_receipts(){run(false,false);}
-    #[test]fn simultaneous_with_id_pending_preserves_absent_and_existing_receipts(){run(true,false);}
-    #[test]fn live_with_id_already_pending_does_not_publish(){run(false,true);}
-    #[test]fn simultaneous_with_id_already_pending_does_not_publish(){run(true,true);}
-    #[test]fn with_id_real_storage_failure_restores_previous_receipt() {
-        let (mut game,source,alice,bob)=fixture();game.player_mut(bob).unwrap().energy_counters=u32::MAX;let mut ctx=ExecutionContext::new_default(source,alice);ctx.store_outcome(EffectId(77),EffectOutcome::count(7));let effect=WithIdEffect::new(EffectId(77),Effect::new(PlayerCountersEffect::new(CounterType::Energy,1,PlayerFilter::Specific(bob))));assert_eq!(effect.execute(&mut game,&mut ctx).unwrap_err(),ExecutionError::InternalError("player counter placement exceeds the supported counter range".into()));assert_eq!(ctx.get_outcome(EffectId(77)).unwrap().as_count(),Some(7));assert_eq!(game.player(bob).unwrap().energy_counters,u32::MAX);assert!(game.take_pending_trigger_events().is_empty());
+    fn fixture() -> (GameState, ObjectId, PlayerId, PlayerId) {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let card = crate::card::CardBuilder::new(CardId::new(), "Pending result owner")
+            .card_types(vec![crate::types::CardType::Artifact])
+            .build();
+        let source = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+        (game, source, alice, bob)
+    }
+    fn run(simultaneous: bool, already_pending: bool) {
+        for previous in [false, true] {
+            let (mut game, source, alice, bob) = fixture();
+            let mut shields = Vec::new();
+            for extra in [0, 1] {
+                let effect=crate::static_abilities::StaticAbility::add_player_counters_placement_replacement(PlayerFilter::Specific(bob),Some(CounterType::Energy),extra,"Player counter result choice".into()).generate_replacement_effect(source,alice).unwrap();
+                shields.push(
+                    game.effect_store
+                        .replacement_effects
+                        .add_one_shot_effect(effect),
+                );
+            }
+            let effect = WithIdEffect::new(
+                EffectId(77),
+                Effect::new(PlayerCountersEffect::new(
+                    CounterType::Energy,
+                    1,
+                    PlayerFilter::Specific(bob),
+                )),
+            );
+            let mut dm = Decisions {
+                answer: None,
+                pending: already_pending,
+                calls: 0,
+            };
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            ctx.store_outcome(EffectId(31), EffectOutcome::count(42));
+            if previous {
+                ctx.store_outcome(EffectId(77), EffectOutcome::count(7));
+            }
+            let out = if simultaneous {
+                effect
+                    .prepare_simultaneous_player_action(&game, &mut ctx)
+                    .unwrap()
+                    .commit(&mut game, &mut ctx)
+                    .unwrap()
+            } else {
+                effect.execute(&mut game, &mut ctx).unwrap()
+            };
+            assert!(ctx.decision_maker.awaiting_choice());
+            assert_eq!(out.as_count(), Some(0));
+            assert!(out.events.is_empty());
+            assert_eq!(game.player(bob).unwrap().energy_counters, 0);
+            assert_eq!(
+                ctx.get_outcome(EffectId(77)).map(|out| out.count_or_zero()),
+                if previous { Some(7) } else { None },
+                "pending work must not publish or overwrite a completed instruction receipt"
+            );
+            assert_eq!(ctx.get_outcome(EffectId(31)).unwrap().as_count(), Some(42));
+            assert!(shields.iter().all(|id| {
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(*id)
+                    .is_some()
+            }));
+            assert!(game.take_pending_trigger_events().is_empty());
+            let saved = crate::effects::ExecutionContextCheckpoint::capture(&ctx);
+            drop(ctx);
+            assert_eq!(dm.calls, usize::from(!already_pending));
+            let mut replay = Decisions {
+                answer: Some(0),
+                pending: false,
+                calls: 0,
+            };
+            let mut ctx = ExecutionContext::new(source, alice, &mut replay);
+            saved.restore(&mut ctx);
+            let out = if simultaneous {
+                effect
+                    .prepare_simultaneous_player_action(&game, &mut ctx)
+                    .unwrap()
+                    .commit(&mut game, &mut ctx)
+                    .unwrap()
+            } else {
+                effect.execute(&mut game, &mut ctx).unwrap()
+            };
+            assert!(!ctx.decision_maker.awaiting_choice());
+            assert_eq!(out.as_count(), Some(2));
+            assert_eq!(ctx.get_outcome(EffectId(77)).unwrap().as_count(), Some(2));
+            assert_eq!(ctx.get_outcome(EffectId(31)).unwrap().as_count(), Some(42));
+            assert_eq!(game.player(bob).unwrap().energy_counters, 2);
+            assert!(shields.iter().all(|id| {
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(*id)
+                    .is_none()
+            }));
+            assert_eq!(
+                out.events_of_type::<crate::events::MarkersChangedEvent>()
+                    .count(),
+                1
+            );
+            assert!(game.take_pending_trigger_events().is_empty());
+        }
+    }
+    #[test]
+    fn live_with_id_pending_preserves_absent_and_existing_receipts() {
+        run(false, false);
+    }
+    #[test]
+    fn simultaneous_with_id_pending_preserves_absent_and_existing_receipts() {
+        run(true, false);
+    }
+    #[test]
+    fn live_with_id_already_pending_does_not_publish() {
+        run(false, true);
+    }
+    #[test]
+    fn simultaneous_with_id_already_pending_does_not_publish() {
+        run(true, true);
+    }
+    #[test]
+    fn with_id_real_storage_failure_restores_previous_receipt() {
+        let (mut game, source, alice, bob) = fixture();
+        game.player_mut(bob).unwrap().energy_counters = u32::MAX;
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.store_outcome(EffectId(77), EffectOutcome::count(7));
+        let effect = WithIdEffect::new(
+            EffectId(77),
+            Effect::new(PlayerCountersEffect::new(
+                CounterType::Energy,
+                1,
+                PlayerFilter::Specific(bob),
+            )),
+        );
+        assert_eq!(
+            effect.execute(&mut game, &mut ctx).unwrap_err(),
+            ExecutionError::ResourceLimitExceeded {
+                resource: "player counter placement",
+                requested: u128::from(u32::MAX) + 1,
+                maximum: u128::from(u32::MAX)
+            }
+        );
+        assert_eq!(ctx.get_outcome(EffectId(77)).unwrap().as_count(), Some(7));
+        assert_eq!(game.player(bob).unwrap().energy_counters, u32::MAX);
+        assert!(game.take_pending_trigger_events().is_empty());
     }
 }

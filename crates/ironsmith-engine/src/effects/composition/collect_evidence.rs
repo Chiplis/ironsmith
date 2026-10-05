@@ -66,6 +66,7 @@ impl EffectExecutor for CollectEvidenceEffect {
             return Ok(EffectOutcome::count(0));
         }
         let checkpoint = game.clone();
+        let tagged_before = ctx.tagged_objects.clone();
         let context_checkpoint = ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
             let available = evidence_capacity(game, ctx.controller, None);
@@ -104,7 +105,7 @@ impl EffectExecutor for CollectEvidenceEffect {
             .with_aggregate_constraint(
                 ChoiceAggregateConstraint::total_mana_value_at_least(required as i32),
             );
-            let previous = ctx.tagged_objects.remove(CHOSEN_EVIDENCE);
+            ctx.tagged_objects.remove(CHOSEN_EVIDENCE);
             let choice = choose.execute(game, ctx)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
@@ -143,10 +144,7 @@ impl EffectExecutor for CollectEvidenceEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            ctx.tagged_objects.remove(CHOSEN_EVIDENCE);
-            if let Some(previous) = previous {
-                ctx.tagged_objects.insert(CHOSEN_EVIDENCE.into(), previous);
-            }
+            ctx.tagged_objects = tagged_before;
             let event = TriggerEvent::new_with_provenance(
                 KeywordActionEvent::new(
                     KeywordActionKind::CollectEvidence,

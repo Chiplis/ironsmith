@@ -117,7 +117,14 @@ impl DecisionMaker for Choices {
 }
 fn cast(game: &mut GameState, definition: &CardDefinition, dm: &mut impl DecisionMaker) {
     let spell = game.create_object_from_definition(definition, A, Zone::Hand);
-    for mana in [ManaSymbol::Blue, ManaSymbol::Colorless] {
+    for mana in [
+        ManaSymbol::White,
+        ManaSymbol::Blue,
+        ManaSymbol::Black,
+        ManaSymbol::Red,
+        ManaSymbol::Green,
+        ManaSymbol::Colorless,
+    ] {
         game.player_mut(A).unwrap().mana_pool.add(mana, 20);
     }
     game.turn.priority_player = Some(A);
@@ -133,7 +140,7 @@ fn cast(game: &mut GameState, definition: &CardDefinition, dm: &mut impl Decisio
     )
     .unwrap();
     for _ in 0..30 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let ironsmith::GameProgress::NeedsDecisionCtx(context) = progress else {
@@ -142,7 +149,7 @@ fn cast(game: &mut GameState, definition: &CardDefinition, dm: &mut impl Decisio
         progress =
             apply_decision_context_with_dm(game, &mut queue, &mut state, &context, dm).unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     settle(game, dm);
 }
 fn battlefield(game: &GameState, name: &str, controller: PlayerId) -> Vec<ObjectId> {
@@ -569,7 +576,10 @@ fn receipt_capture_matches_delayed_listeners_once_and_keeps_them_for_later_occur
             source,
             &ironsmith::effects::ScheduleDelayedTriggerEffect::new(
                 ironsmith::triggers::Trigger::from_model(
-                    ironsmith_core::trigger_model::Trigger::player_gains_life(PlayerFilter::Specific(B), None),
+                    ironsmith_core::trigger_model::Trigger::player_gains_life(
+                        PlayerFilter::Specific(B),
+                        None,
+                    ),
                 )
                 .unwrap(),
                 vec![ironsmith::Effect::new(GainLifeEffect::you(1))],
@@ -652,7 +662,7 @@ fn shared_draw_step_preserves_player_sequence_and_captures_before_the_first_play
     // CR 121.2d/121.6b/805.6a: these draws are sequential, unlike simultaneous life changes.
     for definition in definitions("Wedding Ring") {
         let mut game = game();
-        game.restore_two_headed_giant(vec![vec![A, B], vec![C, D]], 0, A)
+        game.restore_two_headed_giant(vec![vec![B, A], vec![C, D]], 0, A)
             .unwrap();
         for player in [A, B, C] {
             library(&mut game, player, 12);
@@ -705,7 +715,7 @@ fn replacement_created_draw_waits_for_other_original_life_changes_before_removin
     // CR 121.7: the first gain's Instead(draw) payload waits for B's original gain.
     for definition in definitions("Wedding Ring") {
         let mut game = game();
-        game.restore_two_headed_giant(vec![vec![A, B], vec![C, D]], 0, A)
+        game.restore_two_headed_giant(vec![vec![B, A], vec![C, D]], 0, A)
             .unwrap();
         library(&mut game, A, 4);
         let observer = game.create_object_from_definition(&definition, C, Zone::Battlefield);
@@ -758,7 +768,7 @@ fn simultaneous_replacement_fixture(
     definition: &CardDefinition,
 ) -> (GameState, ObjectId, ObjectId, ObjectId) {
     let mut game = game();
-    game.restore_two_headed_giant(vec![vec![A, B], vec![C, D]], 0, A)
+    game.restore_two_headed_giant(vec![vec![B, A], vec![C, D]], 0, A)
         .unwrap();
     library(&mut game, A, 4);
     let observer = game.create_object_from_definition(definition, C, Zone::Battlefield);
@@ -1543,8 +1553,8 @@ fn earlier_direct_draw_segment_is_captured_before_a_later_replacement_changes_qu
 
 #[test]
 fn draw_introduced_by_nested_life_replacement_waits_for_the_enclosing_originals() {
-    // Active remaining capability boundary: the outer payload contains no
-    // literal DrawCards node, but its nested life event is replaced by a draw.
+    // The outer payload contains no literal DrawCards node: its nested life
+    // event introduces the draw through a replacement at runtime.
     for definition in definitions("Wedding Ring") {
         let (mut game, _, partner, source) = simultaneous_replacement_fixture(&definition);
         replace_first_gain(

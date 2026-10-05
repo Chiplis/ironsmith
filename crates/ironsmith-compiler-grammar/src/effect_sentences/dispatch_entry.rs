@@ -1403,7 +1403,9 @@ fn try_merge_otherwise_into_previous_conditional(
         _ => return false,
     };
     let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate, if_false, ..
+        predicate,
+        if_false,
+        ..
     }) = conditional
     else {
         unreachable!("conditional shape was proven above")
@@ -1685,7 +1687,8 @@ fn round_up_unstated_half_values_in_effects(effects: &mut [EffectAst]) {
                 )
                 | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count: value })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard {
-                    count: value, ..
+                    count: value,
+                    ..
                 }) => round_up(value),
                 _ => {}
             }
@@ -2448,7 +2451,9 @@ fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
-        if let Some(effect) = temporary_damage_addition::parse(authored_sentence)?.or(temporary_damage_multiplier::parse(authored_sentence)?) {
+        if let Some(effect) = temporary_damage_addition::parse(authored_sentence)?
+            .or(temporary_damage_multiplier::parse(authored_sentence)?)
+        {
             effects.push(effect);
             carried_context = None;
             sentence_idx += 1;
@@ -3894,7 +3899,9 @@ fn parse_complete_simple_draw_sentence(
     // inside the delayed trigger.
     if matches!(
         subject,
-        Some(SubjectAst::Player(PlayerAst::Target | PlayerAst::TargetOpponent))
+        Some(SubjectAst::Player(
+            PlayerAst::Target | PlayerAst::TargetOpponent
+        ))
     ) && effect_grammar::delayed_step_shapes::parse_delayed_timing_marker_shape(tokens)
         .is_some_and(|marker| marker.start_word > draw_idx)
     {
@@ -6030,7 +6037,10 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
     } else if let Some(body) =
         lower.strip_prefix("until your next turn, if you would put one or more ")
     {
-        (crate::effects::ReplacementApplyMode::UntilYourNextTurn, body)
+        (
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn,
+            body,
+        )
     } else {
         return None;
     };
@@ -6049,33 +6059,51 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
         .ok()
         .or_else(|| crate::util::parse_number_word_u32(bonus))?;
     let counter_tokens = crate::lexer::lex_line(&format!("{counter} counter"), 0).ok()?;
-    let counter_type =
-        crate::grammar::filters::parse_counter_type_from_tokens(
-            &counter_tokens,
-        )?;
+    let counter_type = crate::grammar::filters::parse_counter_type_from_tokens(&counter_tokens)?;
     let object_tokens = crate::lexer::lex_line(object, 0).ok()?;
     let mut filter = crate::object_filters::parse_object_filter(&object_tokens, false).ok()?;
     if filter.zone.is_none() {
         filter.zone = Some(Zone::Battlefield);
     }
-    Some(EffectAst::subject_verb_register_counter_placement_replacement(
-        filter,
-        Some(counter_type),
-        additional,
-        mode,
-    ))
+    Some(
+        EffectAst::subject_verb_register_counter_placement_replacement(
+            filter,
+            Some(counter_type),
+            additional,
+            mode,
+        ),
+    )
 }
 
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    if let Some(effects) = super::timed_draw_replacement::parse_timed_draw_replacement_sentence(tokens)? {
+    // A leading payment condition owns the complete consequence. Broad
+    // document readings must not claim only the payment verb inside it.
+    let leading = trim_edge_punctuation(tokens);
+    if let Some(split) = effect_grammar::parse_leading_unless_clause_split_tokens(&leading) {
+        let condition = trim_edge_punctuation(&leading[split.condition]);
+        let consequence = trim_edge_punctuation(&leading[split.effect]);
+        if !condition.is_empty() && !consequence.is_empty() {
+            let inner = parse_effect_sentences_lexed(&consequence)?;
+            if let Some(effect) =
+                try_build_unless(inner, SubjectVerbPrimitiveClause::new(&condition), 0)?
+            {
+                return Ok(vec![effect]);
+            }
+        }
+    }
+    if let Some(effects) =
+        super::timed_draw_replacement::parse_timed_draw_replacement_sentence(tokens)?
+    {
         return Ok(effects);
     }
     if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
         return Ok(effects);
     }
-    if let Some(effect) = temporary_damage_addition::parse(tokens)?.or(temporary_damage_multiplier::parse(tokens)?) {
+    if let Some(effect) =
+        temporary_damage_addition::parse(tokens)?.or(temporary_damage_multiplier::parse(tokens)?)
+    {
         return Ok(vec![effect]);
     }
     if let Some(effect) = parse_temporary_counter_placement_replacement(tokens) {
@@ -6087,6 +6115,51 @@ pub fn parse_effect_sentences_lexed(
         std::panic::Location::caller(),
         || {
             let mut effects = parse_effect_sentences_lexed_unfinalized(tokens)?;
+            if tokens.iter().any(|token| token.is_word("instead"))
+                && matches!(effects.as_slice(), [EffectAst::SubjectVerb(subject)]
+                    if matches!(subject.action, crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                        crate::cards::builders::LifeResourceActionAst::GainLife { .. })))
+            {
+                return Err(CardTextError::ParseError(
+                    "life gain instead requires a replaced instruction".into(),
+                ));
+            }
+            // Complete document readings can bypass sentence follow-up rules.
+            // A reflexive continuation of a sequential participant action
+            // still belongs to each participant's action and result frame.
+            let mut index = 1;
+            while index < effects.len() {
+                let reflexive = matches!(
+                    &effects[index],
+                    EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                        predicate: IfResultPredicate::Did,
+                        ..
+                    })
+                );
+                let owns_action = matches!(
+                    &effects[index - 1],
+                    EffectAst::ForEach(
+                        ForEachEffectAst::ForEachPlayersFiltered {
+                            sequential: true,
+                            ..
+                        } | ForEachEffectAst::ForEachOpponent { .. }
+                    )
+                );
+                if reflexive && owns_action {
+                    let follow_up = effects.remove(index);
+                    if let EffectAst::ForEach(loop_ast) = &mut effects[index - 1] {
+                        match loop_ast {
+                            ForEachEffectAst::ForEachPlayersFiltered { effects, .. }
+                            | ForEachEffectAst::ForEachOpponent { effects } => {
+                                effects.push(follow_up)
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                } else {
+                    index += 1;
+                }
+            }
             transport_coin_flip_outcomes_into_owner(&mut effects);
             bind_triggering_clash_win_followups(&mut effects);
             preserve_linked_target_fanout_group(tokens, &mut effects);
@@ -6126,7 +6199,9 @@ fn merge_cast_this_way_tax_into_play_permission(
                 predicate: PredicateAst::TaggedMatches(..),
                 if_true,
                 if_false,
-            }) => if_false.is_empty() && matches!(if_true.as_slice(), [grant] if is_tax_grant(grant)),
+            }) => {
+                if_false.is_empty() && matches!(if_true.as_slice(), [grant] if is_tax_grant(grant))
+            }
             _ => false,
         }
     }
@@ -6134,15 +6209,17 @@ fn merge_cast_this_way_tax_into_play_permission(
         matches!(
             &pair[0],
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
-                    allow_land: true,
-                    without_paying_mana_cost: false,
-                    filter: None,
-                    during_turns_counter_put_on_source: None,
-                    spell_cost_increase: None,
-                    lands_enter_tapped: false,
-                    ..
-                }),
+                action: SubjectVerbActionAst::Grants(
+                    GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                        allow_land: true,
+                        without_paying_mana_cost: false,
+                        filter: None,
+                        during_turns_counter_put_on_source: None,
+                        spell_cost_increase: None,
+                        lands_enter_tapped: false,
+                        ..
+                    }
+                ),
                 ..
             })
         ) && is_tax_grant(&pair[1])
@@ -6152,7 +6229,9 @@ fn merge_cast_this_way_tax_into_play_permission(
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
-                tag, player, ..
+                tag,
+                player,
+                ..
             }),
         ..
     }) = &effects[index]
@@ -6186,7 +6265,10 @@ fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [Ef
     let is_phrase = |window: &[OwnedLexToken], first: &str| {
         window[0].is_word(first) && window[1].is_word("x") && window[2].is_word("is")
     };
-    let Some(where_idx) = tokens.windows(3).position(|window| is_phrase(window, "where")) else {
+    let Some(where_idx) = tokens
+        .windows(3)
+        .position(|window| is_phrase(window, "where"))
+    else {
         return;
     };
     if !tokens.windows(3).any(|window| is_phrase(window, "if")) {
@@ -6208,7 +6290,8 @@ fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [Ef
         return;
     };
     fn rewrite(effect: &mut EffectAst, value: &Value) {
-        if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) = effect {
+        if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) = effect
+        {
             match predicate {
                 PredicateAst::XValueAtLeast(threshold) => {
                     *predicate = PredicateAst::ValueComparison {
@@ -6239,12 +6322,18 @@ fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [Ef
 fn parse_effect_sentences_lexed_unfinalized(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) =
+        subject_verb_followups::parse_animation_size_replacement_document(tokens)?
+    {
+        return Ok(effects);
+    }
     // A grammar-proven complete mana rewrite is one instruction. Claim its
     // first sentence before generic if/and decomposition; independently parse
     // every following sentence so additional riders cannot be discarded.
     let mana_sentences = split_lexed_sentences(tokens);
     if let Some(first) = mana_sentences.first()
-        && let Some(effect) = read_typed_mana_output_sentence(first)? {
+        && let Some(effect) = read_typed_mana_output_sentence(first)?
+    {
         let mut effects = vec![effect];
         for sentence in mana_sentences.iter().skip(1) {
             effects.extend(parse_effect_sentences_lexed(sentence)?);
@@ -7204,7 +7293,9 @@ fn effect_contains_clash(effect: &EffectAst) -> bool {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect
         && matches!(
             action,
-            SubjectVerbActionAst::KeywordActions(crate::cards::builders::KeywordActionAst::Clash { .. })
+            SubjectVerbActionAst::KeywordActions(
+                crate::cards::builders::KeywordActionAst::Clash { .. }
+            )
         )
     {
         return true;
@@ -7240,7 +7331,9 @@ fn bind_triggering_clash_win_followups(effects: &mut [EffectAst]) {
             } = &control.node
             && matches!(
                 condition.predicate,
-                crate::model::control_flow::ControlPredicateAst::Result(IfResultPredicate::WonClash)
+                crate::model::control_flow::ControlPredicateAst::Result(
+                    IfResultPredicate::WonClash
+                )
             )
         {
             return Some(effect);
@@ -8157,11 +8250,10 @@ fn dispatch_effect_sentences_lexed_inner_remaining(
     {
         return Ok(effects);
     }
-    let sentence_segments = split_quoted_grant_then_vote_option_sentences(
-        split_look_then_exile_sentences(split_leading_amass_comma_then_sentences(
-            split_lexed_sentences(tokens),
-        )),
-    );
+    let sentence_segments =
+        split_quoted_grant_then_vote_option_sentences(split_look_then_exile_sentences(
+            split_leading_amass_comma_then_sentences(split_lexed_sentences(tokens)),
+        ));
     let sentences = sentence_segments
         .into_iter()
         .map(SentenceInput::from_lexed)
@@ -8256,22 +8348,42 @@ fn parse_turn_scoped_enter_tapped_replacement(
 
 /// Complete mana rewriting, color selection, and temporary spending sentences
 /// have typed owners before generic conditional/action-chain decomposition.
-fn read_typed_mana_output_sentence(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
-    if let Some(symbol) = crate::grammar::effects::parse_temporary_symbol_spend_permission_shape(tokens) {
-        let mut permission = crate::effect::ManaSpendPermission::mana_symbol_as_any_color_other_as_colorless(
-            crate::target::PlayerFilter::You, symbol);
+fn read_typed_mana_output_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(symbol) =
+        crate::grammar::effects::parse_temporary_symbol_spend_permission_shape(tokens)
+    {
+        let mut permission =
+            crate::effect::ManaSpendPermission::mana_symbol_as_any_color_other_as_colorless(
+                crate::target::PlayerFilter::You,
+                symbol,
+            );
         permission.other_mana_only_as_colorless = false;
-        return Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+        return Ok(Some(EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::You,
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission {
-                permission, until: crate::effect::Until::EndOfTurn, display: crate::lexer::render_token_slice(tokens),
-            }))));
+                permission,
+                until: crate::effect::Until::EndOfTurn,
+                display: crate::lexer::render_token_slice(tokens),
+            }),
+        )));
     }
     if let Some(parsed) = crate::keyword_static::parse_mana_output_rewrite_definition(tokens)? {
-        return Ok(Some(EffectAst::subject_verb_register_mana_rewrite(parsed.rule, parsed.target,
-            parsed.mode.unwrap_or(crate::effects::ReplacementApplyMode::Resolution), parsed.display)));
+        return Ok(Some(EffectAst::subject_verb_register_mana_rewrite(
+            parsed.rule,
+            parsed.target,
+            parsed
+                .mode
+                .unwrap_or(crate::effects::ReplacementApplyMode::Resolution),
+            parsed.display,
+        )));
     }
-    if crate::word_primitives::parse_sequence_complete(&crate::lexer::token_word_refs(tokens),
-        &["that", "player", "chooses", "a", "color"]) {
+    if crate::word_primitives::parse_sequence_complete(
+        &crate::lexer::token_word_refs(tokens),
+        &["that", "player", "chooses", "a", "color"],
+    ) {
         return Ok(Some(EffectAst::subject_verb_choose_color(PlayerAst::That)));
     }
     Ok(None)
@@ -8557,9 +8669,9 @@ fn split_look_then_exile_sentences(segments: Vec<&[OwnedLexToken]>) -> Vec<&[Own
         let starts_with_look = words.len() > 2
             && words[0].eq_ignore_ascii_case("look")
             && words[1].eq_ignore_ascii_case("at");
-        let then_exile = words
-            .windows(2)
-            .any(|pair| pair[0].eq_ignore_ascii_case("then") && pair[1].eq_ignore_ascii_case("exile"));
+        let then_exile = words.windows(2).any(|pair| {
+            pair[0].eq_ignore_ascii_case("then") && pair[1].eq_ignore_ascii_case("exile")
+        });
         // "Pay any amount of life, then look at that many cards from the top
         // of your library. Put one of those cards ...": the look likewise
         // stands as its own instruction.
@@ -8567,12 +8679,18 @@ fn split_look_then_exile_sentences(segments: Vec<&[OwnedLexToken]>) -> Vec<&[Own
             triple[0].eq_ignore_ascii_case("then")
                 && triple[1].eq_ignore_ascii_case("look")
                 && triple[2].eq_ignore_ascii_case("at")
-        }) && words.iter().any(|word| word.eq_ignore_ascii_case("library"));
+        }) && words
+            .iter()
+            .any(|word| word.eq_ignore_ascii_case("library"));
         if then_look {
             let boundary = segment.windows(3).position(|triple| {
                 triple[0].is_comma()
-                    && triple[1].as_word().is_some_and(|word| word.eq_ignore_ascii_case("then"))
-                    && triple[2].as_word().is_some_and(|word| word.eq_ignore_ascii_case("look"))
+                    && triple[1]
+                        .as_word()
+                        .is_some_and(|word| word.eq_ignore_ascii_case("then"))
+                    && triple[2]
+                        .as_word()
+                        .is_some_and(|word| word.eq_ignore_ascii_case("look"))
             });
             if let Some(comma) = boundary {
                 result.push(&segment[..comma]);
@@ -8586,7 +8704,10 @@ fn split_look_then_exile_sentences(segments: Vec<&[OwnedLexToken]>) -> Vec<&[Own
         let mentions_rest = words.iter().any(|word| word.eq_ignore_ascii_case("rest"));
         if starts_with_look && then_exile && mentions_rest {
             let boundary = segment.windows(2).position(|pair| {
-                pair[0].is_comma() && pair[1].as_word().is_some_and(|word| word.eq_ignore_ascii_case("then"))
+                pair[0].is_comma()
+                    && pair[1]
+                        .as_word()
+                        .is_some_and(|word| word.eq_ignore_ascii_case("then"))
             });
             if let Some(comma) = boundary
                 && segment
@@ -10098,7 +10219,10 @@ mod tests {
             .unwrap_or_else(|| panic!("expected typed animation, got {parsed:#?}"));
 
         assert_eq!(*duration_surface, None);
-        assert_eq!(*duration, crate::effect::Until::while_source_remains_on_battlefield());
+        assert_eq!(
+            *duration,
+            crate::effect::Until::while_source_remains_on_battlefield()
+        );
     }
 
     #[test]
@@ -12074,7 +12198,8 @@ pub fn replace_unbound_x_in_effect_anywhere(
         // with mana value less than X from among them": the selection among
         // the looked-at cards shares the sentence-bound X.
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter, ..
+            filter,
+            ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
             filter,
@@ -12088,10 +12213,17 @@ pub fn replace_unbound_x_in_effect_anywhere(
             replace_in_filter(filter, replacement, clause)?;
         }
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { base_power_toughness: None, .. }) => {},
+            SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature {
+                    base_power_toughness: None,
+                    ..
+                },
+            ) => {}
             // The where-X value also fixes a dynamic target count ("deals 1
             // damage to each of up to X target creatures, where X is ...").
-            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, target, .. })
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
+                amount, target, ..
+            })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 amount,
                 target,
@@ -12119,7 +12251,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
-        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
@@ -12177,9 +12309,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters {
                 count: amount,
             })
-            | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters {
-                count: amount,
-            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RadCounters { count: amount })
             | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count: amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {
@@ -12272,7 +12402,8 @@ pub fn replace_unbound_x_in_effect_anywhere(
             )
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeBasePtCreature {
-                    base_power_toughness: Some((power, toughness)), ..
+                    base_power_toughness: Some((power, toughness)),
+                    ..
                 },
             )
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
@@ -12459,7 +12590,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 TurnStructureActionAst::SkipCombatPhasesThisTurn,
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled {
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
@@ -12624,8 +12757,12 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
                 ..
             })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite {
+                ..
+            })
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterManaSpendPermission { .. },
+            )
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 ..
             })
@@ -12829,7 +12966,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     false,
                 )?;
             }
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => {
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition {
+                spec,
+            }) => {
                 replace_value(&mut spec.delta, replacement, clause)?;
             }
             SubjectVerbActionAst::Replacements(

@@ -290,7 +290,14 @@ fn unattachment_sacrifice_uses_the_trigger_controllers_authority_and_never_follo
                 game.battlefield.contains(&returned),
                 "{name} must not follow a blink"
             );
-            assert_eq!(game.object(equipment).unwrap().attached_to, None);
+            assert_eq!(
+                game.object(equipment)
+                    .unwrap_or_else(|| panic!(
+                        "{name}: attachment itself must survive recipient blink"
+                    ))
+                    .attached_to,
+                None
+            );
         }
     }
 }
@@ -403,7 +410,12 @@ fn sba_unattachment_after_recipient_stops_being_a_creature_still_sacrifices_that
         }
         let mut queue = TriggerQueue::new();
         ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut queue, &mut dm).unwrap();
-        assert_eq!(game.object(equipment).unwrap().attached_to, None);
+        assert_eq!(
+            game.object(equipment)
+                .expect("attachment itself must survive recipient blink")
+                .attached_to,
+            None
+        );
         assert_eq!(queue.entries.len(), 1);
         put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
         settle(&mut game);

@@ -205,7 +205,9 @@ fn classify_action(word: &str) -> Option<ClauseVerbAst> {
 fn is_structural_action(word: &str) -> bool {
     matches!(
         word,
-        "adapt"
+        "blight"
+            | "blights"
+            | "adapt"
             | "adapts"
             | "airbend"
             | "attack"

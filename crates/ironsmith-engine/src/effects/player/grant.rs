@@ -60,6 +60,28 @@ impl EffectExecutor for GrantEffect {
         let owner = obj.owner;
         let zone = obj.zone;
 
+        // Battlefield abilities participate in the continuous-effect layers;
+        // the casting-permission registry serves cards in other zones.
+        if zone == crate::zone::Zone::Battlefield
+            && let Grantable::Ability(ability) = &self.grantable
+        {
+            let until = match self.duration {
+                GrantDuration::UntilEndOfTurn => crate::effect::Until::EndOfTurn,
+                GrantDuration::Forever => crate::effect::Until::Forever,
+                GrantDuration::UntilYourNextTurn => crate::effect::Until::YourNextTurn,
+                GrantDuration::UntilYourNextTurnEnd => crate::effect::Until::YourNextTurnEnd,
+            };
+            return crate::effects::ApplyContinuousEffect::new(
+                crate::continuous::EffectTarget::Specific(target_id),
+                crate::continuous::Modification::AddAbility(ability.clone()),
+                until,
+            )
+            .with_source_type(crate::continuous::EffectSourceType::Resolution {
+                locked_targets: vec![target_id],
+            })
+            .execute(game, ctx);
+        }
+
         // Calculate expiration
         let expires = match self.duration {
             GrantDuration::UntilEndOfTurn => game.turn.turn_number,

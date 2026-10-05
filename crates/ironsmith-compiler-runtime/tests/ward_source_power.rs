@@ -146,7 +146,7 @@ fn cast_targeting_spell(
     )
     .unwrap();
     for _ in 0..32 {
-        if state.pending_cast.is_none() {
+        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
             break;
         }
         let GameProgress::NeedsDecisionCtx(context) = progress else {
@@ -156,7 +156,7 @@ fn cast_targeting_spell(
             apply_decision_context_with_dm(game, &mut queue, &mut state, &context, decisions)
                 .unwrap();
     }
-    assert!(state.pending_cast.is_none());
+    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
     assert_eq!(
         game.player(alice).unwrap().mana_pool.total(),
         0,

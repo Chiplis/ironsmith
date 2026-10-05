@@ -130,7 +130,7 @@ fn explicit_same_resolution_move_links_and_updated_tags_still_follow_the_new_obj
     .unwrap();
     let returned = game.find_object_by_stable_id(stable).unwrap();
     assert_eq!(game.object(returned).unwrap().zone, Zone::Battlefield);
-    ctx.tag_object("moved", snapshot(&game, returned));
+    ctx.set_tagged_objects("moved", vec![snapshot(&game, returned)]);
     execute_effect(
         &mut game,
         &Effect::pump(2, 2, ChooseSpec::SpecificObject(returned), Until::EndOfTurn),

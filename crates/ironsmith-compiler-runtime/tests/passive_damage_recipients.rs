@@ -4,7 +4,7 @@ use ironsmith::cards::CardDefinition;
 use ironsmith::decision::{DecisionMaker, LegalAction, SelectFirstDecisionMaker};
 use ironsmith::decisions::context::{SelectObjectsContext, TargetsContext};
 use ironsmith::effects::{
-    DealDamageBySourcesEffect, DealDamageEffect, EffectExecutor, EffectContext as ExecutionContext,
+    DealDamageBySourcesEffect, DealDamageEffect, EffectContext as ExecutionContext, EffectExecutor,
 };
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
@@ -478,7 +478,12 @@ fn totem_keeps_mana_animation_intervening_creature_condition_and_actual_sacrific
                 ironsmith::static_abilities::StaticAbilityId::Trample
             ));
             let events = damage(&mut g, enemy, ChooseSpec::SpecificObject(totem), 2, false);
-            assert_eq!(stack(&mut g, events, &mut dm), 1);
+            assert_eq!(
+                stack(&mut g, events, &mut dm),
+                1,
+                "abilities={:?}",
+                g.current_abilities(totem)
+            );
             if expires {
                 ironsmith::turn::execute_cleanup_step(&mut g);
             }
@@ -584,7 +589,8 @@ fn old_damage_wire_defaults_and_new_threshold_flags_survive_round_trip() {
         true,
     );
     let mut json = serde_json::to_value(&trigger).unwrap();
-    let restored: ironsmith_core::trigger_model::Trigger = serde_json::from_value(json.clone()).unwrap();
+    let restored: ironsmith_core::trigger_model::Trigger =
+        serde_json::from_value(json.clone()).unwrap();
     assert_eq!(trigger, restored);
     let payload = json["kind"]["IsDealtDamage"].as_object_mut().unwrap();
     payload.remove("minimum");

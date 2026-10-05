@@ -896,7 +896,6 @@ impl StaticAbilityId {
                 | CanAttackAsThoughNoDefender
                 | CanAttackAsThoughHaste
                 | ActivateAbilitiesAsThoughHaste
-                | ActivateAbilitiesAsThoughHaste
                 | MustAttack
                 | MustBlock
                 | CantAttack

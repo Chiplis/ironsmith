@@ -11,14 +11,18 @@ pub type ExecuteWithSourceEffect = ironsmith_core::ExecuteWithSourceEffect<Effec
 
 /// Freeze the source and LKI used by the complete child action.
 pub(crate) fn resolve_source_binding(
-    effect: &ExecuteWithSourceEffect, game: &mut GameState, ctx: &mut ExecutionContext,
+    effect: &ExecuteWithSourceEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
 ) -> Option<(crate::ids::ObjectId, Option<ObjectSnapshot>)> {
     let resolved = resolve_effect_source_with_lki(game, ctx, &effect.source);
     finish_source_binding(effect, game, ctx, resolved)
 }
 
 fn finish_source_binding(
-    effect: &ExecuteWithSourceEffect, game: &GameState, ctx: &ExecutionContext,
+    effect: &ExecuteWithSourceEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
     resolved: Option<(crate::ids::ObjectId, Option<ObjectSnapshot>)>,
 ) -> Option<(crate::ids::ObjectId, Option<ObjectSnapshot>)> {
     // The source can leave the battlefield before this effect runs: a
@@ -29,8 +33,7 @@ fn finish_source_binding(
     let rebind_to_own_source_lki = matches!(effect.source.base(), ChooseSpec::Source)
         && ctx.source_snapshot.is_some()
         && game.object(ctx.source).is_none();
-    let Some((source_id, tagged_snapshot)) = resolved
-    else {
+    let Some((source_id, tagged_snapshot)) = resolved else {
         if rebind_to_own_source_lki {
             return Some((ctx.source, ctx.source_snapshot.clone()));
         }
@@ -94,11 +97,19 @@ impl crate::effects::SimultaneousEffectProposal for SourceProposal {
 
 impl EffectExecutor for ExecuteWithSourceEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
-        (self.source.is_target() || matches!(self.source.base(), ChooseSpec::Source | ChooseSpec::SpecificObject(_) | ChooseSpec::Tagged(_)))
+        (self.source.is_target()
+            || matches!(
+                self.source.base(),
+                ChooseSpec::Source | ChooseSpec::SpecificObject(_) | ChooseSpec::Tagged(_)
+            ))
             && self.effect.0.supports_simultaneous_player_action()
     }
     fn is_read_only_simultaneous_player_action(&self) -> bool {
-        (self.source.is_target() || matches!(self.source.base(), ChooseSpec::Source | ChooseSpec::SpecificObject(_) | ChooseSpec::Tagged(_)))
+        (self.source.is_target()
+            || matches!(
+                self.source.base(),
+                ChooseSpec::Source | ChooseSpec::SpecificObject(_) | ChooseSpec::Tagged(_)
+            ))
             && self.effect.0.is_read_only_simultaneous_player_action()
     }
 
@@ -110,7 +121,11 @@ impl EffectExecutor for ExecuteWithSourceEffect {
         if !self.supports_simultaneous_player_action() {
             return Err(ExecutionError::Impossible("chooser-bearing source scope requires the mutable action-program preparation owner".into()));
         }
-        let resolved = crate::effects::helpers::resolve_effect_source_from_spec_with_lki(game, ctx, &self.source);
+        let resolved = crate::effects::helpers::resolve_effect_source_from_spec_with_lki(
+            game,
+            ctx,
+            &self.source,
+        );
         let binding = finish_source_binding(self, game, ctx, resolved);
         let inner = match &binding {
             Some(binding) => Some(with_source_binding(ctx, binding, |ctx| {
@@ -138,7 +153,8 @@ impl EffectExecutor for ExecuteWithSourceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(binding) = resolve_source_binding(self, game, ctx) else {
+        let source_binding = resolve_source_binding(self, game, ctx);
+        let Some(binding) = source_binding else {
             return Ok(EffectOutcome::target_invalid());
         };
         with_source_binding(ctx, &binding, |ctx| execute_effect(game, &self.effect, ctx))

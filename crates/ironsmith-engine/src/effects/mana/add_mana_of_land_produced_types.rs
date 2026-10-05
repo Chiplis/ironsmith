@@ -76,7 +76,14 @@ impl AddManaOfLandProducedTypesEffect {
 impl EffectExecutor for AddManaOfLandProducedTypesEffect {
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
-        Some(ManaProduction::LandProducedTypes { amount: &self.amount, player: &self.player, filter: &self.land_filter, allow_colorless: self.allow_colorless, same_type: self.same_type, source: self.mana_type_source })
+        Some(ManaProduction::LandProducedTypes {
+            amount: &self.amount,
+            player: &self.player,
+            filter: &self.land_filter,
+            allow_colorless: self.allow_colorless,
+            same_type: self.same_type,
+            source: self.mana_type_source,
+        })
     }
 
     fn directly_produces_mana(&self) -> bool {
@@ -123,7 +130,8 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let chosen_symbols = credit_mana_symbols_from_context(game, player_id, chosen_symbols, ctx)?;
+        let chosen_symbols =
+            credit_mana_symbols_from_context(game, player_id, chosen_symbols, ctx)?;
 
         Ok(mana_added_count_outcome(
             ctx,
@@ -249,6 +257,7 @@ fn mana_ability_condition_met(
                     ignore_timing: true,
                     ignore_activation_limits: true,
                     recipient: None,
+                    ..Default::default()
                 },
             };
             crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)

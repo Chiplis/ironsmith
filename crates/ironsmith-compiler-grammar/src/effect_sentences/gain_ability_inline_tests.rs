@@ -1290,7 +1290,7 @@ fn lose_become_and_base_pt_chain_keeps_one_unmodified_subject() {
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                     target: TargetAst::Object(add, ..),
                     subtypes,
                     ..
@@ -1352,7 +1352,7 @@ fn sentence_dispatch_preserves_loss_become_and_base_pt_coordination() {
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action: SubjectVerbActionAst::Characteristics(
-                        CharacteristicActionAst::AddSubtypes { .. }
+                        CharacteristicActionAst::BecomeBasePtCreature { .. }
                     ),
                     ..
                 }),
@@ -1511,12 +1511,12 @@ fn size_free_animation_and_characteristic_grant_keep_both_actions() {
         .unwrap()
         .expect("compound gain");
     assert!(
-        format!("{direct:?}").contains("AddCardTypes"),
+        format!("{direct:?}").contains("BecomeBasePtCreature"),
         "direct {direct:?}"
     );
     let effects = super::super::parse_effect_sentences_lexed(&tokens).unwrap();
     assert!(
-        format!("{effects:?}").contains("AddCardTypes"),
+        format!("{effects:?}").contains("BecomeBasePtCreature"),
         "pipeline {effects:?}"
     );
 }
@@ -1528,11 +1528,16 @@ fn compound_become_pump_grant_keeps_three_children_and_one_target_owner() {
         "Until end of turn, this creature becomes a Dragon, gets +5/+3, and gains flying and trample.",
         "Until end of turn, this creature becomes an Angel, gets +3/+3, and gains flying and lifelink.",
     ] {
-        let effects = parse_gain_ability_sentence(&tokenize_line(text, 0)).unwrap().unwrap();
+        let effects = parse_gain_ability_sentence(&tokenize_line(text, 0))
+            .unwrap()
+            .unwrap();
         let debug = format!("{effects:?}");
         assert!(debug.contains("Pump"), "{debug}");
         assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
-        assert!(debug.contains("BecomeBasePtCreature") || debug.contains("SetColors"), "{debug}");
+        assert!(
+            debug.contains("BecomeBasePtCreature") || debug.contains("SetColors"),
+            "{debug}"
+        );
         if text.contains("target creature") {
             // The first child owns announcement; siblings use its exact alias.
             assert!(debug.contains("Tagged"), "{debug}");
@@ -1542,7 +1547,10 @@ fn compound_become_pump_grant_keeps_three_children_and_one_target_owner() {
         "Until end of turn, this creature becomes a Dragon, gets nonsense, and gains flying.",
         "Until end of turn, this creature becomes a mysterious artifact, gets +1/+1, and gains flying.",
     ] {
-        assert!(parse_gain_ability_sentence(&tokenize_line(text, 0)).is_err(), "{text}");
+        assert!(
+            parse_gain_ability_sentence(&tokenize_line(text, 0)).is_err(),
+            "{text}"
+        );
     }
 }
 
@@ -1550,8 +1558,16 @@ fn compound_become_pump_grant_keeps_three_children_and_one_target_owner() {
 fn quoted_first_target_trigger_keeps_its_event_history_gate() {
     let tokens = lex_line("Whenever this creature becomes the target of a spell or ability for the first time each turn, counter that spell or ability.", 0).unwrap();
     let words = crate::lexer::token_word_refs(&tokens);
-    let ability = parse_granted_activated_or_triggered_ability_for_gain(&tokens, &words).unwrap().unwrap();
+    let ability = parse_granted_activated_or_triggered_ability_for_gain(&tokens, &words)
+        .unwrap()
+        .unwrap();
     let debug = format!("{ability:?}");
-    assert!(debug.contains("ThisBecomesTargeted") && debug.contains("FirstTimeThisTurn"), "{debug}");
-    assert!(!debug.contains("MaxTimesEachTurn"), "first-event history is not a trigger-count limit: {debug}");
+    assert!(
+        debug.contains("ThisBecomesTargeted") && debug.contains("FirstTimeThisTurn"),
+        "{debug}"
+    );
+    assert!(
+        !debug.contains("MaxTimesEachTurn"),
+        "first-event history is not a trigger-count limit: {debug}"
+    );
 }

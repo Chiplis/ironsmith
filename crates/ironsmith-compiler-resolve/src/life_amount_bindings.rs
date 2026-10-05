@@ -64,6 +64,31 @@ pub(super) fn life_producer(effect: &EffectAst) -> Option<(EffectMetric, PlayerF
     if let Some(producer) = direct_life_producer(effect) {
         return Some(producer);
     }
+    if let EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::MayByPlayer {
+        player,
+        effects,
+    }) = effect
+    {
+        let mut producers = effects.iter().filter_map(life_producer);
+        let (metric, participant) = producers.next()?;
+        if producers.next().is_some() {
+            return None;
+        }
+        let actor = match player {
+            PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+            PlayerAst::That => PlayerFilter::IteratedPlayer,
+            PlayerAst::Opponent => PlayerFilter::Opponent,
+            _ => return None,
+        };
+        return Some((
+            metric,
+            if participant == PlayerFilter::You {
+                actor
+            } else {
+                participant
+            },
+        ));
+    }
     // Transparent and optional wrappers can export the one instruction they
     // contain. Do not aggregate multiple life instructions or cross a delayed
     // program/player-iteration boundary and call that the latest instruction.

@@ -11,6 +11,16 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
 
+    if matches!(
+        crate::lexer::parser_token_word_refs(tokens).as_slice(),
+        ["defending", "player"] | ["the", "defending", "player"]
+    ) {
+        return Ok(TargetAst::Player(
+            PlayerFilter::Defending,
+            token_slice_span(tokens),
+        ));
+    }
+
     // `each` is a set quantifier rather than part of the object filter. Let
     // the ordinary target-head parser see a following `other` so it can retain
     // the source-exclusion bit (for example, "each other creature").
@@ -56,6 +66,24 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
 
     let token_word_view = TokenWordView::new(tokens);
     let token_words = token_word_view.to_word_refs();
+    // A definite singular counterpart is an antecedent, rather than every
+    // object other than this ability's source ("the other creature"). Damage
+    // triggers bind this antecedent to their recipient.
+    if token_words.starts_with(&["the", "other"])
+        && token_words.get(2).is_some_and(|word| {
+            matches!(
+                *word,
+                "creature" | "permanent" | "artifact" | "enchantment" | "land" | "card" | "token"
+            )
+        })
+    {
+        let mut filter = parse_object_filter(&tokens[2..], false)?;
+        filter = filter.match_tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+        return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
+    }
     // Definite player references retain the prior player binding before
     // article stripping would turn them into an unrestricted player set.
     if token_words == ["the", "player"] {
@@ -204,10 +232,14 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     // Ordinary object phrases are intentionally excluded: even when sentence
     // capitalization uppercases their first word, their lowercase rules
     // qualifiers prevent this surface predicate from claiming them.
-    if crate::lexer::is_authored_proper_name_phrase(tokens)
+    if let Some(surface) = crate::grammar::source_surface_shapes::parse_named_surface(tokens)
         && parse_object_filter(tokens, false).is_err()
     {
-        return Ok(TargetAst::Source(token_slice_span(tokens)));
+        return Ok(TargetAst::Object(
+            ObjectFilter::source().with_source_surface(surface),
+            None,
+            token_slice_span(tokens),
+        ));
     }
 
     let target_head_outcome = leaf::recognize_target_head(tokens);
@@ -1108,9 +1140,10 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         if !explicit_target && token_words == ["the", "blocking", "creature"] {
             // CR608.2k: this complete definite phrase denotes the exact
             // event participant, with no fresh live type qualification.
-            return Ok(wrap_target_count(TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::Blocking.bind(), None,
-            ), target_count));
+            return Ok(wrap_target_count(
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Blocking.bind(), None),
+                target_count,
+            ));
         }
     } else if crate::word_primitives::parse_sequence_prefix(&token_words, &["the", "attacking"])
         && filter.attacking

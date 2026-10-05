@@ -453,12 +453,74 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
     if sacrifices_object_union(tokens) {
         return ParseOutcome::NoMatch;
     }
+    // A complete aggregate amount owns its selector connectives. Prove the
+    // amount before considering those words as omitted executable actions.
+    let aggregate_amount = tokens.iter().position(|token| token.is_word("damage"))
+        .and_then(|start| {
+            let damage = &tokens[start..];
+            crate::grammar::effects::combat_shapes::parse_combat_damage_equal_shape_lexed(damage)
+                .map(|shape| shape.amount_tokens)
+                .or_else(|| crate::grammar::effects::combat_shapes::parse_combat_damage_to_target_equal_shape_lexed(damage)
+                    .map(|shape| shape.amount_clause_tokens))
+        })
+        .filter(|amount| {
+            if amount.iter().any(|token| token.is_word("target")) {
+                return false;
+            }
+            let (value, loss) = crate::parse_loss::capture(||
+                crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(amount)
+                    .or_else(|| crate::grammar::values::parse_add_mana_equal_amount_value_lexed(amount)));
+            value.is_some() && !loss.is_lossy()
+        });
+    // A fully parsed damage cap owns its commas and "or" recipient list.
+    // Those connectives do not introduce additional life-gain instructions.
+    let capped_amount = tokens
+        .windows(3)
+        .position(|head| {
+            head[0].is_word("equal") && head[1].is_word("to") && head[2].is_word("the")
+        })
+        .map(|start| &tokens[start + 2..])
+        .filter(|amount| amount.iter().any(|token| token.is_word("before")))
+        .and_then(|amount| {
+            let end = amount.iter().rposition(|token| {
+                !matches!(
+                    token.kind,
+                    crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Comma
+                )
+            })? + 1;
+            let amount = &amount[..end];
+            let (value, used) =
+                crate::grammar::shared_util::value_expr::parse_value_expr_tokens(amount)?;
+            let _ = value;
+            (used == amount.len()).then_some(amount)
+        });
     let candidates = top_level_boundaries(tokens);
     let mut members = Vec::new();
     let mut boundaries = Vec::new();
     let mut member_start = 0usize;
 
     for candidate in candidates {
+        if aggregate_amount.or(capped_amount).is_some_and(|amount| {
+            amount
+                .iter()
+                .any(|token| std::ptr::eq(token, &tokens[candidate.start]))
+        }) {
+            continue;
+        }
+
+        // Coordinated locations qualify one selector; `in ... and in ...`
+        // cannot be an omitted second executable verb.
+        if candidate.operator == CoordinationOperatorAst::And
+            && tokens
+                .get(candidate.end)
+                .is_some_and(|token| token.is_word("in"))
+            && tokens[member_start..candidate.start]
+                .iter()
+                .any(|token| token.is_word("in"))
+        {
+            continue;
+        }
+
         // Numeric alternatives in an explicit target head belong to one
         // selector, e.g. `one, two, or three target creature cards`.
         // Let the target grammar prove the complete prefix before treating
@@ -639,7 +701,9 @@ fn classify_boundary<'a>(
             && after.first().is_some_and(|token| token.is_word("blocked"))
             && after.get(1).is_some_and(|token| token.is_word("by"))
             || before.last().is_some_and(|token| token.is_word("blocked"))
-                && after.first().is_some_and(|token| token.is_any_word(&["was", "were"]))
+                && after
+                    .first()
+                    .is_some_and(|token| token.is_any_word(&["was", "were"]))
                 && after.get(1).is_some_and(|token| token.is_word("blocked"))
                 && after.get(2).is_some_and(|token| token.is_word("by")))
     {

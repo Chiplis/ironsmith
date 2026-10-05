@@ -105,8 +105,9 @@ impl CostExecutableEffect for PayEnergyEffect {
         let payer = resolve_player_from_spec(game, &self.player, &ctx).map_err(|_| {
             CostValidationError::Other("unable to resolve player for energy cost".to_string())
         })?;
-        let needed = resolve_nonnegative_u32(game, &self.amount, &ctx)
-            .map_err(|_| CostValidationError::Other("unable to resolve energy amount".to_string()))?;
+        let needed = resolve_nonnegative_u32(game, &self.amount, &ctx).map_err(|_| {
+            CostValidationError::Other("unable to resolve energy amount".to_string())
+        })?;
         let Some(player) = game.player(payer) else {
             return Err(CostValidationError::Other(
                 "unable to resolve payer".to_string(),
@@ -352,7 +353,9 @@ impl std::fmt::Debug for PayAnyLifeProposal {
     }
 }
 impl crate::effects::SimultaneousEffectProposal for PayAnyLifeProposal {
-    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId,u32)> { self.acknowledged.then_some((self.player,self.amount)) }
+    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId, u32)> {
+        self.acknowledged.then_some((self.player, self.amount))
+    }
 
     fn prepare_original(
         &mut self,
@@ -471,7 +474,19 @@ mod tests {
 
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
-        game.effect_store.cant_effects.cant_lose_life.insert(alice);
+        let prohibition = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Life payment prohibition",
+        )
+        .card_types(vec![crate::types::CardType::Artifact])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::restriction(
+                crate::effect::Restriction::LoseLife(PlayerFilter::You),
+                "You can't lose life".into(),
+            ),
+        ))
+        .build();
+        game.create_object_from_definition(&prohibition, alice, crate::zone::Zone::Battlefield);
 
         let source = game.new_object_id();
         let mut dm = PayMaximum;
@@ -487,30 +502,112 @@ mod tests {
 
 #[cfg(test)]
 mod unsigned_energy_payment_public_contract_tests {
-use crate::{GameState,PlayerId,Zone,CardId,Effect};
-use crate::effects::{EffectContext,EnergyCountersEffect,PayEnergyEffect,CostExecutableEffect,execute_effect};
-use crate::effect::{Value,EffectId};
-use crate::target::{PlayerFilter,ChooseSpec};
-fn seeded(amount:u32)->(GameState,crate::ObjectId,PlayerId){
- let alice=PlayerId::from_index(0);let mut game=GameState::new(vec!["Alice".into(),"Bob".into()],20);
- let definition=crate::cards::builders::CardDefinitionBuilder::new(CardId::new(),"Energy payment result owner").card_types(vec![crate::types::CardType::Artifact]).build();let source=game.create_object_from_definition(&definition,alice,Zone::Battlefield);
- let mut ctx=EffectContext::new_default(source,alice);let out=execute_effect(&mut game,&Effect::new(EnergyCountersEffect::you(amount)),&mut ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(amount)));assert_eq!(game.player(alice).unwrap().energy_counters,amount);(game,source,alice)
-}
-fn dynamic(amount:u32){
- let (mut game,source,alice)=seeded(amount);let mut ctx=EffectContext::new_default(source,alice);
- // Store a second actual completed instruction's result, rather than a fake receipt.
- let other=PlayerId::from_index(1);let out=execute_effect(&mut game,&Effect::new(EnergyCountersEffect::new(amount,PlayerFilter::Specific(other))),&mut ctx).unwrap();assert_eq!(out.as_count(),Some(i64::from(amount)));ctx.store_outcome(EffectId(31),out);
- let pay=Effect::new(PayEnergyEffect::new(Value::EffectValue(EffectId(31)),ChooseSpec::Player(PlayerFilter::You)));let out=execute_effect(&mut game,&pay,&mut ctx).expect("actual unsigned receipt must remain usable for energy payment");assert_eq!(out.as_count(),Some(i64::from(amount)));assert_eq!(game.player(alice).unwrap().energy_counters,0);assert_eq!(game.player(other).unwrap().energy_counters,amount);ctx.store_outcome(EffectId(57),out);let follow=execute_effect(&mut game,&Effect::new(EnergyCountersEffect::new(Value::EffectValue(EffectId(57)),PlayerFilter::You)),&mut ctx).unwrap();assert_eq!(follow.as_count(),Some(i64::from(amount)));assert_eq!(game.player(alice).unwrap().energy_counters,amount);
-}
-#[test]fn bounded_energy_receipt_control(){dynamic(i32::MAX as u32);}
-#[test]fn unsigned_energy_receipt_above_signed_boundary(){dynamic(i32::MAX as u32+1);}
-#[test]fn unsigned_energy_receipt_at_storage_maximum(){dynamic(u32::MAX);}
-#[test]fn unsigned_static_energy_cost_is_legal_with_actual_available_energy(){let (game,source,alice)=seeded(u32::MAX);let pay=PayEnergyEffect::new(u32::MAX,ChooseSpec::Player(PlayerFilter::You));assert!(CostExecutableEffect::can_execute_as_cost(&pay,&game,source,alice).is_ok(),"natural energy cost must use available unsigned energy");}
+    use crate::effect::{EffectId, Value};
+    use crate::effects::{
+        CostExecutableEffect, EffectContext, EnergyCountersEffect, PayEnergyEffect, execute_effect,
+    };
+    use crate::target::{ChooseSpec, PlayerFilter};
+    use crate::{CardId, Effect, GameState, PlayerId, Zone};
+    fn seeded(amount: u32) -> (GameState, crate::ObjectId, PlayerId) {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Energy payment result owner",
+        )
+        .card_types(vec![crate::types::CardType::Artifact])
+        .build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let mut ctx = EffectContext::new_default(source, alice);
+        let out = execute_effect(
+            &mut game,
+            &Effect::new(EnergyCountersEffect::you(amount)),
+            &mut ctx,
+        )
+        .unwrap();
+        assert_eq!(out.as_count(), Some(i64::from(amount)));
+        assert_eq!(game.player(alice).unwrap().energy_counters, amount);
+        (game, source, alice)
+    }
+    fn dynamic(amount: u32) {
+        let (mut game, source, alice) = seeded(amount);
+        let mut ctx = EffectContext::new_default(source, alice);
+        // Store a second actual completed instruction's result, rather than a fake receipt.
+        let other = PlayerId::from_index(1);
+        let out = execute_effect(
+            &mut game,
+            &Effect::new(EnergyCountersEffect::new(
+                amount,
+                PlayerFilter::Specific(other),
+            )),
+            &mut ctx,
+        )
+        .unwrap();
+        assert_eq!(out.as_count(), Some(i64::from(amount)));
+        ctx.store_outcome(EffectId(31), out);
+        let pay = Effect::new(PayEnergyEffect::new(
+            Value::EffectValue(EffectId(31)),
+            ChooseSpec::Player(PlayerFilter::You),
+        ));
+        let out = execute_effect(&mut game, &pay, &mut ctx)
+            .expect("actual unsigned receipt must remain usable for energy payment");
+        assert_eq!(out.as_count(), Some(i64::from(amount)));
+        assert_eq!(game.player(alice).unwrap().energy_counters, 0);
+        assert_eq!(game.player(other).unwrap().energy_counters, amount);
+        ctx.store_outcome(EffectId(57), out);
+        let follow = execute_effect(
+            &mut game,
+            &Effect::new(EnergyCountersEffect::new(
+                Value::EffectValue(EffectId(57)),
+                PlayerFilter::You,
+            )),
+            &mut ctx,
+        )
+        .unwrap();
+        assert_eq!(follow.as_count(), Some(i64::from(amount)));
+        assert_eq!(game.player(alice).unwrap().energy_counters, amount);
+    }
+    #[test]
+    fn bounded_energy_receipt_control() {
+        dynamic(i32::MAX as u32);
+    }
+    #[test]
+    fn unsigned_energy_receipt_above_signed_boundary() {
+        dynamic(i32::MAX as u32 + 1);
+    }
+    #[test]
+    fn unsigned_energy_receipt_at_storage_maximum() {
+        dynamic(u32::MAX);
+    }
+    #[test]
+    fn unsigned_static_energy_cost_is_legal_with_actual_available_energy() {
+        let (game, source, alice) = seeded(u32::MAX);
+        let pay = PayEnergyEffect::new(u32::MAX, ChooseSpec::Player(PlayerFilter::You));
+        assert!(
+            CostExecutableEffect::can_execute_as_cost(&pay, &game, source, alice).is_ok(),
+            "natural energy cost must use available unsigned energy"
+        );
+    }
 
-#[test]fn unsigned_chosen_energy_payment_reports_actual_removed_count(){
- let (mut game,source,alice)=seeded(u32::MAX);let mut ctx=EffectContext::new_default(source,alice);
- let effect=Effect::new(crate::effects::PayAnyEnergyEffect::new(ChooseSpec::Player(PlayerFilter::You),u32::MAX));let out=execute_effect(&mut game,&effect,&mut ctx).expect("forced unsigned quantity is payable");
- assert_eq!(game.player(alice).unwrap().energy_counters,0,"actual unsigned energy was removed");assert_eq!(out.as_count(),Some(i64::from(u32::MAX)),"receipt must report actual unsigned removal without signed wrap");
-}
-
+    #[test]
+    fn unsigned_chosen_energy_payment_reports_actual_removed_count() {
+        let (mut game, source, alice) = seeded(u32::MAX);
+        let mut ctx = EffectContext::new_default(source, alice);
+        let effect = Effect::new(crate::effects::PayAnyEnergyEffect::new(
+            ChooseSpec::Player(PlayerFilter::You),
+            u32::MAX,
+        ));
+        let out = execute_effect(&mut game, &effect, &mut ctx)
+            .expect("forced unsigned quantity is payable");
+        assert_eq!(
+            game.player(alice).unwrap().energy_counters,
+            0,
+            "actual unsigned energy was removed"
+        );
+        assert_eq!(
+            out.as_count(),
+            Some(i64::from(u32::MAX)),
+            "receipt must report actual unsigned removal without signed wrap"
+        );
+    }
 }

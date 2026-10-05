@@ -560,7 +560,9 @@ mod tests {
             debug.contains("Activated")
                 && debug.contains("EmitKeywordActionEffect")
                 && debug.contains("Craft")
-                && debug.contains("TransformEffect"),
+                && debug.contains("ExileEffect")
+                && debug.contains("MoveToZoneEffect")
+                && debug.contains("enters_transformed: true"),
             "expected supported craft activated ability, got {debug}"
         );
     }

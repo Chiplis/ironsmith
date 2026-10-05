@@ -92,6 +92,8 @@ pub enum PriorEffectAction {
     CountersPut,
     DealtDamage,
     Destroyed,
+    /// A creature actually moved from the battlefield to a graveyard.
+    Died,
     Discarded,
     Drawn,
     Exiled,
@@ -544,16 +546,29 @@ pub enum TurnHistoryCount {
     ColorsAmongPermanentsAndSpellsCast(PlayerFilter),
     /// Completed library searches; optionally require the searcher to own
     /// the searched library. An unknown library owner cannot prove that scope.
-    LibrarySearches { player: PlayerFilter, own_library_only: bool },
+    LibrarySearches {
+        player: PlayerFilter,
+        own_library_only: bool,
+    },
     /// The greatest number of matching entries under any one matching
     /// player's control, using entry-time snapshots rather than current control.
-    MaxEnteredBattlefieldByController { player: PlayerFilter, filter: ObjectFilter },
+    MaxEnteredBattlefieldByController {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
     /// Successful destruction actions with matching victim LKI and frozen cause.
-    DestroyedBy { filter: ObjectFilter, cause: crate::CauseFilter },
+    DestroyedBy {
+        filter: ObjectFilter,
+        cause: crate::CauseFilter,
+    },
     /// Exact spell incarnations cast this turn by `caster` and subsequently
     /// countered by a matching frozen cause. This does not count spell copies
     /// that were never cast or a different later incarnation of a card.
-    CastSpellsCounteredBy { caster: PlayerFilter, filter: ObjectFilter, cause: crate::CauseFilter },
+    CastSpellsCounteredBy {
+        caster: PlayerFilter,
+        filter: ObjectFilter,
+        cause: crate::CauseFilter,
+    },
 }
 
 impl TurnHistoryCount {
@@ -872,9 +887,15 @@ impl Value {
     pub fn constant_integer(&self) -> Option<i64> {
         match self.unhinted() {
             Self::Fixed(n) => Some(i64::from(*n)),
-            Self::Add(left, right) => left.constant_integer()?.checked_add(right.constant_integer()?),
-            Self::Scaled(value, multiplier) => value.constant_integer()?.checked_mul(i64::from(*multiplier)),
-            Self::DividedRoundedDown(value, divisor) => value.constant_integer()?.checked_div_euclid(i64::from(*divisor)),
+            Self::Add(left, right) => left
+                .constant_integer()?
+                .checked_add(right.constant_integer()?),
+            Self::Scaled(value, multiplier) => value
+                .constant_integer()?
+                .checked_mul(i64::from(*multiplier)),
+            Self::DividedRoundedDown(value, divisor) => value
+                .constant_integer()?
+                .checked_div_euclid(i64::from(*divisor)),
             Self::HalfRoundedDown(value) => Some(value.constant_integer()?.div_euclid(2)),
             Self::Min(left, right) => Some(left.constant_integer()?.min(right.constant_integer()?)),
             _ => None,
@@ -1039,6 +1060,8 @@ pub enum Restriction {
     DamageReduceLifeBelowOne(PlayerFilter),
     ChangeLifeTotal(PlayerFilter),
     LoseGame(PlayerFilter),
+    /// Prevent only the state-based loss caused by a nonpositive life total.
+    LoseGameForZeroLife(PlayerFilter),
     WinGame(PlayerFilter),
     BecomeMonarch(PlayerFilter),
     /// "[Players/You] don't lose unspent [color] mana as steps and phases end."
@@ -1110,7 +1133,10 @@ pub enum Restriction {
     /// characteristics or damage LKI are evaluated in the restriction host's
     /// context; the active host is not replaced by the damage source's LKI.
     /// Appended to preserve existing serialized variant ordinals.
-    PreventDamageFrom { sources: ObjectFilter, combat_only: bool },
+    PreventDamageFrom {
+        sources: ObjectFilter,
+        combat_only: bool,
+    },
     /// Land plays are special actions, distinct from casting a spell. Match
     /// the proposed land face in the zone from which it would be played.
     PlayLandsMatching(PlayerFilter, ObjectFilter),
@@ -2146,8 +2172,13 @@ pub enum Condition {
     SourceCaseSolved,
     /// Captured causation of the triggering completed action. The causing
     /// controller is independent of the affected object's controller.
-    TriggeringEventCausedBy { controller: PlayerFilter, effect_like_only: bool },
-    PlayerWasMonarchAtTurnStart { player: PlayerFilter },
+    TriggeringEventCausedBy {
+        controller: PlayerFilter,
+        effect_like_only: bool,
+    },
+    PlayerWasMonarchAtTurnStart {
+        player: PlayerFilter,
+    },
 }
 
 #[cfg(test)]

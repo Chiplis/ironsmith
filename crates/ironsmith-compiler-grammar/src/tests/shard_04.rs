@@ -122,7 +122,9 @@ fn ajani_goldmane_keeps_separate_token_ability_presentation_before_runtime_conve
                 .segments
                 .iter()
                 .flat_map(|segment| &segment.default_effects)
-                .find_map(|effect| effect.as_create_token()),
+                .find_map(|effect| {
+                    super::find_nested_effect::<crate::effects::CreateTokenEffect>(effect)
+                }),
             _ => None,
         })
         .expect("Ajani's ultimate must create its Avatar token");
@@ -180,15 +182,40 @@ fn post_definition_token_trigger_keeps_its_standalone_sentence_boundary() {
                 .segments
                 .iter()
                 .flat_map(|segment| &segment.default_effects)
-                .find_map(|effect| effect.as_create_token()),
+                .find_map(|effect| {
+                    super::find_nested_effect::<crate::effects::CreateTokenEffect>(effect)
+                }),
             _ => None,
         })
-        .expect("the activated ability must create a Splinter token");
+        .unwrap_or_else(|| {
+            panic!("the activated ability must create a Splinter token: {definition:#?}")
+        });
 
     assert_eq!(
         create.ability_presentation,
-        Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombinedThenStandalone(1))
+        Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined)
     );
+    let delayed = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| {
+                    super::find_nested_effect::<crate::effects::ScheduleDelayedTriggerEffect>(
+                        effect,
+                    )
+                }),
+            _ => None,
+        })
+        .expect("standalone token leave sentence must remain a delayed instruction");
+    assert_eq!(
+        delayed.target_tag.as_ref().map(|tag| tag.as_str()),
+        Some("created_1")
+    );
+    assert!(delayed.one_shot);
 }
 
 #[test]
@@ -554,7 +581,7 @@ pub(super) fn rewrite_lexed_effect_sequence_builds_self_replacement_for_return_f
 
 #[test]
 pub(super) fn rewrite_lexed_effect_sequence_builds_self_replacement_for_damage_followup() {
-    let text = "This creature deals 1 damage to any target. If that land is a Mountain, this creature deals 2 damage instead.";
+    let text = "This creature deals 1 damage to any target. If that land is a Mountain, this creature deals 2 damage to it instead.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify damage followup");
 
     let parsed =
@@ -1079,8 +1106,8 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_dynamic_battlefield_rest_b
     assert!(debug.contains("up_to_x: true"), "{debug}");
     assert_eq!(
         debug.matches("mana_value: Some").count(),
-        2,
-        "expected shared mana-value cap on both artifact and creature branches: {debug}"
+        1,
+        "expected one shared mana-value cap over the artifact/creature union: {debug}"
     );
     assert!(debug.contains("ForEachTagged"), "{debug}");
     assert!(debug.contains("zone: Battlefield"), "{debug}");
@@ -1893,13 +1920,21 @@ pub(super) fn rewrite_source_exiled_counter_play_and_cast_permission_static_line
     assert_eq!(grant.zone, crate::zone::Zone::Exile);
     assert_eq!(grant.beneficiary, crate::filter::PlayerFilter::You);
     assert_eq!(grant.filter.any_of.len(), 2);
-    assert!(grant.filter.any_of.iter().any(|candidate| {
-        candidate.card_types == vec![CardType::Land]
-            && candidate.zone == Some(crate::zone::Zone::Exile)
-            && candidate.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
-            })
-    }));
+    assert!(
+        grant.filter.any_of.iter().any(|candidate| {
+            candidate.card_types == vec![CardType::Land]
+                && candidate.zone.or(grant.filter.zone) == Some(crate::zone::Zone::Exile)
+                && candidate
+                    .tagged_constraints
+                    .iter()
+                    .chain(&grant.filter.tagged_constraints)
+                    .any(|constraint| {
+                        constraint.tag.as_str()
+                            == crate::tag::CompilerReferenceTag::ExiledByYou.as_str()
+                    })
+        }),
+        "{grant:#?}"
+    );
     assert!(grant.filter.any_of.iter().any(|candidate| {
         candidate.excluded_card_types.contains(&CardType::Creature)
             && candidate.excluded_card_types.contains(&CardType::Land)
@@ -1932,10 +1967,15 @@ pub(super) fn rewrite_source_exiled_counter_play_and_cast_permission_static_line
     };
     assert_eq!(mana_filter.any_of.len(), 2);
     assert!(mana_filter.any_of.iter().all(|candidate| {
-        candidate.zone == Some(crate::zone::Zone::Exile)
-            && candidate.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
-            })
+        candidate.zone.or(mana_filter.zone) == Some(crate::zone::Zone::Exile)
+            && candidate
+                .tagged_constraints
+                .iter()
+                .chain(&mana_filter.tagged_constraints)
+                .any(|constraint| {
+                    constraint.tag.as_str()
+                        == crate::tag::CompilerReferenceTag::ExiledByYou.as_str()
+                })
     }));
 
     let def = CardDefinitionBuilder::new(CardId::new(), "Haldan Variant")
@@ -2014,9 +2054,13 @@ pub(super) fn attached_target_death_replacement_tracks_the_attachment_host() {
     else {
         panic!("expected three linked resolution segments: {program:#?}");
     };
-    let [damage_effect] = damage_segment.default_effects.as_slice() else {
-        panic!("expected one damage producer");
-    };
+    let damage_effect = damage_segment
+        .default_effects
+        .iter()
+        .find(|effect| {
+            super::find_nested_effect::<crate::effects::DealDamageEffect>(effect).is_some()
+        })
+        .expect("expected the tagged damage producer after its target declaration");
     let damage_tag = &damage_effect
         .downcast_ref::<crate::effects::TaggedEffect>()
         .expect("damage producer should retain its result tag")
@@ -2593,7 +2637,7 @@ pub(super) fn rewrite_lowered_unrelated_delayed_trigger_does_not_attach_to_previ
         .power_toughness(crate::card::PowerToughness::fixed(3, 2));
     let (definition, _) = parse_text_with_annotations_lowered(
         builder,
-        "Whenever you attack, target attacking creature gets +1/+0 until end of turn. Whenever you draw a card this turn, gain 1 life.".to_string(),
+        "Whenever you attack, target attacking creature gets +1/+0 until end of turn.\nWhenever you draw a card, gain 1 life.".to_string(),
         false,
     )?;
 
@@ -5099,8 +5143,14 @@ fn chosen_permanent_followup_iterates_objects_instead_of_repeating_shared_tag() 
 #[test]
 pub(super) fn delayed_causal_discard_keeps_batch_antecedent_and_recurring_turn_scope() {
     let tokens=lex_line("Whenever a spell or ability an opponent controls causes you to discard cards this turn, return those cards from your graveyard to your hand.",0).unwrap();
-    let parsed=parse_effect_sentence_lexed(&tokens).unwrap();let debug=format!("{parsed:?}");
-    assert!(debug.contains("DelayedTriggerThisTurn")&&debug.contains("PlayerDiscardsCard")
-        &&debug.contains("cause_controller: Some(Opponent)")&&debug.contains("one_or_more: true")
-        &&debug.contains("one_shot: false"),"{debug}");
+    let parsed = parse_effect_sentence_lexed(&tokens).unwrap();
+    let debug = format!("{parsed:?}");
+    assert!(
+        debug.contains("DelayedTriggerThisTurn")
+            && debug.contains("PlayerDiscardsCard")
+            && debug.contains("cause_controller: Some(Opponent)")
+            && debug.contains("one_or_more: true")
+            && debug.contains("one_shot: false"),
+        "{debug}"
+    );
 }

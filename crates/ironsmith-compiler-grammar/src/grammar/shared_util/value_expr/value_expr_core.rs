@@ -4,7 +4,9 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.is_empty() {
         return None;
     }
-    if let Some(quantity) = capped_damage_quantities::parse(words) { return Some(quantity); }
+    if let Some(quantity) = capped_damage_quantities::parse(words) {
+        return Some(quantity);
+    }
     if let Some(quantity) = extrema_quantities::parse(words) {
         return Some(quantity);
     }
@@ -21,8 +23,17 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return Some(quantity);
     }
     let offset = usize::from(words.first() == Some(&"the"));
-    if words.get(offset..offset+2) == Some(&["chosen", "number"][..]) {
-        return Some((Value::PendingPriorEffectMetric(ironsmith_core::PriorEffectMetricQuery::new(ironsmith_core::EffectMetricSource::Outcome, ironsmith_core::EffectMetric::Count).with_action(ironsmith_core::PriorEffectAction::ChosenNumber)), offset+2));
+    if words.get(offset..offset + 2) == Some(&["chosen", "number"][..]) {
+        return Some((
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::ChosenNumber),
+            ),
+            offset + 2,
+        ));
     }
     // A named option is a vote-result scalar, not an object filter. Keeping
     // it as a Value lets ordinary arithmetic compose ("twice ... profit votes").
@@ -1159,8 +1170,39 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         filter.owner = Some(PlayerFilter::You);
         return Some((Value::Count(filter), filter_end));
     }
-    let filter =
-        crate::grammar::primitives::probe_shape(parse_object_filter_words(filter_words, false))?;
+    let (filter, filter_end) =
+        if let Some(filter) = crate::grammar::filters::parse_simple_object_filter_words(
+            filter_words,
+            false,
+        )
+        .or_else(|| {
+            crate::grammar::primitives::probe_shape(parse_object_filter_words(filter_words, false))
+        }) {
+            (filter, filter_end)
+        } else {
+            // An amount before its damage recipient ends at the authored `to`.
+            // First try the complete filter, since a filter can itself contain
+            // relational `to` clauses; only a proven prefix may stop here.
+            filter_words
+                .iter()
+                .enumerate()
+                .rev()
+                .filter(|(_, word)| **word == "to")
+                .find_map(|(end, _)| {
+                    crate::grammar::filters::parse_simple_object_filter_words(
+                        &filter_words[..end],
+                        false,
+                    )
+                    .or_else(|| {
+                        crate::grammar::primitives::probe_shape(parse_object_filter_words(
+                            &filter_words[..end],
+                            false,
+                        ))
+                    })
+                    .map(|filter| (filter, filter_start + end))
+                })?
+        };
+    let filter_words = &words[filter_start..filter_end];
     // The legacy relational filter reader can ignore unknown trailing words.
     // If a complete simple prefix already describes exactly the same filter,
     // report only that proven prefix as consumed so enclosing grammars reject

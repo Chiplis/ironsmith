@@ -197,3 +197,19 @@ fn parses_typed_counter_sequences_and_followups() {
         "gains flying until end of turn"
     );
 }
+
+#[test]
+fn chooses_one_counter_from_an_authored_keyword_list() {
+    let tokens = lex_line("Put your choice of a counter from among first strike, vigilance, deathtouch, and lifelink on this creature.", 0).unwrap();
+    let shape = parse_put_counter_choice_tokens(&tokens).expect("counter from among list");
+    assert_eq!(shape.counter_counts, vec![1; 4]);
+    assert_eq!(
+        shape.counter_types,
+        vec![
+            CounterType::FirstStrike,
+            CounterType::Vigilance,
+            CounterType::Deathtouch,
+            CounterType::Lifelink
+        ]
+    );
+}

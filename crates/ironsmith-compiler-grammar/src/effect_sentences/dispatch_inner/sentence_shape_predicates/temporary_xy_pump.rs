@@ -15,9 +15,23 @@ pub(super) fn parse(
             .filter(|(_, used)| *used == tokens.len())
             .map(|(value, _)| value)
     };
-    let (Some(x), Some(y)) = (value(shape.x_tokens), value(shape.y_tokens)) else {
+    let (Some(x), Some(mut y)) = (value(shape.x_tokens), value(shape.y_tokens)) else {
         return Ok(None);
     };
+    // The pronoun in a coordinated characteristic binding refers to the
+    // explicitly named object in the preceding binding, not the pump recipient.
+    if crate::lexer::token_word_refs(shape.y_tokens) == ["its", "toughness"] {
+        fn power_reference(value: &Value) -> Option<&crate::target::ChooseSpec> {
+            match value {
+                Value::SurfaceHinted { value, .. } => power_reference(value),
+                Value::PowerOf(spec) => Some(spec),
+                _ => None,
+            }
+        }
+        if let Some(reference) = power_reference(&x) {
+            y = Value::ToughnessOf(Box::new(reference.clone()));
+        }
+    }
     parse_body(crate::util::trim_edge_punctuation_tokens(body), &x, &y)
 }
 

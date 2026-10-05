@@ -17,9 +17,10 @@ use crate::zone::Zone;
 use super::{apply_zone_change_with_context_and_additional_effects, take_recorded_zone_change};
 pub type ReturnToHandEffect = ironsmith_core::ReturnToHandEffect;
 
-type ReturnZoneReceipts = Vec<(crate::ids::ObjectId,
-    crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>)>;
-
+type ReturnZoneReceipts = Vec<(
+    crate::ids::ObjectId,
+    crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>,
+)>;
 
 fn return_object_to_hand(
     game: &mut GameState,
@@ -33,16 +34,18 @@ fn return_object_to_hand(
         let additional_effects = ctx.additional_replacement_effects_snapshot();
 
         let receipt = apply_zone_change_with_context_and_additional_effects(
-    game,
-    object_id,
-    from_zone,
-    Zone::Hand,
-    ctx.cause.clone(),
-    ctx,
-    &additional_effects
-)?;
+            game,
+            object_id,
+            from_zone,
+            Zone::Hand,
+            ctx.cause.clone(),
+            ctx,
+            &additional_effects,
+        )?;
 
-        if ctx.decision_maker.awaiting_choice() { return Ok(Some(OutcomeStatus::Prevented)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Some(OutcomeStatus::Prevented));
+        }
         let original = receipt.original.clone();
         receipts.push((object_id, receipt));
         return match original {
@@ -74,24 +77,29 @@ impl EffectExecutor for ReturnToHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let mut receipts = Vec::new();
         // CR 603.10a: objects this instruction moves together share one
         // pre-event look-back, so a leaves-the-battlefield observer moved in
         // the same event sees every other object leave.
-        let pinned_lookback = (!self.spec.is_single() || matches!(self.spec.base(), ChooseSpec::Tagged(_)))
+        let pinned_lookback = (!self.spec.is_single()
+            || matches!(self.spec.base(), ChooseSpec::Tagged(_) | ChooseSpec::All(_)))
             && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
         let outcome = self.execute_with_shared_lookback(game, ctx, &mut receipts);
         crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
-        let outcome = outcome.and_then(|original|
-            super::finish_zone_change_receipts(game, ctx, original, receipts));
+        let outcome = outcome
+            .and_then(|original| super::finish_zone_change_receipts(game, ctx, original, receipts));
         if outcome.is_err() || ctx.decision_maker.awaiting_choice() {
             *game = checkpoint;
             context_checkpoint.restore(ctx);
         }
-        if ctx.decision_maker.awaiting_choice() { return outcome.map(|_| EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return outcome.map(|_| EffectOutcome::count(0));
+        }
         outcome
     }
 
@@ -191,7 +199,9 @@ impl SharedLookbackExecute for ReturnToHandEffect {
             for target_id in targets {
                 let stable_id = game.object(target_id).map(|obj| obj.stable_id);
                 let status = return_object_to_hand(game, ctx, target_id, receipts)?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
                 let moved_ids = take_recorded_zone_change(game, target_id)
                     .map(|result| result.new_object_ids)
                     .or_else(|| match status {
@@ -220,7 +230,9 @@ impl SharedLookbackExecute for ReturnToHandEffect {
                     .ok_or(ExecutionError::InvalidTarget)?;
                 let stable_id = game.object(target_id).map(|obj| obj.stable_id);
                 let status = return_object_to_hand(game, ctx, target_id, receipts)?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
                 let affected_ids = take_recorded_zone_change(game, target_id)
                     .map(|result| result.new_object_ids)
                     .or_else(|| match status {
@@ -271,15 +283,17 @@ impl SharedLookbackExecute for ReturnToHandEffect {
                     ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
                 let additional_effects = ctx.additional_replacement_effects_snapshot();
                 let receipt = apply_zone_change_with_context_and_additional_effects(
-    game,
-    object_id,
-    from_zone,
-    Zone::Hand,
-    ctx.cause.clone(),
-    ctx,
-    &additional_effects
-)?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    game,
+                    object_id,
+                    from_zone,
+                    Zone::Hand,
+                    ctx.cause.clone(),
+                    ctx,
+                    &additional_effects,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
                 let original = receipt.original.clone();
                 receipts.push((object_id, receipt));
                 if let EventOutcome::Proceed(result) = original {
@@ -318,15 +332,17 @@ impl SharedLookbackExecute for ReturnToHandEffect {
                         ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
                     let additional_effects = ctx.additional_replacement_effects_snapshot();
                     let receipt = apply_zone_change_with_context_and_additional_effects(
-    game,
-    object_id,
-    from_zone,
-    Zone::Hand,
-    ctx.cause.clone(),
-    ctx,
-    &additional_effects
-)?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(false); }
+                        game,
+                        object_id,
+                        from_zone,
+                        Zone::Hand,
+                        ctx.cause.clone(),
+                        ctx,
+                        &additional_effects,
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(false);
+                    }
                     let original = receipt.original.clone();
                     receipts.push((object_id, receipt));
                     match original {

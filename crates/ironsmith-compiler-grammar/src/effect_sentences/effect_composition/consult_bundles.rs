@@ -53,7 +53,7 @@ pub(super) fn parse_reveal_until_land_put_all_graveyard_bundle(
     Some(effects)
 }
 
-pub(super) fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
+pub(crate) fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
     consult_sentence: &[OwnedLexToken],
     followup_sentence: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -62,17 +62,30 @@ pub(super) fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
     else {
         return Ok(None);
     };
-    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
-                mode: LibraryConsultModeAst::Reveal,
-                ..
-            }),
-        ..
-    })) = parts.effects.last()
-    else {
+    fn contains_reveal_consult(effects: &[EffectAst]) -> bool {
+        effects.iter().any(|effect| {
+            if matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+                        mode: LibraryConsultModeAst::Reveal,
+                        ..
+                    }),
+                    ..
+                })
+            ) {
+                return true;
+            }
+            let mut found = false;
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                found |= contains_reveal_consult(nested);
+            });
+            found
+        })
+    }
+    if !contains_reveal_consult(&parts.effects) {
         return Ok(None);
-    };
+    }
 
     let Some(followup) =
         bundle_grammar::parse_consult_battlefield_followup_shape(followup_sentence)
@@ -228,6 +241,14 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
         super::super::consult_family::parse_consult_traversal_sentence(&shape.consult_tokens),
     )
     .flatten()?;
+    let consult_effect_count = parts.effects.len();
+    let optional_consult = shape
+        .consult_tokens
+        .iter()
+        .position(|token| {
+            token.is_word("reveal") || token.is_word("look") || token.is_word("exile")
+        })
+        .is_some_and(|verb| verb > 0 && shape.consult_tokens[verb - 1].is_word("may"));
     let mut effects = parts.effects;
     let keep_tag = match shape.middle {
         bundle_grammar::ConsultMiddleShape::MatchedMove(matched) => match matched.selection {
@@ -301,6 +322,17 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
                 });
             }
             for clause in clauses {
+                if let Some(matched) = bundle_grammar::parse_consult_matched_move_shape(&clause)
+                    && matched.selection == bundle_grammar::ConsultMoveSelectionShape::AllMatched
+                {
+                    effects.push(move_consult_tagged_group(
+                        parts.match_tag.clone(),
+                        matched.zone,
+                        matched.controller_you,
+                    ));
+                    continue;
+                }
+
                 let mut clause_effects = crate::grammar::primitives::probe_shape(
                     effect_sentences::parse_effect_sentence_lexed(&clause),
                 )?;
@@ -324,6 +356,24 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
         keep_tag,
         parts.player,
     );
+    if optional_consult {
+        let disposition = effects.split_off(consult_effect_count);
+        let optional = if matches!(parts.player, PlayerAst::You | PlayerAst::Implicit) {
+            EffectAst::Permissions(PermissionEffectAst::May { effects })
+        } else {
+            EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                player: parts.player,
+                effects,
+            })
+        };
+        effects = vec![
+            optional,
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: crate::cards::builders::IfResultPredicate::Did,
+                effects: disposition,
+            }),
+        ];
+    }
     match leading_result {
         Some(prefix) => Some(vec![match prefix.kind {
             crate::grammar::structure::LeadingResultPrefixKind::If => {

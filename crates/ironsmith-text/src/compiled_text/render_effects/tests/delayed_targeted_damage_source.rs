@@ -98,7 +98,9 @@ fn delayed_damage_uses_the_later_targeted_land_and_keeps_the_original_creature()
 fn delayed_targeted_damage_renders_the_land_as_the_source() {
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition()).join("\n"),
-        TEXT
+        TEXT,
+        "{:#?}",
+        definition().abilities
     );
 }
 

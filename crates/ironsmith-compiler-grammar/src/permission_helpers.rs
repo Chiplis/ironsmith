@@ -1,9 +1,8 @@
 pub(crate) mod effect_cast_prices;
-#[path = "permission_helpers/graveyard_turn_permissions.rs"]
-mod graveyard_turn_permissions;
 #[path = "permission_helpers/filtered_zone_permissions.rs"]
 mod filtered_zone_permissions;
-pub(crate) use filtered_zone_permissions::parse_top_look_and_permission;
+#[path = "permission_helpers/graveyard_turn_permissions.rs"]
+mod graveyard_turn_permissions;
 use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
 use super::grammar::permission_facts::{
     graveyard_source as permission_graveyard_facts,
@@ -30,6 +29,7 @@ use crate::model::CompilerStaticAbilityCore as StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
+pub(crate) use filtered_zone_permissions::parse_top_look_and_permission;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionLifetime {
@@ -299,12 +299,12 @@ fn combine_flash_permission_lifetime(
     }
 }
 
-fn grant_spec_grants_flash_to_hand(spec: &crate::model::CompilerGrantSpecCore) -> bool {
+fn grant_spec_grants_flash_timing(spec: &crate::model::CompilerGrantSpecCore) -> bool {
     matches!(
         &spec.grantable,
         crate::model::CompilerGrantableCore::Ability(ability)
             if ability.id() == crate::static_abilities::StaticAbilityId::Flash
-    ) && spec.zone == Zone::Hand
+    ) && matches!(spec.zone, Zone::Hand | Zone::Stack)
 }
 
 fn parse_play_from_zone_rest_tokens<'a>(
@@ -1064,7 +1064,8 @@ fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
             crate::model::CompilerGrantableCore::play_from(),
             filter,
             Zone::Library,
-        ).with_top_card_only()
+        )
+        .with_top_card_only()
         .with_usage_limit(crate::grant::GrantUsageLimit::OnceEachTurn),
         lifetime: PermissionLifetime::Static,
     })
@@ -1602,13 +1603,17 @@ pub fn parse_permission_clause_spec_lexed(
                 if permission_subject_facts::parse_exact_permission_subject(parsed.filter_tokens)
                     == Some(permission_subject_facts::ExactPermissionSubject::GenericSpells)
                 {
-                    crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(ObjectFilter::nonland())
+                    crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(
+                        ObjectFilter::nonland(),
+                    )
                 } else if permission_subject_facts::parse_exact_permission_subject(
                     parsed.filter_tokens,
                 ) == Some(
                     permission_subject_facts::ExactPermissionSubject::NoncreatureSpells,
                 ) {
-                    crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(ObjectFilter::noncreature_spell())
+                    crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(
+                        ObjectFilter::noncreature_spell(),
+                    )
                 } else if let Some(filter) =
                     permission_subject_facts::parse_permission_subject_filter_tokens(
                         parsed.filter_tokens,
@@ -1825,7 +1830,7 @@ pub fn parse_cast_spells_as_though_they_had_flash_clause(
             PermissionLifetime::ThisTurn
                 | PermissionLifetime::UntilEndOfTurn
                 | PermissionLifetime::UntilYourNextTurn
-        ) && grant_spec_grants_flash_to_hand(&spec) =>
+        ) && grant_spec_grants_flash_timing(&spec) =>
         {
             let duration = match lifetime {
                 PermissionLifetime::UntilYourNextTurn => {
@@ -2238,7 +2243,9 @@ mod tagged_permission_readings;
 pub fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if let Some(effect) = effect_cast_prices::parse(tokens)? { return Ok(Some(effect)); }
+    if let Some(effect) = effect_cast_prices::parse(tokens)? {
+        return Ok(Some(effect));
+    }
     let trimmed_tokens = trim_commas(tokens);
     let mut trimmed = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
     if let Some(((), rest)) = crate::grammar::primitives::parse_prefix(
@@ -2572,14 +2579,23 @@ pub fn parse_cast_or_play_tagged_clause(
         ) =>
         {
             let mut effect = EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-                crate::tag::TagRef::of(tag), player, allow_land,
-                without_paying_mana_cost, mana_spend_mode, filter,
+                crate::tag::TagRef::of(tag),
+                player,
+                allow_land,
+                without_paying_mana_cost,
+                mana_spend_mode,
+                filter,
             );
             if let EffectAst::SubjectVerb(subject) = &mut effect
-                && let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
-                    surface: grant_surface, ..
-                }) = &mut subject.action
-            { *grant_surface = surface; }
+                && let SubjectVerbActionAst::Grants(
+                    GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                        surface: grant_surface,
+                        ..
+                    },
+                ) = &mut subject.action
+            {
+                *grant_surface = surface;
+            }
             Ok(Some(effect))
         }
         Some(PermissionClauseSpec::Tagged {
@@ -2849,4 +2865,66 @@ mod graveyard_additional_cost_tests {
             );
         }
     }
+}
+
+/// A conjunction with singular land and spell objects grants separate uses.
+/// Each native grant owns its own per-turn budget and permits either owner.
+pub(crate) fn parse_independent_recent_graveyard_permissions(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<crate::cards::builders::StaticAbilityAst>> {
+    let tokens = crate::util::trim_edge_punctuation(tokens);
+    if crate::lexer::parser_token_word_refs(&tokens)
+        != [
+            "during",
+            "each",
+            "of",
+            "your",
+            "turns",
+            "you",
+            "may",
+            "play",
+            "a",
+            "land",
+            "and",
+            "cast",
+            "a",
+            "spell",
+            "from",
+            "among",
+            "cards",
+            "in",
+            "graveyards",
+            "that",
+            "were",
+            "put",
+            "there",
+            "from",
+            "libraries",
+            "this",
+            "turn",
+        ]
+    {
+        return None;
+    }
+    Some(
+        [true, false]
+            .into_iter()
+            .map(|land| {
+                let mut filter = ObjectFilter::default();
+                if land {
+                    filter.card_types.push(CardType::Land);
+                } else {
+                    filter.excluded_card_types.push(CardType::Land);
+                }
+                filter.entered_graveyard_from_library_this_turn = true;
+                let mut spec = crate::model::CompilerGrantSpecCore::new(
+                    crate::model::CompilerGrantableCore::play_from(),
+                    filter,
+                    Zone::Graveyard,
+                );
+                spec.usage_limit = Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns);
+                crate::cards::builders::StaticAbilityAst::Static(StaticAbility::grants(spec))
+            })
+            .collect(),
+    )
 }

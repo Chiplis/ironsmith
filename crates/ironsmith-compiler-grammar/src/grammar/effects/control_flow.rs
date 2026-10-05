@@ -437,6 +437,11 @@ fn recognize_trailing_condition(
         ));
     }
     let unless = last_top_level_word(tokens, "unless")?;
+    // Leading payment choices belong to the unless-action grammar. They have
+    // no preceding action and cannot be a malformed trailing state condition.
+    if unless == 0 {
+        return None;
+    }
     let body_tokens = trim_lexed_commas(&tokens[..unless]);
     let condition_tokens = trim_lexed_commas(&tokens[unless + 1..]);
     if body_tokens.is_empty() || condition_tokens.is_empty() {

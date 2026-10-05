@@ -6,7 +6,7 @@ use ironsmith::decisions::context::{
     BooleanContext, SelectObjectsContext, SelectOptionsContext, TargetsContext,
 };
 use ironsmith::effects::{
-    EffectExecutor, EffectContext as ExecutionContext, RollDiceChooseResultEffect, RollDieEffect,
+    EffectContext as ExecutionContext, EffectExecutor, RollDiceChooseResultEffect, RollDieEffect,
 };
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
@@ -489,7 +489,7 @@ fn puzzlebox_mana_roll_and_hundred_counter_search_are_real_paid_abilities() {
         action(
             &mut g,
             A,
-            LegalAction::ActivateAbility {
+            LegalAction::ActivateManaAbility {
                 source,
                 ability_index: mana,
             },

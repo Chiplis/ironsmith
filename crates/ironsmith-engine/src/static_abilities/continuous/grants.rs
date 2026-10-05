@@ -35,7 +35,11 @@ impl ControlAttachedPermanent {
 impl StaticAbilityKind for ControlAttachedPermanent {
     fn canonical_model(&self) -> Option<crate::static_abilities::CompiledStaticAbility> {
         let Self { display } = self;
-        Some(crate::static_abilities::CompiledStaticAbility::control_attached_permanent(display.clone()))
+        Some(
+            crate::static_abilities::CompiledStaticAbility::control_attached_permanent(
+                display.clone(),
+            ),
+        )
     }
 
     fn id(&self) -> StaticAbilityId {
@@ -507,7 +511,11 @@ impl GrantObjectAbilityForFilter {
                 "{subject} can attack as though {} didn't have defender",
                 if singular_subject { "it" } else { "they" }
             ),
-            StaticAbilityId::CanBlockAnyNumber | StaticAbilityId::CanBlockAdditionalCreatureEachCombat | StaticAbilityId::CanBlockAdditionalForEach => format!("{subject} {ability_text_lower}"),
+            StaticAbilityId::CanBlockAnyNumber
+            | StaticAbilityId::CanBlockAdditionalCreatureEachCombat
+            | StaticAbilityId::CanBlockAdditionalForEach => {
+                format!("{subject} {ability_text_lower}")
+            }
             StaticAbilityId::Unblockable => format!("{subject} can't be blocked"),
             StaticAbilityId::CantAttack => format!("{subject} can't attack"),
             StaticAbilityId::CantBlock => format!("{subject} can't block"),
@@ -627,6 +635,19 @@ impl GrantObjectAbilityForFilter {
         text
     }
 
+    fn condition_is_receiver_qualification(&self) -> bool {
+        match &self.condition {
+            Some(crate::ConditionExpr::AttachedToSourceMatches(filter)) => filter.power_toughness_relation.is_some()
+                && std::iter::once(&self.ability).chain(self.additional_abilities.iter()).all(|ability| matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.canonical_model().is_some())),
+            Some(crate::ConditionExpr::CountComparison { count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter), comparison: crate::effect::Comparison::GreaterThanOrEqual(1), .. }) => {
+                !self.filter.tagged_constraints.is_empty()
+                    && self.filter.tagged_constraints.iter().all(|constraint| filter.tagged_constraints.contains(constraint))
+                    && std::iter::once(&self.ability).chain(self.additional_abilities.iter()).all(|ability| matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.canonical_model().is_some()))
+            }
+            _ => false,
+        }
+    }
+
     fn effect_target(&self, source: ObjectId) -> EffectTarget {
         if self.applies_to_source() {
             EffectTarget::Source
@@ -683,6 +704,9 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
     /// you control a Wizard") would impose its restrictions even while the
     /// condition is false.
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        if self.condition_is_receiver_qualification() {
+            return true;
+        }
         let Some(condition) = &self.condition else {
             return true;
         };
@@ -926,36 +950,75 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        let mut target = self.effect_target(source);
+        let mut condition = self.condition.clone();
+        let mut receiver_condition = if std::iter::once(&self.ability).chain(self.additional_abilities.iter())
+            .all(|ability| matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.canonical_model().is_some()))
+        {
+            if let EffectTarget::Filter(filter) = &mut target {
+                filter.power_toughness_relation.take().map(|relation|
+                    crate::ConditionExpr::SourceMatches(ObjectFilter::default().with_power_toughness_relation(relation)))
+            } else { None }
+        } else { None };
+        if let Some(crate::ConditionExpr::AttachedToSourceMatches(filter)) = &condition
+            && filter.power_toughness_relation.is_some()
+            && std::iter::once(&self.ability).chain(self.additional_abilities.iter()).all(|ability| matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.canonical_model().is_some()))
+        {
+            receiver_condition = Some(crate::ConditionExpr::SourceMatches(filter.clone()));
+            condition = None;
+        }
+        if let Some(crate::ConditionExpr::CountComparison { count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter), comparison: crate::effect::Comparison::GreaterThanOrEqual(1), .. }) = &condition
+            && !self.filter.tagged_constraints.is_empty()
+            && self.filter.tagged_constraints.iter().all(|constraint| filter.tagged_constraints.contains(constraint))
+            && std::iter::once(&self.ability).chain(self.additional_abilities.iter()).all(|ability| matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.canonical_model().is_some()))
+        {
+            let mut recipient_filter = filter.clone();
+            recipient_filter.tagged_constraints.clear();
+            let qualification = crate::ConditionExpr::SourceMatches(recipient_filter);
+            receiver_condition = Some(match receiver_condition { Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(qualification)), None => qualification });
+            condition = None;
+        }
+        // Numeric recipient qualifications read final P/T when the granted
+        // rule is consulted, rather than the intermediate layer-6 axes.
+        let grant_ability = |ability: &Ability| {
+            let mut bound = super::materialize_named_granting_source(ability, source);
+            if let Some(condition) = &receiver_condition
+                && let AbilityKind::Static(static_ability) = &mut bound.kind
+                && let Some(model) = static_ability.canonical_model()
+            {
+                *static_ability = StaticAbility::new(
+                    crate::static_abilities::StaticAbilityModelInterpreter::new(
+                        model.with_condition(condition.clone()),
+                    ),
+                );
+            }
+            bound
+        };
         let mut effects = Vec::with_capacity(1 + self.additional_abilities.len());
         effects.push(effect_with_optional_static_condition(
             ContinuousEffect::new(
                 source,
                 controller,
-                self.effect_target(source),
+                target.clone(),
                 // "Creatures you control have protection from the chosen card
                 // type": the choice is the granting permanent's (CR 702.16a).
-                Modification::AddAbilityGeneric(super::materialize_named_granting_source(
-                    &self.ability,
-                    source,
-                ))
-                .bind_chosen_protection_qualities(game, source),
+                Modification::AddAbilityGeneric(grant_ability(&self.ability))
+                    .bind_chosen_protection_qualities(game, source),
             )
             .with_source_type(EffectSourceType::StaticAbility),
-            &self.condition,
+            &condition,
         ));
         effects.extend(self.additional_abilities.iter().cloned().map(|ability| {
             effect_with_optional_static_condition(
                 ContinuousEffect::new(
                     source,
                     controller,
-                    self.effect_target(source),
-                    Modification::AddAbilityGeneric(super::materialize_named_granting_source(
-                        &ability, source,
-                    ))
-                    .bind_chosen_protection_qualities(game, source),
+                    target.clone(),
+                    Modification::AddAbilityGeneric(grant_ability(&ability))
+                        .bind_chosen_protection_qualities(game, source),
                 )
                 .with_source_type(EffectSourceType::StaticAbility),
-                &self.condition,
+                &condition,
             )
         }));
         effects

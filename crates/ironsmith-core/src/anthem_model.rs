@@ -203,7 +203,9 @@ mod tests {
 /// compiler admission and runtime Dynamic-to-layer conversion. This is a
 /// bounded capability check, not a general continuous-value validator.
 pub fn supports_controller_state_anthem_value(value: &Value) -> bool {
-    if !crate::tag::tag_keys_of(value).is_empty() { return false; }
+    if !crate::tag::tag_keys_of(value).is_empty() {
+        return false;
+    }
     match value.unhinted() {
         Value::Fixed(_) => true,
         Value::MaximumLifeTotal(PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You)
@@ -216,23 +218,44 @@ pub fn supports_controller_state_anthem_value(value: &Value) -> bool {
         | Value::CardsInGraveyard(PlayerFilter::You)
         | Value::LifeLostThisTurn(PlayerFilter::You)
         | Value::LifeGainedThisTurn(PlayerFilter::You) => true,
-        Value::TurnHistoryCount(crate::TurnHistoryCount::CardsDrawn(PlayerFilter::You)) => true,
+        Value::TurnHistoryCount(crate::TurnHistoryCount::CardsDrawn(PlayerFilter::You))
+        | Value::MaxCardsDrawnThisTurn(
+            PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You,
+        ) => true,
         Value::TurnHistoryCount(crate::TurnHistoryCount::EnteredBattlefield(filter))
+        | Value::Count(filter)
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
         | Value::LeastPower(filter)
         | Value::LeastToughness(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter) => controller_state_filter(filter),
-        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => supports_controller_state_anthem_value(inner),
-        Value::DividedRoundedDown(inner, divisor) => *divisor != 0 && supports_controller_state_anthem_value(inner),
-        Value::Add(left, right) | Value::Min(left, right) => supports_controller_state_anthem_value(left) && supports_controller_state_anthem_value(right),
+        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+            supports_controller_state_anthem_value(inner)
+        }
+        Value::DividedRoundedDown(inner, divisor) => {
+            *divisor != 0 && supports_controller_state_anthem_value(inner)
+        }
+        Value::Add(left, right) | Value::Min(left, right) => {
+            supports_controller_state_anthem_value(left)
+                && supports_controller_state_anthem_value(right)
+        }
         _ => false,
     }
 }
 
 fn controller_state_filter(filter: &ObjectFilter) -> bool {
-    let player = |value: &Option<PlayerFilter>| value.as_ref().filter(|player| matches!(player, PlayerFilter::You | PlayerFilter::Opponent | PlayerFilter::Any)).cloned();
+    let player = |value: &Option<PlayerFilter>| {
+        value
+            .as_ref()
+            .filter(|player| {
+                matches!(
+                    player,
+                    PlayerFilter::You | PlayerFilter::Opponent | PlayerFilter::Any
+                )
+            })
+            .cloned()
+    };
     // A positive projection fails closed for every unlisted semantic field,
     // including future fields. In particular, `other`, chosen characteristics,
     // source/target relations and nested filters are not accidentally admitted.
@@ -270,14 +293,20 @@ mod controller_state_anthem_value_tests {
 
     #[test]
     fn layer_capability_keeps_object_and_resolution_relative_values_on_the_legacy_path() {
-        assert!(supports_controller_state_anthem_value(&Value::LifeTotal(PlayerFilter::You)));
+        assert!(supports_controller_state_anthem_value(&Value::LifeTotal(
+            PlayerFilter::You
+        )));
         let mut grave = ObjectFilter::creature();
         grave.zone = Some(crate::Zone::Graveyard);
         grave.owner = Some(PlayerFilter::You);
         grave.set_explicit_card_noun(true);
-        assert!(supports_controller_state_anthem_value(&Value::GreatestPower(grave.clone())));
+        assert!(supports_controller_state_anthem_value(
+            &Value::GreatestPower(grave.clone())
+        ));
         grave.other = true;
-        assert!(!supports_controller_state_anthem_value(&Value::GreatestPower(grave)));
+        assert!(!supports_controller_state_anthem_value(
+            &Value::GreatestPower(grave)
+        ));
         for value in [
             Value::SourcePower,
             Value::PartySize(PlayerFilter::You),

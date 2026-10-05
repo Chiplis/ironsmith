@@ -102,7 +102,7 @@ fn nonartifact_spell_restricted_mana_ability() -> crate::ability::Ability {
     crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
             mana_cost: TotalCost::from_costs(vec![Cost::tap()]),
-            effects: vec![Effect::add_mana(vec![ManaSymbol::Colorless])].into(),
+            effects: Vec::new().into(),
             choices: vec![],
             timing: crate::ability::ActivationTiming::AnyTime,
             additional_restrictions: vec![],
@@ -488,11 +488,18 @@ pub fn cursed_role_token_definition() -> CardDefinition {
 /// text abbreviates it. This is a repeatable tap ability, not a sacrifice.
 pub fn heartwood_token_definition() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Heartwood")
-        .token().card_types(vec![CardType::Artifact]).subtypes(vec![Subtype::Heartwood])
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Heartwood])
         .color_indicator(crate::color::ColorSet::RED.union(crate::color::ColorSet::GREEN))
         .oracle_text("{T}: Add {R} or {G}.")
-        .with_ability(crate::ability::Ability::mana_with_effects(TotalCost::from_costs(vec![]),
-            vec![Effect::add_mana_of_any_color_restricted(1, vec![crate::color::Color::Red, crate::color::Color::Green])]))
+        .with_ability(crate::ability::Ability::mana_with_effects(
+            TotalCost::from_costs(vec![]),
+            vec![Effect::add_mana_of_any_color_restricted(
+                1,
+                vec![crate::color::Color::Red, crate::color::Color::Green],
+            )],
+        ))
         .build()
 }
 
@@ -500,9 +507,15 @@ pub fn heartwood_token_definition() -> CardDefinition {
 /// activation and other costs remain legal uses of the produced mana.
 pub fn vibranium_token_definition() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Vibranium")
-        .token().card_types(vec![CardType::Artifact]).subtypes(vec![Subtype::Vibranium])
-        .oracle_text("Indestructible\n{T}: Add {C}. This mana can't be spent to cast a nonartifact spell.")
-        .indestructible().with_ability(nonartifact_spell_restricted_mana_ability()).build()
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Vibranium])
+        .oracle_text(
+            "Indestructible\n{T}: Add {C}. This mana can't be spent to cast a nonartifact spell.",
+        )
+        .indestructible()
+        .with_ability(nonartifact_spell_restricted_mana_ability())
+        .build()
 }
 
 /// CR 111.11: complete printed characteristics, frozen from the canonical
@@ -527,13 +540,19 @@ pub fn gingerbrute_token_definition() -> CardDefinition {
 }
 
 pub fn mutavault_token_definition() -> CardDefinition {
-    let animation = crate::effects::ApplyContinuousEffect::with_spec(ChooseSpec::Source,
-        crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]), crate::effect::Until::EndOfTurn)
-        .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
-            power: crate::effect::Value::Fixed(2), toughness: crate::effect::Value::Fixed(2),
-            sublayer: crate::continuous::PtSublayer::Setting,
-        })
-        .with_additional_modification(crate::continuous::Modification::AddAllSubtypesOfFamily(crate::types::SubtypeFamily::Creature));
+    let animation = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Source,
+        crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+        crate::effect::Until::EndOfTurn,
+    )
+    .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
+        power: crate::effect::Value::Fixed(2),
+        toughness: crate::effect::Value::Fixed(2),
+        sublayer: crate::continuous::PtSublayer::Setting,
+    })
+    .with_additional_modification(crate::continuous::Modification::AddAllSubtypesOfFamily(
+        crate::types::SubtypeFamily::Creature,
+    ));
     CardDefinitionBuilder::new(CardId::new(), "Mutavault")
         .token().card_types(vec![CardType::Land])
         .oracle_text("{T}: Add {C}.\n{1}: This land becomes a 2/2 creature with all creature types until end of turn. It's still a land.")
@@ -546,18 +565,33 @@ pub fn mutavault_token_definition() -> CardDefinition {
 
 pub fn spellgorger_weird_token_definition() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Spellgorger Weird")
-        .token().mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2), ManaSymbol::Red]))
-        .card_types(vec![CardType::Creature]).subtypes(vec![Subtype::Weird])
+        .token()
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(2),
+            ManaSymbol::Red,
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Weird])
         .power_toughness(crate::card::PowerToughness::fixed(2, 2))
         .oracle_text("Whenever you cast a noncreature spell, put a +1/+1 counter on this creature.")
         .with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::spell_cast(Some(ObjectFilter::default().without_type(CardType::Creature)), PlayerFilter::You),
-            vec![Effect::put_counters(crate::object::CounterType::PlusOnePlusOne, 1, ChooseSpec::Source)]))
+            crate::triggers::Trigger::spell_cast(
+                Some(ObjectFilter::default().without_type(CardType::Creature)),
+                PlayerFilter::You,
+            ),
+            vec![Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                1,
+                ChooseSpec::Source,
+            )],
+        ))
         .build()
 }
 
 pub fn tarmogoyf_token_definition() -> CardDefinition {
-    let count = crate::effect::Value::CardTypesAmong(ObjectFilter::default().in_zone(Zone::Graveyard).nontoken());
+    let count = crate::effect::Value::CardTypesAmong(
+        ObjectFilter::default().in_zone(Zone::Graveyard).nontoken(),
+    );
     CardDefinitionBuilder::new(CardId::new(), "Tarmogoyf")
         .token().mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1), ManaSymbol::Green]))
         .card_types(vec![CardType::Creature]).subtypes(vec![Subtype::Lhurgoyf])

@@ -1,24 +1,26 @@
 mod characteristic_assertions;
-use characteristic_assertions::parse_supertype_assertion_line;
 use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::PredicateAst;
 use crate::cards::builders::SourcePredicateAst;
 use crate::cards::builders::TurnEventPredicateAst;
-mod dynamic_anthem_values;
+use characteristic_assertions::parse_supertype_assertion_line;
 mod blocking_permissions;
+mod dynamic_anthem_values;
 pub use blocking_permissions::parse_blocking_capacity_static_line;
-mod costs_replacements_and_permissions;
 mod alternative_prices;
+mod costs_replacements_and_permissions;
 pub use alternative_prices::parse_independent_alternative_price_line;
 mod damage_prevention;
 mod damage_redirection;
 pub use damage_redirection::parse_scoped_damage_redirection_line;
 pub(crate) use damage_redirection::redirection_recipient_filters;
-mod prevention_follow_ups;
 mod life_change_replacements;
-pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
-pub use prevention_follow_ups::{parse_prevention_amount_follow_up_line, parse_prevention_proposed_amount_follow_up_line};
+mod prevention_follow_ups;
 pub use damage_prevention::parse_filtered_damage_prevention_line;
+pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
+pub use prevention_follow_ups::{
+    parse_prevention_amount_follow_up_line, parse_prevention_proposed_amount_follow_up_line,
+};
 mod leading_conditional_sentence_chain;
 pub use costs_replacements_and_permissions::*;
 
@@ -473,7 +475,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         | "parse_attached_prevent_all_damage_dealt_to_attached_line" => {
             vec![StaticAbilityLineHeadHint::Single("prevent")]
         }
-        "parse_scoped_damage_redirection_line" => vec![StaticAbilityLineHeadHint::Single("all"), StaticAbilityLineHeadHint::Single("as")],
+        "parse_scoped_damage_redirection_line" => vec![
+            StaticAbilityLineHeadHint::Single("all"),
+            StaticAbilityLineHeadHint::Single("as"),
+        ],
         "parse_damage_redirect_to_source_line" => {
             vec![StaticAbilityLineHeadHint::Single("all")]
         }
@@ -702,6 +707,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
         "parse_you_may_static_grant_line" => vec![
+            StaticAbilityLineHeadHint::Pair("once", "each"),
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
             StaticAbilityLineHeadHint::Single("during"),
@@ -746,6 +752,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("during", "your"),
         ],
         "parse_independent_alternative_price_line" => vec![
+            StaticAbilityLineHeadHint::Single("rather"),
+            StaticAbilityLineHeadHint::Pair("rather", "than"),
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
             StaticAbilityLineHeadHint::Single("once"),
@@ -775,7 +783,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("play"),
             StaticAbilityLineHeadHint::Pair("play", "with"),
         ],
-        "parse_self_or_global_hands_revealed_line" => vec![StaticAbilityLineHeadHint::Single("play"), StaticAbilityLineHeadHint::Single("players")],
+        "parse_self_or_global_hands_revealed_line" => vec![
+            StaticAbilityLineHeadHint::Single("play"),
+            StaticAbilityLineHeadHint::Single("players"),
+        ],
         "parse_your_opponents_play_with_hands_revealed_line" => vec![
             StaticAbilityLineHeadHint::Single("your"),
             StaticAbilityLineHeadHint::Pair("your", "opponents"),
@@ -2121,8 +2132,18 @@ fn parse_bestow_lure_source_or_enchanted_line(
     let matches_shape = matches!(
         words.as_slice(),
         [
-            "all", "creatures", "able", "to", "block", "this", "creature" | "permanent", "or",
-            "enchanted", "creature", "do", "so"
+            "all",
+            "creatures",
+            "able",
+            "to",
+            "block",
+            "this",
+            "creature" | "permanent",
+            "or",
+            "enchanted",
+            "creature",
+            "do",
+            "so"
         ]
     );
     if !matches_shape {
@@ -2169,7 +2190,9 @@ fn parse_source_has_unless_status_line(
     }
     let head_words = parser_token_word_refs(head);
     if head_words.first() != Some(&"this")
-        || !head_words.iter().any(|word| matches!(*word, "has" | "have"))
+        || !head_words
+            .iter()
+            .any(|word| matches!(*word, "has" | "have"))
     {
         return Ok(None);
     }
@@ -2268,6 +2291,20 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     {
         return parse_static_ability_ast_line_lexed_unstacked(body_tokens);
     }
+    if let Some(abilities) = parse_filtered_toughness_assignment_line(tokens)? {
+        return Ok(Some(abilities));
+    }
+    // Bound the condition before reading the characteristic-setting subject.
+    // Otherwise a permissive subject suffix can absorb the condition words.
+    if let Some(spec) = split_as_long_as_condition_prefix_lexed(tokens)
+        && let Some(ability) = parse_subject_is_card_types_line(spec.remainder_tokens)?
+    {
+        let condition = parse_static_condition_clause(spec.condition_tokens)?;
+        return Ok(Some(vec![StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(StaticAbilityAst::Static(ability)),
+            condition,
+        }]));
+    }
     if let Some(abilities) = parse_source_has_unless_status_line(tokens)? {
         return Ok(Some(abilities));
     }
@@ -2279,6 +2316,50 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     }
     if let Some(abilities) = parse_conditional_source_characteristics_and_predicate_line(tokens)? {
         return Ok(Some(abilities));
+    }
+    if let Some(abilities) = parse_carried_attached_subject_line(tokens)? {
+        return Ok(Some(abilities));
+    }
+    let words = crate::lexer::token_word_refs(tokens);
+    if words.contains(&"cast")
+        && words.contains(&"instead")
+        && let Some(abilities) = parse_static_ability_ast_line_lexed_single(tokens)?
+    {
+        return Ok(Some(abilities));
+    }
+    // Independent static sentences must be read before a permissive anthem
+    // tail can absorb the next sentence into its keyword or subject filter.
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() > 1 {
+        let (parsed, loss) = crate::parse_loss::capture(|| {
+            let mut combined = Vec::new();
+            for sentence in &sentences {
+                let Some(mut abilities) = parse_static_ability_ast_line_lexed_single(sentence)?
+                else {
+                    return Ok::<_, CardTextError>(None);
+                };
+                combined.append(&mut abilities);
+            }
+            Ok(Some(combined))
+        });
+        if !loss.is_lossy()
+            && let Ok(Some(abilities)) = parsed
+        {
+            return Ok(Some(abilities));
+        }
+    }
+    if !tokens.iter().any(|token| token.is_quote())
+        || tokens
+            .iter()
+            .take_while(|token| !token.is_quote())
+            .any(|token| token.is_any_word(&["get", "gets"]))
+    {
+        let (complete_tail, tail_loss) =
+            crate::parse_loss::capture(|| parse_anthem_with_trailing_segments_line(tokens));
+        if let Ok(Some(abilities)) = complete_tail {
+            replay_static_rule_parse_loss(&tail_loss);
+            return Ok(Some(abilities));
+        }
     }
     let input = compound_line_readings::StaticLine { tokens };
     match compound_line_readings::read(&input) {
@@ -2402,6 +2483,27 @@ mod single_line_readings;
 fn parse_static_ability_ast_line_lexed_single(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(split) = split_as_long_as_condition_prefix_lexed(tokens)
+        && let Some(ability) = parse_characteristic_defining_pt_line(split.remainder_tokens)?
+    {
+        let condition = parse_static_condition_clause(split.condition_tokens)?;
+        return Ok(Some(vec![StaticAbilityAst::Static(
+            ability.with_condition(condition),
+        )]));
+    }
+    if let Some(abilities) =
+        crate::permission_helpers::parse_independent_recent_graveyard_permissions(tokens)
+    {
+        return Ok(Some(abilities));
+    }
+    // A complete replacement owns both its conditional prefix and its
+    // repeated damage recipient; neither is a resolving damage instruction.
+    if let Some(ability) = parse_double_damage_amount_replacement_line(tokens)? {
+        return Ok(Some(vec![StaticAbilityAst::Static(ability)]));
+    }
+    if let Some(abilities) = parse_filtered_toughness_assignment_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     let input = single_line_readings::SingleStaticLine {
         tokens,
         read_by_cache: Default::default(),
@@ -2513,8 +2615,18 @@ fn parse_conditional_source_characteristics_and_predicate_line(
         return Ok(None);
     }
     const PREDICATE_HEADS: &[&str] = &[
-        "can't", "can’t", "cant", "can", "has", "have", "gets", "attacks", "blocks",
-        "doesn't", "doesn’t", "doesnt",
+        "can't",
+        "can’t",
+        "cant",
+        "can",
+        "has",
+        "have",
+        "gets",
+        "attacks",
+        "blocks",
+        "doesn't",
+        "doesn’t",
+        "doesnt",
     ];
     let Some(and_index) = remainder.iter().enumerate().rposition(|(index, token)| {
         token.is_word("and")
@@ -2524,11 +2636,7 @@ fn parse_conditional_source_characteristics_and_predicate_line(
     }) else {
         return Ok(None);
     };
-    if and_index < 3
-        || remainder
-            .iter()
-            .any(|token| token.kind == TokenKind::Quote)
-    {
+    if and_index < 3 || remainder.iter().any(|token| token.kind == TokenKind::Quote) {
         return Ok(None);
     }
     let Some(comma_index) = tokens
@@ -4350,10 +4458,12 @@ pub fn parse_choose_named_options_as_enters_line(
             [head @ .., last] => format!("{}, or {last}", head.join(", ")),
             _ => return Ok(None),
         };
-        return Ok(Some(StaticAbility::choose_named_option_at_random_as_enters(
-            options,
-            format!("As {display_subject} enters, choose {display_options} at random."),
-        )));
+        return Ok(Some(
+            StaticAbility::choose_named_option_at_random_as_enters(
+                options,
+                format!("As {display_subject} enters, choose {display_options} at random."),
+            ),
+        ));
     }
 
     let display_options = options
@@ -4400,9 +4510,13 @@ fn parse_trigger_duplication_source_filter(
             Ok(left) => {
                 left.source
                     || (left == ObjectFilter::default()
-                        && tokens[..or_index].iter().all(|token| token.as_word().is_some()))
+                        && tokens[..or_index]
+                            .iter()
+                            .all(|token| token.as_word().is_some()))
             }
-            Err(_) => tokens[..or_index].iter().all(|token| token.as_word().is_some()),
+            Err(_) => tokens[..or_index]
+                .iter()
+                .all(|token| token.as_word().is_some()),
         }
         && let Ok(mut right) =
             parse_object_filter_with_grammar_entrypoint(&tokens[or_index + 1..], false)
@@ -4412,7 +4526,8 @@ fn parse_trigger_duplication_source_filter(
         right.tagged_constraints.retain(|constraint| {
             let it_attachment = constraint.tag.as_str()
                 == crate::tag::CompilerReferenceTag::It.as_str()
-                && constraint.relation == crate::filter::TaggedOpbjectRelation::AttachedToTaggedObject;
+                && constraint.relation
+                    == crate::filter::TaggedOpbjectRelation::AttachedToTaggedObject;
             relates_to_source |= it_attachment;
             !it_attachment
         });
@@ -4735,16 +4850,33 @@ pub fn parse_damage_amount_replacement_line(
     let Some(shape) = keyword_static_lines::parse_additive_damage_amount_tokens(&tokens) else {
         return Ok(None);
     };
-    if shape.this_turn { return Ok(None); }
-    let Some(spec) = damage_addition_parts_from_shape(shape)? else { return Ok(None); };
+    if shape.this_turn {
+        return Ok(None);
+    }
+    let Some(spec) = damage_addition_parts_from_shape(shape)? else {
+        return Ok(None);
+    };
     let mut display = render_token_slice(&tokens).trim().to_string();
-    if !crate::string_primitives::ends_with_char(&display, '.') { display.push('.'); }
-    let fixed = match spec.delta.unhinted() { Value::Fixed(n) => Some(*n), _ => None };
+    if !crate::string_primitives::ends_with_char(&display, '.') {
+        display.push('.');
+    }
+    let fixed = match spec.delta.unhinted() {
+        Value::Fixed(n) => Some(*n),
+        _ => None,
+    };
     let ability = StaticAbility::modify_damage_amount_replacement_with_noncombat_only(
-        spec.source_filter, spec.target_player_filter, spec.target_object_filter,
-        fixed.unwrap_or(0), spec.noncombat_only, display,
+        spec.source_filter,
+        spec.target_player_filter,
+        spec.target_object_filter,
+        fixed.unwrap_or(0),
+        spec.noncombat_only,
+        display,
     );
-    Ok(Some(if fixed.is_some() { ability } else { ability.with_dynamic_damage_delta(spec.delta) }))
+    Ok(Some(if fixed.is_some() {
+        ability
+    } else {
+        ability.with_dynamic_damage_delta(spec.delta)
+    }))
 }
 
 pub(crate) fn damage_addition_parts_from_shape(
@@ -4759,44 +4891,62 @@ pub(crate) fn damage_addition_parts_from_shape(
     if let Some(repeated_target_tokens) = spec.repeated_target_tokens {
         let repeated_words = parser_token_word_refs(repeated_target_tokens);
         let demonstrative_only = match repeated_words.as_slice() {
-            ["permanent", "or", "player"] | ["player", "or", "permanent"] =>
-                target_player_filter.is_some() && target_object_filter.is_some(),
+            ["permanent", "or", "player"] | ["player", "or", "permanent"] => {
+                target_player_filter.is_some() && target_object_filter.is_some()
+            }
             ["permanent"] => target_object_filter.is_some() && target_player_filter.is_none(),
             ["player"] => target_player_filter.is_some() && target_object_filter.is_none(),
-            ["creature"] => target_player_filter.is_none()
-                && target_object_filter.as_ref().is_some_and(|filter| filter.card_types == [CardType::Creature]),
-            ["creature", "or", "player"] | ["player", "or", "creature"] =>
+            ["creature"] => {
+                target_player_filter.is_none()
+                    && target_object_filter
+                        .as_ref()
+                        .is_some_and(|filter| filter.card_types == [CardType::Creature])
+            }
+            ["creature", "or", "player"] | ["player", "or", "creature"] => {
                 target_player_filter.is_some()
-                && target_object_filter.as_ref().is_some_and(|filter| filter.card_types == [CardType::Creature]),
+                    && target_object_filter
+                        .as_ref()
+                        .is_some_and(|filter| filter.card_types == [CardType::Creature])
+            }
             _ => false,
         };
         if !demonstrative_only {
             let (repeated_player_filter, repeated_object_filter) =
                 parse_damage_amount_replacement_target_filters(&repeated_words)?;
             if repeated_player_filter.as_ref() != target_player_filter.as_ref()
-                || repeated_object_filter.as_ref() != target_object_filter.as_ref() {
+                || repeated_object_filter.as_ref() != target_object_filter.as_ref()
+            {
                 return Ok(None);
             }
         }
     }
     let source_filter = damage_source_filter_from_shape(spec.source)?;
     let delta = if let Some(definition) = spec.definition_tokens {
-        let Some(value) = parse_value_binding_clause(definition) else { return Ok(None); };
+        let Some(value) = parse_value_binding_clause(definition) else {
+            return Ok(None);
+        };
         value
     } else {
         let words = parser_token_word_refs(spec.delta_tokens);
-        let words = words.strip_prefix(&["an", "amount", "of", "damage", "equal", "to"])
+        let words = words
+            .strip_prefix(&["an", "amount", "of", "damage", "equal", "to"])
             .unwrap_or(&words);
-        let Some((value, used)) = parse_value_expr_words(words) else { return Ok(None); };
-        if used != words.len() { return Ok(None); }
+        let Some((value, used)) = parse_value_expr_words(words) else {
+            return Ok(None);
+        };
+        if used != words.len() {
+            return Ok(None);
+        }
         value
     };
     Ok(Some(ironsmith_core::RegisterDamageAdditionEffect {
-        source_filter, target_player_filter, target_object_filter,
-        delta, noncombat_only: spec.noncombat_only,
+        source_filter,
+        target_player_filter,
+        target_object_filter,
+        delta,
+        noncombat_only: spec.noncombat_only,
         mode: ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,
     }))
-
 }
 
 pub fn parse_prevent_half_damage_replacement_line(
@@ -4882,8 +5032,12 @@ pub(crate) fn damage_multiplier_parts_from_shape(
                         || (tail == ["permanent"]
                             && filters.0.is_none()
                             && normalized.ends_with(&["permanent"]))
-                        || (filters.0.is_some() && filters.1.is_some()
-                            && matches!(tail, ["player", "or", "permanent"] | ["permanent", "or", "player"]))
+                        || (filters.0.is_some()
+                            && filters.1.is_some()
+                            && matches!(
+                                tail,
+                                ["player", "or", "permanent"] | ["permanent", "or", "player"]
+                            ))
                         || tail == ["target"]
                 });
             if !same {
@@ -4913,7 +5067,11 @@ pub(crate) fn damage_multiplier_parts_from_shape(
     // Intrinsic attachment relations do not fall back to unrelated equipped
     // creatures when this Equipment is unattached.
     if source_words == ["equipped", "creature"] {
-        source_filter = { let mut filter = ObjectFilter::creature(); filter.with_attached_object = Some(Box::new(ObjectFilter::source())); filter };
+        source_filter = {
+            let mut filter = ObjectFilter::creature();
+            filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
+            filter
+        };
     }
     Ok(Some(ironsmith_core::RegisterDamageMultiplierEffect {
         source_filter,
@@ -5017,18 +5175,28 @@ fn parse_damage_amount_replacement_target_filters(
     words: &[&str],
 ) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
     let simple = strip_leading_word_refs_any(words, &["a", "an"]);
-    if matches!(simple, ["player", "or", "battle"] | ["player", "or", "a", "battle"]) {
-        return Ok((Some(PlayerFilter::Any), Some(ObjectFilter::permanent().with_type(CardType::Battle))));
+    if matches!(
+        simple,
+        ["player", "or", "battle"] | ["player", "or", "a", "battle"]
+    ) {
+        return Ok((
+            Some(PlayerFilter::Any),
+            Some(ObjectFilter::permanent().with_type(CardType::Battle)),
+        ));
     }
     let object = match simple {
         ["creature"] => Some(ObjectFilter::creature()),
         ["this", "creature"] | ["this", "permanent"] => Some(ObjectFilter::source()),
-        ["equipped", "creature"] | ["enchanted", "creature"] => {
-            Some({ let mut filter = ObjectFilter::creature(); filter.with_attached_object = Some(Box::new(ObjectFilter::source())); filter })
-        }
-        ["enchanted", "permanent"] => {
-            Some({ let mut filter = ObjectFilter::permanent(); filter.with_attached_object = Some(Box::new(ObjectFilter::source())); filter })
-        }
+        ["equipped", "creature"] | ["enchanted", "creature"] => Some({
+            let mut filter = ObjectFilter::creature();
+            filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
+            filter
+        }),
+        ["enchanted", "permanent"] => Some({
+            let mut filter = ObjectFilter::permanent();
+            filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
+            filter
+        }),
         _ => None,
     };
     if let Some(object) = object {
@@ -5213,6 +5381,15 @@ pub fn parse_enter_as_copy_as_enters_line(
         )
     }
 
+    if crate::lexer::parser_token_word_refs(tokens)
+        .starts_with(&["if", "you", "attacked", "this", "turn"])
+        && let Some(comma) = tokens.iter().position(OwnedLexToken::is_comma)
+        && let Some(ability) = parse_enter_as_copy_as_enters_line(&tokens[comma + 1..])?
+    {
+        return Ok(Some(ability.with_condition(parse_static_condition_clause(
+            &tokens[1..comma],
+        )?)));
+    }
     let full_display = render_token_slice(tokens).trim().to_string();
     fn strip_followup(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
         keyword_static_lines::split_enter_as_copy_followup_tokens(tokens)
@@ -5220,17 +5397,18 @@ pub fn parse_enter_as_copy_as_enters_line(
     }
     // "Mind Swap — You may have ... enter as a copy ...": the ability word is
     // presentation; the replacement grammar reads the body.
-    let (tokens, labeled) = match crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(tokens) {
-        Some(label)
-            if keyword_static_lines::parse_enter_as_copy_tokens(strip_followup(
-                label.body_tokens,
-            ))
-            .is_some() =>
-        {
-            (label.body_tokens, true)
-        }
-        _ => (tokens, false),
-    };
+    let (tokens, labeled) =
+        match crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(tokens) {
+            Some(label)
+                if keyword_static_lines::parse_enter_as_copy_tokens(strip_followup(
+                    label.body_tokens,
+                ))
+                .is_some() =>
+            {
+                (label.body_tokens, true)
+            }
+            _ => (tokens, false),
+        };
     // "When you do, exile that card." / "If you do, it gains haste until end
     // of turn.": the rest of the copy choice, carried on the replacement.
     let (tokens, copy_followup) =
@@ -5446,81 +5624,103 @@ pub fn parse_enter_as_copy_as_enters_line(
                     exceptions.push(characteristics);
                 }
                 for exception in exceptions {
-                match exception {
-                    keyword_static_lines::CopyExceptionShape::OwnOtherAbilities {subject} => {
-                        let words = parser_token_word_refs(subject);
-                        let normalized = crate::util::possessive_normalized_word_refs(&words);
-                        let same_named_source = named_subject_tokens.is_some_and(|name| {
-                            let name = parser_token_word_refs(name);
-                            if normalized == name { return true; }
-                            // The canonical lexer spelling can remove the
-                            // apostrophe while retaining its possessive s.
-                            let mut possessive = name.iter().map(|word| (*word).to_string()).collect::<Vec<_>>();
-                            if let Some(last) = possessive.last_mut() { last.push('s'); }
-                            words == possessive.iter().map(String::as_str).collect::<Vec<_>>()
-                        });
-                        if !same_named_source && crate::util::source_reference_surface_for_possessive_words(&words).is_none() {
-                            return Err(CardTextError::ParseError("copy exception names abilities of an unbound source".into()));
-                        }
-                        keep_other_source_abilities = true;
-                    }
-                    keyword_static_lines::CopyExceptionShape::EntryCounters {counter_type, count, controlled_copy} => {
-                        match count {
-                            Some(count) => additional_counters.push((counter_type, count)),
-                            None => additional_x_counters.push(counter_type),
-                        }
-                        if controlled_copy { additional_counters_source_filter = Some(ObjectFilter::default().you_control()); }
-                    }
-                    keyword_static_lines::CopyExceptionShape::ConditionalCounters {
-                        entries,
-                        remove_legendary,
-                    } => {
-                        if remove_legendary {
-                            removed_supertypes.push(crate::types::Supertype::Legendary);
-                        }
-                        for entry in entries {
-                            conditional_additional_counters.push(
-                                ironsmith_core::ConditionalAdditionalCounters {
-                                    counter_type: entry.counter_type,
-                                    count: entry.count,
-                                    source_filter: ObjectFilter::default()
-                                        .with_type(entry.card_type),
-                                },
-                            );
-                        }
-                    }
-                    keyword_static_lines::CopyExceptionShape::Name {
-                        name_tokens,
-                        use_named_subject,
-                    } => {
-                        if use_named_subject {
-                            name_override = named_copy_subject.clone();
-                        } else {
-                            // The copy's name is the authored spelling
-                            // ("Superior Spider-Man", "Chameleon, Master of
-                            // Disguise"), not the lowercased parser words.
-                            let mut name = String::new();
-                            for token in name_tokens {
-                                if token.kind == TokenKind::Comma {
-                                    name.push(',');
-                                    continue;
+                    match exception {
+                        keyword_static_lines::CopyExceptionShape::OwnOtherAbilities { subject } => {
+                            let words = parser_token_word_refs(subject);
+                            let normalized = crate::util::possessive_normalized_word_refs(&words);
+                            let same_named_source = named_subject_tokens.is_some_and(|name| {
+                                let name = parser_token_word_refs(name);
+                                if normalized == name {
+                                    return true;
                                 }
-                                if !name.is_empty() {
-                                    name.push(' ');
+                                // The canonical lexer spelling can remove the
+                                // apostrophe while retaining its possessive s.
+                                let mut possessive = name
+                                    .iter()
+                                    .map(|word| (*word).to_string())
+                                    .collect::<Vec<_>>();
+                                if let Some(last) = possessive.last_mut() {
+                                    last.push('s');
                                 }
-                                name.push_str(token.literal_surface());
+                                words == possessive.iter().map(String::as_str).collect::<Vec<_>>()
+                            });
+                            if !same_named_source
+                                && crate::util::source_reference_surface_for_possessive_words(
+                                    &words,
+                                )
+                                .is_none()
+                            {
+                                return Err(CardTextError::ParseError(
+                                    "copy exception names abilities of an unbound source".into(),
+                                ));
                             }
-                            if !name.trim().is_empty() {
-                                name_override = Some(name.trim().to_string());
+                            keep_other_source_abilities = true;
+                        }
+                        keyword_static_lines::CopyExceptionShape::EntryCounters {
+                            counter_type,
+                            count,
+                            controlled_copy,
+                        } => {
+                            match count {
+                                Some(count) => additional_counters.push((counter_type, count)),
+                                None => additional_x_counters.push(counter_type),
+                            }
+                            if controlled_copy {
+                                additional_counters_source_filter =
+                                    Some(ObjectFilter::default().you_control());
                             }
                         }
-                    }
-                    keyword_static_lines::CopyExceptionShape::Abilities {
-                        ability_tokens,
-                        source_filter_tokens,
-                    } => {
-                        added_abilities_source_filter = if let Some(tokens) = source_filter_tokens {
-                            let (subject, missing) =
+                        keyword_static_lines::CopyExceptionShape::ConditionalCounters {
+                            entries,
+                            remove_legendary,
+                        } => {
+                            if remove_legendary {
+                                removed_supertypes.push(crate::types::Supertype::Legendary);
+                            }
+                            for entry in entries {
+                                conditional_additional_counters.push(
+                                    ironsmith_core::ConditionalAdditionalCounters {
+                                        counter_type: entry.counter_type,
+                                        count: entry.count,
+                                        source_filter: ObjectFilter::default()
+                                            .with_type(entry.card_type),
+                                    },
+                                );
+                            }
+                        }
+                        keyword_static_lines::CopyExceptionShape::Name {
+                            name_tokens,
+                            use_named_subject,
+                        } => {
+                            if use_named_subject {
+                                name_override = named_copy_subject.clone();
+                            } else {
+                                // The copy's name is the authored spelling
+                                // ("Superior Spider-Man", "Chameleon, Master of
+                                // Disguise"), not the lowercased parser words.
+                                let mut name = String::new();
+                                for token in name_tokens {
+                                    if token.kind == TokenKind::Comma {
+                                        name.push(',');
+                                        continue;
+                                    }
+                                    if !name.is_empty() {
+                                        name.push(' ');
+                                    }
+                                    name.push_str(token.literal_surface());
+                                }
+                                if !name.trim().is_empty() {
+                                    name_override = Some(name.trim().to_string());
+                                }
+                            }
+                        }
+                        keyword_static_lines::CopyExceptionShape::Abilities {
+                            ability_tokens,
+                            source_filter_tokens,
+                        } => {
+                            added_abilities_source_filter =
+                                if let Some(tokens) = source_filter_tokens {
+                                    let (subject, missing) =
                                 keyword_static_lines::split_copy_source_missing_ability_tokens(
                                     tokens,
                                 )
@@ -5529,104 +5729,113 @@ pub fn parse_enter_as_copy_as_enters_line(
                                         "unsupported conditional copy ability predicate".into(),
                                     )
                                 })?;
-                            let actions = parse_ability_line(missing).ok_or_else(|| {
-                                CardTextError::ParseError(
-                                    "unsupported copy source keyword predicate".into(),
-                                )
-                            })?;
-                            let [action] = actions.as_slice() else {
-                                return Err(CardTextError::ParseError(
-                                    "copy source predicate requires one keyword".into(),
-                                ));
-                            };
-                            let mut filter = parse_object_filter(subject, false)?;
-                            let marker = match action {
-                                KeywordAction::Vanishing(_) => "vanishing".to_string(),
-                                other => other.display_text().to_ascii_lowercase(),
-                            };
-                            filter.excluded_ability_markers.push(marker);
-                            Some(filter)
-                        } else {
-                            None
-                        };
-                        added_abilities =
-                            parse_added_copy_abilities(ability_tokens, &clause_words)?;
-                    }
-                    keyword_static_lines::CopyExceptionShape::Characteristics {
-                        remove_legendary,
-                        characteristic_tokens,
-                        remainder,
-                    } => {
-                        if remove_legendary {
-                            removed_supertypes.push(crate::types::Supertype::Legendary);
+                                    let actions = parse_ability_line(missing).ok_or_else(|| {
+                                        CardTextError::ParseError(
+                                            "unsupported copy source keyword predicate".into(),
+                                        )
+                                    })?;
+                                    let [action] = actions.as_slice() else {
+                                        return Err(CardTextError::ParseError(
+                                            "copy source predicate requires one keyword".into(),
+                                        ));
+                                    };
+                                    let mut filter = parse_object_filter(subject, false)?;
+                                    let marker = match action {
+                                        KeywordAction::Vanishing(_) => "vanishing".to_string(),
+                                        other => other.display_text().to_ascii_lowercase(),
+                                    };
+                                    filter.excluded_ability_markers.push(marker);
+                                    Some(filter)
+                                } else {
+                                    None
+                                };
+                            added_abilities =
+                                parse_added_copy_abilities(ability_tokens, &clause_words)?;
                         }
-                        let characteristic_words = parser_token_word_refs(characteristic_tokens);
-                        if characteristic_words.is_empty() {
-                            return Err(CardTextError::ParseError(format!(
-                                "unsupported enters-as-copy exception clause (clause: '{}')",
-                                clause_words.join(" ")
-                            )));
-                        }
-                        let mut cursor = 0usize;
-                        if let Ok((power, toughness)) =
-                            parse_pt_modifier(characteristic_words[cursor])
-                        {
-                            set_base_power_toughness = Some((power, toughness));
-                            cursor += 1;
-                        }
-                        let mut parsed_type_or_subtype = false;
-                        while cursor < characteristic_words.len() {
-                            if characteristic_words[cursor] == "and" {
-                                cursor += 1;
-                                continue;
+                        keyword_static_lines::CopyExceptionShape::Characteristics {
+                            remove_legendary,
+                            characteristic_tokens,
+                            remainder,
+                        } => {
+                            if remove_legendary {
+                                removed_supertypes.push(crate::types::Supertype::Legendary);
                             }
-                            if let Some(supertype) =
-                                crate::util::parse_supertype_word(characteristic_words[cursor])
+                            let characteristic_words =
+                                parser_token_word_refs(characteristic_tokens);
+                            if characteristic_words.is_empty() {
+                                return Err(CardTextError::ParseError(format!(
+                                    "unsupported enters-as-copy exception clause (clause: '{}')",
+                                    clause_words.join(" ")
+                                )));
+                            }
+                            let mut cursor = 0usize;
+                            if let Ok((power, toughness)) =
+                                parse_pt_modifier(characteristic_words[cursor])
                             {
-                                crate::slice_primitives::push_unique(
-                                    &mut added_supertypes,
-                                    supertype,
-                                );
-                                parsed_type_or_subtype = true;
+                                set_base_power_toughness = Some((power, toughness));
                                 cursor += 1;
-                                continue;
                             }
-                            if let Some(color) = Color::from_name(characteristic_words[cursor]) {
-                                added_colors = added_colors.with(color);
-                                parsed_type_or_subtype = true;
-                                cursor += 1;
-                                continue;
+                            let mut parsed_type_or_subtype = false;
+                            while cursor < characteristic_words.len() {
+                                if characteristic_words[cursor] == "and" {
+                                    cursor += 1;
+                                    continue;
+                                }
+                                if let Some(supertype) =
+                                    crate::util::parse_supertype_word(characteristic_words[cursor])
+                                {
+                                    crate::slice_primitives::push_unique(
+                                        &mut added_supertypes,
+                                        supertype,
+                                    );
+                                    parsed_type_or_subtype = true;
+                                    cursor += 1;
+                                    continue;
+                                }
+                                if let Some(color) = Color::from_name(characteristic_words[cursor])
+                                {
+                                    added_colors = added_colors.with(color);
+                                    parsed_type_or_subtype = true;
+                                    cursor += 1;
+                                    continue;
+                                }
+                                if let Some(card_type) =
+                                    parse_card_type(characteristic_words[cursor])
+                                {
+                                    crate::slice_primitives::push_unique(
+                                        &mut added_card_types,
+                                        card_type,
+                                    );
+                                    parsed_type_or_subtype = true;
+                                    cursor += 1;
+                                    continue;
+                                }
+                                if let Some(subtype) =
+                                    parse_subtype_word(characteristic_words[cursor]).or_else(|| {
+                                        parse_subtype_flexible(characteristic_words[cursor])
+                                    })
+                                {
+                                    crate::slice_primitives::push_unique(
+                                        &mut added_subtypes,
+                                        subtype,
+                                    );
+                                    parsed_type_or_subtype = true;
+                                    cursor += 1;
+                                    continue;
+                                }
+                                break;
                             }
-                            if let Some(card_type) = parse_card_type(characteristic_words[cursor]) {
-                                crate::slice_primitives::push_unique(
-                                    &mut added_card_types,
-                                    card_type,
-                                );
-                                parsed_type_or_subtype = true;
-                                cursor += 1;
-                                continue;
-                            }
-                            if let Some(subtype) = parse_subtype_word(characteristic_words[cursor])
-                                .or_else(|| parse_subtype_flexible(characteristic_words[cursor]))
+                            if (!parsed_type_or_subtype && set_base_power_toughness.is_none())
+                                || cursor != characteristic_words.len()
                             {
-                                crate::slice_primitives::push_unique(&mut added_subtypes, subtype);
-                                parsed_type_or_subtype = true;
-                                cursor += 1;
-                                continue;
+                                return Err(CardTextError::ParseError(format!(
+                                    "unsupported enters-as-copy type '{}' (clause: '{}')",
+                                    characteristic_words
+                                        [cursor.min(characteristic_words.len().saturating_sub(1))],
+                                    clause_words.join(" ")
+                                )));
                             }
-                            break;
-                        }
-                        if (!parsed_type_or_subtype && set_base_power_toughness.is_none())
-                            || cursor != characteristic_words.len()
-                        {
-                            return Err(CardTextError::ParseError(format!(
-                                "unsupported enters-as-copy type '{}' (clause: '{}')",
-                                characteristic_words
-                                    [cursor.min(characteristic_words.len().saturating_sub(1))],
-                                clause_words.join(" ")
-                            )));
-                        }
-                        match remainder {
+                            match remainder {
                             keyword_static_lines::CopyCharacteristicRemainder::None => {}
                             keyword_static_lines::CopyCharacteristicRemainder::ConditionalEntry(entry) => {
                                 let words = parser_token_word_refs(entry);
@@ -5672,8 +5881,8 @@ pub fn parse_enter_as_copy_as_enters_line(
                                 )));
                             }
                         }
+                        }
                     }
-                }
                 }
             }
 
@@ -5955,14 +6164,18 @@ pub(crate) fn characteristic_pt_uses_named_subject_surface(tokens: &[OwnedLexTok
 pub fn parse_characteristic_defining_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // Conditional characteristic assignments must retain their predicate;
+    // the enclosing static parser owns the prefix and wraps the body.
+    if split_as_long_as_condition_prefix_lexed(tokens).is_some() {
+        return Ok(None);
+    }
     let sentence_tokens = trim_edge_punctuation(tokens);
     if split_lexed_sentences(&sentence_tokens).len() > 1 {
         return Ok(None);
     }
     // "<objects> have base power and toughness each equal to ..." sets the
     // base P/T of other objects (layer 7b); it is not a CDA of the source.
-    if anthem_grant_grammar::parse_base_power_toughness_each_equal_shape(&sentence_tokens)
-        .is_some()
+    if anthem_grant_grammar::parse_base_power_toughness_each_equal_shape(&sentence_tokens).is_some()
     {
         return Ok(None);
     }
@@ -6408,11 +6621,26 @@ pub fn parse_zero_loyalty_state_based_exception_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = parser_token_word_refs(tokens);
-    if words == [
-        "planeswalkers", "you", "control", "arent", "put", "into", "their",
-        "owners", "graveyards", "for", "having", "0", "loyalty",
-    ] {
-        return Ok(Some(StaticAbility::planeswalkers_you_control_dont_die_at_zero_loyalty()));
+    if words
+        == [
+            "planeswalkers",
+            "you",
+            "control",
+            "arent",
+            "put",
+            "into",
+            "their",
+            "owners",
+            "graveyards",
+            "for",
+            "having",
+            "0",
+            "loyalty",
+        ]
+    {
+        return Ok(Some(
+            StaticAbility::planeswalkers_you_control_dont_die_at_zero_loyalty(),
+        ));
     }
     Ok(None)
 }
@@ -6886,7 +7114,9 @@ mod zero_loyalty_exception_tests {
             "Planeswalkers you control aren't put into their owners' graveyards for having 0 loyalty.", 0,
         ).unwrap();
         let ParseOutcome::Match(matched) = recognize_static_ability_ast_line_registry(&tokens)
-        else { panic!("zero-loyalty exception must be claimed by its typed rule"); };
+        else {
+            panic!("zero-loyalty exception must be claimed by its typed rule");
+        };
         let abilities = matched.value;
         assert!(matches!(&abilities[..], [StaticAbilityAst::Static(ability)]
             if ability.id() == crate::static_abilities::StaticAbilityId::PlaneswalkersYouControlDontDieAtZeroLoyalty));
@@ -6911,18 +7141,33 @@ mod damage_multiplier_scope_tests;
 mod toughness_assignment;
 use toughness_assignment::parse_filtered_toughness_assignment_line;
 
-
 #[cfg(test)]
 mod entry_copy_exception_root_tests {
     use super::*;
     #[test]
     fn entry_copy_counter_shapes_keep_x_and_chosen_controller_filters() {
         for (line, dynamic, controlled) in [
-            ("You may have this creature enter as a copy of any creature on the battlefield, except it enters with X additional +1/+1 counters on it.", true, false),
-            ("You may have this creature enter as a copy of any creature on the battlefield, except it enters with a shield counter on it if you control that creature.", false, true),
+            (
+                "You may have this creature enter as a copy of any creature on the battlefield, except it enters with X additional +1/+1 counters on it.",
+                true,
+                false,
+            ),
+            (
+                "You may have this creature enter as a copy of any creature on the battlefield, except it enters with a shield counter on it if you control that creature.",
+                false,
+                true,
+            ),
         ] {
-            let ability = parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(line, 0).unwrap()).unwrap().unwrap();
-            let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {spec, ..} = ability.payload else { panic!("missing copy model"); };
+            let ability =
+                parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(line, 0).unwrap())
+                    .unwrap()
+                    .unwrap();
+            let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {
+                spec, ..
+            } = ability.payload
+            else {
+                panic!("missing copy model");
+            };
             assert_eq!(!spec.additional_x_counters.is_empty(), dynamic);
             assert_eq!(spec.additional_counters_source_filter.is_some(), controlled);
         }
@@ -6930,20 +7175,41 @@ mod entry_copy_exception_root_tests {
     #[test]
     fn own_other_abilities_reference_is_bound_to_the_named_copy_subject() {
         let yes = "You may have Prism enter as a copy of another creature you control, except it has Prism's other abilities.";
-        let ability = parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(yes, 0).unwrap()).unwrap().unwrap();
-        let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {spec, ..} = ability.payload else { panic!("missing copy model"); };
+        let ability = parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(yes, 0).unwrap())
+            .unwrap()
+            .unwrap();
+        let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters { spec, .. } =
+            ability.payload
+        else {
+            panic!("missing copy model");
+        };
         assert!(spec.keep_other_source_abilities);
         let no = "You may have Prism enter as a copy of another creature you control, except it has Someone Else's other abilities.";
-        assert!(parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(no, 0).unwrap()).is_err());
+        assert!(
+            parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(no, 0).unwrap()).is_err()
+        );
     }
     #[test]
     fn copy_exceptions_store_executable_attack_keywords_instead_of_markers() {
         for keyword in ["myriad", "dethrone"] {
-            let line = format!("You may have this creature enter as a copy of any creature on the battlefield, except it has {keyword}.");
-            let ability = parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(&line, 0).unwrap()).unwrap().unwrap();
-            let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {spec, ..} = ability.payload else { panic!("missing copy model"); };
+            let line = format!(
+                "You may have this creature enter as a copy of any creature on the battlefield, except it has {keyword}."
+            );
+            let ability =
+                parse_enter_as_copy_as_enters_line(&crate::lexer::lex_line(&line, 0).unwrap())
+                    .unwrap()
+                    .unwrap();
+            let crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters {
+                spec, ..
+            } = ability.payload
+            else {
+                panic!("missing copy model");
+            };
             assert_eq!(spec.added_abilities.len(), 1);
-            assert!(matches!(spec.added_abilities[0].kind, crate::model::CompilerAbilityKindCore::Triggered(_)));
+            assert!(matches!(
+                spec.added_abilities[0].kind,
+                crate::model::CompilerAbilityKindCore::Triggered(_)
+            ));
         }
     }
 }

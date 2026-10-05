@@ -282,6 +282,10 @@ struct SyncStackEntry {
     ability_id: Option<u64>,
     #[serde(default)]
     ninjutsu_attack_target: Option<SyncGrandMeleeAttackTarget>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    iterated_player: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    iterated_object: Option<u64>,
     controller: u8,
     targets: Vec<SyncTarget>,
     is_ability: bool,
@@ -881,6 +885,8 @@ fn sync_stack_entry(entry: &StackEntry) -> SyncStackEntry {
             .ninjutsu_attack_target
             .as_ref()
             .map(sync_attack_target),
+        iterated_player: entry.iteration.iterated_player.map(|player| player.0),
+        iterated_object: entry.iteration.iterated_object.map(|object| object.0),
         controller: entry.controller.0,
         targets: entry
             .targets
@@ -1764,7 +1770,9 @@ impl WasmGame {
                     object_id: entry.object_id.0,
                     ability_id: entry.ability_id.map(|id| id.0),
                     ninjutsu_attack_target: entry.ninjutsu_attack_target.as_ref().map(sync_attack_target),
-                    controller: entry.controller.0,
+                    iterated_player: entry.iteration.iterated_player.map(|player| player.0),
+        iterated_object: entry.iteration.iterated_object.map(|object| object.0),
+        controller: entry.controller.0,
                     targets: entry
                         .targets
                         .iter()

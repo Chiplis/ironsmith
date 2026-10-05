@@ -1,5 +1,5 @@
-use crate::target::ObjectFilter;
 use super::*;
+use crate::target::ObjectFilter;
 use ironsmith_core::{
     DamageHistoryQuery, DamageHistoryRecipients, DamageHistoryReduction, DamageHistorySources,
 };
@@ -12,10 +12,15 @@ fn referenced_objects(
     spec: &ChooseSpec,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     let objects = match spec.base() {
-        ChooseSpec::Source => vec![ctx.source],
+        ChooseSpec::Source => vec![
+            ctx.source_snapshot
+                .as_ref()
+                .map_or(ctx.source, |snapshot| snapshot.object_id),
+        ],
         ChooseSpec::SpecificObject(id) => vec![*id],
         ChooseSpec::Tagged(tag) => ctx
-            .get_tagged_all(tag)
+            .get_tagged_all(&format!("__pre_move_history__{}", tag.as_str()))
+            .or_else(|| ctx.get_tagged_all(tag))
             .map(|objects| objects.iter().map(|snapshot| snapshot.object_id).collect())
             .unwrap_or_default(),
         ChooseSpec::Object(_) | ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => {
@@ -471,7 +476,7 @@ mod tests {
         );
     }
     #[test]
-    fn history_arithmetic_rejects_final_scalar_overflow_before_applying_damage() {
+    fn history_arithmetic_rejects_final_unsigned_overflow_before_applying_damage() {
         for received in [i32::MAX - 2, i32::MAX - 1, i32::MAX] {
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
@@ -481,8 +486,11 @@ mod tests {
             let future_recipient = object(&mut game, bob, "Future recipient");
             damage(&mut game, source, history_recipient, received, false);
             let value = Value::Add(
-                Box::new(Value::Fixed(3)),
-                Box::new(Value::DamageHistory(Box::new(total(history_recipient)))),
+                Box::new(Value::Fixed(6)),
+                Box::new(Value::Scaled(
+                    Box::new(Value::DamageHistory(Box::new(total(history_recipient)))),
+                    2,
+                )),
             );
             let mut ctx = ExecutionContext::new_default(source, alice);
             assert!(crate::effects::helpers::resolve_value(&game, &value, &ctx).is_err());

@@ -388,7 +388,7 @@ fn kings_targeting_body_responds_to_an_actual_spell_before_it_resolves() {
         )
         .unwrap();
         for _ in 0..30 {
-            if state.pending_cast.is_none() {
+            if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
                 break;
             }
             let ironsmith::GameProgress::NeedsDecisionCtx(context) = progress else {
@@ -399,7 +399,7 @@ fn kings_targeting_body_responds_to_an_actual_spell_before_it_resolves() {
             )
             .unwrap();
         }
-        assert!(state.pending_cast.is_none());
+        assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
         put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
         assert_eq!(game.stack.len(), 2);
         resolve_stack_entry_with(&mut game, &mut dm).unwrap();

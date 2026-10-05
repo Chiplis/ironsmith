@@ -33,7 +33,9 @@ impl SequenceEffect {
     /// some effects to specialized count/color components, which is unsuitable
     /// for a preflight that must check the exact program execution will use.
     pub(crate) fn cost_components(&self) -> Result<crate::cost::TotalCost, String> {
-        self.effects.iter().cloned()
+        self.effects
+            .iter()
+            .cloned()
             .map(crate::costs::Cost::try_effect)
             .collect::<Result<Vec<_>, _>>()
             .map(crate::cost::TotalCost::from_costs)
@@ -205,36 +207,20 @@ impl EffectExecutor for SequenceEffect {
             };
             ctx.public_search_reveal_tag = previous_search_reveal;
             ctx.pending_entry_attachment = previous_entry_attachment;
-            // CR 608.2b: a coordinated sibling whose targets have all become
-            // illegal does nothing, and the other siblings still resolve.
-            // Executors that report the empty scope as `Err(InvalidTarget)`
-            // are treated like a target-invalid outcome here; authored
-            // `then` surfaces keep propagating the error.
+            // CR 608.2b: an instruction whose targets have become illegal
+            // does nothing; the remaining instructions still resolve.
+            // The stack resolver already stops a spell when all its targets
+            // are illegal. Treat an individual empty scope as an outcome.
             let outcome = match outcome {
-                Err(ExecutionError::InvalidTarget) if self.surface.is_coordinated() => {
-                    EffectOutcome::target_invalid()
-                }
+                Err(ExecutionError::InvalidTarget) => EffectOutcome::target_invalid(),
                 other => other?,
             };
             events.extend(outcome.events.clone());
             execution_facts.extend(outcome.execution_facts.clone());
 
-            // A coordinated Oracle clause describes sibling instructions that
-            // each do as much as possible. Preventing or protecting against
-            // one child must not suppress the others (for example, preventing
-            // one of Hail Storm's damage instructions, or an indestructible
-            // Maelstrom Pulse target surviving while the other same-name
-            // permanents are still destroyed). Authored `then`/sequential
-            // surfaces retain their dependency short-circuit.
-            if outcome.status.is_failure() && !self.surface.is_coordinated() {
-                return Ok(EffectOutcome::with_details(
-                    outcome.status,
-                    outcome.value.clone(),
-                    events,
-                    execution_facts,
-                ));
-            }
-
+            // CR 608.2c: carry out instructions in order, doing as much as
+            // possible. "Then" orders actions without requiring success;
+            // explicit conditional effects implement "if you do" gates.
             outcomes.push(outcome);
             if ctx.decision_maker.awaiting_choice() {
                 let terminal = outcomes
@@ -293,7 +279,11 @@ impl CostExecutableEffect for SequenceEffect {
         controller: crate::ids::PlayerId,
     ) -> Result<(), CostValidationError> {
         CostExecutableEffect::can_execute_as_cost_with_reason(
-            self, game, source, controller, crate::costs::PaymentReason::Other,
+            self,
+            game,
+            source,
+            controller,
+            crate::costs::PaymentReason::Other,
         )
     }
 
@@ -307,8 +297,7 @@ impl CostExecutableEffect for SequenceEffect {
         // Preserve dependencies between a choice cost and its tagged consumer.
         // CostEffect additionally carries existing tags and resolution context
         // when this sequence is nested in another payment transaction.
-        let total = self.cost_components()
-            .map_err(CostValidationError::Other)?;
+        let total = self.cost_components().map_err(CostValidationError::Other)?;
         crate::cost::can_pay_cost_with_reason(game, source, controller, &total, reason)
             .map_err(|error| CostValidationError::Other(error.to_string()))
     }
@@ -463,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn only_coordinated_sequences_continue_after_a_prevented_child() {
+    fn ordered_sequences_continue_after_a_prevented_child() {
         let alice = PlayerId::from_index(0);
 
         let mut coordinated_game = crate::tests::test_helpers::setup_two_player_game();
@@ -491,10 +480,10 @@ mod tests {
             .expect("sequential sequence should resolve");
         assert_eq!(
             sequential_game.player(alice).expect("Alice").life,
-            20,
-            "ordinary sequential dependency should still short-circuit"
+            23,
+            "instruction order does not require the preceding instruction to succeed"
         );
-        assert_eq!(outcome.status, crate::effect::OutcomeStatus::Prevented);
+        assert_eq!(outcome.status, crate::effect::OutcomeStatus::Succeeded);
     }
 
     #[test]

@@ -393,13 +393,11 @@ impl StaticAbilityKind for Hexproof {
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, _controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
-        Restriction::be_targeted(ObjectFilter::specific(source)).apply(
-            game,
-            &mut tracker,
-            _controller,
-            Some(source),
-            None,
-        );
+        Restriction::be_targeted_from(
+            ObjectFilter::specific(source),
+            ObjectFilter::default().controlled_by(crate::target::PlayerFilter::Opponent),
+        )
+        .apply(game, &mut tracker, _controller, Some(source), None);
         game.effect_store.cant_effects.merge(tracker);
     }
 }
@@ -521,7 +519,6 @@ impl StaticAbilityKind for LivingMetal {
         controller: PlayerId,
         _game: &GameState,
     ) -> Vec<ContinuousEffect> {
-
         vec![
             ContinuousEffect::new(
                 source,
@@ -559,15 +556,37 @@ mod tests {
         ));
 
         assert_eq!(own_turn[0].condition, Some(crate::ConditionExpr::YourTurn));
-        assert!(crate::continuous::continuous_effect_duration_and_condition_are_active(&own_turn[0], &game));
+        assert!(
+            crate::continuous::continuous_effect_duration_and_condition_are_active(
+                &own_turn[0],
+                &game
+            )
+        );
         game.turn.active_player = bob;
         let other_turn = LivingMetal.generate_effects(source, alice, &game);
-        assert_eq!(other_turn.len(), 1, "retain the conditional descriptor until layer application");
-        assert_eq!(other_turn[0].condition, Some(crate::ConditionExpr::YourTurn));
-        assert!(!crate::continuous::continuous_effect_duration_and_condition_are_active(&other_turn[0], &game));
+        assert_eq!(
+            other_turn.len(),
+            1,
+            "retain the conditional descriptor until layer application"
+        );
+        assert_eq!(
+            other_turn[0].condition,
+            Some(crate::ConditionExpr::YourTurn)
+        );
+        assert!(
+            !crate::continuous::continuous_effect_duration_and_condition_are_active(
+                &other_turn[0],
+                &game
+            )
+        );
         let bob_turn = LivingMetal.generate_effects(source, bob, &game);
         assert_eq!(bob_turn.len(), 1);
-        assert!(crate::continuous::continuous_effect_duration_and_condition_are_active(&bob_turn[0], &game));
+        assert!(
+            crate::continuous::continuous_effect_duration_and_condition_are_active(
+                &bob_turn[0],
+                &game
+            )
+        );
     }
 
     #[test]
@@ -584,32 +603,67 @@ mod tests {
             let bob = game.players[1].id;
             game.turn.active_player = active;
             let vehicle = CardBuilder::new(CardId::new(), "Living metal control recipient")
-                .card_types(vec![CardType::Artifact]).subtypes(vec![crate::types::Subtype::Vehicle]).build();
+                .card_types(vec![CardType::Artifact])
+                .subtypes(vec![crate::types::Subtype::Vehicle])
+                .build();
             let source = game.create_object_from_card(&vehicle, bob, Zone::Battlefield);
-            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::living_metal()));
-            let original = game.continuous_query_snapshot().expect("original living metal query is finite");
-            assert_eq!(original.current_characteristics(source).unwrap().card_types.contains(&CardType::Creature),
-                active == bob, "positive control uses the original controller's turn");
+            game.object_mut(source)
+                .unwrap()
+                .abilities_mut()
+                .push(Ability::static_ability(StaticAbility::living_metal()));
+            let original = game
+                .continuous_query_snapshot()
+                .expect("original living metal query is finite");
+            assert_eq!(
+                original
+                    .current_characteristics(source)
+                    .unwrap()
+                    .card_types
+                    .contains(&CardType::Creature),
+                active == bob,
+                "positive control uses the original controller's turn"
+            );
             let aura = CardBuilder::new(CardId::new(), "Living metal control source")
-                .card_types(vec![CardType::Enchantment]).subtypes(vec![crate::types::Subtype::Aura]).build();
+                .card_types(vec![CardType::Enchantment])
+                .subtypes(vec![crate::types::Subtype::Aura])
+                .build();
             let control = game.create_object_from_card(&aura, alice, Zone::Battlefield);
-            game.object_mut(control).unwrap().attached_to = Some(crate::object::AttachmentTarget::Object(source));
+            game.object_mut(control).unwrap().attached_to =
+                Some(crate::object::AttachmentTarget::Object(source));
             game.object_mut(source).unwrap().attachments.push(control);
             game.object_mut(control).unwrap().abilities_mut().extend([
-                Ability::static_ability(StaticAbility::enchant(crate::object::AuraAttachmentFilter::Object(ObjectFilter::permanent()))),
-                Ability::static_ability(StaticAbility::control_attached_permanent("You control the enchanted permanent".into())),
+                Ability::static_ability(StaticAbility::enchant(
+                    crate::object::AuraAttachmentFilter::Object(ObjectFilter::permanent()),
+                )),
+                Ability::static_ability(StaticAbility::control_attached_permanent(
+                    "You control the enchanted permanent".into(),
+                )),
             ]);
             let revision = game.effect_store.continuous_effects.revision();
-            let query = game.continuous_query_snapshot().expect("controlled living metal query is finite");
+            let query = game
+                .continuous_query_snapshot()
+                .expect("controlled living metal query is finite");
             assert_eq!(query.current_controller(source), Some(alice));
-            assert_eq!(query.current_characteristics(source).unwrap().card_types.contains(&CardType::Creature),
-                active == alice, "living metal must evaluate its condition after static source control");
-            assert!(query.current_characteristics(source).unwrap().card_types.contains(&CardType::Artifact));
+            assert_eq!(
+                query
+                    .current_characteristics(source)
+                    .unwrap()
+                    .card_types
+                    .contains(&CardType::Creature),
+                active == alice,
+                "living metal must evaluate its condition after static source control"
+            );
+            assert!(
+                query
+                    .current_characteristics(source)
+                    .unwrap()
+                    .card_types
+                    .contains(&CardType::Artifact)
+            );
             assert_eq!(game.object(source).unwrap().owner, bob);
             assert_eq!(game.effect_store.continuous_effects.revision(), revision);
         }
     }
-
 }
 
 #[cfg(test)]

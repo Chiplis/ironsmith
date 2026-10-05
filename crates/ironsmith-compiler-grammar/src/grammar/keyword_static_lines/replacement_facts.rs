@@ -14,7 +14,9 @@ pub enum CounterReplacementShape<'a> {
         includes_player: bool,
         additional: u32,
     },
-    AnyKindDouble { filter_tokens: &'a [OwnedLexToken] },
+    AnyKindDouble {
+        filter_tokens: &'a [OwnedLexToken],
+    },
     CounterAdjustment {
         filter_tokens: &'a [OwnedLexToken],
         counter_type: ironsmith_core::CounterType,
@@ -998,24 +1000,59 @@ mod tests {
     }
 }
 
-
-fn parse_actor_any_kind_add_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterReplacementShape<'a>> {
-    primitives::phrase(&["if", "you", "would", "put", "one", "or", "more", "counters", "on"]).parse_next(input)?;
+fn parse_actor_any_kind_add_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CounterReplacementShape<'a>> {
+    primitives::phrase(&[
+        "if", "you", "would", "put", "one", "or", "more", "counters", "on",
+    ])
+    .parse_next(input)?;
     let filter_tokens = take_until_replacement_phrase(input, &["put", "that", "many", "plus"])?;
     opt(primitives::comma()).parse_next(input)?;
     primitives::phrase(&["put", "that", "many", "plus"]).parse_next(input)?;
     let additional = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
-    primitives::phrase(&["of", "each", "of", "those", "kinds", "of", "counters", "on", "that", "permanent"]).parse_next(input)?;
-    let includes_player = opt(primitives::phrase(&["or", "player"])).parse_next(input)?.is_some();
+    primitives::phrase(&[
+        "of",
+        "each",
+        "of",
+        "those",
+        "kinds",
+        "of",
+        "counters",
+        "on",
+        "that",
+        "permanent",
+    ])
+    .parse_next(input)?;
+    let includes_player = opt(primitives::phrase(&["or", "player"]))
+        .parse_next(input)?
+        .is_some();
     primitives::kw("instead").parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
-    Ok(CounterReplacementShape::ActorAnyKindAdd { filter_tokens: trim_lexed_commas(filter_tokens), includes_player, additional })
+    Ok(CounterReplacementShape::ActorAnyKindAdd {
+        filter_tokens: trim_lexed_commas(filter_tokens),
+        includes_player,
+        additional,
+    })
 }
-fn parse_any_kind_double_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterReplacementShape<'a>> {
-    primitives::phrase(&["if", "one", "or", "more", "counters", "would", "be", "put", "on"]).parse_next(input)?;
+fn parse_any_kind_double_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CounterReplacementShape<'a>> {
+    primitives::phrase(&[
+        "if", "one", "or", "more", "counters", "would", "be", "put", "on",
+    ])
+    .parse_next(input)?;
     let filter_tokens = take_until_replacement_phrase(input, &["twice", "that", "many"])?;
     opt(primitives::comma()).parse_next(input)?;
-    primitives::phrase(&["twice", "that", "many", "of", "each", "of", "those", "kinds", "of", "counters", "are", "put", "on", "it", "instead"]).parse_next(input)?;
+    primitives::phrase(&["twice", "that", "many", "of"]).parse_next(input)?;
+    alt((
+        primitives::phrase(&["each", "of", "those", "kinds", "of", "counters"]),
+        primitives::phrase(&["those", "counters"]),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["are", "put", "on", "it", "instead"]).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
-    Ok(CounterReplacementShape::AnyKindDouble { filter_tokens: trim_lexed_commas(filter_tokens) })
+    Ok(CounterReplacementShape::AnyKindDouble {
+        filter_tokens: trim_lexed_commas(filter_tokens),
+    })
 }

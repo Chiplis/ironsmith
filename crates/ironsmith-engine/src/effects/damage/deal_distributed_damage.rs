@@ -4,13 +4,15 @@ use crate::decision::FallbackStrategy;
 use crate::decisions::{DistributeSpec, make_decision_with_fallback};
 use crate::effect::{ChoiceCount, EffectOutcome, Value};
 use crate::effects::EffectExecutor;
-use crate::events::damage::{checked_damage_amount, checked_damage_count};
-use crate::events::processing::{SimultaneousDamageEvent, with_deferred_prevention_follow_ups};
 use crate::effects::helpers::{
     resolve_effect_source_with_lki, resolve_objects_from_spec, resolve_players_from_spec,
     resolve_value,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::damage::{checked_damage_amount, checked_damage_count};
+use crate::events::processing::{
+    SimultaneousDamageEvent, with_deferred_prevention_follow_up_outcome,
+};
 use crate::game_state::{GameState, Target};
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
@@ -293,7 +295,7 @@ impl DealDistributedDamageEffect {
         let provenance = ctx.provenance;
         let scope = ctx.replacement.clone();
         let batch = game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage);
-        with_deferred_prevention_follow_ups(game, ctx.decision_maker, |game, dm| {
+        with_deferred_prevention_follow_up_outcome(game, ctx.decision_maker, |game, dm| {
             let mut parent = ExecutionContext::new(source, controller, dm)
                 .with_cause(cause)
                 .with_provenance(provenance);
@@ -628,7 +630,7 @@ mod tests {
             spec: target.clone(),
             range: 0..2,
             allocations: vec![
-                (Target::Object(first), i32::MAX as u32),
+                (Target::Object(first), u32::MAX),
                 (Target::Object(second), 1),
             ],
         };

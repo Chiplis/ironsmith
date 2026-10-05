@@ -393,15 +393,27 @@ mod tests {
             .iter()
             .find_map(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
             .expect("expected a conditional kicked counter effect");
-        let crate::effect::Condition::TaggedObjectMatches(kicked_tag, kicked_filter) =
-            &conditional.condition
-        else {
-            panic!("expected a tagged spell filter, got {conditional:#?}");
+        let kicked_tag = match &conditional.condition {
+            crate::effect::Condition::ValueComparison {
+                left: crate::effect::Value::ManaValueOf(spec),
+                operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                right: crate::effect::Value::Fixed(7),
+            } => {
+                let crate::target::ChooseSpec::Tagged(tag) = spec.base() else {
+                    panic!("expected the declared spell reference, got {spec:#?}");
+                };
+                tag
+            }
+            crate::effect::Condition::TaggedObjectMatches(tag, filter)
+                if matches!(
+                    filter.mana_value.as_ref(),
+                    Some(crate::target::Comparison::LessThanOrEqual(7))
+                ) =>
+            {
+                tag
+            }
+            _ => panic!("expected the kicked mana-value gate, got {conditional:#?}"),
         };
-        assert!(matches!(
-            kicked_filter.mana_value.as_ref(),
-            Some(crate::target::Comparison::LessThanOrEqual(7))
-        ));
         assert_eq!(base_tag, kicked_tag, "both gates must share one target tag");
         Ok(())
     }

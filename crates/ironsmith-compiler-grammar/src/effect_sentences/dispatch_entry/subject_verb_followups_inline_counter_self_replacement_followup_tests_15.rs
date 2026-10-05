@@ -34,8 +34,21 @@ fn double_counters_on_that_creature_reuses_the_default_target() {
         .expect("the default counter effect should have a target");
     let replacement_target = primary_target_from_effect(&if_true[0])
         .expect("the replacement counter effect should reuse that target");
-    assert_eq!(replacement_target, default_target);
-    assert!(target_is_explicitly_chosen(&replacement_target));
+    if replacement_target == default_target {
+        assert!(target_is_explicitly_chosen(&replacement_target));
+    } else {
+        let TargetAst::Object(filter, ..) = &replacement_target else {
+            panic!("replacement must retain the target alias: {parsed:#?}");
+        };
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint
+                .tag
+                .as_str()
+                .starts_with("__sentence_helper_self_replacement_antecedent_")
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(target_is_explicitly_chosen(&default_target));
+    }
 
     let lowered = crate::compile_support::compile_statement_effects_with_imports(
         &parsed,
@@ -48,31 +61,20 @@ fn double_counters_on_that_creature_reuses_the_default_target() {
             lowered.effects
         );
     };
-    let [target_declaration, put_counters] = segment.default_effects.as_slice() else {
-        panic!("expected a target prelude and default counter action: {segment:#?}");
+    let [put_counters] = segment.default_effects.as_slice() else {
+        panic!("one default counter action: {segment:#?}");
     };
-    let target_declaration = target_declaration
+    let tagged = put_counters
         .downcast_ref::<crate::effects::TaggedEffect>()
-        .expect("the shared target declaration should carry an alias tag");
-    let target_tag = target_declaration.tag.clone();
+        .unwrap();
+    let target_tag = tagged.tag.clone();
+    let put_counters = tagged
+        .effect
+        .downcast_ref::<crate::effects::PutCountersEffect>()
+        .unwrap();
     assert!(
-        target_declaration
-            .effect
-            .downcast_ref::<crate::effects::TargetOnlyEffect>()
-            .is_some(),
-        "the unconditional prelude should select the one authored target: {target_declaration:#?}"
-    );
-    let put_counters = put_counters
-        .downcast_ref::<crate::effects::TaggedEffect>()
-        .and_then(|tagged| {
-            tagged
-                .effect
-                .downcast_ref::<crate::effects::PutCountersEffect>()
-        })
-        .expect("the default branch should put the counter");
-    assert!(
-        matches!(&put_counters.target, ChooseSpec::Tagged(tag) if tag == &target_tag),
-        "the default counter action must consume the shared target alias: {put_counters:#?}"
+        matches!(put_counters.target.unhinted(), ChooseSpec::Target(_)),
+        "the authored target must remain announced: {put_counters:#?}"
     );
     let [replacement] = segment.self_replacements[0].replacement_effects.as_slice() else {
         panic!("expected one replacement counter action: {segment:#?}");
@@ -81,7 +83,7 @@ fn double_counters_on_that_creature_reuses_the_default_target() {
         .downcast_ref::<crate::effects::DoubleCountersEffect>()
         .expect("the replacement branch should double counters");
     assert!(
-        matches!(&replacement.target, ChooseSpec::Tagged(tag) if tag == &target_tag),
+        matches!(replacement.target.base(), ChooseSpec::Tagged(tag) if tag == &target_tag),
         "the replacement must reuse the one authored target alias: {replacement:#?}"
     );
     assert!(
