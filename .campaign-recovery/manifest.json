@@ -22,6 +22,22 @@
       "blob_sha": "35cdc70a7c575b8bc1ab99e569d1405c19899230",
       "status": "UNVALIDATED source reconstruction checkpoint; no new card coverage",
       "builds_tests": "not_run"
+    },
+    {
+      "file": "recovery-sources-20261005-1110.bundle",
+      "requires_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
+      "refs": {
+        "campaign/recovery-integration-d51": "67fb8089b14e71616c0a4840192050331f68bd11",
+        "recovery/dynamic-keyword-amounts": "265bfdb1898271fac1d25e58f661958d22e76b3b",
+        "recovery/shared-type-references": "54394c14af60ed038fc88a241e2b57d3eb3e6774",
+        "recovery/foretell-state-and-grants": "166d72bcb95591540d2a3f9fd49412356daa25a0",
+        "recovery/suspected-designations": "37ab8298515ab29ff0838a167d937b7ac2b4692b"
+      },
+      "bytes": 179854,
+      "sha256": "13b5f8630d13509e8268f93bb95d669aebe78b97ed5d0488864040d75d0e9ab7",
+      "blob_sha": "ab1eea53973d457ebc349054acdebf436cd9436a",
+      "status": "UNVALIDATED source reconstruction; coverage only from reviewed committed matrix",
+      "builds_tests": "not_run"
     }
   ]
 }
