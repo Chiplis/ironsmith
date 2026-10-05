@@ -217,7 +217,7 @@ impl EffectExecutor for CastTaggedEffect {
                         caster,
                         from_zone,
                         ctx.provenance,
-                    );
+                    )?;
                     return Ok(outcome);
                 }
 
@@ -303,7 +303,7 @@ impl EffectExecutor for CastTaggedEffect {
                     caster,
                     from_zone,
                     ctx.provenance,
-                );
+                )?;
                 Ok(outcome)
             },
         );

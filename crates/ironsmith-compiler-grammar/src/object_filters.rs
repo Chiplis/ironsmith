@@ -2036,6 +2036,7 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
     base.has_mana_cost |= extra.has_mana_cost;
     base.has_x_in_cost |= extra.has_x_in_cost;
     base.has_phyrexian_mana_symbol |= extra.has_phyrexian_mana_symbol;
+    if base.mana_symbol_count.is_none() { base.mana_symbol_count = extra.mana_symbol_count; }
     base.chosen_color |= extra.chosen_color;
     if base.colors_chosen_while_drafting_named.is_none() {
         base.colors_chosen_while_drafting_named = extra.colors_chosen_while_drafting_named;

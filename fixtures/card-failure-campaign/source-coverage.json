@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f",
+  "source_implementation_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 988,
-    "additional_proposed_compile_entries": 990,
+    "additional_proposed_unique_cards": 994,
+    "additional_proposed_compile_entries": 996,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 988,
+    "source_proposals_excluding_identified_runtime_gaps": 994,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -3859,6 +3859,46 @@
         "Six complete frozen bodies and Katara migration have 27 authored public scenario groups plus planner, schema and UI contracts."
       ],
       "compatibility_boundary": "Native browser/peer-lobby/replay entry points remain unchanged by source. The optional Manabrew adapter requires matching local protocol-3 peers; missing/v2 configurations are rejected before deck registration. No external v2 compatibility or executed multiplayer behavior is claimed."
+    },
+    {
+      "id": "completed-cast-quantities",
+      "stage": 60,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/cast_event_quantities.json.fixture",
+      "baseline_entries": [
+        "Imminent Doom",
+        "Namor the Sub-Mariner",
+        "Voracious Bibliophile"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e",
+      "source_review_commit": "5257004b1b7a24fdc32ee6f3d8c7856717592ac4",
+      "integrated_source_review_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed cast-bound mana value, mana-symbol and distinct-target quantities retain the event actor and complete captured characteristic frame.",
+        "All cast publishers capture observer admission, delayed triggers and history before later instructions; marked receipts prevent duplicate publication, with checked rollback."
+      ]
+    },
+    {
+      "id": "craft-material-costs",
+      "stage": 60,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/craft_material_costs.json.fixture",
+      "baseline_entries": [
+        "Kaslem's Stonetree // Kaslem's Strider",
+        "Visage of Dread // Dread Osseosaur",
+        "Waterlogged Hulk // Watertight Gondola"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e",
+      "source_review_commit": "59a39eb21658a95e0e23994c2012d182680da27e",
+      "integrated_source_review_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed material counts/subtypes retain distinct battlefield/graveyard choices and exact payment answers with pending/error rollback.",
+        "Return follows the original public successor created by the source cost, preserving exact receipt through stack/copy/restore; absent evidence differs from known empty/prevented/hidden or later movement."
+      ]
     }
   ],
   "cards": [
@@ -17880,8 +17920,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-cast-quantities"
+      ],
+      "source_review_commit": "5257004b1b7a24fdc32ee6f3d8c7856717592ac4",
+      "integrated_source_review_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e"
     },
     {
       "card_name": "Immortal Coil",
@@ -19395,8 +19439,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "craft-material-costs"
+      ],
+      "source_review_commit": "59a39eb21658a95e0e23994c2012d182680da27e",
+      "integrated_source_review_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e"
     },
     {
       "card_name": "Kasmina, Enigma Sage",
@@ -23375,8 +23423,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-cast-quantities"
+      ],
+      "source_review_commit": "5257004b1b7a24fdc32ee6f3d8c7856717592ac4",
+      "integrated_source_review_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e"
     },
     {
       "card_name": "Narci, Fable Singer",
@@ -36378,8 +36430,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "craft-material-costs"
+      ],
+      "source_review_commit": "59a39eb21658a95e0e23994c2012d182680da27e",
+      "integrated_source_review_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e"
     },
     {
       "card_name": "Vish Kal, Blood Arbiter",
@@ -36625,8 +36681,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "completed-cast-quantities"
+      ],
+      "source_review_commit": "5257004b1b7a24fdc32ee6f3d8c7856717592ac4",
+      "integrated_source_review_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e"
     },
     {
       "card_name": "Voracious Brood",
@@ -37232,8 +37292,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "craft-material-costs"
+      ],
+      "source_review_commit": "59a39eb21658a95e0e23994c2012d182680da27e",
+      "integrated_source_review_commit": "5becfe5c1716a70d2d70f26fb10b162acf02ec7e"
     },
     {
       "card_name": "Wave Goodbye",

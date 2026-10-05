@@ -3,7 +3,6 @@ use crate::effect::EffectOutcome;
 use crate::effects::ExecutionContext;
 use crate::effects::ExecutionError;
 use crate::events::other::LandPlayedEvent;
-use crate::events::spells::SpellCastEvent;
 use crate::filter::AlternativeCastKind;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -26,19 +25,17 @@ pub(super) fn register_effect_driven_spell_cast(
     caster: PlayerId,
     from_zone: Zone,
     provenance: crate::provenance::ProvNodeId,
-) -> TriggerEvent {
+) -> Result<TriggerEvent, ExecutionError> {
     // `cast_spell_from_resolving_effect` completes the same CR 601 cast
     // transaction as a priority cast and records command-zone commander casts
-    // when that transaction is committed.  This helper only publishes the
-    // resulting SpellCastEvent; recording here would count effect-driven
-    // command-zone casts twice.
-    let event = if let Some(obj) = game.object(new_id) {
-        let snapshot = crate::snapshot::ObjectSnapshot::from_object(obj, game);
-        SpellCastEvent::new_with_snapshot(new_id, caster, from_zone, snapshot)
-    } else {
-        SpellCastEvent::new(new_id, caster, from_zone)
-    };
-    TriggerEvent::new_with_provenance(event, provenance)
+    // when that transaction is committed. This publication boundary captures
+    // observers and the ordinary cast-history occurrence without recording
+    // command-zone commander casts a second time.
+    let (event, mut captured) = crate::game_loop::capture_completed_spell_cast(
+        game, new_id, caster, from_zone, provenance,
+    )?;
+    game.defer_trigger_entries(captured.take_all());
+    Ok(event)
 }
 
 pub(super) fn queue_effect_driven_land_play(
@@ -75,9 +72,9 @@ pub(super) fn with_spell_cast_event(
     caster: PlayerId,
     from_zone: Zone,
     provenance: crate::provenance::ProvNodeId,
-) -> EffectOutcome {
-    let event = register_effect_driven_spell_cast(game, new_id, caster, from_zone, provenance);
-    outcome.with_event(event)
+) -> Result<EffectOutcome, ExecutionError> {
+    let event = register_effect_driven_spell_cast(game, new_id, caster, from_zone, provenance)?;
+    Ok(outcome.with_event(event))
 }
 
 #[derive(Debug, Clone)]

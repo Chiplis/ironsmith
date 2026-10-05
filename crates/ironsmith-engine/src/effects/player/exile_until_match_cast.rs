@@ -119,7 +119,7 @@ impl EffectExecutor for ExileUntilMatchCastEffect {
                     casted_card = Some((candidate_id, new_id, from_zone));
                     cast_outcome = Some(with_spell_cast_event(
                         EffectOutcome::with_objects(vec![new_id]), game, new_id, caster_id, from_zone, ctx.provenance,
-                    ));
+                    )?);
                 } else if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 }

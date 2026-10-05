@@ -1838,6 +1838,20 @@ pub(crate) fn run_choose_objects(
                     crate::game_state::HIDDEN_IDENTITY_VIOLATION_PREFIX
                 )));
             }
+            // A payment selects an exact legal set. Resolution normalization
+            // must not fill, truncate, deduplicate or substitute what was paid.
+            let exact_cost_choice = ctx.cause.cause_type == crate::events::cause::CauseType::Cost
+                && !effect.is_search;
+            if exact_cost_choice {
+                let mut seen = std::collections::HashSet::new();
+                if chosen.len() < min || chosen.len() > max
+                    || chosen.iter().any(|id| !candidates.contains(id) || !seen.insert(*id))
+                {
+                    return Err(ExecutionError::Impossible(
+                        "cost choice must contain the required distinct legal objects".into(),
+                    ));
+                }
+            }
             let preserve_order = effect.count_value.as_ref().is_some_and(|value| {
                 value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ChooseAllInOrder)
             });

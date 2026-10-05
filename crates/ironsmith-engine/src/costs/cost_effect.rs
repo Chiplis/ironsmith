@@ -757,6 +757,12 @@ impl CostPayer for CostEffect {
             Ok::<_, crate::effects::ExecutionError>(outcome)
         })
         .map_err(CostPaymentError::ExecutionFailed)?;
+        // The instruction owner restored a suspended choice/replacement.
+        // Keep the enclosing payment's pending step; its provisional empty
+        // answer is not an underpayment and publishes no payment evidence.
+        if exec_ctx.decision_maker.awaiting_choice() {
+            return Ok(CostPaymentResult::Paid);
+        }
         if let Some(move_to_zone) =
             transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
         {

@@ -3088,7 +3088,8 @@ impl GameState {
         // makes a new object the resolution can't follow (CR 400.7).
         if entry.triggering_event.is_none() {
             for (tag, snapshots) in entry.tagged_objects.iter_mut() {
-                if tag.as_str().starts_with("__paid_departure__")
+                if tag.as_str() == crate::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG
+                    || tag.as_str().starts_with("__paid_departure__")
                     || tag.as_str().starts_with("__pre_move_history__")
                 {
                     continue;

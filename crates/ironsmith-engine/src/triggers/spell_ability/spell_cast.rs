@@ -199,6 +199,51 @@ impl TriggerMatcher for SpellCastTrigger {
         // Check spell filter if present.
         let spell_matches = if let Some(ref filter) = self.filter {
             let mut object_filter = filter.clone();
+            let use_completed_characteristics = filter.has_only_completed_cast_characteristics();
+            let completed_quantity = |quantity| match e.cast_quantity(quantity) {
+                Ok(value) => Some(value),
+                Err(error) => { ctx.game.record_token_resource_failure(&error); None }
+            };
+
+            // Quantified cast characteristics are owned by the completed event.
+            // Do not narrow a wide mana value to i32 or inspect a later stack
+            // incarnation; source counters only gate admission at this moment.
+            if let Some(counter_type) = object_filter.mana_value_eq_counters_on_source.take() {
+                let counters = ctx.game.object(ctx.source_id).map(|source| &source.counters)
+                    .or_else(|| ctx.filter_ctx.source_snapshot.as_ref()
+                        .filter(|source| source.object_id == ctx.source_id).map(|source| &source.counters));
+                let Some(counters) = counters else {
+                    ctx.game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                        "cast counter comparison requires its exact ability source".into(),
+                    ));
+                    return false;
+                };
+                let expected = i64::from(counters.get(&counter_type).copied().unwrap_or(0));
+                let Some(actual) = completed_quantity(ironsmith_core::CastEventQuantity::ManaValue) else { return false; };
+                if actual != expected { return false; }
+            }
+            if let Some((color, count)) = object_filter.mana_symbol_count.take() {
+                let Some(actual) = completed_quantity(ironsmith_core::CastEventQuantity::ManaSymbols(color)) else { return false; };
+                if (actual as u128) < count.min as u128
+                    || count.max.is_some_and(|max| actual as u128 > max as u128) {
+                    return false;
+                }
+            }
+
+            if object_filter.targets_player.is_none() && object_filter.targets_object.is_none()
+                && object_filter.targets_only_player.is_none() && object_filter.targets_only_object.is_none()
+                && let Some(count) = object_filter.target_count.take()
+            {
+                if completed_quantity(ironsmith_core::CastEventQuantity::DistinctTargets).is_none() {
+                    return false;
+                }
+                // The existing arity predicate counts target slots (notably
+                // "a single target"); its demonstrative counts distinct targets.
+                let total = e.targets.as_ref().expect("validated completed targets").len();
+                if total < count.min || count.max.is_some_and(|maximum| total > maximum) {
+                    return false;
+                }
+            }
 
             // "Cast from <zone>" filters refer to the source zone, not the spell's
             // current zone (which is always the stack).
@@ -226,7 +271,15 @@ impl TriggerMatcher for SpellCastTrigger {
             // Real spells can have no mana cost (e.g. suspend cards).
             object_filter.has_mana_cost = false;
 
-            if let Some(obj) = ctx.game.object(e.spell) {
+            if use_completed_characteristics {
+                let snapshot = match e.required_completed_snapshot() {
+                    Ok(snapshot) => snapshot,
+                    Err(error) => { ctx.game.record_token_resource_failure(&error); return false; }
+                };
+                let filter_ctx = ctx.filter_ctx.clone()
+                    .with_iterated_player(Some(e.caster)).with_caster(Some(e.caster));
+                object_filter.matches_snapshot(snapshot, &filter_ctx, ctx.game)
+            } else if let Some(obj) = ctx.game.object(e.spell) {
                 // Actor-relative spell-origin phrases such as `a player casts
                 // a spell from their hand` use IteratedPlayer in the object
                 // owner filter. During trigger matching, that participant is
@@ -743,6 +796,13 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     }
     if let Some(description) = describe_single_creature_target_excluding_source(filter) {
         return description;
+    }
+    if let Some(description) = filter.mana_symbol_count_description() {
+        let mut base_filter = filter.clone();
+        base_filter.mana_symbol_count = None;
+        let mut base = describe_spell_filter(&base_filter);
+        if base == "spell" { base = "a spell".to_string(); }
+        return format!("{base} {description}");
     }
     if filter.has_phyrexian_mana_symbol {
         let mut base_filter = filter.clone();

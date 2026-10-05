@@ -1,15 +1,16 @@
-use winnow::combinator::{alt, eof, peek, repeat_till};
+use winnow::combinator::{alt, eof, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, take_till};
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::super::{leaf, primitives};
+use crate::types::{CardType, Subtype};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CraftMaterialKind {
-    Artifact,
-    Creature,
+    CardType { card_type: CardType, count: u32 },
+    Subtype { subtype: Subtype, count: u32 },
     OneOrMore,
     RedInstantOrSorcery { minimum: u32 },
     Unsupported,
@@ -59,12 +60,32 @@ fn parse_craft_line_spec_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CraftLi
 
 fn parse_craft_material_kind_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CraftMaterialKind> {
     alt((
-        (primitives::kw("artifact"), eof).value(CraftMaterialKind::Artifact),
-        (primitives::kw("creature"), eof).value(CraftMaterialKind::Creature),
         (primitives::phrase(&["one", "or", "more"]), eof).value(CraftMaterialKind::OneOrMore),
         parse_red_instant_or_sorcery_material,
+        parse_counted_material,
     ))
     .parse_next(input)
+}
+
+// Cardinality is data, never a separate branch for each printed count. Compound
+// material requirements remain unsupported until they have their own semantics.
+fn parse_counted_material<'a>(input: &mut LexStream<'a>) -> WResult<CraftMaterialKind> {
+    let count = opt(leaf::parse_leaf_number_prefix_lexed).parse_next(input)?.unwrap_or(1);
+    if count == 0 {
+        return Err(primitives::backtrack_err("craft material", "positive material count"));
+    }
+    let word = primitives::word_parser_text.parse_next(input)?;
+    let material = match word {
+        "artifact" | "artifacts" => CraftMaterialKind::CardType { card_type: CardType::Artifact, count },
+        "creature" | "creatures" => CraftMaterialKind::CardType { card_type: CardType::Creature, count },
+        _ => CraftMaterialKind::Subtype {
+            subtype: leaf::parse_leaf_subtype_flexible_complete(word)
+                .map_err(|_| primitives::backtrack_err("craft material", "card type or subtype"))?,
+            count,
+        },
+    };
+    eof.parse_next(input)?;
+    Ok(material)
 }
 
 fn parse_red_instant_or_sorcery_material<'a>(
@@ -99,11 +120,11 @@ mod tests {
     #[test]
     fn parses_supported_material_kinds_and_cost_spans() {
         let artifact = parse("Craft with artifact {3}{W}{W}");
-        assert_eq!(artifact.material, CraftMaterialKind::Artifact);
+        assert_eq!(artifact.material, CraftMaterialKind::CardType { card_type: CardType::Artifact, count: 1 });
         assert_eq!(artifact.cost_tokens.len(), 3);
 
         let creature = parse("Craft with creature {5}{G}{G}");
-        assert_eq!(creature.material, CraftMaterialKind::Creature);
+        assert_eq!(creature.material, CraftMaterialKind::CardType { card_type: CardType::Creature, count: 1 });
 
         let any = parse("Craft with one or more {5}");
         assert_eq!(any.material, CraftMaterialKind::OneOrMore);
@@ -113,6 +134,20 @@ mod tests {
             red.material,
             CraftMaterialKind::RedInstantOrSorcery { minimum: 4 }
         );
+    }
+
+    #[test]
+    fn parses_subtypes_and_arbitrary_fixed_material_counts() {
+        for (text, subtype) in [("Craft with Cave {5}{G}", Subtype::Cave), ("Craft with Island {3}{U}", Subtype::Island)] {
+            assert_eq!(parse(text).material, CraftMaterialKind::Subtype { subtype, count: 1 });
+        }
+        for (word, count) in [("two", 2), ("three", 3), ("seven", 7)] {
+            assert_eq!(parse(&format!("Craft with {word} creatures {{5}}{{B}}")).material,
+                CraftMaterialKind::CardType { card_type: CardType::Creature, count });
+        }
+        for clause in ["zero creatures", "two artifacts and two creatures", "four or more creatures with different names"] {
+            assert_eq!(parse(&format!("Craft with {clause} {{5}}")).material, CraftMaterialKind::Unsupported);
+        }
     }
 
     #[test]

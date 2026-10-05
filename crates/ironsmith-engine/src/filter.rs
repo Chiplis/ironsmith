@@ -5589,6 +5589,7 @@ impl ObjectFilterExt for ObjectFilter {
         if let Some(mana_value_parity) = self.mana_value_parity {
             parts.push(mana_value_parity.describe_axis("mana value"));
         }
+        if let Some(description) = self.mana_symbol_count_description() { parts.push(description); }
         if let Some(counter_type) = self.mana_value_eq_counters_on_source {
             parts.push(format!(
                 "with mana value equal to the number of {} counters on this artifact",

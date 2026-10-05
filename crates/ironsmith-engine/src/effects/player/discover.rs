@@ -127,7 +127,7 @@ impl EffectExecutor for DiscoverEffect {
                     selected_object = Some(result.new_id);
                     casted_spell = Some(register_effect_driven_spell_cast(
                         game, result.new_id, player_id, result.from_zone, ctx.provenance,
-                    ));
+                    )?);
                 } else if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 } else {

@@ -569,6 +569,23 @@ impl EffectExecutor for ExileEffect {
                     .map(|object| ObjectSnapshot::from_object(object, game))
                     .unwrap_or_else(|| before.clone());
                 ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_SELF_TAG, vec![after]);
+                if ctx.cause.cause_type == crate::events::cause::CauseType::Cost {
+                    // CR 400.7j / 118.11: the ability can find the original
+                    // public successor even if the cost's destination changed.
+                    // Additions have not run yet. Do not chase their later
+                    // moves, retain the unmoved source, or expose a hidden
+                    // arrival as though it were a public cost result.
+                    let arrival = original.result_objects()
+                        .or_else(|| original.affected_objects())
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|id| game.object(*id))
+                        .filter(|object| object.id != before.object_id
+                            && object.stable_id == before.stable_id && object.zone.is_public())
+                        .map(|object| ObjectSnapshot::from_object(object, game))
+                        .collect();
+                    ctx.set_tagged_objects(crate::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG, arrival);
+                }
             }
             super::finish_zone_change_receipts(game, ctx, original, receipts)
         })();

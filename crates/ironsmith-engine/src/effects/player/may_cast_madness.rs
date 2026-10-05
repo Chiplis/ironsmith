@@ -111,7 +111,7 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
                 owner,
                 Zone::Exile,
                 ctx.provenance,
-            ));
+            )?);
         }
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));

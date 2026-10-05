@@ -21,6 +21,11 @@ pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 /// Never widened to the source's other linked exile objects.
 pub const SOURCE_EXILED_SELF_TAG: &str = "__source_exiled_self__";
 
+/// Exact public-zone successor created by the original self-exile cost action.
+/// Captured before replacement additions; prevention and hidden arrivals bind
+/// an empty set. Stack admission must never repoint this completed receipt.
+pub const SOURCE_COST_PUBLIC_ARRIVAL_TAG: &str = "__source_cost_public_arrival__";
+
 /// Runtime tag for only the cards the current resolution exiled with its
 /// source. Filter contexts widen [`SOURCE_EXILED_TAG`] to every linked card,
 /// so "each other card exiled with ~" excludes the just-exiled card through
@@ -246,6 +251,7 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     PREVIOUS_ITERATED_OBJECTS_TAG,
     CAST_MODIFIED_CREATURES_TAG,
     CAST_CONTROLLED_OBJECTS_TAG,
+    SOURCE_COST_PUBLIC_ARRIVAL_TAG,
 ];
 
 /// Dynamic tag key used by the tagging system.

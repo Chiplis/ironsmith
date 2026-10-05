@@ -1285,6 +1285,15 @@ pub(super) fn matches_subject(
             _ => return false,               // No mana cost or empty
         }
     }
+    if let Some((color, count)) = filter.mana_symbol_count {
+        let symbol = crate::mana::ManaSymbol::from_color(color);
+        let actual = subject.mana_cost().map_or(0, |cost| {
+            cost.pips().iter().filter(|pip| pip.contains(&symbol)).count()
+        });
+        if actual < count.min || count.max.is_some_and(|maximum| actual > maximum) {
+            return false;
+        }
+    }
     if filter.has_phyrexian_mana_symbol
         && !subject.mana_cost().is_some_and(|cost| {
             cost.pips().iter().any(|pip| {

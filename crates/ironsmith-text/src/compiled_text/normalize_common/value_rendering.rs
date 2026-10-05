@@ -373,8 +373,8 @@ pub(crate) fn describe_effect_count_backref(value: &Value) -> Option<String> {
                 Some(format!("that many minus {}", -offset))
             }
         }
-        Value::EventValue(EventValueSpec::Amount) => Some("that many".to_string()),
-        Value::EventValueOffset(EventValueSpec::Amount, offset) => {
+        Value::EventValue(EventValueSpec::Amount | EventValueSpec::CastSpell(_)) => Some("that many".to_string()),
+        Value::EventValueOffset(EventValueSpec::Amount | EventValueSpec::CastSpell(_), offset) => {
             if *offset == 0 {
                 Some("that many".to_string())
             } else if *offset > 0 {
@@ -6703,6 +6703,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)) => format!("the number of those die results of {minimum} or higher"),
         Value::EventValueOffset(EventValueSpec::DieBatchTotal, offset) => format!("the total result of those dice plus {offset}"),
         Value::EventValueOffset(EventValueSpec::DieResultsAtLeast(minimum), offset) => format!("the number of those die results of {minimum} or higher plus {offset}"),
+        Value::EventValue(EventValueSpec::CastSpell(_)) => "that much".to_string(),
+        Value::EventValueOffset(EventValueSpec::CastSpell(_), offset) => format!("that much plus {offset}"),
         Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
         Value::EventValueOffset(EventValueSpec::DieResult, offset) => {
             if *offset == 0 {

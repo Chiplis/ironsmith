@@ -187,7 +187,7 @@ pub use effect::{
     VentureIntoDungeonEffect, VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption,
     WinTheGameEffect, WithIdEffect, ZoneReplacementLibraryPlacement,
 };
-pub use effect_model::{Comparison, EventValueSpec, ValueComparisonOperator};
+pub use effect_model::{CastEventQuantity, Comparison, EventValueSpec, ValueComparisonOperator};
 pub use event_model::KeywordActionKind;
 pub use filter_model::{
     AdditionalCostObjectAction, AdditionalCostObjectSurface, AlternativeCastKind,

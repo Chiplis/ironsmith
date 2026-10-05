@@ -107,6 +107,48 @@ pub(crate) fn queue_triggers_from_event(
     }
 }
 
+/// Capture the observers of one completed cast before its publishing effect
+/// can run another instruction. A cast is its own completed transaction even
+/// inside a held outer program; this does not drain or regroup other events.
+/// The returned receipt prevents later reported/queued publication from
+/// matching the same occurrence again. Intervening-if resolution checks remain
+/// on the captured ability and run under their ordinary resolution owner.
+pub(crate) fn capture_completed_spell_cast(
+    game: &mut GameState,
+    spell: ObjectId,
+    caster: PlayerId,
+    from_zone: Zone,
+    provenance: crate::provenance::ProvNodeId,
+) -> Result<(TriggerEvent, TriggerQueue), crate::effects::ExecutionError> {
+    use crate::effects::ExecutionError;
+    let (root, meter) = game.begin_token_resource_scope();
+    let checkpoint = game.clone();
+    let result = (|| {
+        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+        let cast = SpellCastEvent::from_completed_cast(spell, caster, from_zone, game);
+        cast.required_completed_snapshot()?;
+        if cast.targets.is_none() {
+            return Err(ExecutionError::IncompleteEvidence(
+                "completed cast publication requires its chosen target receipt".into(),
+            ));
+        }
+        let mut event = game.ensure_trigger_event_provenance(
+            TriggerEvent::new_with_provenance(cast, provenance),
+        );
+        let mut captured = TriggerQueue::new();
+        queue_triggers_from_event(game, &mut captured, event.clone(), true);
+        if let Some(error) = game.token_resource_failure() { return Err(error); }
+        event.mark_triggers_captured();
+        Ok((event, captured))
+    })();
+    if let Err(error) = &result {
+        game.record_token_resource_failure(error);
+        game.restore_execution_checkpoint(checkpoint, false);
+    }
+    game.end_token_resource_scope(root, &meter);
+    result
+}
+
 /// Queue trigger matches for events one instruction reported, in order.
 ///
 /// Counters one instruction put on several objects form one simultaneous
@@ -5702,4 +5744,62 @@ pub(super) fn compute_legal_targets_with_counter_declaration(
     let view = crate::derived_view::DerivedGameView::new(game).with_target_reference_bindings(references.cloned().unwrap_or_default())
         .with_counter_removal_declaration(declaration);
     crate::targeting::compute_legal_targets_with_tagged_objects_with_view(game, spec, caster, source_id, references, &view)
+}
+
+
+#[cfg(test)]
+mod completed_cast_capture_tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::card::CardBuilder;
+    use crate::effects::ExecutionError;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::triggers::Trigger;
+    use crate::types::CardType;
+
+    #[test]
+    fn incomplete_capture_rolls_back_history_and_prior_observer_matches() {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let player = PlayerId(0);
+        let source_card = CardBuilder::new(CardId::new(), "Cast observers")
+            .card_types(vec![CardType::Enchantment]).build();
+        let source = game.create_object_from_card(&source_card, player, Zone::Battlefield);
+        let filtered = ObjectFilter {
+            mana_value_eq_counters_on_source: Some(CounterType::Charge),
+            ..ObjectFilter::spell()
+        };
+        {
+            let object = game.object_mut(source).unwrap();
+            object.counters.insert(CounterType::Charge, 1);
+            object.abilities_mut().push(Ability::triggered(
+                Trigger::spell_cast(None, PlayerFilter::You), vec![Effect::draw(1)],
+            ));
+            object.abilities_mut().push(Ability::triggered(
+                Trigger::spell_cast(Some(filtered), PlayerFilter::You), vec![Effect::draw(1)],
+            ));
+        }
+        let spell_card = CardBuilder::new(CardId::new(), "Missing announced X")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::X]])).build();
+        let spell = game.create_object_from_card(&spell_card, player, Zone::Stack);
+        game.push_to_stack(StackEntry::new(spell, player));
+        let error = match capture_completed_spell_cast(&mut game, spell, player, Zone::Hand, Default::default()) {
+            Err(error) => error,
+            Ok(_) => panic!("missing X must not publish partial trigger matches"),
+        };
+        assert!(matches!(error, ExecutionError::IncompleteEvidence(_)));
+        assert_eq!(game.player(player).unwrap().spells_cast_this_game, 0);
+        assert_eq!(game.turn_store.turn_history.total_spells_cast_this_turn(), 0);
+        assert!(game.effect_store.pending_trigger_entries.is_empty());
+        game.object_mut(spell).unwrap().x_value = Some(1);
+        let (receipt, mut captured) = capture_completed_spell_cast(
+            &mut game, spell, player, Zone::Hand, Default::default(),
+        ).unwrap();
+        assert!(receipt.triggers_captured());
+        assert_eq!(captured.take_all().len(), 2);
+        game.record_turn_history_event(&receipt);
+        assert_eq!(game.player(player).unwrap().spells_cast_this_game, 1);
+        assert_eq!(game.turn_store.turn_history.total_spells_cast_this_turn(), 1);
+    }
 }

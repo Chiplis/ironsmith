@@ -3540,6 +3540,7 @@ pub(super) fn finalize_pending_spell_cast(
         &mut *decision_maker,
     )?;
 
+    let queue_before_capture = trigger_queue.clone();
     trigger_queue.append_captured(captured_targeting);
 
     if effect_driven {
@@ -3550,24 +3551,17 @@ pub(super) fn finalize_pending_spell_cast(
         return Ok(GameProgress::Continue);
     }
 
-    let event = if let Some(obj) = game.object(result.new_id) {
-        let snapshot = crate::snapshot::ObjectSnapshot::from_object(obj, game);
-        TriggerEvent::new_with_provenance(
-            SpellCastEvent::new_with_snapshot(
-                result.new_id,
-                result.caster,
-                result.from_zone,
-                snapshot,
-            ),
-            spell_cast_provenance,
-        )
-    } else {
-        TriggerEvent::new_with_provenance(
-            SpellCastEvent::new(result.new_id, result.caster, result.from_zone),
-            spell_cast_provenance,
-        )
+    let (_receipt, captured) = match capture_completed_spell_cast(
+        game, result.new_id, result.caster, result.from_zone, spell_cast_provenance,
+    ) {
+        Ok(completed) => completed,
+        Err(error) => {
+            *trigger_queue = queue_before_capture;
+            state.rollback_action(game);
+            return Err(GameLoopError::ExecutionFailed(error));
+        }
     };
-    queue_triggers_from_event(game, trigger_queue, event, false);
+    trigger_queue.append_captured(captured);
 
     state.clear_checkpoint();
     // CR 117.3c: the player who cast the spell receives priority afterward.

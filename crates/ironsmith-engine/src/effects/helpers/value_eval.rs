@@ -1493,6 +1493,10 @@ fn resolve_event_value(
     spec: &EventValueSpec,
 ) -> Result<i64, ExecutionError> {
     match spec {
+        EventValueSpec::CastSpell(quantity) => ctx.triggering_event.as_ref()
+            .and_then(|event| event.downcast::<crate::events::spells::SpellCastEvent>())
+            .ok_or_else(|| ExecutionError::IncompleteEvidence("cast quantity requires its completed spell-cast event".into()))?
+            .cast_quantity(*quantity),
         EventValueSpec::LifeChange {
             gained,
             for_controller,

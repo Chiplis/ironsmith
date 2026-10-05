@@ -174,6 +174,7 @@ pub fn compile_effects(
             allow_excess_damage_event_value: ctx.allow_excess_damage_event_value,
             milling_event_filter: ctx.milling_event_filter.clone(),
             dice_event_grouped: ctx.dice_event_grouped,
+            cast_event_quantity: ctx.cast_event_quantity,
             life_event_binding: ctx.life_event_binding.clone(),
             life_amount_producers: ctx.life_amount_producers.clone(),
             die_result_producers: ctx.die_result_producers.clone(),

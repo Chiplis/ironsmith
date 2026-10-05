@@ -185,7 +185,7 @@ impl EffectExecutor for CastSourceEffect {
             ctx.controller,
             from_zone,
             ctx.provenance,
-        ))
+        )?)
     }
 }
 

@@ -353,3 +353,43 @@ pub fn trigger_die_event_grouped(trigger: &TriggerSpec) -> Option<bool> {
         _ => None,
     }
 }
+
+/// A bare demonstrative belongs to the single quantitative restriction on a
+/// completed cast. Multiple different quantities are intentionally ambiguous.
+pub fn trigger_cast_event_quantity(trigger: &TriggerSpec) -> Option<ironsmith_core::CastEventQuantity> {
+    use ironsmith_core::CastEventQuantity;
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_cast_event_quantity(trigger),
+        TriggerSpec::Either(left, right) => {
+            let left = trigger_cast_event_quantity(left)?;
+            (trigger_cast_event_quantity(right) == Some(left)).then_some(left)
+        }
+        TriggerSpec::SpellCast { filter: Some(filter), .. }
+        | TriggerSpec::SpellCastSameNameCardInZone { filter: Some(filter), .. } => {
+            let mut quantities = Vec::new();
+            if filter.mana_value_eq_counters_on_source.is_some() { quantities.push(CastEventQuantity::ManaValue); }
+            if let Some((color, _)) = filter.mana_symbol_count { quantities.push(CastEventQuantity::ManaSymbols(color)); }
+            // Qualified target relations retain their separately captured subset
+            // count. A bare arity counts the completed cast's distinct targets.
+            if filter.target_count.is_some() && filter.targets_player.is_none()
+                && filter.targets_object.is_none() && filter.targets_only_player.is_none()
+                && filter.targets_only_object.is_none() {
+                quantities.push(CastEventQuantity::DistinctTargets);
+            }
+            if filter.any_of.is_empty() && quantities.len() == 1 { quantities.pop() } else { None }
+        }
+        _ => None,
+    }
+}
+
+/// Legacy relation-qualified target counts use the matcher's captured subset.
+/// An additional quantified characteristic cannot silently win that binding.
+pub fn spell_cast_filter_binds_target_count(filter: &ObjectFilter) -> bool {
+    if filter.mana_symbol_count.is_some() || filter.mana_value_eq_counters_on_source.is_some() {
+        return false;
+    }
+    filter.targets_player.is_some() || filter.targets_object.is_some()
+        || filter.targets_only_player.is_some() || filter.targets_only_object.is_some()
+        || filter.target_count.is_some()
+        || filter.any_of.iter().any(spell_cast_filter_binds_target_count)
+}

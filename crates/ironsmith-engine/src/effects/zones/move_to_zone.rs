@@ -311,6 +311,15 @@ impl EffectExecutor for MoveToZoneEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
+        let mut requires_cost_arrival = false;
+        ironsmith_core::tag::TagKeyWalk::for_each_tag_key(&self.target, &mut |tag| {
+            requires_cost_arrival |= tag.as_str() == crate::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG;
+        });
+        if requires_cost_arrival && ctx.get_tagged_all(crate::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG).is_none() {
+            return Err(ExecutionError::IncompleteEvidence(
+                "self-exile cost has no completed public-successor receipt".into(),
+            ));
+        }
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::context::ExecutionContextCheckpoint::capture(ctx);
         // CR 603.10a: objects this instruction moves together share one
@@ -1033,7 +1042,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             }
         }
 
-        if moves_source && let Some(new_source_id) = moved_ids.first().copied() {
+        if (moves_source || self.transfer_exiled_with_source_links)
+            && let Some(new_source_id) = moved_ids.first().copied()
+        {
             let old_source_id = ctx.source;
             if self.transfer_exiled_with_source_links {
                 game.transfer_exiled_with_source_links(old_source_id, new_source_id);

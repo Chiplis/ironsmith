@@ -232,7 +232,7 @@ impl EffectExecutor for CascadeEffect {
                     cast_outcome = Some(with_spell_cast_event(
                         EffectOutcome::with_objects(vec![result.new_id]), game, result.new_id,
                         ctx.controller, result.from_zone, ctx.provenance,
-                    ));
+                    )?);
                 }
                 if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             }

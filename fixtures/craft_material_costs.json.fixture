@@ -1,0 +1,119 @@
+[
+  {
+    "name": "Kaslem's Stonetree // Kaslem's Strider",
+    "oracle_id": "1ac3e4bc-1678-4280-a071-3dbc8ef4a2bf",
+    "layout": "transform",
+    "status": "UNVALIDATED source proposal",
+    "card_faces": [
+      {
+        "name": "Kaslem's Stonetree",
+        "mana_cost": "{2}{G}",
+        "type_line": "Artifact",
+        "oracle_text": "When this artifact enters, look at the top six cards of your library. You may put a land card from among them onto the battlefield tapped. Put the rest on the bottom in a random order.\nCraft with Cave {5}{G} ({5}{G}, Exile this artifact, Exile a Cave you control or a Cave card from your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)",
+        "colors": [
+          "G"
+        ],
+        "text": "Mana cost: {2}{G}\nType: Artifact\nWhen this artifact enters, look at the top six cards of your library. You may put a land card from among them onto the battlefield tapped. Put the rest on the bottom in a random order.\nCraft with Cave {5}{G} ({5}{G}, Exile this artifact, Exile a Cave you control or a Cave card from your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)"
+      },
+      {
+        "name": "Kaslem's Strider",
+        "mana_cost": "",
+        "type_line": "Artifact Creature — Golem",
+        "oracle_text": "",
+        "colors": [
+          "G"
+        ],
+        "color_indicator": [
+          "G"
+        ],
+        "power": "5",
+        "toughness": "5",
+        "text": "Type: Artifact Creature — Golem\nPower/Toughness: 5/5"
+      }
+    ],
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported craft material clause 'cave' [rule-path=parse_craft > registry::parse_craft] [rule-path=statement-line > keyword-line]; oracle-only fallback also failed: unsupported craft material clause 'cave' [rule-path=parse_craft > registry::parse_craft] [rule-path=statement-line > keyword-line]",
+    "baseline_content_hash": "98fd3fff5446854da145a0043b4de568e322d76091bcaa95598916d58eeaecd3",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "59a39eb21658a95e0e23994c2012d182680da27e",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Visage of Dread // Dread Osseosaur",
+    "oracle_id": "7cad43df-31c9-47b5-bc05-4a0f6544b396",
+    "layout": "transform",
+    "status": "UNVALIDATED source proposal",
+    "card_faces": [
+      {
+        "name": "Visage of Dread",
+        "mana_cost": "{1}{B}",
+        "type_line": "Artifact",
+        "oracle_text": "When this artifact enters, target opponent reveals their hand. You choose an artifact or creature card from it. That player discards that card.\nCraft with two creatures {5}{B} ({5}{B}, Exile this artifact, Exile the two from among creatures you control and/or creature cards in your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)",
+        "colors": [
+          "B"
+        ],
+        "text": "Mana cost: {1}{B}\nType: Artifact\nWhen this artifact enters, target opponent reveals their hand. You choose an artifact or creature card from it. That player discards that card.\nCraft with two creatures {5}{B} ({5}{B}, Exile this artifact, Exile the two from among creatures you control and/or creature cards in your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)"
+      },
+      {
+        "name": "Dread Osseosaur",
+        "mana_cost": "",
+        "type_line": "Creature — Dinosaur Skeleton Horror",
+        "oracle_text": "Menace\nWhenever this creature enters or attacks, you may mill two cards. (You may put the top two cards of your library into your graveyard.)",
+        "colors": [
+          "B"
+        ],
+        "color_indicator": [
+          "B"
+        ],
+        "power": "5",
+        "toughness": "4",
+        "text": "Type: Creature — Dinosaur Skeleton Horror\nPower/Toughness: 5/4\nMenace\nWhenever this creature enters or attacks, you may mill two cards. (You may put the top two cards of your library into your graveyard.)"
+      }
+    ],
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported craft material clause 'two creatures' [rule-path=parse_craft > registry::parse_craft] [rule-path=statement-line > keyword-line]; oracle-only fallback also failed: unsupported craft material clause 'two creatures' [rule-path=parse_craft > registry::parse_craft] [rule-path=statement-line > keyword-line]",
+    "baseline_content_hash": "21b901a2dc70c0f2bc5844a8ed2c626c9e1f85c839008bbc7565f8b34b603e46",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "59a39eb21658a95e0e23994c2012d182680da27e",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Waterlogged Hulk // Watertight Gondola",
+    "oracle_id": "30820f71-9fd4-453c-b377-c2e0b01c07a7",
+    "layout": "transform",
+    "status": "UNVALIDATED source proposal",
+    "card_faces": [
+      {
+        "name": "Waterlogged Hulk",
+        "mana_cost": "{U}",
+        "type_line": "Artifact",
+        "oracle_text": "{T}: Mill a card. (Put the top card of your library into your graveyard.)\nCraft with Island {3}{U} ({3}{U}, Exile this artifact, Exile an Island you control or an Island card from your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)",
+        "colors": [
+          "U"
+        ],
+        "text": "Mana cost: {U}\nType: Artifact\n{T}: Mill a card. (Put the top card of your library into your graveyard.)\nCraft with Island {3}{U} ({3}{U}, Exile this artifact, Exile an Island you control or an Island card from your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)"
+      },
+      {
+        "name": "Watertight Gondola",
+        "mana_cost": "",
+        "type_line": "Artifact — Vehicle",
+        "oracle_text": "Vigilance\nDescend 8 — This Vehicle can't be blocked as long as there are eight or more permanent cards in your graveyard.\nCrew 1 (Tap any number of creatures you control with total power 1 or more: This Vehicle becomes an artifact creature until end of turn.)",
+        "colors": [
+          "U"
+        ],
+        "color_indicator": [
+          "U"
+        ],
+        "power": "4",
+        "toughness": "4",
+        "text": "Type: Artifact — Vehicle\nPower/Toughness: 4/4\nVigilance\nDescend 8 — This Vehicle can't be blocked as long as there are eight or more permanent cards in your graveyard.\nCrew 1 (Tap any number of creatures you control with total power 1 or more: This Vehicle becomes an artifact creature until end of turn.)"
+      }
+    ],
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported craft material clause 'island' [rule-path=parse_craft > registry::parse_craft] [rule-path=statement-line > keyword-line]; oracle-only fallback also failed: unsupported craft material clause 'island' [rule-path=parse_craft > registry::parse_craft] [rule-path=statement-line > keyword-line]",
+    "baseline_content_hash": "07f92d33c1c2eb6499c565ef1994f6c2eaa7877ad6cfd802d0f4b2e208b4119f",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "59a39eb21658a95e0e23994c2012d182680da27e",
+    "validation": "authored_not_run"
+  }
+]

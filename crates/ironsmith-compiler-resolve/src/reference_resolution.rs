@@ -67,6 +67,7 @@ pub struct EffectReferenceResolutionConfig {
     pub allow_excess_damage_event_value: bool,
     pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
     pub dice_event_grouped: Option<bool>,
+    pub cast_event_quantity: Option<ironsmith_core::CastEventQuantity>,
     pub life_event_binding:
         Option<std::sync::Arc<ironsmith_compiler_semantic::trigger_references::LifeEventBinding>>,
     pub life_amount_producers:
@@ -112,6 +113,7 @@ struct EffectReferenceResolutionState<'a> {
     allow_excess_damage_event_value: bool,
     milling_event_filter: Option<&'a ObjectFilter>,
     dice_event_grouped: Option<bool>,
+    cast_event_quantity: Option<ironsmith_core::CastEventQuantity>,
     life_event_binding:
         Option<&'a ironsmith_compiler_semantic::trigger_references::LifeEventBinding>,
     life_amount_producers:
@@ -191,17 +193,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
     }
 }
 
-fn spell_cast_filter_binds_target_count(filter: &ObjectFilter) -> bool {
-    filter.targets_player.is_some()
-        || filter.targets_object.is_some()
-        || filter.targets_only_player.is_some()
-        || filter.targets_only_object.is_some()
-        || filter.target_count.is_some()
-        || filter
-            .any_of
-            .iter()
-            .any(spell_cast_filter_binds_target_count)
-}
+use ironsmith_compiler_semantic::trigger_references::spell_cast_filter_binds_target_count;
 
 pub fn annotate_effect_sequence(
     effects: &[EffectAst],
@@ -229,6 +221,7 @@ pub fn annotate_effect_sequence_owned(
     env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     env.milling_event_filter = config.milling_event_filter.clone();
     env.dice_event_grouped = config.dice_event_grouped;
+    env.cast_event_quantity = config.cast_event_quantity;
     env.life_event_binding = config.life_event_binding.clone();
     env.life_amount_producers = config.life_amount_producers.clone();
     env.die_result_producers = config.die_result_producers.clone();
@@ -3692,6 +3685,7 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
         allow_excess_damage_event_value: env.allow_excess_damage_event_value,
         milling_event_filter: env.milling_event_filter.as_deref(),
         dice_event_grouped: env.dice_event_grouped,
+        cast_event_quantity: env.cast_event_quantity,
         life_event_binding: env.life_event_binding.as_deref(),
         life_amount_producers: &env.life_amount_producers,
         die_result_producers: &env.die_result_producers,
@@ -5804,6 +5798,7 @@ fn resolve_effect_references_in_effect(
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter,
                 dice_event_grouped: state.dice_event_grouped,
+                cast_event_quantity: state.cast_event_quantity,
                 life_event_binding: state.life_event_binding,
                 life_amount_producers: state.life_amount_producers,
                 die_result_producers: state.die_result_producers,
@@ -5845,6 +5840,7 @@ fn resolve_effect_references_in_effect(
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter,
                 dice_event_grouped: state.dice_event_grouped,
+                cast_event_quantity: state.cast_event_quantity,
                 life_event_binding: state.life_event_binding,
                 life_amount_producers: state.life_amount_producers,
                 die_result_producers: state.die_result_producers,
@@ -5912,6 +5908,7 @@ fn resolve_effect_references_in_effect(
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
             dice_event_grouped: None,
+            cast_event_quantity: None,
             life_event_binding: None,
             life_amount_producers: &[],
             die_result_producers: &[],
@@ -5951,6 +5948,7 @@ fn resolve_effect_references_in_effect(
                     trigger,
                 ),
             milling_event_filter: milling_event_filter.as_deref(),
+            cast_event_quantity: ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity(trigger),
             dice_event_grouped:
                 ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(trigger),
             life_event_binding: life_event_binding.as_deref(),
@@ -6045,6 +6043,7 @@ fn resolve_effect_sequence_references_with_state_in_place(
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter.cloned().map(std::sync::Arc::new),
                 dice_event_grouped: state.dice_event_grouped,
+                cast_event_quantity: state.cast_event_quantity,
                 life_event_binding: state.life_event_binding.cloned().map(std::sync::Arc::new),
                 life_amount_producers: std::sync::Arc::new(state.life_amount_producers.to_vec()),
                 die_result_producers: std::sync::Arc::new(state.die_result_producers.to_vec()),
@@ -6260,6 +6259,7 @@ fn advance_reference_env_for_effect(
                     allow_excess_damage_event_value: env.allow_excess_damage_event_value,
                     milling_event_filter: env.milling_event_filter.clone(),
                     dice_event_grouped: env.dice_event_grouped,
+                    cast_event_quantity: env.cast_event_quantity,
                     life_event_binding: env.life_event_binding.clone(),
                     life_amount_producers: env.life_amount_producers.clone(),
                     die_result_producers: env.die_result_producers.clone(),
@@ -6302,6 +6302,7 @@ fn advance_reference_env_for_effect(
                 allow_excess_damage_event_value: env.allow_excess_damage_event_value,
                 milling_event_filter: env.milling_event_filter.clone(),
                 dice_event_grouped: env.dice_event_grouped,
+                cast_event_quantity: env.cast_event_quantity,
                 life_event_binding: env.life_event_binding.clone(),
                 life_amount_producers: env.life_amount_producers.clone(),
                 die_result_producers: env.die_result_producers.clone(),
@@ -7626,6 +7627,18 @@ fn resolve_effect_result_value(
                         .to_string(),
                 ));
             }
+        }
+        Value::EventValue(EventValueSpec::Amount)
+            if state.pinned_effect_metric_id.is_none()
+                && state.cast_event_quantity.is_some() =>
+        {
+            *value = Value::EventValue(EventValueSpec::CastSpell(state.cast_event_quantity.unwrap()));
+        }
+        Value::EventValueOffset(EventValueSpec::Amount, offset)
+            if state.pinned_effect_metric_id.is_none()
+                && state.cast_event_quantity.is_some() =>
+        {
+            *value = Value::EventValueOffset(EventValueSpec::CastSpell(state.cast_event_quantity.unwrap()), *offset);
         }
         Value::EventValue(EventValueSpec::Amount)
             if state
@@ -10124,6 +10137,7 @@ mod tests {
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
                 dice_event_grouped: None,
+                cast_event_quantity: None,
                 life_event_binding: None,
                 life_amount_producers: &[],
                 die_result_producers: &[],
@@ -10158,6 +10172,7 @@ mod tests {
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
                 dice_event_grouped: None,
+                cast_event_quantity: None,
                 life_event_binding: None,
                 life_amount_producers: &[],
                 die_result_producers: &[],
@@ -10193,6 +10208,7 @@ mod tests {
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
                 dice_event_grouped: None,
+                cast_event_quantity: None,
                 life_event_binding: None,
                 life_amount_producers: &[],
                 die_result_producers: &[],
@@ -12139,6 +12155,7 @@ mod excess_damage_binding_tests {
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
             dice_event_grouped: None,
+            cast_event_quantity: None,
             life_event_binding: None,
             life_amount_producers: &[],
             die_result_producers: &[],
@@ -12332,5 +12349,46 @@ mod hand_arrival_result_binding_tests {
         assert!(
             matches!(&annotated.effects[2].effect, EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {condition, ..}) if *condition == id)
         );
+    }
+}
+
+#[cfg(test)]
+mod cast_quantity_binding_tests {
+    use super::*;
+    use ironsmith_core::CastEventQuantity;
+
+    #[test]
+    fn original_siblings_retain_cast_provenance_but_explicit_prior_results_do_not() {
+        let mut env = ReferenceEnv {
+            cast_event_quantity: Some(CastEventQuantity::DistinctTargets),
+            ..Default::default()
+        };
+        for producer in [None, Some(EffectId(19))] {
+            env.last_effect_id = RefState::from_option(producer);
+            let mut value = Value::EventValue(EventValueSpec::Amount);
+            resolve_effect_result_value(&mut value, effect_reference_resolution_state(&env)).unwrap();
+            assert_eq!(value, Value::EventValue(EventValueSpec::CastSpell(CastEventQuantity::DistinctTargets)));
+        }
+        let mut local = Value::EventValue(EventValueSpec::Amount).with_surface_hint(ValueSurfaceHint::PriorEffectResult);
+        resolve_effect_result_value(&mut local, effect_reference_resolution_state(&env)).unwrap();
+        assert_eq!(local.unhinted(), &Value::EffectValue(EffectId(19)));
+        let restored = ReferenceEnv::from_frame(&ReferenceFrame::from_lowering_frame(&env.to_lowering_frame(false, false)));
+        assert_eq!(restored.cast_event_quantity, env.cast_event_quantity);
+    }
+
+    #[test]
+    fn a_cast_trigger_with_two_quantities_does_not_guess_an_antecedent() {
+        let filter = ObjectFilter {
+            mana_symbol_count: Some((ironsmith_core::color::Color::Blue, crate::effect::ChoiceCount::at_least(1))),
+            target_count: Some(crate::effect::ChoiceCount::at_least(1)),
+            ..ObjectFilter::spell()
+        };
+        let trigger = TriggerSpec::SpellCast {
+            filter: Some(filter), mana_source_filter: None, caster: PlayerFilter::You,
+            timing: None, during_turn: None, min_spells_this_turn: None,
+            exact_spells_this_turn: None, from_not_hand: false,
+        };
+        assert_eq!(ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity(&trigger), None);
+        assert!(!trigger_supports_event_amount(&trigger));
     }
 }

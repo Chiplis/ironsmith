@@ -129,7 +129,7 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
                 owner,
                 Zone::Hand,
                 ctx.provenance,
-            ))
+            )?)
         } else if ctx.decision_maker.awaiting_choice() {
             Ok(EffectOutcome::count(0))
         } else {

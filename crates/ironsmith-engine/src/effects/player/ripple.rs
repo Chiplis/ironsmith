@@ -84,7 +84,7 @@ impl EffectExecutor for RippleEffect {
                     failed_methods.clear();
                     kept_snapshots.push(snapshot);cast_ids.push(new_id);
                     let provenance=game.alloc_child_event_provenance(ctx.provenance,crate::events::EventKind::SpellCast);
-                    let mut outcome=with_spell_cast_event(EffectOutcome::with_objects(vec![new_id]),game,new_id,ctx.controller,option.from_zone,provenance);
+                    let mut outcome=with_spell_cast_event(EffectOutcome::with_objects(vec![new_id]),game,new_id,ctx.controller,option.from_zone,provenance)?;
                     // Later cast costs can remove a watcher or alter the spell.
                     // Retain this completed cast's matches and history now.
                     crate::effects::capture_triggers_before_added_program(game,ctx,None,outcome.events.iter_mut())?;

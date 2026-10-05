@@ -815,6 +815,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/824"
+    },
+    {
+      "stage": 59,
+      "branch": "fix/card-failures-59-waterbend-payment-bodies",
+      "base": "fix/card-failures-58-alternative-payment-bodies",
+      "source_integration_commit": "2efccd1364dd9f21d82a821f119fda1ee9a37d13",
+      "remote_commit": "b4ff6dc9f1d8985ef8b2423b8ca9894ea3ec0f8a",
+      "tree": "29836362fcc50da2859c56cac3106f2e8f5a4311",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 825,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/825"
     }
   ]
 }

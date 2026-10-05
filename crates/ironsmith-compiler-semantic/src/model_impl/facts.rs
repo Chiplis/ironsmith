@@ -213,6 +213,7 @@ pub struct LoweringFrame {
     pub allow_excess_damage_event_value: bool,
     pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
     pub dice_event_grouped: Option<bool>,
+    pub cast_event_quantity: Option<ironsmith_core::CastEventQuantity>,
     pub life_event_binding: Option<std::sync::Arc<crate::trigger_references::LifeEventBinding>>,
     pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
@@ -375,6 +376,7 @@ impl EffectLoweringContext {
         self.allow_excess_damage_event_value = frame.allow_excess_damage_event_value;
         self.milling_event_filter = frame.milling_event_filter.clone();
         self.dice_event_grouped = frame.dice_event_grouped;
+        self.cast_event_quantity = frame.cast_event_quantity;
         self.life_event_binding = frame.life_event_binding.clone();
         self.life_amount_producers = frame.life_amount_producers.clone();
         self.die_result_producers = frame.die_result_producers.clone();

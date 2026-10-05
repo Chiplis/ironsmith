@@ -196,6 +196,6 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
             player_id,
             result.from_zone,
             ctx.provenance,
-        ))
+        )?)
     }
 }

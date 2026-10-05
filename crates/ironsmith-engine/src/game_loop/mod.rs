@@ -82,7 +82,7 @@ pub(crate) use targeting::{extract_target_requirements_with_modes, extract_targe
 mod sba_triggers;
 mod stack_resolution;
 pub(crate) use targeting::{
-    AssignmentLegalTargets, queue_triggers_from_event, queue_triggers_from_reported_events,
+    AssignmentLegalTargets, capture_completed_spell_cast, queue_triggers_from_event, queue_triggers_from_reported_events,
     specialize_iterated_player_choose_spec,
     stack_entry_assignment_legal_targets,
 };

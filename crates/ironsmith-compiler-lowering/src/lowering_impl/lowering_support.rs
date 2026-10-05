@@ -2531,6 +2531,7 @@ fn stage_effects_from_normalized(
     initial_env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     initial_env.milling_event_filter = config.milling_event_filter.clone();
     initial_env.dice_event_grouped = config.dice_event_grouped;
+    initial_env.cast_event_quantity = config.cast_event_quantity;
     initial_env.life_event_binding = config.life_event_binding.clone();
     initial_env.life_amount_producers = config.life_amount_producers.clone();
     initial_env.die_result_producers = config.die_result_producers.clone();
@@ -3319,6 +3320,7 @@ pub fn stage_effects_with_trigger_context_for_lowering(
             milling_event_filter: trigger.and_then(
                 ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter,
             ),
+            cast_event_quantity: trigger.and_then(ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity),
             dice_event_grouped: trigger.and_then(
                 ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped,
             ),
@@ -4037,6 +4039,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
                 ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter(
                     &trigger,
                 ),
+            cast_event_quantity: ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity(&trigger),
             dice_event_grouped:
                 ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(&trigger),
             life_event_binding:

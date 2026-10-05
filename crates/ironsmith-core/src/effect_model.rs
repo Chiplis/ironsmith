@@ -67,6 +67,16 @@ impl ValueComparisonOperator {
     }
 }
 
+/// A quantity owned by one completed cast, never by a later stack object or
+/// the amount rewritten by a replacement instruction.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum CastEventQuantity {
+    ManaValue,
+    ManaSymbols(crate::color::Color),
+    DistinctTargets,
+}
+
 /// Event payload fields that can be referenced by effect values.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
@@ -82,6 +92,7 @@ pub enum EventValueSpec {
     DieBatchTotal,
     /// Number of this batch's numeric results satisfying the authored predicate.
     DieResultsAtLeast(i32),
+    CastSpell(CastEventQuantity),
 }
 
 #[cfg(test)]

@@ -655,7 +655,12 @@ pub(super) fn compile_subject_verb_early(
             Ok((
                 vec![Effect::new(
                     crate::effects::MoveToZoneEffect::new(
-                        ChooseSpec::Source,
+                        // CR 400.7j: find the exact public successor produced
+                        // by the cost, including a modified destination. An
+                        // unmoved source or later incarnation is not a receipt.
+                        ChooseSpec::All(ObjectFilter::exact_tagged(
+                            ironsmith_core::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG,
+                        )),
                         Zone::Battlefield,
                         false,
                     )

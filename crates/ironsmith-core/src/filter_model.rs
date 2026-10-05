@@ -2489,6 +2489,10 @@ pub struct ObjectFilter {
     /// turn. Never falls back when that card leaves its current zone.
     #[cfg_attr(feature = "serde", serde(default))]
     pub last_drawn_this_turn: Option<PlayerFilter>,
+    /// Count printed pips containing this color; hybrid pips count once,
+    /// independently of the color or amount of mana actually paid.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mana_symbol_count: Option<(Color, ChoiceCount)>,
 }
 
 impl ObjectFilter {
@@ -3145,6 +3149,7 @@ impl ObjectFilter {
             || self.mana_value_eq_counters_on_source.is_some()
             || self.exact_mana_cost.is_some()
             || self.has_mana_cost
+            || self.mana_symbol_count.is_some()
             || self.has_phyrexian_mana_symbol
             || !self.could_produce_mana.is_empty()
             || self.has_tap_activated_ability
@@ -3382,6 +3387,48 @@ impl ObjectFilter {
 
     pub fn targeting_only_object(self, object: ObjectFilter) -> Self {
         self.targeting_only(None, Some(object))
+    }
+
+    /// Bounded cast predicates whose remaining operands are all printed
+    /// characteristics of the completed spell. Relation and history queries
+    /// retain their existing owners; new fields fail this check by default.
+    pub fn has_only_completed_cast_characteristics(&self) -> bool {
+        if self.mana_symbol_count.is_none() && self.mana_value_eq_counters_on_source.is_none()
+            && self.target_count.is_none() {
+            return false;
+        }
+        if !matches!(self.zone, None | Some(Zone::Stack))
+            || !matches!(self.stack_kind, None | Some(StackObjectKind::Spell)) {
+            return false;
+        }
+        let mut residual = self.clone();
+        residual.zone = None;
+        residual.stack_kind = None;
+        residual.has_mana_cost = false;
+        residual.mana_symbol_count = None;
+        residual.mana_value_eq_counters_on_source = None;
+        residual.target_count = None;
+        residual.card_types.clear();
+        residual.all_card_types.clear();
+        residual.excluded_card_types.clear();
+        residual.subtypes.clear();
+        residual.excluded_subtypes.clear();
+        residual.supertypes.clear();
+        residual.excluded_supertypes.clear();
+        residual.colors = None;
+        residual == Self::default()
+    }
+
+    pub fn mana_symbol_count_description(&self) -> Option<String> {
+        let (color, count) = self.mana_symbol_count?;
+        let number = |n: usize| if n == 1 { "one".to_string() } else { n.to_string() };
+        let quantity = match count.max {
+            None => format!("{} or more", number(count.min)),
+            Some(max) if max == count.min => number(max),
+            Some(max) if count.min == 0 => format!("up to {}", number(max)),
+            Some(max) => format!("between {} and {}", number(count.min), number(max)),
+        };
+        Some(format!("with {quantity} {} mana symbols in its mana cost", color.name()))
     }
 
     pub fn with_target_count(mut self, count: ChoiceCount) -> Self {
@@ -5788,6 +5835,7 @@ impl ObjectFilter {
                 counter_type.description()
             ));
         }
+        if let Some(description) = self.mana_symbol_count_description() { parts.push(description); }
         if self.has_phyrexian_mana_symbol {
             parts.push("with {H} in its mana cost".to_string());
         }
@@ -7919,6 +7967,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     describe_value_expr(right)
                 )
             }
+            Value::EventValue(EventValueSpec::CastSpell(_)) => "that much".to_string(),
             Value::EventValue(EventValueSpec::Amount) => "that damage".to_string(),
             Value::EventValue(EventValueSpec::LifeChange {
                 gained,

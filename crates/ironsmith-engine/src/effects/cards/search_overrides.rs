@@ -9,7 +9,6 @@ use crate::decisions::specs::{MaySpec, ReplacementOption, ReplacementSpec};
 use crate::derived_view::DerivedGameView;
 use crate::effect::ManaSpendPermission;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::spells::SpellCastEvent;
 use crate::game_state::{ActiveManaSpendPermission, GameState, ManaSpendPermissionSource};
 use crate::grant::Grantable;
 use crate::grant_registry::GrantSource;
@@ -17,7 +16,6 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::PlayerFilter;
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -695,16 +693,11 @@ fn cast_from_library_while_searching(
         return Ok(());
     };
 
-    let event = if let Some(object) = game.object(new_id) {
-        let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
-        SpellCastEvent::new_with_snapshot(new_id, caster, Zone::Library, snapshot)
-    } else {
-        SpellCastEvent::new(new_id, caster, Zone::Library)
-    };
-    game.queue_trigger_event(
-        ctx.provenance,
-        TriggerEvent::new_with_provenance(event, ctx.provenance),
-    );
+    let (event, mut captured) = crate::game_loop::capture_completed_spell_cast(
+        game, new_id, caster, Zone::Library, ctx.provenance,
+    )?;
+    game.defer_trigger_entries(captured.take_all());
+    game.queue_trigger_event(ctx.provenance, event);
 
     Ok(())
 }
