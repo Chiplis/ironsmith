@@ -300,3 +300,43 @@ fn viewed_card_ack_stack_source_visibility_is_inspection_not_a_second_reveal() {
         );
     }
 }
+
+#[test]
+fn miracle_stack_views_last_through_every_accepted_or_copied_receipt_but_not_a_new_hand_incarnation() {
+    use ironsmith::events::other::{DrawnMiracleInstance, DrawnMiraclePrice, MiracleDrawDecision, MiracleInstanceIdentity, RevealedMiracle};
+    use ironsmith::game_state::StackEntry;
+    use ironsmith::triggers::TriggerEvent;
+    for leaves_before_last in [false, true] {
+        let (mut game, alice, bob, _, cards) = fixture();
+        let card = cards[0]; let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(game.object(card).unwrap(), &game);
+        for alternative_index in 0..3 {
+            let proof = RevealedMiracle { card, stable_id: snapshot.stable_id, player: bob,
+                drawn_snapshot: snapshot.clone(), instance: DrawnMiracleInstance {
+                    identity: MiracleInstanceIdentity::Intrinsic { alternative_index }, granting_source: card,
+                    price: DrawnMiraclePrice::Fixed(ironsmith::mana::ManaCost::new()),
+                } };
+            let mut drawn = ironsmith::events::CardsDrawnEvent::single(bob, card, true);
+            drawn.miracle = Some(MiracleDrawDecision::Revealed(proof));
+            let entry = StackEntry::ability(card, bob, vec![ironsmith::Effect::may_cast_for_miracle_cost()])
+                .with_source_snapshot(snapshot.clone())
+                .with_triggering_event(TriggerEvent::new_with_provenance(drawn, Default::default()));
+            game.push_to_stack(entry);
+        }
+        let mut copy = game.stack.last().unwrap().clone(); copy.ability_id = None; copy.controller = alice;
+        game.push_to_stack(copy);
+        for _ in 0..3 {
+            let view = crate::stack_revealed_view(&game).expect("a remaining receipt keeps the original card revealed");
+            assert!(view.public); assert_eq!(view.cards, vec![card]); assert_eq!(view.subject, bob);
+            game.pop_from_stack().unwrap(); game = game.clone();
+        }
+        assert!(crate::stack_revealed_view(&game).is_some());
+        if leaves_before_last {
+            let exile = game.move_object_by_effect(card, Zone::Exile).unwrap();
+            let later = game.move_object_by_effect(exile, Zone::Hand).unwrap();
+            assert_ne!(later, card);
+            assert!(crate::stack_revealed_view(&game).is_none(), "an old Miracle receipt cannot reveal the new hand object");
+        }
+        game.pop_from_stack().unwrap();
+        assert!(crate::stack_revealed_view(&game).is_none(), "semantic visibility ends when the last receipt leaves");
+    }
+}

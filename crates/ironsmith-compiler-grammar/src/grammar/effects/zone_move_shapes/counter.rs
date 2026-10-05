@@ -11,6 +11,13 @@ use crate::mana::ManaSymbol;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CounterClauseShapeError {
     MissingPays,
+    UnsupportedPayer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CounterPaymentPayer {
+    SpellController,
+    You,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,6 +34,7 @@ pub enum CounterPaymentTailShape<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CounterUnlessShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],
+    pub payer: CounterPaymentPayer,
     pub normalized_payment_tokens: Vec<OwnedLexToken>,
     pub payment_tokens: &'a [OwnedLexToken],
     pub mana: Vec<ManaSymbol>,
@@ -241,11 +249,42 @@ fn parse_unless_shape<'a>(
     unless_tokens: &'a [OwnedLexToken],
 ) -> Result<CounterUnlessShape<'a>, CounterClauseShapeError> {
     let (pays_idx, (), after_pays) =
-        primitives::find_prefix(unless_tokens, || primitives::kw("pays").void())
+        primitives::find_prefix(unless_tokens, || alt((
+            primitives::kw("pay"), primitives::kw("pays"),
+            primitives::kw("sacrifice"), primitives::kw("sacrifices"),
+            primitives::kw("discard"), primitives::kw("discards"),
+            primitives::kw("exile"), primitives::kw("exiles"),
+        )).void())
             .ok_or(CounterClauseShapeError::MissingPays)?;
+    // Validate the original token interval. A word-only projection would
+    // silently erase embedded mana or punctuation from the paying actor.
+    let payer = primitives::parse_all(
+        &unless_tokens[..pays_idx],
+        alt((
+            primitives::phrase(&["you"]).value(CounterPaymentPayer::You),
+            primitives::phrase(&["its", "controller"]).value(CounterPaymentPayer::SpellController),
+            primitives::phrase(&["that", "spells", "controller"]).value(CounterPaymentPayer::SpellController),
+            primitives::phrase(&["that", "spell's", "controller"]).value(CounterPaymentPayer::SpellController),
+            primitives::phrase(&["they"]).value(CounterPaymentPayer::SpellController),
+            primitives::phrase(&["that", "player"]).value(CounterPaymentPayer::SpellController),
+        )),
+        "counter-payment-payer",
+    ).map_err(|_| CounterClauseShapeError::UnsupportedPayer)?;
     let mut normalized_payment_tokens = unless_tokens[pays_idx..].to_vec();
     if let Some(first) = normalized_payment_tokens.first_mut() {
-        first.replace_word("pay");
+        let verb = match first.as_word() {
+            Some("pay" | "pays") => "pay",
+            Some("sacrifice" | "sacrifices") => "sacrifice",
+            Some("discard" | "discards") => "discard",
+            Some("exile" | "exiles") => "exile",
+            _ => unreachable!("payment head matched"),
+        };
+        first.replace_word(verb);
+    }
+    // The payment executes in the payer's context; keep its owned zone
+    // explicit instead of leaving a pronoun bound to the counter's actor.
+    for token in &mut normalized_payment_tokens {
+        if token.is_word("their") { token.replace_word("your"); }
     }
     // A trailing `instead` marks this counter clause as replacing an earlier
     // one; it is sentence structure rather than part of the payment.
@@ -276,6 +315,7 @@ fn parse_unless_shape<'a>(
         .map(|(idx, _, _)| trimmed(&unless_tokens[idx..]));
     Ok(CounterUnlessShape {
         target_tokens: trimmed(target_tokens),
+        payer,
         normalized_payment_tokens,
         payment_tokens,
         mana,
@@ -352,5 +392,28 @@ mod tests {
             shape.tail,
             CounterPaymentTailShape::Life(Value::Fixed(2))
         ));
+    }
+
+    #[test]
+    fn keeps_counter_payment_actor_and_normalizes_only_the_owned_payment_clause() {
+        for (text, payer, payment) in [
+            ("that spell unless you sacrifice a creature", CounterPaymentPayer::You, "sacrifice a creature"),
+            ("target spell unless its controller discards their hand", CounterPaymentPayer::SpellController, "discard your hand"),
+            ("target spell unless its controller exiles all cards from their graveyard", CounterPaymentPayer::SpellController, "exile all cards from your graveyard"),
+            ("target spell an opponent controls unless they pay {1}", CounterPaymentPayer::SpellController, "pay {1}"),
+        ] {
+            let tokens = tokens(text);
+            let CounterClauseShape::Unless(shape) = parse_counter_clause_shape(&tokens).unwrap() else { panic!("unless") };
+            assert_eq!(shape.payer, payer);
+            assert_eq!(crate::lexer::render_token_slice(&shape.normalized_payment_tokens).trim(), payment);
+        }
+        assert!(matches!(parse_counter_clause_shape(&tokens("target spell unless a creature pays {1}")),
+            Err(CounterClauseShapeError::UnsupportedPayer)));
+        for text in ["target spell unless its {R} controller pays {1}",
+            "target spell unless its controller {R} discards a card",
+            "that spell unless you : sacrifice a creature",
+            "that spell unless you {R} sacrifice a creature"] {
+            assert!(matches!(parse_counter_clause_shape(&tokens(text)), Err(CounterClauseShapeError::UnsupportedPayer)), "{text}");
+        }
     }
 }

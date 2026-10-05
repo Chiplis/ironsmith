@@ -150,8 +150,12 @@ fn execute_captured_miracle(
     drawn: &CardsDrawnEvent,
     decision: &crate::events::other::MiracleDrawDecision,
 ) -> Result<EffectOutcome, ExecutionError> {
-    use crate::events::other::{DrawnMiraclePrice, MiracleDrawDecision};
-    let MiracleDrawDecision::Revealed(proof) = decision else { return Ok(EffectOutcome::impossible()); };
+    use crate::events::other::DrawnMiraclePrice;
+    let proofs = decision.revealed_instances();
+    if proofs.is_empty() { return Ok(EffectOutcome::impossible()); }
+    let [proof] = proofs else {
+        return Err(ExecutionError::IncompleteEvidence("a Miracle casting trigger has no single linked reveal instance".into()));
+    };
     if !drawn.is_miracle_eligible(proof.card) || drawn.player != proof.player
         || ctx.source != proof.card
         || proof.drawn_snapshot.object_id != proof.card || proof.drawn_snapshot.stable_id != proof.stable_id

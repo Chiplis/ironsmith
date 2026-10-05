@@ -107,6 +107,7 @@ impl DecisionSpec for SacrificeSpec {
 pub struct ChooseObjectsSpec {
     /// The source of the effect.
     pub source: ObjectId,
+    pub cost_payment: Option<crate::decisions::context::CostPaymentIdentity>,
     /// Description shown to the player.
     pub description: String,
     /// Objects that can be chosen.
@@ -143,6 +144,7 @@ impl ChooseObjectsSpec {
     ) -> Self {
         Self {
             source,
+            cost_payment: None,
             description: description.into(),
             candidates,
             min,
@@ -160,6 +162,11 @@ impl ChooseObjectsSpec {
     /// `selection_reveal_policy`).
     pub fn with_selection_reveal_policy(mut self, policy: SelectionRevealPolicy) -> Self {
         self.selection_reveal_policy = Some(policy);
+        self
+    }
+
+    pub fn with_cost_payment(mut self, source: ObjectId, payer: PlayerId) -> Self {
+        self.cost_payment = Some(crate::decisions::context::CostPaymentIdentity { source, payer });
         self
     }
 
@@ -231,7 +238,7 @@ impl DecisionSpec for ChooseObjectsSpec {
             })
             .collect();
 
-        let ctx = SelectObjectsContext::new(
+        let mut ctx = SelectObjectsContext::new(
             player,
             Some(self.source),
             self.description.clone(),
@@ -239,6 +246,7 @@ impl DecisionSpec for ChooseObjectsSpec {
             self.min,
             self.max,
         );
+        ctx.cost_payment = self.cost_payment;
         let ctx = if let Some(constraint) = self.aggregate_constraint.clone() {
             ctx.with_aggregate_constraint(constraint)
         } else {

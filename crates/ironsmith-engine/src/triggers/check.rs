@@ -3099,15 +3099,18 @@ fn check_triggers_with_view_and_registry(
         check_triggers_in_zone(game, obj_id, trigger_event, view, &mut triggered);
     });
 
-    // The original draw/reveal owner pins the exact linked instance before
+    // The original draw/reveal owner pins each accepted linked instance before
     // additions can remove its granter or the drawn source itself.
     if let Some(drawn) = trigger_event.downcast::<crate::events::CardsDrawnEvent>()
-        && let Some(crate::events::other::MiracleDrawDecision::Revealed(proof)) = &drawn.miracle
+        && let Some(decision) = &drawn.miracle
     {
+        let mut accepted = std::collections::HashSet::new();
+        for proof in decision.revealed_instances() {
         if !drawn.is_miracle_eligible(proof.card) || drawn.player != proof.player
             || proof.drawn_snapshot.object_id != proof.card
             || proof.drawn_snapshot.stable_id != proof.stable_id
             || proof.drawn_snapshot.owner != proof.player || proof.drawn_snapshot.zone != Zone::Hand
+            || !accepted.insert(proof.instance.identity.clone())
         {
             game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
                 "Miracle reveal receipt does not identify the exact first drawn hand arrival".into()));
@@ -3120,13 +3123,19 @@ fn check_triggers_with_view_and_registry(
             let mut identity = DefaultHasher::new();
             compute_trigger_identity(&ability).hash(&mut identity);
             proof.instance.identity.hash(&mut identity);
+            // Each trigger owns only its linked reveal. Resolving or copying
+            // it cannot choose another accepted instance's retained price.
+            let mut linked_draw = drawn.clone();
+            linked_draw.miracle = Some(crate::events::other::MiracleDrawDecision::Revealed(proof.clone()));
+            let linked_event = TriggerEvent::new_with_provenance(linked_draw, trigger_event.provenance());
             triggered.push(TriggeredAbilityEntry {
                 source: proof.card, controller: proof.player, x_value: None, event_value_amount: None,
-                ability, triggering_event: trigger_event.clone(), source_stable_id: proof.stable_id,
+                ability, triggering_event: linked_event, source_stable_id: proof.stable_id,
                 source_name: proof.drawn_snapshot.name.clone(), source_snapshot: Some(proof.drawn_snapshot.clone()),
                 tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 source_kind: TriggeredAbilitySourceKind::Object, trigger_identity: TriggerIdentity(identity.finish()),
             });
+        }
         }
     }
 

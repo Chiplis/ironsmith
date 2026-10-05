@@ -36,6 +36,11 @@ impl WasmGame {
     }
 
     fn payment_transaction_subject(&self) -> Option<(ObjectId, PlayerId)> {
+        if let Some(DecisionContext::SelectObjects(objects)) = self.pending_decision.as_ref()
+            && let Some(payment) = objects.cost_payment
+        {
+            return Some((payment.source, payment.payer));
+        }
         if let Some(activation) = self.priority_state.pending_activation.as_ref() {
             return Some((activation.source, activation.activator));
         }

@@ -1492,6 +1492,19 @@ fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
             .as_ref()
             .filter(|snapshot| snapshot.zone.is_hidden())
         {
+            // Miracle keeps this exact hand arrival revealed while any of
+            // its accepted linked triggers (including copies) remains. A
+            // stale trigger does not disclose a later incarnation of the card.
+            if let Some(drawn) = entry.triggering_event.as_ref()
+                .and_then(|event| event.downcast::<ironsmith::events::CardsDrawnEvent>())
+                && let Some(decision) = &drawn.miracle
+                && let Some(proof) = decision.revealed_instances().iter()
+                    .find(|proof| proof.card == source_snapshot.object_id)
+                && !game.object(proof.card).is_some_and(|object|
+                    object.zone == Zone::Hand && object.stable_id == proof.stable_id && object.owner == proof.player)
+            {
+                continue;
+            }
             return Some(ActiveViewedCards {
                 acknowledged_by: Vec::new(),
                 viewer: entry.controller,

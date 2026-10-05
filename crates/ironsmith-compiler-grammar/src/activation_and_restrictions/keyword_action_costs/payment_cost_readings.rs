@@ -50,10 +50,22 @@ pub(super) const REGISTRY: RuleId = RuleId::new("payment-cost-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("exile-all-owned-graveyard-payment"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.tokens.first().is_some_and(|token| token.is_word("exile")),
+        read: |input| input.outcome(read_exile_all_owned_graveyard_payment(input)),
+    },
+    Reading {
         id: RuleId::new("graveyard-bottom-library-payment"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
         read: |input| input.outcome(read_graveyard_bottom_library_payment(input)),
+    },
+    Reading {
+        id: RuleId::new("explicit-zero-mana-payment"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_explicit_zero_mana_payment(input)),
     },
     Reading {
         id: RuleId::new("activation-cost"),
@@ -68,6 +80,29 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_conjoined_payment(input)),
     },
 ];
+
+fn read_explicit_zero_mana_payment(
+    input: &PaymentClause<'_>,
+) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
+    let lead = parse_keyword_payment_lead_tokens(input.tokens);
+    let tokens = &input.tokens[lead.payload_first..];
+    let Ok(cost) = crate::grammar::leaf::parse_leaf_mana_cost_tokens(tokens) else { return Ok(None); };
+    if cost.has_x() || cost.mana_value() != 0 { return Ok(None); }
+    Ok(Some(ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Mana(cost))))
+}
+
+fn read_exile_all_owned_graveyard_payment(
+    input: &PaymentClause<'_>,
+) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
+    if !crate::grammar::primitives::probe_all(input.tokens,
+        crate::grammar::primitives::phrase(&["exile", "all", "cards", "from", "your", "graveyard"]),
+        "exile-all-owned-graveyard-payment").is_some() { return Ok(None); }
+    Ok(Some(ironsmith_core::TotalCost::from_cost(
+        crate::model::CompilerCost::ValidatedEffect(Box::new(EffectAst::subject_verb_exile_all(
+            ObjectFilter::default().in_zone(Zone::Graveyard).owned_by(PlayerFilter::You).nontoken(), false,
+        ))),
+    )))
+}
 
 /// The input's reading, if a rule has one. Every admitted reading runs.
 pub(super) fn read(
@@ -135,6 +170,9 @@ fn read_activation_cost(
     input: &PaymentClause<'_>,
 ) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
     let trimmed = input.tokens;
+    // An all-set action is never a single chosen-card activation cost.
+    if trimmed.first().is_some_and(|token| token.is_word("exile"))
+        && trimmed.get(1).is_some_and(|token| token.is_word("all")) { return Ok(None); }
     if let Ok(total_cost) = parse_activation_cost(&trimmed)
         && !total_cost.is_free()
     {

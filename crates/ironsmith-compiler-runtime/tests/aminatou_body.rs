@@ -608,3 +608,232 @@ fn native_own_and_foreign_miracle_trigger_copies_keep_the_revealed_card_but_use_
         assert!(game.stack.is_empty(), "the original trigger cannot cast a new incarnation of that card");
     } }
 }
+
+#[derive(Default)]
+struct MultipleMiracleAnswers {
+    selected: Vec<usize>, cast: bool, pause_reveal: bool, pending: bool,
+    reveal_questions: usize, cast_offers: Vec<PlayerId>,
+}
+impl DecisionMaker for MultipleMiracleAnswers {
+    fn decide_options(&mut self, game: &GameState, context: &ironsmith::decisions::context::SelectOptionsContext) -> Vec<usize> {
+        if context.description == "Choose a Miracle reveal" {
+            self.reveal_questions += 1;
+            assert_eq!(context.player, A);
+            assert_eq!(context.options.len(), 4, "intrinsic plus two distinct granted instances and decline");
+            assert_eq!(context.max, 3, "each Miracle instance is independently optional");
+            if self.pause_reveal { self.pending = true; return vec![]; }
+            return self.selected.clone();
+        }
+        SelectFirstDecisionMaker.decide_options(game, context)
+    }
+    fn decide_boolean(&mut self, _: &GameState, context: &ironsmith::decisions::context::BooleanContext) -> bool {
+        self.cast_offers.push(context.player); self.cast
+    }
+    fn awaiting_choice(&self) -> bool { self.pending }
+}
+fn three_miracles(game: &mut GameState, definition: &CardDefinition) -> (ObjectId, ObjectId, ObjectId) {
+    let source = game.create_object_from_definition(definition, A, Zone::Battlefield);
+    let second = compile_to_runtime_definition("Independent Miracle grant",
+        "Type: Enchantment\nEach enchantment card in your hand has miracle. Its miracle cost is equal to its mana cost reduced by {1}.", false).unwrap();
+    let other = game.create_object_from_definition(&second, A, Zone::Battlefield);
+    let card = compile_to_runtime_definition("Independent Miracle instances",
+        "Mana cost: {6}{U}\nType: Enchantment\nMiracle {U}", false).unwrap();
+    (source, other, game.create_object_from_definition(&card, A, Zone::Library))
+}
+fn linked_miracle(entry: &ironsmith::game_state::StackEntry) -> &ironsmith::events::other::RevealedMiracle {
+    let event = entry.triggering_event.as_ref().unwrap().downcast::<ironsmith::events::CardsDrawnEvent>().unwrap();
+    let proofs = event.miracle.as_ref().unwrap().revealed_instances();
+    assert_eq!(proofs.len(), 1, "a casting trigger retains only its own linked instance"); &proofs[0]
+}
+fn pay_linked_miracle(game: &mut GameState, player: PlayerId, proof: &ironsmith::events::other::RevealedMiracle) -> u32 {
+    let generic = match &proof.instance.price {
+        ironsmith::events::other::DrawnMiraclePrice::Fixed(_) => 0,
+        ironsmith::events::other::DrawnMiraclePrice::ReducedManaCost { generic_reduction, .. } => 6_u32.saturating_sub(*generic_reduction),
+    };
+    game.player_mut(player).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless, generic);
+    game.player_mut(player).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Blue, 1);
+    generic + 1
+}
+#[test]
+fn independent_miracle_reveals_keep_each_linked_price_after_another_trigger_is_countered_or_declined() {
+    for definition in definitions() { for selected in [vec![1, 2], vec![1, 2, 3]] { for counter_first in [false, true] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let (source, other, original) = three_miracles(&mut game, &definition);
+        let stable = game.object(original).unwrap().stable_id;
+        let mut answers = MultipleMiracleAnswers { selected: selected.clone(), ..Default::default() };
+        let outcome = perform_draw(&mut game, source, A, 1, &mut answers);
+        assert_eq!(outcome.events.iter().filter(|event| event.downcast::<ironsmith::events::CardRevealedEvent>().is_some()).count(), selected.len());
+        let drawn = outcome.events.iter().find_map(|event| event.downcast::<ironsmith::events::CardsDrawnEvent>()).unwrap();
+        assert_eq!(drawn.miracle.as_ref().unwrap().revealed_instances().len(), selected.len());
+        let arrival = drawn.cards[0];
+        game.move_object_by_effect(source, Zone::Exile).unwrap();
+        game.move_object_by_effect(other, Zone::Exile).unwrap();
+        stack_draw(&mut game, outcome, &mut answers);
+        assert_eq!(game.stack.len(), selected.len());
+        let remaining = game.stack[..game.stack.len() - 1].iter().map(|entry| linked_miracle(entry).clone()).collect::<Vec<_>>();
+        if counter_first {
+            let target = game.stack.last().unwrap().ability_id.unwrap();
+            let counter_source = resource(&mut game, "Counter witness", B, Zone::Battlefield, "Artifact", "{1}");
+            ironsmith::effects::execute_effect(&mut game, &ironsmith::Effect::new(
+                ironsmith::effects::CounterEffect::new(ironsmith::target::ChooseSpec::SpecificObject(target))),
+                &mut ironsmith::effects::EffectContext::new(counter_source, B, &mut answers)).unwrap();
+            assert!(answers.cast_offers.is_empty());
+        } else {
+            resolve_stack_entry_with(&mut game, &mut answers).unwrap();
+            assert_eq!(answers.cast_offers, vec![A]);
+        }
+        assert_eq!(game.player(A).unwrap().hand, vec![arrival]);
+        assert_eq!(game.stack.iter().map(|entry| linked_miracle(entry).clone()).collect::<Vec<_>>(), remaining);
+        game = game.clone();
+        let next = linked_miracle(game.stack.last().unwrap()).clone();
+        let paid = pay_linked_miracle(&mut game, A, &next); answers.cast = true;
+        resolve_stack_entry_with(&mut game, &mut answers).unwrap();
+        let spell = game.object(game.stack.last().unwrap().object_id).unwrap();
+        assert_eq!(spell.stable_id, stable); assert_eq!(spell.mana_spent_to_cast.total(), paid);
+        assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
+        resolve_stack_entry_with(&mut game, &mut answers).unwrap();
+        let offers = answers.cast_offers.len();
+        while !game.stack.is_empty() { resolve_stack_entry_with(&mut game, &mut answers).unwrap(); }
+        assert_eq!(answers.cast_offers.len(), offers, "remaining reveals cannot cast a later incarnation");
+        assert_eq!(game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone, Zone::Battlefield);
+        assert!(!game.miracle_cast_is_authorized(arrival));
+    } } }
+}
+#[test]
+fn multiple_miracle_selection_replays_one_original_draw_without_losing_instances_or_granters() {
+    for definition in definitions() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let (source, other, original) = three_miracles(&mut game, &definition);
+        let mut answers = MultipleMiracleAnswers { selected: vec![1, 2, 3], pause_reveal: true, ..Default::default() };
+        let outcome = perform_draw(&mut game, source, A, 1, &mut answers);
+        assert!(answers.pending && outcome.events.is_empty());
+        assert_eq!(game.player(A).unwrap().library, vec![original]); assert!(game.player(A).unwrap().hand.is_empty());
+        assert!(game.object(source).is_some() && game.object(other).is_some());
+        game = game.clone(); answers.pause_reveal = false; answers.pending = false;
+        let outcome = perform_draw(&mut game, source, A, 1, &mut answers);
+        assert_eq!(answers.reveal_questions, 2);
+        stack_draw(&mut game, outcome, &mut answers); assert_eq!(game.stack.len(), 3);
+        let identities = game.stack.iter().map(|entry| linked_miracle(entry).instance.identity.clone()).collect::<std::collections::HashSet<_>>();
+        assert_eq!(identities.len(), 3);
+        for _ in 0..3 { resolve_stack_entry_with(&mut game, &mut answers).unwrap(); }
+        assert_eq!(answers.cast_offers, vec![A, A, A]); assert_eq!(answers.reveal_questions, 2);
+        assert_eq!(game.player(A).unwrap().hand.len(), 1);
+    }
+}
+
+#[test]
+fn a_foreign_copy_keeps_its_single_accepted_miracle_instance_after_the_original_is_countered() {
+    use ironsmith::effects::EffectExecutor;
+    for definition in definitions() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let (source, other, original) = three_miracles(&mut game, &definition);
+        let stable = game.object(original).unwrap().stable_id;
+        let mut answers = MultipleMiracleAnswers { selected: vec![1, 2, 3], cast: true, ..Default::default() };
+        let outcome = perform_draw(&mut game, source, A, 1, &mut answers);
+        stack_draw(&mut game, outcome, &mut answers);
+        let original_trigger = game.stack.last().unwrap().target_id();
+        let proof = linked_miracle(game.stack.last().unwrap()).clone();
+        game.move_object_by_effect(source, Zone::Exile).unwrap(); game.move_object_by_effect(other, Zone::Exile).unwrap();
+        let copier = resource(&mut game, "Foreign copier", B, Zone::Battlefield, "Artifact", "{1}");
+        ironsmith::effects::CopySpellEffect::single(ironsmith::target::ChooseSpec::SpecificObject(original_trigger))
+            .execute(&mut game, &mut ironsmith::effects::EffectContext::new(copier, B, &mut answers)).unwrap();
+        assert_eq!(game.stack.len(), 4); assert_eq!(linked_miracle(game.stack.last().unwrap()), &proof);
+        ironsmith::effects::CounterEffect::new(ironsmith::target::ChooseSpec::SpecificObject(original_trigger))
+            .execute(&mut game, &mut ironsmith::effects::EffectContext::new(copier, B, &mut answers)).unwrap();
+        assert_eq!(game.stack.len(), 3); assert_eq!(linked_miracle(game.stack.last().unwrap()), &proof);
+        let paid = pay_linked_miracle(&mut game, B, &proof);
+        resolve_stack_entry_with(&mut game, &mut answers).unwrap();
+        assert_eq!(answers.cast_offers, vec![B]);
+        let spell = game.object(game.stack.last().unwrap().object_id).unwrap();
+        assert_eq!(spell.stable_id, stable); assert_eq!(spell.owner, A); assert_eq!(spell.mana_spent_to_cast.total(), paid);
+        assert_eq!(game.stack.last().unwrap().controller, B); assert_eq!(game.player(B).unwrap().mana_pool.total(), 0);
+        resolve_stack_entry_with(&mut game, &mut answers).unwrap();
+        while !game.stack.is_empty() { resolve_stack_entry_with(&mut game, &mut answers).unwrap(); }
+        assert_eq!(answers.cast_offers, vec![B]);
+        assert_eq!(game.current_controller(game.find_object_by_stable_id(stable).unwrap()), Some(B));
+    }
+}
+#[test]
+fn malformed_multiple_miracle_selections_roll_back_the_original_draw() {
+    for definition in definitions() { for selected in [vec![], vec![0, 1], vec![1, 1], vec![4]] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let (source, _, original) = three_miracles(&mut game, &definition);
+        let mut answers = MultipleMiracleAnswers { selected, ..Default::default() };
+        let effect = ironsmith::Effect::new(ironsmith::effects::SequenceEffect::new(vec![
+            ironsmith::Effect::gain_life(3), ironsmith::Effect::draw(1),
+        ]));
+        let result = ironsmith::effects::execute_effect(&mut game, &effect,
+            &mut ironsmith::effects::EffectContext::new(source, A, &mut answers));
+        assert!(result.is_err()); assert_eq!(game.player(A).unwrap().life, 20);
+        assert_eq!(game.player(A).unwrap().library, vec![original]); assert!(game.player(A).unwrap().hand.is_empty());
+        assert!(game.stack.is_empty());
+    } }
+}
+
+#[test]
+fn hidden_multiple_miracles_share_one_authenticated_opening_and_retain_all_pre_addition_prices() {
+    struct HiddenMultiple { inner: MultipleMiracleAnswers, pause: bool, pending: bool, openings: usize, granters: [ObjectId; 2] }
+    impl DecisionMaker for HiddenMultiple {
+        fn decide_objects(&mut self, _: &GameState, context: &ironsmith::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+            self.openings += 1; assert_eq!(context.player, A);
+            assert_eq!(context.reveal_policy, ironsmith::decisions::context::SelectionRevealPolicy::Public);
+            assert_eq!(context.candidates.len(), 1);
+            if self.pause { self.pending = true; vec![] } else { vec![context.candidates[0].id] }
+        }
+        fn decide_options(&mut self, game: &GameState, context: &ironsmith::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            if context.description == "Choose a Miracle reveal" { for source in self.granters { assert!(game.object(source).is_some(), "original arrival precedes additions"); } }
+            self.inner.decide_options(game, context)
+        }
+        fn decide_boolean(&mut self, game: &GameState, context: &ironsmith::decisions::context::BooleanContext) -> bool { self.inner.decide_boolean(game, context) }
+        fn awaiting_choice(&self) -> bool { self.pending || self.inner.pending }
+    }
+    for definition in definitions() { for owner_knows in [false, true] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let (source, other, unused) = three_miracles(&mut game, &definition);
+        game.move_object_by_effect(unused, Zone::Exile).unwrap();
+        let original = game.create_hidden_card_placeholder(A, Zone::Library, 24, "independent-miracle-opening".into());
+        let stable = game.object(original).unwrap().stable_id;
+        let opened = compile_to_runtime_definition("Authenticated multiple Miracle", "Mana cost: {6}{U}\nType: Enchantment\nMiracle {U}", false).unwrap();
+        if owner_knows { game.reveal_hidden_card_with_definition(original, &opened).unwrap(); }
+        let replacement_source = resource(&mut game, "Draw addition", B, Zone::Battlefield, "Artifact", "{1}");
+        game.effect_store.replacement_effects.add_one_shot_effect(ironsmith::replacement::ReplacementEffect::with_matcher(
+            replacement_source, B, ironsmith::events::WouldDrawCardMatcher::new(ironsmith::target::PlayerFilter::Specific(A)),
+            ironsmith::replacement::ReplacementAction::Additionally(vec![ironsmith::Effect::move_to_zone(
+                ironsmith::target::ChooseSpec::SpecificObject(other), Zone::Exile, false)]),
+        ));
+        let mut answers = HiddenMultiple { inner: MultipleMiracleAnswers { selected: vec![1, 2, 3], ..Default::default() },
+            pause: true, pending: false, openings: 0, granters: [source, other] };
+        let outcome = perform_draw(&mut game, source, A, 1, &mut answers);
+        assert!(outcome.events.is_empty() && answers.pending); assert_eq!(answers.inner.reveal_questions, 0);
+        assert_eq!(game.player(A).unwrap().library, vec![original]); assert!(game.object(other).is_some());
+        game.reveal_hidden_card_with_definition(original, &opened).unwrap(); answers.pause = false; answers.pending = false;
+        let outcome = perform_draw(&mut game, source, A, 1, &mut answers);
+        assert_eq!(answers.openings, 2); assert_eq!(answers.inner.reveal_questions, 1);
+        assert!(game.object(other).is_none());
+        let arrival = game.find_object_by_stable_id(stable).unwrap(); assert!(game.is_publicly_revealed_hidden_card(arrival));
+        stack_draw(&mut game, outcome, &mut answers); assert_eq!(game.stack.len(), 3);
+        for remaining in (0..3).rev() {
+            resolve_stack_entry_with(&mut game, &mut answers).unwrap(); assert_eq!(game.stack.len(), remaining);
+            assert!(game.is_publicly_revealed_hidden_card(arrival), "ending semantic inspection does not erase authenticated knowledge");
+        }
+        assert_eq!(answers.inner.cast_offers, vec![A, A, A]); assert!(game.pending_hidden_draw_reveals().is_empty());
+    } }
+}
+
+#[test]
+fn declining_all_three_miracle_instances_creates_no_reveal_event_or_cast_offer() {
+    for definition in definitions() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let (source, _, original) = three_miracles(&mut game, &definition);
+        let stable = game.object(original).unwrap().stable_id;
+        let mut answers = MultipleMiracleAnswers { selected: vec![0], cast: true, ..Default::default() };
+        let outcome = perform_draw(&mut game, source, A, 1, &mut answers);
+        let draw = outcome.events.iter().find_map(|event| event.downcast::<ironsmith::events::CardsDrawnEvent>()).unwrap();
+        assert!(matches!(draw.miracle, Some(ironsmith::events::other::MiracleDrawDecision::Declined)));
+        assert!(outcome.events.iter().all(|event| event.downcast::<ironsmith::events::CardRevealedEvent>().is_none()));
+        stack_draw(&mut game, outcome, &mut answers);
+        assert!(game.stack.is_empty() && answers.cast_offers.is_empty());
+        assert_eq!(game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone, Zone::Hand);
+        assert_eq!(answers.reveal_questions, 1);
+    }
+}

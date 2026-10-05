@@ -761,6 +761,24 @@ fn counter_unless_payment_total_cost(
     ironsmith_core::TotalCost::from_costs(components)
 }
 
+fn counter_with_payment_payer(
+    target: TargetAst,
+    cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
+    payer: zone_move_grammar::CounterPaymentPayer,
+) -> EffectAst {
+    match payer {
+        zone_move_grammar::CounterPaymentPayer::SpellController =>
+            EffectAst::subject_verb_counter_unless_pays(target, cost),
+        zone_move_grammar::CounterPaymentPayer::You =>
+            EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+                effects: vec![EffectAst::subject_verb_counter(target)],
+                player: PlayerAst::You,
+                cost,
+                before_delayed_step: false,
+            }),
+    }
+}
+
 pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(effect) = parse_counter_unless_source_damage(tokens)? {
         return Ok(effect);
@@ -782,6 +800,9 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                     "missing pays keyword (clause: '{}')",
                     clause_words.join(" ")
                 ))
+            }
+            zone_move_grammar::CounterClauseShapeError::UnsupportedPayer => {
+                CardTextError::ParseError(format!("unsupported counter payment actor (clause: '{}')", clause_words.join(" ")))
             }
         })?;
     let unless_shape = match shape {
@@ -828,7 +849,7 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                     }
                     Ok::<_, CardTextError>(component)
                 })?;
-                return Ok(EffectAst::subject_verb_counter_unless_pays(target, cost));
+                return Ok(counter_with_payment_payer(target, cost, unless_shape.payer));
             }
         }
         Ok(None) => {
@@ -958,7 +979,7 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         });
     }
 
-    Ok(EffectAst::subject_verb_counter_unless_pays(
+    Ok(counter_with_payment_payer(
         target,
         counter_unless_payment_total_cost(
             mana,
@@ -968,6 +989,7 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             x_value,
             dynamic_display_hint,
         ),
+        unless_shape.payer,
     ))
 }
 
@@ -1140,5 +1162,28 @@ mod relative_draw_tests {
         let tokens =
             crate::lexer::lex_line("equal to the difference among strange things", 0).unwrap();
         assert!(parse_draw_equal_to_value(&tokens).unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
+mod counter_payment_actor_tests {
+    use super::*;
+    #[test]
+    fn explicit_you_and_spell_controller_keep_different_payment_owners() {
+        let parse = |text| parse_counter(&crate::lexer::lex_line(text, 0).unwrap());
+        assert!(matches!(parse("that spell unless you sacrifice a creature").unwrap(),
+            EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { player: PlayerAst::You, .. })));
+        for text in ["target spell unless its controller discards their hand",
+            "target spell unless its controller discards a card",
+            "target spell unless its controller exiles all cards from their graveyard",
+            "target spell an opponent controls unless they pay {1}"] {
+            assert!(parse(text).is_ok(), "{text}");
+        }
+        for text in ["target spell unless its controller exiles all cards from their graveyard then wins the game",
+            "target spell unless a creature pays {1}",
+            "target spell unless its controller discards their library",
+            "target spell unless you sacrifice a creature nonsense"] {
+            assert!(parse(text).is_err(), "{text}");
+        }
     }
 }

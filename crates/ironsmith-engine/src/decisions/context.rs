@@ -486,15 +486,22 @@ impl SelectableObject {
     }
 }
 
-/// Context for object selection decisions.
-///
-/// Used for: sacrifice, discard, search library, exile, choose legend, etc.
+/// Original native payment responsible for a surfaced selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CostPaymentIdentity {
+    pub source: ObjectId,
+    pub payer: PlayerId,
+}
+
 #[derive(Debug, Clone)]
+/// Context for sacrifice, discard, search, exile, and other object choices.
 pub struct SelectObjectsContext {
     /// The player making the decision.
     pub player: PlayerId,
     /// The source of the effect.
     pub source: Option<ObjectId>,
+    /// Exact native payment requesting this selection, including resolution costs.
+    pub cost_payment: Option<CostPaymentIdentity>,
     /// Description of what kind of objects to select.
     pub description: String,
     /// Objects that can be selected.
@@ -536,6 +543,7 @@ impl SelectObjectsContext {
         Self {
             player,
             source,
+            cost_payment: None,
             description: description.into(),
             candidates,
             min,

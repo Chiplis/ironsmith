@@ -1112,7 +1112,7 @@ fn execute_draw_step_for_player_with(
                 .and_then(|evt| evt.downcast::<CardsDrawnEvent>())
                 .map(|evt| evt.cards.clone())
                 .unwrap_or_default();
-            if let Some(reveal) = miracle_reveal {
+            for reveal in miracle_reveal {
                 game.stage_turn_history_event(&reveal);
                 draw_events.push(reveal);
             }

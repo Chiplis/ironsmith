@@ -2000,6 +2000,33 @@ impl GameState {
         description: &str,
         optional: bool,
     ) -> Option<Vec<ObjectId>> {
+        self.reveal_private_hidden_cards_publicly_with_payment(decision_maker, owner, source, cards, description, optional, None, false)
+    }
+
+    pub(crate) fn reveal_private_hidden_cards_publicly_as_cost(
+        &mut self,
+        decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+        owner: PlayerId,
+        source: ObjectId,
+        cards: &[ObjectId],
+        description: &str,
+        prospective: bool,
+    ) -> Option<Vec<ObjectId>> {
+        self.reveal_private_hidden_cards_publicly_with_payment(decision_maker, owner, source, cards, description, false,
+            Some(crate::decisions::context::CostPaymentIdentity { source, payer: owner }), prospective)
+    }
+
+    fn reveal_private_hidden_cards_publicly_with_payment(
+        &mut self,
+        decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+        owner: PlayerId,
+        source: ObjectId,
+        cards: &[ObjectId],
+        description: &str,
+        optional: bool,
+        payment: Option<crate::decisions::context::CostPaymentIdentity>,
+        prospective: bool,
+    ) -> Option<Vec<ObjectId>> {
         use crate::decisions::context::SelectionRevealPolicy;
         use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
 
@@ -2025,8 +2052,16 @@ impl GameState {
         )
         .require_explicit_choice()
         .with_selection_reveal_policy(SelectionRevealPolicy::Public);
+        let spec = if let Some(payment) = payment {
+            spec.with_cost_payment(payment.source, payment.payer)
+        } else { spec };
         let chosen: Vec<ObjectId> = make_decision(self, decision_maker, owner, Some(source), spec);
         if decision_maker.awaiting_choice() {
+            return None;
+        }
+        if payment.is_some() && (chosen.len() != required
+            || chosen.iter().enumerate().any(|(index, id)| !private.contains(id)
+                || chosen[..index].contains(id) || (!prospective && self.is_hidden_card_placeholder(*id)))) {
             return None;
         }
         let mut revealed = Vec::new();

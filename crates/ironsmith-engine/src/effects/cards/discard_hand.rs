@@ -22,8 +22,10 @@ impl crate::effects::SimultaneousEffectProposal for DiscardHandProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        game.mark_hidden_cards_publicly_revealed(&self.revealed);
-        discard_hand_cards(game, ctx, self.player, self.cards)
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+            game.mark_hidden_cards_publicly_revealed(&self.revealed);
+            discard_hand_cards(game, ctx, self.player, self.cards)
+        })
     }
 }
 
@@ -102,11 +104,17 @@ impl EffectExecutor for DiscardHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // CR 603.2c: discarding a hand is one event for "one or more" triggers.
-        let opened_batch = game.open_simultaneous_action();
-        let outcome = execute_discard_hand(self, game, ctx);
-        game.close_simultaneous_action(opened_batch);
-        outcome
+        // The opening and the physical discard share the native instruction
+        // transaction. A later replacement pause/error must restore both;
+        // externally published information remains pinned by the existing
+        // payment-disclosure owner outside this GameState checkpoint.
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+            // CR 603.2c: one event for "one or more" discard triggers.
+            let opened_batch = game.open_simultaneous_action();
+            let outcome = execute_discard_hand(self, game, ctx);
+            game.close_simultaneous_action(opened_batch);
+            outcome
+        })
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -139,18 +147,18 @@ fn execute_discard_hand(
             .copied()
             .filter(|id| *id != ctx.source)
             .collect();
-        if game
-            .reveal_private_hidden_cards_publicly(
-                &mut *ctx.decision_maker,
-                player_id,
-                ctx.source,
-                &to_reveal,
-                "Reveal the cards you discard",
-                false,
+        let opened = if ctx.targets_are_cost_choices {
+            game.reveal_private_hidden_cards_publicly_as_cost(
+                &mut *ctx.decision_maker, player_id, ctx.source, &to_reveal, "Reveal the cards you discard", ctx.prospective_cost_payment,
             )
-            .is_none()
-        {
-            return Ok(EffectOutcome::count(0));
+        } else {
+            game.reveal_private_hidden_cards_publicly(
+                &mut *ctx.decision_maker, player_id, ctx.source, &to_reveal, "Reveal the cards you discard", false,
+            )
+        };
+        if opened.is_none() {
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            return Err(ExecutionError::IncompleteEvidence("discard-hand payment needs the exact opened hand".into()));
         }
     }
 
@@ -469,4 +477,79 @@ mod additional_contract_tests {
     #[test] fn additional_discard_hand_error_restores_batch_and_prefix() {check_additional_discard_hand(1);}
     #[test] fn additional_discard_hand_pending_restores_then_replays_once() {check_additional_discard_hand(2);}
     #[test] fn additional_discard_hand_binds_arriving_card_without_changing_parent_tag() {check_additional_discard_hand(3);}
+}
+
+#[cfg(test)]
+mod direct_cost_opening_transaction_tests {
+    use super::*;
+    use crate::costs::{Cost, CostContext};
+    use crate::decision::DecisionMaker;
+    use crate::decisions::context::{BooleanContext, SelectObjectsContext};
+    use crate::effect::Effect;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::zone::Zone;
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    #[derive(Clone, Debug)]
+    struct LateError(Arc<AtomicBool>);
+    impl EffectExecutor for LateError {
+        fn execute(&self, _: &mut GameState, _: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+            if self.0.load(Ordering::SeqCst) { Err(ExecutionError::InternalError("late discard payment error".into())) }
+            else { Ok(EffectOutcome::resolved()) }
+        }
+    }
+    struct Answers { selected: ObjectId, pause: bool, pending: bool, openings: usize }
+    impl DecisionMaker for Answers {
+        fn awaiting_choice(&self) -> bool { self.pending }
+        fn decide_objects(&mut self, _: &GameState, ctx: &SelectObjectsContext) -> Vec<ObjectId> {
+            assert!(ctx.cost_payment.is_some());
+            assert_eq!(ctx.reveal_policy, crate::decisions::context::SelectionRevealPolicy::Public);
+            self.openings += 1; vec![self.selected]
+        }
+        fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool {
+            self.pending = self.pause; !self.pause
+        }
+    }
+    #[test]
+    fn direct_discard_hand_cost_rolls_back_opening_marks_on_late_error_or_pause_and_retries_once() {
+        for pending in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId(0); let bob = PlayerId(1);
+            let card = crate::card::CardBuilder::new(crate::CardId::new(), "Exact discarded card")
+                .card_types(vec![crate::CardType::Artifact]).build();
+            let chosen = game.create_object_from_card(&card, alice, Zone::Hand);
+            let stable = game.object(chosen).unwrap().stable_id;
+            let source = game.create_object_from_card(&card, bob, Zone::Battlefield);
+            game.set_hidden_card_info(chosen, crate::game_state::HiddenCardInfo {
+                owner: alice, zone: Zone::Hand, slot: 0, commitment: "direct-discard-payment".into(),
+                origin_slot: None, origin_commitment: None, public_slot: None, public_commitment: None,
+            });
+            let failing = Arc::new(AtomicBool::new(!pending));
+            let tail = if pending { Effect::may(vec![Effect::gain_life(4)]) }
+                else { Effect::new(LateError(failing.clone())) };
+            let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+                source, bob, crate::events::WouldDiscardMatcher::any_player()
+                    .with_card_filter(crate::target::ObjectFilter::specific(chosen)),
+                ReplacementAction::Additionally(vec![Effect::gain_life(3), tail])));
+            game.take_pending_trigger_events();
+            let mut answers = Answers { selected: chosen, pause: pending, pending: false, openings: 0 };
+            let cost = Cost::discard_hand();
+            let result = cost.pay(&mut game, &mut CostContext::new(source, alice, &mut answers));
+            if pending { assert!(result.is_ok() && answers.pending); }
+            else { assert!(matches!(result, Err(crate::cost::CostPaymentError::ExecutionFailed(ExecutionError::InternalError(_))))); }
+            assert_eq!(answers.openings, 1);
+            assert!(!game.is_publicly_revealed_hidden_card(chosen));
+            assert_eq!(game.player(alice).unwrap().hand, vec![chosen]);
+            assert_eq!(game.player(bob).unwrap().life, 20);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+            assert!(game.take_pending_trigger_events().is_empty());
+            answers.pause = false; answers.pending = false; failing.store(false, Ordering::SeqCst);
+            cost.pay(&mut game, &mut CostContext::new(source, alice, &mut answers)).unwrap();
+            assert_eq!(answers.openings, 2);
+            assert!(game.player(alice).unwrap().hand.is_empty());
+            let discarded = game.find_object_by_stable_id(stable).unwrap();
+            assert_eq!(game.object(discarded).unwrap().zone, Zone::Graveyard);
+            assert_eq!(game.player(bob).unwrap().life, if pending { 27 } else { 23 });
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        }
+    }
 }

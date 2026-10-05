@@ -85,23 +85,34 @@ fn choose_miracle_as_drawn(
         SelectableOption::new(index + 1, format!("Reveal using Miracle ({price})"))
     }));
     // A different ability may already have opened the card. That public
-    // knowledge never selects one of these linked Miracle instances.
-    let question = SelectOptionsContext::new(player, Some(card), "Choose a Miracle reveal", options, 1, 1);
+    // knowledge never selects any of these linked Miracle instances. Each
+    // instance functions independently, and a revealed card may be revealed
+    // again (CR 113.2c, 701.20c, 702.94a).
+    let question = SelectOptionsContext::new(player, Some(card), "Choose a Miracle reveal", options, 1, opportunity.instances.len());
     let choice = decision_maker.decide_options(game, &question);
     if decision_maker.awaiting_choice() { return Ok(None); }
-    let [index] = choice.as_slice() else { return Err(ExecutionError::Impossible("expected one Miracle reveal choice".into())); };
-    if *index == 0 { return Ok(Some(MiracleDrawDecision::Declined)); }
-    let instance = opportunity.instances.get(index - 1).cloned().ok_or_else(|| ExecutionError::Impossible("unknown Miracle reveal instance".into()))?;
+    if choice == [0] { return Ok(Some(MiracleDrawDecision::Declined)); }
+    let mut selected = std::collections::BTreeSet::new();
+    if choice.is_empty() || choice.iter().any(|index| *index == 0 || *index > opportunity.instances.len() || !selected.insert(*index)) {
+        return Err(ExecutionError::Impossible("expected a distinct subset of Miracle reveal instances or decline".into()));
+    }
     let object = game.object(card).ok_or(ExecutionError::InvalidTarget)?;
     let drawn_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
-    for viewer in game.players.iter().map(|player| player.id).collect::<Vec<_>>() {
-        let view = ViewCardsContext::new(viewer, player, Some(card), Zone::Hand, "Reveal drawn card for Miracle").with_public(true);
-        decision_maker.view_cards(game, viewer, &[card], &view);
+    let mut proofs = Vec::new();
+    for index in selected {
+        let instance = opportunity.instances[index - 1].clone();
+        for viewer in game.players.iter().map(|player| player.id).collect::<Vec<_>>() {
+            let view = ViewCardsContext::new(viewer, player, Some(card), Zone::Hand, "Reveal drawn card for Miracle").with_public(true);
+            decision_maker.view_cards(game, viewer, &[card], &view);
+        }
+        if decision_maker.awaiting_choice() { return Ok(None); }
+        proofs.push(RevealedMiracle {
+            card: opportunity.card, stable_id: opportunity.stable_id, player: opportunity.player,
+            instance, drawn_snapshot: drawn_snapshot.clone(),
+        });
     }
-    Ok(Some(MiracleDrawDecision::Revealed(RevealedMiracle {
-        card: opportunity.card, stable_id: opportunity.stable_id, player: opportunity.player,
-        instance, drawn_snapshot,
-    })))
+    Ok(Some(if proofs.len() == 1 { MiracleDrawDecision::Revealed(proofs.remove(0)) }
+        else { MiracleDrawDecision::RevealedMany(proofs) }))
 }
 
 /// The caller owns the draw checkpoint. Pending input leaves no committed
@@ -133,9 +144,11 @@ pub(crate) fn miracle_reveal_event(
     game: &mut GameState,
     drawn: &crate::events::CardsDrawnEvent,
     parent: crate::provenance::ProvNodeId,
-) -> Option<crate::triggers::TriggerEvent> {
-    let MiracleDrawDecision::Revealed(proof) = drawn.miracle.as_ref()? else { return None; };
-    let provenance = game.provenance_graph_mut().alloc_child_event(parent, crate::events::EventKind::CardRevealed);
-    Some(crate::triggers::TriggerEvent::new_with_provenance(crate::events::CardRevealedEvent::new(
-        proof.player, proof.card, Zone::Hand, Some(proof.card), Some(proof.drawn_snapshot.clone())), provenance))
+) -> Vec<crate::triggers::TriggerEvent> {
+    let Some(decision) = drawn.miracle.as_ref() else { return Vec::new(); };
+    decision.revealed_instances().iter().map(|proof| {
+        let provenance = game.provenance_graph_mut().alloc_child_event(parent, crate::events::EventKind::CardRevealed);
+        crate::triggers::TriggerEvent::new_with_provenance(crate::events::CardRevealedEvent::new(
+            proof.player, proof.card, Zone::Hand, Some(proof.card), Some(proof.drawn_snapshot.clone())), provenance)
+    }).collect()
 }

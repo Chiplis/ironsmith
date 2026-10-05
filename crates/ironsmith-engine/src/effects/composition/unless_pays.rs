@@ -406,17 +406,21 @@ impl EffectExecutor for UnlessPaysEffect {
                 false
             };
 
-            if wants_to_pay
-                && payment_succeeded(pay_total_cost_with_choice_in_context(
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+
+            if wants_to_pay {
+                let payment = pay_total_cost_with_choice_in_context(
                     game,
                     paying_player,
                     ctx.source,
                     &self.cost,
                     crate::costs::PaymentReason::Effect,
                     ctx,
-                ))?
-            {
-                return Ok(EffectOutcome::declined());
+                );
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                if payment_succeeded(payment)? { return Ok(EffectOutcome::declined()); }
             }
         }
 

@@ -745,6 +745,12 @@ impl EffectExecutor for ExileEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
+        if let ChooseSpec::All(filter) = self.spec.base()
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.owner == Some(crate::target::PlayerFilter::You)
+        {
+            return Some(format!("Exile all {}", filter.description()));
+        }
         if matches!(self.spec.base(), ChooseSpec::Source) {
             return Some("Exile this source".to_string());
         }
@@ -807,6 +813,15 @@ impl CostExecutableEffect for ExileEffect {
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
+        if let ChooseSpec::All(filter) = self.spec.base()
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.owner == Some(crate::target::PlayerFilter::You)
+        {
+            // The entire current set is the cost, including an empty set.
+            // Choosing to pay it remains distinct from declining the offer.
+            return if game.player(controller).is_some_and(|player| player.is_in_game()) { Ok(()) }
+                else { Err(crate::effects::CostValidationError::Other("payer not in game".into())) };
+        }
         if matches!(self.spec.base(), ChooseSpec::Source) && game.object(source).is_some() {
             return Ok(());
         }

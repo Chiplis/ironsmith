@@ -1011,6 +1011,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/838"
+    },
+    {
+      "stage": 73,
+      "branch": "fix/card-failures-73-dice-and-pile-programs",
+      "base": "fix/card-failures-72-reveal-morph-payments",
+      "source_integration_commit": "5941ecbe1955e763a6a7518bdcb23217e6ffcf7b",
+      "remote_commit": "1fb23f1b765479766e75d52f86f1591c630c25b0",
+      "tree": "642c09da16d46826a69ce66309329bc5de87fc54",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 839,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/839"
     }
   ]
 }

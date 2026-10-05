@@ -1,0 +1,72 @@
+{
+  "source": "cards-20261003.json.xz, remaining-families-stage68-evidence.json",
+  "cards": [
+    {
+      "name": "Blood Funnel",
+      "oracle_id": "81dd22f7-f6c6-4cf2-9744-b1d918dbcf9a",
+      "mana_cost": "{1}{B}",
+      "type_line": "Enchantment",
+      "power": null,
+      "toughness": null,
+      "oracle_text": "Noncreature spells you cast cost {2} less to cast.\nWhenever you cast a noncreature spell, counter that spell unless you sacrifice a creature.",
+      "colors": [
+        "B"
+      ],
+      "layout": "normal",
+      "text": "Mana cost: {1}{B}\nType: Enchantment\nNoncreature spells you cast cost {2} less to cast.\nWhenever you cast a noncreature spell, counter that spell unless you sacrifice a creature."
+    },
+    {
+      "name": "Grip of Amnesia",
+      "oracle_id": "0144d9bb-d3cb-4c23-b133-6653d7c3a76d",
+      "mana_cost": "{1}{U}",
+      "type_line": "Instant",
+      "power": null,
+      "toughness": null,
+      "oracle_text": "Counter target spell unless its controller exiles all cards from their graveyard.\nDraw a card.",
+      "colors": [
+        "U"
+      ],
+      "layout": "normal",
+      "text": "Mana cost: {1}{U}\nType: Instant\nCounter target spell unless its controller exiles all cards from their graveyard.\nDraw a card."
+    },
+    {
+      "name": "Hope-Ender Coatl",
+      "oracle_id": "57cf576b-5a03-4c60-a531-544df2638323",
+      "mana_cost": "{2}{U}",
+      "type_line": "Creature — Eldrazi Snake",
+      "power": "2",
+      "toughness": "2",
+      "oracle_text": "Devoid (This card has no color.)\nFlash\nWhen you cast this spell, counter target spell an opponent controls unless they pay {1}.\nFlying",
+      "colors": [],
+      "layout": "normal",
+      "text": "Mana cost: {2}{U}\nType: Creature — Eldrazi Snake\nPower/Toughness: 2/2\nDevoid (This card has no color.)\nFlash\nWhen you cast this spell, counter target spell an opponent controls unless they pay {1}.\nFlying"
+    },
+    {
+      "name": "Perplex",
+      "oracle_id": "904f9e0c-cb7f-4611-8bf7-2e408e8ab237",
+      "mana_cost": "{1}{U}{B}",
+      "type_line": "Instant",
+      "power": null,
+      "toughness": null,
+      "oracle_text": "Counter target spell unless its controller discards their hand.\nTransmute {1}{U}{B} ({1}{U}{B}, Discard this card: Search your library for a card with the same mana value as this card, reveal it, put it into your hand, then shuffle. Transmute only as a sorcery.)",
+      "colors": [
+        "B",
+        "U"
+      ],
+      "layout": "normal",
+      "text": "Mana cost: {1}{U}{B}\nType: Instant\nCounter target spell unless its controller discards their hand.\nTransmute {1}{U}{B} ({1}{U}{B}, Discard this card: Search your library for a card with the same mana value as this card, reveal it, put it into your hand, then shuffle. Transmute only as a sorcery.)"
+    },
+    {
+      "name": "Reality Smasher",
+      "oracle_id": "17c651c7-da4e-45e9-9a64-fad3e873123d",
+      "mana_cost": "{4}{C}",
+      "type_line": "Creature — Eldrazi",
+      "power": "5",
+      "toughness": "5",
+      "oracle_text": "({C} represents colorless mana.)\nTrample, haste\nWhenever this creature becomes the target of a spell an opponent controls, counter that spell unless its controller discards a card.",
+      "colors": [],
+      "layout": "normal",
+      "text": "Mana cost: {4}{C}\nType: Creature — Eldrazi\nPower/Toughness: 5/5\n({C} represents colorless mana.)\nTrample, haste\nWhenever this creature becomes the target of a spell an opponent controls, counter that spell unless its controller discards a card."
+    }
+  ]
+}

@@ -40,7 +40,7 @@ pub enum DrawnMiraclePrice {
 }
 
 /// The first draw's reveal entitlement is separate from the later permission
-/// to cast. The reveal owner chooses one linked instance from this captured list.
+/// to cast. The reveal owner independently chooses which linked instances to use.
 #[derive(Debug, Clone)]
 pub(crate) struct MiracleDrawOpportunity {
     pub card: ObjectId,
@@ -65,6 +65,19 @@ pub struct RevealedMiracle {
 pub enum MiracleDrawDecision {
     Declined,
     Revealed(RevealedMiracle),
+    /// Independent accepted instances of the same first draw. The original
+    /// singleton spelling remains valid for existing retained native notices.
+    RevealedMany(Vec<RevealedMiracle>),
+}
+
+impl MiracleDrawDecision {
+    pub fn revealed_instances(&self) -> &[RevealedMiracle] {
+        match self {
+            Self::Declined => &[],
+            Self::Revealed(proof) => std::slice::from_ref(proof),
+            Self::RevealedMany(proofs) => proofs,
+        }
+    }
 }
 
 /// A player drew one or more cards event.
