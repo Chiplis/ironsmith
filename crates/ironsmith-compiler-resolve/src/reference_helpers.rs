@@ -1612,6 +1612,7 @@ pub fn resolve_restriction_it_tag(
             )
         }
         Restriction::MustAttack(filter) => Restriction::must_attack(resolve_it_tag(filter, refs)?),
+        Restriction::MustBlock(filter) => Restriction::must_block(resolve_it_tag(filter, refs)?),
         Restriction::MustBeBlocked(filter) => {
             Restriction::must_be_blocked(resolve_it_tag(filter, refs)?)
         }

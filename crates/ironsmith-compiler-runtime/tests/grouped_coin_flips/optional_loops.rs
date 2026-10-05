@@ -8,7 +8,11 @@ fn loop_definitions(name: &str) -> [CardDefinition; 2] {
     let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../../fixtures/optional_coin_loops.json.fixture")).unwrap();
     let row = rows.into_iter().find(|row| row["name"] == name).unwrap();
     assert_eq!(row["proposed_complete"], true);
-    program_definitions(name, row["text"].as_str().unwrap())
+    let definitions = program_definitions(name, row["text"].as_str().unwrap());
+    for definition in &definitions {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(definition));
+    }
+    definitions
 }
 
 #[test]
@@ -498,5 +502,111 @@ fn scales_resource_failure_after_paid_loss_restores_mana_history_and_forced_face
         assert_eq!(dm.option_players, [A, A]);
         assert_eq!(g.object(g.find_object_by_stable_id(enemy_stable).unwrap()).unwrap().zone, Zone::Graveyard);
         assert_eq!(g.object(own).unwrap().zone, Zone::Battlefield);
+    }
+}
+
+#[test]
+fn mana_clash_uses_only_the_saved_pair_and_repeats_until_the_same_round_is_all_heads() {
+    for definition in loop_definitions("Mana Clash") {
+        for (faces, alice_life, opponent_life, rounds) in [
+            (vec![H, H], 30, 30, 1), (vec![T, H, H, H], 29, 30, 2),
+            (vec![H, T, H, H], 30, 29, 2), (vec![T, T, H, H], 29, 29, 2),
+            (vec![T, H, H, T, H, H], 29, 29, 3),
+        ] {
+            let mut g = multiplayer_game();
+            let opponent = PlayerId(2);
+            let spell = g.create_object_from_definition(&definition, A, Zone::Hand);
+            let mut dm = Choices { targets: vec![Target::Player(opponent)], ..Default::default() };
+            force(&mut g, &faces); cast(&mut g, spell, &mut dm);
+            assert_eq!(g.stack.last().unwrap().targets, vec![Target::Player(opponent)]);
+            dm.targets = vec![Target::Player(B)];
+            settle(&mut g, &mut dm);
+            assert!(dm.option_players.is_empty(), "physical heads/tails do not request calls");
+            assert!(dm.boolean_players.is_empty());
+            assert_eq!(g.player(A).unwrap().life, alice_life); assert_eq!(g.player(opponent).unwrap().life, opponent_life);
+            assert_eq!(g.player(B).unwrap().life, 30); assert_eq!(g.player(PlayerId(3)).unwrap().life, 30);
+            assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), rounds);
+            assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(opponent), rounds);
+            assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(B), 0);
+        }
+    }
+}
+
+#[test]
+fn mana_clash_prevented_tail_damage_does_not_replace_the_rounds_face_condition() {
+    for definition in loop_definitions("Mana Clash") {
+        let mut g = game();
+        let shield = object(&mut g, A, Zone::Battlefield, "Shield source", "Type: Artifact");
+        let mut dm = Choices { targets: vec![Target::Player(B)], ..Default::default() };
+        execute_effect(&mut g, &Effect::prevent_all_damage_to_target(ChooseSpec::Player(PlayerFilter::Specific(A)), Until::EndOfTurn),
+            &mut ExecutionContext::new(shield, A, &mut dm)).unwrap();
+        let spell = g.create_object_from_definition(&definition, A, Zone::Hand);
+        force(&mut g, &[T, H, H, T, H, H]);
+        cast(&mut g, spell, &mut dm); settle(&mut g, &mut dm);
+        assert_eq!(g.player(A).unwrap().life, 30); assert_eq!(g.player(B).unwrap().life, 29);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), 3);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(B), 3);
+    }
+}
+
+#[test]
+fn correlated_tails_damage_is_one_native_simultaneous_instruction() {
+    let mut g = game();
+    let source = object(&mut g, A, Zone::Battlefield, "Damage source", "Type: Artifact");
+    let mut dm = Choices::default(); let mut ctx = ExecutionContext::new(source, A, &mut dm);
+    ctx.store_outcome(EffectId(7), EffectOutcome::count(0).with_player_counts(vec![(A, 0), (B, 0)]));
+    let followup = ironsmith::effects::IfEffect::if_then(EffectId(7), ironsmith::effect::EffectPredicate::DidNotHappen,
+        vec![Effect::deal_damage(1, ChooseSpec::Player(PlayerFilter::IteratedPlayer))]).with_per_player_result(true);
+    let out = followup.execute(&mut g, &mut ctx).unwrap();
+    let damage = out.events.iter().filter(|event| event.downcast::<ironsmith::events::DamageEvent>().is_some()).collect::<Vec<_>>();
+    assert_eq!(damage.len(), 2); assert!(damage[0].simultaneous_batch().is_some());
+    assert_eq!(damage[0].simultaneous_batch(), damage[1].simultaneous_batch());
+    assert_eq!(g.player(A).unwrap().life, 29); assert_eq!(g.player(B).unwrap().life, 29);
+}
+
+#[test]
+fn mana_clash_pending_replacement_keep_choice_restores_both_players_and_prior_round_damage() {
+    for definition in loop_definitions("Mana Clash") {
+        let mut g = game();
+        object(&mut g, A, Zone::Battlefield, "Krark's Thumb", "Type: Artifact\nIf you would flip a coin, instead flip two coins and ignore one.");
+        let spell = g.create_object_from_definition(&definition, A, Zone::Hand);
+        let mut dm = Choices { targets: vec![Target::Player(B)], ..Default::default() };
+        // A keeps the first face of each replacement pair; B flips once.
+        force(&mut g, &[T, H, T, H, T, H]); cast(&mut g, spell, &mut dm);
+        dm.pause_on_option = Some(2);
+        let random = g.irreversible_random_count(); let ui = g.ui_effect_events().count();
+        resolve_stack_entry_with(&mut g, &mut dm).unwrap();
+        assert!(dm.pending); assert_eq!(g.stack.len(), 1);
+        assert_eq!(g.player(A).unwrap().life, 30); assert_eq!(g.player(B).unwrap().life, 30);
+        assert_eq!(g.irreversible_random_count(), random); assert_eq!(g.ui_effect_events().count(), ui);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), 0);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(B), 0);
+        dm.pending = false; dm.pause_on_option = None; dm.option_players.clear();
+        settle(&mut g, &mut dm);
+        assert_eq!(g.player(A).unwrap().life, 29); assert_eq!(g.player(B).unwrap().life, 29);
+        assert_eq!(dm.option_players, [A, A], "only Thumb keeps choices; neither player calls a face-only flip");
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), 2);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(B), 2);
+    }
+}
+
+#[test]
+fn mana_clash_capacity_failure_rolls_back_prior_round_damage_and_recovers_the_exact_pair() {
+    for definition in loop_definitions("Mana Clash") {
+        let mut g = game(); let spell = g.create_object_from_definition(&definition, A, Zone::Hand);
+        let mut dm = Choices { targets: vec![Target::Player(B)], ..Default::default() };
+        force(&mut g, &[T, T, H, H]); cast(&mut g, spell, &mut dm);
+        g.turn_store.turn_history.completed_coin_flips_this_turn.insert(A, i32::MAX as u32 - 1);
+        let random = g.irreversible_random_count();
+        assert!(resolve_stack_entry_with(&mut g, &mut dm).is_err());
+        assert_eq!(g.stack.len(), 1); assert_eq!(g.irreversible_random_count(), random);
+        assert_eq!(g.player(A).unwrap().life, 30); assert_eq!(g.player(B).unwrap().life, 30);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), i32::MAX as u32 - 1);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(B), 0);
+        g.turn_store.turn_history.completed_coin_flips_this_turn.insert(A, 0);
+        settle(&mut g, &mut dm);
+        assert_eq!(g.player(A).unwrap().life, 29); assert_eq!(g.player(B).unwrap().life, 29);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), 2);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(B), 2);
     }
 }

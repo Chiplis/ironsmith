@@ -1803,6 +1803,9 @@ pub struct CantEffectTracker {
     /// Positive attack requirements from resolving rule effects, not abilities.
     pub must_attack: HashMap<ObjectId, usize>,
 
+    /// Positive block requirements from source-owned rules.
+    pub must_block: HashMap<ObjectId, usize>,
+
     /// Source-owned rules limiting blockers for each affected attacker.
     pub maximum_blockers: HashMap<ObjectId, usize>,
 
@@ -2519,6 +2522,9 @@ impl CantEffectTracker {
                 .extend(attackers);
         }
         self.must_be_blocked.extend(other.must_be_blocked);
+        for (object, count) in other.must_block {
+            *self.must_block.entry(object).or_default() += count;
+        }
         for (object, count) in other.must_attack {
             *self.must_attack.entry(object).or_default() += count;
         }
@@ -2632,6 +2638,7 @@ impl CantEffectTracker {
         self.must_block_specific_attackers.clear();
         self.must_be_blocked.clear();
         self.must_attack.clear();
+        self.must_block.clear();
         self.maximum_blockers.clear();
         self.cant_block_alone.clear();
         self.cant_untap.clear();

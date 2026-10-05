@@ -955,6 +955,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/834"
+    },
+    {
+      "stage": 69,
+      "branch": "fix/card-failures-69-coins-costs-and-untap",
+      "base": "fix/card-failures-68-shuffle-and-source-references",
+      "source_integration_commit": "d69f669ba7ace80596041394193410186d4cc914",
+      "remote_commit": "c8f748aeff5589140003473ff26de1f4625ef089",
+      "tree": "e5a5674ae318a8301d1194ad47435d6ede067f26",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 835,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/835"
     }
   ]
 }

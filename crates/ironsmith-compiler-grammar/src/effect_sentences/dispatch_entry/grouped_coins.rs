@@ -234,8 +234,57 @@ fn no_effect_after_loss(tokens: &[OwnedLexToken]) -> bool {
     bare_words(&tokens[..start], TokenKind::Comma) && bare_words(&tokens[start..], TokenKind::Period)
 }
 
+/// A paired face process composes existing participant, correlated-result and
+/// repeat owners. The loop condition is the completed round's faces, never the
+/// damage followup's changed/prevented amount.
+fn paired_face_repeat(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if sentences.len() < 3 { return Ok(None); }
+    let first = crate::lexer::TokenWordView::new(sentences[0]).word_refs();
+    if first != ["you", "and", "target", "opponent", "each", "flip", "a", "coin"] { return Ok(None); }
+    let last = crate::lexer::TokenWordView::new(sentences[2]).word_refs();
+    if last != ["repeat", "this", "process", "until", "both", "players", "coins", "come", "up", "heads", "on", "the", "same", "flip"] { return Ok(None); }
+    if !bare_words(sentences[0], TokenKind::Period) { return Err(malformed_coin_clause()); }
+    let tail_view = crate::lexer::TokenWordView::new(sentences[2]);
+    let players = tail_view.map_word_to_token_start(5).ok_or_else(malformed_coin_clause)?;
+    if !sentences[2][players].is_word("players'")
+        || !bare_words(sentences[2], TokenKind::Period) { return Err(malformed_coin_clause()); }
+    let view = crate::lexer::TokenWordView::new(sentences[1]);
+    let words = view.word_refs();
+    let suffix = ["damage", "to", "each", "player", "whose", "coin", "comes", "up", "tails"];
+    if !words.ends_with(&suffix) { return Ok(None); }
+    let Some(deals) = words.iter().position(|word| *word == "deals") else { return Ok(None); };
+    if !crate::util::is_source_reference_words(&words[..deals]) { return Ok(None); }
+    let amount_start = view.map_word_to_token_start(deals + 1).ok_or_else(malformed_coin_clause)?;
+    let damage_start = view.map_word_to_token_start(words.len() - suffix.len()).ok_or_else(malformed_coin_clause)?;
+    if !bare_words(sentences[1], TokenKind::Period) { return Err(malformed_coin_clause()); }
+    let Some((amount, consumed)) = crate::util::parse_value(&sentences[1][amount_start..damage_start]) else { return Ok(None); };
+    if amount_start + consumed != damage_start { return Err(malformed_coin_clause()); }
+    // A union expressed through the shared set-difference primitive: include
+    // you, plus the saved opponent target, and exclude every other participant.
+    let participants = PlayerFilter::excluding(PlayerFilter::Any,
+        PlayerFilter::excluding(PlayerFilter::NotYou, PlayerFilter::target_opponent()));
+    let round = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        sequential: false, filter: participants,
+        effects: vec![EffectAst::subject_verb_flip_coin_face_only(PlayerAst::That)],
+    });
+    let consequences = EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
+        predicate: None, result_predicate: IfResultPredicate::DidNot,
+        effects: vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
+                amount, target: TargetAst::Player(PlayerFilter::IteratedPlayer, None), unpreventable: false,
+            }))],
+    });
+    let mut effects = vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
+        effects: vec![round, consequences], continue_effect_index: 0,
+        continue_predicate: IfResultPredicate::Value(ironsmith_core::Comparison::LessThan(2)),
+    })];
+    for sentence in &sentences[3..] { effects.extend(parse_effect_sentences_lexed(sentence)?); }
+    Ok(Some(effects))
+}
+
 pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentences = split_lexed_sentences(tokens);
+    if let Some(effects) = paired_face_repeat(&sentences)? { return Ok(Some(effects)); }
     // The explicit loss cancels the remaining consequence program, including
     // its conditional target instruction. Lowering still declares that target
     // before casting; this is control flow, never a resolution-time choice.
@@ -335,6 +384,23 @@ mod tests {
             action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind, repeat_until_loss, .. }), ..
         }) = &effects[0] else { panic!("expected a grouped flip: {effects:?}") };
         (*count, *kind, *repeat_until_loss)
+    }
+
+    #[test]
+    fn paired_face_process_uses_the_round_receipt_before_its_correlated_damage() {
+        let effects = parse("You and target opponent each flip a coin. This spell deals 1 damage to each player whose coin comes up tails. Repeat this process until both players' coins come up heads on the same flip.");
+        let [EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, continue_effect_index, continue_predicate })] = effects.as_slice() else { panic!("missing paired repeat") };
+        assert_eq!(*continue_effect_index, 0);
+        assert_eq!(*continue_predicate, IfResultPredicate::Value(ironsmith_core::Comparison::LessThan(2)));
+        assert!(matches!(&effects[0], EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false, .. })));
+        assert!(matches!(&effects[1], EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid { result_predicate: IfResultPredicate::DidNot, .. })));
+        for text in [
+            "You and target opponent each flip a coin {R}. This spell deals 1 damage to each player whose coin comes up tails. Repeat this process until both players' coins come up heads on the same flip.",
+            "You and target opponent each flip a coin. This spell deals 1 damage to each player whose coin comes up tails. Repeat this process until both players' coins come up heads on the same flip {R}.",
+        ] {
+            let result = parse_document(&crate::lexer::lex_line(text, 0).unwrap());
+            assert!(result.is_err() || result.unwrap().is_none());
+        }
     }
 
     #[test]

@@ -1847,6 +1847,16 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::MustBlock(filter) => {
+                for &object in &game.battlefield {
+                    if !game.is_phased_out(object)
+                        && let Some(object) = game.object(object)
+                        && filter.matches(object, &ctx, game)
+                    {
+                        *tracker.must_block.entry(object.id).or_default() += 1;
+                    }
+                }
+            }
             Restriction::MustBeBlocked(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

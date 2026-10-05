@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "020896ba82af6d3a63239f19fe4564d365c6e630",
+  "source_implementation_commit": "676e44043",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1068,
-    "additional_proposed_compile_entries": 1073,
+    "additional_proposed_unique_cards": 1081,
+    "additional_proposed_compile_entries": 1086,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1068,
+    "source_proposals_excluding_identified_runtime_gaps": 1081,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -4218,6 +4218,51 @@
       "semantic_scope": [
         "Complete plural/imperative readers retain all printed bodies. Exact affected-incarnation live-controller next steps differ from fixed your/exert owners; original references do not transfer through intervening replacement blinks. Native checked rollback, empty/illegal targets, payment, dice, Scry, Addendum, source/departure/phasing and skipped-step scenarios are authored."
       ]
+    },
+    {
+      "id": "source-owned-static-combat-requirements",
+      "stage": 70,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/static_combat_requirements.json.fixture",
+      "baseline_entries": [
+        "Air Bladder",
+        "Stratus Walk",
+        "Chaosphere",
+        "Dense Canopy",
+        "Razorgrass Screen",
+        "Grand Melee",
+        "Iron Golem",
+        "Relentless Raptor",
+        "Spirespine",
+        "Watchdog",
+        "Avatar of Slaughter",
+        "Hellraiser Goblin"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "676e44043",
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete self, attached and filtered combat requirements retain source-owned rules versus removable grants, whole coordinated keywords/stats, feasible attack/block maximization, flying target filters, live conditions, and exact bestow attachment ownership."
+      ]
+    },
+    {
+      "id": "paired-coin-face-rounds",
+      "stage": 70,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/optional_coin_loops.json.fixture",
+      "baseline_entries": [
+        "Mana Clash"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "676e44043",
+      "source_review_commit": "96e97f96048c4bfb63e1db2680e6e101bec3a1ec",
+      "integrated_source_review_commit": "676e44043",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Each round retains its exact player pair and local coin face receipt, applies tails consequences simultaneously, and repeats from faces independently of prevented damage. Whole native transaction preserves pending/resource rollback."
+      ]
     }
   ],
   "cards": [
@@ -4592,8 +4637,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Airtight Alibi",
@@ -6053,8 +6102,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Aven Courier",
@@ -8727,8 +8780,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Chaotic Transformation",
@@ -11169,8 +11226,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Dense Foliage",
@@ -16500,8 +16561,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Gravebane Zombie",
@@ -17443,8 +17508,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Helm of Kaldra",
@@ -19035,8 +19104,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Iron Mastiff",
@@ -22155,8 +22228,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "paired-coin-face-rounds"
+      ],
+      "source_review_commit": "96e97f96048c4bfb63e1db2680e6e101bec3a1ec",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Mana Maze",
@@ -27735,8 +27812,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Razorlash Transmogrant",
@@ -27982,8 +28063,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Relic's Roar",
@@ -31803,8 +31888,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Spiritual Focus",
@@ -32293,8 +32382,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Stream of Thought",
@@ -37801,8 +37894,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "source-owned-static-combat-requirements"
+      ],
+      "source_review_commit": "266e92157",
+      "integrated_source_review_commit": "676e44043"
     },
     {
       "card_name": "Watcher of Hours",

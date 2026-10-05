@@ -78,6 +78,7 @@ fn retarget_it_restriction_for_counter_followup(
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
         | Restriction::MustAttack(filter)
+        | Restriction::MustBlock(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)

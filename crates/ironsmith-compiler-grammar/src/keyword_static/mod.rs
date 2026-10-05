@@ -5,6 +5,11 @@ use crate::cards::builders::SourcePredicateAst;
 use crate::cards::builders::TurnEventPredicateAst;
 use characteristic_assertions::parse_supertype_assertion_line;
 mod blocking_permissions;
+mod combat_requirements;
+pub use combat_requirements::{
+    parse_self_combat_requirement_line, parse_combat_requirement_static_line,
+    parse_source_owned_flying_block_limit_line,
+};
 mod dynamic_anthem_values;
 pub use blocking_permissions::parse_blocking_capacity_static_line;
 mod alternative_prices;
@@ -458,7 +463,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_enchant_attachment_restriction_line" => {
             vec![StaticAbilityLineHeadHint::Single("enchant")]
         }
-        "parse_characteristic_defining_pt_line" => Vec::new(),
+        "parse_characteristic_defining_pt_line"
+        | "parse_combat_requirement_static_line"
+        | "parse_source_owned_flying_block_limit_line" => Vec::new(),
         // The complete assignment suffix proves its grammar; its source,
         // filtered-set and leading-condition subjects have no single head.
         "parse_filtered_toughness_assignment_line" => Vec::new(),
@@ -1406,6 +1413,8 @@ macro_rules! multi_static_ability_ast_passthrough_rule {
 
 fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
     static RULES: &[StaticAbilityLineRuleDef] = &[
+        multi_static_ability_ast_passthrough_rule!(parse_combat_requirement_static_line),
+        single_static_ability_ast_passthrough_rule!(parse_source_owned_flying_block_limit_line),
         single_static_ability_ast_passthrough_rule!(parse_enchant_attachment_restriction_line),
         multi_static_ability_ast_passthrough_rule!(parse_soulbond_shared_line),
         single_static_ability_ast_rule!(parse_ward_static_ability_line),
@@ -1697,6 +1706,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_source_can_attack_as_though_no_defender_as_long_as_line
         ),
+        multi_static_ability_ast_passthrough_rule!(parse_self_combat_requirement_line),
         single_static_ability_ast_passthrough_rule!(parse_attacks_each_combat_if_able_line),
         single_static_ability_ast_rule!(parse_source_must_be_blocked_if_able_line),
         multi_static_ability_ast_passthrough_rule!(parse_composed_anthem_effects_line),

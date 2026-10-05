@@ -4855,6 +4855,13 @@ pub fn parse_cast_this_spell_as_though_it_had_flash_line(
 pub fn parse_attacks_each_combat_if_able_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    if super::combat_requirements::owns_combat_requirement_line(tokens) {
+        let parsed = super::combat_requirements::parse_combat_requirement_static_line(tokens)?;
+        return Ok(parsed.and_then(|mut abilities| {
+            (abilities.len() == 1).then(|| abilities.remove(0))
+        }));
+    }
+
     if let Some(unless) = tokens.iter().position(|token| token.is_word("unless"))
         && let Some(ability) = parse_attacks_each_combat_if_able_line(&tokens[..unless])?
     {

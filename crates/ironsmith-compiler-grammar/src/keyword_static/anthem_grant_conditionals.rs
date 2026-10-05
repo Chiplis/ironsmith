@@ -110,6 +110,10 @@ pub fn parse_carried_conditional_anthem_grant_line(
 pub fn parse_anthem_and_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if super::combat_requirements::owns_combat_requirement_line(tokens) {
+        return super::combat_requirements::parse_combat_requirement_static_line(tokens);
+    }
+
     // Comma-separated omitted-subject predicates are separate clauses, each
     // with its own condition. The composed owner parses every segment.
     if has_omitted_subject_anthem_predicates(tokens) {
@@ -2418,6 +2422,10 @@ fn lower_atomic_anthem_predicate(
 pub fn parse_anthem_with_trailing_segments_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if super::combat_requirements::owns_combat_requirement_line(tokens) {
+        return super::combat_requirements::parse_combat_requirement_static_line(tokens);
+    }
+
     // Only a successful complete production can own a competing line;
     // a prefix-tolerant keyword leaf is not proof that no later predicate exists.
     if matches!(parse_anthem_and_keyword_line(tokens), Ok(Some(_))) {
@@ -3089,6 +3097,10 @@ pub fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
 pub fn parse_gets_and_attacks_each_combat_if_able_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if super::combat_requirements::owns_combat_requirement_line(tokens) {
+        return super::combat_requirements::parse_combat_requirement_static_line(tokens);
+    }
+
     let clause_words = crate::lexer::token_word_refs(tokens);
     let Some(shape) = anthem_grant_grammar::parse_gets_attacks_shape(tokens) else {
         return Ok(None);
@@ -3204,6 +3216,10 @@ fn has_omitted_subject_anthem_predicates(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn parse_anthem_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
+    if super::combat_requirements::owns_combat_requirement_line(tokens) {
+        return Ok(None);
+    }
+
     // A type addition is a sibling predicate, never part of the dynamic count
     // filter. Require the complete specialized reading before yielding.
     if matches!(parse_anthem_and_type_color_addition_line(tokens), Ok(Some(_))) {

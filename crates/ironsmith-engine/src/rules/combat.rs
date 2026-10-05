@@ -764,6 +764,7 @@ pub fn must_block(creature: &Object) -> bool {
 /// Check if a creature must block this turn if able, with continuous effects applied.
 pub fn must_block_with_game(creature: &Object, game: &crate::game_state::GameState) -> bool {
     game.object_has_static_ability_id(creature.id, StaticAbilityId::MustBlock)
+        || game.effect_store.cant_effects.must_block.contains_key(&creature.id)
 }
 
 /// Check if a creature has vigilance (doesn't tap to attack).

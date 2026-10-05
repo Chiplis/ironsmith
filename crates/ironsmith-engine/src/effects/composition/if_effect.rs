@@ -68,6 +68,7 @@ fn restriction_mentions_iterated_player(restriction: &crate::effect::Restriction
         crate::effect::Restriction::PreventDamageFrom { sources, .. }
         | crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(sources)
         | crate::effect::Restriction::MustAttack(sources)
+        | crate::effect::Restriction::MustBlock(sources)
         | crate::effect::Restriction::MaximumBlockers { filter: sources, .. } => {
             object_filter_mentions_iterated_player(sources)
         }
@@ -567,6 +568,28 @@ impl EffectExecutor for IfEffect {
         // untaken branch, an antecedent skipped because its object is gone)
         // left no result: it didn't happen (CR 608.2c).
         let branches = prepare_if_branches(self, game, ctx);
+        // A single authored instruction applied to each matching participant
+        // remains simultaneous. Reuse ForPlayers' native proposal/commit owner
+        // with the exact saved result roster; serial branch execution would
+        // split damage, life changes, and other simultaneous instructions.
+        if self.per_player_result && self.else_.is_empty()
+            && let Some(first) = branches.iter().find(|branch| !branch.effects.is_empty())
+            && first.effects.iter().all(|effect| effect.0.supports_simultaneous_player_action()
+                || effect.0.is_read_only_simultaneous_player_action())
+            && branches.iter().filter(|branch| !branch.effects.is_empty()).all(|branch| {
+                branch.player.is_some() && branch.repetitions == 1 && branch.effects == first.effects
+            })
+        {
+            let participants = branches.iter().filter(|branch| !branch.effects.is_empty())
+                .filter_map(|branch| branch.player).collect::<Vec<_>>();
+            if participants.len() > 1 {
+                let excluded = participants.into_iter().fold(crate::target::PlayerFilter::Any, |remaining, player| {
+                    crate::target::PlayerFilter::excluding(remaining, crate::target::PlayerFilter::Specific(player))
+                });
+                let filter = crate::target::PlayerFilter::excluding(crate::target::PlayerFilter::Any, excluded);
+                return crate::effects::ForPlayersEffect::new(filter, first.effects.clone()).execute(game, ctx);
+            }
+        }
         execute_if_branches(game, ctx, &branches)
     }
 

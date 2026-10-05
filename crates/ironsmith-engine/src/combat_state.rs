@@ -1171,7 +1171,8 @@ fn game_may_have_must_block_requirements(
         })
     });
 
-    raw_ability_can_require_or_grant_blocking
+    !game.effect_store.cant_effects.must_block.is_empty()
+        || raw_ability_can_require_or_grant_blocking
         || effects
             .iter()
             .any(|effect| effect.modification.layer() == crate::continuous::Layer::Ability)
@@ -1208,7 +1209,8 @@ fn blocking_requirements(
                     .filter(|ability| {
                         ability.id() == crate::static_abilities::StaticAbilityId::MustBlock
                     })
-                    .count();
+                    .count()
+                    + game.effect_store.cant_effects.must_block.get(&blocker).copied().unwrap_or(0);
                 requirements.extend(std::iter::repeat_n(
                     BlockingRequirement::BlockerMustBlock(blocker),
                     requirement_count,

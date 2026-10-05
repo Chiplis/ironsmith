@@ -2439,15 +2439,13 @@ pub(super) fn test_parse_composed_anthems_keep_independent_land_conditions() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn test_parse_granted_keyword_and_must_attack_keeps_both_parts() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Hellraiser Variant")
-        .card_types(vec![CardType::Creature])
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(1), "Hellraiser Variant")
         .parse_text("Creatures you control have haste and attack each combat if able.")
-        .expect_err("granted keyword + must-attack is currently unsupported");
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported anthem subject"),
-        "expected explicit unsupported anthem-subject error, got {message}"
-    );
+        .expect("the full keyword grant and source-owned attack rule should parse");
+    assert_eq!(definition.abilities.len(), 2);
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("Haste"), "{debug}");
+    assert!(debug.contains("RuleRestriction") && debug.contains("MustAttack"), "{debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

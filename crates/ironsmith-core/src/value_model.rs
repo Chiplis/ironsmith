@@ -1163,6 +1163,9 @@ pub enum Restriction {
         filter: ObjectFilter,
         maximum: usize,
     },
+    /// A source-owned positive blocking requirement, independent of abilities
+    /// on the matching creatures. Appended to preserve serialized ordinals.
+    MustBlock(ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1499,6 +1502,10 @@ impl Restriction {
 
     pub fn must_block_specific_attacker(blockers: ObjectFilter, attacker: ObjectFilter) -> Self {
         Self::MustBlockSpecificAttacker { blockers, attacker }
+    }
+
+    pub fn must_block(filter: ObjectFilter) -> Self {
+        Self::MustBlock(filter)
     }
 
     pub fn must_attack(filter: ObjectFilter) -> Self {

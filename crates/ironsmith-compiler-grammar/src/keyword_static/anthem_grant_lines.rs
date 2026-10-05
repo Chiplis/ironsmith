@@ -1095,6 +1095,10 @@ fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<Object
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if super::combat_requirements::owns_combat_requirement_line(tokens) {
+        return super::combat_requirements::parse_combat_requirement_static_line(tokens);
+    }
+
     // A complete as-entry characteristic replacement is not a keyword grant
     // to the descriptor at its tail (for example a Dinosaur creature).
     if matches!(parse_as_enters_becomes_characteristics_for_filter_line(tokens), Ok(Some(_))) {

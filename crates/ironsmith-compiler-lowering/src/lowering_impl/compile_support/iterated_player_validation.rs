@@ -577,6 +577,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | ActivateTapAbilitiesOf(filter)
         | ActivateNonManaAbilitiesOf(filter)
         | MustAttack(filter)
+        | MustBlock(filter)
         | Attack(filter)
         | AttackAlone(filter)
         | Block(filter)

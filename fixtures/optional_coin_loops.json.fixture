@@ -56,8 +56,8 @@
     "baseline_category": "parser_failure",
     "baseline_error": "parser does not yet support line family: 'You and target opponent each flip a coin. Mana Clash deals 1 damage to each player whose coin comes up tails. Repeat this process until both players' coins come up heads on the same flip.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'You and target opponent each flip a coin. Mana Clash deals 1 damage to each player whose coin comes up tails. Repeat this process until both players' coins come up heads on the same flip.' [rule-path=unsupported-line-family]",
     "baseline_content_hash": "8fbae4d9a126a547bfeef0286359660f1eccdcf4eda1661749236c92b6350f84",
-    "proposed_complete": false,
-    "status": "HELD: consequence/choice or actor-local binding owner not completed"
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
   },
   {
     "name": "Game of Chaos",
