@@ -518,6 +518,14 @@ pub trait CostComponent: Clone + std::fmt::Debug + PartialEq {
         false
     }
 
+    fn discard_details(&self) -> Option<(u32, Option<CardType>)> {
+        None
+    }
+
+    fn exile_from_graveyard_excludes_source(&self) -> bool {
+        false
+    }
+
     fn exile_from_hand_details(&self) -> Option<(u32, Option<ColorSet>)> {
         None
     }

@@ -366,6 +366,40 @@ impl CostPayer for CostEffect {
             return Err(CostPaymentError::InsufficientCardsInHand);
         }
 
+        // A lowered compiler component can contain a choice followed by its
+        // tagged consumer inside one SequenceEffect. Checking its children
+        // independently discards that dependency and rejects a payable cost.
+        // Reuse the side-effect-free component checker with this cost's exact
+        // context; only the children become components, never the sequence
+        // itself, so nested sequences recurse into strictly smaller programs.
+        if let Some(sequence) =
+            transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::SequenceEffect>()
+        {
+            let total = sequence.cost_components()
+                .map_err(CostPaymentError::Other)?;
+            let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
+                .with_cause(ctx.event_cause())
+                .with_tagged_objects(ctx.tagged_objects.clone())
+                .with_provenance(ctx.provenance);
+            exec.source_snapshot = ctx.source_snapshot.clone();
+            exec.replacement = ctx.replacement.clone();
+            exec.x_value = ctx.x_value;
+            exec.effect_outcomes = ctx.effect_outcomes.clone();
+            exec.announced_targets = Some(
+                ctx.announced_targets.iter().map(|target| match target {
+                    crate::game_state::Target::Object(id) => {
+                        crate::effects::ResolvedTarget::Object(*id)
+                    }
+                    crate::game_state::Target::Player(player) => {
+                        crate::effects::ResolvedTarget::Player(*player)
+                    }
+                }).collect(),
+            );
+            return crate::special_actions::can_pay_total_cost_with_reason_in_context(
+                game, ctx.payer, ctx.source, &total, ctx.reason, &mut exec,
+            );
+        }
+
         if let Some(life) =
             transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::PayLifeEffect>()
         {

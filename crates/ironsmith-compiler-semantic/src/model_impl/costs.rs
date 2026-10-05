@@ -177,6 +177,51 @@ impl ironsmith_core::CostComponent for CompilerCost {
         }
     }
 
+    fn life_amount(&self) -> Option<u32> {
+        match self {
+            Self::Life(Value::Fixed(amount)) if *amount >= 0 => Some(*amount as u32),
+            _ => None,
+        }
+    }
+
+    fn discard_details(&self) -> Option<(u32, Option<ironsmith_core::CardType>)> {
+        match self {
+            Self::Discard {
+                count,
+                card_types,
+                supertypes,
+                filter: None,
+                random: false,
+                name: None,
+                other: false,
+                ..
+            } if supertypes.is_empty() => match card_types.as_slice() {
+                [] => Some((*count, None)),
+                [card_type] => Some((*count, Some(*card_type))),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn exile_from_graveyard_details(&self) -> Option<(u32, &[ironsmith_core::CardType])> {
+        match self {
+            Self::ExileChosen { count, filter, .. }
+                if filter.zone == Some(ironsmith_core::Zone::Graveyard)
+                    && count.min > 0
+                    && count.max == Some(count.min) =>
+            {
+                Some((count.min as u32, &filter.card_types))
+            }
+            _ => None,
+        }
+    }
+
+    fn exile_from_graveyard_excludes_source(&self) -> bool {
+        matches!(self, Self::ExileChosen { filter, .. }
+            if filter.zone == Some(ironsmith_core::Zone::Graveyard) && filter.other)
+    }
+
     fn is_mana_cost(&self) -> bool {
         matches!(
             self,

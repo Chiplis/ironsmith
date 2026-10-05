@@ -73,12 +73,20 @@ pub struct OnceEachTurnGraveyardCastFact<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GraveyardAdditionalCostFact<'a> {
+    Discard {
+        count: u32,
+    },
+    PayLife {
+        amount: u32,
+        remaining_tokens: Option<&'a [OwnedLexToken]>,
+    },
     Sacrifice {
         filter_tokens: &'a [OwnedLexToken],
     },
     ExileCards {
         count: u32,
         card_types: Vec<CardType>,
+        other: bool,
     },
 }
 
@@ -162,16 +170,49 @@ pub fn parse_graveyard_additional_cost_tokens(
     parse_semantic_all(
         tokens,
         alt((
+            parse_discarding_additional_cost_lexed,
+            parse_paying_life_additional_cost_lexed,
             parse_sacrificing_additional_cost_lexed,
             parse_exiling_graveyard_additional_cost_lexed,
         )),
     )
 }
 
+fn parse_discarding_additional_cost_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<GraveyardAdditionalCostFact<'a>> {
+    semantic_kw("discarding").parse_next(input)?;
+    let count = semantic_number_token
+        .verify(|count| *count > 0)
+        .parse_next(input)?;
+    alt((semantic_kw("card"), semantic_kw("cards"))).parse_next(input)?;
+    Ok(GraveyardAdditionalCostFact::Discard { count })
+}
+
+fn parse_paying_life_additional_cost_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<GraveyardAdditionalCostFact<'a>> {
+    semantic_kw("paying").parse_next(input)?;
+    let amount = semantic_number_token
+        .verify(|amount| *amount > 0 && *amount <= i32::MAX as u32)
+        .parse_next(input)?;
+    semantic_kw("life").parse_next(input)?;
+    let remaining_tokens =
+        opt((semantic_kw("and"), take_semantic_rest).map(|(_, rest)| trim_lexed_commas(rest)))
+            .parse_next(input)?;
+    Ok(GraveyardAdditionalCostFact::PayLife {
+        amount,
+        remaining_tokens,
+    })
+}
+
 fn parse_sacrificing_additional_cost_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<GraveyardAdditionalCostFact<'a>> {
     semantic_kw("sacrificing").parse_next(input)?;
+    // This leaf materializes exactly one sacrifice. A counted multi-object
+    // payment must not be consumed as an ordinary object-filter qualifier.
+    peek(semantic_number_token.verify(|count| *count == 1)).parse_next(input)?;
     let filter_tokens = take_semantic_rest(input)?;
     Ok(GraveyardAdditionalCostFact::Sacrifice {
         filter_tokens: trim_lexed_commas(filter_tokens),
@@ -182,9 +223,17 @@ fn parse_exiling_graveyard_additional_cost_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<GraveyardAdditionalCostFact<'a>> {
     semantic_kw("exiling").parse_next(input)?;
-    let count = semantic_number_token.parse_next(input)?;
+    let (count, other) = alt((
+        semantic_kw("another").value((1, true)),
+        (
+            semantic_number_token.verify(|count| *count > 0),
+            opt(semantic_kw("other")),
+        )
+            .map(|(count, other)| (count, other.is_some())),
+    ))
+    .parse_next(input)?;
     let (atoms, ()) = repeat_till::<_, _, Vec<Option<CardType>>, _, _, _, _>(
-        1..,
+        0..,
         parse_card_type_atom,
         peek(alt((semantic_kw("card"), semantic_kw("cards")))),
     )
@@ -192,19 +241,24 @@ fn parse_exiling_graveyard_additional_cost_lexed<'a>(
     alt((semantic_kw("card"), semantic_kw("cards"))).parse_next(input)?;
     semantic_phrase(&["from", "your", "graveyard"]).parse_next(input)?;
 
+    let has_type_tokens = !atoms.is_empty();
     let mut card_types = Vec::new();
     for card_type in atoms.into_iter().flatten() {
         if card_types.iter().all(|existing| *existing != card_type) {
             card_types.push(card_type);
         }
     }
-    if card_types.is_empty() {
+    if has_type_tokens && card_types.is_empty() {
         return Err(primitives::backtrack_err(
             "graveyard exile additional cost",
-            "at least one card type",
+            "card type",
         ));
     }
-    Ok(GraveyardAdditionalCostFact::ExileCards { count, card_types })
+    Ok(GraveyardAdditionalCostFact::ExileCards {
+        count,
+        card_types,
+        other,
+    })
 }
 
 fn parse_card_type_atom(input: &mut LexStream<'_>) -> WResult<Option<CardType>> {
