@@ -54,6 +54,10 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
             filter: filter.clone(),
         },
         ActivationCostSegmentCst::Untap => CompilerCost::Untap,
+        ActivationCostSegmentCst::UntapChosen { count, filter } => CompilerCost::UntapChosen {
+            count: *count,
+            filter: filter.clone(),
+        },
         ActivationCostSegmentCst::Forage => CompilerCost::ValidatedEffect(Box::new(
             crate::cards::builders::EffectAst::subject_verb_emit_keyword_action(
                 crate::events::KeywordActionKind::Forage,

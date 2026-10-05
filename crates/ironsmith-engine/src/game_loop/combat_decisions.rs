@@ -848,6 +848,7 @@ fn tap_prepared_attackers(
     // CR 508.1f taps every chosen attacker before attack costs are paid. Use
     // the pre-cost vigilance result prepared from the same derived state as
     // attack legality; paying a cost can remove the source of that ability.
+    let before = crate::events::other::before_tap_state_snapshots(game);
     let mut tapped_events = Vec::new();
     for prepared_decl in &prepared.declarations {
         let creature = prepared_decl.declaration.creature;
@@ -863,10 +864,13 @@ fn tap_prepared_attackers(
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::PermanentTapped);
         tapped_events.push(TriggerEvent::new_with_provenance(
-            crate::events::PermanentTappedEvent::new(creature),
+            crate::events::PermanentTappedEvent::capture(game, creature, Some(game.turn.active_player)),
             event_provenance,
         ));
     }
+
+    crate::events::other::bind_before_tap_state_snapshots(&mut tapped_events, &before);
+    crate::events::other::group_tap_state_events(game, &mut tapped_events, Default::default());
 
     // If costs can change the battlefield or other trigger-relevant state,
     // match the simultaneous tap events against the pre-cost state. Otherwise
@@ -875,9 +879,7 @@ fn tap_prepared_attackers(
         prepared.has_post_tap_attack_costs && !tapped_events.is_empty();
     if queued_tapped_events_before_costs {
         game.refresh_continuous_state();
-        for event in tapped_events.iter().cloned() {
-            queue_triggers_from_event(game, trigger_queue, event, true);
-        }
+        super::targeting::queue_triggers_from_reported_events(game, trigger_queue, tapped_events.clone(), true);
     }
 
     (tapped_events, queued_tapped_events_before_costs)
@@ -1112,9 +1114,7 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     game.refresh_continuous_state();
 
     if !queued_tapped_events_before_costs {
-        for event in tapped_events {
-            queue_triggers_from_event(game, trigger_queue, event, true);
-        }
+        super::targeting::queue_triggers_from_reported_events(game, trigger_queue, tapped_events, true);
     }
 
     let total_attackers = surviving_declarations.len();

@@ -294,11 +294,23 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ClassBecomesLevel { level } => {
             crate::triggers::Trigger::class_becomes_level(level)
         }
+        TriggerKind::PlayerChangesTapState { player, filter, tapped, one_or_more, during_untap_step } => {
+            crate::triggers::Trigger::new(crate::triggers::PlayerChangesTapStateTrigger {
+                player, filter, tapped, one_or_more, during_untap_step,
+            })
+        }
         TriggerKind::BecomesTapped => crate::triggers::Trigger::becomes_tapped(),
-        TriggerKind::PermanentBecomesTapped { filter } => {
-            crate::triggers::Trigger::permanent_becomes_tapped(filter)
+        TriggerKind::PermanentBecomesTapped { filter, one_or_more } => {
+            if one_or_more {
+                crate::triggers::Trigger::permanent_becomes_tapped_one_or_more(filter)
+            } else {
+                crate::triggers::Trigger::permanent_becomes_tapped(filter)
+            }
         }
         TriggerKind::BecomesUntapped => crate::triggers::Trigger::becomes_untapped(),
+        TriggerKind::PermanentBecomesUntapped { filter, one_or_more } => {
+            crate::triggers::Trigger::permanent_becomes_untapped(filter, one_or_more)
+        }
         TriggerKind::ThisIsTurnedFaceUp => crate::triggers::Trigger::this_is_turned_face_up(),
         TriggerKind::TurnedFaceUp { filter } => crate::triggers::Trigger::turned_face_up(filter),
         TriggerKind::BecomesTargeted => crate::triggers::Trigger::becomes_targeted(),

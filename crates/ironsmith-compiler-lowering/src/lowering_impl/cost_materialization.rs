@@ -19,6 +19,10 @@ enum MaterializationCost {
         filter: ObjectFilter,
     },
     Untap,
+    UntapChosen {
+        count: ChoiceCount,
+        filter: ObjectFilter,
+    },
     Life(crate::effect::Value),
     Energy(u32),
     DiscardSource,
@@ -213,6 +217,22 @@ fn bind_cost_attachment_reference_to_source(
     filter
 }
 
+fn tap_state_cost_scope(filter: &ObjectFilter) -> ObjectFilter {
+    let mut filter = bind_cost_attachment_reference_to_source(filter);
+    // An explicit attachment/source identity does not imply control by the
+    // payer. The action is a written tap/untap instruction, not {T}/{Q}.
+    let anchored = filter.source || filter.with_attached_object.is_some()
+        || filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == ironsmith_compiler_semantic::tag::CompilerReferenceTag::GrantingSource.key()
+        });
+    if anchored {
+        filter.zone.get_or_insert(crate::zone::Zone::Battlefield);
+    } else {
+        apply_activation_cost_default_battlefield_scope(&mut filter);
+    }
+    filter
+}
+
 pub fn materialize_compiler_core_total_cost(
     cost: &ironsmith_core::TotalCost<CompilerCost>,
 ) -> Result<TotalCost, CardTextError> {
@@ -243,6 +263,10 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
             filter: filter.clone(),
         },
         CompilerCost::Untap => MaterializationCost::Untap,
+        CompilerCost::UntapChosen { count, filter } => MaterializationCost::UntapChosen {
+            count: *count,
+            filter: filter.clone(),
+        },
         CompilerCost::Life(amount) => MaterializationCost::Life(amount.clone()),
         CompilerCost::Energy(amount) => MaterializationCost::Energy(*amount),
         CompilerCost::DiscardSource => MaterializationCost::DiscardSource,
@@ -479,6 +503,7 @@ fn lower_materialization_costs(
     let mut costs = Vec::new();
     let mut pending_mana_pips = Vec::new();
     let mut tap_tag_id = 0usize;
+    let mut untap_tag_id = 0usize;
     let mut discard_tag_id = 0usize;
     let mut sacrifice_tag_id = 0usize;
     let mut exile_tag_id = 0usize;
@@ -503,8 +528,7 @@ fn lower_materialization_costs(
             }
             MaterializationCost::TapChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let mut filter = filter.clone();
-                apply_activation_cost_default_battlefield_scope(&mut filter);
+                let mut filter = tap_state_cost_scope(filter);
                 filter.untapped = true;
                 let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
                     "tap_cost_{tap_tag_id}"
@@ -517,6 +541,19 @@ fn lower_materialization_costs(
                     tag.clone(),
                 )));
                 costs.push(Cost::validated_effect(Effect::tap(
+                    crate::target::ChooseSpec::tagged(tag),
+                )));
+            }
+            MaterializationCost::UntapChosen { count, filter } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let mut filter = tap_state_cost_scope(filter);
+                filter.tapped = true;
+                let tag = ironsmith_compiler_semantic::tag::CompilerCostObjectTag::Untap.key(untap_tag_id);
+                untap_tag_id += 1;
+                costs.push(Cost::validated_effect(Effect::choose_objects(
+                    filter, *count, PlayerFilter::You, tag.clone(),
+                )));
+                costs.push(Cost::validated_effect(Effect::untap(
                     crate::target::ChooseSpec::tagged(tag),
                 )));
             }

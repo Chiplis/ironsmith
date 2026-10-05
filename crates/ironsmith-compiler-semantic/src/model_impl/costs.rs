@@ -99,6 +99,10 @@ impl ironsmith_core::CostComponent for CompilerCost {
                 if count.dynamic_x { "X".to_string() } else { count.min.to_string() },
             ),
             Self::Untap => "{Q}".to_string(),
+            Self::UntapChosen { count, .. } => format!(
+                "untap {} chosen permanent(s)",
+                if count.dynamic_x { "X".to_string() } else { count.min.to_string() },
+            ),
             Self::Life(amount) => format!("pay {amount:?} life"),
             Self::Energy(amount) => format!("pay {amount} energy"),
             Self::DiscardSource => "discard this card".to_string(),
@@ -281,6 +285,10 @@ pub enum CompilerCost {
         filter: ObjectFilter,
     },
     Untap,
+    UntapChosen {
+        count: ChoiceCount,
+        filter: ObjectFilter,
+    },
     Life(Value),
     Energy(u32),
     DiscardSource,

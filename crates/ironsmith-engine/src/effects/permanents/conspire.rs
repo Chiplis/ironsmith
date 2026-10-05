@@ -104,17 +104,20 @@ impl EffectExecutor for ConspireCostEffect {
             ));
         }
 
+        let before = crate::events::other::before_tap_state_snapshots(game);
         let mut events = Vec::new();
         for id in chosen {
             if game.object(id).is_some() && !game.is_tapped(id) {
                 game.tap(id);
                 events.push(TriggerEvent::new_with_provenance(
-                    PermanentTappedEvent::new(id),
+                    PermanentTappedEvent::capture(game, id, Some(ctx.controller)),
                     ctx.provenance,
                 ));
             }
         }
 
+        crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
+        crate::events::other::group_tap_state_events(game, &mut events, ctx.provenance);
         Ok(EffectOutcome::resolved().with_events(events))
     }
 

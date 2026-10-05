@@ -48,6 +48,7 @@ pub use mutated::MutatedEvent;
 pub use object_became_unattached::ObjectBecameUnattachedEvent;
 pub use permanent_phased_out::PermanentPhasedOutEvent;
 pub use permanent_tapped::PermanentTappedEvent;
+pub(crate) use permanent_tapped::{before_tap_state_snapshots, bind_before_tap_state_snapshots, group_tap_state_events};
 pub use permanent_untapped::PermanentUntappedEvent;
 pub use player_loses_game::{PlayerLosesGameEvent, WouldLoseGameMatcher};
 pub use players_finished_voting::{PlayerVote, PlayersFinishedVotingEvent};

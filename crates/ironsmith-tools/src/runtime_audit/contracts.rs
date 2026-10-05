@@ -930,6 +930,19 @@ impl Auditor {
                 scope.player = Binding::Present;
                 scope.amount = Binding::Present;
             }
+            "PlayerChangesTapState" => {
+                // The matcher requires an explicit event actor and an origin
+                // snapshot. It supplies 1 per transition; simultaneous queues
+                // sum that amount for a one-or-more event.
+                scope.player = Binding::Present;
+                scope.amount = Binding::Present;
+                scope.event_object = Binding::Present;
+            }
+            "PermanentBecomesUntapped" => {
+                scope.player = Binding::Unknown;
+                scope.amount = Binding::Present;
+                scope.event_object = Binding::Present;
+            }
             "BeginningOfUpkeep"
             | "BeginningOfDrawStep"
             | "BeginningOfCombat"

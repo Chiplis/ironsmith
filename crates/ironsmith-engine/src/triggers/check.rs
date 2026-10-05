@@ -1957,6 +1957,16 @@ fn tagged_objects_for_matched_trigger_with_view(
             );
         }
     }
+    if matches!(
+        trigger.simultaneous_trigger_key(trigger_event),
+        Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::TapStateBatch { .. }
+            | crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerTapStateBatch { .. })
+    ) && let Some(snapshot) = trigger_event.snapshot().cloned().or_else(|| {
+        trigger_event.object_id().and_then(|id| game.object(id))
+            .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+    }) {
+        tagged.insert(crate::tag::TagKey::from(ironsmith_core::TAP_STATE_GROUP_TAG), vec![snapshot]);
+    }
     if let Some(zone_change) =
         trigger.downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
         && let Some(event) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>()

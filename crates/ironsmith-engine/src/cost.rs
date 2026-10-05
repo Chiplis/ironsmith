@@ -384,6 +384,9 @@ pub(crate) fn effect_consumed_choice_tag(
     if let Some(tap) = consumer.downcast_ref::<crate::effects::TapEffect>() {
         return spec_consumed_tag(&tap.target).cloned();
     }
+    if let Some(untap) = consumer.downcast_ref::<crate::effects::UntapEffect>() {
+        return spec_consumed_tag(&untap.target).cloned();
+    }
     consumer
         .0
         .get_target_spec()
@@ -433,19 +436,23 @@ pub(crate) fn tagged_choice_pair_is_payable(
     let consumer = &components[idx + 1];
     // "{T}, Tap two untapped creatures you control": the source is tapped by
     // its own {T} component, so it can't also be one of the chosen untapped
-    // creatures (Harmonized Trio).
-    let taps_chosen = consumer.effect_ref().is_some_and(|effect| {
+    // creatures (Harmonized Trio). Likewise {Q} consumes its tapped state
+    // before a separate written untap cost (Crackleburr).
+    let state_change = consumer.effect_ref().and_then(|effect| {
         let mut effect = effect;
         while let Some(inner) = effect.transparent_child_effect() {
             effect = inner;
         }
-        effect.downcast_ref::<crate::effects::TapEffect>().is_some()
+        if effect.downcast_ref::<crate::effects::TapEffect>().is_some() { Some(true) }
+        else if effect.downcast_ref::<crate::effects::UntapEffect>().is_some() { Some(false) }
+        else { None }
     });
-    if taps_chosen
-        && choose.filter.untapped
-        && !choose.filter.other
-        && components.iter().any(Cost::requires_tap)
-    {
+    let source_state_reserved = match state_change {
+        Some(true) => choose.filter.untapped && components.iter().any(Cost::requires_tap),
+        Some(false) => choose.filter.tapped && components.iter().any(Cost::requires_untap),
+        None => false,
+    };
+    if source_state_reserved && !choose.filter.other {
         let mut choose = choose.clone();
         choose.filter.other = true;
         choose_cost = Cost::validated_effect(crate::effect::Effect::new(choose));
